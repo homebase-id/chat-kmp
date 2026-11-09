@@ -10,13 +10,15 @@ import kotlin.uuid.Uuid
 /**
  * Selective Share's key blobs, format 2 (odin-core docs/selective-share-plan.md, "Blob formats"): AES-128-GCM, a
  * 12-byte nonce and a 16-byte tag, each bound by its AAD to where it belongs.
- * - a share row's locked file key: the file's key under its circle's key, for that drive, file and circle;
+ * - a share row's locked file key: the file's key under its circle's key, for that drive, file and circle; format 3
+ *   binds it to the file's global transit id instead, which a member picks before the file exists;
  * - a circle's key locked with the app's key ([ZkKeyStore][id.homebase.api.youauth.ZkKeyStore]'s AppZkK);
  * - a member's copy of a circle's key, sealed to their drive's write-only key as [ZkSeal] seals.
  */
 object ShareKeys {
     const val KEY_LENGTH = 16
     private const val FORMAT: Byte = 2
+    private const val FORMAT_BY_GLOBAL_TRANSIT_ID: Byte = 3
     private const val NONCE_LENGTH = 12
     private const val TAG_LENGTH = 16
     private const val LOCKED_LENGTH = 1 + NONCE_LENGTH + KEY_LENGTH + TAG_LENGTH
@@ -26,8 +28,19 @@ object ShareKeys {
     suspend fun lockFileKey(circleKey: ByteArray, fileKey: ByteArray, driveId: Uuid, fileId: Uuid, circleId: Uuid): ByteArray =
         lock(circleKey, fileKey, fileKeyAad(driveId, fileId, circleId))
 
-    suspend fun openFileKey(circleKey: ByteArray, locked: ByteArray, driveId: Uuid, fileId: Uuid, circleId: Uuid): ByteArray =
-        open(circleKey, locked, fileKeyAad(driveId, fileId, circleId))
+    suspend fun lockFileKeyByGlobalTransitId(circleKey: ByteArray, fileKey: ByteArray, driveId: Uuid, globalTransitId: Uuid, circleId: Uuid): ByteArray =
+        lock(circleKey, fileKey, fileKeyAad(driveId, globalTransitId, circleId), format = FORMAT_BY_GLOBAL_TRANSIT_ID)
+
+    /** Either format: the format byte says which of the file's ids the key is bound to. */
+    suspend fun openFileKey(circleKey: ByteArray, locked: ByteArray, driveId: Uuid, fileId: Uuid, globalTransitId: Uuid?, circleId: Uuid): ByteArray =
+        when (locked.firstOrNull()) {
+            FORMAT_BY_GLOBAL_TRANSIT_ID -> open(
+                circleKey, locked,
+                fileKeyAad(driveId, globalTransitId ?: throw ZkOpenException("A format 3 locked key on a file without a global transit id"), circleId),
+                FORMAT_BY_GLOBAL_TRANSIT_ID,
+            )
+            else -> open(circleKey, locked, fileKeyAad(driveId, fileId, circleId))
+        }
 
     suspend fun lockCircleKey(appKey: ByteArray, circleKey: ByteArray, circleId: Uuid): ByteArray =
         lock(appKey, circleKey, circleId.toDotNetBytes())
@@ -60,11 +73,16 @@ object ShareKeys {
     internal fun sealedAad(circleId: Uuid, member: OdinId) =
         circleId.toDotNetBytes() + member.domainName.lowercase().encodeToByteArray()
 
-    internal suspend fun lock(key: ByteArray, plaintext: ByteArray, aad: ByteArray, nonce: ByteArray = ByteArrayUtil.getRndByteArray(NONCE_LENGTH)) =
-        byteArrayOf(FORMAT) + nonce + AesGcm.encrypt(plaintext, key, nonce, aad)
+    internal suspend fun lock(
+        key: ByteArray,
+        plaintext: ByteArray,
+        aad: ByteArray,
+        nonce: ByteArray = ByteArrayUtil.getRndByteArray(NONCE_LENGTH),
+        format: Byte = FORMAT,
+    ) = byteArrayOf(format) + nonce + AesGcm.encrypt(plaintext, key, nonce, aad)
 
-    private suspend fun open(key: ByteArray, locked: ByteArray, aad: ByteArray): ByteArray {
-        if (locked.size != LOCKED_LENGTH || locked[0] != FORMAT) throw ZkOpenException("Not a format 2 locked key")
+    private suspend fun open(key: ByteArray, locked: ByteArray, aad: ByteArray, format: Byte = FORMAT): ByteArray {
+        if (locked.size != LOCKED_LENGTH || locked[0] != format) throw ZkOpenException("Not a format $format locked key")
         return opening { AesGcm.decrypt(locked.copyOfRange(1 + NONCE_LENGTH, locked.size), key, locked.copyOfRange(1, 1 + NONCE_LENGTH), aad) }
     }
 }

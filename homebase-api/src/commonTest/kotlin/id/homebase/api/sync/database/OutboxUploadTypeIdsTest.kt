@@ -20,6 +20,7 @@ class OutboxUploadTypeIdsTest {
             DriveOutboxUploader.ToggleReaction,
             DriveOutboxUploader.DeleteFilesByGroupId,
             DriveOutboxUploader.SetReactions,
+            DriveOutboxUploader.TransformKeyHeaders,
         )
         val push = listOf(
             ScheduledPushOutboxUploader.SchedulePush,

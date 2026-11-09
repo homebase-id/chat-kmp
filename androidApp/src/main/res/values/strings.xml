@@ -5,10 +5,6 @@
     <string name="share_nothing_to_share">Nothing to share</string>
     <string name="share_file_unavailable">That shared file is no longer available — please share it again.</string>
     <string name="share_sent">Sent</string>
-    <plurals name="share_sent_multiple">
-        <item quantity="one">Sent to %1$d conversation</item>
-        <item quantity="other">Sent to %1$d conversations</item>
-    </plurals>
     <string name="share_preview_title_single">Conversation</string>
     <plurals name="share_preview_title_others">
         <item quantity="one">%1$s +%2$d other</item>

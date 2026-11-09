@@ -6,6 +6,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
@@ -83,6 +85,7 @@ class MomentDetailViewModel(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
     private val recipientLookup: MomentsRecipientLookupService,
+    private val payloadDownloadService: PayloadDownloadService,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -710,23 +713,21 @@ class MomentDetailViewModel(
                     }
                     remuxed.first
                 } else {
-                    val bytes = driveFileProvider.getPayloadBytesDecrypted(
+                    val extension = payload.contentType?.let { extensionForMimeType(it) }
+                        ?: payload.contentType?.substringAfter("/")
+                        ?: "bin"
+                    val exported = payloadDownloadService.exportToTemp(
                         driveId = moment.driveId,
                         fileId = moment.fileId,
                         key = payloadKey,
                         keyHeader = keyHeader,
-                    )?.bytes
-                    if (bytes == null) {
+                        destination = ExportDestination.ShareOutbound(".$extension"),
+                    )
+                    if (exported == null) {
                         _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
                         return@launch
                     }
-                    val extension = payload.contentType?.let { extensionForMimeType(it) }
-                        ?: payload.contentType?.substringAfter("/")
-                        ?: "bin"
-                    fileOperationsProvider.writeBytesToShareOutboundFile(
-                        bytes = bytes,
-                        suffix = ".$extension",
-                    )
+                    exported
                 }
                 _events.tryEmit(MomentDetailUiEvent.ShareFileReady(sharePath, caption))
             } catch (t: Throwable) {
@@ -845,12 +846,12 @@ class MomentDetailViewModel(
         val full = if (stub.isDescriptorContentComplete) {
             stub
         } else {
-            val json = driveFileProvider.getPayloadBytesDecrypted(
+            val json = payloadDownloadService.renderBytes(
                 driveId = driveId,
                 fileId = fileId,
                 key = stub.key,
                 keyHeader = keyHeader,
-            )?.bytes?.decodeToString() ?: return null
+            )?.decodeToString() ?: return null
             try {
                 OdinSystemSerializer.deserialize<VideoMetadata>(json)
             } catch (_: Exception) {

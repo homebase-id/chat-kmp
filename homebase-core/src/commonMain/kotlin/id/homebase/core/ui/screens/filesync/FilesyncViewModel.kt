@@ -29,16 +29,21 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.produceIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 private const val TAG = "FilesyncViewModel"
 private const val ARCHIVE_FALLBACK_NAME = "Filesync"
 private val FOLDER_REFRESH_DEBOUNCE = 500.milliseconds
+// Long enough for an outbox sending a batch to finish it, short enough to read as the answer.
+private val PEER_RESULTS_QUIET = 2.seconds
 
 @OptIn(FlowPreview::class)
 class FilesyncViewModel(
@@ -52,6 +57,7 @@ class FilesyncViewModel(
     filesyncSharing: FilesyncSharing,
     sharingSetup: FilesyncSharingSetup,
     shareMessages: FilesyncShareMessages,
+    peerSends: FilesyncPeerSends,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -71,7 +77,10 @@ class FilesyncViewModel(
     // Buffered so a download that finishes while the screen is away is still handed off on return.
     private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
     // Queue errors skip the buffer: one raised while another screen was in front was shown there.
-    val events: Flow<FilesyncUiEvent> = merge(_events.receiveAsFlow(), uploadQueue.errors.map { FilesyncUiEvent.Error(it) })
+    val events: Flow<FilesyncUiEvent> = merge(
+        _events.receiveAsFlow(),
+        uploadQueue.errors.map { FilesyncUiEvent.Error(it) },
+    )
 
     private var loadJob: Job? = null
     private val transfers = FilesyncTransfers(
@@ -135,6 +144,19 @@ class FilesyncViewModel(
 
         viewModelScope.launch {
             editor.changed.collect { loadCurrentFolder() }
+        }
+
+        viewModelScope.launch {
+            // A batch lands file by file: told, and read again, once it's quiet.
+            val outcomes = peerSends.outcomes.produceIn(this)
+            while (true) {
+                val batch = mutableListOf(outcomes.receive())
+                while (true) batch += withTimeoutOrNull(PEER_RESULTS_QUIET) { outcomes.receive() } ?: break
+                batch.groupBy { it.send.owner to it.message }.values.forEach { _events.send(FilesyncUiEvent.PeerSent(it)) }
+                batch.filterIsInstance<FilesyncPeerOutcome.Delivered>().groupBy { it.send.owner }.forEach { (owner, landed) ->
+                    sharing.refreshLanded(owner, landed.map { it.send.globalTransitId })
+                }
+            }
         }
 
         viewModelScope.launch {
@@ -337,6 +359,10 @@ class FilesyncViewModel(
             is FilesyncUiAction.StopSharing -> sharing.stopSharing(action.nodeId)
 
             is FilesyncUiAction.ChangeExpiry -> sharing.changeExpiry(action.nodeId, action.expiry)
+
+            is FilesyncUiAction.AddToShared -> sharing.addTarget()?.let { uploadQueue.add(it.folderId, action.files, it) }
+
+            is FilesyncUiAction.ReplaceShared -> sharing.replaceTarget(action.node)?.let { uploadQueue.add(action.node.parentId, listOf(action.file), it) }
 
             is FilesyncUiAction.SaveShared -> {
                 val owner = _uiState.value.sharing.sharer ?: return

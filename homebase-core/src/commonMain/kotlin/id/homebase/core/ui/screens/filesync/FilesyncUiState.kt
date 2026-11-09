@@ -35,6 +35,8 @@ data class FilesyncUpload(
     val name: String? = null,
     val progress: Float? = null,
     val failed: Boolean = false,
+    /** Whose folder it goes to, when not this identity's own. */
+    val owner: OdinId? = null,
 )
 
 @Immutable
@@ -160,6 +162,10 @@ data class FilesyncSharingState(
     /** Null while they load. */
     val sharedFiles: List<FilesyncNode>? = null,
     val sharedFilesFailed: Boolean = false,
+    /** The sharer's folder shown takes new files from this identity. */
+    val canAddHere: Boolean = false,
+    /** The sharer's files shown that this identity may replace. */
+    val editableIds: Set<Uuid> = emptySet(),
     /** The nodes of the folder shown that are shared with anyone now. */
     val sharedIds: Set<Uuid> = emptySet(),
     /** The groups and people this identity shares files with. */
@@ -274,6 +280,9 @@ sealed interface FilesyncUiAction {
     data class StopSharing(val nodeId: Uuid) : FilesyncUiAction
     data class ChangeExpiry(val nodeId: Uuid, val expiry: FilesyncExpiry) : FilesyncUiAction
     data class SaveShared(val node: FilesyncNode) : FilesyncUiAction
+    /** Into the sharer's folder shown. */
+    data class AddToShared(val files: List<PlatformFile>) : FilesyncUiAction
+    data class ReplaceShared(val node: FilesyncNode, val file: PlatformFile) : FilesyncUiAction
 }
 
 /** What the info pane does in place: the phone's info sheet stays open for these. */
@@ -317,4 +326,6 @@ sealed interface FilesyncUiEvent {
     /** Gone to Recently deleted, and back with Undo. */
     data class Removed(val nodeIds: Set<Uuid>) : FilesyncUiEvent
     data class Moved(val folderName: String?) : FilesyncUiEvent
+    /** Of one owner's, all told the same. */
+    data class PeerSent(val outcomes: List<FilesyncPeerOutcome>) : FilesyncUiEvent
 }

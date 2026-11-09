@@ -41,6 +41,17 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 
+/** An outbox over an in-memory database; the explicit dispatcher is what lets the database run in tests. */
+internal fun runOutboxSyncTest(body: suspend TestScope.(DatabaseManager, OutboxSync) -> Unit) = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val db = DatabaseManager({ createInMemoryDatabase() }, dispatcher = dispatcher, readDispatcher = dispatcher)
+    try {
+        body(db, OutboxSync(db, TestUploader(), EventBus(), backgroundScope))
+    } finally {
+        db.close()
+    }
+}
+
 class TestUploader : OutboxUploader {
     var shouldFail = false
     var failureException: Throwable? = null
@@ -200,6 +211,30 @@ class OutboxSyncTest {
         sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m3 + 5_000)
         assertTrue(fs.exists(dir / "enc_pending.encrypted"), "must not reap while the outbox is non-empty")
         assertTrue(fs.exists(hlsPending / "index.ts"), "must not reap hls dirs while the outbox is non-empty")
+    }
+
+    @Test
+    fun aKeyHeaderTransformRowIsSentWithoutAnyPerItemEvent() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val sync = OutboxSync(databaseManager = db, uploader = TestUploader(), eventBus = eventBus, scope = backgroundScope)
+        sync.setOnline(true)
+        val seen = mutableListOf<BackendEvent>()
+        val collecting = launch { eventBus.events.collect { seen += it } }
+        val completed = async { eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>().first().totalCount }
+        testScheduler.runCurrent()
+
+        sync.tryEnqueue(Uuid.random(), Uuid.random(), priority = 500, uploadType = DriveOutboxUploader.TransformKeyHeaders, json = "{}")
+        assertTrue(sync.send())
+        advanceUntilIdle()
+
+        assertEquals(1, completed.await())
+        collecting.cancel()
+        val perItem = seen.filter {
+            it is BackendEvent.OutboxEvent.ItemEnqueued || it is BackendEvent.OutboxEvent.ItemStarted ||
+                it is BackendEvent.OutboxEvent.ItemCompleted || it is BackendEvent.OutboxEvent.ItemFailed ||
+                it is BackendEvent.OutboxEvent.OutboxItemDropped
+        }
+        assertEquals(emptyList(), perItem)
     }
 
     @Test
@@ -1584,5 +1619,18 @@ class OutboxSyncTest {
 
         collectorJob.cancel()
         sync.clearCheckout(timeoutMs = 5_000)
+    }
+
+    @Test
+    fun nextScheduledReturnsEarliestWaitingRowNotMostUrgent() = runOutboxSyncTest { db, _ ->
+        val driveId = Uuid.random()
+        val urgent = Uuid.random()
+        val lowPriority = Uuid.random()
+        db.outbox.insert(driveId, urgent, null, 1L, 0L, byteArrayOf(1), null)
+        db.outbox.insert(driveId, lowPriority, null, 100L, 0L, byteArrayOf(2), null)
+        db.outbox.setNextRunTime(driveId, urgent, 4_000_000L)
+        db.outbox.setNextRunTime(driveId, lowPriority, 30_000L)
+
+        assertEquals(30_000L, db.outbox.nextScheduled()!!.milliseconds)
     }
 }

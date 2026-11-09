@@ -105,6 +105,25 @@ import id.homebase.resources.filesync_move_check_failed
 import id.homebase.resources.filesync_move_failed
 import id.homebase.resources.filesync_move_sharing_failed
 import id.homebase.resources.filesync_moved
+import id.homebase.resources.filesync_peer_added
+import id.homebase.resources.filesync_peer_added_many
+import id.homebase.resources.filesync_peer_replaced_many
+import id.homebase.resources.filesync_peer_retrying_many
+import id.homebase.resources.filesync_peer_waiting_storage_many
+import id.homebase.resources.filesync_peer_changed_first_many
+import id.homebase.resources.filesync_peer_denied_many
+import id.homebase.resources.filesync_peer_failed_many
+import id.homebase.resources.filesync_peer_not_confirmed_many
+import org.jetbrains.compose.resources.PluralStringResource
+import org.jetbrains.compose.resources.getPluralString
+import id.homebase.resources.filesync_peer_changed_first
+import id.homebase.resources.filesync_peer_denied
+import id.homebase.resources.filesync_peer_failed
+import id.homebase.resources.filesync_peer_not_confirmed
+import id.homebase.resources.filesync_peer_replaced
+import id.homebase.resources.filesync_peer_retrying
+import id.homebase.resources.filesync_peer_waiting_storage
+import id.homebase.api.client.drives.files.TransferStatus
 import id.homebase.resources.filesync_not_on_computers
 import id.homebase.resources.filesync_open_failed
 import id.homebase.resources.filesync_reaction_failed
@@ -255,9 +274,41 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.Waiting -> showAbout(MR.string.filesync_share_waiting, event.recipients)
                 is FilesyncUiEvent.NotReviewedBy -> showAbout(MR.string.filesync_not_reviewed_by, listOf(event.owner))
                 is FilesyncUiEvent.NotTold -> showAbout(MR.string.filesync_share_not_told, event.recipients)
+                is FilesyncUiEvent.PeerSent -> scope.launch { snackbarHostState.showSnackbar(event.outcomes.message()) }
             }
         }
     }
+}
+
+/** What a member write's outcome tells: [one] of a file, [many] of several told at once. */
+internal enum class FilesyncPeerMessage(val one: StringResource, val many: PluralStringResource) {
+    Added(MR.string.filesync_peer_added, MR.plurals.filesync_peer_added_many),
+    Replaced(MR.string.filesync_peer_replaced, MR.plurals.filesync_peer_replaced_many),
+    Retrying(MR.string.filesync_peer_retrying, MR.plurals.filesync_peer_retrying_many),
+    WaitingForStorage(MR.string.filesync_peer_waiting_storage, MR.plurals.filesync_peer_waiting_storage_many),
+    ChangedFirst(MR.string.filesync_peer_changed_first, MR.plurals.filesync_peer_changed_first_many),
+    Denied(MR.string.filesync_peer_denied, MR.plurals.filesync_peer_denied_many),
+    Failed(MR.string.filesync_peer_failed, MR.plurals.filesync_peer_failed_many),
+    NotConfirmed(MR.string.filesync_peer_not_confirmed, MR.plurals.filesync_peer_not_confirmed_many),
+}
+
+internal val FilesyncPeerOutcome.message: FilesyncPeerMessage
+    get() = when (this) {
+        is FilesyncPeerOutcome.Delivered -> if (send.isUpdate) FilesyncPeerMessage.Replaced else FilesyncPeerMessage.Added
+        is FilesyncPeerOutcome.Retrying ->
+            if (status == TransferStatus.RecipientIdentityOutOfStorage) FilesyncPeerMessage.WaitingForStorage else FilesyncPeerMessage.Retrying
+        is FilesyncPeerOutcome.Refused -> when (status) {
+            TransferStatus.RecipientIdentityReturnedVersionTagMismatch -> FilesyncPeerMessage.ChangedFirst
+            TransferStatus.RecipientIdentityReturnedAccessDenied -> FilesyncPeerMessage.Denied
+            else -> FilesyncPeerMessage.Failed
+        }
+        is FilesyncPeerOutcome.NotConfirmed -> FilesyncPeerMessage.NotConfirmed
+    }
+
+private suspend fun List<FilesyncPeerOutcome>.message(): String {
+    val first = first()
+    val owner = first.send.owner.domainName
+    return if (size == 1) getString(first.message.one, first.send.name, owner) else getPluralString(first.message.many, size, size, owner)
 }
 
 /** One node in any Filesync list; among live ones a deleted node is dimmed, but its [trailing] action is not. */
