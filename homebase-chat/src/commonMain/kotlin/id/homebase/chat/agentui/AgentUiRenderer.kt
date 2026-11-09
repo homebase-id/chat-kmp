@@ -400,7 +400,7 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
     val busy = node.action?.id in env.pending
-    val enabled = node.action != null && env.usable(node.action) && env.tree.selectionCountsOk(node.action, env.inputs.snapshot())
+    val enabled = node.action != null && env.usable(node.action) && env.tree.selectionCountsOk(node.action) { env.inputs[it] }
     val onClick = { node.action?.let { env.fire(it, node.id, node.label) }; Unit }
     val shapes = ButtonDefaults.shapes()
     val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight)
@@ -486,7 +486,8 @@ private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
 
 @Composable
 private fun MultiSelectView(node: AgentUiNode.MultiSelect, env: Env, modifier: Modifier) {
-    val picked = (env.inputs[node.id] ?: node.join(node.value)).split(MULTI_SELECT_SEPARATOR).toSet()
+    val raw = env.inputs[node.id] ?: env.tree.inputs.getValue(node.id)
+    val picked = remember(raw) { raw.split(MULTI_SELECT_SEPARATOR).toSet() }
     ChipGroup(node.label, modifier) {
         for (option in node.options) key(option.id) {
             val selected = option.id in picked

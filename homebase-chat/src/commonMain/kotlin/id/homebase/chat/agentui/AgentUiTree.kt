@@ -90,11 +90,12 @@ sealed interface AgentUiNode {
         val min: Int,
         val max: Int,
     ) : AgentUiNode {
-        fun join(selected: Collection<String>): String = options.filter { it.id in selected }.joinToString(MULTI_SELECT_SEPARATOR) { it.id }
+        internal fun join(selected: Collection<String>): String = options.filter { it.id in selected }.joinToString(MULTI_SELECT_SEPARATOR) { it.id }
 
-        internal fun countOk(joined: String): Boolean = joined.split(MULTI_SELECT_SEPARATOR).count { it.isNotEmpty() } in min..max
+        internal fun countOk(joined: String): Boolean =
+            (if (joined.isEmpty()) 0 else joined.count { it == ',' } + 1) in min..max
 
-        internal fun worstCase(): String = options.sortedByDescending { it.id.length }.take(max).joinToString(MULTI_SELECT_SEPARATOR) { it.id }
+        internal val worstCase: String = options.sortedByDescending { it.id.length }.take(max).joinToString(MULTI_SELECT_SEPARATOR) { it.id }
     }
     data class Unknown(override val id: String, val fallback: String?) : AgentUiNode
 }
@@ -120,12 +121,12 @@ data class AgentUiTree(
     }
 
     /** False while an `include`d multiSelect holds fewer than its `min` or more than its `max` options. */
-    fun selectionCountsOk(action: AgentUiNodeAction, current: Map<String, String>): Boolean =
-        action.include.all { id -> multiSelects[id]?.let { it.countOk(current[id] ?: inputs.getValue(id)) } ?: true }
+    fun selectionCountsOk(action: AgentUiNodeAction, current: (String) -> String?): Boolean =
+        action.include.all { id -> multiSelects[id]?.let { it.countOk(current(id) ?: inputs.getValue(id)) } ?: true }
 
     // A multiSelect counts at its longest possible value, so ticking more chips can never push a reply over budget.
     private fun budgetFits(action: AgentUiNodeAction, actingNodeId: String, current: Map<String, String>): Boolean {
-        val worst = action.include.mapNotNull { id -> multiSelects[id]?.let { id to it.worstCase() } }
+        val worst = action.include.mapNotNull { id -> multiSelects[id]?.let { id to it.worstCase } }
         if (worst.any { it.second.codePointCount() > AgentUiLimits.MAX_VALUE_CP }) return false
         return AgentUiActionDescriptor.valuesFit(collectValues(action, actingNodeId, current + worst))
     }

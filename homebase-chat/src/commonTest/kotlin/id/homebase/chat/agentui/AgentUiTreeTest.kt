@@ -335,10 +335,10 @@ class AgentUiTreeTest {
         assertTrue(t.overBudgetActions().isEmpty())
     }
 
-    private fun countTree(extra: String) = valid(
+    private fun countTree(extra: String = "", options: String? = null) = valid(
         tree(
             """{"id":"root","type":"column","children":["nets","go"]}""",
-            ms(extra),
+            if (options == null) ms(extra) else ms(extra, options),
             """{"id":"go","type":"button","label":"Go","action":{"id":"send","include":["nets"]}}""",
         ),
     )
@@ -346,31 +346,18 @@ class AgentUiTreeTest {
     @Test fun selection_counts_respect_min_and_max() {
         val t = countTree(""","min":1,"max":2""")
         val go = ((t.root as AgentUiNode.Column).children.last() as AgentUiNode.Button).action!!
-        assertEquals(false, t.selectionCountsOk(go, t.inputs))
-        assertTrue(t.selectionCountsOk(go, mapOf("nets" to "x")))
-        assertTrue(t.selectionCountsOk(go, mapOf("nets" to "x,li")))
-        assertEquals(false, t.selectionCountsOk(go, mapOf("nets" to "x,li,ig")))
+        assertEquals(false, t.selectionCountsOk(go) { null })
+        assertTrue(t.selectionCountsOk(go) { "x" })
+        assertTrue(t.selectionCountsOk(go) { "x,li" })
+        assertEquals(false, t.selectionCountsOk(go) { "x,li,ig" })
         assertEquals(mapOf("nets" to "x,li"), t.collectValues(go, "go", mapOf("nets" to "x,li")))
     }
 
     @Test fun over_budget_counts_a_multi_select_at_its_longest() {
         val opts = (0 until AgentUiLimits.MAX_OPTIONS).joinToString(",") { """{"id":"${"o$it".padEnd(60, 'z')}"}""" }
-        val wide = valid(
-            tree(
-                """{"id":"root","type":"column","children":["nets","go"]}""",
-                ms(options = opts),
-                """{"id":"go","type":"button","label":"Go","action":{"id":"send","include":["nets"]}}""",
-            ),
-        )
+        val wide = countTree(options = opts)
         assertEquals("", wide.inputs["nets"])
         assertEquals(listOf("send"), wide.overBudgetActions())
-        val capped = valid(
-            tree(
-                """{"id":"root","type":"column","children":["nets","go"]}""",
-                ms(""","max":3""", options = opts),
-                """{"id":"go","type":"button","label":"Go","action":{"id":"send","include":["nets"]}}""",
-            ),
-        )
-        assertTrue(capped.overBudgetActions().isEmpty())
+        assertTrue(countTree(""","max":3""", opts).overBudgetActions().isEmpty())
     }
 }
