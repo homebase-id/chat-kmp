@@ -97,6 +97,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
@@ -170,6 +171,7 @@ import id.homebase.resources.profile_card_field_to_back
 import id.homebase.resources.profile_card_field_to_front
 import id.homebase.resources.profile_card_field_place_back
 import id.homebase.resources.profile_card_field_place_front
+import id.homebase.resources.profile_card_field_place_front_unavailable
 import id.homebase.resources.profile_card_content_front
 import id.homebase.resources.profile_card_content_front_desc
 import id.homebase.resources.profile_card_content_front_empty
@@ -249,6 +251,8 @@ internal fun CardContentEditor(
     val onCard = items.filter { it.onCard }
     val back = if (circleCard) items.filter { it.shown && !it.onCard } else emptyList()
     val unavailable = if (circleCard) items.filterNot { it.shown } else emptyList()
+    val frontSlot = onCard.any { !it.everyone }
+    val backSlot = back.any { !it.everyone }
     val notOnCard = if (circleCard) emptyList() else items.filter { it.shown && it.renderable && it.hidden }
     val unrenderable = if (circleCard) emptyList() else items.filter { it.shown && !it.renderable }
     val couldAdd = if (circleCard) emptyList() else items.filterNot { it.shown }
@@ -328,6 +332,7 @@ internal fun CardContentEditor(
                     onMove = display.onToggle,
                     display = display,
                     handleSlot = canReorder,
+                    removeSlot = frontSlot,
                 )
             }
         }
@@ -430,6 +435,7 @@ internal fun CardContentEditor(
                             onOpen = { editingId = item.id },
                             onRemove = { removeFromCard(item) }.takeUnless { item.everyone },
                             onMove = { onFieldShown(item.id, true) }.takeIf { item.renderable },
+                            removeSlot = backSlot,
                         )
                     }
                 }
@@ -451,7 +457,7 @@ internal fun CardContentEditor(
                             count = unavailable.size,
                             enabled = enabled,
                             tag = "field_unavailable",
-                            onOpen = { if (item.renderable) placingId = item.id else place(item, false) },
+                            onOpen = { placingId = item.id },
                             supporting = unavailableReason(item.audience, circles),
                             muted = true,
                         )
@@ -855,7 +861,12 @@ private fun PlaceFieldDialog(item: CardContentItem, onPlace: (front: Boolean) ->
         title = { Text(stringResource(MR.string.profile_card_field_add_title, stringResource(typeLabel(item.type)))) },
         text = {
             Column {
-                PlaceChoice(MR.string.profile_card_field_place_front, MR.string.profile_card_content_front_desc, "place_front") { onPlace(true) }
+                PlaceChoice(
+                    MR.string.profile_card_field_place_front,
+                    if (item.renderable) MR.string.profile_card_content_front_desc else MR.string.profile_card_field_place_front_unavailable,
+                    "place_front",
+                    enabled = item.renderable,
+                ) { onPlace(true) }
                 PlaceChoice(MR.string.profile_card_field_place_back, MR.string.profile_card_content_back_desc, "place_back") { onPlace(false) }
             }
         },
@@ -866,14 +877,15 @@ private fun PlaceFieldDialog(item: CardContentItem, onPlace: (front: Boolean) ->
 }
 
 @Composable
-private fun PlaceChoice(headline: StringResource, supporting: StringResource, tag: String, onClick: () -> Unit) {
+private fun PlaceChoice(headline: StringResource, supporting: StringResource, tag: String, enabled: Boolean = true, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(stringResource(headline), style = MaterialTheme.typography.bodyLarge) },
         supportingContent = { Text(stringResource(supporting), style = MaterialTheme.typography.bodyMedium) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier
             .clip(MaterialTheme.shapes.medium)
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .alpha(if (enabled) 1f else DISABLED_ALPHA)
             .testTag(tag),
     )
 }
@@ -892,8 +904,9 @@ private fun unavailableReason(audience: ProfileAudience, circles: List<CardCircl
 }
 
 private const val UNAVAILABLE_NAMES = 2
+private const val DISABLED_ALPHA = 0.38f
 
-// Every row keeps the same leading slot, empty when there's no remove button, so values line up.
+// Rows in a section share one leading slot so values line up; a section with no remove buttons has none.
 @Composable
 private fun CardFieldRow(
     item: CardContentItem,
@@ -908,6 +921,7 @@ private fun CardFieldRow(
     display: FieldDisplay? = null,
     handleSlot: Boolean = false,
     muted: Boolean = false,
+    removeSlot: Boolean = onRemove != null,
 ) {
     val colors = MaterialTheme.colorScheme
     val label = stringResource(typeLabel(item.type))
@@ -936,17 +950,19 @@ private fun CardFieldRow(
                     if (actions.isNotEmpty()) customActions = actions
                 }
                 .heightIn(min = if (supporting != null) THREE_LINE_HEIGHT else TWO_LINE_HEIGHT)
-                .padding(start = ROW_SLOT_INSET, end = if (trailing) ROW_SLOT_INSET else ROW_TEXT_INSET)
+                .padding(start = if (removeSlot) ROW_SLOT_INSET else ROW_TEXT_INSET, end = if (trailing) ROW_SLOT_INSET else ROW_TEXT_INSET)
                 .padding(vertical = if (supporting != null) 12.dp else 8.dp),
         ) {
-            Box(Modifier.size(ROW_SLOT), contentAlignment = Alignment.Center) {
-                if (onRemove != null) {
-                    IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
-                        Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
+            if (removeSlot) {
+                Box(Modifier.size(ROW_SLOT), contentAlignment = Alignment.Center) {
+                    if (onRemove != null) {
+                        IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
+                            Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
+                        }
                     }
                 }
             }
-            Column(Modifier.weight(1f).padding(start = ROW_SLOT_INSET, end = 8.dp)) {
+            Column(Modifier.weight(1f).padding(start = if (removeSlot) ROW_SLOT_INSET else 0.dp, end = 8.dp)) {
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelMedium,

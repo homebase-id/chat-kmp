@@ -2522,6 +2522,7 @@
     <string name="profile_card_field_remove">Stop sharing %1$s with this card</string>
     <string name="profile_card_field_add_title">Add %1$s to this card</string>
     <string name="profile_card_field_place_front">Show on the card</string>
+    <string name="profile_card_field_place_front_unavailable">This kind of field can't be drawn on the card face</string>
     <string name="profile_card_field_place_back">Share only</string>
     <string name="profile_card_content_not_on_card_desc_public">Still public on your profile.</string>
     <string name="profile_card_content_hidden_public">Not visible to everyone (%1$d)</string>

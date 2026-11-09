@@ -5,6 +5,7 @@ package id.homebase.core.ui.screens.card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -303,7 +304,7 @@ class CardFieldRowsTest {
     }
 
     @Test
-    fun aFieldTheCardCantDrawSkipsTheDialogAndLandsOnTheBack() = runComposeUiTest {
+    fun aFieldTheCardCantDrawOffersOnlyShareOnly() = runComposeUiTest {
         val privatePhone = phone.ownerOnly()
         val shown = mutableListOf<Pair<Uuid, Boolean>>()
         val audiences = mutableListOf<Pair<Uuid, ProfileAudience>>()
@@ -312,8 +313,11 @@ class CardFieldRowsTest {
         row("field_unavailable", "Phone").performClick()
         waitForIdle()
 
-        onNodeWithTag("place_back").assertDoesNotExist()
-        onNodeWithText("Add Phone to this card").assertDoesNotExist()
+        onNodeWithText("Add Phone to this card").assertExists()
+        onNodeWithTag("place_front").assertIsNotEnabled().assert(hasText("This kind of field can't be drawn on the card face"))
+        onNodeWithTag("place_back").performClick()
+        waitForIdle()
+
         row("field_back", "Phone").assertExists()
         row("field_unavailable", "Phone").assertDoesNotExist()
         assertEquals(listOf<Pair<Uuid, ProfileAudience>>(privatePhone.id to ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID))), audiences)
