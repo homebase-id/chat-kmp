@@ -118,6 +118,13 @@ class MediaImagePlanTest {
     }
 
     @Test
+    fun aThumbnailEnlargedByTheBandRemembersItsRowSize() {
+        val plan = planMediaImages(ImageSize(1100, 825), MediaQuality.HD)
+        assertEquals(ImageSize(1080, 810), plan.thumbnails.last().rowSize)
+        assertNull(plan.thumbnails.first().rowSize)
+    }
+
+    @Test
     fun workedExample_600x450() {
         assertPlan(600, 450, MediaQuality.STANDARD, listOf("320x240", "600x450"), "600x450")
         assertPlan(600, 450, MediaQuality.HD, listOf("320x240", "600x450"), "600x450")

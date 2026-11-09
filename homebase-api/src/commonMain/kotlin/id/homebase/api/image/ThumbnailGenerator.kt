@@ -85,7 +85,9 @@ private suspend fun renderPlanned(
 
 // The plan's order, which renderPlanned reads back by position: thumbnails, final image, tiny.
 private fun MediaImagePlan.toOutputs(): List<ImageOutput> = buildList {
-    thumbnails.forEach { add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES)) }
+    thumbnails.forEach {
+        add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES, overLimit = OverLimit.SHRINK, rowSize = it.rowSize))
+    }
     finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE)) }
     add(tinyOutput(tiny.width, tiny.height))
 }

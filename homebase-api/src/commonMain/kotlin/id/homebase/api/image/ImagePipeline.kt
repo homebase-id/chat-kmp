@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /** One image a pipeline run makes. The caller works out the size; the pipeline never chooses it. */
 data class ImageOutput(
@@ -16,10 +18,21 @@ data class ImageOutput(
     val minQuality: Int = DEFAULT_MIN_QUALITY,
     /** False converts to sRGB first, for outputs too small to afford an embedded colour profile. */
     val keepColorProfile: Boolean = true,
+    val overLimit: OverLimit = OverLimit.LOWER_QUALITY,
+    /** The size to fall back to first when over the limit, if this output was enlarged past its row. */
+    val rowSize: ImageSize? = null,
 ) {
     companion object {
         const val DEFAULT_MIN_QUALITY = 40
     }
+}
+
+enum class OverLimit {
+    /** For placeholders and budgeted images, where bytes matter more than detail. */
+    LOWER_QUALITY,
+
+    /** For thumbnails with a final image behind them: fewer pixels show less than blockiness does. */
+    SHRINK,
 }
 
 class RenderedImage(
@@ -55,6 +68,9 @@ internal interface ImageSource : AutoCloseable {
 internal interface PipelineBitmap : AutoCloseable {
     val width: Int
     val height: Int
+
+    /** True for sRGB and untagged pixels, whose files need no colour profile. */
+    val isSrgb: Boolean
 
     /**
      * A new bitmap at the given size, filtered at least bilinearly, leaving this one open.
@@ -147,19 +163,29 @@ private fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): RenderedI
     }
 }
 
+private fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage = when (output.overLimit) {
+    OverLimit.LOWER_QUALITY -> encodeLoweringQuality(bitmap, output)
+    OverLimit.SHRINK -> encodeShrinking(bitmap, output)
+}
+
+private fun encoded(bitmap: PipelineBitmap, format: ImageFormat, quality: Int): ByteArray {
+    val bytes = bitmap.encode(format, quality)
+    return if (format == ImageFormat.WEBP && bitmap.isSrgb) stripWebpColorProfile(bytes) else bytes
+}
+
 /**
  * Encodes from the pixels at [ImageOutput.quality]; over the limit, lowers quality from the same
  * pixels, then shrinks, re-checking each time. A 1x1 image is the end of the line, which is what
  * makes the tiny preview's limit a real guarantee.
  */
-private fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
+private fun encodeLoweringQuality(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
     val maxBytes = output.maxBytes
     val floor = output.minQuality.coerceIn(1, 100)
     var quality = output.quality.coerceIn(1, 100)
-    var bytes = bitmap.encode(output.format, quality)
+    var bytes = encoded(bitmap, output.format, quality)
     while (bytes.size > maxBytes && quality > floor) {
         quality = nextQuality(quality, bytes.size, maxBytes).coerceAtLeast(floor)
-        bytes = bitmap.encode(output.format, quality)
+        bytes = encoded(bitmap, output.format, quality)
     }
 
     var current = bitmap
@@ -168,12 +194,40 @@ private fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedI
             val nextWidth = shrink(current.width)
             val nextHeight = shrink(current.height)
             current = current.replacedBy(bitmap) { it.scaledTo(nextWidth, nextHeight) }
-            bytes = current.encode(output.format, quality)
+            bytes = encoded(current, output.format, quality)
         }
         return RenderedImage(bytes, current.width, current.height, quality, output.format)
     } finally {
         if (current !== bitmap) current.close()
     }
+}
+
+/** Over the limit, keeps the quality: back to the row's own size if it was enlarged, then smaller by an estimate. */
+private fun encodeShrinking(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
+    val quality = output.quality.coerceIn(1, 100)
+    var bytes = encoded(bitmap, output.format, quality)
+    var current = bitmap
+    try {
+        var target = output.rowSize?.takeIf { bytes.size > output.maxBytes && it.pixelWidth < bitmap.width }
+        while (bytes.size > output.maxBytes && (current.width > 1 || current.height > 1)) {
+            val (width, height) = target?.let { it.pixelWidth to it.pixelHeight } ?: estimatedFit(current, bytes.size, output.maxBytes)
+            target = null
+            val next = scaleDown(bitmap, width, height)
+            if (current !== bitmap) current.close()
+            current = next
+            bytes = encoded(current, output.format, quality)
+        }
+        return RenderedImage(bytes, current.width, current.height, quality, output.format)
+    } finally {
+        if (current !== bitmap) current.close()
+    }
+}
+
+// Bytes go roughly with area, so edges go with the square root; the margin saves a re-encode.
+private fun estimatedFit(bitmap: PipelineBitmap, size: Int, maxBytes: Int): Pair<Int, Int> {
+    val factor = sqrt(maxBytes.toDouble() / size) * SHRINK_MARGIN
+    return max(1, min(bitmap.width - 1, (bitmap.width * factor).toInt())) to
+        max(1, min(bitmap.height - 1, (bitmap.height * factor).toInt()))
 }
 
 private fun shrink(edge: Int) = max(1, edge * 3 / 4)
@@ -186,6 +240,7 @@ private fun nextQuality(quality: Int, size: Int, maxBytes: Int): Int {
     return quality - excess.coerceIn(MIN_QUALITY_STEP.toLong(), MAX_QUALITY_STEP.toLong()).toInt()
 }
 
+private const val SHRINK_MARGIN = 0.95
 private const val MIN_QUALITY_STEP = 8
 private const val MAX_QUALITY_STEP = 30
 

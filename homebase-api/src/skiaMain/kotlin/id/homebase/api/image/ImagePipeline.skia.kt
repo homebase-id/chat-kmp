@@ -13,6 +13,7 @@ import org.jetbrains.skia.Surface
 internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
     override val width get() = image.width
     override val height get() = image.height
+    override val isSrgb get() = image.colorSpace.let { it == null || it.isSRGB }
 
     override fun scaledTo(width: Int, height: Int): PipelineBitmap {
         val surface = rasterSurface(image, width, height)
@@ -38,8 +39,7 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
     }
 
     override fun inSrgb(): PipelineBitmap {
-        val colorSpace = image.colorSpace
-        if (colorSpace == null || colorSpace.isSRGB) return this
+        if (isSrgb) return this
         val surface = Surface.makeRaster(ImageInfo(image.width, image.height, ColorType.N32, ColorAlphaType.PREMUL, ColorSpace.sRGB))
         surface.canvas.drawImage(image, 0f, 0f)
         return SkiaPipelineBitmap(surface.snapshotAndClose())

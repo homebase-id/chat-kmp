@@ -136,6 +136,54 @@ class ImagePipelineContractTest {
         assertTrue(abs(channel - 128) <= 12, "Expected mid-grey, got channel $channel")
     }
 
+    private fun hasIccProfile(webp: ByteArray) = webp.decodeToString().contains("ICCP")
+
+    @Test
+    fun sRgbOutputsCarryNoColourProfile() = runTest {
+        val source = png(400, 300) { x, y -> opaque(x % 256, y % 256, 90) }
+
+        val media = createMediaImages(source, "key", MediaQuality.HD)
+
+        assertTrue(!hasIccProfile(assertNotNull(media.tiny?.content).bytes), "Tiny has a profile")
+        media.thumbnails.forEach { assertTrue(!hasIccProfile(it.thumbnailBytes), "${it.pixelWidth} has a profile") }
+        assertTrue(!hasIccProfile(assertNotNull(media.finalImage).bytes), "Final image has a profile")
+        decoded(media.tiny!!.content!!.bytes)
+        decoded(media.thumbnails.first().thumbnailBytes)
+    }
+
+    @Test
+    fun anOverLimitThumbnailShrinksAtTheSameQuality() = runTest {
+        val random = Random(4)
+        val noise = png(400, 400) { _, _ -> opaque(random.nextInt(256), random.nextInt(256), random.nextInt(256)) }
+        val full = renderImages(noise) { listOf(output(400, 400, quality = 80)) }.images.single()
+        val limit = full.bytes.size * 8 / 10
+
+        val limited = renderImages(noise) {
+            listOf(ImageOutput(400, 400, 80, limit, overLimit = OverLimit.SHRINK))
+        }.images.single()
+
+        assertEquals(80, limited.quality)
+        assertTrue(limited.width < 400, "Should have shrunk")
+        assertTrue(limited.bytes.size <= limit)
+        assertEquals(limited.width to limited.height, decoded(limited.bytes).let { it.width to it.height })
+    }
+
+    @Test
+    fun anEnlargedThumbnailOverItsLimitGoesBackToItsRowSize() = runTest {
+        val random = Random(5)
+        val noise = png(400, 400) { _, _ -> opaque(random.nextInt(256), random.nextInt(256), random.nextInt(256)) }
+        val atRow = renderImages(noise) { listOf(output(380, 380, quality = 80)) }.images.single()
+        val full = renderImages(noise) { listOf(output(400, 400, quality = 80)) }.images.single()
+        val limit = (atRow.bytes.size + full.bytes.size) / 2
+
+        val limited = renderImages(noise) {
+            listOf(ImageOutput(400, 400, 80, limit, overLimit = OverLimit.SHRINK, rowSize = ImageSize(380, 380)))
+        }.images.single()
+
+        assertEquals(380 to 380, limited.width to limited.height)
+        assertEquals(80, limited.quality)
+    }
+
     private fun opaque(r: Int, g: Int, b: Int) = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
 
     private companion object {

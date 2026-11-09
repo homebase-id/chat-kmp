@@ -3,7 +3,8 @@ package id.homebase.api.image
 import kotlin.math.max
 import kotlin.math.min
 
-data class PlannedImage(val width: Int, val height: Int, val quality: Int) {
+/** [rowSize] is what the row asked for, set only when the 10% rule enlarged this to the source's size. */
+data class PlannedImage(val width: Int, val height: Int, val quality: Int, val rowSize: ImageSize? = null) {
     val longEdge get() = max(width, height)
 }
 
@@ -62,7 +63,7 @@ fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
         thumbnailRows.map { (row, quality) -> sized(source, row.longEdge, row.minShortEdge, row.longestEdgeAllowed, quality) },
     )
     val finalImage = finalRow?.let { (row, quality) ->
-        val image = sized(source, row.longEdge, row.minShortEdge, row.longestEdgeAllowed, quality)
+        val image = sized(source, row.longEdge, row.minShortEdge, row.longestEdgeAllowed, quality).copy(rowSize = null)
         val largest = thumbnails.lastOrNull()
         // Otherwise the sharpest thing a viewer can load would look worse than the thumbnail before it.
         if (largest != null && isNearSize(largest.longEdge, image.longEdge)) {
@@ -93,14 +94,14 @@ private fun sized(
         outLong = (rowMinShort * long + short - 1) / short
     }
     outLong = min(min(outLong, rowLimit.toLong()), long)
-    // A 2-10% reduction resamples every pixel, softening the image, to save few of them.
-    if (keepSourceWhenNear && outLong * 10 >= long * 9) outLong = long
-    val outShort = max(1L, (short * outLong * 2 + long) / (long * 2))
-    return if (source.pixelWidth >= source.pixelHeight) {
-        PlannedImage(outLong.toInt(), outShort.toInt(), quality)
-    } else {
-        PlannedImage(outShort.toInt(), outLong.toInt(), quality)
+    val oriented = { edge: Long ->
+        val outShort = max(1L, (short * edge * 2 + long) / (long * 2))
+        if (source.pixelWidth >= source.pixelHeight) ImageSize(edge.toInt(), outShort.toInt()) else ImageSize(outShort.toInt(), edge.toInt())
     }
+    // A 2-10% reduction resamples every pixel, softening the image, to save few of them.
+    val enlarged = keepSourceWhenNear && outLong < long && outLong * 10 >= long * 9
+    val size = oriented(if (enlarged) long else outLong)
+    return PlannedImage(size.pixelWidth, size.pixelHeight, quality, rowSize = if (enlarged) oriented(outLong) else null)
 }
 
 private fun mergeNearSizes(smallestFirst: List<PlannedImage>): List<PlannedImage> {
@@ -108,7 +109,7 @@ private fun mergeNearSizes(smallestFirst: List<PlannedImage>): List<PlannedImage
     for (image in smallestFirst) {
         val previous = kept.lastOrNull()
         if (previous != null && isNearSize(previous.longEdge, image.longEdge)) {
-            kept[kept.lastIndex] = image.copy(quality = max(previous.quality, image.quality))
+            kept[kept.lastIndex] = image.copy(quality = max(previous.quality, image.quality), rowSize = image.rowSize ?: previous.rowSize)
         } else {
             kept += image
         }

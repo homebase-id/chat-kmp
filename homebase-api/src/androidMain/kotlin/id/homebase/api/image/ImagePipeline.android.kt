@@ -15,6 +15,7 @@ import kotlin.math.max
 private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap {
     override val width get() = bitmap.width
     override val height get() = bitmap.height
+    override val isSrgb get() = bitmap.colorSpace.let { it == null || it == ColorSpace.get(ColorSpace.Named.SRGB) }
 
     override fun scaledTo(width: Int, height: Int): PipelineBitmap =
         AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true))
@@ -24,8 +25,8 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
         ImageUtils.encodeBitmap(bitmap, format, quality).also { check(it.isNotEmpty()) { "Failed to encode image as $format" } }
 
     override fun inSrgb(): PipelineBitmap {
+        if (isSrgb) return this
         val srgb = ColorSpace.get(ColorSpace.Named.SRGB)
-        if (bitmap.colorSpace == null || bitmap.colorSpace == srgb) return this
         val converted = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888, bitmap.hasAlpha(), srgb)
         Canvas(converted).drawBitmap(bitmap, 0f, 0f, null)
         return AndroidPipelineBitmap(converted)

@@ -22,6 +22,8 @@ class ImagePipelineTest {
             return ByteArray(log.bytesFor(width, height, quality))
         }
 
+        override val isSrgb = true
+
         override fun inSrgb(): PipelineBitmap = this
 
         override fun close() { log.open-- }
