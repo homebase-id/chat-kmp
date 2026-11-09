@@ -20,6 +20,22 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     override fun scaledTo(width: Int, height: Int): PipelineBitmap =
         AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true))
 
+    // Not getPixels, which unpremultiplies and converts to sRGB, and would turn a P3 photo into sRGB.
+    override fun readPixels(): ByteArray {
+        val eightBit = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val pixels = ByteArray(eightBit.width * eightBit.height * 4)
+        eightBit.copyPixelsToBuffer(ByteBuffer.wrap(pixels))
+        if (eightBit !== bitmap) eightBit.recycle()
+        return pixels
+    }
+
+    override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap {
+        val colorSpace = bitmap.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
+        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, bitmap.hasAlpha(), colorSpace)
+        out.copyPixelsFromBuffer(ByteBuffer.wrap(pixels))
+        return AndroidPipelineBitmap(out)
+    }
+
     // compress reports failure by writing nothing, and an empty result would pass any byte limit.
     override fun encode(format: ImageFormat, quality: Int): ByteArray =
         ImageUtils.encodeBitmap(bitmap, format, quality).also { check(it.isNotEmpty()) { "Failed to encode image as $format" } }

@@ -74,9 +74,15 @@ internal interface PipelineBitmap : AutoCloseable {
 
     /**
      * A new bitmap at the given size, filtered at least bilinearly, leaving this one open.
-     * Only asked to shrink by less than 2x per axis; [scaleDown] does the rest.
+     * Only asked for exact halvings, where bilinear averages every pixel.
      */
     fun scaledTo(width: Int, height: Int): PipelineBitmap
+
+    /** Premultiplied 8-bit pixels in this bitmap's colour space, four bytes each, alpha last. */
+    fun readPixels(): ByteArray
+
+    /** A new bitmap of [readPixels]-shaped [pixels], in this bitmap's colour space, leaving this one open. */
+    fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap
 
     fun encode(format: ImageFormat, quality: Int): ByteArray
 
@@ -128,9 +134,10 @@ internal fun renderFrom(
 }
 
 /**
- * Halves each axis while it's at least 2x too big, because a 2x bilinear step averages every source
- * pixel, where one big bilinear step samples only a few and aliases. Returns [source] when it's
- * already the right size. Intermediate bitmaps are closed; [source] is left to the caller.
+ * Halves each axis while it's at least 2x too big, because an exact 2x step averages every source
+ * pixel cheaply, then finishes with Lanczos, the only filter here that doesn't alias under 2x.
+ * Returns [source] when it's already the right size. Intermediate bitmaps are closed; [source] is
+ * left to the caller.
  */
 internal fun scaleDown(source: PipelineBitmap, width: Int, height: Int): PipelineBitmap {
     var current = source
@@ -138,11 +145,17 @@ internal fun scaleDown(source: PipelineBitmap, width: Int, height: Int): Pipelin
         val nextWidth = if (current.width >= width * 2) (current.width + 1) / 2 else current.width
         val nextHeight = if (current.height >= height * 2) (current.height + 1) / 2 else current.height
         if (nextWidth == current.width && nextHeight == current.height) break
-        current = current.replacedBy(source) { it.scaledTo(nextWidth, nextHeight) }
+        val exact = (nextWidth == current.width || current.width % 2 == 0) && (nextHeight == current.height || current.height % 2 == 0)
+        current = current.replacedBy(source) {
+            if (exact) it.scaledTo(nextWidth, nextHeight) else it.resampledTo(nextWidth, nextHeight)
+        }
     }
     if (current.width == width && current.height == height) return current
-    return current.replacedBy(source) { it.scaledTo(width, height) }
+    return current.replacedBy(source) { it.resampledTo(width, height) }
 }
+
+private fun PipelineBitmap.resampledTo(outWidth: Int, outHeight: Int): PipelineBitmap =
+    withPixels(resampleLanczos(readPixels(), width, height, outWidth, outHeight), outWidth, outHeight)
 
 // The finally is what frees an intermediate when the next step runs out of memory.
 private inline fun PipelineBitmap.replacedBy(
@@ -193,7 +206,9 @@ private fun encodeLoweringQuality(bitmap: PipelineBitmap, output: ImageOutput): 
         while (bytes.size > maxBytes && (current.width > 1 || current.height > 1)) {
             val nextWidth = shrink(current.width)
             val nextHeight = shrink(current.height)
-            current = current.replacedBy(bitmap) { it.scaledTo(nextWidth, nextHeight) }
+            val next = scaleDown(current, nextWidth, nextHeight)
+            if (current !== bitmap) current.close()
+            current = next
             bytes = encoded(current, output.format, quality)
         }
         return RenderedImage(bytes, current.width, current.height, quality, output.format)

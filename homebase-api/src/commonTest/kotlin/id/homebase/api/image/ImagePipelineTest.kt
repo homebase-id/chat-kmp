@@ -24,6 +24,10 @@ class ImagePipelineTest {
 
         override val isSrgb = true
 
+        override fun readPixels() = ByteArray(width * height * 4)
+
+        override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
+
         override fun inSrgb(): PipelineBitmap = this
 
         override fun close() { log.open-- }

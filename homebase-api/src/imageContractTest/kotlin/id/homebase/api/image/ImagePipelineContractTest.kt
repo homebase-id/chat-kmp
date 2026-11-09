@@ -2,6 +2,7 @@ package id.homebase.api.image
 
 import kotlinx.coroutines.test.runTest
 import kotlin.math.abs
+import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -134,6 +135,58 @@ class ImagePipelineContractTest {
         val centre = decoded(result.bytes).let { it.pixels[it.width * 20 + 20] }
         val channel = (centre shr 8) and 0xFF
         assertTrue(abs(channel - 128) <= 12, "Expected mid-grey, got channel $channel")
+    }
+
+    private fun stripes(width: Int, half: Int) = png(width, 16) { x, _ -> if ((x / half) % 2 == 0) BLACK else WHITE }
+
+    // Skips the edges, where the filter's window runs off the image.
+    private fun middleGreens(bytes: ByteArray): List<Int> {
+        val image = decoded(bytes)
+        val row = image.height / 2
+        return (image.width / 8 until image.width * 7 / 8).map { (image.pixels[row * image.width + it] shr 8) and 0xFF }
+    }
+
+    private fun deviation(values: List<Int>): Double {
+        val mean = values.average()
+        return sqrt(values.sumOf { (it - mean) * (it - mean) } / values.size)
+    }
+
+    private suspend fun stripesAfter(source: ByteArray, sourceWidth: Int, target: Int, viaDecoder: Boolean): ByteArray {
+        val outputs = buildList {
+            // A full-size output first forces a full decode, so the pipeline's own scaler does the work.
+            if (!viaDecoder) add(ImageOutput(sourceWidth, 16, 100, Int.MAX_VALUE, ImageFormat.PNG))
+            add(ImageOutput(target, 4, 100, Int.MAX_VALUE, ImageFormat.PNG))
+        }
+        return renderImages(source) { outputs }.images.last().bytes
+    }
+
+    @Test
+    fun onePixelStripesTurnGreyAtEveryCommonRatio() = runTest {
+        val limits = listOf(4000 to 400 to 5.0, 4032 to 2048 to 5.0, 2048 to 1080 to 5.0, 1080 to 640 to 5.0, 4000 to 2667 to 5.0, 3000 to 2048 to 5.0, 2560 to 2048 to 30.0)
+        for ((sizes, limit) in limits) {
+            val (from, to) = sizes
+            val source = stripes(from, 1)
+            for (viaDecoder in listOf(false, true)) {
+                val spread = deviation(middleGreens(stripesAfter(source, from, to, viaDecoder)))
+                assertTrue(spread <= limit, "$from -> $to viaDecoder=$viaDecoder deviated by $spread")
+            }
+        }
+    }
+
+    @Test
+    fun coarseStripesKeepTheirContrast() = runTest {
+        val greens = middleGreens(stripesAfter(stripes(1080, 8), 1080, 640, viaDecoder = false))
+        assertTrue(greens.min() <= 20 && greens.max() >= 235, "Range ${greens.min()}-${greens.max()}")
+    }
+
+    @Test
+    fun aSourceSizeOutputIsPixelIdentical() = runTest {
+        val random = Random(6)
+        val source = png(300, 200) { _, _ -> opaque(random.nextInt(256), random.nextInt(256), random.nextInt(256)) }
+
+        val image = renderImages(source) { listOf(ImageOutput(300, 200, 100, Int.MAX_VALUE, ImageFormat.PNG)) }.images.single()
+
+        assertTrue(decoded(source).pixels.contentEquals(decoded(image.bytes).pixels))
     }
 
     private fun hasIccProfile(webp: ByteArray) = webp.decodeToString().contains("ICCP")

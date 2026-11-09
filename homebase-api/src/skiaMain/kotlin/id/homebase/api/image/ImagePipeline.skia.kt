@@ -28,6 +28,22 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
         return SkiaPipelineBitmap(surface.snapshotAndClose())
     }
 
+    override fun readPixels(): ByteArray {
+        val bitmap = Bitmap()
+        try {
+            bitmap.allocPixels(info(image.width, image.height))
+            check(image.readPixels(bitmap, 0, 0)) { "Couldn't read the image's pixels" }
+            return bitmap.readPixels() ?: throw IllegalStateException("Couldn't read the image's pixels")
+        } finally {
+            bitmap.close()
+        }
+    }
+
+    override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap =
+        SkiaPipelineBitmap(Image.makeRaster(info(width, height), pixels, width * 4))
+
+    private fun info(width: Int, height: Int) = ImageInfo(width, height, ColorType.N32, ColorAlphaType.PREMUL, image.colorSpace)
+
     override fun encode(format: ImageFormat, quality: Int): ByteArray {
         val data = image.encodeToData(ImageUtils.encodedFormatFor(format), quality)
             ?: throw IllegalStateException("Failed to encode image as $format")
