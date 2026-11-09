@@ -18,7 +18,7 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalTestApi::class)
 class TabNavigationTest {
 
-    private val allTabs = listOf(
+    private val allTabs = listOf<Route>(
         Route.ChatList, Route.Feed, Route.Moments, Route.Vault,
         Route.Location, Route.ContactBook, Route.Home,
     )
