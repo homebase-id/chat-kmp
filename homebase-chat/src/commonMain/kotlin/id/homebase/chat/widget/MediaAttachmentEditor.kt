@@ -151,7 +151,7 @@ internal fun editorToolsetFor(
     canCrop: Boolean,   // onCropImage != null
     canDraw: Boolean,   // onDrawImage != null
     canSave: Boolean,   // onSaveFile  != null
-    canSetQuality: Boolean = false, // onToggleMediaQuality != null
+    canSetQuality: Boolean = false,
 ): EditorToolset {
     val isEditableImage =
         current is AttachmentPendingFile.FileImage || current is AttachmentPendingFile.Gallery

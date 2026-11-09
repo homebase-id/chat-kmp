@@ -154,8 +154,7 @@ of a large database on an old device.
 | 800x600 JPEG | 80 ms | 73 ms | 16 KB (q44) | 22 KB (q84) | 97 KB | 82 KB | 286 B | 678 B |
 | dice.png | 111 ms | 115 ms | 14 KB | 15 KB | 37 KB | 36 KB | 368 B | 764 B |
 
-Tiny previews grew because proper filtering keeps detail that nearest-neighbour threw away, and they
-land closer to the 768-byte limit, so its loop runs more often. No phone numbers yet: time, memory and
+Tiny previews grew mostly because Skia was writing a 456-byte sRGB colour profile into each one, which is now stripped. No phone numbers yet: time, memory and
 bytes on a real iPhone and Android phone for 12 MP and 48 MP HEIC and JPEG are still open in #2221.
 
 ### 2026-11-07, media table (#2230), desktop JVM (macOS), test fixtures, not phone photos

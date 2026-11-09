@@ -189,6 +189,39 @@ class ImagePipelineContractTest {
         assertTrue(decoded(source).pixels.contentEquals(decoded(image.bytes).pixels))
     }
 
+    private fun withOrientation(jpeg: ByteArray, orientation: Int): ByteArray {
+        val tiff = byteArrayOf(0x4D, 0x4D, 0, 0x2A, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, orientation.toByte(), 0, 0, 0, 0, 0, 0, 0, 0)
+        val body = "Exif".encodeToByteArray() + byteArrayOf(0, 0) + tiff
+        val length = body.size + 2
+        val app1 = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (length shr 8).toByte(), length.toByte()) + body
+        return jpeg.copyOfRange(0, 2) + app1 + jpeg.copyOfRange(2, jpeg.size)
+    }
+
+    @Test
+    fun everyExifOrientationComesOutUpright() = runTest {
+        val leftRed = ImageUtils.resizePreserveAspect(
+            png(120, 60) { x, _ -> if (x < 60) opaque(255, 0, 0) else opaque(0, 0, 255) }, 120, 60, ImageFormat.JPEG, 95,
+        ).bytes
+        // Where the left (red) half of the stored pixels ends up on screen.
+        val redSide = mapOf(1 to "left", 2 to "right", 3 to "right", 4 to "left", 5 to "top", 6 to "top", 7 to "bottom", 8 to "bottom")
+        for ((orientation, side) in redSide) {
+            val image = renderImages(withOrientation(leftRed, orientation)) { size ->
+                listOf(ImageOutput(size.pixelWidth, size.pixelHeight, 100, Int.MAX_VALUE, ImageFormat.PNG))
+            }.images.single()
+            val pixels = decoded(image.bytes)
+            val sideways = orientation >= 5
+            assertEquals(if (sideways) 60 to 120 else 120 to 60, pixels.width to pixels.height, "Orientation $orientation size")
+            val (x, y) = when (side) {
+                "left" -> 10 to pixels.height / 2
+                "right" -> pixels.width - 10 to pixels.height / 2
+                "top" -> pixels.width / 2 to 10
+                else -> pixels.width / 2 to pixels.height - 10
+            }
+            val red = (pixels.pixels[y * pixels.width + x] shr 16) and 0xFF
+            assertTrue(red > 200, "Orientation $orientation: expected red on the $side, got $red")
+        }
+    }
+
     private fun hasIccProfile(webp: ByteArray) = webp.decodeToString().contains("ICCP")
 
     @Test

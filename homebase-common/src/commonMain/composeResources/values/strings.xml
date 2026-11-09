@@ -1656,7 +1656,7 @@
     <string name="settings_data_storage">Data and storage</string>
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
     <string name="settings_media_quality_standard">Standard</string>
-    <string name="settings_media_quality_footer">Either way, what you save to your device is the version that was sent.</string>
+    <string name="settings_media_quality_footer">Whichever you choose, what you save to your device is the version that was sent.</string>
 
     <!-- Auto-save incoming media -->
     <string name="settings_media_autosave_header">Saving what you receive</string>

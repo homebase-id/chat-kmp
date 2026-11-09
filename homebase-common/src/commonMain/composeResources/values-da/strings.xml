@@ -2169,6 +2169,9 @@
     <string name="profile_card_colours_blue">Blå</string>
     <string name="settings_media_quality_hd">HD</string>
     <string name="settings_media_quality_original">Original</string>
+    <string name="settings_media_quality_header">Kvalitet for billeder og videoer, du sender</string>
+    <string name="settings_media_quality_standard">Standard</string>
+    <string name="settings_media_quality_footer">Uanset hvad du vælger, er det, du gemmer på din enhed, den version, der blev sendt.</string>
     <string name="settings_media_quality_standard_description">Billeder op til 2048 pixels og video i 720p. Ser godt ud, sendes hurtigt og holder skærmbilleder læsbare.</string>
     <string name="settings_media_quality_hd_description">Billeder op til 4096 pixels og video i 1080p. Forbliver skarpe, når du zoomer.</string>
     <string name="settings_media_quality_original_description">Den nøjagtige billedfil uden komprimering, og video i 1080p. Bruger mest data.</string>

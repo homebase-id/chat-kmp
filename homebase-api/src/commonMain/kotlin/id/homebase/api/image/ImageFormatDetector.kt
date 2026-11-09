@@ -73,7 +73,29 @@ object ImageFormatDetector {
     }
 
     // A single-frame GIF counts as still.
-    fun isAnimated(bytes: ByteArray): Boolean = isAnimatedGif(bytes) || isAnimatedWebp(bytes)
+    fun isAnimated(bytes: ByteArray): Boolean =
+        isAnimatedGif(bytes) || isAnimatedWebp(bytes) || isAnimatedPng(bytes) || isImageSequence(bytes)
+
+    // An APNG announces itself with an acTL chunk before the first image data.
+    private fun isAnimatedPng(b: ByteArray): Boolean {
+        if (b.size < 8 || b[0] != 0x89.toByte() || b.decodeToString(1, 4) != "PNG") return false
+        var at = 8
+        while (at + 8 <= b.size) {
+            val type = b.decodeToString(at + 4, at + 8)
+            if (type == "acTL") return true
+            if (type == "IDAT") return false
+            val length = (0..3).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }
+            if (length < 0) return false
+            at += 12 + length
+        }
+        return false
+    }
+
+    // Animated HEIC and AVIF are ISO image sequences, marked by these major brands.
+    private fun isImageSequence(b: ByteArray): Boolean =
+        b.size >= 12 && b.decodeToString(4, 8) == "ftyp" && b.decodeToString(8, 12) in IMAGE_SEQUENCE_BRANDS
+
+    private val IMAGE_SEQUENCE_BRANDS = setOf("avis", "msf1", "hevc", "hevx")
 
     fun isAnimatedGif(b: ByteArray): Boolean {
         if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return false
