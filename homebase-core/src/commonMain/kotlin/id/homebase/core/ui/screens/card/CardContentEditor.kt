@@ -5,7 +5,6 @@ package id.homebase.core.ui.screens.card
 import id.homebase.resources.circle_new
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilledTonalIconButton
-import id.homebase.core.ui.screens.profile.icon
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,7 +31,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -100,7 +98,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
@@ -133,6 +130,11 @@ import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_load_failed_desc
 import id.homebase.resources.profile_edit_retry
 import id.homebase.core.widget.WithTooltip
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.graphics.Color
 
 private val PHOTO_SIZE = 88.dp
 
@@ -241,11 +243,9 @@ internal fun CardContentEditor(
         }
         if (card is CardAudience.Circle && (notOnCard.isNotEmpty() || unrenderable.isNotEmpty())) {
             val labels = (notOnCard + unrenderable).map { stringResource(typeLabel(it.type)) }.distinct().joinToString()
-            Text(
+            AlsoSeesNote(
                 text = stringResource(MR.string.profile_card_content_circle_also_sees, audienceLabel(card), labels),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp).testTag("circle_also_sees"),
+                modifier = Modifier.padding(top = 12.dp),
             )
         }
         if (notOnCard.isNotEmpty()) {
@@ -350,6 +350,27 @@ internal fun CardContentEditor(
     }
 }
 
+// Read-only: what the circle can reach beyond this card. Access is changed in each field's own sheet.
+@Composable
+private fun AlsoSeesNote(text: String, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        color = colors.surfaceContainer,
+        contentColor = colors.onSurfaceVariant,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.fillMaxWidth().testTag("circle_also_sees").semantics(mergeDescendants = true) {},
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(Icons.Outlined.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(text = text, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
 @Composable
 private fun SectionLabel(text: String, description: String? = null) {
     Column(modifier = Modifier.padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -441,6 +462,7 @@ private fun EditorRow(
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
     val chooseCards = stringResource(MR.string.profile_card_content_choose_cards, item.text)
     val edit = stringResource(MR.string.profile_card_content_edit_this, label)
+    var choosing by remember { mutableStateOf(false) }
     Surface(
         onClick = onOpen,
         enabled = enabled,
@@ -473,7 +495,7 @@ private fun EditorRow(
             modifier = Modifier.heightIn(min = 64.dp).padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ShownBadge(icon = typeIcon(item.type), shown = item.shown)
+            ShownBadge(icon = typeIcon(item.type), shown = display?.onCard ?: item.shown)
             Spacer(Modifier.width(BADGE_GAP))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -498,16 +520,25 @@ private fun EditorRow(
                         color = colors.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.height(2.dp))
-                AudienceBadge(audience = item.audience, circles = circles)
-            }
-            Spacer(Modifier.width(8.dp))
-            var choosing by remember { mutableStateOf(false) }
-            if (display != null && !item.required) {
-                IconButton(onClick = display.onToggle, enabled = enabled, modifier = Modifier.testTag("field_toggle")) {
-                    Icon(if (display.onCard) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, contentDescription = toggleLabel)
+                if (showCardsButton && !pending) {
+                    Surface(
+                        onClick = { choosing = true },
+                        enabled = enabled,
+                        shape = CircleShape,
+                        color = Color.Transparent,
+                        modifier = Modifier.testTag("cards_button").semantics { contentDescription = chooseCards },
+                    ) {
+                        Box(Modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.CenterStart) {
+                            AudienceBadge(audience = item.audience, circles = circles)
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(2.dp))
+                    AudienceBadge(audience = item.audience, circles = circles)
                 }
             }
+            Spacer(Modifier.width(8.dp))
+            // Before the switch, so every switch lines up on the end edge whether or not its row reorders.
             if (display?.handle != null) {
                 Icon(
                     Icons.Outlined.DragHandle,
@@ -516,17 +547,22 @@ private fun EditorRow(
                     modifier = Modifier.size(40.dp).padding(8.dp).testTag("field_handle").then(display.handle),
                 )
             }
+            if (display != null && !item.required && !pending) {
+                Switch(
+                    checked = display.onCard,
+                    onCheckedChange = { display.onToggle() },
+                    enabled = enabled,
+                    thumbContent = if (display.onCard) {
+                        { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.testTag("field_toggle").semantics { contentDescription = toggleLabel },
+                )
+            }
             when {
                 pending -> LoadingIndicator(modifier = Modifier.size(40.dp).padding(8.dp))
-                showCardsButton -> {
-                    IconButton(onClick = { choosing = true }, enabled = enabled, modifier = Modifier.testTag("cards_button")) {
-                        // Shows who sees the item now, which is what the sheet behind it changes.
-                        Icon(item.audience.icon, contentDescription = chooseCards)
-                    }
-                    if (choosing) {
-                        CardsSheet(item = item, circles = circles, onApply = onApply, onDismiss = { choosing = false })
-                    }
-                }
+                showCardsButton -> Unit
                 item.required || item.locked -> Icon(
                     Icons.Outlined.Edit,
                     contentDescription = null,
@@ -535,6 +571,9 @@ private fun EditorRow(
                 )
             }
         }
+    }
+    if (choosing) {
+        CardsSheet(item = item, circles = circles, onApply = onApply, onDismiss = { choosing = false })
     }
 }
 

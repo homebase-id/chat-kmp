@@ -344,6 +344,45 @@ class ProfileCardEditorShotsTest {
         }),
     )
 
+    private fun hiding(state: ProfileCardUiState, audience: CardAudience, vararg types: String) = state.copy(
+        cards = state.cards.map { card ->
+            if (!card.audience.isSameAs(audience)) card else card.copy(
+                overrides = card.overrides.copy(fields = CardFields(hidden = state.attributes.filter { it.type in types }.map { it.id.toString() })),
+            )
+        },
+    )
+    private val k15Friends = hiding(editorBase, friendsCard, ProfileAttributeTypes.BIO_SUMMARY, ProfileAttributeTypes.TWITTER)
+    private val k15Public = hiding(editorPublic, CardAudience.Public, ProfileAttributeTypes.TWITTER)
+    private val k15AllHidden = hiding(editorBase, friendsCard, ProfileAttributeTypes.BIO_SUMMARY, ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.LINK, ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.NAME)
+    private val k15Long = hiding(
+        editorBase.copy(cards = editorBase.cards + card(longCircle), circles = editorBase.circles + CardCircle(longCircle.id, longCircle.label), selectedAudience = longCircle),
+        longCircle, ProfileAttributeTypes.BIO_SUMMARY,
+    )
+    private val TALL = 1500
+    private val k15Shots = listOf(
+        editor("k15-friends", k15Friends, h = TALL),
+        editor("k15-friends-top", k15Friends),
+        editor("k15-public", k15Public, h = TALL),
+        editor("k15-work", hiding(editorWork, workCard, ProfileAttributeTypes.LINK), h = TALL),
+        editor("k15-all-hidden", k15AllHidden, h = TALL),
+        editor("k15-empty", editorEmpty, h = TALL),
+        editor("k15-single-card", k15Public.copy(cards = listOf(public)), h = TALL),
+        editor("k15-long-circle", k15Long, h = TALL),
+        editor("k15-font-scale", k15Friends, fontScale = 1.6f, h = 2200),
+        editor("k15-rtl", k15Friends, rtl = true, h = TALL),
+        editor("k15-small", k15Friends, w = 360, h = TALL),
+        editor("k15-busy", k15Friends.copy(isContentBusy = true), h = TALL),
+        editor("k15-wide", k15Friends, w = 900, h = 1100),
+        editor("k15-reorder", editorPublic.copy(attributes = editorPublic.attributes + listOf("recipes", "garden").map { attribute(ProfileAttributeTypes.LINK, ProfileAttributeTypes.KEY_LINK_TARGET, "https://bagend.example/$it", ProfileVisibility.ANONYMOUS) }), w = 360, h = TALL),
+    )
+
+    @Test
+    fun k15FieldDisplayRendersEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in k15Shots) render(shot, dark)
+        }
+    }
+
     private fun polishCustomise(name: String, state: ProfileCardUiState, act: ComposeUiTest.() -> Unit = {}) =
         Shot(name, state, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = act)
 
