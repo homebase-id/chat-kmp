@@ -7,10 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.ScrollState
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import id.homebase.core.widget.SettingsTopBar
 
@@ -21,8 +19,6 @@ fun SettingsDetailScaffold(
     modifier: Modifier = Modifier,
     titleModifier: Modifier = Modifier,
     snackbarHost: @Composable () -> Unit = {},
-    scrollState: ScrollState = rememberScrollState(),
-    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Scaffold(
@@ -34,9 +30,8 @@ fun SettingsDetailScaffold(
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding)
-                .verticalScroll(scrollState)
+                .verticalScroll(rememberScrollState())
                 .then(modifier),
-            horizontalAlignment = horizontalAlignment,
             content = content,
         )
     }
