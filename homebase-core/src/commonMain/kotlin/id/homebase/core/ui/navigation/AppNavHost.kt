@@ -11,7 +11,6 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.MailOutline
-import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.ui.screens.email.EmailScreen
 import id.homebase.core.ui.screens.email.EmailUiAction
@@ -177,10 +176,6 @@ import id.homebase.core.ui.screens.moments.MomentComposeScreen
 import id.homebase.core.ui.screens.moments.MomentDetailPager
 import id.homebase.core.ui.screens.moments.MomentsOnboardingScreen
 import id.homebase.core.ui.screens.moments.MomentsScreen
-import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsScreen
-import id.homebase.core.ui.screens.feed.settings.FeedSettingsScreen
-import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsScreen
 import id.homebase.core.ui.screens.moments.MomentsUiEvent
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
@@ -214,10 +209,14 @@ import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsCategory
+import id.homebase.core.ui.screens.settings.AppsPage
+import id.homebase.core.ui.screens.settings.AppsPageContent
+import id.homebase.core.ui.screens.settings.AppsPageLinks
 import id.homebase.core.ui.screens.settings.AppsSettingsActions
+import id.homebase.core.ui.screens.settings.appsPage
+import id.homebase.core.ui.screens.settings.route
 import id.homebase.core.ui.screens.settings.AppsSettingsScreen
 import id.homebase.core.ui.screens.settings.PhotoBackupLinks
-import id.homebase.core.ui.screens.settings.PhotobaseSettingsScreen
 import id.homebase.core.ui.screens.settings.PhotobaseSetupGate
 import id.homebase.core.ui.screens.settings.SettingsPaneRequest
 import id.homebase.core.ui.screens.settings.SettingsPaneActions
@@ -265,7 +264,6 @@ import id.homebase.core.ui.screens.filesync.onboarding.FilesyncOnboardingScreen
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.ui.screens.vault.onboarding.VaultOnboardingScreen
-import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageFullHost
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
@@ -282,7 +280,6 @@ import id.homebase.core.ui.screens.contactbook.components.ContactCardDescriptorS
 import id.homebase.core.ui.screens.contactbook.components.ContactCardSaveHost
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
 import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
-import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesScreen
 import id.homebase.resources.chat_contact_card_saved_body
 import id.homebase.resources.chat_contact_card_saved_open
@@ -712,6 +709,14 @@ fun AppNavHost(
         onOpenStatus = { navController.navigate(Route.PhotoBackupStatus) },
         onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
     ).takeIf { photobaseAvailable && koinInject<PhotoBackupController>().isSupported }
+    val appsPageLinks = AppsPageLinks(
+        onOpenMoments = openMoments,
+        onOpenVault = openVault,
+        onOpenEmail = openEmail,
+        onOpenEmailModeSwitch = { navController.navigate(Route.EmailModeSwitch) },
+        onOpenContacts = openContactBook,
+        photoBackup = photoBackupLinks,
+    )
     // For the Filesync screen's own view model once it's open: a folder "Show" picked, or a share opened from chat.
     var filesyncToDo by remember { mutableStateOf<FilesyncUiAction?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
@@ -1283,19 +1288,6 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.ContactBookSettings> {
-                                if (isAuthenticated) {
-                                    val fromContacts = navController.previousBackStackEntry
-                                        ?.destination?.hasRoute(Route.ContactBook::class) == true
-                                    ContactBookSettingsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                        onOpenContacts = openContactBook,
-                                        showOpenContacts = !fromContacts,
-                                    )
-                                }
-                            }
-
                             composable<Route.AddContact> { backStackEntry ->
                                 if (isAuthenticated) {
                                     val route = backStackEntry.toRoute<Route.AddContact>()
@@ -1799,15 +1791,8 @@ fun AppNavHost(
                                             actions = SettingsPaneActions(
                                                 onOpenWebDrop = openWebDrop,
                                                 onLocation = openLocation,
-                                                onOpenMoments = openMoments,
-                                                onOpenVault = openVault,
-                                                onOpenEmail = openEmail,
-                                                onOpenEmailModeSwitch = {
-                                                    navController.navigate(Route.EmailModeSwitch)
-                                                },
-                                                onOpenContacts = openContactBook,
+                                                appsPageLinks = appsPageLinks,
                                                 photobaseAvailable = photobaseAvailable,
-                                                photoBackup = photoBackupLinks,
                                                 onNavigateToCropper = { requestId ->
                                                     navController.navigate(
                                                         Route.Crop(
@@ -2010,43 +1995,6 @@ fun AppNavHost(
                                         viewModel = koinViewModel(),
                                         onNavigateBack = { navController.popBackStack() },
                                         onCreated = { navController.popBackStack() },
-                                    )
-                                }
-                            }
-
-                            composable<Route.MomentsSettings> {
-                                if (isAuthenticated) {
-                                    MomentsSettingsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                        onOpenMoments = openMoments,
-                                    )
-                                }
-                            }
-
-                            composable<Route.FeedSettings> {
-                                if (isAuthenticated) {
-                                    FeedSettingsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                    )
-                                }
-                            }
-
-                            composable<Route.FilesyncSettings> {
-                                if (isAuthenticated) {
-                                    FilesyncSettingsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                    )
-                                }
-                            }
-
-                            composable<Route.CallsSettings> {
-                                if (isAuthenticated) {
-                                    CallsSettingsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
                                     )
                                 }
                             }
@@ -2275,7 +2223,7 @@ fun AppNavHost(
                                             VaultScreen(
                                                 vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
                                                 viewModel = vaultViewModel,
-                                                onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
+                                                onNavigateToSettings = { navController.navigate(AppsPage.Vault.route) },
                                                 onNavigateToChats = openChats,
                                                 onNavigateToNoteEditor = { sectionId, entryId ->
                                                     navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
@@ -2340,7 +2288,7 @@ fun AppNavHost(
                                     PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
                                         PhotoGalleryScreen(
                                             viewModel = koinViewModel(),
-                                            onOpenBackupSettings = { navController.navigate(Route.PhotobaseSettings) }.takeIf { photoBackupLinks != null },
+                                            onOpenBackupSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
                                         )
                                     }
@@ -2441,18 +2389,6 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.EmailSettings> {
-                                if (isAuthenticated) {
-                                    EmailSettingsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                        onOpenEmail = openEmail,
-                                        mailboxMode = emailMailboxMode,
-                                        onChangeMode = { navController.navigate(Route.EmailModeSwitch) },
-                                    )
-                                }
-                            }
-
                             composable<Route.EmailModeSwitch> {
                                 if (isAuthenticated) {
                                     EmailModeSwitchScreen(
@@ -2476,19 +2412,6 @@ fun AppNavHost(
                             composable<Route.PhotoBackupStatus> {
                                 if (isAuthenticated) {
                                     BackupStatusScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
-                                }
-                            }
-
-                            composable<Route.VaultSettings> {
-                                if (isAuthenticated) {
-                                    val fromVault = navController.previousBackStackEntry
-                                        ?.destination?.hasRoute(Route.Vault::class) == true
-                                    VaultSettingsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                        onOpenVault = openVault,
-                                        showOpenVault = !fromVault,
-                                    )
                                 }
                             }
 
@@ -2591,29 +2514,30 @@ fun AppNavHost(
                                     AppsSettingsScreen(
                                         actions = AppsSettingsActions(
                                             onBack = { navController.popBackStack() },
-                                            onFeedSettings = { navController.navigate(Route.FeedSettings) },
-                                            onMomentsSettings = { navController.navigate(Route.MomentsSettings) },
-                                            onVaultSettings = { navController.navigate(Route.VaultSettings) },
-                                            onFilesyncSettings = { navController.navigate(Route.FilesyncSettings) },
-                                            onEmailSettings = { navController.navigate(Route.EmailSettings) },
+                                            onOpenPage = { navController.navigate(it.route) },
                                             onOpenWebDrop = openWebDrop,
                                             onLocation = openLocation,
-                                            onContactBookSettings = { navController.navigate(Route.ContactBookSettings) },
-                                            onCallsSettings = { navController.navigate(Route.CallsSettings) },
-                                            onPhotobaseSettings = { navController.navigate(Route.PhotobaseSettings) }.takeIf { photobaseAvailable },
+                                            photobaseAvailable = photobaseAvailable,
                                         ),
                                     )
                                 }
                             }
 
-                            composable<Route.PhotobaseSettings> { entry ->
+                            composable<Route.AppSettings> { entry ->
                                 if (isAuthenticated) {
-                                    PhotobaseSettingsScreen(
-                                        viewModel = koinViewModel(
-                                            viewModelStoreOwner = rememberSettingsOwner(navController, entry),
-                                        ),
+                                    val page = entry.toRoute<Route.AppSettings>().appsPage
+                                    val from = navController.previousBackStackEntry?.destination
+                                    AppsPageContent(
+                                        page = page,
                                         onBack = { navController.popBackStack() },
-                                        backup = photoBackupLinks,
+                                        links = appsPageLinks,
+                                        emailMailboxMode = emailMailboxMode,
+                                        openedFromApp = when (page) {
+                                            AppsPage.Vault -> from?.hasRoute(Route.Vault::class) == true
+                                            AppsPage.Contacts -> from?.hasRoute(Route.ContactBook::class) == true
+                                            else -> false
+                                        },
+                                        settingsOwner = rememberSettingsOwner(navController, entry),
                                     )
                                 }
                             }

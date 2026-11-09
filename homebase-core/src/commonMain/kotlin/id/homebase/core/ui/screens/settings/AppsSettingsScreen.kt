@@ -77,7 +77,7 @@ internal val AppsSettingsRowTags = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppsSettingsScreen(actions: AppsSettingsActions) {
+internal fun AppsSettingsScreen(actions: AppsSettingsActions) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
@@ -114,7 +114,7 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.nav_feed),
                         supportingText = stringResource(MR.string.settings_feed_desc),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onFeedSettings),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Feed) },
                     )
                     SettingsRow(
                         modifier = Modifier.testTag("momentsSettingsButton"),
@@ -122,7 +122,7 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.moments_settings_section),
                         supportingText = stringResource(MR.string.settings_moments_desc),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onMomentsSettings),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Moments) },
                     )
                     SettingsRow(
                         modifier = Modifier.testTag("vaultSettingsButton"),
@@ -130,7 +130,7 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.vault_settings_section),
                         supportingText = stringResource(MR.string.settings_vault_desc),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onVaultSettings),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Vault) },
                     )
                     SettingsRow(
                         modifier = Modifier.testTag("filesyncSettingsButton"),
@@ -138,16 +138,16 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.filesync_label),
                         supportingText = stringResource(MR.string.filesync_home_subtitle),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onFilesyncSettings),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Filesync) },
                     )
-                    actions.onPhotobaseSettings?.let { onPhotobaseSettings ->
+                    if (actions.photobaseAvailable) {
                         SettingsRow(
                             modifier = Modifier.testTag("photobaseSettingsButton"),
                             icon = Icons.Outlined.PhotoLibrary,
                             title = stringResource(MR.string.photobase_label),
                             supportingText = stringResource(MR.string.photobase_home_subtitle),
                             containerColor = rowColor,
-                            action = SettingsRowAction.Navigate(onPhotobaseSettings),
+                            action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Photobase) },
                         )
                     }
                     SettingsRow(
@@ -156,7 +156,7 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.email_settings_section),
                         supportingText = stringResource(MR.string.settings_email_desc),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onEmailSettings),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Email) },
                     )
                     SettingsRow(
                         modifier = Modifier.testTag("webDropButton"),
@@ -180,7 +180,7 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.contactbook_settings_section),
                         supportingText = stringResource(MR.string.settings_contactbook_desc),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onContactBookSettings),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Contacts) },
                     )
                     SettingsRow(
                         modifier = Modifier.testTag("callsSettingsButton"),
@@ -188,7 +188,7 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.nav_calls),
                         supportingText = stringResource(MR.string.calls_home_subtitle),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onCallsSettings),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Calls) },
                     )
                 }
             }
