@@ -1,5 +1,14 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
+import id.homebase.chat.agentui.AgentUiDescriptor
+import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceDescriptor
+import kotlinx.collections.immutable.persistentListOf
+import kotlin.time.Instant
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
@@ -41,6 +50,47 @@ class ReplyDisplayUtilsTest {
         // only the reply-quote thumbnail path needs the narrower filter.
         val result = listOf(linkPayload).mediaPayloads()
         assertEquals(listOf(linkPayload), result)
+    }
+
+    private fun message(content: MessageContent?) = MessageUiModel(
+        id = Uuid.random(),
+        globalTransitId = null,
+        fileId = Uuid.random(),
+        conversationId = Uuid.random(),
+        content = "",
+        userDate = Instant.fromEpochMilliseconds(0),
+        modified = null,
+        created = Instant.fromEpochMilliseconds(0),
+        originalAuthor = OdinId("alice.test"),
+        sender = OdinId("alice.test"),
+        displayName = "",
+        messageAppData = MessageAppData(),
+        reactionPreview = null,
+        previewThumbnail = null,
+        payloads = persistentListOf(imagePayload),
+        keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
+        versionTag = Uuid.random(),
+        isPendingSend = false,
+        messageContent = content,
+        hasMore = false,
+    )
+
+    @Test
+    fun conversationMedia_agentCardWithImageFirst_quotesNoThumbnail() {
+        val card = message(MessageContent.AgentUi(AgentUiDescriptor(fallback = "Draft post")))
+        assertTrue(card.replyQuoteConversationMediaPayloads().isEmpty())
+        assertTrue(card.conversationMediaPayloads().isEmpty())
+    }
+
+    @Test
+    fun conversationMedia_protectedKinds_exposeNoPayloads() {
+        assertTrue(message(MessageContent.ViewOnce(ViewOnceDescriptor(ViewOnceDescriptor.KIND_IMAGE))).conversationMediaPayloads().isEmpty())
+        assertTrue(message(MessageContent.Unknown(999)).conversationMediaPayloads().isEmpty())
+    }
+
+    @Test
+    fun conversationMedia_plainMessage_keepsPayloads() {
+        assertEquals(listOf(imagePayload), message(null).replyQuoteConversationMediaPayloads())
     }
 
     // ── resolveReplyAuthorName ──

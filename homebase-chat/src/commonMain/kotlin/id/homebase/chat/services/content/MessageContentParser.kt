@@ -45,8 +45,14 @@ object MessageContentParser {
 
     private const val TAG = "MessageContentParser"
 
-    /** [payloads] are the message's payload descriptors; only kinds whose header refers to them read it. */
-    fun parse(dataType: Int?, content: String?, payloads: List<PayloadDescriptor>? = null): MessageContent? {
+    /** [parse] plus the AgentUi inline tree decoded against [payloads]; only a shown message needs it. */
+    fun parseForDisplay(dataType: Int?, content: String?, payloads: List<PayloadDescriptor>?): MessageContent? =
+        when (val parsed = parse(dataType, content)) {
+            is MessageContent.AgentUi -> parsed.withDecodedTree(payloads)
+            else -> parsed
+        }
+
+    fun parse(dataType: Int?, content: String?): MessageContent? {
         if (dataType == null || content.isNullOrBlank()) return null
         return when (dataType) {
             ChatProtocol.ChatEventMessageDataType -> parseEvent(content)
@@ -57,7 +63,7 @@ object MessageContentParser {
             ChatProtocol.ChatContactCardMessageDataType -> parseContactCard(content)
             ChatProtocol.ChatViewOnceMessageDataType -> parseViewOnce(content)
             ChatProtocol.ChatFileShareMessageDataType -> parseFileShare(content)
-            ChatProtocol.ChatAgentUiMessageDataType -> parseAgentUi(content, payloads)
+            ChatProtocol.ChatAgentUiMessageDataType -> parseAgentUi(content)
             ChatProtocol.ChatAgentUiActionMessageDataType -> parseAgentUiAction(content)
             // MessageAppData-shaped dataTypes — caller deserializes content
             // as MessageAppData. 0 = plain text/media; 211 = Location, whose
@@ -211,10 +217,9 @@ object MessageContentParser {
         MessageContent.ViewOnce(null)
     }
 
-    private fun parseAgentUi(content: String, payloads: List<PayloadDescriptor>?): MessageContent.AgentUi {
-        val parsed = try {
-            val d = OdinSystemSerializer.deserialize<AgentUiDescriptor>(content)
-            d.copy(tree = null) to d.tree?.let { AgentUiTree.decodeParsed(it, agentUiImageKeys(payloads)) }
+    private fun parseAgentUi(content: String): MessageContent.AgentUi {
+        val (descriptor, inlineTree) = try {
+            OdinSystemSerializer.deserialize<AgentUiDescriptor>(content) to null
         } catch (e: Exception) {
             // A tree the parser refuses (nested too deep) still leaves a readable header, so the card shows its fallback.
             try {
@@ -224,12 +229,17 @@ object MessageContentParser {
                 return MessageContent.AgentUi(null)
             }
         }
-        val (descriptor, inlineTree) = parsed
         if (!descriptor.isValid()) {
             Logger.w(tag = TAG) { "AgentUi descriptor failed validation" }
             return MessageContent.AgentUi(null)
         }
         return MessageContent.AgentUi(descriptor, inlineTree)
+    }
+
+    private fun MessageContent.AgentUi.withDecodedTree(payloads: List<PayloadDescriptor>?): MessageContent.AgentUi {
+        val d = descriptor ?: return this
+        val tree = d.tree ?: return this
+        return copy(descriptor = d.copy(tree = null), inlineTree = AgentUiTree.decodeParsed(tree, agentUiImageKeys(payloads)))
     }
 
     private fun parseAgentUiAction(content: String): MessageContent.AgentUiAction = try {

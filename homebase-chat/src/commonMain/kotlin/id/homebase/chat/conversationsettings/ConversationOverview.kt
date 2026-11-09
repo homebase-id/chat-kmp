@@ -8,8 +8,7 @@ import id.homebase.api.common.BatchResult
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
-import id.homebase.chat.widget.isProtectedMedia
-import id.homebase.chat.widget.mediaPayloads
+import id.homebase.chat.widget.conversationMediaPayloads
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -92,16 +91,7 @@ fun collectConversationOverview(
             else -> Unit
         }
 
-        // A card's photo is the subject's avatar, not a picture shared into the conversation.
-        if (message.messageContent is MessageContent.ContactCard) continue
-
-        // The card's tree and images belong to the card, not to the conversation's files.
-        if (message.messageContent is MessageContent.AgentUi) continue
-
-        // View-once media is viewer-only, and an unknown kind's payload is not something this build can vouch for.
-        if (message.messageContent.isProtectedMedia()) continue
-
-        for (payload in message.payloads.mediaPayloads()) {
+        for (payload in message.conversationMediaPayloads()) {
             fun item(isSticker: Boolean = false) = SharedMediaItem(
                 fileId = message.fileId,
                 messageId = message.id,
@@ -145,7 +135,7 @@ fun collectConversationOverview(
 fun collectLocations(batch: BatchResult<MessageUiModel>): List<SharedMediaItem> {
     val locations = mutableListOf<SharedMediaItem>()
     for (message in batch.records) {
-        for (payload in message.payloads.mediaPayloads()) {
+        for (payload in message.conversationMediaPayloads()) {
             if (payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION) {
                 locations.add(
                     SharedMediaItem(

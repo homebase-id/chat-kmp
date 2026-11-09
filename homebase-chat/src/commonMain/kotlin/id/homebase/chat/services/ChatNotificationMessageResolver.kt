@@ -7,7 +7,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.viewonce.kindLabel
 import id.homebase.chat.widget.PayloadPreviewKind
-import id.homebase.chat.widget.mediaPayloads
+import id.homebase.chat.widget.conversationMediaPayloads
 import id.homebase.chat.widget.labelRes
 import id.homebase.chat.widget.payloadPreviewKind
 import id.homebase.core.config.chatTargetDrive
@@ -46,7 +46,7 @@ class ChatNotificationMessageResolver(
     ): NotificationMessagePreview? {
         val message = messageLookup.resolveForNotification(conversationId, messageId) ?: return null
         val viewOnce = message.messageContent as? MessageContent.ViewOnce
-        val media = message.payloads.mediaPayloads()
+        val media = message.conversationMediaPayloads()
         val kind = if (viewOnce != null) null else payloadPreviewKind(media.firstOrNull(), media.size > 1)
         val preview = message.content.takeIf { it.isNotBlank() }
             ?: viewOnce?.let { TranslationUtil.getString(it.descriptor.kindLabel()) }
