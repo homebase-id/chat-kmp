@@ -31,6 +31,8 @@ import id.homebase.core.logging.setErrorCollectionEnabled
 import id.homebase.core.logging.setupIOSCrashHandler
 import id.homebase.core.location.tracking.observeAppForeground
 import id.homebase.core.settings.UserPreferencesHelper
+import id.homebase.core.share.IncomingLinks
+import org.koin.mp.KoinPlatformTools
 import kotlinx.cinterop.ExperimentalForeignApi
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.runBlocking
@@ -112,6 +114,11 @@ fun isDatabaseOpen(): Boolean = AppStartup.isDatabaseOpen
 
 /** For Swift: runs [block] once startup's after-database work is done (at once if it is). Main thread. */
 fun whenStarted(block: () -> Unit) = AppStartup.whenStarted(block)
+
+// Koin is resolved inside the block: with a crash report pending, Swift defers initializeApp.
+fun handleIncomingLink(url: String) = AppStartup.whenStarted {
+    KoinPlatformTools.defaultContext().get().get<IncomingLinks>().handle(url)
+}
 
 private var protectedDataObserver: NSObjectProtocol? = null
 

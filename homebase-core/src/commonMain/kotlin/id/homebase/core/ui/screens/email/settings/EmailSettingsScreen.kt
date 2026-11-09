@@ -1,14 +1,8 @@
 package id.homebase.core.ui.screens.email.settings
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
@@ -17,7 +11,6 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -27,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
-import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.api.client.mail.MailboxMode
 import id.homebase.resources.MR
 import id.homebase.resources.email_mode_encrypted
@@ -73,67 +66,54 @@ fun EmailSettingsUi(
     onBackClick: () -> Unit,
     showOpenEmail: Boolean = true,
 ) {
-    val scrollState = rememberScrollState()
-    Scaffold(
-        topBar = {
-            SettingsTopBar(
-                title = stringResource(MR.string.email_settings_section),
-                onBack = onBackClick,
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(scrollState),
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            if (showOpenEmail) {
-                SettingsRow(
-                    icon = Icons.Outlined.MailOutline,
-                    title = stringResource(MR.string.email_settings_open),
-                    action = SettingsRowAction.Navigate {
-                        onAction(EmailSettingsUiAction.OpenEmailClicked)
-                    },
-                )
-            }
+    SettingsDetailScaffold(
+        title = stringResource(MR.string.email_settings_section),
+        onBack = onBackClick,
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+        if (showOpenEmail) {
             SettingsRow(
-                icon = Icons.Outlined.Visibility,
-                title = stringResource(MR.string.email_settings_show_icon),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.iconVisible,
-                    onCheckedChange = { onAction(EmailSettingsUiAction.SetIconVisible(it)) },
-                ),
-            )
-            mailboxMode?.let { mode ->
-                // Not a toggle: switching changes who can read the mail
-                SettingsRow(
-                    icon = Icons.Outlined.Lock,
-                    title = stringResource(MR.string.email_mode_row_title),
-                    supportingText = stringResource(
-                        when (mode) {
-                            MailboxMode.Encrypted -> MR.string.email_mode_encrypted
-                            MailboxMode.Standard -> MR.string.email_mode_standard
-                        }
-                    ),
-                    action = SettingsRowAction.Navigate(onChangeMode),
-                )
-            }
-            SettingsRow(
-                icon = Icons.Outlined.Fingerprint,
-                title = stringResource(MR.string.email_settings_biometrics),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.biometricsEnabled,
-                    onCheckedChange = { onAction(EmailSettingsUiAction.SetBiometricsEnabled(it)) },
-                ),
-            )
-            Spacer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp)
+                icon = Icons.Outlined.MailOutline,
+                title = stringResource(MR.string.email_settings_open),
+                action = SettingsRowAction.Navigate {
+                    onAction(EmailSettingsUiAction.OpenEmailClicked)
+                },
             )
         }
+        SettingsRow(
+            icon = Icons.Outlined.Visibility,
+            title = stringResource(MR.string.email_settings_show_icon),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.iconVisible,
+                onCheckedChange = { onAction(EmailSettingsUiAction.SetIconVisible(it)) },
+            ),
+        )
+        mailboxMode?.let { mode ->
+            // Not a toggle: switching changes who can read the mail
+            SettingsRow(
+                icon = Icons.Outlined.Lock,
+                title = stringResource(MR.string.email_mode_row_title),
+                supportingText = stringResource(
+                    when (mode) {
+                        MailboxMode.Encrypted -> MR.string.email_mode_encrypted
+                        MailboxMode.Standard -> MR.string.email_mode_standard
+                    }
+                ),
+                action = SettingsRowAction.Navigate(onChangeMode),
+            )
+        }
+        SettingsRow(
+            icon = Icons.Outlined.Fingerprint,
+            title = stringResource(MR.string.email_settings_biometrics),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.biometricsEnabled,
+                onCheckedChange = { onAction(EmailSettingsUiAction.SetBiometricsEnabled(it)) },
+            ),
+        )
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+        )
     }
 }

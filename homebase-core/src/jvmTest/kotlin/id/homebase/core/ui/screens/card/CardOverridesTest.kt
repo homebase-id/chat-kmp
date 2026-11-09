@@ -35,6 +35,20 @@ class CardOverridesTest {
     }
 
     @Test
+    fun fieldChoicesRoundTripAndAnUndecodableListDropsOnlyItself() {
+        val chosen = everything.copy(fields = CardFields(order = listOf("b", "a"), hidden = listOf("c")))
+        val json = cardJson.encodeToString(CardOverrides.serializer(), chosen)
+        assertTrue(json.endsWith(""","fields":{"order":["b","a"],"hidden":["c"]}}"""), json)
+        assertEquals(chosen, CardOverrides.fromJson(cardJson.parseToJsonElement(json).jsonObject))
+        assertEquals(golden, cardJson.encodeToString(CardOverrides.serializer(), everything))
+
+        val stored = cardJson.parseToJsonElement("""{"socials":"bar","fields":{"order":"x","hidden":["c",7]}}""").jsonObject
+        assertEquals(CardOverrides(socials = "bar", fields = CardFields(hidden = listOf("c"))), CardOverrides.fromJson(stored))
+        assertEquals(chosen.fields, chosen.prunedFor("board").fields)
+        assertEquals(chosen.fields, chosen.prunedFor("hologram").fields)
+    }
+
+    @Test
     fun theRenderPayloadCarriesOverridesAndAudienceAtTheTopLevel() {
         val payload = CardPayload(
             design = "board",

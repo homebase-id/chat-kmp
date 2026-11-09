@@ -200,8 +200,9 @@ class ProfileCardScreenFlowTest {
             onAllNodesWithText("Design").assertCountEquals(0)
             onNodeWithText("Edit profile").assertExists()
             onNodeWithContentDescription("Card to edit").assertExists()
-            assertTrue(onAllNodes(hasContentDescription("Choose which cards show ", substring = true)).fetchSemanticsNodes().isNotEmpty())
-            onNodeWithContentDescription("Choose which cards show frodo@shire.me").assertExists()
+            onAllNodes(hasContentDescription("Choose which cards show ", substring = true)).assertCountEquals(0)
+            onNodeWithText("Not shared").assertExists()
+            onNodeWithText("frodo@shire.me").assertExists()
 
             onNodeWithContentDescription("Back").performClick()
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Design").fetchSemanticsNodes().isNotEmpty() }

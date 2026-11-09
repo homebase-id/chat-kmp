@@ -95,7 +95,7 @@ struct SharePickerView: View {
 
                 conversationContent
             }
-            .navigationTitle("Share to...")
+            .navigationTitle(SharedContentSaver.appGroupId.hasSuffix(".dev") ? "Share to... (Dev)" : "Share to...")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

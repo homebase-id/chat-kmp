@@ -156,6 +156,20 @@ class VaultStreamTest {
     // ---------------------------------------------------------------
 
     @Test
+    fun ownsItsSectionsAndEntriesButNoOtherRowOnTheDrive() = runTest {
+        val stream = createStream()
+        advanceUntilIdle()
+        val sectionId = Uuid.random()
+        stream.insertOptimisticSection(buildSection(sectionId = sectionId, title = "Passports"))
+        val entry = buildEntry(groupId = sectionId, fileName = "passport.jpg")
+        stream.insertOptimisticEntry(entry, sectionId)
+
+        assertTrue(stream.owns(sectionId))
+        assertTrue(stream.owns(entry.uniqueId))
+        assertFalse(stream.owns(Uuid.random()))
+    }
+
+    @Test
     fun insertOptimisticSection_addsAndSortsBySortOrder() = runTest {
         val stream = createStream()
         advanceUntilIdle()

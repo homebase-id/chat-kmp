@@ -86,8 +86,28 @@ class PeerDriveQueryProvider(
     suspend fun drivePublicKey(peer: OdinId, appSlug: String, driveSlug: String): DrivePublicKey =
         deserialize(getChecked("/peer/${peer.domainName}/apps/$appSlug/drives/$driveSlug/public-key"))
 
+    /**
+     * Whether this app's send of [globalTransitId] to [peer]'s [driveId] still waits in this identity's outbox: the one that
+     * gave back [sentVersionTag], or any of them without it. Not pending once the outbox is done with it, delivered or not.
+     */
+    suspend fun sendStatus(peer: OdinId, driveId: Uuid, globalTransitId: Uuid, sentVersionTag: Uuid?): PeerSendStatus {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/peer/${peer.domainName}/drives/$driveId/files/by-gtid/$globalTransitId/send-status"),
+            token = creds.accessToken,
+            secret = creds.secret,
+            queryString = sentVersionTag?.let { "sentVersionTag=$it" },
+        )
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
     companion object { private const val TAG = "PeerDriveQuery" }
 }
+
+/** [sending]: being sent now, its result on the way; otherwise [nextAttempt] is when the outbox picks it up again. */
+@Serializable
+data class PeerSendStatus(val pending: Boolean, val sending: Boolean = false, val attempts: Int = 0, val nextAttempt: Long? = null)
 
 /** [publicKeyCrc32] is not a seal's key id, which is computed from the key itself. */
 @Serializable

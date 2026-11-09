@@ -88,6 +88,8 @@ import id.homebase.resources.homebase_icon_round
 import id.homebase.resources.theme
 import id.homebase.resources.update_available
 import io.github.vinceglb.filekit.FileKit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.getString
 import kotlinx.io.files.Path
@@ -102,8 +104,21 @@ import java.awt.desktop.AppReopenedListener
 import java.awt.event.WindowStateListener
 import java.io.File
 
+internal val windowRestoreRequests = MutableStateFlow(0)
+
+internal fun claimSingleInstance(onRestoreRequest: () -> Unit): Boolean {
+    SingleInstanceManager.configuration = SingleInstanceManager.Configuration(
+        lockFilesDir = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir")),
+        lockIdentifier = "id.homebase.chat",
+    )
+    return SingleInstanceManager.isSingleInstance(onRestoreRequest = { onRestoreRequest() })
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 fun main() {
+    // Before logging, Koin and the database: a second launch must touch none of them.
+    if (!claimSingleInstance { windowRestoreRequests.update { it + 1 } }) return
+
     // Off by default on desktop and web; without it custom text context menu items are dropped.
     ComposeFoundationFlags.isNewContextMenuEnabled = true
     // Force JNA to load its bundled native library. Without this, Windows may resolve
@@ -246,15 +261,9 @@ fun main() {
             exitApplication()
         }
 
-        val isSingleInstance = SingleInstanceManager.isSingleInstance(
-            onRestoreRequest = {
-                isWindowVisible = true  // Restore the existing window
-            }
-        )
-
-        if (!isSingleInstance) {
-            exitApplication()
-            return@application
+        val restoreRequestCount by windowRestoreRequests.collectAsState()
+        LaunchedEffect(restoreRequestCount) {
+            if (restoreRequestCount > 0) isWindowVisible = true
         }
 
         CallWindow(callWindow, config, uiState.theme)

@@ -1,8 +1,10 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.client.drives.shares.ShareRequest
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
+import kotlin.uuid.Uuid
 
 /**
  * Builds the shared-secret-encrypted upload descriptor (the `metadata` multipart part) shared by the
@@ -19,15 +21,30 @@ internal suspend fun buildSharedSecretEncryptedUploadDescriptor(
     metadata: UploadFileMetadata,
     sharedSecret: ByteArray,
     transferIv: ByteArray,
+    shares: List<ShareRequest>? = null,
+    globalTransitId: Uuid? = null,
 ): ByteArray {
     val descriptor =
         UploadFileDescriptor(
             encryptedKeyHeader = encryptedKeyHeader,
             fileMetadata = metadata,
+            shares = shares,
+            globalTransitId = globalTransitId,
         )
 
     val descriptorJson = OdinSystemSerializer.json.encodeToString(descriptor)
     val descriptorBytes = descriptorJson.encodeToByteArray()
 
     return AesCbc.encrypt(descriptorBytes, sharedSecret, transferIv)
+}
+
+/** The update's `metadata` part, as [buildSharedSecretEncryptedUploadDescriptor] builds an upload's. */
+internal suspend fun buildSharedSecretEncryptedUpdateDescriptor(
+    encryptedKeyHeader: EncryptedKeyHeader,
+    metadata: UploadFileMetadata,
+    sharedSecret: ByteArray,
+    transferIv: ByteArray,
+): ByteArray {
+    val descriptorJson = OdinSystemSerializer.json.encodeToString(UpdateFileDescriptor(encryptedKeyHeader, metadata))
+    return AesCbc.encrypt(descriptorJson.encodeToByteArray(), sharedSecret, transferIv)
 }

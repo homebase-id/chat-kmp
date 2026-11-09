@@ -91,7 +91,7 @@ internal class FilesyncTransfers(
                 val write: suspend (out: suspend (ByteArray) -> Unit) -> Unit = when (source) {
                     is Source.One -> { out -> repository.streamPayload(source.payload, progress) { data -> data.collect { out(it) } } }
                     is Source.Shared -> { out ->
-                        repository.streamSharedPayload(source.owner, source.globalTransitId, source.payload, source.node.sizeBytes, progress) { data -> data.collect { out(it) } }
+                        repository.streamSharedPayload(source.owner, source.globalTransitId, source.payload, progress) { data -> data.collect { out(it) } }
                     }
                     is Source.Zip -> {
                         val entries = archive.plan(source.nodes, handles)
