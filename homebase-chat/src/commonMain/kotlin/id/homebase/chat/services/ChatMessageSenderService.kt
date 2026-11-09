@@ -952,7 +952,8 @@ class ChatMessageSenderService(
                 filePath = tempPath,
                 contentType = descriptor.contentType ?: "",
                 descriptorContent = descriptor.descriptorContent,
-                previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb()
+                previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb(),
+                skipVideoProcessing = true,
             )
 
             descriptor.previewThumbnail?.toEmbeddedThumb()?.let { previewThumbs += it }
