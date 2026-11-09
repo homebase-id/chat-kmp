@@ -125,6 +125,7 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 | children per node | 50 | tree invalid |
 | images | 10 | tree invalid |
 | each ref'd id used once (no cycle, no diamond), ids unique, root present | | tree invalid |
+| something visible: non-blank text, a labelled chip, a table, an image, an input, a button, or an unknown node with a fallback | | tree invalid |
 | text / fallback | 2000 code points | clamped |
 | labels, table cells, alt | 200 code points | clamped |
 | table | 20 rows x 8 columns | clamped |

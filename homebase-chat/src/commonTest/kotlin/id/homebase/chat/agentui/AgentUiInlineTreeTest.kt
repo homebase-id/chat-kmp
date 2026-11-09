@@ -96,6 +96,16 @@ class AgentUiInlineTreeTest {
         }
     }
 
+    @Test fun an_edit_whose_tree_shows_nothing_falls_back_to_the_card_text() {
+        val blank = Json.parseToJsonElement(
+            """{"root":"root","nodes":[{"id":"root","type":"column","children":["t1"]},{"id":"t1","type":"text","text":"Networks picked"}]}""",
+        ).jsonObject
+        val d = assertNotNull(AgentUiDescriptor(fallback = "Test 4 done", rev = 1).withInlineTree(blank))
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parseForDisplay(219, header(d), null))
+        assertIs<AgentUiTreeResult.Invalid>(content.inlineTree)
+        assertEquals("Test 4 done", content.descriptor?.fallback)
+    }
+
     @Test fun a_header_without_a_tree_has_no_inline_tree() {
         val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parseForDisplay(219, header(AgentUiDescriptor(fallback = "x")), null))
         assertNull(content.inlineTree)

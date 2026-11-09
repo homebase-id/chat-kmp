@@ -232,7 +232,10 @@ data class AgentUiTree(
             }
             val root = build(rootId, 1)
             failure?.let { return AgentUiTreeResult.Invalid(it) }
-            return if (root == null) AgentUiTreeResult.Invalid("root missing") else AgentUiTreeResult.Valid(AgentUiTree(root, inputs, multiSelects))
+            if (root == null) return AgentUiTreeResult.Invalid("root missing")
+            // A card that would draw nothing must show its fallback instead.
+            if (!root.showsSomething()) return AgentUiTreeResult.Invalid("nothing to show")
+            return AgentUiTreeResult.Valid(AgentUiTree(root, inputs, multiSelects))
         }
 
         private fun fail(reason: String): AgentUiNode? {
@@ -397,6 +400,15 @@ private fun AgentUiNode.action(): AgentUiNodeAction? = when (this) {
     is AgentUiNode.TextInput -> action
     is AgentUiNode.Select -> action
     else -> null
+}
+
+private fun AgentUiNode.showsSomething(): Boolean = when (this) {
+    is AgentUiNode.Text -> markdown.isNotBlank()
+    is AgentUiNode.Chip -> label.isNotBlank()
+    is AgentUiNode.Table -> header.isNotEmpty() || rows.isNotEmpty()
+    is AgentUiNode.Unknown -> fallback != null
+    is AgentUiNode.Divider -> false
+    else -> children()?.any { it.showsSomething() } ?: true
 }
 
 internal fun AgentUiNode.children(): List<AgentUiNode>? = when (this) {
