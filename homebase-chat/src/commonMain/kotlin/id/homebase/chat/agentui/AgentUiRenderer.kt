@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -61,13 +60,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -130,12 +129,9 @@ fun AgentUiTreeView(
     }
 }
 
-/** The frame draws a root card itself, so the card's tone becomes the frame's colour. */
-val AgentUiTree.frameTone: Tone get() = (root as? AgentUiNode.Card)?.tone ?: Tone.Default
-
 @Composable
-fun agentUiContainerColor(tone: Tone, nested: Boolean = false): Color = when (tone) {
-    Tone.Default -> if (nested) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerHigh
+private fun nestedContainerColor(tone: Tone): Color = when (tone) {
+    Tone.Default -> MaterialTheme.colorScheme.surfaceContainerHighest
     Tone.Primary -> MaterialTheme.colorScheme.primaryContainer
     Tone.Secondary -> MaterialTheme.colorScheme.secondaryContainer
     Tone.Error -> MaterialTheme.colorScheme.errorContainer
@@ -218,7 +214,7 @@ private fun CardBody(children: List<AgentUiNode>, env: Env, spacing: Arrangement
 
 @Composable
 private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
-    val container = agentUiContainerColor(node.tone, nested = true)
+    val container = nestedContainerColor(node.tone)
     Card(
         modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -227,7 +223,7 @@ private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
         CompositionLocalProvider(LocalAgentUiContainer provides container) {
             if (node.tone == Tone.Error) {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(20.dp).testTag(ErrorIconTag))
                     CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.weight(1f))
                 }
             } else {
@@ -258,21 +254,25 @@ private fun AgentChip(
         { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
     } else null
     if (onClick == null) {
-        val container = if (selected) selectedContainer else LocalAgentUiContainer.current.takeOrElse { scheme.surface }
-        Surface(
-            modifier.semantics(mergeDescendants = true) { this.selected = selected },
-            shape = FilterChipDefaults.shape,
-            color = container,
-            contentColor = if (selected) selectedContent else scheme.onSurfaceVariant,
-            border = if (selected) null else BorderStroke(1.dp, scheme.outlineVariant),
-        ) {
-            Row(
-                Modifier.height(ChipHeight).widthIn(min = 48.dp).padding(start = if (selected) 8.dp else 16.dp, end = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        if (selected) {
+            Surface(
+                modifier.semantics(mergeDescendants = true) { this.selected = true },
+                shape = FilterChipDefaults.shape,
+                color = selectedContainer,
+                contentColor = selectedContent,
             ) {
-                check?.invoke()
-                text()
+                Row(
+                    Modifier.height(ChipHeight).padding(start = 8.dp, end = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    check?.invoke()
+                    text()
+                }
+            }
+        } else {
+            Box(modifier.height(ChipHeight).semantics(mergeDescendants = true) { this.selected = false }, contentAlignment = Alignment.CenterStart) {
+                CompositionLocalProvider(LocalContentColor provides scheme.onSurfaceVariant) { text() }
             }
         }
     } else {
@@ -291,6 +291,8 @@ private fun AgentChip(
         )
     }
 }
+
+internal const val ErrorIconTag = "agentui-error-icon"
 
 private val ChipHeight = 32.dp
 

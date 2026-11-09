@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +48,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.chat_agent_ui_action_failed
 import id.homebase.resources.chat_agent_ui_action_other
@@ -178,7 +178,7 @@ fun AgentUiBubble(
         }
     }
 
-    AgentUiFrame(ready?.tree?.frameTone ?: Tone.Default, modifier, onLongClick.takeUnless { displayOnly }) {
+    AgentUiFrame(sentByYou, modifier, onLongClick.takeUnless { displayOnly }) {
         if (ready != null) {
             AgentUiTreeView(
                 tree = ready.tree,
@@ -218,13 +218,14 @@ private val LoadingPlaceholderHeight = 160.dp
 
 @Composable
 fun AgentUiFrame(
-    tone: Tone,
+    sentByYou: Boolean,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val container = agentUiContainerColor(tone)
-    CompositionLocalProvider(LocalContentColor provides contentColorFor(container), LocalAgentUiContainer provides container) {
+    val container = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
+    val onContainer = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
+    CompositionLocalProvider(LocalContentColor provides onContainer, LocalAgentUiContainer provides container) {
         Column(
             modifier
                 .agentUiFrameWidth()
