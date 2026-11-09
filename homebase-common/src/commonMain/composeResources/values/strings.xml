@@ -2500,7 +2500,6 @@
     <string name="profile_card_content_on_card_desc">Switch one off to leave it off this card.</string>
     <string name="profile_card_content_not_on_card">Not on this card</string>
     <string name="profile_card_content_not_on_card_desc">This circle can still see these on your profile.</string>
-    <string name="profile_card_content_never_on_card">Not shown on cards</string>
     <string name="profile_card_content_never_on_card_desc">Can't go on a card. Still on your profile.</string>
     <string name="profile_card_field_hide">Hide %1$s from this card</string>
     <string name="profile_card_field_show">Show %1$s on this card</string>

@@ -146,7 +146,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.platform.testTag
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -156,7 +155,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
-import id.homebase.resources.profile_card_content_never_on_card
 import id.homebase.resources.profile_card_content_never_on_card_desc
 import id.homebase.resources.profile_card_content_not_on_card
 import id.homebase.resources.profile_card_content_not_on_card_desc
