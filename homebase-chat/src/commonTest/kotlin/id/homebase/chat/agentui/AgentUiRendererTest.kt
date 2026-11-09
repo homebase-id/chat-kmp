@@ -94,6 +94,18 @@ class AgentUiRendererTest {
         assertEquals(mapOf("root" to "b"), seen.single().values)
     }
 
+    @Test fun picking_the_selected_option_again_sends_nothing() = runComposeUiTest {
+        val t = valid(
+            tree(
+                """{"id":"root","type":"select","label":"Pick one","options":[{"id":"a","label":"Alpha"},{"id":"b","label":"Beta"}],"value":"a","action":{"id":"picked"}}""",
+            ),
+        )
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(t, onAction = { seen += it })
+        onNodeWithText("Alpha").performClick()
+        assertEquals(emptyList(), seen)
+    }
+
     @Test fun toggle_with_action_fires_on_change() = runComposeUiTest {
         val t = valid(tree("""{"id":"root","type":"toggle","label":"Auto post","value":false,"action":{"id":"auto"}}"""))
         val seen = mutableListOf<AgentUiActionRequest>()
