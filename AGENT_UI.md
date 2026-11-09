@@ -5,6 +5,8 @@ blocks, and people act on it (approve, pick, fill in) without leaving the chat. 
 as typed messages (dataType 220). Follows `ADDING_TYPED_MESSAGE_KIND.md`; it is the third
 payload-bearing kind, and has no composer or attachment entry (only agents send it).
 
+For which node to use when, and examples of good and bad cards, see `AGENT_UI_GUIDE.md`.
+
 ## A2UI decision
 
 Evaluated Google's A2UI spec v0.8 (the page marks it legacy; v0.9.1 is current, v1.0 a candidate).
@@ -82,6 +84,8 @@ the alt/fallback text. Remote URLs are not a thing.
 The bubble shows the payload's embedded `previewThumbnail` at once and then loads the
 `THUMB_MEDIUM` server thumbnail, never the full image; the agent uploads standard thumbnail sizes
 with each image. The image box has a fixed 16:9 ratio, so loading never changes the card height.
+Tapping an image opens the conversation's full-screen viewer (`MediaDownloadHandler.imageViewerFor`),
+which loads the full payload and pages through the card's images only, with no caption.
 
 ### 4. Node catalog
 

@@ -996,6 +996,7 @@
     <string name="chat_agent_ui_action_failed">Couldn't send that action. Try again.</string>
     <string name="chat_agent_ui_action_you">You chose %1$s</string>
     <string name="chat_agent_ui_action_other">%1$s chose %2$s</string>
+    <string name="chat_agent_ui_open_image">View image</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
     <string name="chat_file_share_you_one">You shared 1 file · %1$s</string>

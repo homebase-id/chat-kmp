@@ -41,9 +41,11 @@ import androidx.compose.ui.layout.layout
 import co.touchlab.kermit.Logger
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
@@ -74,6 +76,18 @@ internal fun firstFrameTree(content: MessageContent.AgentUi, rev: Int, message: 
         ?: loader.cached(message).toLoad(rev)
         ?: if (message.agentUiTreePayload()?.iv == null) TreeLoad.Failed else TreeLoad.Loading
 
+/** The payloads a card may show as images, in message order; the full-screen viewer pages through these. */
+internal fun MessageUiModel.agentUiImagePayloads(): List<PayloadDescriptor> {
+    val keys = agentUiImageKeys(payloads)
+    return payloads.orEmpty().filter { it.key in keys }
+}
+
+private const val TAG = "AgentUi"
+
+private fun logFallback(message: MessageUiModel, rev: Int, why: String) {
+    Logger.w(tag = TAG) { "card shows its fallback id=${message.id} rev=$rev: $why" }
+}
+
 private fun AgentUiTreeResult?.toLoad(rev: Int): TreeLoad? = when (this) {
     is AgentUiTreeResult.Valid -> TreeLoad.Ready(tree, rev)
     is AgentUiTreeResult.Invalid -> TreeLoad.Failed
@@ -89,6 +103,7 @@ fun AgentUiBubble(
     sentByYou: Boolean,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    onImageClick: ((PayloadDescriptor) -> Unit)? = null,
 ) {
     val descriptor = content.descriptor
     if (descriptor == null) {
@@ -98,10 +113,10 @@ fun AgentUiBubble(
 
     val treePayload = message.agentUiTreePayload()
     val aesKey = message.keyHeader.aesKey
-    val images = remember(message.fileId, message.payloads) {
-        val keys = agentUiImageKeys(message.payloads)
-        message.payloads.orEmpty().filter { it.key in keys }.associate { p ->
-            p.key to HomebaseImageData.from(
+    val imagePayloads = remember(message.fileId, message.payloads) { message.agentUiImagePayloads().associateBy { it.key } }
+    val images = remember(imagePayloads) {
+        imagePayloads.mapValues { (_, p) ->
+            HomebaseImageData.from(
                 driveId = chatTargetDrive.alias,
                 fileId = message.fileId,
                 descriptor = p,
@@ -119,11 +134,27 @@ fun AgentUiBubble(
     val loadKeys = arrayOf<Any?>(content.inlineTree, message.fileId, treePayload?.lastModified, treePayload?.iv?.bytes?.contentHashCode(), descriptor.rev, images.keys)
     val firstFrame = remember(*loadKeys) { firstFrameTree(content, descriptor.rev, message, loader) }
     val load: State<TreeLoad> = produceState(firstFrame, *loadKeys) {
-        content.inlineTree.toLoad(descriptor.rev)?.let { value = it; return@produceState }
-        val results = loader.results(message) ?: run { value = TreeLoad.Failed; return@produceState }
-        launch { if (loader.load(message) == null && value == TreeLoad.Loading) value = TreeLoad.Failed }
+        content.inlineTree?.let { inline ->
+            if (inline is AgentUiTreeResult.Invalid) logFallback(message, descriptor.rev, "inline tree invalid: ${inline.reason}")
+            value = inline.toLoad(descriptor.rev) ?: TreeLoad.Failed
+            return@produceState
+        }
+        val results = loader.results(message) ?: run {
+            logFallback(message, descriptor.rev, "no inline tree and no ${ChatProtocol.PAYLOAD_KEY_AGENT_UI} payload")
+            value = TreeLoad.Failed
+            return@produceState
+        }
+        launch {
+            if (loader.load(message) == null && value == TreeLoad.Loading) {
+                logFallback(message, descriptor.rev, "tree payload could not be fetched")
+                value = TreeLoad.Failed
+            }
+        }
         // A failed fetch shows the fallback, but a later warm that succeeds still replaces it.
-        results.collect { value = it.toLoad(descriptor.rev) ?: TreeLoad.Failed }
+        results.collect {
+            if (it is AgentUiTreeResult.Invalid) logFallback(message, descriptor.rev, "payload tree invalid: ${it.reason}")
+            value = it.toLoad(descriptor.rev) ?: TreeLoad.Failed
+        }
     }
 
     val ready = load.value as? TreeLoad.Ready
@@ -131,7 +162,7 @@ fun AgentUiBubble(
     LaunchedEffect(ready?.tree) { ready?.let { inputs.reconcile(it.tree.inputs) } }
     LaunchedEffect(message.id, ready != null) {
         if (ready != null) {
-            Logger.d(tag = "AgentUi") {
+            Logger.d(tag = TAG) {
                 "ready id=${message.id} source=${if (content.inlineTree != null) "inline" else "payload"}"
             }
         }
@@ -154,7 +185,9 @@ fun AgentUiBubble(
                     label = req.label.truncateToCodePoints(AgentUiActionDescriptor.MAX_LABEL_CP).ifBlank { req.actionId },
                     values = req.values,
                 )
-                val ok = action.isValid() && try {
+                val valid = action.isValid()
+                if (!valid) Logger.w(tag = TAG) { "action not sent id=${message.id} action=${req.actionId}: descriptor over its limits" }
+                val ok = valid && try {
                     withContext(NonCancellable) {
                         sender.sendNewTypedMessage(
                             messageUniqueId = Uuid.random(),
@@ -167,6 +200,7 @@ fun AgentUiBubble(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    Logger.w(e, tag = TAG) { "action send failed id=${message.id} action=${req.actionId}" }
                     false
                 }
                 if (!ok) {
@@ -187,6 +221,8 @@ fun AgentUiBubble(
                 enabled = !displayOnly && !sentByYou,
                 pendingActionIds = remember(sentActions) { sentActions.toSet() },
                 onAction = onAction,
+                onImageClick = onImageClick?.let { open -> { key -> imagePayloads[key]?.let(open) } },
+                onLongClick = onLongClick.takeUnless { displayOnly },
             )
         } else if (load.value == TreeLoad.Loading) {
             Row(

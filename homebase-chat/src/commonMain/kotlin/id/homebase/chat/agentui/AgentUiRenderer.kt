@@ -4,6 +4,7 @@ package id.homebase.chat.agentui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,7 +80,9 @@ import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
+import id.homebase.resources.chat_agent_ui_open_image
 import id.homebase.resources.chat_image_unavailable
+import id.homebase.resources.error
 import org.jetbrains.compose.resources.stringResource
 
 /** [rollback] restores the inputs this action changed locally if the send fails. */
@@ -96,6 +99,8 @@ private class Env(
     val tree: AgentUiTree,
     val inputs: AgentUiInputState,
     val imageData: (String) -> HomebaseImageData?,
+    val onImageClick: ((payloadKey: String) -> Unit)?,
+    val onLongClick: (() -> Unit)?,
     val enabled: Boolean,
     val pending: Set<String>,
     val onAction: (AgentUiActionRequest) -> Unit,
@@ -117,12 +122,20 @@ fun AgentUiTreeView(
     pendingActionIds: Set<String>,
     onAction: (AgentUiActionRequest) -> Unit,
     modifier: Modifier = Modifier,
+    onImageClick: ((payloadKey: String) -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val currentImageData by rememberUpdatedState(imageData)
     val currentOnAction by rememberUpdatedState(onAction)
+    val currentOnImageClick by rememberUpdatedState(onImageClick)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
+    val imagesOpen = onImageClick != null
+    val longPress = onLongClick != null
     // Remembered so an unchanged card skips recomposing its nodes when the bubble around it recomposes.
-    val env = remember(tree, inputs, enabled, pendingActionIds) {
-        Env(tree, inputs, { currentImageData(it) }, enabled, pendingActionIds) { currentOnAction(it) }
+    val env = remember(tree, inputs, enabled, pendingActionIds, imagesOpen, longPress) {
+        val openImage: ((String) -> Unit)? = if (imagesOpen) { key -> currentOnImageClick?.invoke(key) } else null
+        val menu: (() -> Unit)? = if (longPress) { { currentOnLongClick?.invoke() } } else null
+        Env(tree, inputs, { currentImageData(it) }, openImage, menu, enabled, pendingActionIds) { currentOnAction(it) }
     }
     val root = tree.root
     Box(modifier) {
@@ -191,7 +204,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
             }
         }
         is AgentUiNode.Table -> TableView(node, modifier)
-        is AgentUiNode.Progress -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        is AgentUiNode.Progress -> Column(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             node.label?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (node.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
             else LinearProgressIndicator(progress = { node.value }, modifier = Modifier.fillMaxWidth())
@@ -227,7 +240,7 @@ private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
         CompositionLocalProvider(LocalAgentUiContainer provides container) {
             if (node.tone == Tone.Error) {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Outlined.ErrorOutline, contentDescription = stringResource(MR.string.error), modifier = Modifier.size(20.dp))
                     CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.weight(1f))
                 }
             } else {
@@ -309,9 +322,16 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
     if (data == null) {
         AltBox(node.alt, frame)
     } else {
+        val open = env.onImageClick
+        val openLabel = stringResource(MR.string.chat_agent_ui_open_image)
         HomebaseImage(
             imageData = data,
-            modifier = frame,
+            modifier = if (open == null) frame else frame.combinedClickable(
+                onClickLabel = openLabel,
+                role = Role.Image,
+                // The image takes the press, so it also carries the card's long-press menu.
+                onLongClick = env.onLongClick,
+            ) { open(node.payloadKey) },
             contentDescription = node.alt,
             contentScale = ContentScale.Crop,
             error = { AltBox(node.alt, Modifier, stringResource(MR.string.chat_image_unavailable)) },
@@ -321,8 +341,12 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
 
 @Composable
 private fun AltBox(alt: String, modifier: Modifier, note: String? = null) {
-    val onColor = MaterialTheme.colorScheme.onSecondaryContainer
-    Box(modifier.background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.TopStart) {
+    val scheme = MaterialTheme.colorScheme
+    // On a Secondary card the usual secondaryContainer box would vanish into the card.
+    val onSecondary = LocalAgentUiContainer.current == scheme.secondaryContainer
+    val container = if (onSecondary) scheme.surfaceContainerHighest else scheme.secondaryContainer
+    val onColor = if (onSecondary) scheme.onSurfaceVariant else scheme.onSecondaryContainer
+    Box(modifier.background(container), contentAlignment = Alignment.TopStart) {
         Column(Modifier.fillMaxHeight().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Outlined.BrokenImage, contentDescription = null, tint = onColor)
             Text(alt, style = MaterialTheme.typography.bodyMedium, color = onColor, maxLines = 4, overflow = TextOverflow.Ellipsis)
@@ -337,9 +361,11 @@ private val NumericCell = Regex("""[-+]?[$€£]?\d[\d.,\s]*[kKmMbB%]?""")
 private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
     val divider = MaterialTheme.colorScheme.outlineVariant
     val columns = maxOf(node.header.size, node.rows.maxOfOrNull { it.size } ?: 0)
-    val numeric = List(columns) { c ->
-        val cells = node.rows.mapNotNull { it.getOrNull(c)?.trim()?.takeIf(String::isNotEmpty) }
-        cells.isNotEmpty() && cells.all(NumericCell::matches)
+    val numeric = remember(node) {
+        List(columns) { c ->
+            val cells = node.rows.mapNotNull { it.getOrNull(c)?.trim()?.takeIf(String::isNotEmpty) }
+            cells.isNotEmpty() && cells.all(NumericCell::matches)
+        }
     }
     @Composable
     fun TableRow(cells: List<String>, style: TextStyle, color: Color) {
@@ -449,6 +475,7 @@ private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             for (option in node.options) key(option.id) {
                 AgentChip(option.label, current == option.id, enabled = enabled) {
+                    if (current == option.id) return@AgentChip
                     env.inputs[node.id] = option.id
                     node.action?.let { env.fire(it, node.id, option.label, mapOf(node.id to current)) }
                 }

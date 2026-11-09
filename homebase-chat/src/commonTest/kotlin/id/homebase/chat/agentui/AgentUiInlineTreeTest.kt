@@ -9,6 +9,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.conversationlist.imageViewerFor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContent
@@ -205,6 +206,30 @@ class AgentUiInlineTreeTest {
         loader.load(edited)
         assertEquals(2, fetches.size)
         assertNull(loader.cached(m))
+    }
+
+    @Test fun a_new_last_modified_alone_refetches_with_that_version() = runTest {
+        val asked = mutableListOf<Long?>()
+        var body = AgentUiFixtures.tree("""{"id":"root","type":"text","markdown":"Draft"}""")
+        val loader = AgentUiTreeLoader(fetch = { _, _, lastModified -> asked += lastModified; body }, scope = this)
+        val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
+        fun AgentUiTreeResult?.text() = assertIs<AgentUiNode.Text>(assertIs<AgentUiTreeResult.Valid>(this).tree.root).markdown
+        assertEquals("Draft", loader.load(m).text())
+
+        body = AgentUiFixtures.tree("""{"id":"root","type":"text","markdown":"Posted"}""")
+        val edited = m.copy(payloads = (images + treePayload.copy(lastModified = 2)).toImmutableList())
+        assertNull(loader.cached(edited))
+        assertEquals("Posted", loader.load(edited).text())
+        assertEquals(listOf<Long?>(1, 2), asked)
+    }
+
+    @Test fun an_agent_card_image_opens_the_viewer_on_its_images_only() {
+        val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
+        val viewer = imageViewerFor(m, "Agent", "chat_web1")
+        assertEquals(AgentUiFixtures.imageKeys.toList(), viewer.payloads.map { it.key })
+        assertEquals("chat_web1", viewer.selectedPayloadKey)
+        assertEquals("", viewer.content)
+        assertEquals(m.fileId, viewer.fileId)
     }
 
     @Test fun warming_backs_off_after_a_failed_fetch() = runTest {
