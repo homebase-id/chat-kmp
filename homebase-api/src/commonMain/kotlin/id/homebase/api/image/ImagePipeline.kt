@@ -84,6 +84,10 @@ internal interface PipelineBitmap : AutoCloseable {
     /** A new bitmap of [readPixels]-shaped [pixels], in this bitmap's colour space, leaving this one open. */
     fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap
 
+    /** A new bitmap at the given size, without aliasing at any ratio, leaving this one open. */
+    fun resampledTo(width: Int, height: Int): PipelineBitmap =
+        withPixels(resampleLanczos(readPixels(), this.width, this.height, width, height), width, height)
+
     fun encode(format: ImageFormat, quality: Int): ByteArray
 
     /** This bitmap's pixels in sRGB: itself if they already are, otherwise a new bitmap, leaving this one open. */
@@ -153,9 +157,6 @@ internal fun scaleDown(source: PipelineBitmap, width: Int, height: Int): Pipelin
     if (current.width == width && current.height == height) return current
     return current.replacedBy(source) { it.resampledTo(width, height) }
 }
-
-private fun PipelineBitmap.resampledTo(outWidth: Int, outHeight: Int): PipelineBitmap =
-    withPixels(resampleLanczos(readPixels(), width, height, outWidth, outHeight), outWidth, outHeight)
 
 // The finally is what frees an intermediate when the next step runs out of memory.
 private inline fun PipelineBitmap.replacedBy(

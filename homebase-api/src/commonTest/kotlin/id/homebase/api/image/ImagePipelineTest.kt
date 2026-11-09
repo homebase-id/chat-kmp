@@ -24,9 +24,11 @@ class ImagePipelineTest {
 
         override val isSrgb = true
 
-        override fun readPixels() = ByteArray(width * height * 4)
+        override fun readPixels() = ByteArray(0)
 
         override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
+
+        override fun resampledTo(width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
 
         override fun inSrgb(): PipelineBitmap = this
 

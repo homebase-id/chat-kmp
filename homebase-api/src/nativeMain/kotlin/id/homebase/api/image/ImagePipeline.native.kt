@@ -12,6 +12,8 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.value
+import kotlin.math.max
+import kotlin.math.min
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryGetValue
 import platform.CoreFoundation.CFDictionarySetValue
@@ -75,7 +77,9 @@ private class ImageIoSource(
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
             ?: throw IllegalStateException("Couldn't create decode options")
-        val maxSize = CFBridgingRetain(NSNumber(int = minLongEdge))
+        // ImageIO's own scaling aliases under 2x, and can land a pixel off the plan, so it only does the coarse part.
+        val coarseEdge = min(minLongEdge.toLong() * 2, max(displayedSize.pixelWidth, displayedSize.pixelHeight).toLong()).toInt()
+        val maxSize = CFBridgingRetain(NSNumber(int = coarseEdge))
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
         CFDictionarySetValue(options, kCGImageSourceShouldCacheImmediately, kCFBooleanTrue)
