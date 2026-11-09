@@ -1,5 +1,6 @@
 package id.homebase.chat.event
 
+import id.homebase.chat.widget.UnparseableTypedChip
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -104,7 +105,7 @@ fun EventBubble(
     coverPreviewThumbnail: EmbeddedThumb? = null,
 ) {
     if (descriptor == null) {
-        UnparseableEventBubble(modifier = modifier, contentColor = contentColor, containerColor = containerColor)
+        UnparseableTypedChip(Icons.Default.Event, stringResource(MR.string.chat_event_unparseable), modifier, containerColor, contentColor.copy(alpha = 0.85f))
         return
     }
 
@@ -274,34 +275,6 @@ private fun IconRow(
             color = contentColor.copy(alpha = 0.85f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun UnparseableEventBubble(
-    modifier: Modifier,
-    contentColor: androidx.compose.ui.graphics.Color,
-    containerColor: androidx.compose.ui.graphics.Color,
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(containerColor)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Default.Event,
-            contentDescription = null,
-            tint = contentColor.copy(alpha = 0.7f),
-            modifier = Modifier.size(18.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = stringResource(MR.string.chat_event_unparseable),
-            style = MaterialTheme.typography.bodyMedium,
-            color = contentColor.copy(alpha = 0.85f),
         )
     }
 }

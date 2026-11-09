@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
+import id.homebase.chat.agentui.AgentUiActionBubble
+import id.homebase.chat.agentui.AgentUiBubble
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
 import androidx.compose.ui.geometry.Offset
@@ -413,6 +415,27 @@ fun MessageBubbleRaw(
                         pendingSince = message.userDate,
                     )
                 },
+            )
+            return
+        }
+        is MessageContent.AgentUi -> {
+            AgentUiBubble(
+                content = content,
+                message = message,
+                displayOnly = displayOnly,
+                sentByYou = sentByYou,
+                modifier = modifier,
+                onLongClick = onLongClick,
+            )
+            return
+        }
+        is MessageContent.AgentUiAction -> {
+            AgentUiActionBubble(
+                descriptor = content.descriptor,
+                authorName = message.displayName,
+                sentByYou = sentByYou,
+                modifier = modifier,
+                onLongClick = onLongClick.takeUnless { displayOnly },
             )
             return
         }

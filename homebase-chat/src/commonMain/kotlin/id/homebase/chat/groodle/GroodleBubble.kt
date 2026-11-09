@@ -1,5 +1,6 @@
 package id.homebase.chat.groodle
 
+import id.homebase.chat.widget.UnparseableTypedChip
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -82,7 +83,7 @@ fun GroodleBubble(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
 ) {
     if (descriptor == null) {
-        UnparseableGroodleBubble(modifier = modifier, contentColor = contentColor, containerColor = containerColor)
+        UnparseableTypedChip(Icons.Default.CalendarMonth, stringResource(MR.string.chat_groodle_unparseable), modifier, containerColor, contentColor.copy(alpha = 0.85f))
         return
     }
 
@@ -215,34 +216,6 @@ private fun VotedHint(hasVoted: Boolean, isClosed: Boolean, contentColor: Color)
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (hasVoted) FontWeight.SemiBold else FontWeight.Normal,
             color = tint,
-        )
-    }
-}
-
-@Composable
-private fun UnparseableGroodleBubble(
-    modifier: Modifier,
-    contentColor: Color,
-    containerColor: Color,
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(containerColor)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Default.CalendarMonth,
-            contentDescription = null,
-            tint = contentColor.copy(alpha = 0.7f),
-            modifier = Modifier.size(18.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = stringResource(MR.string.chat_groodle_unparseable),
-            style = MaterialTheme.typography.bodyMedium,
-            color = contentColor.copy(alpha = 0.85f),
         )
     }
 }

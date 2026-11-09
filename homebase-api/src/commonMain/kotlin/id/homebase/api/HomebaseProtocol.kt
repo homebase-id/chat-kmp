@@ -7,6 +7,15 @@ object HomebaseProtocol {
     const val PayloadDescriptorKeyPrefix = "pld_desc"
     const val MaxHeaderContentBytes = 7000
 
+    /** [plain] as `appData.content` once encrypted: base64 of AES-CBC with PKCS7 padding, which is what [MaxHeaderContentBytes] caps. */
+    fun encryptedHeaderContentBytes(plain: String): Int {
+        val cipher = (plain.encodeToByteArray().size / 16 + 1) * 16
+        return (cipher + 2) / 3 * 4
+    }
+
+    /** The one rule for whether header content fits; every inline-or-payload decision asks this. */
+    fun fitsHeaderContent(plain: String): Boolean = encryptedHeaderContentBytes(plain) <= MaxHeaderContentBytes
+
     // Mirrors odin-core FileMetadata.MaxPayloadsCount — the server rejects a file with more.
     const val MaxPayloadsPerFile = 25
 
