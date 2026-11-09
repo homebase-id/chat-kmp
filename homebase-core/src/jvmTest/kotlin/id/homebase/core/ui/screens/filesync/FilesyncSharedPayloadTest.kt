@@ -26,25 +26,21 @@ class FilesyncSharedPayloadTest {
     private val dir = Files.createTempDirectory("shared-payload")
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, dir.toString())
 
-    private suspend fun download(plain: ByteArray, chunk: Int? = null): ByteArray {
+    private suspend fun download(plain: ByteArray): ByteArray {
         val source = dir.resolve("plain").also { Files.write(it, plain) }.toString()
         val encryptedPath = dir.resolve("enc").toString()
         val aesKey = SecureByteArray(ByteArray(16) { 5 })
         val hashed = fileOps.encryptWithPayloadHash(source, encryptedPath, aesKey, PayloadHashAlgorithm.Blake3)
         val stored = Files.readAllBytes(dir.resolve("enc"))
         val engine = MockEngine { request ->
-            val (start, length) = request.url.encodedPath.split("/").takeLast(2).map { it.toLong() }
-            // The peer route answers from what's stored, clamping a range past the end; some servers send less than asked.
-            val end = minOf(stored.size.toLong(), start + minOf(length, (chunk ?: Int.MAX_VALUE).toLong()))
-            val body = if (start >= stored.size) ByteArray(0) else stored.copyOfRange(start.toInt(), end.toInt())
             if (request.url.host.startsWith("cdn")) return@MockEngine respond("", HttpStatusCode.InternalServerError)
-            respond(body, HttpStatusCode.OK, headersOf("payloadencrypted", "true"))
+            respond(stored, HttpStatusCode.OK, headersOf("payloadencrypted", "true"))
         }
         val credentials = CredentialsManager().apply { setActiveCredentials(ApiCredentials.create(OdinId("frodo.test"), "token", SecureByteArray(ByteArray(16)))) }
         val repository = testFilesyncRepository(HttpClient(engine), credentials)
         val payload = FilesyncPayload(Uuid.random(), KeyHeader(hashed.iv, aesKey), hashed.hash)
         val out = ByteArrayOutputStream()
-        repository.streamSharedPayload(OdinId("sam.test"), Uuid.random(), payload, plain.size.toLong()) { flow -> flow.collect { out.write(it) } }
+        repository.streamSharedPayload(OdinId("sam.test"), Uuid.random(), payload) { flow -> flow.collect { out.write(it) } }
         return out.toByteArray()
     }
 
@@ -64,11 +60,5 @@ class FilesyncSharedPayloadTest {
     fun aSharedFileOverSeveralChunksDownloadsWhole() = runTest {
         val plain = ByteArray(4 * 1024 * 1024 + 100) { (it % 251).toByte() }
         assertContentEquals(plain, download(plain))
-    }
-
-    @Test
-    fun aShortReadIsntTakenForTheEnd() = runTest {
-        val plain = ByteArray(3 * 1024 * 1024 + 7) { (it % 251).toByte() }
-        assertContentEquals(plain, download(plain, chunk = 1024 * 1024))
     }
 }
