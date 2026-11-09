@@ -29,8 +29,8 @@ import id.homebase.core.crash.CrashReporting
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.setErrorCollectionEnabled
 import id.homebase.core.logging.setupIOSCrashHandler
-import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.location.tracking.observeAppForeground
+import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.settings.UserPreferencesHelper
 import kotlinx.cinterop.ExperimentalForeignApi
 import androidx.compose.runtime.mutableStateOf
