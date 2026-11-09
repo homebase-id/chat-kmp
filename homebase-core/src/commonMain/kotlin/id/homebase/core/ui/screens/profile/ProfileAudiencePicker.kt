@@ -86,13 +86,13 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import id.homebase.core.widget.WithTooltip
 
-private enum class AudienceKind(val icon: ImageVector, val label: StringResource) {
+internal enum class AudienceKind(val icon: ImageVector, val label: StringResource) {
     Public(Icons.Outlined.Public, MR.string.profile_edit_visibility_public),
     Circles(Icons.Outlined.Groups, MR.string.profile_edit_visibility_circles),
     OnlyMe(Icons.Outlined.Lock, MR.string.profile_edit_audience_only_me),
 }
 
-private val ProfileAudience.kind: AudienceKind
+internal val ProfileAudience.kind: AudienceKind
     get() = when (this) {
         ProfileAudience.Public -> AudienceKind.Public
         ProfileAudience.OnlyMe -> AudienceKind.OnlyMe

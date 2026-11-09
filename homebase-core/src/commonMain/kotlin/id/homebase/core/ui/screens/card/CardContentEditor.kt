@@ -23,8 +23,6 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material3.ButtonGroupDefaults
@@ -184,6 +182,8 @@ import id.homebase.resources.profile_card_content_empty
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
 import id.homebase.core.ui.screens.profile.AudienceBadge
+import id.homebase.core.ui.screens.profile.audienceSummary
+import id.homebase.core.ui.screens.profile.kind
 import id.homebase.resources.cancel
 import id.homebase.resources.done
 import id.homebase.resources.profile_card_cards_public
@@ -313,6 +313,7 @@ internal fun CardContentEditor(
             key(item.id) {
                 CardFieldRow(
                     item = item,
+                    circles = circles,
                     index = index,
                     count = count,
                     enabled = enabled,
@@ -321,6 +322,7 @@ internal fun CardContentEditor(
                     onRemove = { removeFromCard(item) }.takeUnless { item.everyone },
                     onMove = display.onToggle,
                     display = display,
+                    handleSlot = canReorder,
                 )
             }
         }
@@ -360,7 +362,7 @@ internal fun CardContentEditor(
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(SECTION_GAP))
         SectionLabel(
             stringResource(if (circleCard) MR.string.profile_card_content_front else MR.string.profile_card_content_on_card),
             when {
@@ -409,13 +411,14 @@ internal fun CardContentEditor(
             }
         }
         if (back.isNotEmpty()) {
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(SECTION_GAP))
             SectionLabel(stringResource(MR.string.profile_card_content_back), stringResource(MR.string.profile_card_content_back_desc))
             Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
                 back.forEachIndexed { index, item ->
                     key(item.id) {
                         CardFieldRow(
                             item = item,
+                            circles = circles,
                             index = index,
                             count = back.size,
                             enabled = enabled,
@@ -429,17 +432,18 @@ internal fun CardContentEditor(
             }
         }
         if (circleCard) {
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
             addAction()
         }
         if (unavailable.isNotEmpty()) {
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(SECTION_GAP))
             SectionLabel(stringResource(MR.string.profile_card_content_unavailable), stringResource(MR.string.profile_card_content_unavailable_desc))
             Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
                 unavailable.forEachIndexed { index, item ->
                     key(item.id) {
                         CardFieldRow(
                             item = item,
+                            circles = circles,
                             index = index,
                             count = unavailable.size,
                             enabled = enabled,
@@ -453,7 +457,7 @@ internal fun CardContentEditor(
             }
         }
         if (notOnCard.isNotEmpty()) {
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(SECTION_GAP))
             SectionLabel(
                 stringResource(MR.string.profile_card_content_not_on_card),
                 stringResource(if (card is CardAudience.Circle) MR.string.profile_card_content_not_on_card_desc else MR.string.profile_card_content_not_on_card_desc_public),
@@ -465,7 +469,7 @@ internal fun CardContentEditor(
             }
         }
         if (unrenderable.isNotEmpty()) {
-            Spacer(Modifier.height(if (notOnCard.isEmpty()) 28.dp else 12.dp))
+            Spacer(Modifier.height(if (notOnCard.isEmpty()) SECTION_GAP else 12.dp))
             CollapsedGroup(
                 title = unrenderable.map { stringResource(typeLabel(it.type)) }.distinct().joinToString(),
                 description = stringResource(MR.string.profile_card_content_never_on_card_desc),
@@ -563,6 +567,7 @@ internal fun CardContentEditor(
 }
 
 private val SWITCHER_LABEL_MAX = 160.dp
+private val SECTION_GAP = 24.dp
 
 @Composable
 private fun SavingLine(modifier: Modifier = Modifier) {
@@ -628,8 +633,8 @@ private fun SectionLabel(text: String, description: String? = null) {
     Column(modifier = Modifier.padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.semantics { heading() },
         )
         if (description != null) {
@@ -883,19 +888,21 @@ private fun unavailableReason(audience: ProfileAudience, circles: List<CardCircl
 
 private const val UNAVAILABLE_NAMES = 2
 
-// Front and Back rows lead with a remove button and trail with a move to the other side; the row body edits the field.
+// Every row keeps the same leading slot, so values line up: the remove button, or who sees a field that can't be taken off one card.
 @Composable
 private fun CardFieldRow(
     item: CardContentItem,
+    circles: List<CardCircle>,
     index: Int,
     count: Int,
     enabled: Boolean,
     tag: String,
-    onOpen: (() -> Unit)? = null,
+    onOpen: () -> Unit,
     onRemove: (() -> Unit)? = null,
     onMove: (() -> Unit)? = null,
     supporting: String? = null,
     display: FieldDisplay? = null,
+    handleSlot: Boolean = false,
     muted: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -906,7 +913,9 @@ private fun CardFieldRow(
     val remove = stringResource(MR.string.profile_card_field_remove, label)
     val toBack = stringResource(MR.string.profile_card_field_to_back, label)
     val toFront = stringResource(MR.string.profile_card_field_to_front, label)
+    val audience = audienceSummary(item.audience, circles)
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
+    val trailing = onMove != null || handleSlot || display?.handle != null
     val lift by animateFloatAsState(if (display?.lifted == true) 1f else 0f, MaterialTheme.motionScheme.fastSpatialSpec())
     Surface(
         color = if (muted) colors.surfaceContainer else colors.surfaceContainerHigh,
@@ -914,25 +923,36 @@ private fun CardFieldRow(
         shadowElevation = LIFT_ELEVATION * lift,
         modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { display.keyMove(it)?.invoke() != null },
     ) {
-        ListItem(
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .then(
-                    if (onOpen != null) {
-                        Modifier.clickable(enabled = enabled, role = Role.Button, onClickLabel = edit, onClick = onOpen)
-                    } else {
-                        Modifier.semantics(mergeDescendants = true) {}
-                    },
-                )
+                .clickable(enabled = enabled, role = Role.Button, onClickLabel = edit, onClick = onOpen)
                 .testTag(tag)
                 .semantics {
                     val actions = display.moveActions(moveUpLabel, moveDownLabel)
                     if (actions.isNotEmpty()) customActions = actions
-                },
-            overlineContent = {
-                Text(text = label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            },
-            headlineContent = {
+                }
+                .heightIn(min = if (supporting != null) THREE_LINE_HEIGHT else TWO_LINE_HEIGHT)
+                .padding(start = ROW_SLOT_INSET, end = if (trailing) ROW_SLOT_INSET else ROW_TEXT_INSET)
+                .padding(vertical = if (supporting != null) 12.dp else 8.dp),
+        ) {
+            Box(Modifier.size(ROW_SLOT), contentAlignment = Alignment.Center) {
+                if (onRemove != null) {
+                    IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
+                        Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
+                    }
+                } else {
+                    Icon(item.audience.kind.icon, contentDescription = audience, tint = colors.onSurfaceVariant)
+                }
+            }
+            Column(Modifier.weight(1f).padding(start = ROW_SLOT_INSET, end = 8.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     text = item.text,
                     style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
@@ -941,37 +961,29 @@ private fun CardFieldRow(
                     softWrap = prose,
                     overflow = TextOverflow.Ellipsis,
                 )
-            },
-            supportingContent = supporting?.let { { Text(text = it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant) } },
-            leadingContent = onRemove?.let { onClick ->
-                {
-                    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
-                        Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
-                    }
+                if (supporting != null) {
+                    Text(text = supporting, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                 }
-            },
-            trailingContent = if (onMove == null && display?.handle == null) null else {
-                {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (onMove != null) {
-                            val onFront = display?.onCard == true
-                            IconButton(
-                                onClick = onMove,
-                                enabled = enabled,
-                                modifier = Modifier.size(48.dp).testTag(if (onFront) "field_to_back" else "field_to_front"),
-                            ) {
-                                Icon(
-                                    imageVector = if (onFront) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-                                    contentDescription = if (onFront) toBack else toFront,
-                                    tint = colors.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        if (display != null) ReorderHandle(display, enabled, label)
-                    }
+            }
+            if (onMove != null) {
+                val onFront = display?.onCard == true
+                FilledTonalIconButton(
+                    onClick = onMove,
+                    enabled = enabled,
+                    modifier = Modifier.testTag(if (onFront) "field_to_back" else "field_to_front"),
+                ) {
+                    Icon(
+                        imageVector = if (onFront) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward,
+                        contentDescription = if (onFront) toBack else toFront,
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
-            },
-        )
+            }
+            when {
+                display?.handle != null -> ReorderHandle(display, enabled, label)
+                handleSlot -> Spacer(Modifier.size(ROW_SLOT))
+            }
+        }
     }
 }
 
@@ -1031,6 +1043,12 @@ private fun FieldDisplay?.moveActions(upLabel: String, downLabel: String): List<
 )
 
 private val LIFT_ELEVATION = 8.dp
+private val ROW_SLOT = 48.dp
+// A 48dp slot 4dp in puts its 24dp icon on the M3 list's 16dp keyline and the text on the 56dp one.
+private val ROW_SLOT_INSET = 4.dp
+private val ROW_TEXT_INSET = 16.dp
+private val TWO_LINE_HEIGHT = 72.dp
+private val THREE_LINE_HEIGHT = 88.dp
 private const val STACKED_FONT_SCALE = 1.5f
 
 internal fun cardsDraftAudience(public: Boolean, ticked: Set<String>, otherIds: Set<String>): ProfileAudience = when {
