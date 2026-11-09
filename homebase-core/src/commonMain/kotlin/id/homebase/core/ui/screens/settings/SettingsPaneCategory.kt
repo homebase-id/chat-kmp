@@ -74,8 +74,6 @@ internal enum class SettingsCategory(
     Help(MR.string.settings_help, Icons.AutoMirrored.Outlined.HelpOutline),
 }
 
-internal enum class AppsPage { Feed, Moments, Vault, Filesync, Email, Contacts, Calls, Photobase }
-
 internal data class SettingsPaneTarget(val category: SettingsCategory, val appsPage: AppsPage? = null)
 
 /**

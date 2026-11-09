@@ -10,6 +10,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
 import androidx.navigation.compose.rememberNavController
+import id.homebase.core.ui.screens.settings.AppsPage
+import id.homebase.core.ui.screens.settings.route
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -33,7 +35,7 @@ class TabNavigationTest {
                 composable<Route.Moments> { Text("moments") }
                 composable<Route.MomentDetail> { Text("moment") }
                 composable<Route.Vault> { Text("vault") }
-                composable<Route.VaultSettings> { Text("vault settings") }
+                composable<Route.AppSettings> { Text("app settings") }
                 composable<Route.Location> { Text("location") }
                 composable<Route.ContactBook> { Text("contacts") }
                 composable<Route.Home> { Text("home") }
@@ -154,7 +156,7 @@ class TabNavigationTest {
     fun switching_to_chats_from_an_add_on_keeps_chats_at_the_root() = runComposeUiTest {
         val nav = host()
         act { nav.switchTab(Route.Vault, allTabs) }
-        act { nav.navigate(Route.VaultSettings) }
+        act { nav.navigate(AppsPage.Vault.route) }
         act { nav.switchTab(Route.ChatList, allTabs) }
         assertEquals(listOf("conversation"), nav.stack())
 

@@ -32,23 +32,16 @@ import androidx.compose.ui.Modifier
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsScreen
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
-import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
-import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
-import id.homebase.core.ui.screens.feed.settings.FeedSettingsScreen
-import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
 import id.homebase.core.ui.screens.media.MediaSettingsScreen
-import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
-import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.widget.ProvideSettingsChrome
 import id.homebase.core.widget.rememberTabSlideFade
 import id.homebase.resources.MR
@@ -63,13 +56,8 @@ import kotlin.uuid.Uuid
 internal data class SettingsPaneActions(
     val onOpenWebDrop: () -> Unit,
     val onLocation: () -> Unit,
-    val onOpenMoments: () -> Unit,
-    val onOpenVault: () -> Unit,
-    val onOpenEmail: () -> Unit,
-    val onOpenEmailModeSwitch: () -> Unit,
-    val onOpenContacts: () -> Unit,
+    val appsPageLinks: AppsPageLinks,
     val photobaseAvailable: Boolean = false,
-    val photoBackup: PhotoBackupLinks?,
     val onNavigateToCropper: (Uuid) -> Unit,
     val onNavigateToDeveloperMenu: () -> Unit,
     val onNavigateToDefragmenter: () -> Unit,
@@ -274,59 +262,20 @@ private fun CategoryPage(
                 AppsSettingsScreen(
                     actions = AppsSettingsActions(
                         onBack = onDismiss,
-                        onFeedSettings = { onSelectAppsPage(AppsPage.Feed) },
-                        onMomentsSettings = { onSelectAppsPage(AppsPage.Moments) },
-                        onVaultSettings = { onSelectAppsPage(AppsPage.Vault) },
-                        onFilesyncSettings = { onSelectAppsPage(AppsPage.Filesync) },
-                        onEmailSettings = { onSelectAppsPage(AppsPage.Email) },
+                        onOpenPage = onSelectAppsPage,
                         onOpenWebDrop = actions.onOpenWebDrop,
                         onLocation = actions.onLocation,
-                        onContactBookSettings = { onSelectAppsPage(AppsPage.Contacts) },
-                        onCallsSettings = { onSelectAppsPage(AppsPage.Calls) },
-                        onPhotobaseSettings = { onSelectAppsPage(AppsPage.Photobase) }.takeIf { actions.photobaseAvailable },
+                        photobaseAvailable = actions.photobaseAvailable,
                     ),
                 )
             },
             page = { shown ->
-                val back = { onSelectAppsPage(null) }
-                when (shown) {
-                    AppsPage.Feed -> FeedSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
-
-                    AppsPage.Moments -> MomentsSettingsScreen(
-                        viewModel = koinViewModel(),
-                        onBackClick = back,
-                        onOpenMoments = actions.onOpenMoments,
-                    )
-
-                    AppsPage.Vault -> VaultSettingsScreen(
-                        viewModel = koinViewModel(),
-                        onBackClick = back,
-                        onOpenVault = actions.onOpenVault,
-                    )
-
-                    AppsPage.Filesync -> FilesyncSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
-
-                    AppsPage.Email -> EmailSettingsScreen(
-                        viewModel = koinViewModel(),
-                        onBackClick = back,
-                        onOpenEmail = actions.onOpenEmail,
-                        mailboxMode = emailMailboxMode,
-                        onChangeMode = actions.onOpenEmailModeSwitch,
-                    )
-
-                    AppsPage.Contacts -> ContactBookSettingsScreen(
-                        viewModel = koinViewModel(),
-                        onBackClick = back,
-                        onOpenContacts = actions.onOpenContacts,
-                    )
-
-                    AppsPage.Calls -> CallsSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
-                    AppsPage.Photobase -> PhotobaseSettingsScreen(
-                        viewModel = koinViewModel(),
-                        onBack = back,
-                        backup = actions.photoBackup,
-                    )
-                }
+                AppsPageContent(
+                    page = shown,
+                    onBack = { onSelectAppsPage(null) },
+                    links = actions.appsPageLinks,
+                    emailMailboxMode = emailMailboxMode,
+                )
             },
         )
 
