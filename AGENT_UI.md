@@ -5,6 +5,8 @@ blocks, and people act on it (approve, pick, fill in) without leaving the chat. 
 as typed messages (dataType 220). Follows `ADDING_TYPED_MESSAGE_KIND.md`; it is the third
 payload-bearing kind, and has no composer or attachment entry (only agents send it).
 
+For which node to use when, and examples of good and bad cards, see `AGENT_UI_GUIDE.md`.
+
 ## A2UI decision
 
 Evaluated Google's A2UI spec v0.8 (the page marks it legacy; v0.9.1 is current, v1.0 a candidate).
@@ -52,8 +54,8 @@ bytes. That allows at most 5247 bytes of descriptor JSON. The agent minifies the
 `tree`, and keeps it there when `AgentUiDescriptor.withInlineTree` says the whole descriptor fits;
 otherwise the header has no `tree` and the tree goes in the payload. With a typical 100-byte
 fallback and title that leaves about 5.1 KB of tree, which holds every showcase card except long
-reports and big tables. The inline tree is decoded once, off the main thread, when the message is
-mapped (`MessageContentParser`), and rides on `MessageContent.AgentUi.inlineTree`, so the card has its
+reports and big tables. The inline tree is decoded off the main thread when the message is mapped
+(`MessageContentParser.parseForDisplay`; plain `parse` leaves it raw), and rides on `MessageContent.AgentUi.inlineTree`, so the card has its
 full height on the first frame and does no fetch.
 
 Payload key `agent_ui` (`ChatProtocol.PAYLOAD_KEY_AGENT_UI`; the server requires `^[a-z0-9_]{8,10}$`),
@@ -82,13 +84,15 @@ the alt/fallback text. Remote URLs are not a thing.
 The bubble shows the payload's embedded `previewThumbnail` at once and then loads the
 `THUMB_MEDIUM` server thumbnail, never the full image; the agent uploads standard thumbnail sizes
 with each image. The image box has a fixed 16:9 ratio, so loading never changes the card height.
+Tapping an image opens the conversation's full-screen viewer (`MediaDownloadHandler.imageViewerFor`),
+which loads the full payload and pages through the card's images only, with no caption.
 
 ### 4. Node catalog
 
 | type | props |
 |---|---|
 | `column`, `row` | `children` (ids), `spacing`: none, small, medium |
-| `card` | `children`, `tone`: default, primary, secondary, error |
+| `card` | `children`, `tone`: default, primary, secondary, error (applies to nested cards only; the root card always uses the normal message bubble colour) |
 | `text` | `markdown` (chat markdown subset, links open on tap), `style`: title, body, label, caption; `tone`: default, primary, secondary, error |
 | `image` | `payloadKey`, `alt` |
 | `chip` | `label`, `selected?` (display only) |
@@ -100,6 +104,7 @@ with each image. The image box has a fixed 16:9 ratio, so loading never changes 
 | `toggle` | `label`, `value`, `action?` (fires on change) |
 | `textInput` | `label`, `value`, `multiline`, `maxLength`, `action?` (single-line only: fires on the keyboard's send key) |
 | `select` | `label`, `options` `[{id,label}]`, `value?`, `action?` (fires on pick) |
+| `multiSelect` | `label`, `options` `[{id,label}]` (ids without `,`), `value?` (array of ids), `min?` (0), `max?` (option count); no `action`: sent only via `include`, and an including button is disabled while the count is outside `min..max` |
 
 `action` = `{ "id": "[a-z0-9_.-]{1,64}", "include": [nodeIds] }`. An invalid id drops the action
 (the button is disabled). The acting node's own value is always sent; `include` adds other input
@@ -125,6 +130,7 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 | labels, table cells, alt | 200 code points | clamped |
 | table | 20 rows x 8 columns | clamped |
 | options | 50 | clamped |
+| multiSelect `min`/`max` | 0 to option count, `min` <= `max` | clamped |
 | `include` | 19 ids (the acting node makes 20) | clamped |
 | input value | 1000 code points (`maxLength` 1 to 1000) | clamped |
 
@@ -137,11 +143,13 @@ is pure, common and never throws, so the agent can use it to validate before sen
 {"schemaVersion":1,"target":"<AgentUi message uniqueId>","rev":2,"actionId":"approve","label":"Approve","values":{"caption":"..."}}
 ```
 
-- `values`: node id to string. Toggles `"true"`/`"false"`, selects the option id, inputs the text.
+- `values`: node id to string. Toggles `"true"`/`"false"`, selects the option id, multiSelects the picked ids
+  joined by `,` in option order (`""` for none), inputs the text.
   At most 20 entries, each at most 1000 code points; the values serialized at most 2796 bytes
   (`AgentUiActionDescriptor.valuesFit`) and the whole descriptor at most 4096 bytes. The app stops a
   text input growing past the budget but never cuts what it already holds; the agent refuses a tree
-  whose defaults already overflow an action (`AgentUiTree.overBudgetActions`).
+  whose defaults already overflow an action (`AgentUiTree.overBudgetActions`), counting each
+  included multiSelect at its longest possible value.
 - `target` points at another message. Who acted is the server-set sender of this message
   (`originalAuthor`), never a field here. The agent identity itself cannot act.
 - Push: none (`pushesToRecipient = false`). Older apps show the Unknown chip for each action.

@@ -426,6 +426,7 @@ fun MessageBubbleRaw(
                 sentByYou = sentByYou,
                 modifier = modifier,
                 onLongClick = onLongClick,
+                onImageClick = onMediaClick.takeUnless { displayOnly },
             )
             return
         }

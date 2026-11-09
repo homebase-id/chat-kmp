@@ -541,6 +541,20 @@ class DriveFileProviderCachedTest {
     }
 
     @Test
+    fun `a payload edited in place is refetched when its lastModified changes`() = runTest {
+        nextBody = ByteArray(32) { 1 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, PayloadOperationOptions(lastModified = 1))
+        provider.getPayloadBytesRaw(driveId, fileId, key, PayloadOperationOptions(lastModified = 1))
+        assertEquals(1, requestCount, "the same version is served from cache")
+
+        nextBody = ByteArray(32) { 2 }
+        val edited = provider.getPayloadBytesRaw(driveId, fileId, key, PayloadOperationOptions(lastModified = 2))
+
+        assertEquals(2, requestCount, "a new lastModified must miss the old entry")
+        assertContentEquals(ByteArray(32) { 2 }, edited.bytes)
+    }
+
+    @Test
     fun `seeded payload bytes are served from cache without touching the network`() = runTest {
         nextException = IOException("network must not be reached for a seeded payload")
         val bytes = ByteArray(64) { it.toByte() }

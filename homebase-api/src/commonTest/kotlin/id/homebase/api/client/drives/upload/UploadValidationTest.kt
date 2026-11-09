@@ -11,8 +11,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.test.runTest
 
 @OptIn(ExperimentalEncodingApi::class)
 class UploadValidationTest {
@@ -90,6 +92,21 @@ class UploadValidationTest {
             ex.message!!.contains("Header content size of "),
             "should mention header content size, got: ${ex.message}"
         )
+    }
+
+    @Test
+    fun fails_whenHeaderContentFitsAsPlaintextButNotOnceEncrypted() = runTest {
+        val plain = "x".repeat(5300)
+        assertTrue(plain.length <= HomebaseProtocol.MaxHeaderContentBytes)
+        assertFalse(HomebaseProtocol.fitsHeaderContent(plain))
+        val key = KeyHeader(iv = ByteArray(16) { it.toByte() }, aesKey = SecureByteArray(ByteArray(16) { 1 }))
+        val request = UploadFileRequest(
+            driveId = Uuid.random(),
+            keyHeader = key,
+            metadata = metadataWith(content = plain).copy(isEncrypted = true).encryptContent(key),
+        )
+        val ex = assertFailsWith<ClientException> { request.validateForUpload() }
+        assertTrue(ex.message!!.contains("Header content size of ${HomebaseProtocol.encryptedHeaderContentBytes(plain)} "), ex.message)
     }
 
     // ─────────── payload descriptor ───────────

@@ -1,20 +1,13 @@
 package id.homebase.chat.services.chat
 
-import id.homebase.api.HomebaseProtocol
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.services.MessageAppData
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 
 object ChatMessageSizer {
-
-    fun shouldEmbedInHeader(markdown: String): Boolean {
-        val payload = ChatMessagePayload(JsonPrimitive(markdown))
-        return HomebaseProtocol.fitsHeaderContent(Json.encodeToString(payload))
-    }
 
     fun payloadBytes(messageData: MessageAppData): ByteArray {
         val payload = ChatMessagePayload(messageData.message)

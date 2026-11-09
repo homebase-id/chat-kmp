@@ -2,9 +2,9 @@
 
 package id.homebase.chat.agentui
 
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,12 +18,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -37,6 +35,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -52,6 +51,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -66,6 +67,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -77,7 +79,9 @@ import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
+import id.homebase.resources.chat_agent_ui_open_image
 import id.homebase.resources.chat_image_unavailable
+import id.homebase.resources.error
 import org.jetbrains.compose.resources.stringResource
 
 /** [rollback] restores the inputs this action changed locally if the send fails. */
@@ -94,6 +98,8 @@ private class Env(
     val tree: AgentUiTree,
     val inputs: AgentUiInputState,
     val imageData: (String) -> HomebaseImageData?,
+    val onImageClick: ((payloadKey: String) -> Unit)?,
+    val onLongClick: (() -> Unit)?,
     val enabled: Boolean,
     val pending: Set<String>,
     val onAction: (AgentUiActionRequest) -> Unit,
@@ -115,12 +121,20 @@ fun AgentUiTreeView(
     pendingActionIds: Set<String>,
     onAction: (AgentUiActionRequest) -> Unit,
     modifier: Modifier = Modifier,
+    onImageClick: ((payloadKey: String) -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val currentImageData by rememberUpdatedState(imageData)
     val currentOnAction by rememberUpdatedState(onAction)
+    val currentOnImageClick by rememberUpdatedState(onImageClick)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
+    val imagesOpen = onImageClick != null
+    val longPress = onLongClick != null
     // Remembered so an unchanged card skips recomposing its nodes when the bubble around it recomposes.
-    val env = remember(tree, inputs, enabled, pendingActionIds) {
-        Env(tree, inputs, { currentImageData(it) }, enabled, pendingActionIds) { currentOnAction(it) }
+    val env = remember(tree, inputs, enabled, pendingActionIds, imagesOpen, longPress) {
+        val openImage: ((String) -> Unit)? = if (imagesOpen) { key -> currentOnImageClick?.invoke(key) } else null
+        val menu: (() -> Unit)? = if (longPress) { { currentOnLongClick?.invoke() } } else null
+        Env(tree, inputs, { currentImageData(it) }, openImage, menu, enabled, pendingActionIds) { currentOnAction(it) }
     }
     val root = tree.root
     Box(modifier) {
@@ -128,12 +142,9 @@ fun AgentUiTreeView(
     }
 }
 
-/** The frame draws a root card itself, so the card's tone becomes the frame's colour. */
-val AgentUiTree.frameTone: Tone get() = (root as? AgentUiNode.Card)?.tone ?: Tone.Default
-
 @Composable
-fun agentUiContainerColor(tone: Tone, nested: Boolean = false): Color = when (tone) {
-    Tone.Default -> if (nested) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerHigh
+private fun nestedContainerColor(tone: Tone): Color = when (tone) {
+    Tone.Default -> MaterialTheme.colorScheme.surfaceContainerHighest
     Tone.Primary -> MaterialTheme.colorScheme.primaryContainer
     Tone.Secondary -> MaterialTheme.colorScheme.secondaryContainer
     Tone.Error -> MaterialTheme.colorScheme.errorContainer
@@ -189,7 +200,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
             }
         }
         is AgentUiNode.Table -> TableView(node, modifier)
-        is AgentUiNode.Progress -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        is AgentUiNode.Progress -> Column(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             node.label?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (node.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
             else LinearProgressIndicator(progress = { node.value }, modifier = Modifier.fillMaxWidth())
@@ -198,6 +209,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
         is AgentUiNode.Toggle -> ToggleView(node, env, modifier)
         is AgentUiNode.TextInput -> TextInputView(node, env, modifier)
         is AgentUiNode.Select -> SelectView(node, env, modifier)
+        is AgentUiNode.MultiSelect -> MultiSelectView(node, env, modifier)
         is AgentUiNode.Unknown -> node.fallback?.let {
             Text(it, modifier, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -216,65 +228,86 @@ private fun CardBody(children: List<AgentUiNode>, env: Env, spacing: Arrangement
 
 @Composable
 private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
-    val container = agentUiContainerColor(node.tone, nested = true)
+    val container = nestedContainerColor(node.tone)
     Card(
         modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = container, contentColor = contentColorFor(container)),
     ) {
-        if (node.tone == Tone.Error) {
-            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(20.dp))
-                CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.weight(1f))
+        CompositionLocalProvider(LocalAgentUiContainer provides container) {
+            if (node.tone == Tone.Error) {
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Outlined.ErrorOutline, contentDescription = stringResource(MR.string.error), modifier = Modifier.size(20.dp).testTag(ErrorIconTag))
+                    CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.weight(1f))
+                }
+            } else {
+                CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.padding(16.dp))
             }
-        } else {
-            CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.padding(16.dp))
         }
     }
 }
 
-/** One chip for display chips and select options; the selected shape rounds to a pill. */
+/** The container the current card draws, so a selected chip can pick a colour that stands out from it. */
+internal val LocalAgentUiContainer = compositionLocalOf { Color.Unspecified }
+
+/** One chip for display chips and select and multiSelect options. */
 @Composable
 private fun AgentChip(
     label: String,
     selected: Boolean,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    role: Role = Role.RadioButton,
     onClick: (() -> Unit)? = null,
 ) {
-    val corner by animateDpAsState(if (selected) ChipHeight / 2 else 8.dp)
-    val shape = RoundedCornerShape(corner)
-    val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-    val content = (if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-        .let { if (enabled) it else it.copy(alpha = 0.38f) }
-    val border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    val body: @Composable () -> Unit = {
-        Row(
-            // At least the touch-target width, so a short label is not centred inside a wider target.
-            Modifier.height(ChipHeight).widthIn(min = 48.dp).padding(start = if (selected) 8.dp else 16.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        ) {
-            if (selected) Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize))
-            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
+    val scheme = MaterialTheme.colorScheme
+    val onSecondary = LocalAgentUiContainer.current == scheme.secondaryContainer
+    val selectedContainer = if (onSecondary) scheme.secondary else scheme.secondaryContainer
+    val selectedContent = if (onSecondary) scheme.onSecondary else scheme.onSecondaryContainer
+    val text: @Composable () -> Unit = { Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    val check: (@Composable () -> Unit)? = if (selected) {
+        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+    } else null
     if (onClick == null) {
-        Surface(modifier.semantics(mergeDescendants = true) { this.selected = selected }, shape = shape, color = container, contentColor = content, border = border, content = body)
+        if (selected) {
+            Surface(
+                modifier.semantics(mergeDescendants = true) { this.selected = true },
+                shape = FilterChipDefaults.shape,
+                color = selectedContainer,
+                contentColor = selectedContent,
+            ) {
+                Row(
+                    Modifier.height(ChipHeight).padding(start = 8.dp, end = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    check?.invoke()
+                    text()
+                }
+            }
+        } else {
+            Box(modifier.height(ChipHeight).semantics(mergeDescendants = true) { this.selected = false }, contentAlignment = Alignment.CenterStart) {
+                CompositionLocalProvider(LocalContentColor provides scheme.onSurfaceVariant) { text() }
+            }
+        }
     } else {
-        Surface(
+        FilterChip(
             selected = selected,
             onClick = onClick,
-            modifier = modifier.trimTouchTarget(ChipHeight).semantics { role = Role.RadioButton },
+            label = text,
+            modifier = modifier.trimTouchTarget(ChipHeight).semantics { this.role = role },
             enabled = enabled,
-            shape = shape,
-            color = container,
-            contentColor = content,
-            border = border,
-            content = body,
+            leadingIcon = check,
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = selectedContainer,
+                selectedLabelColor = selectedContent,
+                selectedLeadingIconColor = selectedContent,
+            ),
         )
     }
 }
+
+internal const val ErrorIconTag = "agentui-error-icon"
 
 private val ChipHeight = 32.dp
 
@@ -293,9 +326,15 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
     if (data == null) {
         AltBox(node.alt, frame)
     } else {
+        val open = env.onImageClick
         HomebaseImage(
             imageData = data,
-            modifier = frame,
+            modifier = if (open == null) frame else frame.combinedClickable(
+                onClickLabel = stringResource(MR.string.chat_agent_ui_open_image),
+                role = Role.Image,
+                // The image takes the press, so it also carries the card's long-press menu.
+                onLongClick = env.onLongClick,
+            ) { open(node.payloadKey) },
             contentDescription = node.alt,
             contentScale = ContentScale.Crop,
             error = { AltBox(node.alt, Modifier, stringResource(MR.string.chat_image_unavailable)) },
@@ -305,8 +344,12 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
 
 @Composable
 private fun AltBox(alt: String, modifier: Modifier, note: String? = null) {
-    val onColor = MaterialTheme.colorScheme.onSecondaryContainer
-    Box(modifier.background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.TopStart) {
+    val scheme = MaterialTheme.colorScheme
+    // On a Secondary card the usual secondaryContainer box would vanish into the card.
+    val onSecondary = LocalAgentUiContainer.current == scheme.secondaryContainer
+    val container = if (onSecondary) scheme.surfaceContainerHighest else scheme.secondaryContainer
+    val onColor = if (onSecondary) scheme.onSurfaceVariant else scheme.onSecondaryContainer
+    Box(modifier.background(container), contentAlignment = Alignment.TopStart) {
         Column(Modifier.fillMaxHeight().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Outlined.BrokenImage, contentDescription = null, tint = onColor)
             Text(alt, style = MaterialTheme.typography.bodyMedium, color = onColor, maxLines = 4, overflow = TextOverflow.Ellipsis)
@@ -321,9 +364,11 @@ private val NumericCell = Regex("""[-+]?[$€£]?\d[\d.,\s]*[kKmMbB%]?""")
 private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
     val divider = MaterialTheme.colorScheme.outlineVariant
     val columns = maxOf(node.header.size, node.rows.maxOfOrNull { it.size } ?: 0)
-    val numeric = List(columns) { c ->
-        val cells = node.rows.mapNotNull { it.getOrNull(c)?.trim()?.takeIf(String::isNotEmpty) }
-        cells.isNotEmpty() && cells.all(NumericCell::matches)
+    val numeric = remember(node) {
+        List(columns) { c ->
+            val cells = node.rows.mapNotNull { it.getOrNull(c)?.trim()?.takeIf(String::isNotEmpty) }
+            cells.isNotEmpty() && cells.all(NumericCell::matches)
+        }
     }
     @Composable
     fun TableRow(cells: List<String>, style: TextStyle, color: Color) {
@@ -355,7 +400,7 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
     val busy = node.action?.id in env.pending
-    val enabled = node.action != null && env.usable(node.action)
+    val enabled = node.action != null && env.usable(node.action) && env.tree.selectionCountsOk(node.action) { env.inputs[it] }
     val onClick = { node.action?.let { env.fire(it, node.id, node.label) }; Unit }
     val shapes = ButtonDefaults.shapes()
     val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight)
@@ -428,15 +473,35 @@ private fun TextInputView(node: AgentUiNode.TextInput, env: Env, modifier: Modif
 private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
     val enabled = env.usable(node.action)
     val current = env.inputs[node.id] ?: node.value
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(node.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (option in node.options) key(option.id) {
-                AgentChip(option.label, current == option.id, enabled = enabled) {
-                    env.inputs[node.id] = option.id
-                    node.action?.let { env.fire(it, node.id, option.label, mapOf(node.id to current)) }
-                }
+    ChipGroup(node.label, modifier) {
+        for (option in node.options) key(option.id) {
+            AgentChip(option.label, current == option.id, enabled = enabled) {
+                if (current == option.id) return@AgentChip
+                env.inputs[node.id] = option.id
+                node.action?.let { env.fire(it, node.id, option.label, mapOf(node.id to current)) }
             }
         }
+    }
+}
+
+@Composable
+private fun MultiSelectView(node: AgentUiNode.MultiSelect, env: Env, modifier: Modifier) {
+    val raw = env.inputs[node.id] ?: env.tree.inputs.getValue(node.id)
+    val picked = remember(raw) { raw.split(MULTI_SELECT_SEPARATOR).toSet() }
+    ChipGroup(node.label, modifier) {
+        for (option in node.options) key(option.id) {
+            val selected = option.id in picked
+            AgentChip(option.label, selected, enabled = env.enabled, role = Role.Checkbox) {
+                env.inputs[node.id] = node.join(if (selected) picked - option.id else picked + option.id)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChipGroup(label: String, modifier: Modifier, chips: @Composable () -> Unit) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { chips() }
     }
 }

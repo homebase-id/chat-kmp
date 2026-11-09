@@ -6,8 +6,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -92,6 +96,18 @@ class AgentUiRendererTest {
         assertEquals(mapOf("root" to "b"), seen.single().values)
     }
 
+    @Test fun picking_the_selected_option_again_sends_nothing() = runComposeUiTest {
+        val t = valid(
+            tree(
+                """{"id":"root","type":"select","label":"Pick one","options":[{"id":"a","label":"Alpha"},{"id":"b","label":"Beta"}],"value":"a","action":{"id":"picked"}}""",
+            ),
+        )
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(t, onAction = { seen += it })
+        onNodeWithText("Alpha").performClick()
+        assertEquals(emptyList(), seen)
+    }
+
     @Test fun toggle_with_action_fires_on_change() = runComposeUiTest {
         val t = valid(tree("""{"id":"root","type":"toggle","label":"Auto post","value":false,"action":{"id":"auto"}}"""))
         val seen = mutableListOf<AgentUiActionRequest>()
@@ -140,6 +156,35 @@ class AgentUiRendererTest {
         onNodeWithText("In list").assertExists()
     }
 
+    @Test fun root_card_tone_is_ignored() = runComposeUiTest {
+        show(valid(tree(
+            """{"id":"root","type":"card","tone":"error","children":["t"]}""",
+            """{"id":"t","type":"text","markdown":"Root body"}""",
+        )))
+        onNodeWithText("Root body").assertExists()
+        onNodeWithTag(ErrorIconTag).assertDoesNotExist()
+    }
+
+    @Test fun nested_card_tone_is_applied() = runComposeUiTest {
+        show(valid(tree(
+            """{"id":"root","type":"card","children":["inner"]}""",
+            """{"id":"inner","type":"card","tone":"error","children":["t"]}""",
+            """{"id":"t","type":"text","markdown":"Inner body"}""",
+        )))
+        onNodeWithText("Inner body").assertExists()
+        onNodeWithTag(ErrorIconTag).assertExists()
+    }
+
+    @Test fun display_chips_have_no_click_action() = runComposeUiTest {
+        show(valid(tree(
+            """{"id":"root","type":"row","children":["on","off"]}""",
+            """{"id":"on","type":"chip","label":"Picked","selected":true}""",
+            """{"id":"off","type":"chip","label":"Plain","selected":false}""",
+        )))
+        onNodeWithText("Picked").assertHasNoClickAction()
+        onNodeWithText("Plain").assertHasNoClickAction()
+    }
+
     @Test fun new_tree_re_renders() = runComposeUiTest {
         var current by mutableStateOf(valid(tree("""{"id":"root","type":"text","markdown":"Draft"}""")))
         setContent {
@@ -153,5 +198,40 @@ class AgentUiRendererTest {
         waitForIdle()
         onNodeWithText("Posted").assertExists()
         assertIs<AgentUiNode.Text>(current.root)
+    }
+
+    private val multiSelectForm = valid(
+        tree(
+            """{"id":"root","type":"column","children":["nets","go"]}""",
+            """{"id":"nets","type":"multiSelect","label":"Post to","options":[{"id":"x","label":"X"},{"id":"li","label":"LinkedIn"},{"id":"ig","label":"Instagram"}],"value":["li"],"min":1,"max":2,"action":{"id":"ignored"}}""",
+            """{"id":"go","type":"button","label":"Post","action":{"id":"post","include":["nets"]}}""",
+        ),
+    )
+
+    @Test fun multi_select_chip_taps_toggle_without_firing() = runComposeUiTest {
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(multiSelectForm, onAction = { seen += it })
+        onNodeWithText("Post to").assertExists()
+        onNodeWithText("LinkedIn").assertIsSelected()
+        onNodeWithText("X").assertIsNotSelected()
+        onNodeWithText("Instagram").performClick()
+        onNodeWithText("Instagram").assertIsSelected()
+        onNodeWithText("X").performClick()
+        onNodeWithText("Instagram").performClick()
+        assertEquals(emptyList(), seen)
+        onNodeWithText("Post").performClick()
+        assertEquals(mapOf("nets" to "x,li"), seen.single().values)
+    }
+
+    @Test fun button_is_disabled_while_multi_select_count_is_out_of_range() = runComposeUiTest {
+        show(multiSelectForm)
+        onNodeWithText("Post").assertIsEnabled()
+        onNodeWithText("LinkedIn").performClick()
+        onNodeWithText("Post").assertIsNotEnabled()
+        onNodeWithText("X").performClick()
+        onNodeWithText("Instagram").performClick()
+        onNodeWithText("Post").assertIsEnabled()
+        onNodeWithText("LinkedIn").performClick()
+        onNodeWithText("Post").assertIsNotEnabled()
     }
 }

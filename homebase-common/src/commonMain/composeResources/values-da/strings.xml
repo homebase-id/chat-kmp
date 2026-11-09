@@ -944,6 +944,7 @@
     <string name="chat_agent_ui_action_failed">Handlingen kunne ikke sendes. Prøv igen.</string>
     <string name="chat_agent_ui_action_you">Du valgte %1$s</string>
     <string name="chat_agent_ui_action_other">%1$s valgte %2$s</string>
+    <string name="chat_agent_ui_open_image">Vis billede</string>
 
     <!-- Poll detail dialog -->
     <string name="chat_poll_details_title">Afstemningsdetaljer</string>
