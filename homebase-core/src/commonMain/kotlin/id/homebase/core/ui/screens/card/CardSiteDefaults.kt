@@ -7,6 +7,7 @@ import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.siteDataSectionData
 import id.homebase.api.client.identity.siteDataSectionHeader
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.strictString
 import id.homebase.core.image.HomebaseImageData
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonArray
@@ -40,12 +41,12 @@ internal fun cardSiteDefaults(siteData: JsonArray): CardSiteDefaults? {
         Logger.w(tag = TAG, throwable = e) { "unreadable theme section in sitedata.json" }
         return null
     }
-    val fileId = file.string("fileId")?.let(Uuid::parseOrNull)
-    val headerKey = data.string("headerImageKey")?.takeIf(String::isNotBlank)
+    val fileId = file.strictString("fileId")?.let(Uuid::parseOrNull)
+    val headerKey = data.strictString("headerImageKey")?.takeIf(String::isNotBlank)
     return CardSiteDefaults(
-        design = data.string(CARD_DESIGN_KEY)?.takeIf { it in CardDesign.all }
+        design = data.strictString(CARD_DESIGN_KEY)?.takeIf { it in CardDesign.all }
             ?: cardDesignForTheme((data["themeId"] as? JsonPrimitive)?.content),
-        tagLine = data.string("tagLine")?.takeIf(String::isNotBlank),
+        tagLine = data.strictString("tagLine")?.takeIf(String::isNotBlank),
         header = if (fileId != null && headerKey != null) {
             HomebaseImageData(
                 // The homepage drive allows anonymous reads, which every app token inherits as Read.
