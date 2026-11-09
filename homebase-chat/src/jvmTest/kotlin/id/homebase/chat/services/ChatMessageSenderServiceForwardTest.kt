@@ -9,7 +9,32 @@ import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.PayloadSizePolicy
+import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.ServerMetadata
+import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.FileMetadata
+import id.homebase.upload.PayloadBundle
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.upload.PayloadBundleEncryptor
+import io.ktor.client.engine.mock.MockRequestHandleScope
+import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestData
+import io.ktor.client.request.HttpResponseData
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonPrimitive
+import java.io.File
+import kotlin.random.Random
+import kotlin.test.assertContentEquals
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -168,5 +193,120 @@ class ChatMessageSenderServiceForwardTest {
             assertIs<IllegalArgumentException>(failure)
             assertEquals(rowsBefore, fixture.outboxRowCount(), "nothing may be enqueued for the target")
         }
+    }
+
+    private class RecordingEncryptor : PayloadBundleEncryptor {
+        val seen = mutableListOf<Map<String, ByteArray>>()
+        override suspend fun encryptBundle(
+            uniqueId: Uuid,
+            bundle: PayloadBundle?,
+            aesKey: SecureByteArray,
+            scope: CoroutineScope,
+        ): PayloadBundle {
+            seen += bundle?.payloads.orEmpty().associate { it.key to File(it.filePath).readBytes() }
+            return PayloadBundle(payloads = emptyList(), thumbnails = emptyList(), previewThumbs = emptyList())
+        }
+    }
+
+    private class MediaForwardFixture(val sizeBytes: Int) {
+        val sourceKey = KeyHeader.newRandom16()
+        val iv = ByteArray(16) { (it + 1).toByte() }
+        val plaintext = ByteArray(sizeBytes).also { Random.nextBytes(it) }
+        val fileOps = DiskFileOperationsProvider()
+        val encryptor = RecordingEncryptor()
+        var payloadGets = 0
+        var thumbGets = 0
+        private var cachedBody: ByteArray? = null
+        private suspend fun body(): ByteArray =
+            cachedBody ?: KeyHeader(iv = iv, aesKey = sourceKey.aesKey).encryptDataAes(plaintext).also { cachedBody = it }
+
+        val handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { request ->
+            if (request.url.encodedPath.contains("thumb")) {
+                thumbGets++
+                respond(ByteArray(8) { 7 }, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/webp"))
+            } else {
+                payloadGets++
+                respond(body(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/octet-stream"))
+            }
+        }
+
+        fun sourceFile(chatDriveId: Uuid, withThumb: Boolean, content: String): HomebaseFile = HomebaseFile(
+            fileId = Uuid.random(),
+            driveId = chatDriveId,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            keyHeader = sourceKey,
+            fileMetadata = FileMetadata(
+                appData = AppFileMetaData(content = content, dataType = 0, groupId = Uuid.random()),
+                payloads = listOf(
+                    PayloadDescriptor(
+                        key = "chat_web0",
+                        contentType = "video/mp4",
+                        iv = Base64Bytes(iv),
+                        thumbnails = if (withThumb) listOf(
+                            ThumbnailDescriptor(pixelWidth = 10, pixelHeight = 10, contentType = "image/webp")
+                        ) else null,
+                    )
+                ),
+            ),
+            serverMetadata = ServerMetadata(),
+        )
+    }
+
+    private suspend fun forwardMedia(
+        media: MediaForwardFixture,
+        targets: List<List<String>>,
+        withThumb: Boolean = false,
+    ) {
+        val lookup = DbBackedLookup()
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(
+                messageLookup = { _: DatabaseManager -> lookup },
+                encryptorOverride = media.encryptor,
+                engineHandler = media.handler,
+                fileOps = media.fileOps,
+            )
+            val content = OdinSystemSerializer.serialize(MessageAppData(message = JsonPrimitive("clip")))
+            val source = media.sourceFile(fixture.chatDriveId, withThumb, content)
+            lookup.fileLookup = { source }
+            val targetIds = targets.map { fixture.seedConversation(others = it) }
+
+            val forwarded = service.forwardMessage(Uuid.random(), targetIds)
+
+            assertEquals(targets.size, forwarded.size)
+            assertEquals(targets.size.toLong(), fixture.outboxRowCount())
+        }
+    }
+
+    @Test
+    fun `forwarding a payload over the render limit streams it instead of reading it whole`() = runTest {
+        val media = MediaForwardFixture(PayloadSizePolicy.RENDER_LIMIT_BYTES.toInt() + 1)
+
+        forwardMedia(media, listOf(listOf("carol.test")))
+
+        assertEquals(1, media.encryptor.seen.size)
+        assertContentEquals(media.plaintext, media.encryptor.seen.single().getValue("chat_web0"))
+    }
+
+    @Test
+    fun `a large forward to a group and a 1-1 hands every target the full file`() = runTest {
+        val media = MediaForwardFixture(PayloadSizePolicy.RENDER_LIMIT_BYTES.toInt() + 1)
+
+        forwardMedia(media, listOf(listOf("carol.test"), listOf("dave.test", "erin.test")))
+
+        assertEquals(2, media.encryptor.seen.size)
+        media.encryptor.seen.forEach { assertContentEquals(media.plaintext, it.getValue("chat_web0")) }
+        assertEquals(1, media.payloadGets, "the payload is downloaded once and shared by the targets")
+    }
+
+    @Test
+    fun `a small payload is streamed to disk too and never held as a byte array`() = runTest {
+        val media = MediaForwardFixture(20_000)
+
+        forwardMedia(media, listOf(listOf("carol.test")), withThumb = true)
+
+        assertContentEquals(media.plaintext, media.encryptor.seen.single().getValue("chat_web0"))
+        assertEquals(emptyList(), media.fileOps.inMemoryWrites.filter { it.startsWith("fwd_") })
+        assertEquals(1, media.thumbGets, "the thumbnail still travels with the forward")
     }
 }
