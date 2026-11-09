@@ -66,6 +66,7 @@ interface AgentBackend {
         messages.filter { allowlist.allowsAuthor(it.author, conversationId) }
     fun frame(lines: String): String = lines
     fun isOwn(message: ChatMsg): Boolean = false
+    suspend fun fullText(message: ChatMsg): ChatMsg = message
     suspend fun react(conversationId: Uuid, message: ChatMsg, emoji: String, add: Boolean): Unit = error("reactions are not supported")
     suspend fun edit(conversationId: Uuid, message: ChatMsg, text: String): Unit = error("editing is not supported")
     suspend fun delete(conversationId: Uuid, message: ChatMsg): Unit = error("deleting is not supported")
@@ -93,8 +94,11 @@ private val LINE_BREAK = Regex("\\R")
 
 fun formatMessageLine(msg: ChatMsg): String {
     val date = Instant.ofEpochMilli(msg.userDate).truncatedTo(ChronoUnit.MINUTES).toString().take(16)
-    val text = msg.display.replace(LINE_BREAK) { "\\n" }.truncateToCodePoints(MCP_TEXT_CODEPOINTS)
-    return "${msg.id.toString().take(ID_PREFIX)} $date ${msg.author}: $text"
+    val shown = msg.display.removeSuffix(" $LONG_MARKER").replace(LINE_BREAK) { "\\n" }
+    val text = shown.truncateToCodePoints(MCP_TEXT_CODEPOINTS)
+    val id = msg.id.toString().take(ID_PREFIX)
+    val hint = if ((msg.isLong && !msg.expanded) || text.length < shown.length) " …[truncated: get_message $id for full text]" else ""
+    return "$id $date ${msg.author}: $text$hint"
 }
 
 internal fun stringArg(args: JsonObject?, name: String): String? =
@@ -182,6 +186,17 @@ suspend fun toolReadMessages(backend: AgentBackend, args: JsonObject?): ToolRepl
     ToolReply(backend.frame(lines.joinToString("\n").ifEmpty { "(no messages)" }))
 }
 
+suspend fun toolGetMessage(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
+    val conversationId = conversationArg(args, backend.allowlist) ?: return@guarded BAD_CONVERSATION
+    backend.allowlist.requireConversation(conversationId)
+    val ref = stringArg(args, "messageId") ?: return@guarded ToolReply("messageId is empty", true)
+    val found = findMessage(backend.visible(backend.messages(conversationId, LOOKUP_WINDOW), conversationId), ref)
+    val msg = backend.fullText(found)
+    val date = Instant.ofEpochMilli(msg.userDate).truncatedTo(ChronoUnit.MINUTES).toString().take(16)
+    val body = if (msg.expanded) msg.text else msg.display.removeSuffix(" $LONG_MARKER")
+    ToolReply(backend.frame("${msg.id.toString().take(ID_PREFIX)} $date ${msg.author}:\n$body"))
+}
+
 suspend fun toolSearchMessages(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val query = stringArg(args, "query") ?: return@guarded ToolReply("query is empty", true)
     val limit = (intArg(args, "limit") ?: MCP_DEFAULT_SEARCH).coerceIn(1, MCP_MAX_SEARCH)
@@ -190,7 +205,7 @@ suspend fun toolSearchMessages(backend: AgentBackend, args: JsonObject?): ToolRe
     }
     scoped?.let(backend.allowlist::requireConversation)
     val ids = scoped?.let(::listOf) ?: backend.allowlist.allowedConversationIds().toList()
-    // ponytail: client-side scan of the newest 200 per conversation; upgrade = server-side search
+    // ponytail: client-side scan of the newest 200 per conversation, header text only (long bodies past the preview are not searched); upgrade = server-side search
     val hits = ids.flatMap { id ->
         backend.visible(backend.messages(id, LOOKUP_WINDOW), id).filter { it.display.contains(query, ignoreCase = true) }
     }.sortedBy { it.userDate }.takeLast(limit)
@@ -242,6 +257,10 @@ class SessionBackend(private val profile: String, private val scope: Uuid? = nul
     override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) =
         fetchMessages(open(), conversationId, limit, beforeMs)
 
+    private var fetcher: PayloadFetcher? = null
+
+    override suspend fun fullText(message: ChatMsg): ChatMsg = expandLongText(message, fetcher ?: sessionFetcher(open()).also { fetcher = it })
+
     override suspend fun send(conversationId: Uuid, text: String, replyTo: ReplyPreview?) =
         sendToConversation(open(), allowlist, conversationId, text, replyTo)
 
@@ -282,7 +301,7 @@ private val BASE_TOOLS: List<ToolDef> = listOf(
     ToolDef("list_conversations", "List readable conversations: id, title, member count.", buildJsonObject {}, scoped = false) { b, _ -> toolListConversations(b) },
     ToolDef("get_conversation", "Show a conversation's title, members and whether sending is allowed.", buildJsonObject { put("conversationId", CONVERSATION_PROP) }, listOf("conversationId")) { b, a -> toolGetConversation(b, a) },
     ToolDef(
-        "read_messages", "Read recent messages, oldest first: '<id8> <minute> <author>: <text>'.",
+        "read_messages", "Read recent messages, oldest first: '<id8> <minute> <author>: <text>'. A line ending '…[truncated: get_message <id8> …]' is cut; call get_message for the full text.",
         buildJsonObject {
             put("conversationId", CONVERSATION_PROP)
             put("limit", prop("integer", "Max 50, default 20"))
@@ -290,6 +309,11 @@ private val BASE_TOOLS: List<ToolDef> = listOf(
         },
         listOf("conversationId"),
     ) { b, a -> toolReadMessages(b, a) },
+    ToolDef(
+        "get_message", "Read one message in full. Use when a read_messages/search_messages line ends with the truncation hint, or whenever the exact wording matters (briefs, specs, long drafts). Not needed for short messages.",
+        buildJsonObject { put("conversationId", CONVERSATION_PROP); put("messageId", MESSAGE_PROP) },
+        listOf("conversationId", "messageId"),
+    ) { b, a -> toolGetMessage(b, a) },
     ToolDef(
         "search_messages", "Case-insensitive text search over each conversation's last 200 messages.",
         buildJsonObject {

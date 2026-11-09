@@ -20,6 +20,8 @@ import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class LongMessageTest {
     private val owner = OdinId("owner.example.com")
@@ -113,5 +115,42 @@ class LongMessageTest {
         val trigger = longMsg("p").withFullText(full)
         assertTrue(buildPrompt(listOf(trigger), emptyList(), nonce = "N").contains(full))
         assertFalse(buildPrompt(listOf(longMsg("p")), emptyList(), nonce = "N").contains("zzzz"))
+    }
+
+    private class Backend(val msgs: List<ChatMsg>, val full: String? = null) : AgentBackend {
+        override val allowlist = Allowlist.default(OdinId("owner.example.com"))
+        override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) = msgs
+        override suspend fun send(conversationId: Uuid, text: String, replyTo: ReplyPreview?) = Uuid.random()
+        override suspend fun fullText(message: ChatMsg) = full?.let { message.withFullText(it) } ?: message
+    }
+
+    private fun args(msg: ChatMsg) = buildJsonObject { put("conversationId", conv.toString()); put("messageId", msg.id.toString()) }
+
+    @Test
+    fun longMessageLineCarriesTheHintOnce() {
+        val msg = longMsg("preview")
+        val line = formatMessageLine(ChatMsg(msg.id, conv, owner, "preview", 1L, payloads = msg.payloads, fileId = msg.fileId, label = "preview $LONG_MARKER"))
+        assertTrue(line.endsWith("preview …[truncated: get_message ${line.take(ID_PREFIX)} for full text]"), line)
+        assertFalse(line.contains(LONG_MARKER))
+        assertFalse(formatMessageLine(longMsg("p").withFullText("full")).contains("truncated"))
+    }
+
+    @Test
+    fun getMessageReturnsTheExpandedText() = runBlocking<Unit> {
+        val full = "line\n".repeat(500)
+        val msg = longMsg("preview")
+        val reply = toolGetMessage(Backend(listOf(msg), full), args(msg))
+        assertFalse(reply.isError, reply.text)
+        assertTrue(reply.text.endsWith(":\n$full"), reply.text)
+    }
+
+    @Test
+    fun overCapShortMessageIsHintedAndReturnedWhole() = runBlocking<Unit> {
+        val text = "w".repeat(1500)
+        val msg = ChatMsg(Uuid.random(), conv, owner, text, 1L)
+        val line = formatMessageLine(msg)
+        assertTrue(line.contains("…[truncated: get_message ${msg.id.toString().take(ID_PREFIX)}"), line)
+        assertFalse(line.contains(text))
+        assertTrue(toolGetMessage(Backend(listOf(msg)), args(msg)).text.endsWith(":\n$text"))
     }
 }

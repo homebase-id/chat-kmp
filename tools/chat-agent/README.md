@@ -169,7 +169,7 @@ Long messages work like the app's: when the serialized message does not fit the 
 (`ChatMessageSizer.shouldEmbedInHeader`), the header carries a 400-codepoint plain preview and the full text goes in an
 encrypted `dflt_key` JSON payload (`{"message": ...}`), next to any attachments or link preview; the app shows it with
 "read more". Locked-brain replies stay capped at 1500 characters; operator replies and job results are capped at 200 KB.
-Reading: a message sent long shows its preview plus `…(long)` in `read` and MCP `read_messages`; for trigger messages and
+Reading: a message sent long shows its preview plus `…(long)` in `read`, and a `…[truncated: get_message <id8> for full text]` hint in MCP `read_messages`/`search_messages` (also for lines cut at 1000 codepoints); for trigger messages and
 the replied-to parent the watcher fetches the full payload (capped) so the brain sees the whole text. Only the preview is
 matched for the trigger nickname. History lines keep the preview.
 
@@ -185,7 +185,7 @@ A failed run is retried once on the next poll, then `failed: ...` is sent (prefi
     send [--conversation <id>] [--file <path>] [text]
     watch            # websocket doorbell + poll (see Transport)
     call --to <odinId> --say <text>   # place the owner call by hand (operators only, needs calls=on); prints the outcome
-    mcp              # stdio MCP server: list_conversations, read_messages, send_message, send_file
+    mcp              # stdio MCP server: list_conversations, read_messages, get_message, send_message, send_file
     send-ui --conversation <id> --tree <file.json> --fallback <text> [--title <t>] [--images a.png,b.png]   # send a card by hand, prints its id
     edit-ui --conversation <id> --message <id> --tree <file.json> [--fallback <text>] [--title <t>]         # replace a card's tree, bumps rev
 
@@ -512,7 +512,7 @@ loopback-only, but any local process that can read the config file can use it un
 as far as the tools go. The brain never sees the identity's credentials: the watcher makes every call.
 
 Scope is fixed server-side from the token: the conversation that triggered the run, its tier and its sender. A
-`conversationId` argument is ignored (the tools do not even list it). Tools: `read_messages`, `search_messages`,
+`conversationId` argument is ignored (the tools do not even list it). Tools: `read_messages`, `get_message` (full text of one long or cut message), `search_messages`,
 `get_conversation`, `send_message` (with `replyToId`), `send_file` (with `replyToId`; only when `mcpFilesDir` is set), `react`,
 `unreact` (emoji on a message here), and, operator tier only, `send_voice_reply` (when `tts=` is set; see Voice replies), `edit_message` (short text messages) and `delete_message`
 (for everyone), both limited to messages this identity sent. Sends go through the normal gate, disclosure prefix and

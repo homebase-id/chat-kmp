@@ -164,9 +164,9 @@ class ChatToolsTest {
         val operator = rpc(lease(fake(), Tier.OPERATOR).token, "tools/list").second!!
         fun names(r: JsonObject) = r["result"]!!.jsonObject["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
         val typed = setOf("send_poll", "vote_poll", "send_event", "send_location", "send_contact", "send_dice", "send_groodle", "vote_groodle")
-        assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact", "edit_message", "delete_message") + typed + AGENT_UI_TOOLS + SCHEDULE_TOOL_NAMES + APPROVAL_TOOL_NAMES + NOTIFY_TOOL, names(operator))
+        assertEquals(setOf("read_messages", "get_message", "search_messages", "get_conversation", "send_message", "react", "unreact", "edit_message", "delete_message") + typed + AGENT_UI_TOOLS + SCHEDULE_TOOL_NAMES + APPROVAL_TOOL_NAMES + NOTIFY_TOOL, names(operator))
         val locked = rpc(lease(fake(), Tier.LOCKED).token, "tools/list").second!!
-        assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact") + typed, names(locked))
+        assertEquals(setOf("read_messages", "get_message", "search_messages", "get_conversation", "send_message", "react", "unreact") + typed, names(locked))
         assertFalse(locked.toString().contains("conversationId"))
     }
 

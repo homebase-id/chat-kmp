@@ -42,7 +42,7 @@ private const val UNTRUSTED_TAG = "untrusted_chat"
 private val SENDING_TOOLS = setOf("send_message", "send_file", "request_approval", VOICE_REPLY_TOOL, NOTIFY_TOOL, SEND_UI_TOOL) + TYPED_SEND_TOOLS + MEDIA_SEND_TOOLS
 private val LEASE_KEY = AttributeKey<ToolRun>("chat-agent-run")
 
-private val READ_TOOLS = setOf("read_messages", "search_messages", "get_conversation")
+private val READ_TOOLS = setOf("read_messages", "get_message", "search_messages", "get_conversation")
 private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "react", "unreact", "vote_poll", "vote_groodle") + TYPED_SEND_TOOLS
 private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + AGENT_UI_TOOLS + MEDIA_SEND_TOOLS + SCHEDULE_TOOL_NAMES + APPROVAL_TOOL_NAMES + NOTIFY_TOOL
 
@@ -180,6 +180,10 @@ class WatcherBackend(
     override fun toOwner(): AgentBackend = WatcherBackend(session, config, config.allowlist, previews, voice = voice, visibleTo = visibleTo)
 
     override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) = fetchMessages(session, conversationId, limit, beforeMs)
+
+    private val fetcher by lazy { sessionFetcher(session) }
+
+    override suspend fun fullText(message: ChatMsg) = expandLongText(message, fetcher)
 
     override suspend fun send(conversationId: Uuid, text: String, replyTo: id.homebase.chat.services.ReplyPreview?) =
         sendToConversation(session, allowlist, conversationId, text, replyTo, previews = previews)
