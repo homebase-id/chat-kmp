@@ -2,6 +2,8 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.ServerException
 import id.homebase.api.client.isExistingFileWithUniqueId
 import id.homebase.api.client.KeyHeader
 import kotlin.io.encoding.Base64
@@ -36,6 +38,9 @@ import kotlinx.coroutines.sync.withLock
 import id.homebase.api.youauth.ZkKeyStore
 import kotlin.uuid.Uuid
 
+internal fun UploadFileRequest.countsAsSent(failure: ClientException): Boolean =
+    existingFileIsSuccess && failure.isExistingFileWithUniqueId()
+
 class DriveOutboxUploader(
     private val driveUploadProvider: DriveUploadProvider,
     private val fileProvider: DriveFileProvider,
@@ -60,6 +65,7 @@ class DriveOutboxUploader(
                 ToggleReaction -> toggleReaction(outboxRecord)
                 SetReactions -> setReactions(outboxRecord)
                 DeleteFilesByGroupId -> deleteFilesByGroupId(outboxRecord)
+                TransformKeyHeaders -> transformKeyHeaders(outboxRecord)
             }
         } catch (e: ClientException) {
             // Always rethrow — never swallow a terminal error by returning
@@ -125,6 +131,10 @@ class DriveOutboxUploader(
         // from a previous install), convert the failed UploadNewFile into an
         // UpdateFileByUniqueId so the client's fresh content lands on the server.
         } catch (e: ClientException) {
+            if (request.countsAsSent(e)) {
+                Logger.i("$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} already on the server, counts as sent")
+                return
+            }
             if (e.isExistingFileWithUniqueId()) {
                 Logger.w(
                     "$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} " +
@@ -430,6 +440,20 @@ class DriveOutboxUploader(
         }
     }
 
+    private suspend fun transformKeyHeaders(outboxRecord: Outbox) {
+        val request = OutboxSerializer.decode<TransformKeyHeadersOutboxRequest>(outboxRecord)
+        val result = try {
+            operationsProvider.transformKeyHeaders(request.driveId, request.files)
+        } catch (e: Exception) {
+            throw keyHeaderTransformFailure(e)
+        }
+        val refused = result.results.filter { it.errorCode != null }
+        Logger.i(TAG) { "transformKeyHeaders: drive=${request.driveId} stored=${result.results.size - refused.size}/${request.files.size}" }
+        if (refused.isNotEmpty()) {
+            Logger.w(TAG) { "transformKeyHeaders: kept sealed ${refused.joinToString { "${it.fileId}:${it.errorCode}" }}" }
+        }
+    }
+
     private suspend fun toggleReaction(outboxRecord: Outbox) {
         val request = OutboxSerializer.decode<ToggleReactionOutboxRequest>(outboxRecord)
         reactionProvider.toggleReaction(
@@ -520,8 +544,19 @@ class DriveOutboxUploader(
         const val DeleteFilesByGroupId = 9L
         // 10 and 11 belong to ScheduledPushOutboxUploader; CompositeOutboxUploader routes on these ids.
         const val SetReactions = 12L
+        const val TransformKeyHeaders = 13L
     }
 }
+
+// The server refusing the whole request is final; no answer (offline, a gateway's 502-504, 408, 429) waits like any outbox item.
+internal fun keyHeaderTransformFailure(e: Exception): Exception = when {
+    e is ClientException || e is ForbiddenException -> KeyHeaderTransformRefused(e)
+    e is ServerException && e.status in 500..599 && e.status !in 502..504 -> KeyHeaderTransformRefused(e)
+    else -> e
+}
+
+/** A key header transform the server refused: never retried, another device converts the files later. */
+class KeyHeaderTransformRefused(cause: Throwable) : Exception("key header transform refused: ${cause.message}", cause)
 
 /**
  * Root-cause fix for the "AES key must match" drop (see

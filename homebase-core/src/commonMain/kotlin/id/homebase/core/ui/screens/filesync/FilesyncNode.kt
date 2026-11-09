@@ -4,11 +4,13 @@ import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.youauth.DrivePermission
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.filesync.FilesyncRoleFolder
 import id.homebase.core.util.FileKind
@@ -25,6 +27,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlin.math.roundToLong
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 /** A Finder tag; [colour] is Finder's 1 grey … 7 orange, or null for none. */
 @Immutable
@@ -46,6 +49,8 @@ data class FilesyncNode(
     val uploadedMs: Long? = null,
     val hashAlgorithm: PayloadHashAlgorithm? = null,
     val updatedMs: Long = 0,
+    /** Who put it here, when that isn't the drive's owner: a connection or a group member. */
+    val addedBy: OdinId? = null,
 ) {
     // Once per node: search and sorting compare these on every keystroke, and neither is free on the web.
     internal val nameKey: String = FilesyncNames.key(name)
@@ -80,11 +85,18 @@ class FilesyncHandle(
     val content: JsonObject,
     val payload: FilesyncPayload?,
     version: Int = CONTENT_VERSION,
+    /** What the file's comments are grouped by. */
+    val globalTransitId: Uuid? = null,
+    /** On a file another identity shares: each share it reaches this identity through, the one it was read through first. */
+    val shares: List<ShareRow> = emptyList(),
 ) {
     val fileVersionTag: FileVersionTag? get() = versionTag?.let { FileVersionTag(fileId, it) }
 
     /** A node from a newer content version is shown but never changed. */
     val writable = version == CONTENT_VERSION
+
+    /** Another identity's node this one may change: shared with it with Edit, and one a member's write can name. */
+    val editable: Boolean get() = writable && globalTransitId != null && shares.any { DrivePermission.Write in it.permissions.values }
 }
 
 /** The typed part of a node's encrypted appData.content; [mtime] and [size] are for files only. */
@@ -106,7 +118,8 @@ internal const val CONTENT_VERSION = 1
 
 private const val TAG = "FilesyncNode"
 
-internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? {
+/** [addedByOtherThan] is the drive's owner: a node another identity sent says so ([FilesyncNode.addedBy]). */
+internal fun HomebaseFile.toFilesyncNode(addedByOtherThan: OdinId? = null): Pair<FilesyncNode, FilesyncHandle>? {
     val appData = fileMetadata.appData
     val isFolder = when (appData.fileType) {
         FilesyncProtocol.FolderFileType -> true
@@ -153,9 +166,10 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         uploadedMs = descriptor?.lastModified,
         hashAlgorithm = payload?.hash?.knownAlgorithm,
         updatedMs = fileMetadata.updated.milliseconds,
+        addedBy = fileMetadata.senderOdinId?.takeIf { addedByOtherThan != null && !it.domainName.equals(addedByOtherThan.domainName, ignoreCase = true) },
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType
-    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v)
+    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v, fileMetadata.globalTransitId, shares.orEmpty())
 }
 
 /** A time in Unix ms as filesync writes it: an int, or a finite float rounded; anything else is none. */

@@ -1,0 +1,15 @@
+-- The OS change counter per volume (Android) or the one token (iOS), saved only after the changes
+-- it covers are committed to DeviceBackupAsset, so an interrupted run redoes work instead of skipping it.
+CREATE TABLE IF NOT EXISTS BackupCheckpoint(
+  checkpointKey TEXT NOT NULL PRIMARY KEY,
+  checkpointValue TEXT NOT NULL
+);
+
+upsert:
+INSERT OR REPLACE INTO BackupCheckpoint(checkpointKey, checkpointValue) VALUES (?, ?);
+
+selectAll:
+SELECT * FROM BackupCheckpoint;
+
+deleteAll:
+DELETE FROM BackupCheckpoint;

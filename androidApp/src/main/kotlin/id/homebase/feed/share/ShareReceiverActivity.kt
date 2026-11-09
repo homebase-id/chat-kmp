@@ -265,8 +265,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                         )
                     }
                 } else {
-                    // Text-only: send directly
-                    sendSharedContent(conversationId, sharedContent)
+                    handOffText(setOf(conversationId), sharedContent)
                     return
                 }
             } catch (_: Exception) {
@@ -549,8 +548,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 )
             }
         } else {
-            // Text-only: send directly as before
-            sendToMultipleConversations(conversationIds, content)
+            handOffText(conversationIds, content)
         }
     }
 
@@ -625,88 +623,33 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         finish()
     }
 
-    private fun sendToMultipleConversations(conversationIds: Set<Uuid>, content: SharedContent) {
+    private fun handOffText(conversationIds: Set<Uuid>, content: SharedContent) {
         if (isSending) return
         isSending = true
-
+        val targets = conversationIds.map { it.toString() }
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    for (conversationId in conversationIds) {
-                        if (content.hasText) {
-                            chatMessageSenderService.sendNewMessage(
-                                messageUniqueId = Uuid.random(),
-                                conversationId = conversationId,
-                                messageText = content.text!!,
-                                previousMessageUniqueId = null,
-                                payloadBundle = null,
-                            )
-                        }
-                    }
+                    shareContentProcessor.sweepOrphanedShares()
+                    shareContentProcessor.writeContent(
+                        SharedContentDescriptor(
+                            contentType = SharedContentType.TEXT,
+                            text = content.text,
+                            targetConversationId = targets.first(),
+                            targetConversationIds = targets,
+                        )
+                    )
                 }
-
-                val countLabel = if (conversationIds.size > 1) {
-                    resources.getQuantityString(R.plurals.share_sent_multiple, conversationIds.size, conversationIds.size)
-                } else {
-                    getString(R.string.share_sent)
-                }
-                Toast.makeText(this@ShareReceiverActivity, countLabel, Toast.LENGTH_SHORT).show()
-
-                // Open the first conversation in the main app
                 startActivity(openConversationIntent(conversationIds.first()))
                 finish()
             } catch (e: Exception) {
-                Logger.e(tag = "ShareReceiver") { "Failed to send: ${e.message}" }
-                withContext(Dispatchers.Main) {
-                    isSending = false
-                    Toast.makeText(
-                        this@ShareReceiverActivity,
-                        "Failed to send: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            } finally {
-                cleanupTempFiles()
-            }
-        }
-    }
-
-    private fun sendSharedContent(conversationId: Uuid, content: SharedContent) {
-        if (isSending) return
-        isSending = true
-
-        lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    if (content.hasText) {
-                        chatMessageSenderService.sendNewMessage(
-                            messageUniqueId = Uuid.random(),
-                            conversationId = conversationId,
-                            messageText = content.text!!,
-                            previousMessageUniqueId = null,
-                            payloadBundle = null,
-                        )
-                    }
-                }
-
-                Toast.makeText(this@ShareReceiverActivity, getString(R.string.share_sent), Toast.LENGTH_SHORT).show()
-
-                // Open conversation in main app
-                startActivity(openConversationIntent(conversationId))
-                finish()
-            } catch (e: Exception) {
-                Logger.e(tag = "ShareReceiver") { "Failed to send: ${e.message}" }
-                withContext(Dispatchers.Main) {
-                    isSending = false
-                    Toast.makeText(
-                        this@ShareReceiverActivity,
-                        "Failed to send: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            } finally {
-                // Clean up temp files
-                cleanupTempFiles()
+                Logger.e(tag = "ShareReceiver") { "Failed to hand off text share: ${e.message}" }
+                isSending = false
+                Toast.makeText(
+                    this@ShareReceiverActivity,
+                    getString(R.string.share_send_failed, e.message ?: ""),
+                    Toast.LENGTH_LONG,
+                ).show()
             }
         }
     }

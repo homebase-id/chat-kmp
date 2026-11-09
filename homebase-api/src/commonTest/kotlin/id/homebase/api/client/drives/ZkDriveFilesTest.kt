@@ -30,7 +30,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import id.homebase.api.crypto.ShareKeys
+import id.homebase.api.common.toSecureByteArray
 import kotlin.uuid.Uuid
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.query.DriveQueryProvider
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
 
 class ZkDriveFilesTest {
 
@@ -53,7 +59,10 @@ class ZkDriveFilesTest {
     }
 
     @AfterTest
-    fun reset() = ZkKeyStore.clear()
+    fun reset() {
+        ZkKeyStore.clear()
+        SealedKeyHeaders.sink = null
+    }
 
     private fun grant(alias: Uuid, locked: ByteArray?) = DriveGrant(
         permissionedDrive = PermissionedDrive(DriveReference(alias.toString(), Uuid.random().toString()), emptyList()),
@@ -197,17 +206,178 @@ class ZkDriveFilesTest {
         val zkDrive = EncryptedKeyHeader(type = EncryptionType.ZkDrive, iv = Golden.iv, encryptedAesKey = Golden.zkDriveEncryptedAesKey)
         assertEquals(fileKey, zkDrive.decryptAesToKeyHeader(SecureByteArray(Golden.driveKey)))
 
-        val email = Uuid.random()
+        val email = unlockGoldenDrive()
+        val sealed = EncryptedKeyHeader(type = EncryptionType.Sealed, iv = Golden.iv, encryptedAesKey = Golden.sealedEncryptedAesKey)
+        assertEquals(fileKey, sealed.open(email, SecureByteArray(sharedSecret)))
+        assertEquals(fileKey, zkDrive.open(email, SecureByteArray(sharedSecret)))
+    }
+
+    private suspend fun unlockGoldenDrive(): Uuid {
+        val drive = Uuid.random()
         val grant = DriveGrant(
-            permissionedDrive = PermissionedDrive(DriveReference(email.toString(), Uuid.random().toString()), emptyList()),
+            permissionedDrive = PermissionedDrive(DriveReference(drive.toString(), Uuid.random().toString()), emptyList()),
             zkAppKeyEncryptedStorageKey = Base64.encode(ZkLock.lock(Golden.driveKey, appKey)),
             zkStorageKeyEncryptedWriteOnlyPrivateKey = Base64.encode(ZkLock.lock(Golden.writeOnlyPrivateKeyPkcs8, Golden.driveKey)),
         )
         ZkKeyStore.saveAppKey(appKey)
         ZkKeyStore.openDriveKeys(SecurityContext(CallerContext(securityLevel = "app"), PermissionContext(listOf(PermissionGroup(driveGrants = listOf(grant))))))
+        return drive
+    }
+
+    // odin-core's ATransformOpensTheSealedKeyHeaderAndLocksItsFileKeyWithTheDriveKey pins the same bytes.
+    @Test
+    fun theGoldenSealedKeyHeaderTransformsIntoTheGoldenZkDriveOne() = runTest {
+        val drive = unlockGoldenDrive()
         val sealed = EncryptedKeyHeader(type = EncryptionType.Sealed, iv = Golden.iv, encryptedAesKey = Golden.sealedEncryptedAesKey)
-        assertEquals(fileKey, sealed.open(email, SecureByteArray(sharedSecret)))
-        assertEquals(fileKey, zkDrive.open(email, SecureByteArray(sharedSecret)))
+
+        val zkDrive = sealed.zkDriveFormOf(sealed.open(drive, SecureByteArray(sharedSecret)), drive)
+
+        assertEquals(EncryptionType.ZkDrive, zkDrive.type)
+        assertEquals(1, zkDrive.encryptionVersion)
+        assertContentEquals(Golden.iv, zkDrive.iv)
+        assertContentEquals(Golden.zkDriveEncryptedAesKey, zkDrive.encryptedAesKey)
+    }
+
+    @Test
+    fun aSealedHeaderWhoseIvIsntTheSealedOneIsNotTransformed() = runTest {
+        val drive = unlockGoldenDrive()
+        val otherIv = Golden.iv.copyOf().also { it[0] = 0 }
+        val sealed = EncryptedKeyHeader(type = EncryptionType.Sealed, iv = otherIv, encryptedAesKey = Golden.sealedEncryptedAesKey)
+
+        assertFailsWith<IllegalStateException> { sealed.zkDriveFormOf(sealed.open(drive, SecureByteArray(sharedSecret)), drive) }
+    }
+
+    @Test
+    fun aFileArrivingSealedHandsItsDriveKeyHeaderToTheOutbox() = runTest {
+        val drive = unlockGoldenDrive()
+        val handed = mutableListOf<SealedKeyHeader>()
+        SealedKeyHeaders.sink = { handed += it }
+        val fileId = Uuid.random()
+        val versionTag = Uuid.random()
+        val fileKey = KeyHeader(Golden.iv, SecureByteArray(Golden.aesKey))
+        val json = """
+            {
+              "fileId": "$fileId", "driveId": "$drive", "fileState": "active", "fileSystemType": "standard",
+              "sharedSecretEncryptedKeyHeader": { "encryptionVersion": 1, "type": "sealed", "iv": "${Base64.encode(Golden.iv)}", "encryptedAesKey": "${Base64.encode(Golden.sealedEncryptedAesKey)}" },
+              "fileMetadata": { "isEncrypted": true, "versionTag": "$versionTag", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 1, "content": "${Base64.encode(fileKey.encryptDataAes("{}".encodeToByteArray()))}" } },
+              "serverMetadata": {}
+            }
+        """
+        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+
+        val file = queries.mapQueryBatchResponse("""{"searchResults":[$json]}""", SecureByteArray(sharedSecret)).searchResults.single()
+
+        assertEquals("{}", file.fileMetadata.appData.content)
+        val (handedDrive, transform) = handed.single()
+        assertEquals(drive, handedDrive)
+        assertEquals(fileId, transform.fileId)
+        assertEquals(versionTag, transform.versionTag)
+        assertContentEquals(Golden.zkDriveEncryptedAesKey, transform.keyHeader.encryptedAesKey)
+    }
+
+    @Test
+    fun aCommentWithItsFilesKeySendsItsOwnIvAndNoKey() = runTest {
+        unlockVault()
+        val comment = KeyHeader(ByteArrayUtil.getRndByteArray(16), KeyHeader.newRandom16().aesKey)
+
+        val locked = lockKeyHeader(comment, vault, sharedSecret, ByteArrayUtil.getRndByteArray(16), withCommentedFileKey = true)
+        assertEquals(EncryptionType.FileKey, locked.type)
+        assertEquals(1, locked.encryptionVersion)
+        assertContentEquals(comment.iv, locked.iv)
+        assertEquals(0, locked.encryptedAesKey.size)
+        assertTrue(""""type":"fileKey"""" in OdinSystemSerializer.serialize(locked))
+    }
+
+    @Test
+    fun aCommentFromTheServerOpensWithTheKeyOfTheFileItCommentsOn() = runTest {
+        val file = KeyHeader.newRandom16()
+        val iv = ByteArrayUtil.getRndByteArray(16)
+        val content = Base64.encode(KeyHeader(iv, file.aesKey).encryptDataAes("""{"body":"nice"}""".encodeToByteArray()))
+        val json = """
+            {
+              "fileId": "${Uuid.random()}",
+              "driveId": "$vault",
+              "fileState": "active",
+              "fileSystemType": "comment",
+              "sharedSecretEncryptedKeyHeader": { "encryptionVersion": 1, "type": "fileKey", "iv": "${Base64.encode(iv)}", "encryptedAesKey": "" },
+              "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 801, "content": "$content" } },
+              "serverMetadata": {}
+            }
+        """
+        val serverFile = OdinSystemSerializer.deserialize<ServerFile>(json)
+
+        assertEquals("""{"body":"nice"}""", serverFile.asHomebaseFile(SecureByteArray(sharedSecret), { _, _, _, _ -> file.aesKey }).fileMetadata.appData.content)
+        assertFailsWith<FileDecryptionException.KeyHeaderDecryptionFailed> { serverFile.asHomebaseFile(SecureByteArray(sharedSecret)) }
+    }
+
+    @Test
+    fun aDepositIsSealedToTheRecipientsDriveSoOnlyItsKeyOpensIt() = runTest {
+        val fileKey = KeyHeader.newRandom16()
+        val point = ShareKeys.pointOfJwk(
+            """{"kty":"EC","crv":"P-384","x":"yjx33dKI7M4I3IUdOl1Tdqf4mqLGyXnYEBg_Oo3B9_QjOxI1ol2usFU1t3FhnQ18","y":"FkGMeDRw4PJSFlCwESYb59Nltf3qE7Q5IXaUK2OiplW8aWP3oTWZQ5YZYdzJ7ReN"}"""
+        )
+
+        val locked = lockKeyHeader(fileKey, SystemDriveConstants.transientTempDrive.alias, sharedSecret, ByteArrayUtil.getRndByteArray(16), sealedTo = point)
+
+        assertEquals(EncryptionType.Sealed, locked.type)
+        assertContentEquals(fileKey.iv, locked.iv)
+        assertContentEquals(fileKey.iv + fileKey.aesKey.toByteArray(), ZkSeal.open(locked.encryptedAesKey, Golden.writeOnlyPrivateKeyPkcs8))
+    }
+
+    @Test
+    fun aFileSharedWithTheReaderOpensWithTheKeyItsShareUnlocks() = runTest {
+        val owner = Uuid.random()
+        val fileId = Uuid.random()
+        val circleId = Uuid.random()
+        val circleKey = ShareKeys.newCircleKey()
+        val file = KeyHeader.newRandom16()
+        val locked = ShareKeys.lockFileKey(circleKey, file.aesKey.toByteArray(), owner, fileId, circleId)
+        val content = Base64.encode(file.encryptDataAes("""{"name":"plan.pdf"}""".encodeToByteArray()))
+        val json = """
+            {
+              "fileId": "$fileId", "driveId": "$owner", "fileState": "active", "fileSystemType": "standard",
+              "sharedSecretEncryptedKeyHeader": { "encryptionVersion": 1, "type": "share", "iv": "${Base64.encode(file.iv)}", "encryptedAesKey": "${Base64.encode(locked)}" },
+              "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 7102, "content": "$content" } },
+              "serverMetadata": {},
+              "shares": [{ "circleId": "$circleId", "permissions": "read", "created": 1, "modified": 1 }]
+            }
+        """
+        val byShare = ExternalFileKey { id, globalTransitId, shares, lockedFileKey ->
+            ShareKeys.openFileKey(circleKey, lockedFileKey, owner, id, globalTransitId, shares.single().circleId).toSecureByteArray()
+        }
+        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+
+        val shared = queries.mapQueryBatchResponse("""{"searchResults":[$json]}""", SecureByteArray(sharedSecret), byShare).searchResults.single()
+
+        assertEquals("""{"name":"plan.pdf"}""", shared.fileMetadata.appData.content)
+    }
+
+    @Test
+    fun aSharedFileWhoseKeyWontOpenIsLeftOutNotThePage() = runTest {
+        val owner = Uuid.random()
+        val file = KeyHeader.newRandom16()
+        suspend fun json(fileId: Uuid, name: String) = """
+            {
+              "fileId": "$fileId", "driveId": "$owner", "fileState": "active", "fileSystemType": "standard",
+              "sharedSecretEncryptedKeyHeader": { "encryptionVersion": 1, "type": "share", "iv": "${Base64.encode(file.iv)}", "encryptedAesKey": "AAAA" },
+              "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 7102, "content": "${Base64.encode(file.encryptDataAes(name.encodeToByteArray()))}" } },
+              "serverMetadata": {},
+              "shares": [{ "circleId": "${Uuid.random()}", "permissions": "read", "created": 1, "modified": 1 }]
+            }
+        """
+        val opens = Uuid.random()
+        val byShare = ExternalFileKey { id, _, _, _ -> if (id == opens) file.aesKey else null }
+        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+
+        val page = queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")},${json(Uuid.random(), "other.pdf")}]}""", SecureByteArray(sharedSecret), byShare)
+
+        assertEquals(listOf("plan.pdf"), page.searchResults.map { it.fileMetadata.appData.content })
+
+        // Only a withheld key leaves a file out; any other failure still fails the page.
+        val broken = ExternalFileKey { _, _, _, _ -> error("the owner's server is down") }
+        assertFailsWith<FileDecryptionException> {
+            queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")}]}""", SecureByteArray(sharedSecret), broken)
+        }
     }
 
     private suspend fun unlockVault() {

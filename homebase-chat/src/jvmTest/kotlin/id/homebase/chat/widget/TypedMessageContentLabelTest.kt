@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.ui.assets.Filesync
+import id.homebase.core.ui.assets.HomebaseIcons
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -66,6 +68,13 @@ class TypedMessageContentLabelTest {
     fun viewOnce_isLabelledByMessageContentLabelNotHere() {
         assertNull(typedMessageContentLabel(MessageContent.ViewOnce(id.homebase.chat.viewonce.ViewOnceDescriptor("video"))))
         assertNull(typedMessageContentLabel(MessageContent.ViewOnce(null)))
+    }
+
+    @Test
+    fun fileShare_showsTheFilesyncLogo() {
+        val label = typedMessageContentLabel(MessageContent.FileShare(null))
+        assertEquals(MessageContent.UNPARSEABLE_FILE_SHARE_LABEL, label?.text)
+        assertEquals(HomebaseIcons.Filesync, label?.icon)
     }
 
     @Test

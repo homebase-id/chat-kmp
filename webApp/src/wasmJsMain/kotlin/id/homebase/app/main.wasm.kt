@@ -1,5 +1,6 @@
 package id.homebase.app
 
+import id.homebase.core.settings.DeveloperPreferences
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
@@ -9,28 +10,31 @@ import androidx.navigation.ExperimentalBrowserHistoryApi
 import androidx.navigation.bindToBrowserNavigation
 import id.homebase.api.common.OdinId
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.initWebSqlJs
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
+import id.homebase.common.util.WindowTitle
+import kotlinx.browser.document
+import id.homebase.core.AppStartup
 import id.homebase.core.App
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
-import id.homebase.core.di.allModules
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.permission.installPermissionCallbackListener
+import id.homebase.core.share.IncomingLinks
 import id.homebase.core.ui.navigation.AppLink
 import id.homebase.core.widget.ComposerAutocompleteProbe
 import id.homebase.core.widget.initLazyStabilityFlags
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.configureWebResources
 import org.koin.core.context.GlobalContext
-import org.koin.core.context.startKoin
 
 private fun bootStage(label: String, percent: Int): Unit =
     js("{ if (window.__homebaseBoot) window.__homebaseBoot(label, percent); }")
@@ -65,14 +69,17 @@ fun main() {
         override fun onMismatch(report: String) = recordAutocompleteMismatch(report)
         override fun onComposing(composing: String) = recordAutocompleteComposing(composing)
     })
-    // sql.js compiles its wasm asynchronously; finish that and build the in-memory database
-    // before Koin (and the DriveSync graph behind the login screen) ever touches DatabaseManager.
+    // sql.js compiles its wasm asynchronously: started first, it compiles while Koin builds.
+    val sqlJs = MainScope().async(start = CoroutineStart.UNDISPATCHED) { initWebSqlJs() }
+    AppStartup.startKoin()
+    installPermissionCallbackListener { url ->
+        AppStartup.whenStarted { GlobalContext.get().get<IncomingLinks>().handle(url) }
+    }
     MainScope().launch {
-        initWebSqlJs()
-        bootStage("Preparing storage…", 60)
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
-        bootStage("Opening database…", 75)
-        startKoin { modules(allModules) }
+        sqlJs.await()
+        bootStage("Opening database…", 60)
+        AppStartup.openDatabaseNow(DatabaseDriverFactory())
+        AppStartup.afterDatabase()
         bootStage("Starting services…", 85)
 
         // Seamless owner-session login (issue #853). Two halves, both no-ops on the dev server:
@@ -112,18 +119,19 @@ fun main() {
             }
         }
 
-        // Promote AuthConnectionCoordinator out of headless mode. Like desktop,
-        // the web app has no FCM cold-wake — loading the page IS the foreground
-        // signal — so without this the Authenticated branch defers connect()
-        // forever and the app hangs on "syncing". Mirrors MainActivity.onCreate
-        // (Android) and MainViewController() (iOS). Idempotent.
-        GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
+        AppStartup.promoteToForeground()
         val notificationService = GlobalContext.get().get<NotificationService>()
-        WebAppLink.consumePending()?.let { notificationService.navigateToApp(it.route) }
+        val developerPreferences = GlobalContext.get().get<DeveloperPreferences>()
+        fun open(link: AppLink) {
+            if (link.isAvailable(developerPreferences.photobaseEnabled.value)) notificationService.navigateToApp(link.route)
+        }
+        WebAppLink.consumePending()?.let(::open)
+        val pageTitle = document.title
         ComposeViewport("ComposeApp") {
             LaunchedEffect(Unit) { bootDone() }
+            LaunchedEffect(Unit) { WindowTitle.place.collect { document.title = WindowTitle.of(it, pageTitle) } }
             App(onNavHostReady = { nav ->
-                WebAppLink.listenForTypedHash { notificationService.navigateToApp(it.route) }
+                WebAppLink.listenForTypedHash(::open)
                 // A custom fragment turns off the library's own hash parsing; WebAppLink does that instead.
                 nav.bindToBrowserNavigation { _ ->
                     AppLink.forBackStack(nav.currentBackStack.value)?.let { "#${it.slug}" }.orEmpty()

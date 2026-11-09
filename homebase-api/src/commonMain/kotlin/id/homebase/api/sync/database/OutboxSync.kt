@@ -42,6 +42,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.*
 import kotlin.uuid.Uuid
 
+/** Rows at or above this are bulk work, like photo backup: they never take the last upload slot, so they can't hold up a message. */
+const val OUTBOX_BULK_PRIORITY = 1000L
+
 interface OutboxUploader {
     suspend fun upload(outboxRecord: Outbox, eventBus: EventBus): Unit
 }
@@ -56,6 +59,7 @@ private fun uploadTypeName(t: Long): String = when (t) {
     DriveOutboxUploader.ToggleReaction -> "ToggleReaction"
     DriveOutboxUploader.DeleteFilesByGroupId -> "DeleteFilesByGroupId"
     DriveOutboxUploader.SetReactions -> "SetReactions"
+    DriveOutboxUploader.TransformKeyHeaders -> "TransformKeyHeaders"
     else -> "Unknown"
 }
 
@@ -150,11 +154,13 @@ class OutboxSync(
     fun isCurrentlyOnline(): Boolean = isOnline
 
     private val MAX_SENDING_THREADS = 3
+    private val MAX_BULK_SENDING = MAX_SENDING_THREADS - 1
     private val BASE_DELAY_SECONDS = 30L        // first retry after 30s
     private val MAX_DELAY_SECONDS = 14400L      // 4 hours cap
     private val MAX_RETRIES = MAX_ATTEMPTS      // ~48 hours total
     private val semaphore = Semaphore(MAX_SENDING_THREADS)
     private val activeThreads = atomic(0)
+    private val bulkInFlight = atomic(0)
 
     private val totalSent = atomic(0)
     private val counterMutex = Mutex()
@@ -166,6 +172,9 @@ class OutboxSync(
     // mid-POST (#1467). Only ever touched under counterMutex, alongside the
     // Started/Completed events that mark the same 0↔1 worker transitions.
     private var backgroundAssertion: BackgroundExecutionAssertion? = null
+
+    /** True keeps bulk rows queued, without spending a retry. An upload already under way isn't recalled. */
+    var holdBulkSends: (suspend () -> Boolean)? = null
 
     // The send() function spawns a thread when it acquires the lock.
     // Then send() returns true if it begins processing in a thread, and false if
@@ -205,6 +214,8 @@ class OutboxSync(
             } finally {
                 // After loop, check if this is the final thread
                 var nextSend: UnixTimeUtc? = null
+                // Held rows have no next time: waking for them would find nothing to check out, over and over.
+                val nextBelowPriority = if (holdBulkSends?.invoke() == true) OUTBOX_BULK_PRIORITY else Long.MAX_VALUE
                 try {
                     counterMutex.withLock {
                         if (activeThreads.decrementAndGet() == 0) {
@@ -214,7 +225,7 @@ class OutboxSync(
                             backgroundAssertion?.end()
                             backgroundAssertion = null
                             val n = totalSent.getAndSet(0)
-                            nextSend = databaseManager.outbox.nextScheduled()
+                            nextSend = databaseManager.outbox.nextScheduled(nextBelowPriority)
                             eventBus.emit(BackendEvent.OutboxEvent.Completed(n))
                         }
                     }
@@ -231,14 +242,25 @@ class OutboxSync(
         return true
     }
 
+    // Everything else first and outside the hold check, so a slow check can never delay a chat message.
+    private suspend fun checkoutNext(): Outbox? {
+        val hold = holdBulkSends ?: return checkoutMutex.withLock { checkoutWithinBulkSlots() }
+        checkoutMutex.withLock { databaseManager.outbox.checkout(belowPriority = OUTBOX_BULK_PRIORITY) }?.let { return it }
+        if (hold()) return null
+        return checkoutMutex.withLock { checkoutWithinBulkSlots() }
+    }
+
+    private suspend fun checkoutWithinBulkSlots(): Outbox? =
+        databaseManager.outbox.checkout(
+            belowPriority = if (bulkInFlight.value >= MAX_BULK_SENDING) OUTBOX_BULK_PRIORITY else Long.MAX_VALUE,
+        )?.also { if (it.priority >= OUTBOX_BULK_PRIORITY) bulkInFlight.incrementAndGet() }
+
     private suspend fun outboxSend() {
         while (true) {
             Logger.i("Popping Outbox")
 
 //            val outboxRecord = databaseManager.outbox.checkout()
-            val outboxRecord = checkoutMutex.withLock {
-                databaseManager.outbox.checkout()
-            }
+            val outboxRecord = checkoutNext()
 
             if (outboxRecord == null) {
                 Logger.i("No more items in outbox")
@@ -255,7 +277,7 @@ class OutboxSync(
                 // a dead zombie without guessing at elapsed time.
                 markCheckoutLive(outboxRecord.checkOutStamp)
                 // We sent the item, send an event
-                eventBus.emit(
+                emitFor(outboxRecord,
                     BackendEvent.OutboxEvent.ItemStarted(
                         outboxRecord.driveId,
                         outboxRecord.uniqueId
@@ -271,7 +293,7 @@ class OutboxSync(
                 Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()} driveId=${outboxRecord.driveId}")
 
                 // We sent the item, send an event
-                eventBus.emit(
+                emitFor(outboxRecord,
                     BackendEvent.OutboxEvent.ItemCompleted(
                         outboxRecord.driveId,
                         outboxRecord.uniqueId
@@ -308,13 +330,13 @@ class OutboxSync(
                         UnixTimeUtc.now().addSeconds(BASE_DELAY_SECONDS).milliseconds
                     )
                     recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
-                    eventBus.emit(
+                    emitFor(outboxRecord,
                         BackendEvent.OutboxEvent.ItemFailed(
                             outboxRecord.driveId,
                             outboxRecord.uniqueId
                         )
                     )
-                    eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Network unreachable"))
+                    emitFor(outboxRecord, BackendEvent.OutboxEvent.Failed(e.message ?: "Network unreachable"))
                     break // the finally below runs markCheckoutDone
                 }
 
@@ -341,8 +363,8 @@ class OutboxSync(
                         DriveOutboxUploader.UploadNewFile,
                     )
                     storageQuota?.reportStorageFull()
-                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
-                    eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Storage full"))
+                    emitFor(outboxRecord,BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
+                    emitFor(outboxRecord, BackendEvent.OutboxEvent.Failed(e.message ?: "Storage full"))
                     continue
                 }
 
@@ -358,7 +380,7 @@ class OutboxSync(
                         UnixTimeUtc.now().addSeconds(NO_DRIVE_KEY_RETRY_SECONDS).milliseconds
                     )
                     recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
-                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
+                    emitFor(outboxRecord,BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
                     continue
                 }
 
@@ -393,7 +415,7 @@ class OutboxSync(
                         Logger.w("OutboxSync: payload cleanup failed for dropped uniqueId=${outboxRecord.uniqueId}", it)
                     }
 
-                    eventBus.emit(
+                    emitFor(outboxRecord,
                         BackendEvent.OutboxEvent.OutboxItemDropped(
                             outboxRecord.driveId,
                             outboxRecord.uniqueId,
@@ -424,20 +446,21 @@ class OutboxSync(
                 // reason instead of a bare "still sending" spinner.
                 recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
 
-                eventBus.emit(
+                emitFor(outboxRecord,
                     BackendEvent.OutboxEvent.ItemFailed(
                         outboxRecord.driveId,
                         outboxRecord.uniqueId
                     )
                 )
 
-                eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
+                emitFor(outboxRecord, BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
             } finally {
                 // No longer running on this worker — whether it completed, failed,
                 // dropped, or the scope was cancelled. (On cancellation the row
                 // stays checked out in the DB but is no longer in flight, so it
                 // correctly reads as a zombie until clearCheckout revives it.)
                 markCheckoutDone(outboxRecord.checkOutStamp)
+                if (outboxRecord.priority >= OUTBOX_BULK_PRIORITY) bulkInFlight.decrementAndGet()
             }
         }
     }
@@ -448,6 +471,11 @@ class OutboxSync(
      * non-blocking today, but we launch it on the outbox's own scope so future
      * changes to send() can't leak back into the caller's suspension chain.
      */
+    // Background rows (key header transforms) aren't anyone's upload: nothing on screen should hear of them.
+    private suspend fun emitFor(row: Outbox, event: BackendEvent) {
+        if (row.uploadType !in SILENT_UPLOAD_TYPES) eventBus.emit(event)
+    }
+
     private fun kickIfEnqueued(result: EnqueueResult, sendNow: Boolean): EnqueueResult {
         if (sendNow && result.enqueued) {
             scope.launch { send() }
@@ -683,6 +711,8 @@ class OutboxSync(
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
+
+        private val SILENT_UPLOAD_TYPES = setOf(DriveOutboxUploader.TransformKeyHeaders)
 
         // When a 507 carries no Retry-After; the server sends an hour
         private const val STORAGE_FULL_RETRY_SECONDS = 3600L
@@ -1095,7 +1125,7 @@ class OutboxSync(
                 filePaths = null
             )
 
-            eventBus.emit(BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId))
+            if (uploadType !in SILENT_UPLOAD_TYPES) eventBus.emit(BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId))
 
             return EnqueueResult.Enqueued
 

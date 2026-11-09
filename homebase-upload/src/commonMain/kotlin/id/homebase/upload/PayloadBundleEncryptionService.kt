@@ -71,7 +71,7 @@ class PayloadBundleEncryptionService(
                     iv = ByteArrayUtil.getRndByteArray(16)
                 )
 
-                if (payload.contentType.startsWith("video/")) {
+                if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
 
                     val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
                         scope.launch {

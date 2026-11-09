@@ -5,6 +5,8 @@ import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.api.client.drives.files.PayloadDownloadService
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
@@ -95,6 +97,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         engineHandler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = {
             respondError(HttpStatusCode.InternalServerError)
         },
+        fileOps: FileOperationsProvider = NoopFileOperationsProvider(),
     ): ChatMessageSenderService {
         dbm = createInMemoryDbm()
         credentialsManager = ownerCredentials()
@@ -126,6 +129,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
             messageLookup = messageLookup?.invoke(dbm) ?: FakeMessageLookup(),
             encryptor = encryptorOverride ?: payloadEncryptor,
             httpClient = HttpClient(MockEngine { request -> engineHandler(request) }),
+            fileOps = fileOps,
         )
     }
 
@@ -291,8 +295,8 @@ internal fun testChatMessageSenderService(
     messageLookup: MessageLookup,
     encryptor: PayloadBundleEncryptor = FakePayloadBundleEncryptor(),
     httpClient: HttpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }),
+    fileOps: FileOperationsProvider = NoopFileOperationsProvider(),
 ): ChatMessageSenderService {
-    val fileOps = NoopFileOperationsProvider()
     val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, DriveFileProviderCached(httpClient, credentialsManager, fileOps))
     val cacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
     return ChatMessageSenderService(
@@ -311,6 +315,29 @@ internal fun testChatMessageSenderService(
             optimisticWriter = OptimisticWriterPort(optimisticWriter),
             payloadCacheSeeder = cacheSeeder,
         ),
+        payloadDownloadService = PayloadDownloadService(driveFileProvider, fileOps),
         shareSuggestionDonor = ShareSuggestionDonor(),
     )
+}
+
+/** Real files under a temp dir, so a streamed export lands on disk as it does in the app. */
+internal class DiskFileOperationsProvider : FileOperationsProvider {
+    private val dir: String = java.nio.file.Files.createTempDirectory("hb-chat-fwd").toString()
+    val inMemoryWrites = mutableListOf<String>()
+    override fun getCacheDirectory() = dir
+    override fun openFileInput(path: String) = error("not used")
+    override suspend fun readFileBytes(path: String): ByteArray = java.io.File(path).readBytes()
+    override fun deleteTempFile(path: String): Boolean = java.io.File(path).delete()
+    override fun getFileSize(path: String): Long = java.io.File(path).length()
+    override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String {
+        inMemoryWrites += prefix
+        val f = java.io.File.createTempFile(prefix, suffix, java.io.File(dir))
+        f.writeBytes(bytes)
+        return f.path
+    }
+    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("not used")
+    override suspend fun writeStream(path: String, data: kotlinx.coroutines.flow.Flow<ByteArray>) {
+        java.io.File(path).parentFile?.mkdirs()
+        java.io.File(path).outputStream().buffered().use { out -> data.collect { out.write(it) } }
+    }
 }

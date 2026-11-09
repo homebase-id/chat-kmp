@@ -19,6 +19,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -83,6 +88,26 @@ class CompressVideoAndroidInstrumentedTest {
             assertNull(out, "Already-optimal fixture must short-circuit to null")
         } finally {
             fixture.delete()
+        }
+    }
+
+    @Test
+    fun aCancelledCompressHasStoppedBeforeTheNextOneStarts() = runBlocking {
+        val fixture = copyFixtureToCache("sample.mp4")
+        val cleanup = mutableListOf(fixture)
+        try {
+            repeat(10) { round ->
+                val cancelled = launch(Dispatchers.IO) {
+                    FFmpegUtils.compressVideo(fixture.absolutePath, trimStartMs = 1_000L, trimEndMs = 4_000L, quality = VideoQuality.STANDARD)
+                }
+                delay(20L * round)
+                cancelled.cancelAndJoin()
+            }
+            val out = FFmpegUtils.compressVideo(fixture.absolutePath, trimStartMs = 1_000L, trimEndMs = 4_000L, quality = VideoQuality.STANDARD)
+            assertNotNull(out, "compress after cancels must still work")
+            cleanup += File(out)
+        } finally {
+            cleanup.forEach { it.delete() }
         }
     }
 

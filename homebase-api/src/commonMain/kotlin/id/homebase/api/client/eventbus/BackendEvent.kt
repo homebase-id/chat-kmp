@@ -4,6 +4,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.websockets.CircleDefinitionChangeType
 import id.homebase.api.client.websockets.ConnectionChangeType
 import id.homebase.api.client.websockets.Introduction
+import id.homebase.api.client.websockets.PeerSendResultNotification
 import id.homebase.api.client.websockets.PublicProfileArtifact
 import id.homebase.api.common.OdinId
 import id.homebase.api.video.VideoProcessingPhase
@@ -297,6 +298,9 @@ sealed interface BackendEvent {
 
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent
+
+    /** How a send from the transient drive to another identity's drive went. */
+    data class PeerSendResult(val result: PeerSendResultNotification) : BackendEvent
 
     /**
      * An ephemeral Live Relay blob arrived over the notification websocket (e.g. a live GPS point

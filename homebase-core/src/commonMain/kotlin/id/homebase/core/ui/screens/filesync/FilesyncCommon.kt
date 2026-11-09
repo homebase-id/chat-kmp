@@ -1,7 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
-import id.homebase.chat.widget.preview.FilePreviewDialog
-import id.homebase.resources.storage_full_upload_failed
+import id.homebase.api.common.OdinId
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -9,10 +8,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -23,35 +22,36 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TriStateCheckbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -68,6 +68,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import id.homebase.chat.widget.preview.FilePreviewDialog
 import id.homebase.common.util.formatBytes
 import id.homebase.core.filesync.FilesyncRoleFolder
 import id.homebase.core.ui.screens.vault.components.fileKindIcon
@@ -78,49 +79,82 @@ import id.homebase.core.util.formatTime
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_root
 import id.homebase.resources.cancel
+import id.homebase.resources.filesync_archive_cancel
+import id.homebase.resources.filesync_archive_damaged
+import id.homebase.resources.filesync_archive_listing
+import id.homebase.resources.filesync_archive_progress
 import id.homebase.resources.filesync_cancel_download
 import id.homebase.resources.filesync_changed_elsewhere
-import id.homebase.resources.filesync_restore_try_again
+import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.filesync_comment_failed
 import id.homebase.resources.filesync_damaged
 import id.homebase.resources.filesync_day_time
 import id.homebase.resources.filesync_delete_failed
 import id.homebase.resources.filesync_deleted
 import id.homebase.resources.filesync_deleted_forever
+import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_download_failed
-import id.homebase.resources.filesync_too_large_here
 import id.homebase.resources.filesync_executable
-import id.homebase.resources.filesync_not_on_computers
-import id.homebase.resources.time_today
-import id.homebase.resources.time_yesterday
+import id.homebase.resources.filesync_file_count
+import id.homebase.resources.filesync_folder_count
 import id.homebase.resources.filesync_folder_failed
-import id.homebase.resources.filesync_label
+import id.homebase.resources.filesync_inherit_failed
+import id.homebase.resources.filesync_move_check_failed
+import id.homebase.resources.filesync_move_failed
+import id.homebase.resources.filesync_move_sharing_failed
+import id.homebase.resources.filesync_moved
+import id.homebase.resources.filesync_peer_added
+import id.homebase.resources.filesync_peer_added_many
+import id.homebase.resources.filesync_peer_replaced_many
+import id.homebase.resources.filesync_peer_retrying_many
+import id.homebase.resources.filesync_peer_waiting_storage_many
+import id.homebase.resources.filesync_peer_changed_first_many
+import id.homebase.resources.filesync_peer_denied_many
+import id.homebase.resources.filesync_peer_failed_many
+import id.homebase.resources.filesync_peer_not_confirmed_many
+import org.jetbrains.compose.resources.PluralStringResource
+import org.jetbrains.compose.resources.getPluralString
+import id.homebase.resources.filesync_peer_changed_first
+import id.homebase.resources.filesync_peer_denied
+import id.homebase.resources.filesync_peer_failed
+import id.homebase.resources.filesync_peer_not_confirmed
+import id.homebase.resources.filesync_peer_replaced
+import id.homebase.resources.filesync_peer_retrying
+import id.homebase.resources.filesync_peer_waiting_storage
+import id.homebase.api.client.drives.files.TransferStatus
+import id.homebase.resources.filesync_not_on_computers
 import id.homebase.resources.filesync_open_failed
+import id.homebase.resources.filesync_reaction_failed
+import id.homebase.resources.filesync_recipient_not_added
+import id.homebase.resources.filesync_not_reviewed_by
+import id.homebase.resources.filesync_not_sealed_yet
+import id.homebase.resources.filesync_share_waiting
+import id.homebase.resources.filesync_share_not_told
+import id.homebase.resources.filesync_removed
 import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_restore_failed
+import id.homebase.resources.filesync_restore_try_again
 import id.homebase.resources.filesync_restored
 import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
-import id.homebase.resources.filesync_download
+import id.homebase.resources.filesync_role_folder_returns
 import id.homebase.resources.filesync_save_failed
+import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_share_failed
+import id.homebase.resources.filesync_shared
+import id.homebase.resources.filesync_shared_badge
+import id.homebase.resources.filesync_sharing_failed
 import id.homebase.resources.filesync_too_large
+import id.homebase.resources.filesync_too_large_here
+import id.homebase.resources.filesync_totals
+import id.homebase.resources.filesync_undo
 import id.homebase.resources.filesync_upload_failed
 import id.homebase.resources.sign_in_again_failed
-import id.homebase.resources.filesync_archive_cancel
-import id.homebase.resources.filesync_archive_damaged
-import id.homebase.resources.filesync_archive_listing
-import id.homebase.resources.filesync_archive_progress
-import id.homebase.resources.filesync_clear_selection
-import id.homebase.resources.filesync_move_failed
-import id.homebase.resources.filesync_moved
-import id.homebase.resources.filesync_removed
-import id.homebase.resources.filesync_role_folder_returns
-import id.homebase.resources.filesync_undo
-import id.homebase.resources.filesync_file_count
-import id.homebase.resources.filesync_folder_count
-import id.homebase.resources.filesync_selected
-import id.homebase.resources.filesync_totals
+import id.homebase.resources.storage_full_upload_failed
+import id.homebase.resources.time_today
+import id.homebase.resources.time_yesterday
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -133,6 +167,8 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.material.icons.outlined.MoveToInbox
+import id.homebase.resources.filesync_added_by
 
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
 private const val DELETED_ALPHA = 0.38f
@@ -149,6 +185,12 @@ internal fun FilesyncError.message(): StringResource = when (this) {
     FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
     FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
     FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
+    FilesyncError.ReactionFailed -> MR.string.filesync_reaction_failed
+    FilesyncError.CommentFailed -> MR.string.filesync_comment_failed
+    FilesyncError.SharingFailed -> MR.string.filesync_sharing_failed
+    FilesyncError.InheritFailed -> MR.string.filesync_inherit_failed
+    FilesyncError.MoveCheckFailed -> MR.string.filesync_move_check_failed
+    FilesyncError.MoveSharingFailed -> MR.string.filesync_move_sharing_failed
 }
 
 internal val FilesyncRowInset = 8.dp
@@ -174,6 +216,9 @@ internal fun FilesyncEventsEffect(
     val scope = rememberCoroutineScope()
     fun show(message: StringResource) {
         scope.launch { snackbarHostState.showSnackbar(getString(message)) }
+    }
+    fun showAbout(message: StringResource, people: List<OdinId>) {
+        scope.launch { snackbarHostState.showSnackbar(getString(message, people.joinToString { it.domainName })) }
     }
     var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
     preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onHandedOff) }
@@ -211,6 +256,7 @@ internal fun FilesyncEventsEffect(
                         FilesyncNotice.DeletedForever -> MR.string.filesync_deleted_forever
                         FilesyncNotice.ChangedElsewhere -> MR.string.filesync_changed_elsewhere
                         FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again
+                        FilesyncNotice.Shared -> MR.string.filesync_shared
                     }
                 )
                 is FilesyncUiEvent.Removed -> scope.launch {
@@ -218,14 +264,51 @@ internal fun FilesyncEventsEffect(
                     if (undo == SnackbarResult.ActionPerformed) onUndoRemove(event.nodeIds)
                 }
                 is FilesyncUiEvent.Moved -> scope.launch {
-                    snackbarHostState.showSnackbar(getString(MR.string.filesync_moved, event.folderName ?: getString(MR.string.filesync_label)))
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_moved, event.folderName ?: getString(MR.string.filesync_root)))
                 }
                 is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))
                 }
+                is FilesyncUiEvent.NotAdded -> showAbout(MR.string.filesync_recipient_not_added, event.recipients)
+                is FilesyncUiEvent.NotSealedYet -> showAbout(MR.string.filesync_not_sealed_yet, listOf(event.owner))
+                is FilesyncUiEvent.Waiting -> showAbout(MR.string.filesync_share_waiting, event.recipients)
+                is FilesyncUiEvent.NotReviewedBy -> showAbout(MR.string.filesync_not_reviewed_by, listOf(event.owner))
+                is FilesyncUiEvent.NotTold -> showAbout(MR.string.filesync_share_not_told, event.recipients)
+                is FilesyncUiEvent.PeerSent -> scope.launch { snackbarHostState.showSnackbar(event.outcomes.message()) }
             }
         }
     }
+}
+
+/** What a member write's outcome tells: [one] of a file, [many] of several told at once. */
+internal enum class FilesyncPeerMessage(val one: StringResource, val many: PluralStringResource) {
+    Added(MR.string.filesync_peer_added, MR.plurals.filesync_peer_added_many),
+    Replaced(MR.string.filesync_peer_replaced, MR.plurals.filesync_peer_replaced_many),
+    Retrying(MR.string.filesync_peer_retrying, MR.plurals.filesync_peer_retrying_many),
+    WaitingForStorage(MR.string.filesync_peer_waiting_storage, MR.plurals.filesync_peer_waiting_storage_many),
+    ChangedFirst(MR.string.filesync_peer_changed_first, MR.plurals.filesync_peer_changed_first_many),
+    Denied(MR.string.filesync_peer_denied, MR.plurals.filesync_peer_denied_many),
+    Failed(MR.string.filesync_peer_failed, MR.plurals.filesync_peer_failed_many),
+    NotConfirmed(MR.string.filesync_peer_not_confirmed, MR.plurals.filesync_peer_not_confirmed_many),
+}
+
+internal val FilesyncPeerOutcome.message: FilesyncPeerMessage
+    get() = when (this) {
+        is FilesyncPeerOutcome.Delivered -> if (send.isUpdate) FilesyncPeerMessage.Replaced else FilesyncPeerMessage.Added
+        is FilesyncPeerOutcome.Retrying ->
+            if (status == TransferStatus.RecipientIdentityOutOfStorage) FilesyncPeerMessage.WaitingForStorage else FilesyncPeerMessage.Retrying
+        is FilesyncPeerOutcome.Refused -> when (status) {
+            TransferStatus.RecipientIdentityReturnedVersionTagMismatch -> FilesyncPeerMessage.ChangedFirst
+            TransferStatus.RecipientIdentityReturnedAccessDenied -> FilesyncPeerMessage.Denied
+            else -> FilesyncPeerMessage.Failed
+        }
+        is FilesyncPeerOutcome.NotConfirmed -> FilesyncPeerMessage.NotConfirmed
+    }
+
+private suspend fun List<FilesyncPeerOutcome>.message(): String {
+    val first = first()
+    val owner = first.send.owner.domainName
+    return if (size == 1) getString(first.message.one, first.send.name, owner) else getPluralString(first.message.many, size, size, owner)
 }
 
 /** One node in any Filesync list; among live ones a deleted node is dimmed, but its [trailing] action is not. */
@@ -238,6 +321,7 @@ internal fun FilesyncNodeRow(
     dimDeleted: Boolean = true,
     // A checkbox in the icon's place while picking rows; null shows the icon.
     checked: Boolean? = null,
+    shared: Boolean = false,
     trailing: @Composable () -> Unit = {},
 ) {
     val deleted = dimDeleted && node.removedMs != null
@@ -246,7 +330,7 @@ internal fun FilesyncNodeRow(
     ListItem(
         modifier = if (checked == null) rounded else rounded.semantics { toggleableState = ToggleableState(checked) },
         colors = ListItemDefaults.colors(containerColor = container),
-        headlineContent = { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2) },
+        headlineContent = { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2, shared = shared) },
         supportingContent = { if (details.isNotEmpty()) Text(details) },
         leadingContent = {
             if (checked == null) {
@@ -269,6 +353,7 @@ internal fun NodeName(
     // On the name alone, not the badges or the space after it.
     nameModifier: Modifier = Modifier,
     textDecoration: TextDecoration? = null,
+    shared: Boolean = false,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -282,6 +367,22 @@ internal fun NodeName(
             textDecoration = if (deleted) TextDecoration.LineThrough + (textDecoration ?: TextDecoration.None) else textDecoration,
             modifier = Modifier.weight(1f, fill = false).then(nameModifier),
         )
+        if (shared) {
+            Icon(
+                Icons.Outlined.People,
+                contentDescription = stringResource(MR.string.filesync_shared_badge),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        node.addedBy?.let { by ->
+            Icon(
+                Icons.Outlined.MoveToInbox,
+                contentDescription = stringResource(MR.string.filesync_added_by, by.domainName),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
         if (node.executable) NameBadge(stringResource(MR.string.filesync_executable))
         if (node.notOnComputers) NameBadge(stringResource(MR.string.filesync_not_on_computers))
         if (node.tags.isNotEmpty()) TagDots(node.tags, ringColor)
@@ -411,7 +512,7 @@ internal fun deletedAt(time: String): String =
 /** The name of the folder [parentId], or of the top level. */
 @Composable
 internal fun folderName(parentId: Uuid, names: Map<Uuid, String>): String =
-    names[parentId] ?: stringResource(MR.string.filesync_label)
+    names[parentId] ?: stringResource(MR.string.filesync_root)
 
 /** Save to device, or the download's progress, which cancels it when tapped. */
 @Composable
@@ -527,15 +628,11 @@ internal fun roleFoldersReturn(nodes: List<FilesyncNode>): String {
     return if (names.isEmpty()) "" else "\n\n" + pluralStringResource(MR.plurals.filesync_role_folder_returns, names.size, names.size, names.joinToString(", "))
 }
 
-/** A checkbox without the 48dp touch minimum, so it fits a row's icon place; with no [onClick] the row does the picking. */
+/** A checkbox without the 48dp touch minimum, so it fits a row's icon place; the row does the picking. */
 @Composable
-internal fun SelectBox(state: ToggleableState, description: String? = null, onClick: (() -> Unit)? = null) {
+internal fun SelectBox(state: ToggleableState) {
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-        TriStateCheckbox(
-            state = state,
-            onClick = onClick,
-            modifier = if (description == null) Modifier else Modifier.semantics { contentDescription = description },
-        )
+        TriStateCheckbox(state = state, onClick = null)
     }
 }
 

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -81,6 +82,7 @@ fun HomebaseImage(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     colorFilter: ColorFilter? = null,  // ← Add this par
+    onLoaded: (() -> Unit)? = null,
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
@@ -163,6 +165,7 @@ fun HomebaseImage(
         colorFilter = colorFilter
     ) {
         val state by painter.state.collectAsStateWithLifecycle()
+        if (onLoaded != null && state is AsyncImagePainter.State.Success) LaunchedEffect(Unit) { onLoaded() }
 
         // Blur only the low-res embedded preview; cached thumbnails and full
         // images are already sharp so the target is 0f for those states.

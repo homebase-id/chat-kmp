@@ -4,15 +4,14 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.foundation.toByteArray
-import kotlin.coroutines.resume
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlinx.cinterop.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import platform.AVFoundation.*
 import platform.CoreMedia.CMTimeGetSeconds
@@ -366,15 +365,13 @@ actual object FFmpegUtils {
         )
     }
 
-    private suspend fun awaitSession(start: (onComplete: (FFmpegResult) -> Unit) -> Long): FFmpegResult =
-        suspendCancellableCoroutine { cont ->
-            val sessionId = start { result -> if (cont.isActive) cont.resume(result) }
-            cont.invokeOnCancellation {
-                if (sessionId >= 0) {
-                    try { bridge.cancelFFmpegSession(sessionId) } catch (_: Exception) {}
-                }
-            }
-        }
+    private suspend fun awaitSession(start: (onComplete: (FFmpegResult) -> Unit) -> Long): FFmpegResult {
+        val finished = CompletableDeferred<FFmpegResult>()
+        val sessionId = start { finished.complete(it) }
+        // Below zero there's no session to stop, so a cancel has nothing to wait for.
+        if (sessionId < 0) return finished.await()
+        return awaitFfmpegSession(finished, sessionId) { bridge.cancelFFmpegSession(sessionId) }
+    }
 
     private fun scratchDir(sub: String): String {
         val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)

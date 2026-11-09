@@ -92,6 +92,9 @@ import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
+import androidx.compose.material3.LocalTextStyle
+import id.homebase.common.util.WindowTitleEffect
+import id.homebase.resources.filesync_root
 import id.homebase.resources.filesync_get_title
 import id.homebase.resources.filesync_install_computer
 import id.homebase.resources.filesync_install_app
@@ -106,11 +109,13 @@ import id.homebase.resources.filesync_files
 import id.homebase.resources.filesync_folder_deleted
 import id.homebase.resources.filesync_folder_empty
 import id.homebase.resources.filesync_folders
-import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_make_private
 import id.homebase.resources.filesync_sign_in_again_body
 import id.homebase.resources.filesync_sign_in_again_title
 import id.homebase.resources.filesync_load_failed
+import id.homebase.resources.filesync_move_anyway
+import id.homebase.resources.filesync_move_losing_body
+import id.homebase.resources.filesync_move_losing_title
 import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_new_folder
 import id.homebase.resources.filesync_new_folder_name
@@ -156,7 +161,10 @@ internal class FilesyncBrowserActions(
 internal class FilesyncBrowserScope(
     val uiState: FilesyncUiState,
     val uploads: List<FilesyncUpload>,
+    /** On their way to the sharer shown. */
+    val sharedUploads: List<FilesyncUpload>,
     val search: TextFieldState,
+    val commentDraft: TextFieldState,
     val snackbarHostState: SnackbarHostState,
     val actions: FilesyncBrowserActions,
     val onUpload: () -> Unit,
@@ -191,7 +199,9 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         onOpenSignIn = signIn::open,
     ) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
 
-    BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
+    // Where Up goes: in a share view, NavigateUp alone would move the path hidden under it.
+    val up = filesyncUp(uiState.path, uiState.sharing)
+    BackHandler(enabled = up != null) { up?.actions?.forEach(viewModel::onAction) }
 
     val onFilesChosen: (List<PlatformFile>) -> Unit = { viewModel.onAction(FilesyncUiAction.FilesPicked(it)) }
     val filePicker = rememberFilePickerLauncher(type = FileKitType.File(), mode = FileKitMode.Multiple()) { files ->
@@ -221,7 +231,26 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         )
     }
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
-    uiState.shareChooser?.let { FilesyncShareSheet(it, onShare = { target -> viewModel.onAction(FilesyncUiAction.ShareTo(target)) }, onDismiss = { viewModel.onAction(FilesyncUiAction.DismissShare) }) }
+    uiState.sharing.losingAccess?.let { people ->
+        FilesyncConfirmDialog(
+            title = stringResource(MR.string.filesync_move_losing_title),
+            text = stringResource(MR.string.filesync_move_losing_body, people.joinToString { it.domainName }),
+            confirmLabel = stringResource(MR.string.filesync_move_anyway),
+            destructive = true,
+            onConfirm = { viewModel.onAction(FilesyncUiAction.ConfirmLosingAccess) },
+            onDismiss = { viewModel.onAction(FilesyncUiAction.DismissLosingAccess) },
+        )
+    }
+    uiState.shareChooser?.let { FilesyncShareSheet(it, onShare = { target -> viewModel.onAction(FilesyncUiAction.ShareTo(target)) }, onDismiss = { viewModel.onAction(FilesyncUiAction.DismissShare) }, withPeople = true) }
+    if (uiState.sharing.shareWith != null) FilesyncShareWithSheet(uiState.sharing, viewModel::onAction)
+    // Wide windows show them in the browser's centre.
+    // Inside one of the sharer's folders, what goes there; at their top, everything on its way to them.
+    val sharer = uiState.sharing.sharer
+    val sharedFolder = uiState.sharing.sharerPath.lastOrNull()?.nodeId
+    val sharedUploads = remember(uploads, sharer, sharedFolder) {
+        if (sharer == null) emptyList() else uploads.filter { it.owner == sharer && (sharedFolder == null || it.parentId == sharedFolder) }
+    }
+    if (!isExpandedLayout()) FilesyncSharedFilesSheet(uiState.sharing, uiState.transfer, sharedUploads, viewModel::onAction)
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(
@@ -240,8 +269,10 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     val actions = remember(viewModel) { FilesyncBrowserActions(viewModel::onAction, { askRestore = it }, { viewModel.uiState.value }) }
     val scope = FilesyncBrowserScope(
         uiState = uiState,
-        uploads = uploads.filter { it.parentId == currentFolder },
+        uploads = uploads.filter { it.owner == null && it.parentId == currentFolder },
+        sharedUploads = sharedUploads,
         search = viewModel.search,
+        commentDraft = viewModel.commentDraft,
         snackbarHostState = snackbarHostState,
         actions = actions,
         onUpload = { filePicker.launch() },
@@ -250,6 +281,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         places = places,
         signIn = signIn,
     )
+    WindowTitleEffect(crumbNames(uiState.path).last())
     if (isExpandedLayout()) {
         FilesyncWideBrowser(scope)
     } else {
@@ -279,8 +311,11 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
             FilesyncInfoContent(
                 node = node,
                 where = crumbNames(uiState.path),
+                discussion = uiState.discussion,
+                commentDraft = scope.commentDraft,
+                sharing = uiState.sharing,
                 onAction = {
-                    dismiss()
+                    if (it !is FilesyncDiscussionAction) dismiss()
                     scope.onAction(it)
                 },
                 modifier = Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
@@ -326,7 +361,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                             )
                         } else {
                             Text(
-                                text = uiState.path.lastOrNull()?.name ?: stringResource(MR.string.filesync_label),
+                                text = uiState.path.lastOrNull()?.name ?: stringResource(MR.string.filesync_root),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -407,9 +442,10 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                         val files = uiState.visible.subList(uiState.totals.folders, uiState.visible.size)
                         if (folders.isNotEmpty()) item(key = "folders") { SectionHeader(MR.string.filesync_folders) }
                         val checked: (FilesyncNode) -> Boolean? = { node -> if (selecting) node.nodeId in uiState.selection.ids else null }
-                        items(folders, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
+                        items(folders, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), it.nodeId in uiState.sharing.sharedIds, scope.actions) { infoFor = it } }
                         if (files.isNotEmpty()) item(key = "files") { SectionHeader(MR.string.filesync_files) }
-                        items(files, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
+                        items(files, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), it.nodeId in uiState.sharing.sharedIds, scope.actions) { infoFor = it } }
+                        sharerRows(uiState.rootSharers, scope.onAction)
                     }
                 }
             }
@@ -420,7 +456,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
 /** [checked] is null unless rows are being picked: a long press starts it, and then a tap picks. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, actions: FilesyncBrowserActions, onInfo: (FilesyncNode) -> Unit) {
+private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, shared: Boolean, actions: FilesyncBrowserActions, onInfo: (FilesyncNode) -> Unit) {
     val toggle = { actions.onAction(FilesyncUiAction.Select(node.nodeId, FilesyncSelectMode.Toggle)) }
     FilesyncNodeRow(
         node = node,
@@ -428,6 +464,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
         modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.click(node) }),
         selected = checked == true,
         checked = checked,
+        shared = shared,
         trailing = {
             if (checked != null) {
                 // Picking rows: nothing beside them to tap by mistake.
@@ -457,7 +494,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
 internal fun BrowserListBody(scope: FilesyncBrowserScope, content: @Composable () -> Unit) {
     val uiState = scope.uiState
     FilesyncListBody(
-        isEmpty = uiState.visible.isEmpty() && scope.uploads.isEmpty(),
+        isEmpty = uiState.visible.isEmpty() && scope.uploads.isEmpty() && uiState.rootSharers.isEmpty(),
         isLoading = uiState.isLoading,
         loadFailed = uiState.loadFailed,
         failedMessage = MR.string.filesync_load_failed,
@@ -597,7 +634,7 @@ private fun UploadCard(content: @Composable androidx.compose.foundation.layout.R
 
 @Composable
 internal fun crumbNames(path: List<FilesyncCrumb>): List<String> {
-    val root = stringResource(MR.string.filesync_label)
+    val root = stringResource(MR.string.filesync_root)
     return path.map { it.name ?: root }
 }
 
@@ -707,8 +744,9 @@ internal fun OverflowMenu(
 }
 
 @Composable
-internal fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
+internal fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit, heading: Boolean = false) {
     val names = crumbNames(path)
+    val style = if (heading) MaterialTheme.typography.titleLarge else LocalTextStyle.current
     LazyRow(
         modifier = Modifier.padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -726,6 +764,7 @@ internal fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
             TextButton(onClick = { onCrumb(index) }, enabled = !last) {
                 Text(
                     text = names[index],
+                    style = style,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = if (last) FontWeight.Bold else null,

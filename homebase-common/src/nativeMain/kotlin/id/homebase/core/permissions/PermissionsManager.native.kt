@@ -134,6 +134,8 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
         when (permission) {
             PermissionType.CAMERA -> askCaptureDevicePermission(AVMediaTypeVideo, permission, onPermissionResult)
 
+            PermissionType.MEDIA_LOCATION -> onPermissionResult(permission, PermissionStatus.GRANTED, false)
+
             PermissionType.RECORD_AUDIO -> askCaptureDevicePermission(AVMediaTypeAudio, permission, onPermissionResult)
 
             PermissionType.GALLERY, PermissionType.GALLERY_LIMITED -> {
@@ -191,6 +193,8 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
 
     override suspend fun isPermissionGranted(permission: PermissionType): Boolean {
         return when (permission) {
+            PermissionType.MEDIA_LOCATION -> true
+
             PermissionType.CAMERA -> {
                 val status: AVAuthorizationStatus =
                     AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)

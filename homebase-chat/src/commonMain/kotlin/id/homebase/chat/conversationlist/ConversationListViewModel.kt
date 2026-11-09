@@ -1111,7 +1111,7 @@ class ConversationListViewModel(
         val identity = runCatching { OdinId(odinId.trim()) }.getOrNull() ?: return
         viewModelScope.launch {
             val conversationId = try {
-                conversationService.createConversation(listOf(identity), "", null).conversationId
+                conversationService.oneOnOneConversationId(identity)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1700,6 +1700,9 @@ class ConversationListViewModel(
                 stickerHandler.handleDismissStickerOptions()
             is ConversationListUiAction.RemoveStickerFromMessage ->
                 stickerHandler.handleRemoveStickerFromMessage(action)
+
+            is ConversationListUiAction.OpenFileShare ->
+                sendEvent(ConversationListUiEvent.NavigateToFileShare(action.sharer, action.circleId))
 
             is ConversationListUiAction.SaveContactCard -> {
                 sendEvent(

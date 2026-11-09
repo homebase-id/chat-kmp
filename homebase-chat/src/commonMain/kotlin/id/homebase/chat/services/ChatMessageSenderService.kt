@@ -11,6 +11,8 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -62,6 +64,7 @@ class ChatMessageSenderService(
     private val driveFileProvider: DriveFileProvider,
     private val payloadCacheSeeder: PayloadCacheSeeder,
     private val uploadService: UploadService,
+    private val payloadDownloadService: PayloadDownloadService,
     private val shareSuggestionDonor: ShareSuggestionDonor = ShareSuggestionDonor(),
 ) : id.homebase.chat.services.convo.StatusMessageSender {
     companion object {
@@ -936,28 +939,21 @@ class ChatMessageSenderService(
             val ivBytes = descriptor.iv?.bytes ?: continue
             val keyHeader = KeyHeader(iv = ivBytes, aesKey = source.keyHeader.aesKey)
 
-
-            //TODO: optimization - if we share the location of the
-            // temp file we don't have to rewrite it to disk?
-            val response = driveFileProvider.getPayloadBytesDecrypted(
+            val tempPath = payloadDownloadService.exportToTemp(
                 driveId = chatDrive,
                 fileId = source.fileId,
                 key = descriptor.key,
-                keyHeader = keyHeader
+                keyHeader = keyHeader,
+                destination = ExportDestination.UploadTemp("fwd_${descriptor.key}", ""),
             ) ?: continue
-
-            val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                bytes = response.bytes,
-                prefix = "fwd_${descriptor.key}",
-                suffix = ""
-            )
 
             payloadFiles += PayloadFile(
                 key = descriptor.key,
                 filePath = tempPath,
                 contentType = descriptor.contentType ?: "",
                 descriptorContent = descriptor.descriptorContent,
-                previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb()
+                previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb(),
+                skipVideoProcessing = true,
             )
 
             descriptor.previewThumbnail?.toEmbeddedThumb()?.let { previewThumbs += it }

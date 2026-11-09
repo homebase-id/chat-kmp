@@ -73,6 +73,8 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.contactcard.ContactCardBubble
 import id.homebase.chat.contactcard.contactCardPhotoData
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.fileshare.FileShareBubble
+import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -186,6 +188,7 @@ fun MessageBubbleRaw(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
+    onOpenFileShare: ((share: FileShareDescriptor, sharer: OdinId?) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
     // than as the message itself: typed bubbles must not open their full-screen detail from here.
@@ -301,6 +304,31 @@ fun MessageBubbleRaw(
                     MessageTimestampFooter(
                         visible = showMessageFooter,
                         infoText = cardInfoText,
+                        contentColor = LocalContentColor.current,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                },
+            )
+            return
+        }
+        is MessageContent.FileShare -> {
+            val open = onOpenFileShare?.takeIf { !displayOnly }
+            // From the envelope: an outgoing message carries no originalAuthor.
+            val sharer = if (sentByYou) null else message.originalAuthor
+            FileShareBubble(
+                descriptor = content.descriptor,
+                sharer = sharer?.domainName,
+                modifier = modifier,
+                onOpen = content.descriptor?.let { d -> open?.let { { it(d, sharer) } } },
+                onLongClick = onLongClick,
+                footer = {
+                    MessageTimestampFooter(
+                        visible = showMessageFooter,
+                        infoText = formatMessageTimestamp(message.userDate),
                         contentColor = LocalContentColor.current,
                         showDeliveryStatus = sentByYou && !message.isDeleted,
                         isPendingSend = isPendingSend,

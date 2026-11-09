@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Wire format of an agent card header (dataType 218). A [tree] that fits the header rides here;
+ * Wire format of an agent card header (dataType 219). A [tree] that fits the header rides here;
  * a bigger one rides in the `agent_ui` payload. See AGENT_UI.md.
  */
 @Serializable
