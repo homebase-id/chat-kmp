@@ -54,23 +54,15 @@ class ChatMessageStream(
     private val serverHistory: ChatServerHistory,
     // Where headers are mapped to messages; tests pass their own dispatcher to stay in virtual time.
     private val mapDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    // Wired in DI, not resolved here: ChatMessageActionService -> MessageLookup -> ChatMessageStream is a cycle.
+    private val pinMessage: suspend (messageId: Uuid, dependencyUniqueId: Uuid?) -> Unit = { _, _ -> },
+    surfacedListeners: List<SurfacedListener> = emptyList(),
 ) : MessageLookup {
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
 
     // Test seam: the Stopped refresh runs on a real dispatcher, so advanceUntilIdle() is no barrier for it.
     internal var onPostSyncRefreshComplete: () -> Unit = {}
-
-    /**
-     * Auto-pin hook (#887). Wired at construction in DI to
-     * [id.homebase.chat.services.ChatMessageActionService.pinMessage]; a settable
-     * hook (like [isConversationLeft]) avoids a circular DI dependency
-     * (ActionService → MessageLookup → ChatMessageStream). Wired at construction —
-     * NOT in onPostAuthenticated, which is dropped on a warm relaunch / session
-     * restore and left auto-pin permanently no-op. No-op only in tests that skip DI.
-     */
-    var autoPinTypedMessage: suspend (messageId: Uuid, dependencyUniqueId: Uuid?) -> Unit =
-        { _, _ -> }
 
     // Cheap in-session dedup: messages whose auto-pin candidacy was already decided
     // this session, so an unrelated re-emit (reaction toggle, edit, delivery-status)
@@ -82,26 +74,11 @@ class ChatMessageStream(
     // refreshCachedWindows (DriveEvent.Stopped) — because that durable tag makes it safe.
     private val autoPinHandled = mutableSetOf<Uuid>()
 
-    /**
-     * View-once recovery and expiry sweep. Wired at construction in DI like [autoPinTypedMessage];
-     * the hook avoids a DI cycle through ChatMessageActionService.
-     */
-    var sweepViewOnce: suspend (messages: List<MessageUiModel>, nowMs: Long) -> Unit = { _, _ -> }
-
-    /** Starts loading agent card trees as soon as their messages are written, not when they are composed. Wired in DI. */
-    var warmAgentUi: (messages: List<MessageUiModel>) -> Unit = {}
+    private val surfacedListeners: List<SurfacedListener> =
+        listOf(SurfacedListener(::autoPinNewTypedMessages)) + surfacedListeners
 
     private suspend fun onMessagesSurfaced(messages: List<MessageUiModel>) {
-        autoPinNewTypedMessages(messages)
-        if (messages.isEmpty()) return
-        warmAgentUi(messages)
-        try {
-            sweepViewOnce(messages, Clock.System.now().toEpochMilliseconds())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (t: Throwable) {
-            Logger.e(t) { "ChatMessageStream: view-once sweep failed: ${t.message}" }
-        }
+        surfacedListeners.runAll(messages)
     }
 
     private val paginatedState = PaginatedConversationState()
@@ -713,7 +690,9 @@ class ChatMessageStream(
             if (!shouldAutoPin(msg.messageContent, msg.ownReactions, now)) continue
 
             try {
-                autoPinTypedMessage(msg.id, null)
+                pinMessage(msg.id, null)
+            } catch (e: CancellationException) {
+                throw e
             } catch (t: Throwable) {
                 Logger.e(t) { "ChatMessageStream: auto-pin failed for ${msg.id}: ${t.message}" }
             }
