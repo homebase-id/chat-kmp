@@ -342,6 +342,7 @@ import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
 import id.homebase.core.session.IdentitySessionScope
+import id.homebase.core.share.IncomingLinks
 import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
@@ -1046,6 +1047,7 @@ val appModule = module {
             httpClient = get(),
         )
     }
+    single { IncomingLinks(get<NotificationService>(), get(), get(), get(), get()) }
     single<NotificationMessageResolver> {
         ChatNotificationMessageResolver(
             messageLookup = get<MessageLookup>(),

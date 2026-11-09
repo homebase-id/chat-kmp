@@ -206,6 +206,13 @@ final class SharedContentSaverTests: XCTestCase {
         XCTAssertEqual(try writtenBytes(descriptor), pngBytes)
     }
 
+    func testEveryPickedConversationIsRecordedAsATarget() throws {
+        let descriptor = try save([], text: "hi", conversationIds: ["a", "b"])
+
+        XCTAssertEqual(descriptor.targetConversationIds, ["a", "b"])
+        XCTAssertEqual(descriptor.targetConversationId, "a")
+    }
+
     // MARK: - Write failures (#1309)
 
     func testStagedShareLandsInTheInjectedContainer() throws {
@@ -256,6 +263,7 @@ final class SharedContentSaverTests: XCTestCase {
     private func save(
         _ providers: [NSItemProvider],
         text: String? = nil,
+        conversationIds: [String] = ["conversation-under-test"],
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> SharedContentSaver.ContentDescriptor {
@@ -269,7 +277,7 @@ final class SharedContentSaverTests: XCTestCase {
         let finished = expectation(description: "SharedContentSaver.save")
         SharedContentSaver.save(
             extensionContext: StubExtensionContext([item]),
-            conversationId: "conversation-under-test"
+            conversationIds: conversationIds
         ) { success in
             saved = success
             finished.fulfill()
@@ -354,7 +362,7 @@ final class SharedContentSaverTests: XCTestCase {
         let finished = expectation(description: "SharedContentSaver.save")
         SharedContentSaver.save(
             extensionContext: StubExtensionContext([item]),
-            conversationId: "conversation-under-test",
+            conversationIds: ["conversation-under-test"],
             containerURL: container
         ) { success in
             saved = success
