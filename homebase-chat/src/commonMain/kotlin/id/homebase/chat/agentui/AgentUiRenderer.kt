@@ -323,11 +323,10 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
         AltBox(node.alt, frame)
     } else {
         val open = env.onImageClick
-        val openLabel = stringResource(MR.string.chat_agent_ui_open_image)
         HomebaseImage(
             imageData = data,
             modifier = if (open == null) frame else frame.combinedClickable(
-                onClickLabel = openLabel,
+                onClickLabel = stringResource(MR.string.chat_agent_ui_open_image),
                 role = Role.Image,
                 // The image takes the press, so it also carries the card's long-press menu.
                 onLongClick = env.onLongClick,

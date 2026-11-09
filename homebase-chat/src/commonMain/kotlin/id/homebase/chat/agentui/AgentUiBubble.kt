@@ -114,7 +114,7 @@ fun AgentUiBubble(
     val treePayload = message.agentUiTreePayload()
     val aesKey = message.keyHeader.aesKey
     val imagePayloads = remember(message.fileId, message.payloads) { message.agentUiImagePayloads().associateBy { it.key } }
-    val images = remember(imagePayloads) {
+    val images = remember(message.fileId, imagePayloads) {
         imagePayloads.mapValues { (_, p) ->
             HomebaseImageData.from(
                 driveId = chatTargetDrive.alias,
@@ -134,27 +134,22 @@ fun AgentUiBubble(
     val loadKeys = arrayOf<Any?>(content.inlineTree, message.fileId, treePayload?.lastModified, treePayload?.iv?.bytes?.contentHashCode(), descriptor.rev, images.keys)
     val firstFrame = remember(*loadKeys) { firstFrameTree(content, descriptor.rev, message, loader) }
     val load: State<TreeLoad> = produceState(firstFrame, *loadKeys) {
-        content.inlineTree?.let { inline ->
-            if (inline is AgentUiTreeResult.Invalid) logFallback(message, descriptor.rev, "inline tree invalid: ${inline.reason}")
-            value = inline.toLoad(descriptor.rev) ?: TreeLoad.Failed
-            return@produceState
-        }
-        val results = loader.results(message) ?: run {
-            logFallback(message, descriptor.rev, "no inline tree and no ${ChatProtocol.PAYLOAD_KEY_AGENT_UI} payload")
+        fun fail(why: String) {
+            logFallback(message, descriptor.rev, why)
             value = TreeLoad.Failed
-            return@produceState
         }
-        launch {
-            if (loader.load(message) == null && value == TreeLoad.Loading) {
-                logFallback(message, descriptor.rev, "tree payload could not be fetched")
-                value = TreeLoad.Failed
+        fun show(result: AgentUiTreeResult, source: String) {
+            when (result) {
+                is AgentUiTreeResult.Valid -> value = TreeLoad.Ready(result.tree, descriptor.rev)
+                is AgentUiTreeResult.Invalid -> fail("$source tree invalid: ${result.reason}")
             }
         }
+        content.inlineTree?.let { show(it, "inline"); return@produceState }
+        val results = loader.results(message)
+            ?: return@produceState fail("no inline tree and no ${ChatProtocol.PAYLOAD_KEY_AGENT_UI} payload")
+        launch { if (loader.load(message) == null && value == TreeLoad.Loading) fail("tree payload could not be fetched") }
         // A failed fetch shows the fallback, but a later warm that succeeds still replaces it.
-        results.collect {
-            if (it is AgentUiTreeResult.Invalid) logFallback(message, descriptor.rev, "payload tree invalid: ${it.reason}")
-            value = it.toLoad(descriptor.rev) ?: TreeLoad.Failed
-        }
+        results.collect { show(it, "payload") }
     }
 
     val ready = load.value as? TreeLoad.Ready
