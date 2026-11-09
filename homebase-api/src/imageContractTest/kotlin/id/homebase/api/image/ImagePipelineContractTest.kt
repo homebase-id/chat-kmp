@@ -137,7 +137,7 @@ class ImagePipelineContractTest {
         assertTrue(abs(channel - 128) <= 12, "Expected mid-grey, got channel $channel")
     }
 
-    private fun stripes(width: Int, half: Int) = png(width, 16) { x, _ -> if ((x / half) % 2 == 0) BLACK else WHITE }
+    private fun stripes(width: Int, half: Int) = png(width, STRIPES_HEIGHT) { x, _ -> if ((x / half) % 2 == 0) BLACK else WHITE }
 
     // Skips the edges, where the filter's window runs off the image.
     private fun middleGreens(bytes: ByteArray): List<Int> {
@@ -154,24 +154,27 @@ class ImagePipelineContractTest {
     private suspend fun stripesAfter(source: ByteArray, sourceWidth: Int, target: Int, viaDecoder: Boolean): ByteArray {
         val outputs = buildList {
             // A full-size output first forces a full decode, so the pipeline's own scaler does the work.
-            if (!viaDecoder) add(ImageOutput(sourceWidth, 16, 100, Int.MAX_VALUE, ImageFormat.PNG))
-            add(ImageOutput(target, 4, 100, Int.MAX_VALUE, ImageFormat.PNG))
+            if (!viaDecoder) add(ImageOutput(sourceWidth, STRIPES_HEIGHT, 1, Int.MAX_VALUE))
+            add(ImageOutput(target, 2, 100, Int.MAX_VALUE, ImageFormat.PNG))
         }
         return renderImages(source) { outputs }.images.last().bytes
     }
 
-    @Test
-    fun onePixelStripesTurnGreyAtEveryCommonRatio() = runTest {
+    private suspend fun assertStripesTurnGrey(viaDecoder: Boolean) {
         val limits = listOf(4000 to 400 to 5.0, 4032 to 2048 to 5.0, 2048 to 1080 to 5.0, 1080 to 640 to 5.0, 4000 to 2667 to 5.0, 3000 to 2048 to 5.0, 2560 to 2048 to 30.0)
         for ((sizes, limit) in limits) {
             val (from, to) = sizes
-            val source = stripes(from, 1)
-            for (viaDecoder in listOf(false, true)) {
-                val spread = deviation(middleGreens(stripesAfter(source, from, to, viaDecoder)))
-                assertTrue(spread <= limit, "$from -> $to viaDecoder=$viaDecoder deviated by $spread")
-            }
+            val spread = deviation(middleGreens(stripesAfter(stripes(from, 1), from, to, viaDecoder)))
+            println("stripes $from -> $to viaDecoder=$viaDecoder deviation $spread")
+            assertTrue(spread <= limit, "$from -> $to deviated by $spread")
         }
     }
+
+    @Test
+    fun onePixelStripesTurnGreyWhenThePipelineScales() = runTest { assertStripesTurnGrey(viaDecoder = false) }
+
+    @Test
+    fun onePixelStripesTurnGreyWhenTheDecoderScales() = runTest { assertStripesTurnGrey(viaDecoder = true) }
 
     @Test
     fun coarseStripesKeepTheirContrast() = runTest {
@@ -276,5 +279,6 @@ class ImagePipelineContractTest {
         const val BLACK = 0xFF000000.toInt()
         const val WHITE = 0xFFFFFFFF.toInt()
         const val TINY_LIMIT = 768
+        const val STRIPES_HEIGHT = 8
     }
 }
