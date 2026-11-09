@@ -20,9 +20,7 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material3.ListItem
@@ -70,9 +68,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -162,16 +163,17 @@ import id.homebase.resources.profile_card_field_hide
 import id.homebase.resources.profile_card_field_move_down
 import id.homebase.resources.profile_card_field_move_up
 import id.homebase.resources.profile_card_field_show
+import id.homebase.resources.profile_card_field_front_unavailable
+import id.homebase.resources.profile_card_field_remove
 import id.homebase.resources.profile_card_field_to_back
 import id.homebase.resources.profile_card_field_to_front
+import id.homebase.resources.profile_card_field_show_on
 import id.homebase.resources.profile_card_content_front
 import id.homebase.resources.profile_card_content_front_desc
 import id.homebase.resources.profile_card_content_front_empty
 import id.homebase.resources.profile_card_content_back
 import id.homebase.resources.profile_card_content_back_desc
-import id.homebase.resources.collapse
-import id.homebase.resources.expand
-import id.homebase.resources.profile_card_content_unavailable_count
+import id.homebase.resources.profile_card_content_unavailable
 import id.homebase.resources.profile_card_content_unavailable_desc
 import id.homebase.resources.profile_card_content_unavailable_names_more
 import id.homebase.resources.profile_card_content_unavailable_only
@@ -233,7 +235,7 @@ internal fun CardContentEditor(
     edge: Dp = 16.dp,
 ) {
     var editingId by remember { mutableStateOf<Uuid?>(null) }
-    var unavailableOpen by rememberSaveable { mutableStateOf(false) }
+    var placingId by remember { mutableStateOf<Uuid?>(null) }
     var adding by remember { mutableStateOf<String?>(null) }
     var choosingMore by remember { mutableStateOf(false) }
     var choosingKind by remember { mutableStateOf(false) }
@@ -283,6 +285,10 @@ internal fun CardContentEditor(
             }
         }
     }
+    val removeFromCard: (CardContentItem) -> Unit = { item ->
+        item.audience.shownOn(card, false, null)?.let { onAudience(item.id, it) }
+        if (item.hidden) onFieldShown(item.id, true)
+    }
     val row: @Composable (CardContentItem, Int, Int, FieldDisplay?) -> Unit = { item, index, count, display ->
         key(item.id) { EditorRow(
             item = item,
@@ -312,6 +318,7 @@ internal fun CardContentEditor(
                     enabled = enabled,
                     tag = "field_front",
                     onOpen = { editingId = item.id },
+                    onRemove = { removeFromCard(item) }.takeUnless { item.everyone },
                     onMove = display.onToggle,
                     display = display,
                 )
@@ -414,6 +421,7 @@ internal fun CardContentEditor(
                             enabled = enabled,
                             tag = "field_back",
                             onOpen = { editingId = item.id },
+                            onRemove = { removeFromCard(item) }.takeUnless { item.everyone },
                             onMove = { onFieldShown(item.id, true) }.takeIf { item.renderable },
                         )
                     }
@@ -426,22 +434,20 @@ internal fun CardContentEditor(
         }
         if (unavailable.isNotEmpty()) {
             Spacer(Modifier.height(28.dp))
-            UnavailableHeader(count = unavailable.size, open = unavailableOpen, onToggle = { unavailableOpen = it })
-            if (unavailableOpen) {
-                Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                    unavailable.forEachIndexed { index, item ->
-                        key(item.id) {
-                            CardFieldRow(
-                                item = item,
-                                index = index,
-                                count = unavailable.size,
-                                enabled = enabled,
-                                tag = "field_unavailable",
-                                onOpen = { editingId = item.id },
-                                supporting = unavailableReason(item.audience, circles),
-                                muted = true,
-                            )
-                        }
+            SectionLabel(stringResource(MR.string.profile_card_content_unavailable), stringResource(MR.string.profile_card_content_unavailable_desc))
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                unavailable.forEachIndexed { index, item ->
+                    key(item.id) {
+                        CardFieldRow(
+                            item = item,
+                            index = index,
+                            count = unavailable.size,
+                            enabled = enabled,
+                            tag = "field_unavailable",
+                            onOpen = { placingId = item.id },
+                            supporting = unavailableReason(item.audience, circles),
+                            muted = true,
+                        )
                     }
                 }
             }
@@ -498,7 +504,6 @@ internal fun CardContentEditor(
             onEdit = { updates, audience ->
                 pendingId = item.id
                 onEdit(item.id, updates, audience)
-                if (circleCard && !item.shown && !item.hidden && item.renderable && card.shows(audience)) onFieldShown(item.id, false)
             },
             onDelete = { id ->
                 pendingId = item.id
@@ -506,6 +511,17 @@ internal fun CardContentEditor(
             },
             onCirclesChanged = onCirclesChanged,
             onDismiss = { editingId = null },
+        )
+    }
+    items.firstOrNull { it.id == placingId }?.let { item ->
+        PlaceFieldDialog(
+            item = item,
+            onPlace = { front ->
+                placingId = null
+                onFieldShown(item.id, front)
+                item.audience.shownOn(card, true, null)?.let { onAudience(item.id, it) }
+            },
+            onDismiss = { placingId = null },
         )
     }
     if (choosingKind) {
@@ -826,32 +842,28 @@ private fun EditorRow(
 }
 
 @Composable
-private fun UnavailableHeader(count: Int, open: Boolean, onToggle: (Boolean) -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    ListItem(
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier
-            .testTag("unavailable_toggle")
-            .toggleable(value = open, role = Role.Button, onValueChange = onToggle),
-        headlineContent = {
-            Text(
-                text = stringResource(MR.string.profile_card_content_unavailable_count, count),
-                style = MaterialTheme.typography.labelLarge,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.semantics { heading() },
-            )
+private fun PlaceFieldDialog(item: CardContentItem, onPlace: (front: Boolean) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.profile_card_field_show_on, stringResource(typeLabel(item.type)))) },
+        text = if (item.renderable) null else {
+            { Text(stringResource(MR.string.profile_card_field_front_unavailable)) }
         },
-        supportingContent = if (open) {
-            { Text(text = stringResource(MR.string.profile_card_content_unavailable_desc), style = MaterialTheme.typography.bodySmall) }
-        } else {
-            null
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { onPlace(false) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.testTag("place_back")) {
+                    Text(stringResource(MR.string.profile_card_content_back))
+                }
+                TextButton(
+                    onClick = { onPlace(true) },
+                    enabled = item.renderable,
+                    shapes = ButtonDefaults.shapes(),
+                    modifier = Modifier.testTag("place_front"),
+                ) { Text(stringResource(MR.string.profile_card_content_front)) }
+            }
         },
-        trailingContent = {
-            Icon(
-                imageVector = if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                contentDescription = stringResource(if (open) MR.string.collapse else MR.string.expand),
-                tint = colors.onSurfaceVariant,
-            )
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
         },
     )
 }
@@ -871,7 +883,7 @@ private fun unavailableReason(audience: ProfileAudience, circles: List<CardCircl
 
 private const val UNAVAILABLE_NAMES = 2
 
-// Front rows lead with a remove button and Back rows with an add button; the row body edits the field.
+// Front and Back rows lead with a remove button and trail with a move to the other side; the row body edits the field.
 @Composable
 private fun CardFieldRow(
     item: CardContentItem,
@@ -880,6 +892,7 @@ private fun CardFieldRow(
     enabled: Boolean,
     tag: String,
     onOpen: (() -> Unit)? = null,
+    onRemove: (() -> Unit)? = null,
     onMove: (() -> Unit)? = null,
     supporting: String? = null,
     display: FieldDisplay? = null,
@@ -890,6 +903,7 @@ private fun CardFieldRow(
     val moveUpLabel = stringResource(MR.string.profile_card_field_move_up, label)
     val moveDownLabel = stringResource(MR.string.profile_card_field_move_down, label)
     val edit = stringResource(MR.string.profile_card_content_edit_this, label)
+    val remove = stringResource(MR.string.profile_card_field_remove, label)
     val toBack = stringResource(MR.string.profile_card_field_to_back, label)
     val toFront = stringResource(MR.string.profile_card_field_to_front, label)
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
@@ -929,23 +943,34 @@ private fun CardFieldRow(
                 )
             },
             supportingContent = supporting?.let { { Text(text = it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant) } },
-            leadingContent = onMove?.let { move ->
+            leadingContent = onRemove?.let { onClick ->
                 {
-                    val onFront = display?.onCard == true
-                    IconButton(
-                        onClick = move,
-                        enabled = enabled,
-                        modifier = Modifier.testTag(if (onFront) "field_to_back" else "field_to_front"),
-                    ) {
-                        Icon(
-                            imageVector = if (onFront) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline,
-                            contentDescription = if (onFront) toBack else toFront,
-                            tint = if (onFront) colors.onSurfaceVariant else colors.primary,
-                        )
+                    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
+                        Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
                     }
                 }
             },
-            trailingContent = display?.handle?.let { { ReorderHandle(display, enabled, label) } },
+            trailingContent = if (onMove == null && display?.handle == null) null else {
+                {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (onMove != null) {
+                            val onFront = display?.onCard == true
+                            IconButton(
+                                onClick = onMove,
+                                enabled = enabled,
+                                modifier = Modifier.size(48.dp).testTag(if (onFront) "field_to_back" else "field_to_front"),
+                            ) {
+                                Icon(
+                                    imageVector = if (onFront) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                                    contentDescription = if (onFront) toBack else toFront,
+                                    tint = colors.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (display != null) ReorderHandle(display, enabled, label)
+                    }
+                }
+            },
         )
     }
 }
