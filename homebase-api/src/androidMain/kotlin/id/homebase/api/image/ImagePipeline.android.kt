@@ -53,6 +53,9 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
 
 private const val TAG = "ImagePipeline"
 
+// About 96 MB of pixels. A 12 MP photo stays a full, clean decode; a 48 MP one doesn't.
+private const val FULL_DECODE_PIXEL_LIMIT = 24_000_000L
+
 private class HeaderRead : RuntimeException(null, null, false, false)
 
 /**
@@ -91,14 +94,25 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
     override fun decode(minLongEdge: Int): PipelineBitmap {
         // Only a JPEG decoder averages when it samples (DCT scaling). Every other format here picks
         // every Nth pixel, which is the aliasing this pipeline exists to remove.
-        val sampleSize = if (ImageFormatDetector.detectFormat(bytes) == "image/jpeg") {
-            sampleSizeFor(max(displayedSize.pixelWidth, displayedSize.pixelHeight), minLongEdge)
+        val isJpeg = ImageFormatDetector.detectFormat(bytes) == "image/jpeg"
+        val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
+        val sampleSize = if (isJpeg) sampleSizeFor(longEdge, minLongEdge) else 1
+        // A memory guard, not a quality step: 2x leaves the halving to average what sampling skipped.
+        val guardScale = if (!isJpeg && displayedSize.pixelWidth.toLong() * displayedSize.pixelHeight > FULL_DECODE_PIXEL_LIMIT && longEdge > minLongEdge * 2) {
+            minLongEdge * 2.0 / longEdge
         } else {
-            1
+            null
         }
         val bitmap = try {
             ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, _, _ ->
-                decoder.setTargetSampleSize(sampleSize)
+                if (guardScale != null) {
+                    decoder.setTargetSize(
+                        (displayedSize.pixelWidth * guardScale).toInt().coerceAtLeast(1),
+                        (displayedSize.pixelHeight * guardScale).toInt().coerceAtLeast(1),
+                    )
+                } else {
+                    decoder.setTargetSampleSize(sampleSize)
+                }
                 // A HARDWARE bitmap has no readable pixels, so compress would fail on it.
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }
