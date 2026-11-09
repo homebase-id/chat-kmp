@@ -883,7 +883,7 @@ class ConversationStream(
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        val diskWithSource = files
+        val (disk, sources) = files
             // Locally-deleted conversations stay on disk (soft-deleted) until the
             // outbox processes the server-side delete; without this filter the
             // mapper would resurrect a "deleted conversation" placeholder for them
@@ -914,18 +914,18 @@ class ConversationStream(
                 }
                 ui to file
             }
+            .unzip()
 
         // Reconcile against the list as it is at write time, not before the query: a row
         // inserted or advanced while the query ran (a notification's Mark as read) must survive.
         lateinit var reload: ReloadedRows
         _conversations.update { current ->
-            reload = reloadedRows(current.items, diskWithSource.map { it.first })
+            reload = reloadedRows(current.items, disk)
             initialLoad.loaded(reload.items, current.dataReady)
         }
         _conversations.update(initialLoad::settle)
         reload.remoteLastReadAdvancedIds.forEach(::markUnreadDirty)
         val basic = reload.items
-        val basicWithSource = basic.zip(diskWithSource.map { it.second })
 
         Logger.i(tag = "ConvListPerf") {
             "loadBasicConversations end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
@@ -938,7 +938,7 @@ class ConversationStream(
         // the basic emit, do NOT await — recoverConversation writes a local
         // placeholder file and re-syncs the row, which arrives back via the
         // normal drive-sync → reload path.
-        triggerRecoveryForInvalidRows(basicWithSource)
+        triggerRecoveryForInvalidRows(basic.zip(sources))
     }
 
     private fun triggerRecoveryForInvalidRows(
