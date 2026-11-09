@@ -45,10 +45,8 @@ private fun validateMetadata(metadata: UploadFileMetadata) {
         validateEmbeddedThumb(thumb, where = "metadata.appData.previewThumbnail")
     }
     metadata.appData.content?.let { content ->
-        // appData.content is the header-level descriptor. Server caps it
-        // at MaxHeaderContentBytes — typed-message-kind authors are
-        // already warned about this in ADDING_TYPED_MESSAGE_KIND.md, but
-        // until now nothing actually enforced it on the client.
+        // Already through encryptContent for an encrypted file, so this measures the base64 ciphertext the
+        // server stores. odin-core's own cap is 10 KiB (AppFileMetaData.MaxAppDataContentLength); 7000 is ours.
         val size = content.encodeToByteArray().size
         if (size > HomebaseProtocol.MaxHeaderContentBytes) {
             throw validationFailure(
