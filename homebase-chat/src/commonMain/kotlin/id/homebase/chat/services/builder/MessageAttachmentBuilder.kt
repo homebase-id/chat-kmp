@@ -61,21 +61,24 @@ object MessageAttachmentBuilder {
                         // real format so the download is named "StickerFile.<ext>"; ordinary
                         // photos keep the legacy "" so nothing changes for them.
                         //
-                        // Quality is recorded only for an HD or Original ordinary photo: STANDARD
-                        // keeps the legacy "" (absent reads as standard), and a sticker's bytes
-                        // are bounded at 512px regardless of the setting, so a badge would lie.
-                        // A kept source is only ever the final image's size, so this holds either way.
-                        val finalSize = thumbs.finalImage?.let { ImageSize(it.width, it.height) } ?: thumbs.displayedSize
+                        // Quality is recorded only for an HD or Original ordinary photo that really
+                        // is one: absent reads as standard, and a sticker's bytes are bounded at 512px
+                        // regardless of the setting, so a badge would lie. The size is the payload's.
+                        val sentFinalImage = thumbs.finalImage?.takeIf { primary.filePath != attachment.filePath }
+                        val finalSize = sentFinalImage?.let { ImageSize(it.width, it.height) } ?: thumbs.displayedSize
+                        val recordedQuality = mediaQuality.takeIf {
+                            it == MediaQuality.ORIGINAL || (it == MediaQuality.HD && thumbs.finalImage != null)
+                        }
                         val descriptorContent =
                             if (attachment.forceSticker) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = true,
                                     format = ImageFormatDetector.detectFormat(thumbs.sourceBytes),
                                 )
-                            } else if (mediaQuality != MediaQuality.STANDARD || finalSize != null) {
+                            } else if (recordedQuality != null || finalSize != null) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = false,
-                                    quality = mediaQuality.takeIf { it != MediaQuality.STANDARD },
+                                    quality = recordedQuality,
                                     pixelWidth = finalSize?.pixelWidth,
                                     pixelHeight = finalSize?.pixelHeight,
                                 )

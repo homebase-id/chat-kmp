@@ -23,9 +23,6 @@ private fun isSvg(bytes: ByteArray): Boolean {
     return header.contains("<svg") || header.contains("<?xml")
 }
 
-private fun isGif(bytes: ByteArray) =
-    bytes.size >= 3 && bytes[0] == 0x47.toByte() /* G */ && bytes[1] == 0x49.toByte() /* I */ && bytes[2] == 0x46.toByte() /* F */
-
 /**
  * The tiny preview, thumbnails and, when [allowFinalImage] says so, the final image for [setting].
  * A GIF gets only a tiny, because its animated file is the payload. An SVG can't produce a final image.
@@ -41,7 +38,7 @@ suspend fun createMediaImages(
 ): MediaImages = withContext(Dispatchers.Default) {
     if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
 
-    val gif = isGif(imageBytes)
+    val gif = ImageFormatDetector.detectFormat(imageBytes) == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(imageBytes)
     val media = renderPlanned(imageBytes, payloadKey, displayedSize = null) { size ->
         val plan = planMediaImages(size, setting)

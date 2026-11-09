@@ -1,7 +1,9 @@
 package id.homebase.chat.services.builder
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
+import kotlinx.coroutines.CancellationException
 
 /**
  * Swaps an image attachment's file for the final image a Standard or HD send makes. Returns
@@ -23,6 +25,13 @@ internal suspend fun finalImagePayload(
     val keepable = ImageFormatDetector.detectFormat(thumbs.sourceBytes) in ImageFormatDetector.TYPES_EVERY_CLIENT_CAN_DECODE
     if (sourceFits && !savesEnough && keepable) return attachment
 
-    val path = fileOperationsProvider.writeBytesToTempFile(image.bytes, "img_final_", ".webp")
+    val path = try {
+        fileOperationsProvider.writeBytesToTempFile(image.bytes, "img_final_", ".webp")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = "FinalImagePayload", throwable = e) { "Couldn't save the final image; sending the file as it is" }
+        return attachment
+    }
     return attachment.copy(filePath = path, contentType = "image/webp")
 }

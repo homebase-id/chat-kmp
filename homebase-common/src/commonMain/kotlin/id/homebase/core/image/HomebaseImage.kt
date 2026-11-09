@@ -173,7 +173,7 @@ fun HomebaseImage(
         model = model,
         imageLoader = imageLoader,
         contentDescription = contentDescription,
-        modifier = customModified.onSizeChanged { displaySize = ImageSize(it.width, it.height) },
+        modifier = if (stepUpToPayload) customModified.onSizeChanged { displaySize = ImageSize(it.width, it.height) } else customModified,
         contentScale = contentScale,
         colorFilter = colorFilter
     ) {
@@ -181,7 +181,7 @@ fun HomebaseImage(
         if (onLoaded != null && state is AsyncImagePainter.State.Success) LaunchedEffect(Unit) { onLoaded() }
 
         val measured = displaySize
-        (state as? AsyncImagePainter.State.Success)?.let { lastSharpPainter = it.painter }
+        if (stepUpToPayload) (state as? AsyncImagePainter.State.Success)?.let { lastSharpPainter = it.painter }
         val canStepUp = stepUpToPayload && state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
             !imageData.loadFullPayload && !imageData.isPending &&
             measured != null && shouldStepUpToPayload(measured, imageData)
@@ -189,13 +189,19 @@ fun HomebaseImage(
             // The wait is what keeps a fling from downloading every payload it passes:
             // scrolling away cancels this before it fires.
             LaunchedEffect(Unit) {
-                val cached = koin.getOrNull<HomebaseImageLoader>()?.isFullPayloadCached(imageData.copy(loadFullPayload = true)) == true
-                if (!cached) delay(STEP_UP_SETTLE_MILLIS)
+                val full = imageData.copy(loadFullPayload = true)
+                val loader = koin.getOrNull<HomebaseImageLoader>()
+                if (loader?.hasStepUpFailed(full) == true) {
+                    stepUpFailed = true
+                    return@LaunchedEffect
+                }
+                if (loader?.isFullPayloadCached(full) != true) delay(STEP_UP_SETTLE_MILLIS)
                 steppedUp = true
             }
         }
         if (steppedUp && state is AsyncImagePainter.State.Error) {
             LaunchedEffect(Unit) {
+                koin.getOrNull<HomebaseImageLoader>()?.markStepUpFailed(imageData.copy(loadFullPayload = true))
                 stepUpFailed = true
                 steppedUp = false
             }

@@ -145,6 +145,20 @@ class FinalImagePayloadTest {
         assertSame(attachment, finalImagePayload(attachment, thumbs, ops))
     }
 
+    @Test
+    fun aFullDiskSendsTheFileInsteadOfFailingTheSend() = runTest {
+        val attachment = input("image/jpeg")
+        val ops = object : TempWritingFileOps() {
+            override suspend fun readFileBytes(path: String): ByteArray = noise(3000, 2000)
+
+            override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String =
+                throw IllegalStateException("No space left on device")
+        }
+        val thumbs = MessageThumbnailGenerator.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
+
+        assertSame(attachment, finalImagePayload(attachment, thumbs, ops))
+    }
+
     private companion object {
         val ImageTestGif = byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, 0, 0, 0, 0x2C, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 1, 0, 0x3B)
         // Solid-colour lossless WebPs, so a 1700px canvas stays tiny.

@@ -11,6 +11,11 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +34,8 @@ class PhotoGalleryStoreTest {
     ) : PhotoGalleryBackend {
         val askedServer = mutableListOf<String?>()
         var serverFailure: Exception? = null
+        val serverReached = CompletableDeferred<Unit>()
+        var holdServer = false
 
         override suspend fun coverage() = coverage
 
@@ -46,6 +53,10 @@ class PhotoGalleryStoreTest {
 
         override suspend fun serverPage(cursor: String?, limit: Int): ServerPhotoPage {
             serverFailure?.let { throw it }
+            if (holdServer) {
+                serverReached.complete(Unit)
+                awaitCancellation()
+            }
             askedServer += cursor
             return server.getValue(cursor)
         }
@@ -60,6 +71,25 @@ class PhotoGalleryStoreTest {
     private fun store(backend: Backend, oldestFirst: PhotoGalleryPageSource = noOldestFirst) = PhotoGalleryStore(backend, oldestFirst)
 
     private fun List<PhotoGalleryItem>.dates() = map { it.capturedAtMs }
+
+    @Test
+    fun stoppingCancelsAFetchSoItCantWriteAfterTheWipe() = runTest {
+        val backend = Backend(server = mapOf(null to ServerPhotoPage(listOf(photo(300)), hasMore = true, cursor = "c1")))
+        backend.holdServer = true
+        val store = store(backend)
+        val fetch = launch(Dispatchers.Default) { runCatching { store.page(null, newestFirst = true) } }
+        withContext(Dispatchers.Default) { backend.serverReached.await() }
+
+        store.stop()
+        withContext(Dispatchers.Default) { fetch.join() }
+
+        assertEquals(GalleryCoverage(), backend.coverage)
+        assertTrue(backend.local.isEmpty())
+
+        backend.holdServer = false
+        store.page(null, newestFirst = true)
+        assertEquals("c1", backend.coverage.serverCursor, "The next account's fetches still work")
+    }
 
     @Test
     fun theFirstOpenFetchesFromTheServerAndKeepsIt() = runTest {

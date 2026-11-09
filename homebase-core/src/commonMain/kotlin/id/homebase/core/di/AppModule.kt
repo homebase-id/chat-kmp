@@ -664,6 +664,7 @@ val appModule = module {
             contactInfo = get(),
             beforeLogout = { hasSession ->
                 get<PhotoGallerySync>().stop()
+                get<PhotoGalleryStore>().stop()
                 get<PhotoBackupEntry>().onBeforeLogout(hasSession)
             },
             clearPlatformCaches = {

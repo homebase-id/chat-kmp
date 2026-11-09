@@ -85,17 +85,23 @@ object ImageFormatDetector {
             if (type == "acTL") return true
             if (type == "IDAT") return false
             val length = (0..3).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }
-            if (length < 0) return false
+            if (length < 0 || length > b.size - at - 12) return false
             at += 12 + length
         }
         return false
     }
 
-    // Animated HEIC and AVIF are ISO image sequences, marked by these major brands.
-    private fun isImageSequence(b: ByteArray): Boolean =
-        b.size >= 12 && b.decodeToString(4, 8) == "ftyp" && b.decodeToString(8, 12) in IMAGE_SEQUENCE_BRANDS
+    // Animated HEIC and AVIF are ISO image sequences, declared as the major brand or a compatible one.
+    private fun isImageSequence(b: ByteArray): Boolean {
+        if (b.size < 12 || b.decodeToString(4, 8) != "ftyp") return false
+        if (b.decodeToString(8, 12) in IMAGE_SEQUENCE_BRANDS) return true
+        val boxSize = (0..3).fold(0) { sum, i -> (sum shl 8) or (b[i].toInt() and 0xFF) }
+        val end = if (boxSize in 16..b.size) boxSize else return false
+        return (16 until end - 3 step 4).any { b.decodeToString(it, it + 4) in COMPATIBLE_SEQUENCE_BRANDS }
+    }
 
     private val IMAGE_SEQUENCE_BRANDS = setOf("avis", "msf1", "hevc", "hevx")
+    private val COMPATIBLE_SEQUENCE_BRANDS = setOf("avis", "msf1")
 
     fun isAnimatedGif(b: ByteArray): Boolean {
         if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return false

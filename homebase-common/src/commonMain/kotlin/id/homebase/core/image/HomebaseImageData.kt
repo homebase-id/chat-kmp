@@ -178,7 +178,7 @@ private const val STEP_UP_LIMIT_BYTES = 12L * 1024 * 1024
 
 /**
  * Whether the display needs more than the largest thumbnail and the payload is safe to use instead.
- * Thumbnail sizes plus the payload's byte size are enough to decide, with no new descriptor fields.
+ * A descriptor without [HomebaseImageData.finalImageSize] can't rule out a payload with no extra pixels.
  */
 fun shouldStepUpToPayload(requested: ImageSize, data: HomebaseImageData): Boolean {
     if (data.thumbSizeLimit != null) return false

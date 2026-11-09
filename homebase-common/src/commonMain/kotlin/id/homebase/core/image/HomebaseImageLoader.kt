@@ -210,6 +210,10 @@ class HomebaseImageLoader(
     suspend fun isFullPayloadCached(data: HomebaseImageData): Boolean =
         fullPayloadCache.contains(fullPayloadCacheKey(data))
 
+    suspend fun markStepUpFailed(data: HomebaseImageData) = fullPayloadCache.markStepUpFailed(fullPayloadCacheKey(data))
+
+    suspend fun hasStepUpFailed(data: HomebaseImageData): Boolean = fullPayloadCache.hasStepUpFailed(fullPayloadCacheKey(data))
+
     /**
      * Drop all cached decrypted full-payload bytes. Wire to the same triggers as
      * the Coil memory cache (manual "Clear cache", logout/account switch).

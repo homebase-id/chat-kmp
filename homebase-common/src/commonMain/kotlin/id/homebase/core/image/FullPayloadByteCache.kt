@@ -52,6 +52,12 @@ internal class FullPayloadByteCache(
 
     suspend fun contains(key: String): Boolean = mutex.withLock { key in entries }
 
+    private val failedStepUps = HashSet<String>()
+
+    suspend fun markStepUpFailed(key: String) = mutex.withLock { failedStepUps += key }
+
+    suspend fun hasStepUpFailed(key: String): Boolean = mutex.withLock { key in failedStepUps }
+
     /**
      * Returns the cached image for [key], or loads it via [loader] exactly once
      * (coalescing concurrent callers) and caches a non-null result.

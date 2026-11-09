@@ -80,6 +80,18 @@ class MessageAttachmentBuilderQualityTest {
             descriptorContent = descriptorContent,
         )
 
+    @Test
+    fun anUndecodableFileSentOnHdIsNotBadgedHd() = runTest {
+        val path = "/tmp/broken.jpg"
+        val bundle = MessageAttachmentBuilder.buildSingle(
+            attachment = AttachmentInput(filePath = path, contentType = "image/jpeg"),
+            fileOperationsProvider = fakeFsServing(path, ByteArray(64)),
+            payloadKey = "chat_web0",
+            mediaQuality = MediaQuality.HD,
+        )
+        assertNull(received(bundle.payloads.single().descriptorContent).badgedQuality())
+    }
+
     private suspend fun sendPhoto(
         quality: MediaQuality,
         forceSticker: Boolean = false,

@@ -11,6 +11,8 @@ import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap {
     override val width get() = bitmap.width
@@ -34,6 +36,13 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
         val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, bitmap.hasAlpha(), colorSpace)
         out.copyPixelsFromBuffer(ByteBuffer.wrap(pixels))
         return AndroidPipelineBitmap(out)
+    }
+
+    // An Error, so the send's fail-soft catch would miss it and the app would crash.
+    override fun resampledTo(width: Int, height: Int): PipelineBitmap = try {
+        super.resampledTo(width, height)
+    } catch (e: OutOfMemoryError) {
+        throw IllegalStateException("Not enough memory to scale the image", e)
     }
 
     // compress reports failure by writing nothing, and an empty result would pass any byte limit.
@@ -97,13 +106,17 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
         val isJpeg = ImageFormatDetector.detectFormat(bytes) == "image/jpeg"
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
         val sampleSize = if (isJpeg) sampleSizeFor(longEdge, minLongEdge) else 1
-        // A memory guard, not a quality step: 2x leaves the halving to average what sampling skipped.
-        val guardScale = if (!isJpeg && displayedSize.pixelWidth.toLong() * displayedSize.pixelHeight > FULL_DECODE_PIXEL_LIMIT && longEdge > minLongEdge * 2) {
-            minLongEdge * 2.0 / longEdge
-        } else {
-            null
-        }
+        val guardScale = memoryGuardScale(displayedSize, sampleSize, minLongEdge)
         val bitmap = try {
+            decodeGuarded(guardScale, sampleSize)
+        } catch (e: OutOfMemoryError) {
+            throw IllegalStateException("Not enough memory to decode the image", e)
+        }
+        return AndroidPipelineBitmap(bitmap)
+    }
+
+    private fun decodeGuarded(guardScale: Double?, sampleSize: Int): Bitmap =
+        try {
             ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, _, _ ->
                 if (guardScale != null) {
                     decoder.setTargetSize(
@@ -120,10 +133,20 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
             Logger.w(tag = TAG, throwable = e) { "ImageDecoder refused the image; trying BitmapFactory" }
             ImageUtils.decodeBitmap(bytes, sampleSize)
         }
-        return AndroidPipelineBitmap(bitmap)
-    }
 
     override fun close() = Unit
+}
+
+/**
+ * How far to shrink a decode that would otherwise pass [FULL_DECODE_PIXEL_LIMIT], or null to leave
+ * it alone. A memory guard, not a quality step: it never goes below what the largest output needs.
+ */
+private fun memoryGuardScale(size: ImageSize, sampleSize: Int, minLongEdge: Int): Double? {
+    val pixels = size.pixelWidth.toDouble() * size.pixelHeight / (sampleSize * sampleSize)
+    val longEdge = max(size.pixelWidth, size.pixelHeight)
+    if (pixels <= FULL_DECODE_PIXEL_LIMIT || longEdge <= minLongEdge) return null
+    val smallest = minLongEdge.toDouble() / longEdge
+    return max(smallest, min(sqrt(FULL_DECODE_PIXEL_LIMIT / pixels) / sampleSize, smallest * 2))
 }
 
 /** The biggest power of two that still leaves at least [minLongEdge]; the pipeline scales the rest. */

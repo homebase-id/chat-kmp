@@ -17,9 +17,14 @@ import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.photobase.PhotobaseProtocol
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -66,7 +71,16 @@ class PhotoGalleryStore internal constructor(
     private val oldestFirstSource: PhotoGalleryPageSource,
 ) : PhotoGalleryPageSource {
     private val fetching = Mutex()
+    private var fetchInFlight: Job? = null
 
+    // Only changes while holding [fetching], so a fetch that waited sees it once it gets the lock.
+    private var generation = 0
+
+    /** Before the local database is wiped: returns once no fetch can write into the next account's. */
+    suspend fun stop() {
+        fetchInFlight?.cancel()
+        fetching.withLock { generation++ }
+    }
 
     override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage =
         if (newestFirst) withContext(Dispatchers.Default) { newestFirstPage(cursor) } else oldestFirstSource.page(cursor, newestFirst = false)
@@ -95,10 +109,24 @@ class PhotoGalleryStore internal constructor(
      * The lock is because the grid and the prefetcher both page: whoever waited re-reads coverage
      * and uses what the other fetched, rather than fetching it again and saving an older position.
      */
-    private suspend fun fetchOlder(seen: GalleryCoverage, limit: Int): GalleryCoverage = fetching.withLock {
+    private suspend fun fetchOlder(seen: GalleryCoverage, limit: Int): GalleryCoverage {
+        val startedIn = generation
+        return fetching.withLock {
+            if (generation != startedIn) throw CancellationException("The gallery was stopped")
+            fetchInFlight = currentCoroutineContext()[Job]
+            try {
+                fetchOlderLocked(seen, limit)
+            } finally {
+                fetchInFlight = null
+            }
+        }
+    }
+
+    private suspend fun fetchOlderLocked(seen: GalleryCoverage, limit: Int): GalleryCoverage {
         val coverage = backend.coverage()
-        if (coverage != seen) return@withLock coverage
+        if (coverage != seen) return coverage
         val page = backend.serverPage(coverage.serverCursor, limit)
+        currentCoroutineContext().ensureActive()
         backend.save(page.files)
         // The floor stops just above the oldest date on the page: the next page can hold more photos
         // from that same moment, and a local cursor that had passed them would never see them.
@@ -109,8 +137,9 @@ class PhotoGalleryStore internal constructor(
             // A cursor that doesn't advance would ask for the same page forever.
             reachedTheEnd = !page.hasMore || page.cursor == null || page.cursor == coverage.serverCursor,
         )
+        currentCoroutineContext().ensureActive()
         backend.saveCoverage(updated)
-        updated
+        return updated
     }
 }
 
@@ -186,6 +215,7 @@ class PhotoGallerySync(
 ) {
     private val mutex = Mutex()
     private var running: Job? = null
+    private var roundScope: CoroutineScope? = null
 
     // A second caller joins the round in flight: cancelling a join leaves the round running, so a
     // new DriveSync here would crawl from the same saved cursor alongside it.
@@ -193,12 +223,14 @@ class PhotoGallerySync(
         val job = mutex.withLock {
             running?.takeIf { it.isActive } ?: withContext(Dispatchers.Default) {
                 seedPhotoSyncCursor(db, photosDriveId, UnixTimeUtc.now())
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { roundScope = it }
                 DriveSync(
                     identityId = credentials.requireActiveCredentials().getIdentityId(),
                     driveId = photosDriveId,
                     driveQueryProvider = queryProvider,
                     databaseManager = db,
                     eventBus = eventBus,
+                    scope = scope,
                 ).sync()
             }.also { running = it }
         }
@@ -207,7 +239,9 @@ class PhotoGallerySync(
 
     /** Before the local database is wiped: a round still running would write into the next account's. */
     suspend fun stop() = mutex.withLock {
-        running?.cancelAndJoin()
+        // The scope and not just the round: its database writes are siblings of the round's job.
+        roundScope?.coroutineContext?.get(Job)?.cancelAndJoin()
+        roundScope = null
         running = null
     }
 }
