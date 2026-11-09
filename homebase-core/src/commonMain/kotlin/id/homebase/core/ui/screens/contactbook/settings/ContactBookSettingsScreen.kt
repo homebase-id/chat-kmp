@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
-import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_settings_open
 import id.homebase.resources.contactbook_settings_section
@@ -59,40 +59,28 @@ fun ContactBookSettingsUi(
     onBackClick: () -> Unit,
     showOpenContacts: Boolean = true,
 ) {
-    Scaffold(
-        topBar = {
-            SettingsTopBar(
-                title = stringResource(MR.string.contactbook_settings_section),
-                onBack = onBackClick,
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            if (showOpenContacts) {
-                SettingsRow(
-                    icon = Icons.Outlined.People,
-                    title = stringResource(MR.string.contactbook_settings_open),
-                    action = SettingsRowAction.Navigate {
-                        onAction(ContactBookSettingsUiAction.OpenContactsClicked)
-                    },
-                )
-            }
+    SettingsDetailScaffold(
+        title = stringResource(MR.string.contactbook_settings_section),
+        onBack = onBackClick,
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+        if (showOpenContacts) {
             SettingsRow(
-                icon = Icons.Outlined.Visibility,
-                title = stringResource(MR.string.contactbook_settings_show_icon),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.iconVisible,
-                    onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
-                ),
+                icon = Icons.Outlined.People,
+                title = stringResource(MR.string.contactbook_settings_open),
+                action = SettingsRowAction.Navigate {
+                    onAction(ContactBookSettingsUiAction.OpenContactsClicked)
+                },
             )
-            Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
         }
+        SettingsRow(
+            icon = Icons.Outlined.Visibility,
+            title = stringResource(MR.string.contactbook_settings_show_icon),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.iconVisible,
+                onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
+            ),
+        )
+        Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }
 }

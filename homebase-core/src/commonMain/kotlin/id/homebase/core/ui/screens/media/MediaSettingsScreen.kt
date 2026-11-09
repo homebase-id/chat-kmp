@@ -29,7 +29,7 @@ import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
-import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.resources.MR
 import id.homebase.resources.settings_media
 import id.homebase.resources.settings_media_autosave
@@ -65,95 +65,81 @@ fun MediaSettingsUi(
     onAction: (MediaSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
 ) {
-    val scrollState = rememberScrollState()
-
-    Scaffold(
-        topBar = {
-            SettingsTopBar(
-                title = stringResource(MR.string.settings_media),
-                onBack = onBackClick,
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(scrollState),
-        ) {
-            SettingsSectionHeader(
-                title = stringResource(MR.string.settings_media_quality_header),
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-            )
-            Column(modifier = Modifier.selectableGroup()) {
-                MediaQuality.entries.forEach { quality ->
-                    SettingsOptionRow(
-                        modifier = Modifier.testTag(quality.code),
-                        label = stringResource(quality.label),
-                        supportingText = stringResource(quality.description),
-                        selected = quality == uiState.mediaQuality,
-                        onClick = { onAction(MediaSettingsUiAction.SetMediaQuality(quality)) },
-                    )
-                }
-            }
-            Text(
-                text = stringResource(MR.string.settings_media_quality_footer),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-
-            SettingsSectionHeader(
-                title = stringResource(MR.string.settings_media_autosave_header),
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-            )
-            SettingsRow(
-                modifier = Modifier.testTag("autoSaveToggle"),
-                icon = Icons.Outlined.SaveAlt,
-                title = stringResource(MR.string.settings_media_autosave),
-                supportingText = stringResource(MR.string.settings_media_autosave_description),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.autoSaveIncomingMedia,
-                    onCheckedChange = {
-                        onAction(MediaSettingsUiAction.SetAutoSaveIncomingMedia(it))
-                    },
-                ),
-            )
-            AnimatedVisibility(visible = uiState.autoSaveIncomingMedia) {
-                SettingsRow(
-                    modifier = Modifier.testTag("autoSaveUnmeteredToggle"),
-                    icon = Icons.Outlined.Wifi,
-                    title = stringResource(MR.string.settings_media_autosave_unmetered),
-                    supportingText =
-                        stringResource(MR.string.settings_media_autosave_unmetered_description),
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.autoSaveOnUnmeteredOnly,
-                        onCheckedChange = {
-                            onAction(MediaSettingsUiAction.SetAutoSaveOnUnmeteredOnly(it))
-                        },
-                    ),
+    SettingsDetailScaffold(
+        title = stringResource(MR.string.settings_media),
+        onBack = onBackClick,
+    ) {
+        SettingsSectionHeader(
+            title = stringResource(MR.string.settings_media_quality_header),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+        )
+        Column(modifier = Modifier.selectableGroup()) {
+            MediaQuality.entries.forEach { quality ->
+                SettingsOptionRow(
+                    modifier = Modifier.testTag(quality.code),
+                    label = stringResource(quality.label),
+                    supportingText = stringResource(quality.description),
+                    selected = quality == uiState.mediaQuality,
+                    onClick = { onAction(MediaSettingsUiAction.SetMediaQuality(quality)) },
                 )
             }
+        }
+        Text(
+            text = stringResource(MR.string.settings_media_quality_footer),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
 
-            SettingsSectionHeader(
-                title = stringResource(MR.string.settings_media_camera_header),
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-            )
+        SettingsSectionHeader(
+            title = stringResource(MR.string.settings_media_autosave_header),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+        )
+        SettingsRow(
+            modifier = Modifier.testTag("autoSaveToggle"),
+            icon = Icons.Outlined.SaveAlt,
+            title = stringResource(MR.string.settings_media_autosave),
+            supportingText = stringResource(MR.string.settings_media_autosave_description),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.autoSaveIncomingMedia,
+                onCheckedChange = {
+                    onAction(MediaSettingsUiAction.SetAutoSaveIncomingMedia(it))
+                },
+            ),
+        )
+        AnimatedVisibility(visible = uiState.autoSaveIncomingMedia) {
             SettingsRow(
-                modifier = Modifier.testTag("mirrorFrontCameraToggle"),
-                icon = Icons.Outlined.Flip,
-                title = stringResource(MR.string.settings_media_mirror_front),
-                supportingText = stringResource(MR.string.settings_media_mirror_front_description),
+                modifier = Modifier.testTag("autoSaveUnmeteredToggle"),
+                icon = Icons.Outlined.Wifi,
+                title = stringResource(MR.string.settings_media_autosave_unmetered),
+                supportingText =
+                    stringResource(MR.string.settings_media_autosave_unmetered_description),
                 action = SettingsRowAction.Toggle(
-                    checked = uiState.mirrorFrontCamera,
+                    checked = uiState.autoSaveOnUnmeteredOnly,
                     onCheckedChange = {
-                        onAction(MediaSettingsUiAction.SetMirrorFrontCamera(it))
+                        onAction(MediaSettingsUiAction.SetAutoSaveOnUnmeteredOnly(it))
                     },
                 ),
             )
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
+
+        SettingsSectionHeader(
+            title = stringResource(MR.string.settings_media_camera_header),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+        )
+        SettingsRow(
+            modifier = Modifier.testTag("mirrorFrontCameraToggle"),
+            icon = Icons.Outlined.Flip,
+            title = stringResource(MR.string.settings_media_mirror_front),
+            supportingText = stringResource(MR.string.settings_media_mirror_front_description),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.mirrorFrontCamera,
+                onCheckedChange = {
+                    onAction(MediaSettingsUiAction.SetMirrorFrontCamera(it))
+                },
+            ),
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }

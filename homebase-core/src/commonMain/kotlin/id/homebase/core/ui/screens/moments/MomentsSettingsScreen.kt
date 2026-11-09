@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
-import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.resources.MR
 import id.homebase.resources.moments_settings_open
 import id.homebase.resources.moments_settings_section
@@ -56,41 +56,28 @@ fun MomentsSettingsUi(
     onAction: (MomentsSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
 ) {
-    val scrollState = rememberScrollState()
-    Scaffold(
-        topBar = {
-            SettingsTopBar(
-                title = stringResource(MR.string.moments_settings_section),
-                onBack = onBackClick,
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(scrollState),
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsRow(
-                icon = Icons.Outlined.AutoAwesome,
-                title = stringResource(MR.string.moments_settings_open),
-                action = SettingsRowAction.Navigate {
-                    onAction(MomentsSettingsUiAction.OpenMomentsClicked)
-                },
-            )
-            SettingsRow(
-                icon = Icons.Outlined.Visibility,
-                title = stringResource(MR.string.moments_settings_show_icon),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.iconVisible,
-                    onCheckedChange = { onAction(MomentsSettingsUiAction.SetIconVisible(it)) },
-                ),
-            )
-            Spacer(modifier = Modifier
-                .fillMaxWidth()
-                .height(24.dp))
-        }
+    SettingsDetailScaffold(
+        title = stringResource(MR.string.moments_settings_section),
+        onBack = onBackClick,
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+        SettingsRow(
+            icon = Icons.Outlined.AutoAwesome,
+            title = stringResource(MR.string.moments_settings_open),
+            action = SettingsRowAction.Navigate {
+                onAction(MomentsSettingsUiAction.OpenMomentsClicked)
+            },
+        )
+        SettingsRow(
+            icon = Icons.Outlined.Visibility,
+            title = stringResource(MR.string.moments_settings_show_icon),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.iconVisible,
+                onCheckedChange = { onAction(MomentsSettingsUiAction.SetIconVisible(it)) },
+            ),
+        )
+        Spacer(modifier = Modifier
+            .fillMaxWidth()
+            .height(24.dp))
     }
 }

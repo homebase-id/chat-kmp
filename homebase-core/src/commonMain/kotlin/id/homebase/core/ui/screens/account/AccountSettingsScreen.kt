@@ -52,7 +52,7 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
-import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.plan_free_up_body
@@ -173,52 +173,45 @@ fun AccountSettingsUi(
         )
     }
 
-    Scaffold(
-        topBar = { SettingsTopBar(title = stringResource(MR.string.settings_account), onBack = onBackClick) },
-    ) { innerPadding ->
+    SettingsDetailScaffold(
+        title = stringResource(MR.string.settings_account),
+        onBack = onBackClick,
+        modifier = Modifier.testTag("accountSettingsList"),
+    ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .testTag("accountSettingsList"),
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                SettingsSectionHeader(
-                    title = stringResource(MR.string.plan_title),
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                )
-                PlanAndStorage(uiState = uiState, onAction = onAction)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            SettingsRow(
-                modifier = Modifier.testTag("logoutButton"),
-                icon = Icons.AutoMirrored.Outlined.Logout,
-                title = stringResource(MR.string.settings_logout),
-                supportingText = stringResource(MR.string.settings_logout_desc),
-                action = SettingsRowAction.Invoke(onLogout),
-            )
-
             SettingsSectionHeader(
-                title = stringResource(MR.string.settings_danger_zone),
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+                title = stringResource(MR.string.plan_title),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
             )
-            SettingsRow(
-                modifier = Modifier.testTag("deleteAccountButton"),
-                icon = Icons.Outlined.Delete,
-                title = stringResource(MR.string.settings_delete_account),
-                supportingText = stringResource(MR.string.settings_delete_account_desc),
-                isDestructive = true,
-                action = SettingsRowAction.Invoke(onDeleteAccount),
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
+            PlanAndStorage(uiState = uiState, onAction = onAction)
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        SettingsRow(
+            modifier = Modifier.testTag("logoutButton"),
+            icon = Icons.AutoMirrored.Outlined.Logout,
+            title = stringResource(MR.string.settings_logout),
+            supportingText = stringResource(MR.string.settings_logout_desc),
+            action = SettingsRowAction.Invoke(onLogout),
+        )
+
+        SettingsSectionHeader(
+            title = stringResource(MR.string.settings_danger_zone),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+        )
+        SettingsRow(
+            modifier = Modifier.testTag("deleteAccountButton"),
+            icon = Icons.Outlined.Delete,
+            title = stringResource(MR.string.settings_delete_account),
+            supportingText = stringResource(MR.string.settings_delete_account_desc),
+            isDestructive = true,
+            action = SettingsRowAction.Invoke(onDeleteAccount),
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 

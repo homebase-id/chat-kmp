@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
-import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.resources.MR
 import id.homebase.resources.nav_calls
 import id.homebase.resources.settings_calls_beta
@@ -42,33 +42,21 @@ fun CallsSettingsUi(
     onAction: (CallsSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            SettingsTopBar(
-                title = stringResource(MR.string.nav_calls),
-                onBack = onBackClick,
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsRow(
-                modifier = Modifier.testTag("callsBetaToggle"),
-                icon = Icons.Outlined.Call,
-                title = stringResource(MR.string.settings_calls_beta),
-                supportingText = stringResource(MR.string.settings_calls_beta_desc),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.enabled,
-                    onCheckedChange = { onAction(CallsSettingsUiAction.SetEnabled(it)) },
-                ),
-            )
-            Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
-        }
+    SettingsDetailScaffold(
+        title = stringResource(MR.string.nav_calls),
+        onBack = onBackClick,
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+        SettingsRow(
+            modifier = Modifier.testTag("callsBetaToggle"),
+            icon = Icons.Outlined.Call,
+            title = stringResource(MR.string.settings_calls_beta),
+            supportingText = stringResource(MR.string.settings_calls_beta_desc),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.enabled,
+                onCheckedChange = { onAction(CallsSettingsUiAction.SetEnabled(it)) },
+            ),
+        )
+        Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }
 }

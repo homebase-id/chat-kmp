@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
-import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.resources.MR
 import id.homebase.resources.nav_feed
 import id.homebase.resources.settings_native_feed
@@ -41,32 +41,20 @@ fun FeedSettingsUi(
     onAction: (FeedSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            SettingsTopBar(
-                title = stringResource(MR.string.nav_feed),
-                onBack = onBackClick,
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsRow(
-                modifier = Modifier.testTag("nativeFeedToggle"),
-                icon = Icons.Outlined.DynamicFeed,
-                title = stringResource(MR.string.settings_native_feed),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.useNativeFeed,
-                    onCheckedChange = { onAction(FeedSettingsUiAction.SetUseNativeFeed(it)) },
-                ),
-            )
-            Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
-        }
+    SettingsDetailScaffold(
+        title = stringResource(MR.string.nav_feed),
+        onBack = onBackClick,
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+        SettingsRow(
+            modifier = Modifier.testTag("nativeFeedToggle"),
+            icon = Icons.Outlined.DynamicFeed,
+            title = stringResource(MR.string.settings_native_feed),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.useNativeFeed,
+                onCheckedChange = { onAction(FeedSettingsUiAction.SetUseNativeFeed(it)) },
+            ),
+        )
+        Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }
 }

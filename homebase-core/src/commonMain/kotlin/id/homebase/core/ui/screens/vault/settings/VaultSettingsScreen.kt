@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
-import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.resources.MR
 import id.homebase.resources.vault_settings_biometrics
 import id.homebase.resources.vault_settings_biometrics_unavailable
@@ -62,58 +62,45 @@ fun VaultSettingsUi(
     onBackClick: () -> Unit,
     showOpenVault: Boolean = true,
 ) {
-    val scrollState = rememberScrollState()
-    Scaffold(
-        topBar = {
-            SettingsTopBar(
-                title = stringResource(MR.string.vault_settings_section),
-                onBack = onBackClick,
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(scrollState),
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            if (showOpenVault) {
-                SettingsRow(
-                    icon = Icons.Outlined.Lock,
-                    title = stringResource(MR.string.vault_settings_open),
-                    action = SettingsRowAction.Navigate {
-                        onAction(VaultSettingsUiAction.OpenVaultClicked)
-                    },
-                )
-            }
+    SettingsDetailScaffold(
+        title = stringResource(MR.string.vault_settings_section),
+        onBack = onBackClick,
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+        if (showOpenVault) {
             SettingsRow(
-                icon = Icons.Outlined.Visibility,
-                title = stringResource(MR.string.vault_settings_show_icon),
+                icon = Icons.Outlined.Lock,
+                title = stringResource(MR.string.vault_settings_open),
+                action = SettingsRowAction.Navigate {
+                    onAction(VaultSettingsUiAction.OpenVaultClicked)
+                },
+            )
+        }
+        SettingsRow(
+            icon = Icons.Outlined.Visibility,
+            title = stringResource(MR.string.vault_settings_show_icon),
+            action = SettingsRowAction.Toggle(
+                checked = uiState.iconVisible,
+                onCheckedChange = { onAction(VaultSettingsUiAction.SetIconVisible(it)) },
+            ),
+        )
+        if (uiState.showBiometricsRow) {
+            SettingsRow(
+                icon = Icons.Outlined.Fingerprint,
+                title = stringResource(MR.string.vault_settings_biometrics),
+                supportingText = if (uiState.deviceAuthAvailable) {
+                    null
+                } else {
+                    stringResource(MR.string.vault_settings_biometrics_unavailable)
+                },
                 action = SettingsRowAction.Toggle(
-                    checked = uiState.iconVisible,
-                    onCheckedChange = { onAction(VaultSettingsUiAction.SetIconVisible(it)) },
+                    checked = uiState.biometricsEnabled,
+                    onCheckedChange = { onAction(VaultSettingsUiAction.SetBiometricsEnabled(it)) },
                 ),
             )
-            if (uiState.showBiometricsRow) {
-                SettingsRow(
-                    icon = Icons.Outlined.Fingerprint,
-                    title = stringResource(MR.string.vault_settings_biometrics),
-                    supportingText = if (uiState.deviceAuthAvailable) {
-                        null
-                    } else {
-                        stringResource(MR.string.vault_settings_biometrics_unavailable)
-                    },
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.biometricsEnabled,
-                        onCheckedChange = { onAction(VaultSettingsUiAction.SetBiometricsEnabled(it)) },
-                    ),
-                )
-            }
-            Spacer(modifier = Modifier
-                .fillMaxWidth()
-                .height(24.dp))
         }
+        Spacer(modifier = Modifier
+            .fillMaxWidth()
+            .height(24.dp))
     }
 }
