@@ -299,7 +299,7 @@ class ViewOnceShotsTest {
             onSaveFile = {},
             onCropImage = {},
             onDrawImage = {},
-            onToggleMediaQuality = {},
+            onSetMediaQuality = {},
             onAddImage = {},
             addMoreEnabled = !viewOnce,
             onRemoveFile = {},

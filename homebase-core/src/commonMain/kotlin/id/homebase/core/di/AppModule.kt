@@ -195,6 +195,13 @@ import id.homebase.core.photobase.PhotoBackupTrigger
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.PhotoGalleryRepository
+import id.homebase.core.util.NetworkMonitor
+import id.homebase.core.util.isWeb
+import id.homebase.photobase.gallery.photoGalleryStore
+import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
+import id.homebase.photobase.gallery.PhotoGalleryStore
+import id.homebase.photobase.gallery.PhotoGallerySync
+import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.backup.AssetHasher
 import id.homebase.photobase.backup.BackgroundUploaderContext
@@ -658,7 +665,11 @@ val appModule = module {
             httpClient = get(),
             driveFileProviderCached = get(),
             contactInfo = get(),
-            beforeLogout = { hasSession -> get<PhotoBackupEntry>().onBeforeLogout(hasSession) },
+            beforeLogout = { hasSession ->
+                get<PhotoGallerySync>().stop()
+                get<PhotoGalleryStore>().stop()
+                get<PhotoBackupEntry>().onBeforeLogout(hasSession)
+            },
             clearPlatformCaches = {
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
@@ -862,6 +873,7 @@ val appModule = module {
                 get<DeveloperPreferences>().reload()
                 get<PhotoBackupEntry>().onPostAuthenticated()
                 get<PhotobasePreferences>().reset()
+                get<PhotoThumbnailPrefetcher>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -1101,6 +1113,31 @@ val appModule = module {
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
     single { PhotobasePreferences(get()) }
     single { PhotoGalleryRepository(get()) }
+    // Far bigger than chat's 300 MB because it holds a library: at Small's measured 14-20 KB
+    // (OPTIMIZE.md), about 50,000 photos. Web's cache lives in memory and doesn't survive a reload.
+    single {
+        DedicatedThumbCache(
+            PhotobaseProtocol.DriveAlias,
+            maxSizeBytes = (if (isWeb()) 100L else 1024L) * 1024L * 1024L,
+            statsId = "drive_photo_thumbnails",
+            // A grid flung past would otherwise queue ahead of the tiles it stops on.
+            cancelWhenUnwatched = true,
+        )
+    }
+    single { photoGalleryStore(get(), get(), get()) }
+    single { PhotoGallerySync(get(), get(), get(), get()) }
+    single {
+        val files = get<DriveFileProviderCached>()
+        PhotoThumbnailPrefetcher(
+            store = get<PhotoGalleryStore>(),
+            // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
+            // Nor on web, where the cache is gone at the next reload.
+            mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
+            ensureThumbnail = { item, size ->
+                files.ensureThumbCached(item.driveId, item.fileId, item.payload.key, size.pixelWidth, size.pixelHeight, item.payload.lastModified)
+            },
+        )
+    }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
@@ -1483,7 +1520,17 @@ val appModule = module {
     viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier)) }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
-    viewModel { PhotoGalleryViewModel(get<PhotoGalleryRepository>()) }
+    viewModel {
+        val sync = get<PhotoGallerySync>()
+        val prefetcher = get<PhotoThumbnailPrefetcher>()
+        PhotoGalleryViewModel(
+            source = get<PhotoGalleryStore>().also { it.resume() },
+            catchUp = sync::syncNow,
+            warm = prefetcher::prefetch,
+            pauseWarm = prefetcher::pause,
+            backedUpCount = get<PhotoBackupController>().status?.map { it.backedUpCount },
+        )
+    }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(

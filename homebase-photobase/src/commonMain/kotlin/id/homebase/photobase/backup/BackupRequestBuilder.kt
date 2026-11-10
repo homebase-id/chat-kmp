@@ -62,11 +62,7 @@ class BackupRequestBuilder(
                     altitude = exif?.altitudeMeters,
                     width = prepared?.width,
                     height = prepared?.height,
-                    tiny = prepared?.tiny?.content,
-                    tinyWidth = prepared?.tiny?.pixelWidth,
-                    tinyHeight = prepared?.tiny?.pixelHeight,
-                    tinyType = prepared?.tiny?.contentType,
-                ),
+                ).withTiny(prepared?.tiny),
             )
             val request = UploadFileRequest(
                 driveId = photosDriveId,

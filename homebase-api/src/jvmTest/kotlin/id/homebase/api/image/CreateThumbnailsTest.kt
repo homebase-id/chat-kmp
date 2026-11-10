@@ -8,6 +8,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
+private val ORIGINAL_ROW_LONG_EDGES = listOf(320, 640, 1080, 2048)
+
 class CreateThumbnailsTest {
 
     // =========================================================
@@ -53,8 +55,9 @@ class CreateThumbnailsTest {
     fun standardJpeg_thumbnailListMatchesRevisedSizes() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val (naturalSize, _, thumbList) = createThumbnails(bytes, "key")
-        val expected = getRevisedThumbs(naturalSize, baseThumbSizes)
-        assertEquals(expected.size, thumbList.size, "Thumbnail count mismatch")
+        val expected = planMediaImages(naturalSize, MediaQuality.ORIGINAL).thumbnails
+        assertEquals(expected.map { it.width to it.height }, thumbList.map { it.pixelWidth to it.pixelHeight })
+        assertEquals(expected.map { it.quality }, thumbList.map { it.quality })
     }
 
     @Test
@@ -244,12 +247,11 @@ class CreateThumbnailsTest {
         assertEquals(100, naturalSize.pixelHeight)
         assertNotNull(embeddedThumb)
         assertEquals("image/webp", embeddedThumb.contentType)
-        // Vectors render crisp at any size — we always produce the full
-        // baseThumbSizes ladder regardless of the SVG's declared size,
+        // Vectors render crisp at any size — we always produce every row regardless of the SVG's declared size,
         // so hi-DPI viewers can ask for THUMB_LARGE without falling
         // back to an undersized intrinsic render.
-        assertEquals(baseThumbSizes.size, thumbList.size,
-            "SVG should produce one raster per baseThumbSize, got ${thumbList.size}")
+        assertEquals(ORIGINAL_ROW_LONG_EDGES.size, thumbList.size,
+            "SVG should produce one raster per row, got ${thumbList.size}")
         for (thumb in thumbList) {
             assertEquals("image/webp", thumb.contentType)
             ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
@@ -294,8 +296,8 @@ class CreateThumbnailsTest {
     fun svg_producesAdditionalRasterThumbs() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(2000, 1000, "<rect width=\"2000\" height=\"1000\"/>")
         val (_, _, thumbList) = createThumbnails(svgBytes, "key")
-        assertEquals(baseThumbSizes.size, thumbList.size,
-            "Every SVG should rasterize into the full baseThumbSizes ladder")
+        assertEquals(ORIGINAL_ROW_LONG_EDGES.size, thumbList.size,
+            "Every SVG should rasterize into every row")
     }
 
     /**
@@ -321,57 +323,20 @@ class CreateThumbnailsTest {
         )
 
         // 192×192 declared intrinsic, but vector data has no quality
-        // ceiling — produce the full baseThumbSizes ladder so receivers
+        // ceiling — produce every row so receivers
         // at any DPI get a crisp render.
-        assertEquals(baseThumbSizes.size, thumbList.size,
+        assertEquals(ORIGINAL_ROW_LONG_EDGES.size, thumbList.size,
             "Google Calendar SVG should produce the full raster ladder, got ${thumbList.size}")
         for ((i, thumb) in thumbList.withIndex()) {
             assertEquals("chat_links", thumb.key)
             assertEquals("image/webp", thumb.contentType)
             ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
             assertEquals(
-                baseThumbSizes[i].maxPixelDimension,
+                ORIGINAL_ROW_LONG_EDGES[i],
                 max(thumb.pixelWidth, thumb.pixelHeight),
-                "thumb[$i] should match baseThumbSizes[$i].maxPixelDimension"
+                "thumb[$i] should match row $i"
             )
         }
-    }
-
-    // =========================================================
-    // Custom thumbSizes
-    // =========================================================
-
-    @Test
-    fun customThumbSizes_overridesDefault() = runTest {
-        val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
-        val custom = listOf(
-            ThumbnailInstruction(quality = 80, maxPixelDimension = 100, maxBytes = 10 * 1024),
-            ThumbnailInstruction(quality = 80, maxPixelDimension = 200, maxBytes = 50 * 1024)
-        )
-        val (_, _, thumbList) = createThumbnails(bytes, "key", custom)
-        // With custom sizes and source 800x600 (max=800):
-        // Both 100 and 200 < 800 and below 90% range (720). Kept.
-        // keptThumbs.size (2) < thumbs.size (2) is FALSE if nothing filtered, so no synthetic.
-        // But both are < sourceMax (800), so all kept and no synthetic needed.
-        assertTrue(thumbList.isNotEmpty())
-    }
-
-    @Test
-    fun customSingleSize() = runTest {
-        val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
-        val custom = listOf(
-            ThumbnailInstruction(quality = 80, maxPixelDimension = 400, maxBytes = 100 * 1024)
-        )
-        val (_, _, thumbList) = createThumbnails(bytes, "key", custom)
-        assertTrue(thumbList.isNotEmpty())
-    }
-
-    @Test
-    fun nullThumbSizes_usesDefault() = runTest {
-        val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
-        val (_, _, thumbListNull) = createThumbnails(bytes, "key", null)
-        val (_, _, thumbListDefault) = createThumbnails(bytes, "key", baseThumbSizes)
-        assertEquals(thumbListNull.size, thumbListDefault.size, "null and explicit baseThumbSizes should produce same count")
     }
 
     // =========================================================

@@ -234,7 +234,7 @@ Then put `long` and `short` back as width and height in the source's orientation
 **Other animated images:**
 
 - **Animated WebP** keeps its file as the final image in every setting, because the still encoder would freeze it. It gets the normal still thumbnails from its first frame, so today it shows still in a bubble and only animates where the full file loads.
-- **APNG, animated HEIC and animated AVIF** aren't detected today: `ImageFormatDetector.isAnimated` only knows GIF and WebP. Standard would re-encode them as a still image.
+- **APNG, animated HEIC and animated AVIF** keep their file as the final image too, detected by `ImageFormatDetector.isAnimated`.
 
 **Cost.** A GIF has no small version, so every place that shows it downloads the whole file. That includes Photobase's grid, which otherwise never loads more than Small. See [To do](#to-do-and-what-isnt-settled).
 
@@ -318,10 +318,10 @@ One entry point, `renderImages(source, plan)` in `homebase-api`:
 **The recipe.** This is best practice, used by Pillow, libvips and image CDNs:
 
 1. **Plan all sizes first,** with integer math on the upright (orientation-applied) size. Never resize to discover a size.
-2. **Decode once.** Let the decoder do a coarse reduction only when it averages properly: ImageIO on iOS, and JPEG decoding on Android, which can shrink by 2, 4 or 8. Never use decoding that skips pixels, which is Android's HEIC, PNG and WebP sampling, except as a memory guard for huge images.
+2. **Decode once.** Let the decoder do a coarse reduction only when it averages properly: ImageIO on iOS, and JPEG decoding on Android, which can shrink by 2, 4 or 8. Never use decoding that skips pixels, which is Android's HEIC, PNG and WebP sampling, except as a memory guard for huge images. The guard is shared: over 24 MP, Android and iOS both decode smaller, but never below what the largest output needs.
 3. **Filter with premultiplied alpha.** Blending transparent and opaque pixels without premultiplying gives dark or coloured fringes around cut-outs and stickers.
 4. **While the image is at least 2× too big, halve it** by averaging each 2×2 block. That's exact, cheap and blends every pixel.
-5. **Do the last step, under 2×, with a Lanczos-3 filter whose width grows with the reduction.** It blends the whole patch and keeps edges crisp. Mitchell is an acceptable alternative if it passes the same tests: slightly softer, with less ringing around hard edges like text. Fixed-size filters (bilinear, or Skia's cubic) and a plain box average fail the test; see the table below.
+5. **Do the last step, under 2×, with a Lanczos-3 filter whose width grows with the reduction.** It blends the whole patch and keeps edges crisp. It runs the pass that shrinks more first, so the in-between copy is the smaller one, and pauses every 8 ms so the web page, where it shares the UI thread, keeps drawing. On Android it works on Java heap copies, so when the heap is too short it falls back to the platform's filter: a softer image, not a failed send. Mitchell is an acceptable alternative if it passes the same tests: slightly softer, with less ringing around hard edges like text. Fixed-size filters (bilinear, or Skia's cubic) and a plain box average fail the test; see the table below.
 6. **Chain from largest to smallest.** Each size is made from the pixels of the size above it, never from an encoded, lossy file.
 7. **Don't resample when it gains nothing.** Never upscale, and make a row at the source size when it's within 10% of it.
 8. **Resample in the image's own colour space,** sRGB or Display P3, as nearly every tool does. Resampling in linear light is slightly more correct for bright detail on dark backgrounds, but it costs twice the memory and CPU, so we don't, unless a real-photo test shows a visible gain.
@@ -428,10 +428,12 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
   - waits about 600 ms after scrolling stops, so a fling doesn't download everything it passes;
   - only loads JPEG, PNG or WebP payloads under a size limit, never a large Original;
   - only steps up when the final image is actually larger than the largest thumbnail. The final image's size is recorded in the descriptor for this;
-  - is remembered, so scrolling back doesn't download again;
+  - is remembered, so scrolling back doesn't download again, and a failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good;
   - is opted into per surface, such as chat bubbles, not applied everywhere;
   - on failure, keeps the thumbnail on screen without flashing an error.
 - **Photobase's album grid always uses Small,** and never steps up. The album in chat-kmp is meant to stay simple; a separate app handles fast album viewing.
+- **The album grid loads what you stop on first.** While the grid moves, a tile that isn't already in memory shows only its tiny and starts no download (`HomebaseImage`'s `deferLoad`). About 150 ms after it stops, the tiles in view start. The background prefetch of the newest 500 waits out each scroll.
+- **On the Photos drive, a thumbnail download nobody waits for is cancelled.** `DriveFileProviderCached` shares one download per thumbnail between everyone asking for it. Photos' `DedicatedThumbCache` sets `cancelWhenUnwatched`, so the download stops when the last of them leaves, and a tile scrolled off the screen stops queueing ahead of the ones on it. Every other drive keeps the download going, so a contact row's avatar still lands in the cache after it scrolls away.
 - **The tiny** is decoded off the main thread and kept in memory, so the placeholder is there on the first frame.
 
 ## Wire format and older clients
@@ -481,7 +483,7 @@ What must stay proven, and where.
 
 - Every [worked example](#worked-examples) is an exact test, in all three settings, including the band edges: 1200 against 1201, 2275 against 2276, and 4551 against 4552 on HD.
 - Small sources never upscale: 600×450, 200×150, 20×15 and 1×1, in every setting.
-- A random-size property test, over at least 50,000 sizes, checks the [properties](#working-out-the-sizes) above. It also checks that no two thumbnails are within 90% of each other, and that the final image's quality is at least that of any thumbnail within 90% of it.
+- A random-size property test, over 5,000 sizes for each setting, checks the [properties](#working-out-the-sizes) above. It also checks that no two thumbnails are within 90% of each other, and that the final image's quality is at least that of any thumbnail within 90% of it.
 - Portrait and landscape give the same sizes, transposed.
 
 ### Pipeline contract: real decoders, scalers and encoders on every platform
@@ -566,21 +568,14 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 | What | Issue |
 |---|---|
-| The proper resampler: native on iOS and Android, shared code on desktop and web | #2236 |
-| The contract tests for aliasing and sharpness | #2236 |
+| A native resampler on iOS and Android, if phone measurements beat the shared Kotlin Lanczos all platforms use now | #2236 |
 | iOS: hand pixels from ImageIO over without extra copies | #2236 |
-| Tiny and sRGB images without a colour profile | #2235 |
-| Android: memory guard for large HEIC, PNG and WebP sources | #2235 |
-| Shrink-first behaviour over 1 MiB, replacing #2232's q40 floor | #2235 |
-| The 10% rule in the planner, and its tests | #2235, #2230 |
-| Final image size in the descriptor; step-up only when it gains pixels, remembered, per surface, with no error flash | #2235 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
 | Original video untouched, with chat's copy stripped by a remux | #2235 |
 | Time, memory and battery measured on a real iPhone and Android phone | #2221, #2236 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |
 | RAW: verify on real phones which formats decode (ProRAW and DNG on iOS; DNG on Android) | – |
-| Detect APNG, animated HEIC and animated AVIF, so Standard never freezes them | – |
 
 ### Not settled
 
