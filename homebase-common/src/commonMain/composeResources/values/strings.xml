@@ -2526,8 +2526,6 @@
     <string name="profile_card_field_remove">Stop sharing %1$s with this card</string>
     <string name="profile_card_field_add_title">Add %1$s to this card</string>
     <string name="profile_card_sheet_available_on">Available on:</string>
-    <string name="profile_card_sheet_remove_from_card">Remove from this card</string>
-    <string name="profile_card_sheet_add_to_card">Add to this card</string>
     <string name="profile_card_field_place_front">Show on the card</string>
     <string name="profile_card_field_place_front_unavailable">This kind of field can't be drawn on the card face</string>
     <string name="profile_card_field_place_back">Share only</string>

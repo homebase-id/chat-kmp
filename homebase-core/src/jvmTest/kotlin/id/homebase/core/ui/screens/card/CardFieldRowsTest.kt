@@ -213,7 +213,7 @@ class CardFieldRowsTest {
     }
 
     @Test
-    fun noMinusOnAPublicOrEveryConnectionField() = runComposeUiTest {
+    fun everyFrontAndBackRowHasAMinusIncludingPublicAndEveryConnectionFields() = runComposeUiTest {
         val everyConnection = status.copy(
             visibility = ProfileVisibility.CONNECTED,
             acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.CONNECTED.wireValue),
@@ -223,9 +223,26 @@ class CardFieldRowsTest {
 
         row("field_front", "Second breakfast").assertExists()
         row("field_front", "Elevenses").assertExists()
-        assertEquals(1, onAllNodesWithTag("field_remove", useUnmergedTree = true).fetchSemanticsNodes().size)
-        removeButton("Link").assertExists()
+        assertEquals(3, onAllNodesWithTag("field_remove", useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals(3, onAllNodesWithTag("field_to_back", useUnmergedTree = true).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun theMinusOnAPublicFrontRowKeepsItOnTheOtherCirclesAndMovesItToNotShared() = runComposeUiTest {
+        val audiences = mutableListOf<Pair<Uuid, ProfileAudience>>()
+        editor(
+            null,
+            audiences = audiences,
+            attributes = listOf(bio),
+            circles = circles + CardCircle("family-circle", "Family"),
+        )
+
+        removeButton("Bio").performClick()
+        waitForIdle()
+
+        assertEquals(listOf<Pair<Uuid, ProfileAudience>>(bio.id to ProfileAudience.Circles(setOf("family-circle"))), audiences)
+        assertEquals(0, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
+        onNodeWithText("Not shared").assertExists()
     }
 
     @Test

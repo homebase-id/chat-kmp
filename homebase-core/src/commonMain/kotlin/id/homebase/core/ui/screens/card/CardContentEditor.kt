@@ -238,8 +238,8 @@ internal fun CardContentEditor(
     val onCard = items.filter { it.onCard }
     val back = if (circleCard) items.filter { it.shown && !it.onCard } else emptyList()
     val unavailable = if (circleCard) items.filterNot { it.shown } else emptyList()
-    val frontSlot = onCard.any { !it.everyone }
-    val backSlot = back.any { !it.everyone }
+    val frontSlot = onCard.isNotEmpty()
+    val backSlot = back.isNotEmpty()
     val notOnCard = if (circleCard) emptyList() else items.filter { it.shown && it.renderable && it.hidden }
     val unrenderable = if (circleCard) emptyList() else items.filter { it.shown && !it.renderable }
     val couldAdd = if (circleCard) emptyList() else items.filterNot { it.shown }
@@ -279,22 +279,12 @@ internal fun CardContentEditor(
         }
     }
     val removeFromCard: (CardContentItem) -> Unit = { item ->
-        item.audience.shownOn(card, false, null)?.let { onAudience(item.id, it) }
+        item.audience.shownOn(card, false, null, circles)?.let { onAudience(item.id, it) }
         if (item.hidden) onFieldShown(item.id, true)
     }
     val place: (CardContentItem, Boolean) -> Unit = { item, front ->
         onFieldShown(item.id, front)
         item.audience.shownOn(card, true, null)?.let { onAudience(item.id, it) }
-    }
-    val cardToggle: (CardContentItem) -> CardToggle? = { item ->
-        when {
-            circleCard && item.shown -> CardToggle(true) { removeFromCard(item) }.takeUnless { item.everyone }
-            circleCard -> CardToggle(false) { place(item, item.renderable) }
-            item.required -> null
-            item.shown && item.renderable -> CardToggle(item.onCard) { onFieldShown(item.id, !item.onCard) }
-            card is CardAudience.Circle -> item.audience.shownOn(card, true, null)?.let { CardToggle(false) { onAudience(item.id, it) } }
-            else -> null
-        }
     }
     val row: @Composable (CardContentItem, Int, Int, FieldDisplay?) -> Unit = { item, index, count, display ->
         key(item.id) { EditorRow(
@@ -327,7 +317,7 @@ internal fun CardContentEditor(
                     enabled = enabled,
                     tag = "field_front",
                     onOpen = { editingId = item.id },
-                    onRemove = { removeFromCard(item) }.takeUnless { item.everyone },
+                    onRemove = { removeFromCard(item) },
                     onMove = display.onToggle,
                     display = display,
                     handleSlot = canReorder,
@@ -432,7 +422,7 @@ internal fun CardContentEditor(
                             enabled = enabled,
                             tag = "field_back",
                             onOpen = { editingId = item.id },
-                            onRemove = { removeFromCard(item) }.takeUnless { item.everyone },
+                            onRemove = { removeFromCard(item) },
                             onMove = { onFieldShown(item.id, true) }.takeIf { item.renderable },
                             removeSlot = backSlot,
                         )
@@ -523,7 +513,6 @@ internal fun CardContentEditor(
                 onDelete(id)
             },
             onCirclesChanged = onCirclesChanged,
-            toggle = cardToggle(item),
             onDismiss = { editingId = null },
         )
     }

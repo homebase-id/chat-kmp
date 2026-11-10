@@ -32,8 +32,6 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.AddCircleOutline
-import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ButtonShapes
@@ -102,11 +100,8 @@ import id.homebase.core.ui.screens.profile.audience
 import id.homebase.core.ui.screens.profile.isOnCard
 import id.homebase.resources.profile_card_content_edit_title
 import id.homebase.resources.profile_card_content_delete
-import id.homebase.resources.profile_card_sheet_add_to_card
 import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_card_sheet_available_on
-import id.homebase.resources.profile_card_sheet_remove_from_card
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.platform.testTag
 import id.homebase.resources.profile_card_content_more
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
@@ -333,8 +328,6 @@ internal fun ShownBadge(icon: ImageVector, shown: Boolean) {
     }
 }
 
-internal class CardToggle(val onCard: Boolean, val onClick: () -> Unit)
-
 /**
  * Adds an item ([editing] null, shown on [card]) or edits one: its fields, who sees it, older conflicting
  * records, and Delete, which takes it off every card.
@@ -351,7 +344,6 @@ internal fun ContentSheet(
     onEdit: (Map<String, String>, ProfileAudience) -> Unit = { _, _ -> },
     onDelete: ((Uuid) -> Unit)? = null,
     onCirclesChanged: (() -> Unit)? = null,
-    toggle: CardToggle? = null,
 ) {
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
@@ -443,17 +435,6 @@ internal fun ContentSheet(
                             label = { Text(listOfNotNull(emoji, label).joinToString(" ")) },
                             modifier = Modifier.testTag("audience_pill_$label"),
                         )
-                    }
-                }
-                toggle?.let { t ->
-                    OutlinedButton(
-                        onClick = { dismiss { t.onClick(); onDismiss() } },
-                        shapes = ButtonDefaults.shapes(),
-                        modifier = Modifier.testTag(if (t.onCard) "sheet_remove_from_card" else "sheet_add_to_card"),
-                    ) {
-                        Icon(if (t.onCard) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(stringResource(if (t.onCard) MR.string.profile_card_sheet_remove_from_card else MR.string.profile_card_sheet_add_to_card))
                     }
                 }
                 editing.conflicts.forEach { record ->

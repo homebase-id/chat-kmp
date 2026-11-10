@@ -4,7 +4,6 @@ package id.homebase.core.ui.screens.card
 
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
-import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.core.ui.screens.profile.LoadedProfileAttributes
 import id.homebase.core.ui.screens.profile.ProfileAudience
@@ -27,8 +26,6 @@ internal data class CardContentItem(
     val locked: Boolean,
     val required: Boolean = false,
     val hidden: Boolean = false,
-    // Public, every signed-in identity or every connection: one circle can't be taken off without changing who else sees it.
-    val everyone: Boolean = false,
     val data: Map<String, String> = emptyMap(),
     // Older records of the same type with other data; the editor shows them so the user can remove them.
     val conflicts: List<ProfileAttribute> = emptyList(),
@@ -127,7 +124,8 @@ internal fun ProfileAudience.shownOn(
             ?: ProfileAudience.OnlyMe
     }
     is CardAudience.Circle -> when (this) {
-        ProfileAudience.Public -> null
+        ProfileAudience.Public -> if (on) null else circles.map { it.id }.toSet().minus(card.id)
+            .let { rest -> if (rest.isEmpty()) ProfileAudience.OnlyMe else ProfileAudience.Circles(rest) }
         ProfileAudience.OnlyMe -> if (on) ProfileAudience.Circles(setOf(card.id)) else null
         is ProfileAudience.Circles -> {
             val next = if (on) ids + card.id else ids - card.id
@@ -161,8 +159,6 @@ internal fun cardContentItems(
             locked = card is CardAudience.Circle && audience == ProfileAudience.Public,
             required = card == CardAudience.Public && attribute.type == ProfileAttributeTypes.NAME && card.shows(audience),
             hidden = fields.hides(attribute, card),
-            everyone = attribute.visibility != ProfileVisibility.OWNER &&
-                (attribute.visibility != ProfileVisibility.CONNECTED || attribute.acl.circleIdList.isNullOrEmpty()),
         )
     }
     fun recordsOf(type: String) =
