@@ -83,7 +83,14 @@ class PermissionExtensionManager(
         Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
         return PermissionCheckResult.Missing(
             result.details.copy(
-                buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.callbackUrl()) },
+                // Installing returns straight into the grant, so the owner makes one trip to the console, not two.
+                buildExtendPermissionUrl = {
+                    install.registration.url(
+                        host = hostIdentity,
+                        returnUrl = result.details.buildExtendPermissionUrl(),
+                        cancelUrl = config.callbackUrl().withQueryParam("status", "canceled"),
+                    )
+                },
                 installs = install.registration.name,
             )
         )

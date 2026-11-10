@@ -10,6 +10,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.Url
 import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -133,6 +134,16 @@ class PermissionExtensionManagerTest {
         val grant = missing { true }
         assertTrue(grant.buildExtendPermissionUrl().startsWith("https://$me/owner/appupdate?appId=${config.appId}&"))
         assertEquals(null, grant.installs)
+    }
+
+    @Test
+    fun installingReturnsIntoTheGrantAndCancellingReturnsToTheApp() = runTest {
+        val install = Url(missing { false }.buildExtendPermissionUrl())
+        assertEquals(missing { true }.buildExtendPermissionUrl(), install.parameters["return"])
+        assertEquals(
+            config.callbackUrl().withQueryParam("status", "canceled"),
+            install.parameters["cancel"],
+        )
     }
 
     @Test
