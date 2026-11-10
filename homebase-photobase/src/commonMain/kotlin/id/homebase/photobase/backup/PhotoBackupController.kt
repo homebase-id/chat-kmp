@@ -27,8 +27,6 @@ class PhotoBackupController(
 
     private var inForeground = false
 
-    private var wokenInBackgroundSinceForeground = false
-
     init {
         run?.let { scope.launch { it.followLedger() } }
     }
@@ -48,10 +46,9 @@ class PhotoBackupController(
             scope.launch { run.refreshStatus() }
             return
         }
-        val fullScan = wokenInBackgroundSinceForeground && triggers?.rescansAfterBackgroundWake == true
-        wokenInBackgroundSinceForeground = false
         foregroundJob = scope.launch {
             launch { pushSchedule.ensure(adoptSharedInterval()) }
+            val fullScan = triggers?.rescansAfterBackgroundWake == true && run.takeWokenInBackground()
             run.run(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null), forceFullScan = fullScan))
         }
     }
@@ -78,7 +75,7 @@ class PhotoBackupController(
     }
 
     suspend fun runFromBackground(request: BackupRunRequest) {
-        wokenInBackgroundSinceForeground = true
+        if (triggers?.rescansAfterBackgroundWake == true) run?.markWokenInBackground()
         // Another phone turning backup off or logging out cancels the identity's one schedule.
         if (settingsStore.settings.value.enabled && request.trigger.restoresPushSchedule) {
             scope.launch { pushSchedule.ensure(adoptSharedInterval()) }
@@ -198,7 +195,6 @@ class PhotoBackupController(
 
     fun onPostAuthenticated() {
         foregroundJob?.cancel()
-        wokenInBackgroundSinceForeground = false
         settingsStore.reset()
         results.reset()
         Logger.d(tag = TAG) { "reset for the signed-in identity" }

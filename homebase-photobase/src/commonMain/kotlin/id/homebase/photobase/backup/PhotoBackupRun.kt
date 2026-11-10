@@ -98,6 +98,10 @@ class PhotoBackupRun(
 
     suspend fun takeOtherPushWake(gap: Duration): Boolean = ledger.takeOtherPushWake(gap)
 
+    suspend fun markWokenInBackground() = ledger.markWokenInBackground()
+
+    suspend fun takeWokenInBackground(): Boolean = ledger.takeWokenInBackground()
+
     suspend fun hasUnsentWork(): Boolean = ledger.counts().unsent > 0
 
     suspend fun refreshStatus() {
@@ -218,7 +222,7 @@ class PhotoBackupRun(
     private suspend fun noteForStuckAlert(request: BackupRunRequest, outcome: BackupRunOutcome) {
         if (outcome != BackupRunOutcome.Paused) {
             ledger.markRan()
-            scheduler.onBackupRan()
+            scheduler.onBackupRan(workLeft = ledger.counts().workLeft)
             return
         }
         val reason = _status.value.pauseReason
@@ -227,9 +231,9 @@ class PhotoBackupRun(
     }
 
     /**
-     * The network settings hold for the whole run, not just its start. Losing Wi-Fi under Wi-Fi only pauses it.
-     * Losing what videos need starts it over, which leaves videos out and carries on with photos. An Outbox send
-     * already under way isn't recalled.
+     * The network settings, free space and heat hold for the whole run, not just its start. Losing Wi-Fi under
+     * Wi-Fi only, running low on space or getting too hot pauses it. Losing what videos need starts it over, which
+     * leaves videos out and carries on with photos. A send already under way isn't recalled.
      */
     private suspend fun followingTheNetwork(run: suspend () -> BackupRunOutcome): BackupRunOutcome {
         while (true) {
@@ -246,31 +250,28 @@ class PhotoBackupRun(
                 change.cancel()
                 outcome
             }
-            change.onAwait { lost ->
+            change.onAwait { reason ->
                 running.cancelAndJoin()
-                when (lost) {
-                    LostNetwork.Wifi -> {
-                        scheduler.rearm(settings())
-                        paused(BackupPauseReason.WaitingForWifi)
-                    }
-                    LostNetwork.Videos -> null
+                reason?.let {
+                    scheduler.rearm(settings())
+                    paused(it)
                 }
             }
         }
     }
 
-    private suspend fun awaitNetworkChange(): LostNetwork {
+    /** The reason to pause, or null when only what videos need was lost. */
+    private suspend fun awaitNetworkChange(): BackupPauseReason? {
         val videosWereAllowed = networkAllowsVideos(settings(), probe.state())
         while (true) {
             delay(NETWORK_RECHECK)
             val current = settings()
             val state = probe.state()
-            if (backupPauseReason(current, state, interactive = true) == BackupPauseReason.WaitingForWifi) return LostNetwork.Wifi
-            if (videosWereAllowed && !networkAllowsVideos(current, state)) return LostNetwork.Videos
+            val reason = backupPauseReason(current, state, interactive = true)
+            if (reason in PAUSES_MID_RUN) return reason
+            if (videosWereAllowed && !networkAllowsVideos(current, state)) return null
         }
     }
-
-    private enum class LostNetwork { Wifi, Videos }
 
     private suspend fun runLocked(request: BackupRunRequest): BackupRunOutcome = coroutineScope {
         val interactive = request.isInteractive
@@ -338,6 +339,10 @@ class PhotoBackupRun(
             if (!initialBackupDone) ledger.markInitialBackupDone()
         }
         scheduler.rearm(settings())
+        // A write that failed on a full phone can be the run's last work, ending it before the watcher looks.
+        backupPauseReason(settings(), probe.state(), interactive = true)?.takeIf { it in DEVICE_PAUSES }?.let {
+            return@coroutineScope paused(it)
+        }
         refreshStatus()
         val outcome = if (request.budget.isExpired) BackupRunOutcome.OutOfTime else BackupRunOutcome.Finished
         Logger.i(tag = TAG) { "end trigger=${request.trigger} outcome=$outcome counts=$counts" }
@@ -422,7 +427,10 @@ class PhotoBackupRun(
     private suspend fun hash(row: DeviceBackupAsset) {
         guarded(row) {
             val hashed = hasher.hash(row.deviceAssetId, BackupMediaType.ofCode(row.mediaType))
-            ledger.markHashed(row.deviceAssetId, hashed.contentHash, hashed.uniqueId)
+            row.contentHash?.let { previous ->
+                Logger.i(tag = TAG) { "rehashed ${row.deviceAssetId} modifiedAt=${row.modifiedAt} unchanged=${previous == hashed.contentHash}" }
+            }
+            ledger.markHashed(row.deviceAssetId, hashed.contentHash, hashed.uniqueId, hashed.sizeBytes)
         }
     }
 
@@ -508,7 +516,8 @@ class PhotoBackupRun(
             ledger.deferForOtherVideoWork(row)
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
-            ledger.recordFailure(row, e.message ?: e::class.simpleName.orEmpty())
+            // A full phone fails the write, not the photo; the watcher pauses the run.
+            if (!probe.state().isPhoneStorageLow) ledger.recordFailure(row, e.message ?: e::class.simpleName.orEmpty())
         }
     }
 
@@ -553,6 +562,8 @@ class PhotoBackupRun(
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
         private val STATUS_REFRESH_GAP: Duration = 1.seconds
         private val NETWORK_RECHECK: Duration = 5.seconds
+        private val DEVICE_PAUSES = setOf(BackupPauseReason.PhoneStorageLow, BackupPauseReason.TooHot)
+        private val PAUSES_MID_RUN = DEVICE_PAUSES + BackupPauseReason.WaitingForWifi
 
         val WORKER_BUDGET: Duration = 9.minutes
     }

@@ -3380,6 +3380,8 @@
     <string name="photobase_status_paused_battery">Paused: low battery</string>
     <string name="photobase_status_paused_low_power">Paused: Low Power Mode</string>
     <string name="photobase_status_paused_storage">Paused: your Homebase storage is full</string>
+    <string name="photobase_status_paused_phone_storage">Paused: phone storage is low</string>
+    <string name="photobase_status_paused_too_hot">Paused: phone is too hot</string>
     <string name="photobase_status_last_success">Last finished backup</string>
     <string name="photobase_status_never">Not yet</string>
     <string name="photobase_status_backed_up">Backed up</string>

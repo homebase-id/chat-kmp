@@ -17,7 +17,8 @@ data class DeviceAsset(
     val mediaType: BackupMediaType,
     val createdAtMs: Long,
     val modifiedAtMs: Long,
-    val sizeBytes: Long,
+    /** Null where the platform can't say before export; hashing fills it in. */
+    val sizeBytes: Long?,
     val albumIds: List<String> = emptyList(),
 )
 
@@ -44,7 +45,8 @@ data class ExportedPart(
     val isTemporary: Boolean,
 )
 
-data class ExportedAsset(val parts: List<ExportedPart>, val fileName: String)
+/** [isHashedCopy]: these are the very files that were hashed, so their digest is already known. */
+data class ExportedAsset(val parts: List<ExportedPart>, val fileName: String, val isHashedCopy: Boolean = false)
 
 /** In a run's context when its window is too short to download from cloud storage. */
 object NoCloudDownloads : CoroutineContext.Element, CoroutineContext.Key<NoCloudDownloads> {
@@ -63,7 +65,9 @@ class AssetPermanentlyUnavailableException(val reason: String) : Exception(reaso
  * Contract for every implementation:
  * - [changes] given an empty or invalid [checkpoint] (expired token, new MediaStore version) lists
  *   everything in scope. It never throws for a stale checkpoint.
- * - An asset edited on the device comes back in `assets`, with a new `modifiedAtMs`.
+ * - An asset edited on the device comes back in `assets`, with a new `modifiedAtMs`. Where the platform can
+ *   tell, `modifiedAtMs` stays put for changes that leave the exported bytes alone (favourite, album, analysis):
+ *   a new value makes the ledger read the asset again.
  * - When [wantCurrentIds] is true, `currentIds` is the complete id set in scope, so deletions can
  *   be found even where the OS's own delta doesn't report them. It can be expensive; short budgets
  *   don't ask for it.

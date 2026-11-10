@@ -50,8 +50,8 @@ fun interface BackupAuth {
 fun interface BackupScheduler {
     fun rearm(settings: BackupSettings)
 
-    /** A run got past its checks and did its work. */
-    fun onBackupRan() {}
+    /** A run got past its checks and did its work, leaving [workLeft] for a later one. */
+    fun onBackupRan(workLeft: Boolean) {}
 
     /**
      * Work is left and nothing is coming to run it soon: a run used up its budget having moved some, or the app

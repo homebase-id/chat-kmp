@@ -10,6 +10,8 @@ enum class BackupPauseReason {
     LowBattery,
     LowPowerMode,
     StorageFull,
+    PhoneStorageLow,
+    TooHot,
 }
 
 enum class LibraryAccess { None, Limited, Full }
@@ -23,8 +25,9 @@ data class BackupStatus(
     val pendingCount: Long = 0,
     val uploadingCount: Long = 0,
     val backedUpCount: Long = 0,
-    val backedUpBytes: Long = 0,
-    val remainingBytes: Long = 0,
+    /** Null when some photos' sizes aren't known yet: iOS learns a size only by reading the photo. */
+    val backedUpBytes: Long? = 0,
+    val remainingBytes: Long? = 0,
     val failures: List<BackupFailure> = emptyList(),
     val failedCount: Long = 0,
     val libraryAccess: LibraryAccess = LibraryAccess.None,
@@ -48,7 +51,8 @@ enum class BackupIndicator { Working, UpToDate, Paused, NeedsAttention }
 /** What the gallery header shows; null shows nothing. */
 fun backupIndicatorOf(status: BackupStatus, backupEnabled: Boolean): BackupIndicator? = when {
     !backupEnabled -> null
-    status.pauseReason == BackupPauseReason.StorageFull || status.pauseReason == BackupPauseReason.NoLibraryAccess ->
+    status.pauseReason == BackupPauseReason.StorageFull || status.pauseReason == BackupPauseReason.NoLibraryAccess ||
+        status.pauseReason == BackupPauseReason.PhoneStorageLow ->
         BackupIndicator.NeedsAttention
     status.isRunning || status.uploadingCount > 0 -> BackupIndicator.Working
     status.failedCount > 0 -> BackupIndicator.NeedsAttention
@@ -65,6 +69,10 @@ data class DeviceState(
     val isCharging: Boolean,
     val isBatteryLow: Boolean,
     val isLowPowerMode: Boolean,
+    /** Free space on the volume exports and encrypted copies are written to; null when the OS won't say. */
+    val freeStorageBytes: Long? = null,
+    /** iOS `serious` or worse, Android `SEVERE` or worse: the OS is already throttling. */
+    val isOverheated: Boolean = false,
 )
 
 /**
@@ -72,6 +80,8 @@ data class DeviceState(
  *
  * Contract for every implementation: [state] answers for the moment of the call and [libraryAccess]
  * never raises the system permission dialog. Neither one suspends for longer than a few seconds.
+ * [state] fills in `freeStorageBytes` and `isOverheated` on every platform that backs up; it's
+ * polled every few seconds during a run, so both must be cheap.
  */
 interface BackupDeviceProbe {
     suspend fun state(): DeviceState
@@ -85,8 +95,13 @@ interface BackupDeviceProbe {
     suspend fun isBackgroundRefreshOff(): Boolean = false
 }
 
-/** [interactive]: the user has the app open, which lifts the battery conditions but not Wi-Fi only. */
+/**
+ * [interactive]: the user has the app open, which lifts the battery conditions but not Wi-Fi only.
+ * A full or hot phone pauses every run: opening the app frees no space and cools nothing.
+ */
 fun backupPauseReason(settings: BackupSettings, state: DeviceState, interactive: Boolean): BackupPauseReason? = when {
+    state.isPhoneStorageLow -> BackupPauseReason.PhoneStorageLow
+    state.isOverheated -> BackupPauseReason.TooHot
     !state.hasNetwork -> BackupPauseReason.NoNetwork
     settings.wifiOnly && !state.isUnmetered -> BackupPauseReason.WaitingForWifi
     interactive -> null
@@ -95,6 +110,12 @@ fun backupPauseReason(settings: BackupSettings, state: DeviceState, interactive:
     state.isBatteryLow && !state.isCharging -> BackupPauseReason.LowBattery
     else -> null
 }
+
+// Room for one large export and its encrypted copy. A guess, until a real run on a full phone says otherwise.
+private const val MIN_FREE_STORAGE_BYTES = 1L * 1024 * 1024 * 1024
+
+val DeviceState.isPhoneStorageLow: Boolean
+    get() = freeStorageBytes != null && freeStorageBytes < MIN_FREE_STORAGE_BYTES
 
 fun networkAllowsVideos(settings: BackupSettings, state: DeviceState): Boolean =
     state.isUnmetered || settings.videosOnCellular

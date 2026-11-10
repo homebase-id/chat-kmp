@@ -67,7 +67,7 @@ class OutboxBackupUploaderTest {
         val ledger = BackupLedger(db.deviceBackup) { 1000 }
         ledger.apply(fullListing(asset(id, createdAtMs = 12345, mediaType = mediaType)), null)
         val hashed = HashedAsset(parts.map { digest(it) })
-        ledger.markHashed(id, hashed.contentHash, hashed.uniqueId)
+        ledger.markHashed(id, hashed.contentHash, hashed.uniqueId, 10)
         return ledger.row(id)!! to hashed.uniqueId
     }
 

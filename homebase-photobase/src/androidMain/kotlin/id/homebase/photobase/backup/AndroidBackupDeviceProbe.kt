@@ -10,6 +10,7 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.StatFs
 import androidx.core.content.ContextCompat
 
 class AndroidBackupDeviceProbe(private val context: Context) : BackupDeviceProbe {
@@ -21,12 +22,16 @@ class AndroidBackupDeviceProbe(private val context: Context) : BackupDeviceProbe
         val status = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val power = context.getSystemService(PowerManager::class.java)
         return DeviceState(
             hasNetwork = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
             isUnmetered = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true,
             isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL,
             isBatteryLow = level >= 0 && scale > 0 && level * 100 / scale < LOW_BATTERY_PERCENT,
-            isLowPowerMode = context.getSystemService(PowerManager::class.java).isPowerSaveMode,
+            isLowPowerMode = power.isPowerSaveMode,
+            freeStorageBytes = StatFs(context.filesDir.path).availableBytes,
+            isOverheated = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                power.currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE,
         )
     }
 
