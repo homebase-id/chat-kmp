@@ -199,6 +199,7 @@ import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
 import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
+import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
 import id.homebase.photobase.gallery.PhotoGallerySync
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
@@ -1517,7 +1518,20 @@ val appModule = module {
             ),
         )
     }
-    viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier)) }
+    single {
+        val drives = get<DriveQueryProvider>()
+        PhotobaseUninstallCleanup(
+            isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
+            forget = {
+                get<PhotoGallerySync>().stop()
+                get<PhotoGalleryStore>().forget()
+                get<PhotoThumbnailPrefetcher>().reset()
+                get<PhotoBackupEntry>().forgetDrive()
+            },
+            scope = get<kotlinx.coroutines.CoroutineScope>(),
+        )
+    }
+    viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier), get<PhotobaseUninstallCleanup>()::onNotInstalled) }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel {

@@ -61,6 +61,8 @@ internal interface PhotoGalleryBackend {
     suspend fun serverPage(cursor: String?, limit: Int): ServerPhotoPage
 
     suspend fun save(files: List<HomebaseFile>)
+
+    suspend fun forget()
 }
 
 /**
@@ -91,6 +93,16 @@ class PhotoGalleryStore internal constructor(
     /** A new session's gallery is opening. */
     fun resume() {
         stopped = false
+    }
+
+    /** The drive isn't there any more, so neither is anything the device held of it. */
+    suspend fun forget() {
+        stop()
+        try {
+            backend.forget()
+        } finally {
+            resume()
+        }
     }
 
     override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage =
@@ -200,6 +212,11 @@ internal class DrivePhotoGalleryBackend(
     override suspend fun serverPage(cursor: String?, limit: Int): ServerPhotoPage {
         val response = repository.query(cursor, limit, QueryBatchSortOrder.NewestFirst)
         return ServerPhotoPage(response.searchResults, response.hasMoreRows, response.cursorState)
+    }
+
+    override suspend fun forget() {
+        db.driveMainIndex.deleteDrive(identityId(), photosDriveId)
+        db.keyValue.deleteByKey(COVERAGE_KEY)
     }
 
     // cursor = null, so fetching old photos never moves the sync cursor.

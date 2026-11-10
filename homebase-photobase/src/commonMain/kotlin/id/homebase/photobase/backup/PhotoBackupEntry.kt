@@ -21,6 +21,8 @@ class PhotoBackupEntry(private val enabled: () -> Boolean, controller: () -> Pho
 
     suspend fun onBeforeLogout(hasSession: Boolean = true) = guarded { it.onBeforeLogout(hasSession) }
 
+    suspend fun forgetDrive() = guarded { it.forgetDrive() }
+
     suspend fun onWake(remaining: Duration, isBackupPush: Boolean = true) = guarded { it.onWake(remaining, isBackupPush) }
 
     private inline fun guarded(call: (PhotoBackupController) -> Unit) {

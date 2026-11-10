@@ -128,6 +128,13 @@ class PhotoBackupRun(
         refreshStatus()
     }
 
+    /** Under the run's lock, so a run that was going can't write a row back after the wipe. */
+    suspend fun forget() {
+        cancelActive()
+        mutex.withLock { ledger.clear() }
+        resetStatus()
+    }
+
     suspend fun retryFailures() {
         ledger.requeueFailed()
         refreshStatus()
