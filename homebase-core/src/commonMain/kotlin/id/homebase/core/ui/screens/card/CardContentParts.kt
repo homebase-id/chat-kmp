@@ -32,6 +32,8 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ButtonShapes
@@ -67,13 +69,11 @@ import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AttributeFields
 import id.homebase.core.ui.screens.profile.AudienceBadge
-import id.homebase.core.ui.screens.profile.AudiencePicker
 import id.homebase.core.ui.screens.profile.EditorActions
 import id.homebase.core.ui.screens.profile.PanelHeader
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.isAttributeValid
-import id.homebase.core.ui.screens.profile.otherCirclesOf
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
@@ -81,7 +81,6 @@ import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_add_title
 import id.homebase.resources.profile_card_content_add_visible
 import id.homebase.resources.profile_card_content_empty
-import id.homebase.resources.profile_card_content_public_off_note
 import id.homebase.resources.profile_card_content_shown_everyone
 import id.homebase.resources.profile_card_content_shown_to
 import id.homebase.resources.profile_card_content_sees_circle
@@ -100,8 +99,15 @@ import id.homebase.core.ui.screens.profile.ConflictRow
 import id.homebase.core.ui.screens.profile.conflictValue
 import id.homebase.core.ui.screens.profile.audienceSummary
 import id.homebase.core.ui.screens.profile.audience
+import id.homebase.core.ui.screens.profile.isOnCard
 import id.homebase.resources.profile_card_content_edit_title
 import id.homebase.resources.profile_card_content_delete
+import id.homebase.resources.profile_card_sheet_add_to_card
+import id.homebase.resources.profile_card_audience_public
+import id.homebase.resources.profile_card_sheet_available_on
+import id.homebase.resources.profile_card_sheet_remove_from_card
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.platform.testTag
 import id.homebase.resources.profile_card_content_more
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
 
@@ -327,6 +333,8 @@ internal fun ShownBadge(icon: ImageVector, shown: Boolean) {
     }
 }
 
+internal class CardToggle(val onCard: Boolean, val onClick: () -> Unit)
+
 /**
  * Adds an item ([editing] null, shown on [card]) or edits one: its fields, who sees it, older conflicting
  * records, and Delete, which takes it off every card.
@@ -343,6 +351,7 @@ internal fun ContentSheet(
     onEdit: (Map<String, String>, ProfileAudience) -> Unit = { _, _ -> },
     onDelete: ((Uuid) -> Unit)? = null,
     onCirclesChanged: (() -> Unit)? = null,
+    toggle: CardToggle? = null,
 ) {
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
@@ -415,19 +424,37 @@ internal fun ContentSheet(
                     )
                 }
             } else {
-                AudiencePicker(
-                    audience = audience,
-                    circles = circles,
-                    onChange = { audience = it },
-                    otherCircles = otherCirclesOf(editing.audience, audience),
-                    onCircleCreated = onCirclesChanged,
+                Text(
+                    text = stringResource(MR.string.profile_card_sheet_available_on),
+                    style = MaterialTheme.typography.labelLarge,
                 )
-                if (editing.audience == ProfileAudience.Public && audience != ProfileAudience.Public) {
-                    Text(
-                        text = stringResource(MR.string.profile_card_content_public_off_note),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val pills = listOf<Triple<CardAudience, String, String?>>(
+                        Triple(CardAudience.Public, stringResource(MR.string.profile_card_audience_public), null),
+                    ) + circles.map { Triple(CardAudience.Circle(it.id, it.name), it.name, it.emoji) }
+                    pills.forEach { (pillCard, label, emoji) ->
+                        val selected = when (pillCard) {
+                            CardAudience.Public -> audience == ProfileAudience.Public
+                            is CardAudience.Circle -> audience.isOnCard(pillCard.id)
+                        }
+                        FilterChip(
+                            selected = selected,
+                            onClick = { audience = audience.shownOn(pillCard, !selected, editing.audience, circles) ?: audience },
+                            label = { Text(listOfNotNull(emoji, label).joinToString(" ")) },
+                            modifier = Modifier.testTag("audience_pill_$label"),
+                        )
+                    }
+                }
+                toggle?.let { t ->
+                    OutlinedButton(
+                        onClick = { dismiss { t.onClick(); onDismiss() } },
+                        shapes = ButtonDefaults.shapes(),
+                        modifier = Modifier.testTag(if (t.onCard) "sheet_remove_from_card" else "sheet_add_to_card"),
+                    ) {
+                        Icon(if (t.onCard) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(if (t.onCard) MR.string.profile_card_sheet_remove_from_card else MR.string.profile_card_sheet_add_to_card))
+                    }
                 }
                 editing.conflicts.forEach { record ->
                     ConflictRow(

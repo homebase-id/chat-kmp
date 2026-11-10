@@ -22,6 +22,7 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.DragHandle
@@ -71,9 +72,6 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -97,7 +95,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
@@ -133,7 +130,6 @@ import id.homebase.resources.profile_edit_photo_public_caption
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.pluralStringResource
-import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectableGroup
@@ -167,9 +163,6 @@ import id.homebase.resources.profile_card_field_add_title
 import id.homebase.resources.profile_card_field_remove
 import id.homebase.resources.profile_card_field_to_back
 import id.homebase.resources.profile_card_field_to_front
-import id.homebase.resources.profile_card_field_place_back
-import id.homebase.resources.profile_card_field_place_front
-import id.homebase.resources.profile_card_field_place_front_unavailable
 import id.homebase.resources.profile_card_content_front
 import id.homebase.resources.profile_card_content_front_desc
 import id.homebase.resources.profile_card_content_front_empty
@@ -197,10 +190,7 @@ import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_load_failed_desc
 import id.homebase.resources.profile_edit_retry
 import id.homebase.core.widget.WithTooltip
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.graphics.Color
 
 private val PHOTO_SIZE = 80.dp
@@ -237,7 +227,6 @@ internal fun CardContentEditor(
     edge: Dp = 16.dp,
 ) {
     var editingId by remember { mutableStateOf<Uuid?>(null) }
-    var placingId by remember { mutableStateOf<Uuid?>(null) }
     var adding by remember { mutableStateOf<String?>(null) }
     var choosingMore by remember { mutableStateOf(false) }
     var choosingKind by remember { mutableStateOf(false) }
@@ -297,6 +286,16 @@ internal fun CardContentEditor(
         onFieldShown(item.id, front)
         item.audience.shownOn(card, true, null)?.let { onAudience(item.id, it) }
     }
+    val cardToggle: (CardContentItem) -> CardToggle? = { item ->
+        when {
+            circleCard && item.shown -> CardToggle(true) { removeFromCard(item) }.takeUnless { item.everyone }
+            circleCard -> CardToggle(false) { place(item, item.renderable) }
+            item.required -> null
+            item.shown && item.renderable -> CardToggle(item.onCard) { onFieldShown(item.id, !item.onCard) }
+            card is CardAudience.Circle -> item.audience.shownOn(card, true, null)?.let { CardToggle(false) { onAudience(item.id, it) } }
+            else -> null
+        }
+    }
     val row: @Composable (CardContentItem, Int, Int, FieldDisplay?) -> Unit = { item, index, count, display ->
         key(item.id) { EditorRow(
             item = item,
@@ -312,6 +311,8 @@ internal fun CardContentEditor(
                 onAudience(item.id, it)
             },
             onOpen = { editingId = item.id },
+            addable = display == null && !item.shown,
+            addAudience = item.audience.shownOn(card, true, null).takeIf { card is CardAudience.Circle },
         ) }
     }
     val frontRow: @Composable (CardContentItem, Int, Int, FieldDisplay) -> Unit = { item, index, count, display ->
@@ -455,7 +456,8 @@ internal fun CardContentEditor(
                             count = unavailable.size,
                             enabled = enabled,
                             tag = "field_unavailable",
-                            onOpen = { placingId = item.id },
+                            onOpen = { editingId = item.id },
+                            onAdd = { place(item, item.renderable) },
                             supporting = unavailableReason(item.audience, circles),
                             muted = true,
                         )
@@ -521,17 +523,8 @@ internal fun CardContentEditor(
                 onDelete(id)
             },
             onCirclesChanged = onCirclesChanged,
+            toggle = cardToggle(item),
             onDismiss = { editingId = null },
-        )
-    }
-    items.firstOrNull { it.id == placingId }?.let { item ->
-        PlaceFieldDialog(
-            item = item,
-            onPlace = { front ->
-                placingId = null
-                place(item, front)
-            },
-            onDismiss = { placingId = null },
         )
     }
     if (choosingKind) {
@@ -704,7 +697,7 @@ private fun PhotoRow(card: CardAudience, photo: CardPhotoUi, onChange: () -> Uni
     }
 }
 
-// Tapping a row edits the item everywhere; its trailing switch only hides it from, or shows it on, this card.
+// Tapping a row edits the item everywhere; its leading minus or plus only takes it off, or puts it on, this card.
 @Composable
 private fun EditorRow(
     item: CardContentItem,
@@ -717,6 +710,8 @@ private fun EditorRow(
     onApply: (ProfileAudience) -> Unit,
     onOpen: () -> Unit,
     display: FieldDisplay? = null,
+    addable: Boolean = false,
+    addAudience: ProfileAudience? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
@@ -724,6 +719,7 @@ private fun EditorRow(
     val moveUpLabel = stringResource(MR.string.profile_card_field_move_up, label)
     val moveDownLabel = stringResource(MR.string.profile_card_field_move_down, label)
     val toggleLabel = stringResource(if (display?.onCard == false) MR.string.profile_card_field_show else MR.string.profile_card_field_hide, label)
+    val addLabel = stringResource(MR.string.profile_card_field_add_title, label)
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
     val chooseCards = stringResource(MR.string.profile_card_content_choose_cards, item.text)
     val edit = stringResource(MR.string.profile_card_content_edit_this, label)
@@ -798,21 +794,32 @@ private fun EditorRow(
                 }
             }
         }
+        val toggle: @Composable () -> Unit = {
+            if (display != null && !item.required && !pending) {
+                val on = display.onCard
+                IconButton(
+                    onClick = display.onToggle,
+                    enabled = enabled,
+                    modifier = Modifier.testTag(if (on) "field_remove" else "field_add"),
+                ) {
+                    Icon(
+                        imageVector = if (on) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline,
+                        contentDescription = toggleLabel,
+                        tint = if (on) colors.onSurfaceVariant else colors.primary,
+                    )
+                }
+            } else if (addable && !pending) {
+                IconButton(
+                    onClick = { addAudience?.let(onApply) ?: run { choosing = true } },
+                    enabled = enabled,
+                    modifier = Modifier.testTag("field_add"),
+                ) {
+                    Icon(Icons.Outlined.AddCircleOutline, contentDescription = addLabel, tint = colors.primary)
+                }
+            }
+        }
         val controls: @Composable () -> Unit = {
             if (display != null) ReorderHandle(display, enabled, label)
-            if (display != null && !item.required && !pending) {
-                Switch(
-                    checked = display.onCard,
-                    onCheckedChange = { display.onToggle() },
-                    enabled = enabled,
-                    thumbContent = if (display.onCard) {
-                        { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
-                    } else {
-                        null
-                    },
-                    modifier = Modifier.padding(start = 4.dp).testTag("field_toggle").semantics { contentDescription = toggleLabel },
-                )
-            }
             when {
                 pending -> LoadingIndicator(modifier = Modifier.size(40.dp).padding(8.dp))
                 showCardsButton -> Unit
@@ -828,6 +835,7 @@ private fun EditorRow(
             // At large text the value needs the full width; the switch drops to its own line rather than squeezing it.
             Column(modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 6.dp)) {
                 Row(verticalAlignment = Alignment.Top) {
+                    toggle()
                     ShownBadge(icon = typeIcon(item.type), shown = display?.onCard ?: item.shown)
                     Spacer(Modifier.width(BADGE_GAP))
                     text(Modifier.weight(1f))
@@ -839,6 +847,7 @@ private fun EditorRow(
                 modifier = Modifier.heightIn(min = 64.dp).padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                toggle()
                 ShownBadge(icon = typeIcon(item.type), shown = display?.onCard ?: item.shown)
                 Spacer(Modifier.width(BADGE_GAP))
                 text(Modifier.weight(1f))
@@ -850,42 +859,6 @@ private fun EditorRow(
     if (choosing) {
         CardsSheet(item = item, circles = circles, onApply = onApply, onDismiss = { choosing = false })
     }
-}
-
-@Composable
-private fun PlaceFieldDialog(item: CardContentItem, onPlace: (front: Boolean) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.string.profile_card_field_add_title, stringResource(typeLabel(item.type)))) },
-        text = {
-            Column {
-                PlaceChoice(
-                    MR.string.profile_card_field_place_front,
-                    if (item.renderable) MR.string.profile_card_content_front_desc else MR.string.profile_card_field_place_front_unavailable,
-                    "place_front",
-                    enabled = item.renderable,
-                ) { onPlace(true) }
-                PlaceChoice(MR.string.profile_card_field_place_back, MR.string.profile_card_content_back_desc, "place_back") { onPlace(false) }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
-        },
-    )
-}
-
-@Composable
-private fun PlaceChoice(headline: StringResource, supporting: StringResource, tag: String, enabled: Boolean = true, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(stringResource(headline), style = MaterialTheme.typography.bodyLarge) },
-        supportingContent = { Text(stringResource(supporting), style = MaterialTheme.typography.bodyMedium) },
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier
-            .clip(MaterialTheme.shapes.medium)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .alpha(if (enabled) 1f else DISABLED_ALPHA)
-            .testTag(tag),
-    )
 }
 
 // Names the circles that can still see the field, so the owner knows what to change to bring it to this card.
@@ -914,12 +887,13 @@ private fun CardFieldRow(
     tag: String,
     onOpen: () -> Unit,
     onRemove: (() -> Unit)? = null,
+    onAdd: (() -> Unit)? = null,
     onMove: (() -> Unit)? = null,
     supporting: String? = null,
     display: FieldDisplay? = null,
     handleSlot: Boolean = false,
     muted: Boolean = false,
-    removeSlot: Boolean = onRemove != null,
+    removeSlot: Boolean = onRemove != null || onAdd != null,
 ) {
     val colors = MaterialTheme.colorScheme
     val label = stringResource(typeLabel(item.type))
@@ -927,6 +901,7 @@ private fun CardFieldRow(
     val moveDownLabel = stringResource(MR.string.profile_card_field_move_down, label)
     val edit = stringResource(MR.string.profile_card_content_edit_this, label)
     val remove = stringResource(MR.string.profile_card_field_remove, label)
+    val add = stringResource(MR.string.profile_card_field_add_title, label)
     val toBack = stringResource(MR.string.profile_card_field_to_back, label)
     val toFront = stringResource(MR.string.profile_card_field_to_front, label)
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
@@ -956,6 +931,10 @@ private fun CardFieldRow(
                     if (onRemove != null) {
                         IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
                             Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
+                        }
+                    } else if (onAdd != null) {
+                        IconButton(onClick = onAdd, enabled = enabled, modifier = Modifier.testTag("field_add")) {
+                            Icon(Icons.Outlined.AddCircleOutline, contentDescription = add, tint = colors.primary)
                         }
                     }
                 }
