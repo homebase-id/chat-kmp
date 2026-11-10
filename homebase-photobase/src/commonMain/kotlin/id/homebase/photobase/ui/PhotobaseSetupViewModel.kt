@@ -28,7 +28,10 @@ sealed interface PhotobaseSetupUiAction {
 }
 
 /** Installing Photobase is what creates the Photos drive; the owner console does it, in a browser. */
-class PhotobaseSetupViewModel(val extendPermissionViewModel: ExtendPermissionViewModel) : ViewModel() {
+class PhotobaseSetupViewModel(
+    val extendPermissionViewModel: ExtendPermissionViewModel,
+    private val onNotInstalled: () -> Unit = {},
+) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotobaseSetupUiState())
     val uiState: StateFlow<PhotobaseSetupUiState> = _uiState.asStateFlow()
 
@@ -42,6 +45,7 @@ class PhotobaseSetupViewModel(val extendPermissionViewModel: ExtendPermissionVie
                 extendPermissionViewModel.permissionsGranted,
             ) { checked, granted -> if (granted) true else if (checked) false else null }
                 .collect { installed ->
+                    if (installed == false) onNotInstalled()
                     _uiState.update {
                         it.copy(installed = installed, setupInitiated = if (installed == true) false else it.setupInitiated)
                     }

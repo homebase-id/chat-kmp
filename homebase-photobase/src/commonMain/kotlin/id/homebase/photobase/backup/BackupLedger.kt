@@ -225,6 +225,11 @@ class BackupLedger(
 
     suspend fun rowsInOutbox(): List<DeviceBackupAsset> = store.selectInStates(IN_OUTBOX)
 
+    suspend fun clear() {
+        store.deleteAll()
+        changed()
+    }
+
     suspend fun requeueFailed() {
         store.requeueFailed(BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code)
         changed()
