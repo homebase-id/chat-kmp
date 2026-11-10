@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
@@ -31,11 +33,25 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
-enum class BackupRunOutcome { AlreadyRunning, Paused, Finished, OutOfTime }
+enum class BackupRunOutcome {
+    /** Another run is going and this trigger doesn't outrank it. */
+    AlreadyRunning,
+
+    /** "Back up now" took over before this run finished. */
+    Superseded,
+    Paused,
+    Finished,
+    OutOfTime,
+}
 
 /**
  * The one backup run every trigger calls. It never assumes which trigger that was, and missing a
  * trigger only costs latency: all it trusts is the ledger, the checkpoint and the server.
+ *
+ * Only one runs at a time. A trigger meeting a run that's going:
+ * - "Back up now" stops it and runs instead, so the user's run is the one left going when the app closes;
+ * - opening the app waits for a background or user run, then runs after it;
+ * - every other trigger does nothing, since the run going covers it.
  */
 class PhotoBackupRun(
     private val settings: () -> BackupSettings,
@@ -56,6 +72,12 @@ class PhotoBackupRun(
     val status: StateFlow<BackupStatus> = _status.asStateFlow()
 
     private var activeJob: Job? = null
+
+    // Guards the three fields below, which callers outside the run's lock read and change.
+    private val admission = Mutex()
+    private var activeTrigger: BackupTrigger? = null
+    private var activeWork: Job? = null
+    private var userRequestsWaiting = 0
 
     /** The OS took the time back: stop now, leaving every row where a later run can pick it up. */
     fun cancelActive() {
@@ -107,7 +129,7 @@ class PhotoBackupRun(
     }
 
     suspend fun run(request: BackupRunRequest): BackupRunOutcome {
-        if (!mutex.tryLock()) {
+        if (!admit(request.trigger)) {
             Logger.d(tag = TAG) { "${request.trigger}: a run is already going" }
             return BackupRunOutcome.AlreadyRunning
         }
@@ -117,10 +139,31 @@ class PhotoBackupRun(
         val started = TimeSource.Monotonic.markNow()
         return try {
             val context = if (request.mayDownloadFromCloud) timings else timings + NoCloudDownloads
-            val outcome = withContext(context) { followingTheNetwork { runLocked(request) } }
-            noteForStuckAlert(request, outcome)
+            val outcome = try {
+                coroutineScope {
+                    val work = async(context) { followingTheNetwork { runLocked(request) } }
+                    admission.withLock {
+                        activeTrigger = request.trigger
+                        activeWork = work
+                        // A "Back up now" that arrived while this one waited for the lock.
+                        if (userRequestsWaiting > 0) work.cancel(Superseded())
+                    }
+                    work.await()
+                }
+            } catch (e: Superseded) {
+                currentCoroutineContext().ensureActive()
+                Logger.i(tag = TAG) { "${request.trigger}: \"Back up now\" took over" }
+                BackupRunOutcome.Superseded
+            }
+            if (outcome != BackupRunOutcome.Superseded) noteForStuckAlert(request, outcome)
             outcome
         } finally {
+            withContext(NonCancellable) {
+                admission.withLock {
+                    activeTrigger = null
+                    activeWork = null
+                }
+            }
             hasher.forgetAll()
             Logger.i(tag = TAG) { "timing trigger=${request.trigger} total=${started.elapsedNow().inWholeMilliseconds}ms ${timings.summary()}" }
             activeJob = null
@@ -128,6 +171,32 @@ class PhotoBackupRun(
             mutex.unlock()
         }
     }
+
+    /** True once this trigger holds the lock; false when it gives way to the run that's going. */
+    private suspend fun admit(trigger: BackupTrigger): Boolean {
+        if (mutex.tryLock()) return true
+        val userRequested = trigger == BackupTrigger.UserRequested
+        val waits = admission.withLock {
+            when {
+                userRequested -> {
+                    userRequestsWaiting++
+                    activeWork?.cancel(Superseded())
+                    true
+                }
+                trigger == BackupTrigger.Foreground -> activeTrigger != BackupTrigger.Foreground
+                else -> false
+            }
+        }
+        if (!waits) return false
+        try {
+            mutex.lock()
+        } finally {
+            if (userRequested) withContext(NonCancellable) { admission.withLock { userRequestsWaiting-- } }
+        }
+        return true
+    }
+
+    private class Superseded : CancellationException("\"Back up now\" took over")
 
     private suspend fun noteForStuckAlert(request: BackupRunRequest, outcome: BackupRunOutcome) {
         if (outcome != BackupRunOutcome.Paused) {
