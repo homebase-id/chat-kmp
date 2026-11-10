@@ -343,7 +343,6 @@ internal fun ContentSheet(
     onAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
     onEdit: (Map<String, String>, ProfileAudience) -> Unit = { _, _ -> },
     onDelete: ((Uuid) -> Unit)? = null,
-    onCirclesChanged: (() -> Unit)? = null,
 ) {
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {

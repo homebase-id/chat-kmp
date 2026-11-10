@@ -219,7 +219,6 @@ internal fun CardContentEditor(
     onRemovePhoto: () -> Unit,
     onImport: (CardAudience) -> Unit,
     modifier: Modifier = Modifier,
-    onCirclesChanged: (() -> Unit)? = null,
     onFieldShown: (Uuid, Boolean) -> Unit = { _, _ -> },
     onFieldsReordered: (List<Uuid>) -> Unit = {},
     busy: Boolean = false,
@@ -512,7 +511,6 @@ internal fun CardContentEditor(
                 pendingId = item.id
                 onDelete(id)
             },
-            onCirclesChanged = onCirclesChanged,
             onDismiss = { editingId = null },
         )
     }
@@ -864,7 +862,6 @@ private fun unavailableReason(audience: ProfileAudience, circles: List<CardCircl
 }
 
 private const val UNAVAILABLE_NAMES = 2
-private const val DISABLED_ALPHA = 0.38f
 
 // Rows in a section share one leading slot so values line up; a section with no remove buttons has none.
 @Composable
