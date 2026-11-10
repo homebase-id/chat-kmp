@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.homebase.chat.widget.UnparseableTypedChip
 import id.homebase.common.util.formatBytes
 import id.homebase.core.ui.assets.Filesync
 import id.homebase.core.ui.assets.HomebaseIcons
@@ -71,7 +72,14 @@ fun FileShareBubble(
     footer: (@Composable () -> Unit)? = null,
 ) {
     if (descriptor == null || !descriptor.isValid()) {
-        UnparseableFileShareBubble(modifier, footer)
+        UnparseableTypedChip(
+            HomebaseIcons.Filesync,
+            stringResource(MR.string.chat_file_share_unparseable),
+            modifier,
+            footer = footer?.let { f ->
+                { Row(Modifier.fillMaxWidth().padding(end = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.End) { f() } }
+            },
+        )
         return
     }
     val size = remember(descriptor.bytes) { formatBytes(descriptor.bytes) }
@@ -160,22 +168,5 @@ private fun DetailLine(icon: ImageVector, text: String) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(6.dp))
         Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun UnparseableFileShareBubble(modifier: Modifier, footer: (@Composable () -> Unit)?) {
-    Surface(modifier = modifier, shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Column {
-            Row(
-                modifier = Modifier.padding(start = 14.dp, top = 10.dp, end = 14.dp, bottom = if (footer != null) 2.dp else 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(HomebaseIcons.Filesync, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(MR.string.chat_file_share_unparseable), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            footer?.let { Row(modifier = Modifier.align(Alignment.End).padding(end = 8.dp, bottom = 4.dp)) { it() } }
-        }
     }
 }

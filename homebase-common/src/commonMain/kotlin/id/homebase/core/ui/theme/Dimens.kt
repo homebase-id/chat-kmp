@@ -18,6 +18,14 @@ object Dimens {
         val senderAvatarSize = 28.dp
     }
 
+    object AgentUi {
+        val cardMaxWidth = 360.dp
+        val cardMaxWidthWide = 520.dp
+        val wideBreakpoint = 600.dp
+        val cardCornerRadius = 24.dp
+        val actionCornerRadius = 16.dp
+    }
+
     object MediaBubble {
         val minWidthSolo = 150.dp
         val minWidthWithContent = 240.dp

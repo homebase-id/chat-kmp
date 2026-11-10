@@ -87,6 +87,8 @@ import id.homebase.core.location.emergency.EmergencyLocateStore
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.viewonce.ViewOnceActions
+import id.homebase.chat.agentui.AgentUiTreeLoader
+import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.chat.viewonce.ViewOncePayloadLoader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.services.ChatMessageSenderService
@@ -94,6 +96,7 @@ import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.ChatMediaAutoSaveService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.SurfacedListener
 import id.homebase.chat.services.ChatNotificationMessageResolver
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ChatServerHistory
@@ -221,6 +224,7 @@ import id.homebase.photobase.ui.PhotobaseSettingsViewModel
 import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
+import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import id.homebase.core.config.getFeedPermissionExtensionConfig
@@ -998,19 +1002,17 @@ val appModule = module {
             driveFileProvider = get(),
             optimisticWriter = get(),
             serverHistory = get(),
-        ).also { stream ->
-            // #887: wire auto-pin at construction, NOT in onPostAuthenticated. That
-            // post-auth block is deferred and frequently never runs on a warm
-            // relaunch / session-restore (the AuthCC promoteToForeground race), which
-            // left autoPinTypedMessage a no-op for the whole session — auto-pin
-            // silently did nothing while manual pin still worked. Resolving
-            // ChatMessageActionService lazily *inside* the lambda keeps the
-            // ActionService → MessageLookup → ChatMessageStream construction cycle broken.
-            stream.autoPinTypedMessage = { messageId, dependencyUniqueId ->
+            // #887: lazy get<> keeps the ActionService -> MessageLookup -> ChatMessageStream cycle broken.
+            pinMessage = { messageId, dependencyUniqueId ->
                 get<ChatMessageActionService>().pinMessage(messageId, dependencyUniqueId)
-            }
-            stream.sweepViewOnce = { messages, nowMs -> get<ViewOnceActions>().sweep(messages, nowMs) }
-        }
+            },
+            surfacedListeners = listOf(
+                SurfacedListener { messages -> get<AgentUiTreeLoader>().warm(messages) },
+                SurfacedListener { messages ->
+                    get<ViewOnceActions>().sweep(messages, Clock.System.now().toEpochMilliseconds())
+                },
+            ),
+        )
     }
     single<MessageLookup> { get<ChatMessageStream>() }
     singleOf(::ChatMediaAutoSaveService)
@@ -1023,6 +1025,16 @@ val appModule = module {
     singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     single { ViewOnceActions(get(), get()) }
+    single {
+        val cache = get<DriveFileProviderCached>()
+        AgentUiTreeLoader(
+            fetch = { fileId, keyHeader, lastModified ->
+                cache.getPayloadBytesDecrypted(chatTargetDrive.alias, fileId, ChatProtocol.PAYLOAD_KEY_AGENT_UI, keyHeader, lastModified = lastModified)?.bytes
+            },
+            scope = get(),
+            events = get(),
+        )
+    }
     single {
         ViewOncePayloadLoader(
             driveFileProvider = get(),

@@ -72,9 +72,7 @@ class AppsEverywhereScreenshotTest {
         onAccount = {}, onHelp = {}, onProfileEdit = {}, onProfileAvatarEdit = {}, onProfileCard = {},
     )
     private val appsActions = AppsSettingsActions(
-        onBack = {}, onFeedSettings = {}, onMomentsSettings = {}, onVaultSettings = {}, onFilesyncSettings = {},
-        onEmailSettings = {}, onOpenWebDrop = {}, onLocation = {}, onContactBookSettings = {}, onCallsSettings = {},
-        onPhotobaseSettings = {},
+        onBack = {}, onOpenPage = {}, onOpenWebDrop = {}, onLocation = {}, photobaseAvailable = true,
     )
 
     private val state = SettingsUiState(notificationStatus = NotificationVerificationStatus.OK, ownerSession = owner)

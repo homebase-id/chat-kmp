@@ -992,6 +992,11 @@
     <string name="chat_poll_one_vote">1 vote</string>
     <string name="chat_poll_vote_count">%1$d votes</string>
     <string name="chat_poll_unparseable">Unable to display this poll. Please update the app.</string>
+    <string name="chat_agent_ui_unparseable">Unable to display this card. Please update the app.</string>
+    <string name="chat_agent_ui_action_failed">Couldn't send that action. Try again.</string>
+    <string name="chat_agent_ui_action_you">You chose %1$s</string>
+    <string name="chat_agent_ui_action_other">%1$s chose %2$s</string>
+    <string name="chat_agent_ui_open_image">View image</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
     <string name="chat_file_share_you_one">You shared 1 file · %1$s</string>
