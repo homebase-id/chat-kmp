@@ -27,6 +27,7 @@ import id.homebase.chat.services.SendMessageResult
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.outbox.OptimisticWriter
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.TestScope
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -405,12 +406,16 @@ class ConversationServiceTestFixture : AutoCloseable {
         rawDriver!!.execute(null, "DROP TRIGGER IF EXISTS fail_outbox_insert;", 0)
     }
 
-    private fun createInMemoryDbm(): DatabaseManager = DatabaseManager({
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        OdinDatabase.Schema.create(driver)
-        rawDriver = driver
-        driver
-    })
+    // One in-memory connection serves every thread: reads on their own lane meet an open outbox checkout cursor (SQLITE_BUSY).
+    private fun createInMemoryDbm(): DatabaseManager {
+        val lane = Dispatchers.Default.limitedParallelism(1)
+        return DatabaseManager({
+            val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+            OdinDatabase.Schema.create(driver)
+            rawDriver = driver
+            driver
+        }, dispatcher = lane, readDispatcher = lane)
+    }
 
     private suspend fun createCredentialsManager(domain: String): CredentialsManager {
         val cm = CredentialsManager()
