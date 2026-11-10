@@ -211,6 +211,33 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun refreshingTheStatusUploadsWhatTheDriveLostAndKeepsWhatItHas() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        run.run(request())
+        advanceUntilIdle()
+        existing += idOf("a")
+        uploader.handedOff.clear()
+        dedupeCalls.clear()
+
+        run.run(request(trigger = BackupTrigger.UserRequested))
+        advanceUntilIdle()
+        assertTrue(dedupeCalls.isEmpty())
+        assertTrue(uploader.handedOff.isEmpty())
+
+        run.recheckDrive()
+        run.run(request(trigger = BackupTrigger.UserRequested))
+        advanceUntilIdle()
+
+        assertEquals(setOf(idOf("a"), idOf("b")), dedupeCalls.flatten().toSet())
+        assertEquals(listOf("b"), uploader.handedOff)
+        assertEquals(BackupState.Done.code, state("a"))
+        assertEquals(BackupState.Done.code, state("b"))
+        assertEquals(2, ledger.counts().done)
+    }
+
+    @Test
     fun aFailedDedupeUploadsNothingAndRetriesLater() = runTest {
         dedupeFailure = IllegalStateException("server down")
         source.next = fullListing(asset("a"))
@@ -616,6 +643,22 @@ class PhotoBackupRunTest {
         assertEquals(BackupPauseReason.StorageFull, run.status.value.pauseReason)
 
         assertTrue(source.checkpointsSeen.isEmpty())
+    }
+
+    @Test
+    fun statusSaysWhenPhotoLocationsAreWithheld() = runTest {
+        val (run, _) = newRun(uploader())
+
+        run.refreshStatus()
+        assertFalse(run.status.value.photoLocationsWithheld)
+
+        probe.locationsWithheld = true
+        run.refreshStatus()
+        assertTrue(run.status.value.photoLocationsWithheld)
+
+        probe.access = LibraryAccess.None
+        run.refreshStatus()
+        assertFalse(run.status.value.photoLocationsWithheld)
     }
 
     @Test

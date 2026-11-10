@@ -53,9 +53,11 @@ internal class FakeSource(var next: DeviceChanges = fullListing()) : DeviceChang
 internal class FakeProbe(
     var access: LibraryAccess = LibraryAccess.Full,
     var state: DeviceState = DeviceState(hasNetwork = true, isUnmetered = true, isCharging = true, isBatteryLow = false, isLowPowerMode = false),
+    var locationsWithheld: Boolean = false,
 ) : BackupDeviceProbe {
     override suspend fun state() = state
     override fun libraryAccess() = access
+    override fun photoLocationsWithheld() = locationsWithheld
 }
 
 /** Answers like the real Outbox would: through the event bus, after [sendTime] of virtual time. */

@@ -102,5 +102,10 @@ UPDATE DeviceBackupAsset
 SET state = CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END, attempts = 0, nextAttemptAt = 0, lastError = NULL
 WHERE state = :failedState;
 
+recheckDone:
+UPDATE DeviceBackupAsset
+SET state = CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END, attempts = 0, nextAttemptAt = 0, lastError = NULL
+WHERE state = :doneState;
+
 deleteAll:
 DELETE FROM DeviceBackupAsset;

@@ -28,6 +28,7 @@ data class BackupStatus(
     val failures: List<BackupFailure> = emptyList(),
     val failedCount: Long = 0,
     val libraryAccess: LibraryAccess = LibraryAccess.None,
+    val photoLocationsWithheld: Boolean = false,
     val backgroundRefreshOff: Boolean = false,
 ) {
     val totalCount: Long
@@ -76,6 +77,9 @@ interface BackupDeviceProbe {
     suspend fun state(): DeviceState
 
     fun libraryAccess(): LibraryAccess
+
+    /** True when the OS hands backup photos with their GPS removed; Android 10+ without `ACCESS_MEDIA_LOCATION`. */
+    fun photoLocationsWithheld(): Boolean = false
 
     /** True when the OS won't launch the app in the background for backup. */
     suspend fun isBackgroundRefreshOff(): Boolean = false

@@ -26,3 +26,16 @@ fun rememberBackupLibraryAccess(onChanged: () -> Unit): () -> Unit {
         if (denied) permissions.launchSettings() else permissions.askPermission(PermissionType.GALLERY)
     }
 }
+
+/** Asks for Android's original-location grant; a permanent "no" opens system settings. */
+@Composable
+fun rememberPhotoLocationAccess(onChanged: () -> Unit): () -> Unit {
+    var denied by remember { mutableStateOf(false) }
+    val permissions = createPermissionsManager { type, status, permanentlyDenied ->
+        if (type == PermissionType.MEDIA_LOCATION) denied = permanentlyDenied && status != PermissionStatus.GRANTED
+        onChanged()
+    }
+    return {
+        if (denied) permissions.launchSettings() else permissions.askPermission(PermissionType.MEDIA_LOCATION)
+    }
+}

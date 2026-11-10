@@ -115,6 +115,7 @@ class PhotoBackupRun(
                 failures = failures,
                 lastSuccessMs = lastSuccess,
                 libraryAccess = access,
+                photoLocationsWithheld = access != LibraryAccess.None && probe.photoLocationsWithheld(),
                 backgroundRefreshOff = refreshOff,
             )
         }
@@ -127,6 +128,11 @@ class PhotoBackupRun(
 
     suspend fun retryFailures() {
         ledger.requeueFailed()
+        refreshStatus()
+    }
+
+    suspend fun recheckDrive() {
+        ledger.recheckDone()
         refreshStatus()
     }
 
