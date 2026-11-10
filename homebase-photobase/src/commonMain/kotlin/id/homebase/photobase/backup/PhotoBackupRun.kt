@@ -3,6 +3,8 @@ package id.homebase.photobase.backup
 import id.homebase.api.video.BackgroundVideoWork
 import id.homebase.api.video.VideoWorkYieldedException
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ServerException
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -434,7 +436,12 @@ class PhotoBackupRun(
             } catch (e: Exception) {
                 // Not knowing means not uploading: a failed check can't prove the photo isn't there.
                 Logger.w(tag = TAG, throwable = e) { "dedupe check failed" }
-                batch.forEach { ledger.recordFailure(it, e.message ?: "dedupe check failed") }
+                val reason = e.message ?: "dedupe check failed"
+                if (e.isOutage()) {
+                    ledger.deferForOutage(batch, reason)
+                    return
+                }
+                batch.forEach { ledger.recordFailure(it, reason) }
                 continue
             }
             for ((row, uniqueId) in ids) {
@@ -526,3 +533,6 @@ class PhotoBackupRun(
         val WORKER_BUDGET: Duration = 9.minutes
     }
 }
+
+private fun Exception.isOutage(): Boolean =
+    isTransientNetworkFailure() || (this is ServerException && (status >= 500 || status == 408 || status == 429))

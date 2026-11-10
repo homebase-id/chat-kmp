@@ -184,6 +184,13 @@ class BackupLedger(
         changed()
     }
 
+    /** Counts no attempt: an unreachable server says nothing about the photos. */
+    suspend fun deferForOutage(rows: List<DeviceBackupAsset>, reason: String) {
+        val retryAt = nowMs() + OUTAGE_RETRY.inWholeMilliseconds
+        for (row in rows) store.setState(row.deviceAssetId, row.state, reason, row.attempts, retryAt)
+        changed()
+    }
+
     suspend fun clearNotOnDeviceDeferrals() = store.clearBackoffForReason(NOT_ON_DEVICE)
 
     suspend fun markSending(uniqueId: Uuid, taskId: Long) {
@@ -258,6 +265,7 @@ class BackupLedger(
         private const val NOT_ON_DEVICE = "not on this device"
         private val NOT_ON_DEVICE_RETRY = 6.hours
         private val VIDEO_YIELD_RETRY = 1.minutes
+        private val OUTAGE_RETRY = 5.minutes
         private const val OWN_KEY_PREFIX = "photobase."
         private const val INITIAL_DONE_KEY = "${OWN_KEY_PREFIX}initialBackupDone"
         private const val SCOPE_KEY = "${OWN_KEY_PREFIX}albumScope"
