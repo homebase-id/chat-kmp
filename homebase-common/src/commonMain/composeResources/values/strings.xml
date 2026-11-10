@@ -3340,6 +3340,9 @@
     <string name="photobase_backup_enable_desc">Keep your phone's library on your Homebase drive, encrypted, in full quality.</string>
     <string name="photobase_backup_status">Status</string>
     <string name="photobase_backup_now">Back up now</string>
+    <string name="photobase_backup_now_start">Start</string>
+    <string name="photobase_refresh_status">Refresh backup status</string>
+    <string name="photobase_refresh_status_desc">Checks your drive for every photo and video, and backs up any that are missing.</string>
     <string name="photobase_backup_albums">Albums</string>
     <string name="photobase_backup_albums_default">Camera</string>
     <string name="photobase_backup_wifi_only">Wi-Fi only</string>
@@ -3360,6 +3363,8 @@
     <string name="photobase_library_limited">Backing up only the photos you selected.</string>
     <string name="photobase_library_allow">Allow access</string>
     <string name="photobase_library_allow_all">Allow all photos</string>
+    <string name="photobase_location_withheld">Backups don't include where your photos were taken.</string>
+    <string name="photobase_location_allow">Include locations</string>
     <string name="photobase_status_title">Backup status</string>
     <string name="photobase_status_running">Backing up</string>
     <string name="photobase_status_up_to_date">Waiting for the next backup</string>

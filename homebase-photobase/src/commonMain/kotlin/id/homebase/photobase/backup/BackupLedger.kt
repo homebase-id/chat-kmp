@@ -230,6 +230,12 @@ class BackupLedger(
         changed()
     }
 
+    /** Done is only what the phone remembers: this sends every Done row back through the server check. */
+    suspend fun recheckDone() {
+        store.recheckDone(BackupState.Done.code, BackupState.New.code, BackupState.Hashed.code)
+        changed()
+    }
+
     suspend fun handedOffCount(): Long = store.countInStates(listOf(BackupState.Queued.code, BackupState.Uploading.code))
 
     suspend fun counts(): LedgerCounts {
