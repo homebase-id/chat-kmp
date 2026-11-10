@@ -19,6 +19,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import co.touchlab.kermit.Logger
@@ -71,6 +72,17 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
     override fun onBackupRan(workLeft: Boolean) = cancelBackupStuckNotification(context)
 
     override suspend fun alertBackupStuck() = postBackupStuckNotification(context)
+
+    // Appended, so a worker continuing itself queues behind its own run; KEEP would see it running and drop this.
+    override fun continueSoon(settings: BackupSettings) {
+        val waiting = workManager.getWorkInfosForUniqueWork(CONTINUATION_WORK).get().any { it.state == WorkInfo.State.ENQUEUED }
+        if (waiting) return
+        val request = OneTimeWorkRequestBuilder<PhotoBackupWorker>()
+            .setConstraints(constraints(settings))
+            .setInputData(triggerData(BackupTrigger.Continuation))
+            .build()
+        workManager.enqueueUniqueWork(CONTINUATION_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+    }
 
     /** The watch fires once, so it's armed again first. Appended: a run already going has scanned past this photo. */
     fun onLibraryChanged(settings: BackupSettings) {
@@ -157,7 +169,8 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
         const val OVERNIGHT_WORK = "photobase-overnight"
         const val PUSH_WORK = "photobase-push"
         const val USER_REQUESTED_WORK = "photobase-user-requested"
-        val ALL_WORK = listOf(MEDIA_CHANGED_WORK, PERIODIC_WORK, OVERNIGHT_WORK, PUSH_WORK, USER_REQUESTED_WORK)
+        const val CONTINUATION_WORK = "photobase-continuation"
+        val ALL_WORK = listOf(MEDIA_CHANGED_WORK, PERIODIC_WORK, OVERNIGHT_WORK, PUSH_WORK, USER_REQUESTED_WORK, CONTINUATION_WORK)
         const val USER_INITIATED_JOB_ID = 72011
         val SAFETY_NET_PERIOD = 1.hours
         val OVERNIGHT_PERIOD = 8.hours

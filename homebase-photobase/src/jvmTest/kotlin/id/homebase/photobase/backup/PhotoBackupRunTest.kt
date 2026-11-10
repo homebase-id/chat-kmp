@@ -51,6 +51,7 @@ class PhotoBackupRunTest {
     private var signedIn = CompletableDeferred(true)
     private val ranWithWorkLeft = mutableListOf<Boolean>()
     private var stuckAlerts = 0
+    private var continuations = 0
 
     @AfterTest
     fun close() = db.close()
@@ -89,6 +90,7 @@ class PhotoBackupRunTest {
             scheduler = object : BackupScheduler {
                 override fun rearm(settings: BackupSettings) = Unit
                 override fun onBackupRan(workLeft: Boolean) { ranWithWorkLeft += workLeft }
+                override fun continueSoon(settings: BackupSettings) { continuations++ }
                 override suspend fun alertBackupStuck() { stuckAlerts++ }
             },
             isStorageFull = { storageFull },
@@ -505,6 +507,31 @@ class PhotoBackupRunTest {
         val counts = ledger.counts()
         assertTrue(counts.pending > 0, "some assets must be left: $counts")
         assertFalse(ledger.isInitialBackupDone())
+        assertEquals(1, continuations, "it backed some up, so another run carries on")
+    }
+
+    @Test
+    fun aRunOutOfTimeThatMovedNothingDoesNotAskForAnother() = runTest {
+        hashTime = 30.seconds
+        source.next = fullListing(asset("a"), asset("b"))
+        val (run, _) = newRun(uploader())
+
+        assertEquals(BackupRunOutcome.OutOfTime, run.run(request(limit = 25.seconds)))
+
+        assertEquals(0, continuations)
+    }
+
+    @Test
+    fun aRunThatFinishesOrPausesDoesNotAskForAnother() = runTest {
+        source.next = fullListing(asset("a"))
+        val (run, _) = newRun(uploader())
+        run.run(request())
+
+        probe.state = probe.state.copy(isUnmetered = false)
+        source.next = fullListing(asset("a"), asset("b"))
+        run.run(request(limit = 25.seconds))
+
+        assertEquals(0, continuations)
     }
 
     @Test

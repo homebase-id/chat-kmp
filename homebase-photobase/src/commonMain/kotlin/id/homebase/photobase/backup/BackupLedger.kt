@@ -33,8 +33,10 @@ data class LedgerCounts(
     val doneBytes: Long? = 0,
     val remainingBytes: Long? = 0,
 ) {
+    val unsent: Long get() = pending + inOutbox + uploading
+
     /** Failed rows count: a foreground run retries them. */
-    val workLeft: Boolean get() = pending + inOutbox + uploading + failed > 0
+    val workLeft: Boolean get() = unsent + failed > 0
 }
 
 /** The one place backup state changes, and what decides whether a photo is backed up. */
