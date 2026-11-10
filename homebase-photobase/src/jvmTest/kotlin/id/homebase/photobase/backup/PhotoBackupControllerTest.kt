@@ -331,6 +331,20 @@ class PhotoBackupControllerTest {
     }
 
     @Test
+    fun theRescanAfterAWakeSurvivesTheProcessDying() = runTest {
+        triggers.rescans = true
+        val woken = controller()
+        enable(woken)
+        woken.runFromBackground(BackupRunRequest(BackupTrigger.Periodic, BackupBudget(null)))
+
+        val nextProcess = controller()
+        nextProcess.onAppForeground()
+        advanceTimeBy(1.seconds)
+
+        assertTrue(source.checkpointsSeen.last().isEmpty())
+    }
+
+    @Test
     fun theOpenAppRunsWhatThePlatformWontTakeOver() = runTest {
         val controller = controller()
         enable(controller)

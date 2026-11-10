@@ -96,6 +96,10 @@ class PhotoBackupRun(
 
     suspend fun takeOtherPushWake(gap: Duration): Boolean = ledger.takeOtherPushWake(gap)
 
+    suspend fun markWokenInBackground() = ledger.markWokenInBackground()
+
+    suspend fun takeWokenInBackground(): Boolean = ledger.takeWokenInBackground()
+
     suspend fun refreshStatus() {
         val counts = ledger.counts()
         val failures = ledger.failures(MAX_FAILURES_SHOWN)
@@ -404,6 +408,9 @@ class PhotoBackupRun(
     private suspend fun hash(row: DeviceBackupAsset) {
         guarded(row) {
             val hashed = hasher.hash(row.deviceAssetId, BackupMediaType.ofCode(row.mediaType))
+            row.contentHash?.let { previous ->
+                Logger.i(tag = TAG) { "rehashed ${row.deviceAssetId} modifiedAt=${row.modifiedAt} unchanged=${previous == hashed.contentHash}" }
+            }
             ledger.markHashed(row.deviceAssetId, hashed.contentHash, hashed.uniqueId)
         }
     }

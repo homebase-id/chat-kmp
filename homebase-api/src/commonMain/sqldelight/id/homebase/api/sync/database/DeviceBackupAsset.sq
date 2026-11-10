@@ -35,7 +35,7 @@ SELECT deviceAssetId FROM DeviceBackupAsset WHERE state != ?;
 restart:
 UPDATE DeviceBackupAsset
 SET albumIds = :albumIds, mediaType = :mediaType, createdAt = :createdAt, modifiedAt = :modifiedAt, size = :size,
-    state = :state, contentHash = NULL, uniqueId = NULL, attempts = 0, lastError = NULL, nextAttemptAt = 0, uploadTaskId = NULL
+    state = :state, uniqueId = NULL, attempts = 0, lastError = NULL, nextAttemptAt = 0, uploadTaskId = NULL
 WHERE deviceAssetId = :deviceAssetId;
 
 updateAlbums:

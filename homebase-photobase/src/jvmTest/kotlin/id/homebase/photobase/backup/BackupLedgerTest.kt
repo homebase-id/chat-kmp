@@ -42,7 +42,18 @@ class BackupLedgerTest {
         val row = ledger.row("a")!!
         assertEquals(BackupState.New.code, row.state)
         assertEquals(null, row.uniqueId)
-        assertEquals(null, row.contentHash)
+        assertEquals("ff", row.contentHash, "kept, so the re-hash can say whether the bytes really changed")
+    }
+
+    @Test
+    fun aBackgroundWakeIsRememberedOnceAcrossProcesses() = runTest {
+        assertEquals(false, ledger.takeWokenInBackground())
+        ledger.markWokenInBackground()
+
+        val nextProcess = BackupLedger(db.deviceBackup) { now }
+
+        assertEquals(true, nextProcess.takeWokenInBackground())
+        assertEquals(false, nextProcess.takeWokenInBackground())
     }
 
     @Test
