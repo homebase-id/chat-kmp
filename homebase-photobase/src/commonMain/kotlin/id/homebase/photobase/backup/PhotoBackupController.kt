@@ -66,11 +66,15 @@ class PhotoBackupController(
         scope.launch { run.refreshStatus() }
     }
 
-    /** Off screen a foreground run has no time budget at all, so it stops and a background trigger takes over. */
+    /** Off screen a foreground run has no time budget at all, so it stops and a background run takes over. */
     fun onAppBackground() {
         inForeground = false
         foregroundJob?.cancel()
         foregroundJob = null
+        val run = run ?: return
+        val settings = settingsStore.settings.value
+        if (!settings.enabled) return
+        scope.launch { if (run.hasUnsentWork()) triggers?.continueSoon(settings) }
     }
 
     suspend fun runFromBackground(request: BackupRunRequest) {

@@ -56,6 +56,11 @@ class PhotoBackupControllerTest {
         var takesUserRuns = true
         var userRuns = 0
         var rescans = false
+        var continuations = 0
+
+        override fun continueSoon(settings: BackupSettings) {
+            continuations++
+        }
 
         override val rescansAfterBackgroundWake: Boolean get() = rescans
 
@@ -317,6 +322,29 @@ class PhotoBackupControllerTest {
         controller.onAppForeground()
         advanceTimeBy(1.seconds)
         return source.checkpointsSeen.last()
+    }
+
+    @Test
+    fun leavingTheAppWithPhotosLeftHandsThemToABackgroundRun() = runTest {
+        val controller = controller()
+        enable(controller)
+        BackupLedger(db.deviceBackup) { 1_000 }.apply(fullListing(asset("a")), null)
+
+        controller.onAppBackground()
+        runCurrent()
+
+        assertEquals(1, triggers.continuations)
+    }
+
+    @Test
+    fun leavingTheAppWithNothingLeftArrangesNothing() = runTest {
+        val controller = controller()
+        enable(controller)
+
+        controller.onAppBackground()
+        runCurrent()
+
+        assertEquals(0, triggers.continuations)
     }
 
     @Test
