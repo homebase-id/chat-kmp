@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BatteryChargingFull
@@ -23,6 +24,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,6 +52,7 @@ import id.homebase.resources.photobase_backup_enable
 import id.homebase.resources.photobase_backup_enable_desc
 import id.homebase.resources.photobase_backup_guidance
 import id.homebase.resources.photobase_backup_now
+import id.homebase.resources.photobase_backup_now_start
 import id.homebase.resources.photobase_backup_newest_first
 import id.homebase.resources.photobase_backup_newest_first_desc
 import id.homebase.resources.photobase_backup_only_new
@@ -66,6 +69,10 @@ import id.homebase.resources.photobase_library_allow
 import id.homebase.resources.photobase_library_allow_all
 import id.homebase.resources.photobase_library_limited
 import id.homebase.resources.photobase_library_none
+import id.homebase.resources.photobase_location_allow
+import id.homebase.resources.photobase_location_withheld
+import id.homebase.resources.photobase_refresh_status
+import id.homebase.resources.photobase_refresh_status_desc
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -81,16 +88,23 @@ fun BackupSettingsSection(
     val settings = uiState.settings
     val onAction = viewModel::onAction
     var showAlbums by remember { mutableStateOf(false) }
+    var showBackUpNow by remember { mutableStateOf(false) }
 
     val rowColor = MaterialTheme.colorScheme.surfaceContainer
-    LibraryAccessRow(uiState.status.libraryAccess) { onAction(BackupSettingsUiAction.PermissionChanged) }
+    val onPermissionChanged = { onAction(BackupSettingsUiAction.PermissionChanged) }
+    val requestPhotoLocations = rememberPhotoLocationAccess(onPermissionChanged)
+    LibraryAccessRow(uiState.status.libraryAccess, onPermissionChanged)
+    if (settings.enabled && uiState.status.photoLocationsWithheld) PhotoLocationRow(requestPhotoLocations)
     RowGroup {
         SettingsRow(
             icon = Icons.Outlined.CloudUpload,
             title = stringResource(MR.string.photobase_backup_enable),
             supportingText = stringResource(MR.string.photobase_backup_enable_desc),
             containerColor = rowColor,
-            action = SettingsRowAction.Toggle(settings.enabled) { onAction(BackupSettingsUiAction.SetEnabled(it)) },
+            action = SettingsRowAction.Toggle(settings.enabled) {
+                onAction(BackupSettingsUiAction.SetEnabled(it))
+                if (it && uiState.status.photoLocationsWithheld) requestPhotoLocations()
+            },
         )
         SettingsRow(
             icon = Icons.Outlined.Info,
@@ -102,7 +116,7 @@ fun BackupSettingsSection(
     }
     if (settings.enabled) {
         OutlinedButton(
-            onClick = { onAction(BackupSettingsUiAction.BackUpNow) },
+            onClick = { showBackUpNow = true },
             enabled = !uiState.status.isRunning,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         ) {
@@ -187,6 +201,16 @@ fun BackupSettingsSection(
         modifier = Modifier.padding(16.dp),
     )
 
+    if (showBackUpNow) {
+        BackUpNowDialog(
+            onDismiss = { showBackUpNow = false },
+            onStart = { recheckDrive ->
+                onAction(if (recheckDrive) BackupSettingsUiAction.RecheckDriveAndBackUp else BackupSettingsUiAction.BackUpNow)
+                showBackUpNow = false
+            },
+        )
+    }
+
     if (showAlbums) {
         AlbumsDialog(
             uiState = uiState,
@@ -197,6 +221,29 @@ fun BackupSettingsSection(
             },
         )
     }
+}
+
+@Composable
+private fun BackUpNowDialog(onDismiss: () -> Unit, onStart: (recheckDrive: Boolean) -> Unit) {
+    var recheckDrive by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.photobase_backup_now)) },
+        text = {
+            ListItem(
+                headlineContent = { Text(stringResource(MR.string.photobase_refresh_status)) },
+                supportingContent = { Text(stringResource(MR.string.photobase_refresh_status_desc)) },
+                trailingContent = { Switch(checked = recheckDrive, onCheckedChange = null) },
+                modifier = Modifier.toggleable(value = recheckDrive, role = Role.Switch) { recheckDrive = it },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onStart(recheckDrive) }) { Text(stringResource(MR.string.photobase_backup_now_start)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.photobase_backup_dialog_cancel)) }
+        },
+    )
 }
 
 @Composable
@@ -213,6 +260,16 @@ private fun LibraryAccessRow(access: LibraryAccess, onChanged: () -> Unit) {
             Button(onClick = requester) {
                 Text(stringResource(if (access == LibraryAccess.None) MR.string.photobase_library_allow else MR.string.photobase_library_allow_all))
             }
+        },
+    )
+}
+
+@Composable
+private fun PhotoLocationRow(onAllow: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(stringResource(MR.string.photobase_location_withheld)) },
+        supportingContent = {
+            Button(onClick = onAllow) { Text(stringResource(MR.string.photobase_location_allow)) }
         },
     )
 }

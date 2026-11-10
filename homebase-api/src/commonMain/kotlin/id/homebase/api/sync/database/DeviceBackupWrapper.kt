@@ -87,6 +87,10 @@ class DeviceBackupWrapper(
         databaseManager.withWriteValue { assets.requeueFailed(newState, hashedState, failedState) }
     }
 
+    suspend fun recheckDone(doneState: Long, newState: Long, hashedState: Long) {
+        databaseManager.withWriteValue { assets.recheckDone(newState, hashedState, doneState) }
+    }
+
     suspend fun checkpoints(): Map<String, String> =
         databaseManager.readValue("deviceBackup.checkpoints") {
             checkpoints.selectAll().executeAsList().associate { it.checkpointKey to it.checkpointValue }
