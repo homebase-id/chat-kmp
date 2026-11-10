@@ -32,6 +32,7 @@ import platform.Foundation.NSBundle
 import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.dateWithTimeIntervalSinceNow
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -43,13 +44,17 @@ private val REFRESH_EARLIEST = 15.minutes
 
 /** One request is one launch, so each launch has to submit the next. */
 fun submitBackupTasks() {
-    submit(BGAppRefreshTaskRequest(backupRefreshTaskId).apply {
-        earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(REFRESH_EARLIEST.inWholeSeconds.toDouble())
-    })
-    submit(BGProcessingTaskRequest(backupProcessingTaskId).apply {
-        requiresNetworkConnectivity = true
-        requiresExternalPower = true
-    })
+    submit(refreshRequest())
+    submit(processingRequest())
+}
+
+private fun refreshRequest() = BGAppRefreshTaskRequest(backupRefreshTaskId).apply {
+    earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(REFRESH_EARLIEST.inWholeSeconds.toDouble())
+}
+
+private fun processingRequest() = BGProcessingTaskRequest(backupProcessingTaskId).apply {
+    requiresNetworkConnectivity = true
+    requiresExternalPower = true
 }
 
 private fun submit(request: BGTaskRequest) = memScoped {
@@ -87,8 +92,12 @@ class IosBackupTriggers : BackupTriggers {
 
     override val usesOtherPushes: Boolean get() = true
 
+    @Volatile
+    private var enabled = false
+
     override fun rearm(settings: BackupSettings) {
         val scheduler = BGTaskScheduler.sharedScheduler
+        enabled = settings.enabled
         if (!settings.enabled) {
             scheduler.cancelTaskRequestWithIdentifier(backupRefreshTaskId)
             scheduler.cancelTaskRequestWithIdentifier(backupProcessingTaskId)
@@ -96,8 +105,18 @@ class IosBackupTriggers : BackupTriggers {
             UNUserNotificationCenter.currentNotificationCenter().removePendingNotificationRequestsWithIdentifiers(listOf(STUCK_ALERT_ID))
             return
         }
-        submitBackupTasks()
+        submitMissingBackupTasks()
         armStuckAlertIfMissing()
+    }
+
+    // Submitting replaces a pending request with the same id, which pushes its earliest start back again.
+    private fun submitMissingBackupTasks() {
+        BGTaskScheduler.sharedScheduler.getPendingTaskRequestsWithCompletionHandler { requests ->
+            if (!enabled) return@getPendingTaskRequestsWithCompletionHandler
+            val pending = requests.orEmpty().mapNotNullTo(mutableSetOf()) { (it as? BGTaskRequest)?.identifier }
+            if (backupRefreshTaskId !in pending) submit(refreshRequest())
+            if (backupProcessingTaskId !in pending) submit(processingRequest())
+        }
     }
 
     /** Works even after a force-quit: it only fires if no run has pushed it back. */
