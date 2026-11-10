@@ -73,6 +73,9 @@ kotlin {
             ) {
                 freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis"
             }
+            if (providers.gradleProperty("homebase.native.profilePhases").orNull == "true") {
+                freeCompilerArgs += "-Xprofile-phases"
+            }
             // Export homebase-api to make FFmpegKitBridge accessible from Swift
             export(project(":homebase-api"))
             export(project(":homebase-common"))

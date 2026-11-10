@@ -23,6 +23,8 @@ concurrency:
 
 jobs:
   build-android:
+    # Experiment branch: no Play upload.
+    if: false
     runs-on: ubuntu-latest
 
     steps:
@@ -93,7 +95,8 @@ jobs:
         run: ./gradlew publishDevBundle --artifact-dir androidApp/build/outputs/bundle/dev
 
   build-ios:
-    runs-on: macos-15
+    # Intel: the free macOS runner with 14 GB of RAM (Apple Silicon has 7); the release link needs ~11.5 GB live.
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v5
 
@@ -120,9 +123,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/gradle.properties') }}
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', '**/gradle.properties') }}
           restore-keys: |
-            konan-${{ runner.os }}-
+            konan-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -183,7 +186,7 @@ jobs:
           COMPILER_INDEX_STORE_ENABLE = NO
           XCEOF
 
-      # CI-only memory tuning for the 7 GB macos-15 runner. Appended at build
+      # CI-only memory tuning for the 14 GB macos-15-intel runner. Appended at build
       # time so the repo's gradle.properties stays untouched for local dev;
       # in a Java properties file the LAST occurrence of a key wins.
       # Rollback: delete this step and the "Upload JVM OOM diagnostics" step.
@@ -193,7 +196,7 @@ jobs:
       # overrides" — this Dev workflow had no memory tuning at all and was
       # inheriting the repo's local-dev gradle.properties (8g Gradle daemon +
       # a persistent 8g Kotlin/Native compiler daemon + 3 parallel K/N
-      # workers), which oversubscribes the 7 GB runner and OOMs (run
+      # workers), which oversubscribed the then 7 GB runner and OOMed (run
       # 28889415054: "Java heap space: failed reallocation of scalar
       # replaced objects").
       - name: Apply iOS CI memory overrides
@@ -203,7 +206,7 @@ jobs:
 
           # --- CI-only overrides (appended by "Apply iOS CI memory overrides") ---
           # Gradle daemon only orchestrates this build; don't let it compete
-          # with the Kotlin/Native compiler for the runner's 7 GB of RAM.
+          # with the Kotlin/Native compiler for the runner's 14 GB of RAM.
           org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -XX:ErrorFile=/Users/runner/work/jvm-dumps/hs_err_pid%p.log
           kotlin.daemon.jvmargs=-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -XX:ErrorFile=/Users/runner/work/jvm-dumps/hs_err_pid%p.log
           # One K/N task at a time; incremental-native caches are dead weight
@@ -215,18 +218,16 @@ jobs:
           # accumulated daemon heap (build-mobile-release-prod.yml build
           # 27400310875 OOM).
           kotlin.native.disableCompilerDaemon=true
-          # 12g: matches build-mobile-release-prod.yml's tuning (run
-          # 28881233018's GC log proved the release link's peak working set
-          # needs more headroom than 8g to avoid G1 "GC overhead limit
-          # exceeded" thrashing). 12g exceeds the runner's 7 GB RAM; macOS
-          # swap absorbs it.
-          kotlin.native.jvmArgs=-Xmx12g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log -XX:ErrorFile=/Users/runner/work/jvm-dumps/hs_err_pid%p.log
+          # 13g: the link's live set reached ~11.5 GB in 2026-11 and 12g thrashed through
+          # 3-4 min Full GCs until the 180-min timeout (IOS_RELEASE_LINK_OOM.md).
+          kotlin.native.jvmArgs=-Xmx13g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log -XX:ErrorFile=/Users/runner/work/jvm-dumps/hs_err_pid%p.log
           # Skip the K/N LTO phase that owns the bulk of the release link's
           # peak heap (~2 GB of live set, and growing with the app). Matches
           # build-mobile-release-prod.yml; evidence + safety analysis in
           # IOS_RELEASE_LINK_OOM.md. Applied by a gated freeCompilerArgs block
           # in homebase-core/build.gradle.kts.
           homebase.native.disableDevirtualization=true
+          homebase.native.profilePhases=true
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
           tail -n 20 gradle.properties
@@ -272,8 +273,24 @@ jobs:
           ' >> "$RUNNER_TEMP/keychain-watcher.log" 2>&1 &
           echo "keychain watcher started (log: $RUNNER_TEMP/keychain-watcher.log)"
 
+      # Experiment: what fills the link's heap. Histograms force a Full GC, so only every 10 min.
+      - name: Heap histogram watcher (background)
+        run: |
+          nohup bash -c '
+            d=/Users/runner/work/jvm-dumps
+            while true; do
+              sleep 600
+              for pid in $(pgrep -f "kn-g[c]-"); do
+                ts=$(date -u +%H%M%S)
+                ps -o rss=,etime= -p $pid > "$d/hist-$pid-$ts.txt"
+                "$JAVA_HOME/bin/jcmd" $pid GC.class_histogram | head -80 >> "$d/hist-$pid-$ts.txt" 2>&1
+                "$JAVA_HOME/bin/jcmd" $pid Thread.print | grep -A25 "\"main\"" > "$d/stack-$pid-$ts.txt" 2>&1
+              done
+            done
+          ' > /dev/null 2>&1 &
+
       - name: Build iOS
-        timeout-minutes: 180
+        timeout-minutes: 300
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj
@@ -301,6 +318,8 @@ jobs:
           find ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports \
             -newer "$GITHUB_WORKSPACE/gradlew" -type f -exec cp {} "$d/" \; 2>/dev/null || true
           find "$GITHUB_WORKSPACE" -maxdepth 3 -name 'hs_err_pid*.log' -exec cp {} "$d/" \; 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/homebase-core/build" -name ComposeApp.h -exec cp {} "$d/" \; 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/homebase-core/build" -name ComposeApp -type f -size +1M -exec ls -la {} \; > "$d/framework-sizes.txt" 2>/dev/null || true
           ls -la "$d"
 
       # Companion to "Apply iOS CI memory overrides": if the build OOMs again,
