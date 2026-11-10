@@ -3,6 +3,8 @@ package id.homebase.photobase.backup
 import id.homebase.api.video.BackgroundVideoWork
 import id.homebase.api.video.VideoWorkYieldedException
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ServerException
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -348,7 +350,7 @@ class PhotoBackupRun(
     private suspend fun reconcileHandedOff() {
         val handedOff = ledger.rowsInOutbox().mapNotNull { row -> row.uniqueId?.let { row to Uuid.parse(it) } }.toMap()
         val sending = uploader.stillSending(handedOff)
-        for (uniqueId in handedOff.values - sending) ledger.onOutboxDropped(uniqueId, "no send under way")
+        for (uniqueId in handedOff.values - sending) ledger.onOutboxDropped(uniqueId, "no send under way", countsAttempt = false)
     }
 
     private suspend fun pipeline(
@@ -448,7 +450,12 @@ class PhotoBackupRun(
             } catch (e: Exception) {
                 // Not knowing means not uploading: a failed check can't prove the photo isn't there.
                 Logger.w(tag = TAG, throwable = e) { "dedupe check failed" }
-                batch.forEach { ledger.recordFailure(it, e.message ?: "dedupe check failed") }
+                val reason = e.message ?: "dedupe check failed"
+                if (e.isOutage()) {
+                    ledger.deferForOutage(batch, reason)
+                    return
+                }
+                batch.forEach { ledger.recordFailure(it, reason) }
                 continue
             }
             for ((row, uniqueId) in ids) {
@@ -504,7 +511,9 @@ class PhotoBackupRun(
         val isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video
         while (true) {
             val outboxHasRoom = !isVideo || results.unsettled.value.size < MAX_OUTBOX_HANDED_OFF
-            if (ledger.handedOffCount() < uploader.maxHandedOff && outboxHasRoom) return true
+            // Rows the Outbox is backing off don't hold up the rest; twice the limit stops an outage staging the library.
+            val hasRoom = ledger.sendingCount() < uploader.maxHandedOff && ledger.handedOffCount() < uploader.maxHandedOff * 2
+            if (hasRoom && outboxHasRoom) return true
             val waitingIsUseful = if (uploader.outlivesProcess) interactive else results.unsettled.value.isNotEmpty()
             if (!waitingIsUseful || !awaitActivity()) return false
         }
@@ -543,3 +552,6 @@ class PhotoBackupRun(
         val WORKER_BUDGET: Duration = 9.minutes
     }
 }
+
+private fun Exception.isOutage(): Boolean =
+    isTransientNetworkFailure() || (this is ServerException && (status >= 500 || status == 408 || status == 429))

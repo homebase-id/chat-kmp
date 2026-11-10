@@ -161,6 +161,36 @@ class BackupLedgerTest {
     }
 
     @Test
+    fun aRowDroppedOnEveryAttemptEndsUpFailed() = runTest {
+        val id = Uuid.random()
+        ledger.apply(fullListing(asset("a")), null)
+        ledger.markHashed("a", "ff", id)
+
+        repeat(BackupLedger.MAX_ATTEMPTS) {
+            ledger.markQueued("a")
+            ledger.onOutboxDropped(id, "refused")
+        }
+
+        val row = ledger.row("a")!!
+        assertEquals(BackupState.Failed.code, row.state)
+        assertEquals(BackupLedger.MAX_ATTEMPTS.toLong(), row.attempts)
+    }
+
+    @Test
+    fun aSendThatWasNotUnderWayCostsNoAttempt() = runTest {
+        val id = Uuid.random()
+        ledger.apply(fullListing(asset("a")), null)
+        ledger.markHashed("a", "ff", id)
+        ledger.markQueued("a")
+
+        ledger.onOutboxDropped(id, "no send under way", countsAttempt = false)
+
+        val row = ledger.row("a")!!
+        assertEquals(BackupState.Hashed.code, row.state)
+        assertEquals(0, row.attempts)
+    }
+
+    @Test
     fun theSamePhotoTwiceOnTheDeviceSettlesBothRows() = runTest {
         val id = Uuid.random()
         ledger.apply(fullListing(asset("a"), asset("b")), null)

@@ -524,11 +524,15 @@ class ChatMessageActionServiceTestFixture(
         dbm.close()
     }
 
-    private fun createInMemoryDbm(): DatabaseManager = DatabaseManager({
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        OdinDatabase.Schema.create(driver)
-        driver
-    })
+    // One in-memory connection serves every thread: reads on their own lane meet an open outbox checkout cursor (SQLITE_BUSY).
+    private fun createInMemoryDbm(): DatabaseManager {
+        val lane = Dispatchers.Default.limitedParallelism(1)
+        return DatabaseManager({
+            val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+            OdinDatabase.Schema.create(driver)
+            driver
+        }, dispatcher = lane, readDispatcher = lane)
+    }
 
     private suspend fun createCredentialsManager(domain: String): CredentialsManager {
         val cm = CredentialsManager()

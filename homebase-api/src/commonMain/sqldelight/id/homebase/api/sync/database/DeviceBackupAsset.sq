@@ -90,6 +90,9 @@ SELECT state, COUNT(*) FROM DeviceBackupAsset GROUP BY state;
 countInStates:
 SELECT COUNT(*) FROM DeviceBackupAsset WHERE state IN ?;
 
+countSending:
+SELECT COUNT(*) FROM DeviceBackupAsset WHERE state IN :states AND (lastError IS NULL OR lastError != :retrying);
+
 bytesByState:
 SELECT state, CAST(COALESCE(SUM(size), 0) AS INTEGER) AS bytes FROM DeviceBackupAsset GROUP BY state;
 
