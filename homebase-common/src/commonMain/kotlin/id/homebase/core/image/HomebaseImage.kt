@@ -189,7 +189,9 @@ fun HomebaseImage(
         }
     }
 
-    if (deferLoad && !imageData.isPending && imageLoader.memoryCache?.get(MemoryCache.Key(thumbnailKey)) == null) {
+    val deferred = deferLoad && !imageData.isPending &&
+        remember(thumbnailKey) { imageLoader.memoryCache?.get(MemoryCache.Key(thumbnailKey)) == null }
+    if (deferred) {
         PreviewOrPlaceholder(customModified.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }), colorFilter)
         return
     }

@@ -16,8 +16,8 @@ internal fun stripWebpColorProfile(webp: ByteArray): ByteArray {
     var hadProfile = false
     while (at + 8 <= webp.size) {
         val paddedSize = (readLe32(webp, at + 4) + 1) and 1.inv()
+        if (paddedSize < 0 || paddedSize > webp.size - at - 8) return webp
         val end = at + 8 + paddedSize
-        if (paddedSize < 0 || end > webp.size) return webp
         if (fourCc(webp, at) == "ICCP") hadProfile = true else chunks += at until end
         at = end
     }

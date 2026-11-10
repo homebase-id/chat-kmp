@@ -1524,7 +1524,7 @@ val appModule = module {
         val sync = get<PhotoGallerySync>()
         val prefetcher = get<PhotoThumbnailPrefetcher>()
         PhotoGalleryViewModel(
-            source = get<PhotoGalleryStore>(),
+            source = get<PhotoGalleryStore>().also { it.resume() },
             catchUp = sync::syncNow,
             warm = prefetcher::prefetch,
             pauseWarm = prefetcher::pause,

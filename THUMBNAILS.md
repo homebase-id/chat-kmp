@@ -318,10 +318,10 @@ One entry point, `renderImages(source, plan)` in `homebase-api`:
 **The recipe.** This is best practice, used by Pillow, libvips and image CDNs:
 
 1. **Plan all sizes first,** with integer math on the upright (orientation-applied) size. Never resize to discover a size.
-2. **Decode once.** Let the decoder do a coarse reduction only when it averages properly: ImageIO on iOS, and JPEG decoding on Android, which can shrink by 2, 4 or 8. Never use decoding that skips pixels, which is Android's HEIC, PNG and WebP sampling, except as a memory guard for huge images.
+2. **Decode once.** Let the decoder do a coarse reduction only when it averages properly: ImageIO on iOS, and JPEG decoding on Android, which can shrink by 2, 4 or 8. Never use decoding that skips pixels, which is Android's HEIC, PNG and WebP sampling, except as a memory guard for huge images. The guard is shared: over 24 MP, Android and iOS both decode smaller, but never below what the largest output needs.
 3. **Filter with premultiplied alpha.** Blending transparent and opaque pixels without premultiplying gives dark or coloured fringes around cut-outs and stickers.
 4. **While the image is at least 2× too big, halve it** by averaging each 2×2 block. That's exact, cheap and blends every pixel.
-5. **Do the last step, under 2×, with a Lanczos-3 filter whose width grows with the reduction.** It blends the whole patch and keeps edges crisp. Mitchell is an acceptable alternative if it passes the same tests: slightly softer, with less ringing around hard edges like text. Fixed-size filters (bilinear, or Skia's cubic) and a plain box average fail the test; see the table below.
+5. **Do the last step, under 2×, with a Lanczos-3 filter whose width grows with the reduction.** It blends the whole patch and keeps edges crisp. It runs the pass that shrinks more first, so the in-between copy is the smaller one, and pauses every 8 ms so the web page, where it shares the UI thread, keeps drawing. On Android it works on Java heap copies, so when the heap is too short it falls back to the platform's filter: a softer image, not a failed send. Mitchell is an acceptable alternative if it passes the same tests: slightly softer, with less ringing around hard edges like text. Fixed-size filters (bilinear, or Skia's cubic) and a plain box average fail the test; see the table below.
 6. **Chain from largest to smallest.** Each size is made from the pixels of the size above it, never from an encoded, lossy file.
 7. **Don't resample when it gains nothing.** Never upscale, and make a row at the source size when it's within 10% of it.
 8. **Resample in the image's own colour space,** sRGB or Display P3, as nearly every tool does. Resampling in linear light is slightly more correct for bright detail on dark backgrounds, but it costs twice the memory and CPU, so we don't, unless a real-photo test shows a visible gain.
@@ -428,7 +428,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
   - waits about 600 ms after scrolling stops, so a fling doesn't download everything it passes;
   - only loads JPEG, PNG or WebP payloads under a size limit, never a large Original;
   - only steps up when the final image is actually larger than the largest thumbnail. The final image's size is recorded in the descriptor for this;
-  - is remembered, so scrolling back doesn't download again;
+  - is remembered, so scrolling back doesn't download again, and a failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good;
   - is opted into per surface, such as chat bubbles, not applied everywhere;
   - on failure, keeps the thumbnail on screen without flashing an error.
 - **Photobase's album grid always uses Small,** and never steps up. The album in chat-kmp is meant to stay simple; a separate app handles fast album viewing.

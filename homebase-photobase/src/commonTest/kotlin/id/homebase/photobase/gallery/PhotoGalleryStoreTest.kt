@@ -92,6 +92,10 @@ class PhotoGalleryStoreTest {
         assertTrue(backend.local.isEmpty())
 
         backend.holdServer = false
+        assertTrue(runCatching { store.page(null, newestFirst = true) }.isFailure, "No fetch starts before the wipe")
+        assertEquals(GalleryCoverage(), backend.coverage)
+
+        store.resume()
         store.page(null, newestFirst = true)
         assertEquals("c1", backend.coverage.serverCursor, "The next account's fetches still work")
     }

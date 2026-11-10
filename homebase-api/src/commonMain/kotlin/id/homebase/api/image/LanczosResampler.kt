@@ -7,6 +7,9 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
+import kotlinx.coroutines.yield
 
 private const val LOBES = 3.0
 private const val PRECISION_BITS = 22
@@ -57,9 +60,25 @@ private fun clampToByte(value: Int): Byte {
     return (if (shifted < 0) 0 else if (shifted > 255) 255 else shifted).toByte()
 }
 
-private fun horizontal(src: ByteArray, srcWidth: Int, height: Int, outWidth: Int, weights: Weights): ByteArray {
+// On the web the pipeline shares the one thread with the UI, so a long scale has to let it draw.
+private class Pacer {
+    private var since = TimeSource.Monotonic.markNow()
+
+    suspend fun pace() {
+        if (since.elapsedNow() < SLICE) return
+        yield()
+        since = TimeSource.Monotonic.markNow()
+    }
+
+    private companion object {
+        val SLICE = 8.milliseconds
+    }
+}
+
+private suspend fun horizontal(src: ByteArray, srcWidth: Int, height: Int, outWidth: Int, weights: Weights, pacer: Pacer): ByteArray {
     val out = ByteArray(outWidth * height * CHANNELS)
     for (y in 0 until height) {
+        pacer.pace()
         val srcRow = y * srcWidth * CHANNELS
         val outRow = y * outWidth * CHANNELS
         for (x in 0 until outWidth) {
@@ -77,10 +96,11 @@ private fun horizontal(src: ByteArray, srcWidth: Int, height: Int, outWidth: Int
     return out
 }
 
-private fun vertical(src: ByteArray, width: Int, srcHeight: Int, outHeight: Int, weights: Weights): ByteArray {
+private suspend fun vertical(src: ByteArray, width: Int, outHeight: Int, weights: Weights, pacer: Pacer): ByteArray {
     val rowBytes = width * CHANNELS
     val out = ByteArray(rowBytes * outHeight)
     for (y in 0 until outHeight) {
+        pacer.pace()
         val start = weights.starts[y] * rowBytes
         val base = y * weights.perOutput
         for (at in 0 until rowBytes) {
@@ -109,10 +129,24 @@ private fun clampColoursToAlpha(pixels: ByteArray) {
  * Lanczos-3 over premultiplied 8-bit pixels with alpha in the fourth byte; the other three channels
  * can be in any order. Skia's samplers read a fixed 4x4 window, so they alias under 2x.
  */
-internal fun resampleLanczos(pixels: ByteArray, width: Int, height: Int, outWidth: Int, outHeight: Int): ByteArray {
-    val across = if (outWidth == width) pixels else horizontal(pixels, width, height, outWidth, weightsFor(width, outWidth))
-    val down = if (outHeight == height) across else vertical(across, outWidth, height, outHeight, weightsFor(height, outHeight))
-    if (down === pixels) return pixels
-    clampColoursToAlpha(down)
-    return down
+internal suspend fun resampleLanczos(pixels: ByteArray, width: Int, height: Int, outWidth: Int, outHeight: Int): ByteArray {
+    if (outWidth == width && outHeight == height) return pixels
+    val pacer = Pacer()
+    // Whichever pass shrinks more goes first, so the intermediate is the smaller of the two.
+    val result = if (lanczosIntermediateBytes(width, height, outWidth, outHeight) == outWidth.toLong() * height * CHANNELS) {
+        val across = if (outWidth == width) pixels else horizontal(pixels, width, height, outWidth, weightsFor(width, outWidth), pacer)
+        if (outHeight == height) across else vertical(across, outWidth, outHeight, weightsFor(height, outHeight), pacer)
+    } else {
+        val down = if (outHeight == height) pixels else vertical(pixels, width, outHeight, weightsFor(height, outHeight), pacer)
+        if (outWidth == width) down else horizontal(down, width, outHeight, outWidth, weightsFor(width, outWidth), pacer)
+    }
+    clampColoursToAlpha(result)
+    return result
 }
+
+internal fun lanczosIntermediateBytes(width: Int, height: Int, outWidth: Int, outHeight: Int): Long =
+    min(outWidth.toLong() * height, width.toLong() * outHeight) * CHANNELS
+
+/** What [resampleLanczos] holds at its peak: the source, the intermediate and the result. */
+internal fun lanczosPeakBytes(width: Int, height: Int, outWidth: Int, outHeight: Int): Long =
+    (width.toLong() * height + outWidth.toLong() * outHeight) * CHANNELS + lanczosIntermediateBytes(width, height, outWidth, outHeight)

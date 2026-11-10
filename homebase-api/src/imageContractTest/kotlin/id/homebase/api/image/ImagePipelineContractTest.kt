@@ -126,7 +126,7 @@ class ImagePipelineContractTest {
     }
 
     @Test
-    fun resizeUsesTheSameFilteredPath() {
+    fun resizeUsesTheSameFilteredPath() = runTest {
         val checkerboard = png(400, 400) { x, y -> if ((x + y) % 2 == 0) BLACK else WHITE }
 
         val result = ImageUtils.resizePreserveAspect(checkerboard, 40, 40, ImageFormat.PNG, 100)

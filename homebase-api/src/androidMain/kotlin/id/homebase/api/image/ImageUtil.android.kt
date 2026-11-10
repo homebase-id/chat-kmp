@@ -174,7 +174,7 @@ actual object ImageUtils {
         return stream.toByteArray()
     }
 
-    actual fun resizePreserveAspect(
+    actual suspend fun resizePreserveAspect(
         srcBytes: ByteArray,
         maxWidth: Int,
         maxHeight: Int,

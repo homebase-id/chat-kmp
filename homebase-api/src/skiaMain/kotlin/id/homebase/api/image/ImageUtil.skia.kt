@@ -65,7 +65,7 @@ actual object ImageUtils {
         ImageFormat.GIF -> EncodedImageFormat.WEBP // GIF encoding not supported, fallback to WEBP
     }
 
-    actual fun resizePreserveAspect(
+    actual suspend fun resizePreserveAspect(
         srcBytes: ByteArray,
         maxWidth: Int,
         maxHeight: Int,

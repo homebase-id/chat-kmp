@@ -29,6 +29,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
 
@@ -71,15 +72,25 @@ class PhotoGalleryStore internal constructor(
     private val oldestFirstSource: PhotoGalleryPageSource,
 ) : PhotoGalleryPageSource {
     private val fetching = Mutex()
-    private var fetchInFlight: Job? = null
+    @Volatile private var fetchInFlight: Job? = null
+    @Volatile private var stopped = false
 
     // Only changes while holding [fetching], so a fetch that waited sees it once it gets the lock.
     private var generation = 0
 
-    /** Before the local database is wiped: returns once no fetch can write into the next account's. */
+    /**
+     * Before the local database is wiped: returns once no fetch can write into the next account's,
+     * and refuses new ones until [resume].
+     */
     suspend fun stop() {
+        stopped = true
         fetchInFlight?.cancel()
         fetching.withLock { generation++ }
+    }
+
+    /** A new session's gallery is opening. */
+    fun resume() {
+        stopped = false
     }
 
     override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage =
@@ -112,7 +123,7 @@ class PhotoGalleryStore internal constructor(
     private suspend fun fetchOlder(seen: GalleryCoverage, limit: Int): GalleryCoverage {
         val startedIn = generation
         return fetching.withLock {
-            if (generation != startedIn) throw CancellationException("The gallery was stopped")
+            if (stopped || generation != startedIn) throw CancellationException("The gallery was stopped")
             fetchInFlight = currentCoroutineContext()[Job]
             try {
                 fetchOlderLocked(seen, limit)
@@ -223,7 +234,8 @@ class PhotoGallerySync(
         val job = mutex.withLock {
             running?.takeIf { it.isActive } ?: withContext(Dispatchers.Default) {
                 seedPhotoSyncCursor(db, photosDriveId, UnixTimeUtc.now())
-                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { roundScope = it }
+                // One scope for every round until stop, so stop reaches writes an earlier round left running.
+                val scope = roundScope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default).also { roundScope = it }
                 DriveSync(
                     identityId = credentials.requireActiveCredentials().getIdentityId(),
                     driveId = photosDriveId,

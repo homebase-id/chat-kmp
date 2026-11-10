@@ -85,7 +85,7 @@ internal interface PipelineBitmap : AutoCloseable {
     fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap
 
     /** A new bitmap at the given size, without aliasing at any ratio, leaving this one open. */
-    fun resampledTo(width: Int, height: Int): PipelineBitmap =
+    suspend fun resampledTo(width: Int, height: Int): PipelineBitmap =
         withPixels(resampleLanczos(readPixels(), this.width, this.height, width, height), width, height)
 
     fun encode(format: ImageFormat, quality: Int): ByteArray
@@ -107,7 +107,7 @@ suspend fun renderImages(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput
         openImageSource(bytes).use { renderFrom(it, { context.ensureActive() }, plan) }
     }
 
-internal fun renderFrom(
+internal suspend fun renderFrom(
     source: ImageSource,
     checkCancelled: () -> Unit = {},
     plan: (ImageSize) -> List<ImageOutput>,
@@ -143,7 +143,7 @@ internal fun renderFrom(
  * Returns [source] when it's already the right size. Intermediate bitmaps are closed; [source] is
  * left to the caller.
  */
-internal fun scaleDown(source: PipelineBitmap, width: Int, height: Int): PipelineBitmap {
+internal suspend fun scaleDown(source: PipelineBitmap, width: Int, height: Int): PipelineBitmap {
     var current = source
     while (true) {
         val nextWidth = if (current.width >= width * 2) (current.width + 1) / 2 else current.width
@@ -168,7 +168,7 @@ private inline fun PipelineBitmap.replacedBy(
     if (this !== keepOpen) close()
 }
 
-private fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
+private suspend fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
     val srgb = bitmap.inSrgb()
     try {
         return encodeWithin(srgb, output)
@@ -177,7 +177,7 @@ private fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): RenderedI
     }
 }
 
-private fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage = when (output.overLimit) {
+private suspend fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage = when (output.overLimit) {
     OverLimit.LOWER_QUALITY -> encodeLoweringQuality(bitmap, output)
     OverLimit.SHRINK -> encodeShrinking(bitmap, output)
 }
@@ -192,7 +192,7 @@ private fun encoded(bitmap: PipelineBitmap, format: ImageFormat, quality: Int): 
  * pixels, then shrinks, re-checking each time. A 1x1 image is the end of the line, which is what
  * makes the tiny preview's limit a real guarantee.
  */
-private fun encodeLoweringQuality(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
+private suspend fun encodeLoweringQuality(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
     val maxBytes = output.maxBytes
     val floor = output.minQuality.coerceIn(1, 100)
     var quality = output.quality.coerceIn(1, 100)
@@ -219,7 +219,7 @@ private fun encodeLoweringQuality(bitmap: PipelineBitmap, output: ImageOutput): 
 }
 
 /** Over the limit, keeps the quality: back to the row's own size if it was enlarged, then smaller by an estimate. */
-private fun encodeShrinking(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
+private suspend fun encodeShrinking(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
     val quality = output.quality.coerceIn(1, 100)
     var bytes = encoded(bitmap, output.format, quality)
     var current = bitmap
@@ -248,6 +248,21 @@ private fun estimatedFit(bitmap: PipelineBitmap, size: Int, maxBytes: Int): Pair
 
 private fun shrink(edge: Int) = max(1, edge * 3 / 4)
 
+// About 96 MB of pixels. A 12 MP photo stays a full, clean decode; a 48 MP one doesn't.
+internal const val FULL_DECODE_PIXEL_LIMIT = 24_000_000L
+
+/**
+ * How far to shrink a decode that would otherwise pass [FULL_DECODE_PIXEL_LIMIT], or null to leave
+ * it alone. A memory guard, not a quality step: it never goes below what the largest output needs.
+ */
+internal fun memoryGuardScale(size: ImageSize, sampleSize: Int, minLongEdge: Int): Double? {
+    val pixels = size.pixelWidth.toDouble() * size.pixelHeight / (sampleSize * sampleSize)
+    val longEdge = max(size.pixelWidth, size.pixelHeight)
+    if (pixels <= FULL_DECODE_PIXEL_LIMIT || longEdge <= minLongEdge) return null
+    val smallest = minLongEdge.toDouble() / longEdge
+    return max(smallest, min(sqrt(FULL_DECODE_PIXEL_LIMIT / pixels) / sampleSize, smallest * 2))
+}
+
 private fun longEdge(output: ImageOutput) = max(output.width, output.height)
 
 // Further over the limit means a bigger drop, because each attempt is a full encode.
@@ -261,7 +276,7 @@ private const val MIN_QUALITY_STEP = 8
 private const val MAX_QUALITY_STEP = 30
 
 /** The one aspect-preserving resize behind [ImageUtils.resizePreserveAspect] on every platform. */
-internal fun resizeThroughPipeline(
+internal suspend fun resizeThroughPipeline(
     srcBytes: ByteArray,
     maxWidth: Int,
     maxHeight: Int,

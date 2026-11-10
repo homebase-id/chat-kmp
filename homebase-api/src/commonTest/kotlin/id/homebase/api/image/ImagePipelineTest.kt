@@ -1,6 +1,7 @@
 package id.homebase.api.image
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -28,7 +29,7 @@ class ImagePipelineTest {
 
         override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
 
-        override fun resampledTo(width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
+        override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
 
         override fun inSrgb(): PipelineBitmap = this
 
@@ -60,7 +61,7 @@ class ImagePipelineTest {
         ImageOutput(width, height, quality, maxBytes, minQuality = minQuality)
 
     @Test
-    fun manySizesDecodeOnceAtTheLargestSize() {
+    fun manySizesDecodeOnceAtTheLargestSize() = runTest {
         val log = Log()
 
         renderFrom(FakeSource(4000, 3000, log)) {
@@ -72,7 +73,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun everySizeScalesFromTheOneAbove() {
+    fun everySizeScalesFromTheOneAbove() = runTest {
         val log = Log()
 
         renderFrom(FakeSource(640, 480, log)) { listOf(output(320, 240), output(640, 480), output(160, 120)) }
@@ -84,7 +85,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun bigReductionsHalveThenFinishWithOneSmallStep() {
+    fun bigReductionsHalveThenFinishWithOneSmallStep() = runTest {
         val log = Log()
 
         renderFrom(FakeSource(4000, 3000, log)) { listOf(output(300, 225)) }
@@ -96,7 +97,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun aThinImageHalvesOnlyTheAxisThatNeedsIt() {
+    fun aThinImageHalvesOnlyTheAxisThatNeedsIt() = runTest {
         val log = Log()
 
         renderFrom(FakeSource(4000, 2, log)) { listOf(output(1000, 2)) }
@@ -105,7 +106,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun everyBitmapGetsClosed() {
+    fun everyBitmapGetsClosed() = runTest {
         val log = Log()
 
         renderFrom(FakeSource(4000, 3000, log)) { listOf(output(320, 240), output(20, 15, maxBytes = 5)) }
@@ -114,7 +115,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun overTheLimitLowersQualityToTheFloorThenShrinks() {
+    fun overTheLimitLowersQualityToTheFloorThenShrinks() = runTest {
         val log = Log { width, _, quality -> if (width >= 100 || quality > 40) 2000 else 500 }
 
         val image = renderFrom(FakeSource(100, 100, log)) { listOf(output(100, 100)) }.images.single()
@@ -127,7 +128,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun aSmallOverageOnlyStepsDownALittle() {
+    fun aSmallOverageOnlyStepsDownALittle() = runTest {
         val log = Log { _, _, quality -> if (quality > 72) 1050 else 900 }
 
         val image = renderFrom(FakeSource(100, 100, log)) { listOf(output(100, 100)) }.images.single()
@@ -137,7 +138,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun aFailedScaleStillClosesWhatItHeld() {
+    fun aFailedScaleStillClosesWhatItHeld() = runTest {
         val log = Log().also { it.failScalesAfter = 1 }
 
         assertFailsWith<IllegalStateException> {
@@ -148,7 +149,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun cancellationStopsBetweenSizes() {
+    fun cancellationStopsBetweenSizes() = runTest {
         val log = Log()
         var checks = 0
 
@@ -163,7 +164,7 @@ class ImagePipelineTest {
     }
 
     @Test
-    fun noPlanMeansNoDecode() {
+    fun noPlanMeansNoDecode() = runTest {
         val log = Log()
 
         val result = renderFrom(FakeSource(100, 100, log)) { emptyList() }

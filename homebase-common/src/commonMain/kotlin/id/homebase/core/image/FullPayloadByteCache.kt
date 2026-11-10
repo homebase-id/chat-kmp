@@ -6,6 +6,9 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * Bounded, in-memory LRU of decrypted full-payload image bytes with in-flight
@@ -52,11 +55,17 @@ internal class FullPayloadByteCache(
 
     suspend fun contains(key: String): Boolean = mutex.withLock { key in entries }
 
-    private val failedStepUps = HashSet<String>()
+    // Timed, because most failures are a dropped connection that's back a minute later.
+    private val failedStepUps = HashMap<String, TimeMark>()
 
-    suspend fun markStepUpFailed(key: String) = mutex.withLock { failedStepUps += key }
+    suspend fun markStepUpFailed(key: String) = mutex.withLock { failedStepUps[key] = TimeSource.Monotonic.markNow() }
 
-    suspend fun hasStepUpFailed(key: String): Boolean = mutex.withLock { key in failedStepUps }
+    suspend fun hasStepUpFailed(key: String): Boolean = mutex.withLock {
+        val failedAt = failedStepUps[key] ?: return@withLock false
+        if (failedAt.elapsedNow() < STEP_UP_RETRY_AFTER) return@withLock true
+        failedStepUps.remove(key)
+        false
+    }
 
     /**
      * Returns the cached image for [key], or loads it via [loader] exactly once
@@ -130,3 +139,5 @@ internal class FullPayloadByteCache(
         }
     }
 }
+
+private val STEP_UP_RETRY_AFTER = 2.minutes

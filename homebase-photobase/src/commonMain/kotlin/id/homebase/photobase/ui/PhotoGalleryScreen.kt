@@ -51,6 +51,7 @@ import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.backhandler.BackHandler
@@ -107,7 +108,8 @@ fun PhotoGalleryScreen(
     backupIndicator: @Composable () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val memory = remember { GridMemory(LazyGridState()) }
+    val gridState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
+    val memory = remember(gridState) { GridMemory(gridState) }
     val onAction: (PhotoGalleryUiAction) -> Unit = remember(viewModel) {
         { action ->
             if (action is PhotoGalleryUiAction.CloseViewer) memory.returnTo = viewModel.uiState.value.openedFileId

@@ -11,8 +11,6 @@ import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sqrt
 
 private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap {
     override val width get() = bitmap.width
@@ -38,11 +36,21 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
         return AndroidPipelineBitmap(out)
     }
 
-    // An Error, so the send's fail-soft catch would miss it and the app would crash.
-    override fun resampledTo(width: Int, height: Int): PipelineBitmap = try {
-        super.resampledTo(width, height)
-    } catch (e: OutOfMemoryError) {
-        throw IllegalStateException("Not enough memory to scale the image", e)
+    // Lanczos works on Java heap copies while the bitmap lives in native memory, so the decode
+    // guard doesn't bound it; short of heap, the platform's filter is a softer result, not a failed send.
+    override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap {
+        val runtime = Runtime.getRuntime()
+        val freeHeap = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
+        if (lanczosPeakBytes(this.width, this.height, width, height) > freeHeap * HEAP_SHARE_FOR_SCALING) {
+            Logger.w(tag = TAG) { "Not enough heap for Lanczos at ${this.width}x${this.height} -> ${width}x$height; using the platform filter" }
+            return scaledTo(width, height)
+        }
+        // An Error, so the send's fail-soft catch would miss it and the app would crash.
+        return try {
+            super.resampledTo(width, height)
+        } catch (e: OutOfMemoryError) {
+            throw IllegalStateException("Not enough memory to scale the image", e)
+        }
     }
 
     // compress reports failure by writing nothing, and an empty result would pass any byte limit.
@@ -61,9 +69,7 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
 }
 
 private const val TAG = "ImagePipeline"
-
-// About 96 MB of pixels. A 12 MP photo stays a full, clean decode; a 48 MP one doesn't.
-private const val FULL_DECODE_PIXEL_LIMIT = 24_000_000L
+private const val HEAP_SHARE_FOR_SCALING = 0.75
 
 private class HeaderRead : RuntimeException(null, null, false, false)
 
@@ -135,18 +141,6 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
         }
 
     override fun close() = Unit
-}
-
-/**
- * How far to shrink a decode that would otherwise pass [FULL_DECODE_PIXEL_LIMIT], or null to leave
- * it alone. A memory guard, not a quality step: it never goes below what the largest output needs.
- */
-private fun memoryGuardScale(size: ImageSize, sampleSize: Int, minLongEdge: Int): Double? {
-    val pixels = size.pixelWidth.toDouble() * size.pixelHeight / (sampleSize * sampleSize)
-    val longEdge = max(size.pixelWidth, size.pixelHeight)
-    if (pixels <= FULL_DECODE_PIXEL_LIMIT || longEdge <= minLongEdge) return null
-    val smallest = minLongEdge.toDouble() / longEdge
-    return max(smallest, min(sqrt(FULL_DECODE_PIXEL_LIMIT / pixels) / sampleSize, smallest * 2))
 }
 
 /** The biggest power of two that still leaves at least [minLongEdge]; the pipeline scales the rest. */
