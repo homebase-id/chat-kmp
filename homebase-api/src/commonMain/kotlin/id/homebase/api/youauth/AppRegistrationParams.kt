@@ -26,7 +26,11 @@ data class AppRegistrationParams(
     val drives: List<TargetDriveAccessRequest>,
     val circles: List<AppCircleDeclaration>,
 ) {
-    fun url(host: String, returnUrl: String): String = "https://$host/owner/appreg?" + listOf(
+    fun url(
+        host: String,
+        returnUrl: String,
+        cancelUrl: String = returnUrl.withQueryParam("status", "canceled"),
+    ): String = "https://$host/owner/appreg?" + listOf(
         "appId" to appId,
         "n" to name,
         "as" to appSlug,
@@ -34,7 +38,7 @@ data class AppRegistrationParams(
         "cd" to "[]",
         "ac" to encodeCircles(),
         "return" to returnUrl,
-        "cancel" to returnUrl.withQueryParam("status", "canceled"),
+        "cancel" to cancelUrl,
     ).formUrlEncode()
 
     private fun encodeCircles(): String = buildJsonArray {
