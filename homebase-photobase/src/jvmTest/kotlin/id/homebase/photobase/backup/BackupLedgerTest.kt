@@ -164,7 +164,7 @@ class BackupLedgerTest {
     fun aRowDroppedOnEveryAttemptEndsUpFailed() = runTest {
         val id = Uuid.random()
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", id)
+        ledger.markHashed("a", "ff", id, 10)
 
         repeat(BackupLedger.MAX_ATTEMPTS) {
             ledger.markQueued("a")
@@ -180,7 +180,7 @@ class BackupLedgerTest {
     fun aSendThatWasNotUnderWayCostsNoAttempt() = runTest {
         val id = Uuid.random()
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", id)
+        ledger.markHashed("a", "ff", id, 10)
         ledger.markQueued("a")
 
         ledger.onOutboxDropped(id, "no send under way", countsAttempt = false)
