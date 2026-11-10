@@ -68,7 +68,7 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
 
     private fun triggerData(trigger: BackupTrigger) = workDataOf(PhotoBackupWorker.KEY_TRIGGER to trigger.name)
 
-    override fun onBackupRan() = cancelBackupStuckNotification(context)
+    override fun onBackupRan(workLeft: Boolean) = cancelBackupStuckNotification(context)
 
     override suspend fun alertBackupStuck() = postBackupStuckNotification(context)
 

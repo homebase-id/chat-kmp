@@ -53,11 +53,16 @@ class DeviceBackupWrapper(
             assets.bytesByState().executeAsList().associate { it.state to it.bytes }
         }
 
+    suspend fun unknownSizeByState(): Map<Long, Long> =
+        databaseManager.readValue("deviceBackup.unknownSizeByState") {
+            assets.unknownSizeByState().executeAsList().associate { it.state to it.COUNT }
+        }
+
     suspend fun selectFailures(state: Long, limit: Long): List<SelectFailures> =
         databaseManager.readValue("deviceBackup.selectFailures") { assets.selectFailures(state, limit).executeAsList() }
 
-    suspend fun markHashed(id: String, contentHash: String, uniqueId: String, state: Long) {
-        databaseManager.withWriteValue { assets.markHashed(contentHash, uniqueId, state, id) }
+    suspend fun markHashed(id: String, contentHash: String, uniqueId: String, state: Long, size: Long) {
+        databaseManager.withWriteValue { assets.markHashed(contentHash, uniqueId, state, size, id) }
     }
 
     suspend fun clearBackoffForReason(reason: String) {

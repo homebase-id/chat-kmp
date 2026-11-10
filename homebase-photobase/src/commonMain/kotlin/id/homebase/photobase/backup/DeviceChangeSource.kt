@@ -17,7 +17,8 @@ data class DeviceAsset(
     val mediaType: BackupMediaType,
     val createdAtMs: Long,
     val modifiedAtMs: Long,
-    val sizeBytes: Long,
+    /** Null where the platform can't say before export; hashing fills it in. */
+    val sizeBytes: Long?,
     val albumIds: List<String> = emptyList(),
 )
 

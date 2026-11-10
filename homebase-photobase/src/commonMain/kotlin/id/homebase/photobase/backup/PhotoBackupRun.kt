@@ -211,7 +211,7 @@ class PhotoBackupRun(
     private suspend fun noteForStuckAlert(request: BackupRunRequest, outcome: BackupRunOutcome) {
         if (outcome != BackupRunOutcome.Paused) {
             ledger.markRan()
-            scheduler.onBackupRan()
+            scheduler.onBackupRan(workLeft = ledger.counts().workLeft)
             return
         }
         val reason = _status.value.pauseReason
@@ -411,7 +411,7 @@ class PhotoBackupRun(
             row.contentHash?.let { previous ->
                 Logger.i(tag = TAG) { "rehashed ${row.deviceAssetId} modifiedAt=${row.modifiedAt} unchanged=${previous == hashed.contentHash}" }
             }
-            ledger.markHashed(row.deviceAssetId, hashed.contentHash, hashed.uniqueId)
+            ledger.markHashed(row.deviceAssetId, hashed.contentHash, hashed.uniqueId, hashed.sizeBytes)
         }
     }
 

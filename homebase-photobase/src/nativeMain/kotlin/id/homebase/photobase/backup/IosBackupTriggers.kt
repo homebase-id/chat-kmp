@@ -65,6 +65,12 @@ private fun submit(request: BGTaskRequest) = memScoped {
     }
 }
 
+private const val STUCK_ALERT_ID = "photo-backup-stuck"
+
+internal fun cancelStuckAlert() {
+    UNUserNotificationCenter.currentNotificationCenter().removePendingNotificationRequestsWithIdentifiers(listOf(STUCK_ALERT_ID))
+}
+
 /** Why iOS ended the app in the background, delivered about daily. */
 private class BackupExitReporter : NSObject(), MXMetricManagerSubscriberProtocol {
     override fun didReceiveMetricPayloads(payloads: List<*>) {
@@ -102,11 +108,10 @@ class IosBackupTriggers : BackupTriggers {
             scheduler.cancelTaskRequestWithIdentifier(backupRefreshTaskId)
             scheduler.cancelTaskRequestWithIdentifier(backupProcessingTaskId)
             BackgroundUploadBridgeHolder.bridge?.cancelAll()
-            UNUserNotificationCenter.currentNotificationCenter().removePendingNotificationRequestsWithIdentifiers(listOf(STUCK_ALERT_ID))
+            cancelStuckAlert()
             return
         }
         submitMissingBackupTasks()
-        armStuckAlertIfMissing()
     }
 
     // Submitting replaces a pending request with the same id, which pushes its earliest start back again.
@@ -119,16 +124,12 @@ class IosBackupTriggers : BackupTriggers {
         }
     }
 
-    /** Works even after a force-quit: it only fires if no run has pushed it back. */
-    override fun onBackupRan() {
-        scope.launch { scheduleStuckAlert() }
-    }
-
-    private fun armStuckAlertIfMissing() {
-        UNUserNotificationCenter.currentNotificationCenter().getPendingNotificationRequestsWithCompletionHandler { requests ->
-            val armed = requests.orEmpty().any { (it as? UNNotificationRequest)?.identifier == STUCK_ALERT_ID }
-            if (!armed) scope.launch { scheduleStuckAlert() }
-        }
+    /**
+     * A local notification can't check anything when it fires, so it's only scheduled while there's work left.
+     * Works even after a force-quit: it fires unless a later run pushes it back or removes it.
+     */
+    override fun onBackupRan(workLeft: Boolean) {
+        if (workLeft) scope.launch { scheduleStuckAlert() } else cancelStuckAlert()
     }
 
     private suspend fun scheduleStuckAlert() {
@@ -170,7 +171,6 @@ class IosBackupTriggers : BackupTriggers {
 
     private companion object {
         const val TAG = "IosBackupTriggers"
-        const val STUCK_ALERT_ID = "photo-backup-stuck"
         const val CONTINUED_TASK_NAME = "photo-backup"
         const val CONTINUED_TASK_TITLE = "Backing up photos"
     }

@@ -23,8 +23,9 @@ data class BackupStatus(
     val pendingCount: Long = 0,
     val uploadingCount: Long = 0,
     val backedUpCount: Long = 0,
-    val backedUpBytes: Long = 0,
-    val remainingBytes: Long = 0,
+    /** Null when some photos' sizes aren't known yet: iOS learns a size only by reading the photo. */
+    val backedUpBytes: Long? = 0,
+    val remainingBytes: Long? = 0,
     val failures: List<BackupFailure> = emptyList(),
     val failedCount: Long = 0,
     val libraryAccess: LibraryAccess = LibraryAccess.None,

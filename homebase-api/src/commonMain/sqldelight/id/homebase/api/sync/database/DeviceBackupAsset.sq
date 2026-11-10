@@ -58,9 +58,11 @@ UPDATE DeviceBackupAsset
 SET lastError = NULL, nextAttemptAt = 0
 WHERE lastError = :reason;
 
+-- size 0 is unknown: only then does the hashed size replace it, so a listing that knows the size never disagrees with it.
 markHashed:
 UPDATE DeviceBackupAsset
-SET contentHash = :contentHash, uniqueId = :uniqueId, state = :state, lastError = NULL, attempts = 0, nextAttemptAt = 0
+SET contentHash = :contentHash, uniqueId = :uniqueId, state = :state, lastError = NULL, attempts = 0, nextAttemptAt = 0,
+    size = CASE WHEN size = 0 THEN :size ELSE size END
 WHERE deviceAssetId = :deviceAssetId;
 
 setState:
@@ -90,6 +92,9 @@ SELECT COUNT(*) FROM DeviceBackupAsset WHERE state IN ?;
 
 bytesByState:
 SELECT state, CAST(COALESCE(SUM(size), 0) AS INTEGER) AS bytes FROM DeviceBackupAsset GROUP BY state;
+
+unknownSizeByState:
+SELECT state, COUNT(*) FROM DeviceBackupAsset WHERE size = 0 GROUP BY state;
 
 selectFailures:
 SELECT deviceAssetId, lastError FROM DeviceBackupAsset WHERE state = :state ORDER BY createdAt DESC LIMIT :limit;

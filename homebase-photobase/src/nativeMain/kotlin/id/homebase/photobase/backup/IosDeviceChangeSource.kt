@@ -174,8 +174,8 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
                     createdAtMs = ((asset.creationDate?.timeIntervalSince1970 ?: 0.0) * 1000).toLong(),
                     // Favourites, albums and system analysis move modificationDate too, but an unedited original can't change.
                     modifiedAtMs = if (asset.hasAdjustments) ((asset.modificationDate?.timeIntervalSince1970 ?: 0.0) * 1000).toLong() else UNEDITED,
-                    // PhotoKit has no public size; the ledger compares modifiedAt, which is enough.
-                    sizeBytes = 0,
+                    // PhotoKit has no public size.
+                    sizeBytes = null,
                 ),
             )
         }

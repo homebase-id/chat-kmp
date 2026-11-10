@@ -45,7 +45,7 @@ class PhotoBackupRunTest {
     private var dedupeFailure: Exception? = null
     private var storageFull = false
     private var signedIn = CompletableDeferred(true)
-    private var backupRans = 0
+    private val ranWithWorkLeft = mutableListOf<Boolean>()
     private var stuckAlerts = 0
 
     @AfterTest
@@ -84,7 +84,7 @@ class PhotoBackupRunTest {
             auth = { signedIn.await() },
             scheduler = object : BackupScheduler {
                 override fun rearm(settings: BackupSettings) = Unit
-                override fun onBackupRan() { backupRans++ }
+                override fun onBackupRan(workLeft: Boolean) { ranWithWorkLeft += workLeft }
                 override suspend fun alertBackupStuck() { stuckAlerts++ }
             },
             isStorageFull = { storageFull },
@@ -434,7 +434,7 @@ class PhotoBackupRunTest {
         run.run(request())
 
         assertEquals(0, stuckAlerts)
-        assertEquals(0, backupRans)
+        assertEquals(emptyList(), ranWithWorkLeft)
     }
 
     @Test
@@ -444,7 +444,18 @@ class PhotoBackupRunTest {
 
         run.run(request())
 
-        assertEquals(1, backupRans)
+        assertEquals(listOf(false), ranWithWorkLeft, "nothing left, so iOS removes the stuck alert")
+    }
+
+    @Test
+    fun aRunThatLeavesWorkSaysSo() = runTest {
+        source.next = fullListing(asset("a"))
+        dedupeFailure = IllegalStateException("bad answer")
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+
+        assertEquals(listOf(true), ranWithWorkLeft)
     }
 
     @Test
@@ -676,7 +687,7 @@ class PhotoBackupRunTest {
     fun aRowWhoseSendVanishedIsSettledByDedupe() = runTest {
         val id = idOf("a")
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", id)
+        ledger.markHashed("a", "ff", id, 10)
         ledger.markQueued("a")
         existing += id
         source.next = fullListing(asset("a"))
@@ -828,7 +839,7 @@ class PhotoBackupRunTest {
     fun otherDrivesEventsAreIgnored() = runTest {
         val id = idOf("a")
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", id)
+        ledger.markHashed("a", "ff", id, 10)
         ledger.markQueued("a")
         val results = BackupOutboxResults(ledger, eventBus, PhotobaseProtocol.DriveAlias, backgroundScope)
         results.start()

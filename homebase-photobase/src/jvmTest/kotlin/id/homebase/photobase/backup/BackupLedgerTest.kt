@@ -23,7 +23,7 @@ class BackupLedgerTest {
     @Test
     fun reapplyingTheSameListingChangesNothing() = runTest {
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", Uuid.random())
+        ledger.markHashed("a", "ff", Uuid.random(), 10)
         ledger.markDone("a")
 
         ledger.apply(fullListing(asset("a")), null)
@@ -34,7 +34,7 @@ class BackupLedgerTest {
     @Test
     fun anEditedAssetIsHashedAgain() = runTest {
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", Uuid.random())
+        ledger.markHashed("a", "ff", Uuid.random(), 10)
         ledger.markDone("a")
 
         ledger.apply(DeviceChanges(listOf(asset("a", modifiedAtMs = 2000)), emptyList(), emptyMap(), null), null)
@@ -43,6 +43,36 @@ class BackupLedgerTest {
         assertEquals(BackupState.New.code, row.state)
         assertEquals(null, row.uniqueId)
         assertEquals("ff", row.contentHash, "kept, so the re-hash can say whether the bytes really changed")
+    }
+
+    @Test
+    fun aSizeLearnedByHashingSticksAndShowsOnceEveryRowHasOne() = runTest {
+        val listing = fullListing(asset("a").copy(sizeBytes = null), asset("b").copy(sizeBytes = null))
+        ledger.apply(listing, null)
+        assertEquals(null, ledger.counts().remainingBytes, "unknown, not 0 B")
+
+        ledger.markHashed("a", "ff", Uuid.random(), 300)
+        ledger.markDone("a")
+        assertEquals(300, ledger.counts().doneBytes)
+        assertEquals(null, ledger.counts().remainingBytes)
+
+        ledger.markHashed("b", "ee", Uuid.random(), 200)
+        ledger.apply(listing, null)
+
+        assertEquals(BackupState.Done.code, stateOf("a"), "a listing with no size doesn't restart a row that has one")
+        assertEquals(300, ledger.counts().doneBytes)
+        assertEquals(200, ledger.counts().remainingBytes)
+    }
+
+    @Test
+    fun hashingNeverReplacesASizeTheListingGave() = runTest {
+        ledger.apply(fullListing(asset("a")), null)
+
+        ledger.markHashed("a", "ff", Uuid.random(), 999)
+        ledger.apply(fullListing(asset("a")), null)
+
+        assertEquals(10, ledger.row("a")?.size)
+        assertEquals(BackupState.Hashed.code, stateOf("a"))
     }
 
     @Test
@@ -106,7 +136,7 @@ class BackupLedgerTest {
     fun aLargeListingTakesTheSamePath() = runTest {
         val assets = List(600) { asset("a$it") }.toTypedArray()
         ledger.apply(fullListing(*assets), null)
-        ledger.markHashed("a0", "ff", Uuid.random())
+        ledger.markHashed("a0", "ff", Uuid.random(), 10)
         ledger.markDone("a0")
 
         ledger.apply(fullListing(*assets), null)
@@ -119,7 +149,7 @@ class BackupLedgerTest {
     fun aDropGoesBackToHashedWithABackoff() = runTest {
         val id = Uuid.random()
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", id)
+        ledger.markHashed("a", "ff", id, 10)
         ledger.markQueued("a")
 
         ledger.onOutboxDropped(id, "retries exhausted")
@@ -134,8 +164,8 @@ class BackupLedgerTest {
     fun theSamePhotoTwiceOnTheDeviceSettlesBothRows() = runTest {
         val id = Uuid.random()
         ledger.apply(fullListing(asset("a"), asset("b")), null)
-        ledger.markHashed("a", "ff", id)
-        ledger.markHashed("b", "ff", id)
+        ledger.markHashed("a", "ff", id, 10)
+        ledger.markHashed("b", "ff", id, 10)
         ledger.markQueued("a")
         ledger.markQueued("b")
 

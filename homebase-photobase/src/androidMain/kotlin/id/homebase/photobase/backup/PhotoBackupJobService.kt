@@ -48,11 +48,11 @@ class PhotoBackupJobService : JobService(), KoinComponent {
     /** The system judges a long user-initiated job by these. Bytes count from this job's start, not the whole library. */
     private suspend fun reportProgress(params: JobParameters, controller: PhotoBackupController) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
-        val alreadyBackedUp = controller.freshStatus()?.backedUpBytes ?: return
+        val alreadyBackedUp = controller.freshStatus()?.backedUpBytes ?: 0
         val status = controller.status ?: return
         status.collect {
-            val sent = (it.backedUpBytes - alreadyBackedUp).coerceAtLeast(0)
-            updateEstimatedNetworkBytes(params, 0, sent + it.remainingBytes)
+            val sent = ((it.backedUpBytes ?: 0) - alreadyBackedUp).coerceAtLeast(0)
+            updateEstimatedNetworkBytes(params, 0, sent + (it.remainingBytes ?: 0))
             updateTransferredNetworkBytes(params, 0, sent)
             setNotification(params, BACKUP_NOTIFICATION_ID, backupNotification(this, it.progress), JOB_END_NOTIFICATION_POLICY_REMOVE)
             delay(PROGRESS_GAP)
