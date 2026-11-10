@@ -456,7 +456,7 @@ class PhotoBackupRunTest {
     }
 
     @Test
-    fun aSecondRunWhileOneIsGoingDoesNothing() = runTest {
+    fun aSecondBackgroundRunWhileOneIsGoingDoesNothing() = runTest {
         hashTime = 10.seconds
         source.next = fullListing(asset("a"))
         val (run, _) = newRun(uploader())
@@ -466,6 +466,95 @@ class PhotoBackupRunTest {
         assertEquals(BackupRunOutcome.AlreadyRunning, run.run(request()))
 
         first.join()
+    }
+
+    @Test
+    fun backUpNowTakesOverFromAForegroundRun() = runTest {
+        source.next = fullListing(asset("a"), asset("b"), asset("c"))
+        hashTime = 10.seconds
+        val uploader = uploader(sendTime = 60.seconds)
+        val (run, _) = newRun(uploader)
+        val foreground = async { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(1.seconds)
+
+        val userRequested = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.Superseded, foreground.await())
+        assertEquals(BackupRunOutcome.Finished, userRequested.await())
+        assertEquals(setOf("a", "b", "c"), uploader.handedOff.toSet())
+        assertEquals(3, ledger.counts().done)
+    }
+
+    @Test
+    fun aNewBackUpNowReplacesTheOneGoing() = runTest {
+        source.next = fullListing(asset("a"))
+        hashTime = 10.seconds
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        val first = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceTimeBy(1.seconds)
+
+        source.next = fullListing(asset("a"), asset("b"))
+        val second = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.Superseded, first.await())
+        assertEquals(BackupRunOutcome.Finished, second.await())
+        assertEquals(setOf("a", "b"), uploader.handedOff.toSet())
+    }
+
+    @Test
+    fun openingTheAppDuringABackgroundRunCarriesOnAfterIt() = runTest {
+        source.next = fullListing(*List(20) { asset("a$it") }.toTypedArray())
+        hashTime = 10.seconds
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        val background = async { run.run(request(limit = 25.seconds)) }
+        advanceTimeBy(1.seconds)
+
+        val foreground = async { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.OutOfTime, background.await())
+        assertEquals(BackupRunOutcome.Finished, foreground.await())
+        assertEquals(20, ledger.counts().done)
+    }
+
+    @Test
+    fun aForegroundRunWaitingBehindBackUpNowLeavesItToBackUpNow() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        hashTime = 10.seconds
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        val background = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        val foreground = async { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(1.seconds)
+
+        val userRequested = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.Superseded, background.await())
+        assertEquals(BackupRunOutcome.Superseded, foreground.await())
+        assertEquals(BackupRunOutcome.Finished, userRequested.await())
+        assertEquals(2, ledger.counts().done)
+    }
+
+    @Test
+    fun aSupersededRunsCallerBeingCancelledStillCancels() = runTest {
+        source.next = fullListing(asset("a"))
+        hashTime = 10.seconds
+        val (run, _) = newRun(uploader())
+        val foreground = launch { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(1.seconds)
+
+        foreground.cancel()
+        val userRequested = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceUntilIdle()
+
+        assertTrue(foreground.isCancelled)
+        assertEquals(BackupRunOutcome.Finished, userRequested.await())
     }
 
     @Test
