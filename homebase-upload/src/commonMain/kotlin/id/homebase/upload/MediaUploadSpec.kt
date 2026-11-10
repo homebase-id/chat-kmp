@@ -26,6 +26,11 @@ data class MediaUploadSpec(
     val bundle: PayloadBundle?,
     /** Unencrypted metadata; UploadService encrypts a copy for the request. */
     val metadata: UploadFileMetadata,
+    /**
+     * For metadata that carries something only encryption produces, like the tiny preview video
+     * processing makes. Sees the bundle before [omitPlaintextPreviews] drops it, and replaces [metadata].
+     */
+    val metadataFromBundle: ((PayloadBundle) -> UploadFileMetadata)? = null,
     val transit: TransitOptions? = null,
     val dependencyUniqueId: Uuid? = null,
     val priority: Long = 1,

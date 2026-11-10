@@ -219,7 +219,7 @@ suspend fun mapToMessageData(
         // New kinds plug in via MessageContentParser — zero mapper edits.
         val messageContent: MessageContent? =
             if (isStatusMessage) null
-            else MessageContentParser.parse(appData.dataType, content)
+            else MessageContentParser.parseForDisplay(appData.dataType, content, metadata.payloads)
 
         when {
             isStatusMessage -> {
@@ -281,7 +281,8 @@ suspend fun mapToMessageData(
         val displayName = displayNameResolver(header)
 
         val isAuthor = domain == metadata.originalAuthor
-        val authorSpecificDate = if (isAuthor)
+        // The server's metadata-only update leaves transitCreated at zero; clamping to it dates the message 1970.
+        val authorSpecificDate = if (isAuthor || metadata.transitCreated == UnixTimeUtc.ZeroTime)
             metadata.created
         else
             metadata.transitCreated

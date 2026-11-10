@@ -37,6 +37,8 @@ import dev.onvoid.webrtc.media.audio.AudioDeviceModule
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase
 import dev.onvoid.webrtc.media.audio.AudioOptions
 import dev.onvoid.webrtc.media.audio.AudioTrack
+import dev.onvoid.webrtc.media.audio.AudioTrackSink
+import dev.onvoid.webrtc.media.audio.AudioTrackSource
 import dev.onvoid.webrtc.media.video.CustomVideoSource
 import dev.onvoid.webrtc.media.video.VideoCaptureCapability
 import dev.onvoid.webrtc.media.video.VideoDevice
@@ -65,6 +67,10 @@ class WebRtcJavaCallEngine(
     audioDevice: AudioDeviceModuleBase? = null,
     devicePreferences: CallDevicePreferences = InMemoryCallDevicePreferences(),
     private val cameraSource: (() -> VideoTrackSource)? = null,
+    private val audioSource: (() -> AudioTrackSource)? = null,
+    private val remoteAudioSink: AudioTrackSink? = null,
+    private val renderVideo: Boolean = true,
+    private val ownsAudioDevice: Boolean = audioDevice == null,
 ) : CallEngine {
     private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
     override val events: Flow<MediaEvent> = _events.receiveAsFlow()
@@ -78,7 +84,6 @@ class WebRtcJavaCallEngine(
         nativeLogs
     }
 
-    private val ownsAudioDevice = audioDevice == null
     private val adm: AudioDeviceModuleBase = audioDevice ?: AudioDeviceModule()
     private val factory = PeerConnectionFactory(adm)
     @Volatile private var audioTrack: AudioTrack? = null
@@ -91,6 +96,7 @@ class WebRtcJavaCallEngine(
     private var localFrames: JvmVideoHandle? = null
     private var remoteFrames: JvmVideoHandle? = null
     private var remoteTrack: VideoTrack? = null
+    private var remoteAudio: AudioTrack? = null
     private val mapper = PeerEventMapper { _events.trySend(it) }
     private val mediaState = MediaStateLink("WebRtcJava") { _events.trySend(it) }
     private var stateChannel: RTCDataChannel? = null
@@ -151,7 +157,18 @@ class WebRtcJavaCallEngine(
             }
 
             override fun onTrack(transceiver: RTCRtpTransceiver) {
-                val track = transceiver.receiver.track as? VideoTrack ?: return
+                val received = transceiver.receiver.track
+                if (received is AudioTrack) {
+                    val sink = remoteAudioSink ?: return
+                    synchronized(remoteLock) {
+                        if (closed) return
+                        received.addSink(sink)
+                        remoteAudio = received
+                    }
+                    return
+                }
+                if (!renderVideo) return
+                val track = received as? VideoTrack ?: return
                 synchronized(remoteLock) {
                     if (closed) return
                     val handle = JvmVideoHandle().also { remoteFrames = it }
@@ -162,6 +179,10 @@ class WebRtcJavaCallEngine(
             }
         },
     ) ?: error("webrtc-java returned no peer connection")
+
+    // Declared before statsTimer: the init below can outlast STATS_PERIOD_MS, and the first tick reads it.
+    @Volatile
+    private var previousStats = emptyList<StatsEntry>()
 
     private val statsTimer = Timer("call-stats", true).apply {
         schedule(timerTask { logVideoStats() }, STATS_PERIOD_MS, STATS_PERIOD_MS)
@@ -184,9 +205,6 @@ class WebRtcJavaCallEngine(
                 .onFailure { Logger.w(it, "WebRtcJava") { "device hot-plug unavailable, the pickers will not follow device changes" } }
         }
     }
-
-    @Volatile
-    private var previousStats = emptyList<StatsEntry>()
 
     // A hot-plug fires a burst of callbacks; one enumeration covers them all.
     private fun refreshDevices() {
@@ -221,7 +239,7 @@ class WebRtcJavaCallEngine(
         runCatching {
             add(MediaDeviceKind.Speaker, MediaDevices.getAudioRenderDevices(), runCatching { MediaDevices.getDefaultAudioRenderDevice()?.descriptor }.getOrNull())
         }
-        runCatching { add(MediaDeviceKind.Camera, cameras(), null) }
+        if (renderVideo) runCatching { add(MediaDeviceKind.Camera, cameras(), null) }
         return found
     }
 
@@ -334,14 +352,14 @@ class WebRtcJavaCallEngine(
     private fun addLocalMedia(video: Boolean, offering: Boolean) = synchronized(lock) {
         checkOpen()
         if (audioTrack == null) {
-            val source = factory.createAudioSource(AudioOptions().apply {
+            val source = audioSource?.invoke() ?: factory.createAudioSource(AudioOptions().apply {
                 echoCancellation = true
                 autoGainControl = true
                 noiseSuppression = true
             })
             audioTrack = factory.createAudioTrack("audio0", source).also { peer.addTrack(it, listOf(STREAM_ID)) }
         }
-        if (video && videoTrack == null) startCamera()
+        if (video && renderVideo && videoTrack == null) startCamera()
         if (offering && videoSender == null) addIdleVideoTransceiver()
         mediaState.setCamera(videoTrack != null && cameraOn)
         if (stateChannel == null) openStateChannel()
@@ -531,7 +549,7 @@ class WebRtcJavaCallEngine(
 
     override suspend fun addVideo(): Boolean {
         val started = synchronized(lock) {
-            if (closed || videoSender == null) return false
+            if (closed || !renderVideo || videoSender == null) return false
             if (videoTrack == null) {
                 cameraOn = true
                 startCamera()
@@ -597,6 +615,8 @@ class WebRtcJavaCallEngine(
             cameraWatch.cancel()
             localFrames?.let { sink -> videoTrack?.let { runCatching { it.removeSink(sink.sink) } } }
             synchronized(remoteLock) {
+                remoteAudio?.let { track -> remoteAudioSink?.let { runCatching { track.removeSink(it) } } }
+                remoteAudio = null
                 remoteFrames?.let { sink -> remoteTrack?.let { runCatching { it.removeSink(sink.sink) } } }
                 remoteFrames?.close()
                 _remote.value = null

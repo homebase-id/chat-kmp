@@ -20,6 +20,7 @@ import id.homebase.api.client.isExistingFileWithUniqueId
 import id.homebase.api.client.isPayloadHashRejection
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.client.withRetryResult
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -56,41 +57,13 @@ class FilesyncUploader internal constructor(
         onProgress: (Float) -> Unit,
     ): KeyHeader {
         val mtime = modifiedMs ?: clock.now().toEpochMilliseconds()
-        return try {
-            uploadOnce(nodeId, parentId, sourcePath, name, mtime, onProgress)
-        } catch (e: ClientException) {
-            // A hash rejection means the bytes changed under us or a bug: start over once from the source, never resend blindly.
-            if (!e.isPayloadHashRejection()) throw e
-            Logger.w(tag = TAG) { "hash rejected (${e.errorCode}); encrypting again" }
-            uploadOnce(nodeId, parentId, sourcePath, name, mtime, onProgress)
-        }
-    }
-
-    private suspend fun uploadOnce(
-        nodeId: Uuid,
-        parentId: Uuid,
-        sourcePath: String,
-        name: String,
-        mtime: Long,
-        onProgress: (Float) -> Unit,
-    ): KeyHeader {
-        val keyHeader = KeyHeader.newRandom16()
-        val encryptedPath = fileOperationsProvider.createUploadTempPath("fs_up_", ".bin")
-        try {
-            val hashed = fileOperationsProvider.encryptWithPayloadHash(sourcePath, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
-            val content = FilesyncNodeContent(v = CONTENT_VERSION, name = name, mtime = mtime, size = hashed.plaintextBytes)
-            val payload = PayloadFile(
-                key = FilesyncProtocol.PayloadKey,
-                filePath = encryptedPath,
-                contentType = "application/octet-stream",
-                isPreEncrypted = true,
-                iv = hashed.iv,
-                hash = hashed.hash,
-            )
-            create(nodeId, parentId, FilesyncProtocol.FileFileType, content, keyHeader, payload, onProgress)
-            return keyHeader
-        } finally {
-            runCatching { fileOperationsProvider.deleteTempFile(encryptedPath) }
+        return encryptingAgainOnHashRejection(TAG) {
+            val keyHeader = KeyHeader.newRandom16()
+            fileOperationsProvider.withFilesyncPayload(sourcePath, keyHeader.aesKey) { payload, size ->
+                val content = FilesyncNodeContent(v = CONTENT_VERSION, name = name, mtime = mtime, size = size)
+                create(nodeId, parentId, FilesyncProtocol.FileFileType, content, keyHeader, payload, onProgress)
+            }
+            keyHeader
         }
     }
 
@@ -126,6 +99,39 @@ class FilesyncUploader internal constructor(
 
     private companion object {
         const val TAG = "FilesyncUploader"
+    }
+}
+
+/** A hash rejection means the bytes changed under us or a bug: start over once from the source, never resend blindly. */
+internal suspend fun <T> encryptingAgainOnHashRejection(tag: String, attempt: suspend () -> T): T =
+    try {
+        attempt()
+    } catch (e: ClientException) {
+        if (!e.isPayloadHashRejection()) throw e
+        Logger.w(tag = tag) { "hash rejected (${e.errorCode}); encrypting again" }
+        attempt()
+    }
+
+/** [sourcePath] as a node's encrypted, BLAKE3-hashed payload under [aesKey], for [send]; its size is the plaintext's. */
+internal suspend fun <T> FileOperationsProvider.withFilesyncPayload(
+    sourcePath: String,
+    aesKey: SecureByteArray,
+    send: suspend (payload: PayloadFile, size: Long) -> T,
+): T {
+    val encryptedPath = createUploadTempPath("fs_up_", ".bin")
+    try {
+        val hashed = encryptWithPayloadHash(sourcePath, encryptedPath, aesKey, PayloadHashAlgorithm.Blake3)
+        val payload = PayloadFile(
+            key = FilesyncProtocol.PayloadKey,
+            filePath = encryptedPath,
+            contentType = "application/octet-stream",
+            isPreEncrypted = true,
+            iv = hashed.iv,
+            hash = hashed.hash,
+        )
+        return send(payload, hashed.plaintextBytes)
+    } finally {
+        runCatching { deleteTempFile(encryptedPath) }
     }
 }
 

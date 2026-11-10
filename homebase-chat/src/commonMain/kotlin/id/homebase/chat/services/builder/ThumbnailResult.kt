@@ -1,5 +1,7 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.api.image.ImageSize
+import id.homebase.api.image.RenderedImage
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 
@@ -13,7 +15,10 @@ data class ThumbnailResult(
      * the source — not the re-encoded thumbnail (lossy re-encode adds an alpha
      * fringe) — without a second file read.
      */
-    val sourceBytes: ByteArray
+    val sourceBytes: ByteArray,
+    /** What a Standard or HD send should carry instead of the file, made from the same decode. */
+    val finalImage: RenderedImage? = null,
+    val displayedSize: ImageSize? = null,
 ) {
     // ByteArray uses identity equals/hashCode by default, which would make two
     // structurally-equal results unequal. Override so the data class stays sane.

@@ -390,11 +390,13 @@ fun ProfileCardEditorScreen(
             onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,
             onContentAudience = viewModel::onContentAudienceChosen,
+            onFieldShown = viewModel::onFieldShown,
+            onFieldsReordered = viewModel::onFieldsReordered,
             onContentEdit = viewModel::onContentEdited,
             onContentDelete = viewModel::onContentDeleted,
             onContentAdd = viewModel::onContentAdded,
             onNewCircle = newCircle.takeIf { uiState.circleCardsSupported },
-            onCirclesChanged = viewModel::onCirclesChanged,
+            onDesign = { mode = EditorMode.Design }.takeIf { cardsEnabled },
         ) { layoutWidth ->
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
@@ -497,11 +499,13 @@ internal fun ProfileCardEditorContent(
     onRemovePhoto: () -> Unit = {},
     onImport: (CardAudience) -> Unit = {},
     onContentAudience: (Uuid, ProfileAudience) -> Unit = { _, _ -> },
+    onFieldShown: (Uuid, Boolean) -> Unit = { _, _ -> },
+    onFieldsReordered: (List<Uuid>) -> Unit = {},
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit = { _, _, _ -> },
     onContentDelete: (Uuid) -> Unit = {},
     onContentAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
     onNewCircle: (() -> Unit)? = null,
-    onCirclesChanged: (() -> Unit)? = null,
+    onDesign: (() -> Unit)? = null,
     preview: @Composable BoxScope.(layoutWidth: Dp) -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
@@ -548,16 +552,18 @@ internal fun ProfileCardEditorContent(
                     onStyle = onStyle,
                     showCardsButton = showCard,
                     onContentAudience = onContentAudience,
+                    onFieldShown = onFieldShown,
+                    onFieldsReordered = onFieldsReordered,
                     onContentEdit = onContentEdit,
                     onContentDelete = onContentDelete,
                     onRetry = onRetryLoad,
                     onContentAdd = onContentAdd,
-                    onCirclesChanged = onCirclesChanged,
                     mode = mode,
                     photo = photo,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
                     onImport = onImport,
+                    onDesign = onDesign,
                     metrics = metrics,
                     shape = shape,
                     modifier = modifier,
@@ -622,10 +628,9 @@ internal fun ProfileCardEditorContent(
                     )
                 }
                 if (!showCard || (contentOpen && contentLayout == ContentLayout.PanelOnly)) {
-                    panel(
-                        Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
-                        cardSheetShape(),
-                    )
+                    ContentPage(Modifier.weight(1f).fillMaxWidth()) {
+                        panel(it.widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(), cardSheetShape())
+                    }
                 } else if (contentOpen && contentLayout == ContentLayout.CompactHeader) {
                     val selectedCard = uiState.cards.firstOrNull { it.audience == uiState.selectedAudience }
                     val capturing = host != null && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
@@ -641,30 +646,29 @@ internal fun ProfileCardEditorContent(
                                 layoutWidth = CAPTURE_LAYOUT_WIDTH,
                             )
                         }
-                        Column(
+                        ContentPage(
                             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer),
-                            horizontalAlignment = Alignment.CenterHorizontally,
+                            above = if (selectedCard != null) COMPACT_TILE_WIDTH / CARD_THUMB_ASPECT + metrics.gap else 0.dp,
+                            header = {
+                                if (selectedCard != null) {
+                                    val shape = RoundedCornerShape(COMPACT_TILE_CORNER)
+                                    val previewLabel = stringResource(MR.string.profile_card_preview)
+                                    CardStill(
+                                        card = selectedCard,
+                                        still = tiles[audienceKey(selectedCard.audience)],
+                                        modifier = Modifier
+                                            .padding(bottom = metrics.gap)
+                                            .width(COMPACT_TILE_WIDTH)
+                                            .aspectRatio(CARD_THUMB_ASPECT)
+                                            .clip(shape)
+                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                                            .clickable(role = Role.Button) { previewOpen = true }
+                                            .semantics { contentDescription = previewLabel },
+                                    )
+                                }
+                            },
                         ) {
-                            if (selectedCard != null) {
-                                val shape = RoundedCornerShape(COMPACT_TILE_CORNER)
-                                val previewLabel = stringResource(MR.string.profile_card_preview)
-                                CardStill(
-                                    card = selectedCard,
-                                    still = tiles[audienceKey(selectedCard.audience)],
-                                    modifier = Modifier
-                                        .padding(bottom = metrics.gap)
-                                        .width(COMPACT_TILE_WIDTH)
-                                        .aspectRatio(CARD_THUMB_ASPECT)
-                                        .clip(shape)
-                                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                                        .clickable(role = Role.Button) { previewOpen = true }
-                                        .semantics { contentDescription = previewLabel },
-                                )
-                            }
-                            panel(
-                                Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
-                                cardSheetShape(),
-                            )
+                            panel(it.widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(), cardSheetShape())
                         }
                     }
                 } else if (wide) {
@@ -701,7 +705,7 @@ internal fun ProfileCardEditorContent(
                             ) { preview(cardWidth) }
                         }
                         panel(
-                            Modifier.width(widePanelWidth),
+                            Modifier.width(widePanelWidth).then(if (contentOpen) Modifier.verticalScroll(rememberScrollState()) else Modifier),
                             MaterialTheme.shapes.extraLargeIncreased,
                         )
                     }
@@ -730,6 +734,26 @@ internal fun ProfileCardEditorContent(
                 hostState = snackbarHostState,
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
             )
+        }
+    }
+}
+
+// The bar and card tabs above stay put; the panel and whatever sits over it scroll as one page, the panel filling what's left.
+@Composable
+private fun ContentPage(
+    modifier: Modifier,
+    above: Dp = 0.dp,
+    header: @Composable () -> Unit = {},
+    panel: @Composable (Modifier) -> Unit,
+) {
+    BoxWithConstraints(modifier) {
+        val rest = (maxHeight - above).coerceAtLeast(0.dp)
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            header()
+            panel(Modifier.heightIn(min = rest))
         }
     }
 }
@@ -874,16 +898,18 @@ private fun EditorPanel(
     onStyle: (ResolvedCardStyle) -> Unit,
     showCardsButton: Boolean,
     onContentAudience: (Uuid, ProfileAudience) -> Unit,
+    onFieldShown: (Uuid, Boolean) -> Unit,
+    onFieldsReordered: (List<Uuid>) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
     onContentDelete: (Uuid) -> Unit,
     onRetry: () -> Unit,
     onContentAdd: (String, Map<String, String>) -> Unit,
-    onCirclesChanged: (() -> Unit)?,
     mode: EditorMode,
     photo: CardPhotoUi,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
     onImport: (CardAudience) -> Unit,
+    onDesign: (() -> Unit)?,
     metrics: PanelMetrics,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -899,13 +925,44 @@ private fun EditorPanel(
     val control = if (styles.isEmpty()) CHIP_HEIGHT * grow else maxOf(CHIP_HEIGHT * grow, styleRowHeight(fontScale))
     val optionsNeeded = CAPTION_LINE * fontScale + control + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
-    val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
+    val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience, uiState.cards) { uiState.contentItems }
     val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
         modifier = modifier,
     ) {
+        // Content scrolls with the page around the panel, so nothing in here scrolls on its own.
+        if (mode == EditorMode.Content && uiState.cards.isEmpty()) {
+            Box(Modifier.navigationBarsPadding().padding(vertical = metrics.edge)) {
+                ContentLoading(failed = uiState.loadFailed, onRetry = onRetry)
+            }
+            return@Surface
+        }
+        if (mode == EditorMode.Content) {
+            CardContentEditor(
+                card = uiState.selectedAudience,
+                items = items,
+                circles = uiState.circles,
+                photo = photo,
+                enabled = !uiState.isContentBusy && !uiState.loadFailed,
+                busy = uiState.isContentBusy,
+                importSources = importSources,
+                showCardsButton = showCardsButton,
+                onAudience = onContentAudience,
+                onFieldShown = onFieldShown,
+                onFieldsReordered = onFieldsReordered,
+                onEdit = onContentEdit,
+                onDelete = onContentDelete,
+                onAdd = onContentAdd,
+                onChangePhoto = onChangePhoto,
+                onRemovePhoto = onRemovePhoto,
+                onImport = onImport,
+                onDesign = onDesign,
+                edge = metrics.edge,
+            )
+            return@Surface
+        }
         Column(
             modifier = Modifier
                 .verticalScroll(rememberScrollState())
@@ -913,30 +970,6 @@ private fun EditorPanel(
                 .padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
-            if (mode == EditorMode.Content && uiState.cards.isEmpty()) {
-                ContentLoading(failed = uiState.loadFailed, onRetry = onRetry)
-                return@Column
-            }
-            if (mode == EditorMode.Content) {
-                CardContentEditor(
-                    card = uiState.selectedAudience,
-                    items = items,
-                    circles = uiState.circles,
-                    photo = photo,
-                    enabled = !uiState.isContentBusy && !uiState.loadFailed,
-                    importSources = importSources,
-                    showCardsButton = showCardsButton,
-                    onAudience = onContentAudience,
-                    onEdit = onContentEdit,
-                    onDelete = onContentDelete,
-                    onAdd = onContentAdd,
-                    onCirclesChanged = onCirclesChanged,
-                    onChangePhoto = onChangePhoto,
-                    onRemovePhoto = onRemovePhoto,
-                    onImport = onImport,
-                )
-                return@Column
-            }
             if (uiState.isCircleReadOnly) {
                 ReadOnlyCard(designName = stringResource(designLabel(design)), modifier = Modifier.padding(horizontal = 16.dp))
                 return@Column

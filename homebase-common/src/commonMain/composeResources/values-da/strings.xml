@@ -942,6 +942,11 @@
     <string name="chat_poll_one_vote">1 stemme</string>
     <string name="chat_poll_vote_count">%1$d stemmer</string>
     <string name="chat_poll_unparseable">Kan ikke vise denne afstemning. Opdatér venligst appen.</string>
+    <string name="chat_agent_ui_unparseable">Kan ikke vise dette kort. Opdatér venligst appen.</string>
+    <string name="chat_agent_ui_action_failed">Handlingen kunne ikke sendes. Prøv igen.</string>
+    <string name="chat_agent_ui_action_you">Du valgte %1$s</string>
+    <string name="chat_agent_ui_action_other">%1$s valgte %2$s</string>
+    <string name="chat_agent_ui_open_image">Vis billede</string>
 
     <!-- Poll detail dialog -->
     <string name="chat_poll_details_title">Afstemningsdetaljer</string>
@@ -1865,13 +1870,9 @@
     <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
     <string name="profile_card_design_action">Design</string>
     <string name="profile_card_content_on_card">På dette kort</string>
-    <string name="profile_card_content_could_add">Også på din profil</string>
-    <string name="profile_card_content_every_card">På alle kort</string>
-    <string name="profile_card_content_every_card_desc">Offentlige, så alle ser dem på alle kort.</string>
     <string name="profile_card_content_edit_this">Redigér %1$s</string>
     <string name="profile_card_content_edit_title">Redigér</string>
     <string name="profile_card_content_delete">Slet fra alle kort</string>
-    <string name="profile_card_content_every_card_circle">Offentlige, så alle ser dem. Tryk på en og skift hvem der kan se den for at skjule den på dette kort.</string>
     <string name="profile_card_content_more">Mere</string>
     <string name="profile_card_switcher">Kort, der redigeres</string>
     <string name="profile_card_content_add_new">Tilføj nyt</string>
@@ -2173,4 +2174,16 @@
     <string name="profile_card_colours_lemon">Citron</string>
     <string name="profile_card_colours_purple">Lilla</string>
     <string name="profile_card_colours_blue">Blå</string>
+    <string name="settings_media_quality_hd">HD</string>
+    <string name="settings_media_quality_original">Original</string>
+    <string name="settings_media_quality_header">Kvalitet for billeder og videoer, du sender</string>
+    <string name="settings_media_quality_standard">Standard</string>
+    <string name="settings_media_quality_footer">Uanset hvad du vælger, er det, du gemmer på din enhed, den version, der blev sendt.</string>
+    <string name="settings_media_quality_standard_description">Billeder op til 2048 pixels og video i 720p. Ser godt ud, sendes hurtigt og holder skærmbilleder læsbare.</string>
+    <string name="settings_media_quality_hd_description">Billeder op til 4096 pixels og video i 1080p. Forbliver skarpe, når du zoomer.</string>
+    <string name="settings_media_quality_original_description">Den nøjagtige billedfil uden komprimering, og video i 1080p. Bruger mest data.</string>
+    <string name="cd_media_quality_choice">Mediekvalitet: %1$s. Tryk for at ændre.</string>
+    <string name="cd_media_quality_hd_badge">Sendt i HD</string>
+    <string name="cd_media_quality_original_badge">Sendt som den originale fil</string>
+    <string name="storage_cache_photo_thumbnails">Miniaturer af billeder</string>
 </resources>

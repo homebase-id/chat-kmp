@@ -1093,6 +1093,7 @@ private fun rememberPendingStale(since: Instant, threshold: Duration = 1.minutes
  */
 fun String.hasContent(): Boolean = stripComposerLineBreakArtifacts().isNotEmpty()
 
+// Text and embedded-thumb gate for quotes: view-once captions and unknown kinds must not be quoted. Payloads go through payloadsAreConversationMedia.
 internal fun MessageContent?.isProtectedMedia(): Boolean =
     this is MessageContent.ViewOnce || this is MessageContent.Unknown
 
@@ -1121,8 +1122,8 @@ fun InlineReplyPreview(
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
     val quotesProtectedMedia = replyMessage?.messageContent.isProtectedMedia()
-    val mediaPayloads = remember(replyMessage?.payloads, quotesProtectedMedia) {
-        if (quotesProtectedMedia) emptyList() else replyMessage?.payloads.replyQuoteMediaPayloads()
+    val mediaPayloads = remember(replyMessage?.payloads, replyMessage?.messageContent) {
+        replyMessage?.replyQuoteConversationMediaPayloads().orEmpty()
     }
     // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
     val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true

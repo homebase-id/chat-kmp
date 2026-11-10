@@ -128,4 +128,24 @@ class PayloadBundleEncryptionServiceFailSoftTest {
             "the first payload's encrypted temp must be reaped on the fail-soft path (no leak)",
         )
     }
+
+    @Test
+    fun skipVideoProcessingEncryptsVideoBytesUntouched() = runTest {
+        val fileOps = OkioFileOperationsProvider(FakeFileSystem(), cacheDir)
+        val svc = service(fileOps)
+        val plain = ByteArray(4096) { it.toByte() }
+        val src = fileOps.writeBytesToTempFile(plain, "fwd_", "")
+        val payload = PayloadFile(
+            key = "p0", filePath = src, contentType = "video/mp2t", skipVideoProcessing = true,
+        )
+
+        val result = svc.encryptBundle(
+            Uuid.random(), bundle(payload), KeyHeader.newRandom16().aesKey, this,
+        )
+
+        assertEquals(1, result.payloads.size)
+        assertEquals("video/mp2t", result.payloads[0].contentType)
+        assertTrue(result.payloads[0].isPreEncrypted)
+        assertTrue(fileOps.sourceExists(result.payloads[0].filePath))
+    }
 }

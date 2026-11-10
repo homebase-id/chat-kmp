@@ -27,8 +27,6 @@ class PhotoBackupController(
 
     private var inForeground = false
 
-    private var wokenInBackgroundSinceForeground = false
-
     init {
         run?.let { scope.launch { it.followLedger() } }
     }
@@ -48,10 +46,9 @@ class PhotoBackupController(
             scope.launch { run.refreshStatus() }
             return
         }
-        val fullScan = wokenInBackgroundSinceForeground && triggers?.rescansAfterBackgroundWake == true
-        wokenInBackgroundSinceForeground = false
         foregroundJob = scope.launch {
             launch { pushSchedule.ensure(adoptSharedInterval()) }
+            val fullScan = triggers?.rescansAfterBackgroundWake == true && run.takeWokenInBackground()
             run.run(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null), forceFullScan = fullScan))
         }
     }
@@ -66,15 +63,19 @@ class PhotoBackupController(
         scope.launch { run.refreshStatus() }
     }
 
-    /** Off screen a foreground run has no time budget at all, so it stops and a background trigger takes over. */
+    /** Off screen a foreground run has no time budget at all, so it stops and a background run takes over. */
     fun onAppBackground() {
         inForeground = false
         foregroundJob?.cancel()
         foregroundJob = null
+        val run = run ?: return
+        val settings = settingsStore.settings.value
+        if (!settings.enabled) return
+        scope.launch { if (run.hasUnsentWork()) triggers?.continueSoon(settings) }
     }
 
     suspend fun runFromBackground(request: BackupRunRequest) {
-        wokenInBackgroundSinceForeground = true
+        if (triggers?.rescansAfterBackgroundWake == true) run?.markWokenInBackground()
         // Another phone turning backup off or logging out cancels the identity's one schedule.
         if (settingsStore.settings.value.enabled && request.trigger.restoresPushSchedule) {
             scope.launch { pushSchedule.ensure(adoptSharedInterval()) }
@@ -108,6 +109,20 @@ class PhotoBackupController(
     }
 
     fun batteryGuidance(): BatteryGuidance? = triggers?.batteryGuidance()
+
+    /** The drive can lose files the phone has marked Done, and nothing else asks the server about those again. */
+    fun recheckDriveAndBackUp() {
+        val run = run ?: return
+        scope.launch {
+            run.recheckDrive()
+            backUpNow()
+        }
+    }
+
+    suspend fun forgetDrive() {
+        foregroundJob?.cancel()
+        run?.forget()
+    }
 
     fun retryFailures() {
         val run = run ?: return
@@ -180,7 +195,6 @@ class PhotoBackupController(
 
     fun onPostAuthenticated() {
         foregroundJob?.cancel()
-        wokenInBackgroundSinceForeground = false
         settingsStore.reset()
         results.reset()
         Logger.d(tag = TAG) { "reset for the signed-in identity" }

@@ -52,6 +52,12 @@ class OutboxWrapper(
             delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
         }
 
+    /** Rows of [uploadType] for [driveId] that no worker holds and none has tried yet (an offline retry counts no attempt but moves nextRunTime). */
+    suspend fun selectUntriedByDriveAndType(driveId: Uuid, uploadType: Long): List<Outbox> =
+        databaseManager.readValue("outbox.selectUntriedByDriveAndType") {
+            delegate.selectUntriedByDriveAndType(driveId, uploadType).executeAsList()
+        }
+
     /** True when any outbox row still exists for [uniqueId] (across drives) —
      *  i.e. a dependency a queued message is waiting on hasn't drained yet. */
     suspend fun existsByUniqueId(uniqueId: Uuid): Boolean =

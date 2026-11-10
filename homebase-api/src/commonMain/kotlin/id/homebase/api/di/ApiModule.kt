@@ -51,6 +51,7 @@ import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.api.file.StartupCacheAudit
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.KeyHeaderTransformQueue
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.video.VideoPayloadProcessor
@@ -97,7 +98,7 @@ val apiModule = module {
     single { ServerIpCapture(get(), get(), get()) }
     singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
-    singleOf(::DriveFileProviderCached)
+    single { DriveFileProviderCached(get(), get(), get(), getOrNull()) }
     // Composite outbox uploader: drive transit + the scheduled-push shim (offline-durable
     // schedule/cancel of reminder pushes, reconciled against the server via tagId; see
     // ScheduledPushOutboxUploader).
@@ -117,6 +118,7 @@ val apiModule = module {
             storageQuota = get(),
         )
     }
+    single { KeyHeaderTransformQueue(get(), get(), get(), get<CoroutineScope>()) }
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
     // singletons (ImageLoader, FileOperationsProvider) needed by its

@@ -56,6 +56,11 @@ class PhotoBackupControllerTest {
         var takesUserRuns = true
         var userRuns = 0
         var rescans = false
+        var continuations = 0
+
+        override fun continueSoon(settings: BackupSettings) {
+            continuations++
+        }
 
         override val rescansAfterBackgroundWake: Boolean get() = rescans
 
@@ -320,6 +325,29 @@ class PhotoBackupControllerTest {
     }
 
     @Test
+    fun leavingTheAppWithPhotosLeftHandsThemToABackgroundRun() = runTest {
+        val controller = controller()
+        enable(controller)
+        BackupLedger(db.deviceBackup) { 1_000 }.apply(fullListing(asset("a")), null)
+
+        controller.onAppBackground()
+        runCurrent()
+
+        assertEquals(1, triggers.continuations)
+    }
+
+    @Test
+    fun leavingTheAppWithNothingLeftArrangesNothing() = runTest {
+        val controller = controller()
+        enable(controller)
+
+        controller.onAppBackground()
+        runCurrent()
+
+        assertEquals(0, triggers.continuations)
+    }
+
+    @Test
     fun theOpenAppKeepsItsCheckpointAfterAWakeByDefault() = runTest {
         assertTrue(checkpointSeenByForegroundRunAfterAWake().isNotEmpty())
     }
@@ -328,6 +356,20 @@ class PhotoBackupControllerTest {
     fun aPlatformThatAsksRescansTheLibraryAfterAWake() = runTest {
         triggers.rescans = true
         assertTrue(checkpointSeenByForegroundRunAfterAWake().isEmpty())
+    }
+
+    @Test
+    fun theRescanAfterAWakeSurvivesTheProcessDying() = runTest {
+        triggers.rescans = true
+        val woken = controller()
+        enable(woken)
+        woken.runFromBackground(BackupRunRequest(BackupTrigger.Periodic, BackupBudget(null)))
+
+        val nextProcess = controller()
+        nextProcess.onAppForeground()
+        advanceTimeBy(1.seconds)
+
+        assertTrue(source.checkpointsSeen.last().isEmpty())
     }
 
     @Test

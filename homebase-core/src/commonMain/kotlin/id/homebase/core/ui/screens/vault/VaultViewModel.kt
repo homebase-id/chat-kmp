@@ -1019,9 +1019,13 @@ class VaultViewModel(
         val vaultDriveId = vaultLabeledDrive.drive.alias
         viewModelScope.launch {
             eventBus.events
+                // Other rows on the drive (e.g. key header transforms) aren't Vault's uploads.
                 .filter {
-                    (it is BackendEvent.OutboxEvent.ItemFailed && it.driveId == vaultDriveId) ||
-                        (it is BackendEvent.OutboxEvent.OutboxItemDropped && it.driveId == vaultDriveId)
+                    when (it) {
+                        is BackendEvent.OutboxEvent.ItemFailed -> it.driveId == vaultDriveId && vaultStream.owns(it.uniqueId)
+                        is BackendEvent.OutboxEvent.OutboxItemDropped -> it.driveId == vaultDriveId && vaultStream.owns(it.uniqueId)
+                        else -> false
+                    }
                 }
                 .collect {
                     _events.tryEmit(VaultUiEvent.Error(VaultError.OutboxUploadFailed))

@@ -6,6 +6,9 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * Bounded, in-memory LRU of decrypted full-payload image bytes with in-flight
@@ -49,6 +52,20 @@ internal class FullPayloadByteCache(
     // bump both happen under [mutex], so there is no window where a stale
     // write-back slips past a clear.
     private var generation = 0
+
+    suspend fun contains(key: String): Boolean = mutex.withLock { key in entries }
+
+    // Timed, because most failures are a dropped connection that's back a minute later.
+    private val failedStepUps = HashMap<String, TimeMark>()
+
+    suspend fun markStepUpFailed(key: String) = mutex.withLock { failedStepUps[key] = TimeSource.Monotonic.markNow() }
+
+    suspend fun hasStepUpFailed(key: String): Boolean = mutex.withLock {
+        val failedAt = failedStepUps[key] ?: return@withLock false
+        if (failedAt.elapsedNow() < STEP_UP_RETRY_AFTER) return@withLock true
+        failedStepUps.remove(key)
+        false
+    }
 
     /**
      * Returns the cached image for [key], or loads it via [loader] exactly once
@@ -112,6 +129,7 @@ internal class FullPayloadByteCache(
     suspend fun clear() {
         mutex.withLock {
             entries.clear()
+            failedStepUps.clear()
             sizeBytes = 0L
             // Forget the in-flight slots and advance the epoch so any load still
             // running (e.g. a decrypt that was underway when logout fired) cannot
@@ -121,3 +139,5 @@ internal class FullPayloadByteCache(
         }
     }
 }
+
+private val STEP_UP_RETRY_AFTER = 2.minutes

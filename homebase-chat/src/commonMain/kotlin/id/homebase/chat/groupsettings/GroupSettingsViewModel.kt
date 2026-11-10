@@ -1148,14 +1148,9 @@ class GroupSettingsViewModel(
      *
      * Termination rules per recipient (from RecipientTransferHistoryEntry):
      *   - latestTransferStatus == Delivered → Done
-     *   - latestTransferStatus is in failedStatuses AND !isInOutbox → Failed
+     *   - latestTransferStatus.isFailed AND !isInOutbox → Failed
      *   - otherwise (server still retrying, or peer unresponsive but the
      *     outbox hasn't given up) → keep polling; at timeout → StillQueued
-     *
-     * We do NOT try to map specific failure codes to UI text — the user just
-     * needs to know "got through" vs "didn't" per peer. A peer rejecting on
-     * vt mismatch surfaces here as RecipientIdentityReturnedBadRequest, same
-     * bucket as any other 400-class peer-side rejection.
      */
     private suspend fun pollOneFileDelivery(
         fileId: Uuid,

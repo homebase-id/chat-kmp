@@ -63,6 +63,7 @@ kotlin {
             implementation(libs.jetbrains.compose.resources)
             implementation(libs.jetbrains.compose.material3)
             implementation(libs.jetbrains.compose.material.icons.extended)
+            implementation(libs.jetbrains.compose.ui.backhandler)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.kotlinx.coroutines.core)

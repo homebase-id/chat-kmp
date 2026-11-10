@@ -26,7 +26,6 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.flow
 
 /** Nodes with what writing or downloading each one needs. */
 class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>) {
@@ -225,30 +224,12 @@ class FilesyncRepository(
         owner: OdinId,
         globalTransitId: Uuid,
         payload: FilesyncPayload,
-        total: Long?,
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ) {
-        val size = total ?: throw IllegalStateException("${payload.fileId} shared by $owner has no size")
         val fractions = onProgress?.let(::wholePercentFractions)
         val found = payloadDownloadService.streamVerified(payload.payloadKey, payload.hash, consume) { hashed ->
-            var any = size == 0L
-            hashed(flow {
-                var offset = 0L
-                while (offset < size) {
-                    val slice = peerFiles.getPayloadChunkOverPeerByGlobalTransitId(
-                        owner, FilesyncProtocol.DriveAlias, globalTransitId, FilesyncProtocol.PayloadKey, payload.payloadKey, offset, SHARED_CHUNK_BYTES,
-                    )?.bytes ?: break
-                    if (slice.isEmpty()) break
-                    any = true
-                    // The last chunk decrypts with the cipher's padding still on it: the node's size is where the file ends.
-                    val kept = if (offset + slice.size > size) slice.copyOf((size - offset).toInt()) else slice
-                    emit(kept)
-                    offset += kept.size
-                    fractions?.invoke(offset.toFloat() / size)
-                }
-            })
-            any
+            peerFiles.streamPayloadDecrypted(owner, FilesyncProtocol.DriveAlias, globalTransitId, FilesyncProtocol.PayloadKey, payload.payloadKey, fractions, hashed)
         }
         if (!found) throw IllegalStateException("payload of ${payload.fileId} shared by $owner is gone")
     }
@@ -295,7 +276,6 @@ class FilesyncRepository(
         const val PAGE_SIZE = 1000
         const val MAX_NAME_BYTES = 255
         const val RECENT_LIMIT = 100
-        const val SHARED_CHUNK_BYTES = 4L * 1024 * 1024
     }
 }
 

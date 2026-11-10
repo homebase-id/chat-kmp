@@ -307,31 +307,77 @@ internal class FilesyncSharingController(
         closeViews()
         update { it.copy(sharer = sharer) }
         sharedFilesJob = scope.launch {
-            val listed = guarded {
-                try {
-                    sharing.sharedBy(sharer)
-                } catch (e: FilesyncSharingException.NotReviewedByOwner) {
-                    send(FilesyncUiEvent.NotReviewedBy(e.owner))
-                    null
-                } catch (e: FilesyncSharingException.NotSealedYet) {
-                    send(FilesyncUiEvent.NotSealedYet(e.owner))
-                    null
-                }
-            }
-            if (listed == null) {
-                update { it.copy(sharedFilesFailed = true) }
-                return@launch
-            }
-            listed.forEach { (node, handle) -> sharedHandles[node.nodeId] = handle }
-            sharedNodes = listed.map { it.first }
-            openSharedFolder(emptyList())
+            val listed = listShared(sharer) ?: return@launch update { it.copy(sharedFilesFailed = true) }
+            show(listed, emptyList())
         }
     }
 
-    /** Shows a folder of the shown sharer's; at the top, whatever's shared without the folder it's in. */
-    fun openSharedFolder(path: List<FilesyncCrumb>) {
-        update { it.copy(sharerPath = path, sharedFiles = sharedLevel(sharedNodes, path.lastOrNull()?.nodeId).arranged(FilesyncSort())) }
+    /** [globalTransitIds] of [owner]'s read again where they're shown: writes of this identity's have landed there. */
+    fun refreshLanded(owner: OdinId, globalTransitIds: List<Uuid>) {
+        if (state().sharer != owner || state().sharedFiles == null) return
+        scope.launch {
+            val found = guarded { sharing.sharedByGlobalTransitId(owner, globalTransitIds) } ?: return@launch
+            if (state().sharer != owner) return@launch
+            found.forEach { (node, handle) -> sharedHandles[node.nodeId] = handle }
+            val ids = found.mapTo(HashSet()) { it.first.nodeId }
+            sharedNodes = sharedNodes.filterNot { it.nodeId in ids } + found.map { it.first }
+            openSharedFolder(state().sharerPath)
+        }
     }
+
+    private suspend fun listShared(sharer: OdinId): List<Pair<FilesyncNode, FilesyncHandle>>? = guarded {
+        try {
+            sharing.sharedBy(sharer)
+        } catch (e: FilesyncSharingException.NotReviewedByOwner) {
+            send(FilesyncUiEvent.NotReviewedBy(e.owner))
+            null
+        } catch (e: FilesyncSharingException.NotSealedYet) {
+            send(FilesyncUiEvent.NotSealedYet(e.owner))
+            null
+        }
+    }
+
+    private fun show(listed: List<Pair<FilesyncNode, FilesyncHandle>>, path: List<FilesyncCrumb>) {
+        sharedHandles.clear()
+        listed.forEach { (node, handle) -> sharedHandles[node.nodeId] = handle }
+        sharedNodes = listed.map { it.first }
+        // The folder shown may have gone meanwhile.
+        openSharedFolder(path.takeWhile { it.nodeId in sharedHandles })
+    }
+
+    /**
+     * Shows a folder of the shown sharer's; at the top, whatever's shared without the folder it's in. Files may be added
+     * only to a folder shared with Edit, never at the top, where they'd land loose on the sharer's drive.
+     */
+    fun openSharedFolder(path: List<FilesyncCrumb>) {
+        val shown = sharedLevel(sharedNodes, path.lastOrNull()?.nodeId).arranged(FilesyncSort())
+        update {
+            it.copy(
+                sharerPath = path,
+                sharedFiles = shown,
+                canAddHere = addableFolder(path.lastOrNull()?.nodeId) != null,
+                editableIds = shown.filter { node -> replaceable(node) != null }.mapTo(HashSet()) { node -> node.nodeId },
+            )
+        }
+    }
+
+    /** Where files picked now go: into the shown folder of the sharer's, when it takes them. */
+    fun addTarget(): FilesyncPeerTarget.Add? {
+        val owner = state().sharer ?: return null
+        val folderId = state().sharerPath.lastOrNull()?.nodeId ?: return null
+        val folder = addableFolder(folderId) ?: return null
+        val taken = sharedNodes.filter { it.parentId == folderId }.mapTo(HashSet()) { it.nameKey }
+        return FilesyncPeerTarget.Add(owner, folderId, folder, taken)
+    }
+
+    fun replaceTarget(node: FilesyncNode): FilesyncPeerTarget.Replace? {
+        val owner = state().sharer ?: return null
+        return replaceable(node)?.let { FilesyncPeerTarget.Replace(owner, node, it) }
+    }
+
+    private fun addableFolder(folderId: Uuid?): FilesyncHandle? = folderId?.let(sharedHandles::get)?.takeIf { it.editable }
+
+    private fun replaceable(node: FilesyncNode): FilesyncHandle? = sharedHandles[node.nodeId]?.takeIf { it.editable && !node.isFolder }
 
     fun closeShareView() = closeViews()
 
@@ -341,7 +387,7 @@ internal class FilesyncSharingController(
         sharedNodes = emptyList()
         recipientFilesJob?.cancel()
         recipientHandles.clear()
-        update { it.copy(sharer = null, sharerPath = emptyList(), sharedFiles = null, sharedFilesFailed = false, recipient = null, recipientFiles = null, recipientFilesFailed = false) }
+        update { it.copy(sharer = null, sharerPath = emptyList(), sharedFiles = null, sharedFilesFailed = false, canAddHere = false, editableIds = emptySet(), recipient = null, recipientFiles = null, recipientFilesFailed = false) }
     }
 
     /** The shared file's handle, for downloading it from its owner's drive. */

@@ -46,6 +46,8 @@ import id.homebase.resources.photobase_status_paused_low_power
 import id.homebase.resources.photobase_status_paused_network
 import id.homebase.resources.photobase_status_paused_off
 import id.homebase.resources.photobase_status_paused_storage
+import id.homebase.resources.photobase_status_paused_phone_storage
+import id.homebase.resources.photobase_status_paused_too_hot
 import id.homebase.resources.photobase_status_paused_wifi
 import id.homebase.resources.photobase_status_pending
 import id.homebase.resources.photobase_status_progress
@@ -100,8 +102,8 @@ fun BackupStatusContent(status: BackupStatus, backupEnabled: Boolean, onRetry: (
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                DetailRow(stringResource(MR.string.photobase_status_size_backed_up), formatBytes(status.backedUpBytes))
-                DetailRow(stringResource(MR.string.photobase_status_size_left), formatBytes(status.remainingBytes))
+                status.backedUpBytes?.let { DetailRow(stringResource(MR.string.photobase_status_size_backed_up), formatBytes(it)) }
+                status.remainingBytes?.let { DetailRow(stringResource(MR.string.photobase_status_size_left), formatBytes(it)) }
                 DetailRow(
                     stringResource(MR.string.photobase_status_last_success),
                     status.lastSuccessMs?.let { formatTimestamp(Instant.fromEpochMilliseconds(it)) }
@@ -208,6 +210,8 @@ internal fun backupStatusSummary(status: BackupStatus, backupEnabled: Boolean): 
             BackupPauseReason.LowBattery -> MR.string.photobase_status_paused_battery
             BackupPauseReason.LowPowerMode -> MR.string.photobase_status_paused_low_power
             BackupPauseReason.StorageFull -> MR.string.photobase_status_paused_storage
+            BackupPauseReason.PhoneStorageLow -> MR.string.photobase_status_paused_phone_storage
+            BackupPauseReason.TooHot -> MR.string.photobase_status_paused_too_hot
         },
     )
     status.backgroundRefreshOff -> stringResource(MR.string.photobase_status_paused_background_refresh)

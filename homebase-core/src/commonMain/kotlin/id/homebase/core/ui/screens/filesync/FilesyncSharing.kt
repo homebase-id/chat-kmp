@@ -166,6 +166,7 @@ class FilesyncSharing(
 
     private val ownKeys = mutableMapOf<Uuid, OwnCircleKey>()
     private val memberKeys = mutableMapOf<Pair<OdinId, Uuid>, ByteArray>()
+    private val ownersDriveKeys = mutableMapOf<OdinId, ByteArray>()
     private val keys = Mutex()
     private val editing = Mutex()
 
@@ -194,6 +195,7 @@ class FilesyncSharing(
         keys.withLock {
             ownKeys.clear()
             memberKeys.clear()
+            ownersDriveKeys.clear()
         }
     }
 
@@ -568,11 +570,37 @@ class FilesyncSharing(
     }
 
     /** The files and folders [owner] shares with this identity, opened with the keys their shares unlock. */
-    suspend fun sharedBy(owner: OdinId): List<Pair<FilesyncNode, FilesyncHandle>> {
+    suspend fun sharedBy(owner: OdinId): List<Pair<FilesyncNode, FilesyncHandle>> =
+        sharedBy(owner, FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), archivalStatus = FilesyncStatus.Live.archivalStatus))
+
+    /** [owner]'s files with these global transit ids that this identity can open now. */
+    internal suspend fun sharedByGlobalTransitId(owner: OdinId, globalTransitIds: List<Uuid>): List<Pair<FilesyncNode, FilesyncHandle>> =
+        sharedBy(owner, FileQueryParams(globalTransitId = globalTransitIds))
+
+    /**
+     * One locked key per circle [folder] is shared with this identity through: a file added to it is shared as the folder
+     * is with them. Bound to [globalTransitId], which the file doesn't have yet; circles this identity isn't in get
+     * theirs from the owner's device.
+     */
+    internal suspend fun sharesOfNewFileIn(owner: OdinId, folder: FilesyncHandle, fileKey: KeyHeader, globalTransitId: Uuid): List<ShareRequest> {
+        val self = requireNotNull(appCredentials.getActiveCredentials()).domain
+        return folder.shares.filter { it.permissions.values.isNotEmpty() }.map { row ->
+            val circleKey = memberCircleKey(owner, row.circleId, self)
+            val locked = ShareKeys.lockFileKeyByGlobalTransitId(circleKey, fileKey.aesKey.toByteArray(), FilesyncProtocol.DriveAlias, globalTransitId, row.circleId)
+            ShareRequest(Uuid.NIL, row.circleId, DrivePermission.combine(row.permissions.values), expiresAt = row.expiresAt, lockedFileKey = locked)
+        }
+    }
+
+    /** [owner]'s Filesync drive's write-only key: what this identity adds there is sealed to it. */
+    internal suspend fun ownersDriveKey(owner: OdinId): ByteArray = keys.withLock {
+        ownersDriveKeys.getOrPut(owner) { ShareKeys.pointOfJwk(peer.drivePublicKey(owner, FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug).publicKeyJwk) }
+    }
+
+    private suspend fun sharedBy(owner: OdinId, params: FileQueryParams): List<Pair<FilesyncNode, FilesyncHandle>> {
         val self = requireNotNull(appCredentials.getActiveCredentials()).domain
         // A circle whose key won't open leaves its files out of the page; why is kept here, asked once per circle.
         val refused = HashMap<Uuid, Exception>()
-        val byShare = ExternalFileKey { fileId, shares, locked ->
+        val byShare = ExternalFileKey { fileId, globalTransitId, shares, locked ->
             val circleId = shares.firstOrNull()?.circleId ?: error("file $fileId came with no share")
             if (circleId in refused) return@ExternalFileKey null
             val circleKey = try {
@@ -584,11 +612,11 @@ class FilesyncSharing(
                 refused[circleId] = e
                 return@ExternalFileKey null
             }
-            ShareKeys.openFileKey(circleKey, locked, FilesyncProtocol.DriveAlias, fileId, circleId).toSecureByteArray()
+            ShareKeys.openFileKey(circleKey, locked, FilesyncProtocol.DriveAlias, fileId, globalTransitId, circleId).toSecureByteArray()
         }
         val found = mutableListOf<Pair<FilesyncNode, FilesyncHandle>>()
         query.forEachFilesyncPage(
-            FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), archivalStatus = FilesyncStatus.Live.archivalStatus),
+            params,
             QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true),
             ownerOdinId = owner,
             externalFileKey = byShare,

@@ -38,6 +38,9 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.headersOf
+import id.homebase.api.youauth.ZkKeyStore
+import id.homebase.api.client.drives.shares.ShareRow
+import id.homebase.api.youauth.DrivePermissionSet
 import kotlin.io.encoding.Base64
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -135,6 +138,8 @@ class FilesyncSharingTest {
     private val merry = OdinId("merry.test")
     private val groupCircle = Uuid.random()
     private var unsealed = listOf("sam.test")
+    // What a sharer sealed to this identity, by circle.
+    private val sealedForUs = mutableMapOf<Uuid, ByteArray>()
     private var refusedByAddMany = emptyList<String>()
     private var depositedByAddMany = emptyList<String>()
     private var circles = """[{"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"${Uuid.parseHex(filesyncAppRegistration.appId)}"},"members":["sam.test"]}]"""
@@ -161,7 +166,7 @@ class FilesyncSharingTest {
                 """{"enrolled":1,"deposited":0,"skipped":0,"outcomes":[${(refusedByAddMany.map { it to "skipped" } + depositedByAddMany.map { it to "deposited" }).joinToString { (id, kind) -> """{"odinId":"$id","kind":"$kind"}""" }}]}"""
             "/connections/circles/delete" in path || path.endsWith("/connections/circles/revoke") -> "{}"
             "/peer/" in path && path.endsWith("/share-key") ->
-                if (frodoReviewedUs) """{"sealedKey":null}"""
+                if (frodoReviewedUs) """{"sealedKey":${sealedForUs.entries.firstOrNull { "/circles/${it.key}/" in path }?.let { "\"${Base64.encode(it.value)}\"" } ?: "null"}}"""
                 else return@MockEngine respond("""{"title":"Not reviewed","errorCode":"notReviewedByOwner"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
             path.endsWith("/share-key/unsealed-members") -> unsealed.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
@@ -232,7 +237,7 @@ class FilesyncSharingTest {
         val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
         assertEquals(1 + 4 + 8, share["permissions"]!!.jsonPrimitive.int)
         val lockedFileKey = Base64.decode(share["lockedFileKey"]!!.jsonPrimitive.content)
-        assertContentEquals(file.keyHeader.aesKey.toByteArray(), ShareKeys.openFileKey(circleKey, lockedFileKey, FilesyncProtocol.DriveAlias, file.fileId, samsCircle))
+        assertContentEquals(file.keyHeader.aesKey.toByteArray(), ShareKeys.openFileKey(circleKey, lockedFileKey, FilesyncProtocol.DriveAlias, file.fileId, null, samsCircle))
     }
 
 
@@ -552,6 +557,44 @@ class FilesyncSharingTest {
     }
 
     @Test
+    fun aFileAddedToAFolderSharedWithUsIsLockedForEachOfOurCirclesOnItBoundToTheGlobalTransitIdWePicked() = runTest {
+        val stored = mutableMapOf("zk_drive_write_only_keys" to """{"${FilesyncProtocol.DriveAlias}":"${Base64.encode(samsPrivateKey)}"}""")
+        ZkKeyStore.storage = object : ZkKeyStore.Storage {
+            override fun get(key: String) = stored[key]
+            override fun put(key: String, value: String) { stored[key] = value }
+            override fun remove(key: String) { stored.remove(key) }
+        }
+        try {
+            val circleKeys = mapOf(samsCircle to ShareKeys.newCircleKey(), groupCircle to ShareKeys.newCircleKey())
+            circleKeys.forEach { (circle, key) -> sealedForUs[circle] = ShareKeys.sealCircleKey(key, ShareKeys.pointOfJwk(samsJwk), circle, frodo) }
+            val folder = FilesyncHandle(
+                Uuid.random(), null, FilesyncProtocol.FolderFileType, KeyHeader.newRandom16(), JsonObject(emptyMap()), null,
+                globalTransitId = Uuid.random(),
+                shares = listOf(
+                    ShareRow(samsCircle, DrivePermissionSet(listOf(DrivePermission.Read, DrivePermission.Write)), expiresAt = 99),
+                    ShareRow(groupCircle, DrivePermissionSet(listOf(DrivePermission.Read))),
+                    ShareRow(Uuid.random(), DrivePermissionSet(emptyList())),
+                ),
+            )
+            val fileKey = KeyHeader.newRandom16()
+            val gtid = Uuid.random()
+
+            val shares = sharing.sharesOfNewFileIn(sam, folder, fileKey, gtid)
+
+            assertEquals(listOf(samsCircle, groupCircle), shares.map { it.circleId }, "a withdrawn row gets nothing")
+            assertEquals(listOf(3, 1), shares.map { it.permissions }, "as the folder is shared with each")
+            assertEquals(listOf(99L, null), shares.map { it.expiresAt })
+            assertTrue(shares.all { it.fileId == Uuid.NIL })
+            shares.forEach { share ->
+                val opened = ShareKeys.openFileKey(circleKeys.getValue(share.circleId), share.lockedFileKey!!, FilesyncProtocol.DriveAlias, Uuid.random(), gtid, share.circleId)
+                assertContentEquals(fileKey.aesKey.toByteArray(), opened)
+            }
+        } finally {
+            ZkKeyStore.clear()
+        }
+    }
+
+    @Test
     fun loggingOutSignsFilesyncOutAndForgetsTheCircleKeys() = runTest {
         val events = EventBus()
         FilesyncShareUpkeep(sharing, appCredentials, MutableStateFlow(false), events, backgroundScope)
@@ -595,7 +638,7 @@ class FilesyncSharingTest {
         assertEquals(samsCircle.toString(), share["circleId"]!!.jsonPrimitive.content)
         assertEquals(1 + 2 + 4 + 8, share["permissions"]!!.jsonPrimitive.int)
         assertEquals("1900000000000", share["expiresAt"]!!.jsonPrimitive.content)
-        val opened = ShareKeys.openFileKey(circleKey, Base64.decode(share["lockedFileKey"]!!.jsonPrimitive.content), FilesyncProtocol.DriveAlias, newFileId, samsCircle)
+        val opened = ShareKeys.openFileKey(circleKey, Base64.decode(share["lockedFileKey"]!!.jsonPrimitive.content), FilesyncProtocol.DriveAlias, newFileId, null, samsCircle)
         assertContentEquals(key.aesKey.toByteArray(), opened)
     }
 
@@ -686,7 +729,7 @@ class FilesyncSharingTest {
         val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
         assertEquals(movedFileId.toString(), share["fileId"]!!.jsonPrimitive.content)
         assertEquals("1900000000000", share["expiresAt"]!!.jsonPrimitive.content)
-        val opened = ShareKeys.openFileKey(circleKey, Base64.decode(share["lockedFileKey"]!!.jsonPrimitive.content), FilesyncProtocol.DriveAlias, movedFileId, samsCircle)
+        val opened = ShareKeys.openFileKey(circleKey, Base64.decode(share["lockedFileKey"]!!.jsonPrimitive.content), FilesyncProtocol.DriveAlias, movedFileId, null, samsCircle)
         assertContentEquals(movedHandle.keyHeader.aesKey.toByteArray(), opened)
         assertTrue(calls.none { it.request.method == HttpMethod.Delete })
     }

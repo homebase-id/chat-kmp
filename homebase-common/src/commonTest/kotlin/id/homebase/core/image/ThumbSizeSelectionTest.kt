@@ -1,5 +1,8 @@
 package id.homebase.core.image
 
+import kotlin.uuid.Uuid
+import kotlin.test.assertFalse
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -85,5 +88,87 @@ class ThumbSizeSelectionTest {
     fun `thumbSizesFrom returns empty for null or empty input`() {
         assertTrue(thumbSizesFrom(null).isEmpty())
         assertTrue(thumbSizesFrom(emptyList()).isEmpty())
+    }
+
+    private fun stepUpData(
+        thumbs: List<ImageSize> = listOf(ImageSize(320, 240), ImageSize(640, 480)),
+        contentType: String? = "image/webp",
+        bytes: Long? = 400_000,
+        limit: ImageSize? = null,
+        finalSize: ImageSize? = null,
+    ) = HomebaseImageData(
+        driveId = Uuid.NIL,
+        fileId = Uuid.NIL,
+        payloadKey = "k",
+        availableThumbSizes = thumbs,
+        payloadContentType = contentType,
+        payloadBytes = bytes,
+        thumbSizeLimit = limit,
+        finalImageSize = finalSize,
+        keyHeader = KeyHeader.newRandom16(),
+    )
+
+    @Test
+    fun stepsUpWhenTheDisplayOutgrowsTheLargestThumbnail() {
+        assertTrue(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData()))
+    }
+
+    @Test
+    fun aFinalImageNoBiggerThanTheThumbnailIsNeverPulled() {
+        val thumbs = listOf(ImageSize(320, 240), ImageSize(600, 450))
+        assertFalse(shouldStepUpToPayload(ImageSize(880, 660), stepUpData(thumbs = thumbs, finalSize = ImageSize(600, 450))))
+    }
+
+    @Test
+    fun aFinalImageBiggerThanTheThumbnailIsPulled() {
+        val thumbs = listOf(ImageSize(1080, 810), ImageSize(2048, 1536))
+        assertTrue(shouldStepUpToPayload(ImageSize(3000, 2250), stepUpData(thumbs = thumbs, finalSize = ImageSize(4000, 3000))))
+    }
+
+    @Test
+    fun anOldDescriptorWithoutASizeKeepsTheOldRule() {
+        assertTrue(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(finalSize = null)))
+    }
+
+    @Test
+    fun staysOnTheThumbnailWhenItsCloseEnough() {
+        assertFalse(shouldStepUpToPayload(ImageSize(640, 480), stepUpData()))
+        assertFalse(shouldStepUpToPayload(ImageSize(700, 500), stepUpData()))
+    }
+
+    @Test
+    fun aLargePayloadNeverGetsPulledForABubble() {
+        assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(bytes = 40L * 1024 * 1024)))
+        assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(bytes = null)))
+    }
+
+    @Test
+    fun aPayloadNotEveryClientCanDecodeNeverGetsPulled() {
+        assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(contentType = "image/heic")))
+        assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(contentType = "video/mp4")))
+    }
+
+    @Test
+    fun nothingToCompareAgainstMeansNoStepUp() {
+        assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(thumbs = emptyList())))
+    }
+
+    @Test
+    fun aGridTileOfAnyScreenSizeStaysOnSmall() {
+        val thumbs = listOf(ImageSize(427, 240), ImageSize(854, 480), ImageSize(1440, 810), ImageSize(2048, 1152))
+        val grid = stepUpData(thumbs = thumbs, limit = ImageSize.THUMB_SMALL)
+        assertEquals(ImageSize(427, 240), thumbSizeToRequest(ImageSize(381, 381), grid))
+        assertEquals(ImageSize(427, 240), thumbSizeToRequest(ImageSize(1000, 1000), grid))
+    }
+
+    @Test
+    fun withoutALimitTheDisplayPicksTheSize() {
+        val thumbs = listOf(ImageSize(427, 240), ImageSize(854, 480))
+        assertEquals(ImageSize(854, 480), thumbSizeToRequest(ImageSize(600, 600), stepUpData(thumbs = thumbs)))
+    }
+
+    @Test
+    fun aLimitedViewNeverStepsUp() {
+        assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(limit = ImageSize.THUMB_SMALL)))
     }
 }

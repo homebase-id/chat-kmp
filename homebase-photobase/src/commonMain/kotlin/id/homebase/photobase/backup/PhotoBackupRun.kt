@@ -3,6 +3,8 @@ package id.homebase.photobase.backup
 import id.homebase.api.video.BackgroundVideoWork
 import id.homebase.api.video.VideoWorkYieldedException
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ServerException
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -21,6 +23,8 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
@@ -31,11 +35,25 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
-enum class BackupRunOutcome { AlreadyRunning, Paused, Finished, OutOfTime }
+enum class BackupRunOutcome {
+    /** Another run is going and this trigger doesn't outrank it. */
+    AlreadyRunning,
+
+    /** "Back up now" took over before this run finished. */
+    Superseded,
+    Paused,
+    Finished,
+    OutOfTime,
+}
 
 /**
  * The one backup run every trigger calls. It never assumes which trigger that was, and missing a
  * trigger only costs latency: all it trusts is the ledger, the checkpoint and the server.
+ *
+ * Only one runs at a time. A trigger meeting a run that's going:
+ * - "Back up now" stops it and runs instead, so the user's run is the one left going when the app closes;
+ * - opening the app waits for a background or user run, then runs after it;
+ * - every other trigger does nothing, since the run going covers it.
  */
 class PhotoBackupRun(
     private val settings: () -> BackupSettings,
@@ -57,6 +75,12 @@ class PhotoBackupRun(
 
     private var activeJob: Job? = null
 
+    // Guards the three fields below, which callers outside the run's lock read and change.
+    private val admission = Mutex()
+    private var activeTrigger: BackupTrigger? = null
+    private var activeWork: Job? = null
+    private var userRequestsWaiting = 0
+
     /** The OS took the time back: stop now, leaving every row where a later run can pick it up. */
     fun cancelActive() {
         activeJob?.cancel(CancellationException("backup run expired"))
@@ -73,6 +97,12 @@ class PhotoBackupRun(
     suspend fun albums(): List<DeviceAlbum> = source.albums()
 
     suspend fun takeOtherPushWake(gap: Duration): Boolean = ledger.takeOtherPushWake(gap)
+
+    suspend fun markWokenInBackground() = ledger.markWokenInBackground()
+
+    suspend fun takeWokenInBackground(): Boolean = ledger.takeWokenInBackground()
+
+    suspend fun hasUnsentWork(): Boolean = ledger.counts().unsent > 0
 
     suspend fun refreshStatus() {
         val counts = ledger.counts()
@@ -91,6 +121,7 @@ class PhotoBackupRun(
                 failures = failures,
                 lastSuccessMs = lastSuccess,
                 libraryAccess = access,
+                photoLocationsWithheld = access != LibraryAccess.None && probe.photoLocationsWithheld(),
                 backgroundRefreshOff = refreshOff,
             )
         }
@@ -101,13 +132,25 @@ class PhotoBackupRun(
         refreshStatus()
     }
 
+    /** Under the run's lock, so a run that was going can't write a row back after the wipe. */
+    suspend fun forget() {
+        cancelActive()
+        mutex.withLock { ledger.clear() }
+        resetStatus()
+    }
+
     suspend fun retryFailures() {
         ledger.requeueFailed()
         refreshStatus()
     }
 
+    suspend fun recheckDrive() {
+        ledger.recheckDone()
+        refreshStatus()
+    }
+
     suspend fun run(request: BackupRunRequest): BackupRunOutcome {
-        if (!mutex.tryLock()) {
+        if (!admit(request.trigger)) {
             Logger.d(tag = TAG) { "${request.trigger}: a run is already going" }
             return BackupRunOutcome.AlreadyRunning
         }
@@ -117,10 +160,31 @@ class PhotoBackupRun(
         val started = TimeSource.Monotonic.markNow()
         return try {
             val context = if (request.mayDownloadFromCloud) timings else timings + NoCloudDownloads
-            val outcome = withContext(context) { followingTheNetwork { runLocked(request) } }
-            noteForStuckAlert(request, outcome)
+            val outcome = try {
+                coroutineScope {
+                    val work = async(context) { followingTheNetwork { runLocked(request) } }
+                    admission.withLock {
+                        activeTrigger = request.trigger
+                        activeWork = work
+                        // A "Back up now" that arrived while this one waited for the lock.
+                        if (userRequestsWaiting > 0) work.cancel(Superseded())
+                    }
+                    work.await()
+                }
+            } catch (e: Superseded) {
+                currentCoroutineContext().ensureActive()
+                Logger.i(tag = TAG) { "${request.trigger}: \"Back up now\" took over" }
+                BackupRunOutcome.Superseded
+            }
+            if (outcome != BackupRunOutcome.Superseded) noteForStuckAlert(request, outcome)
             outcome
         } finally {
+            withContext(NonCancellable) {
+                admission.withLock {
+                    activeTrigger = null
+                    activeWork = null
+                }
+            }
             hasher.forgetAll()
             Logger.i(tag = TAG) { "timing trigger=${request.trigger} total=${started.elapsedNow().inWholeMilliseconds}ms ${timings.summary()}" }
             activeJob = null
@@ -129,10 +193,36 @@ class PhotoBackupRun(
         }
     }
 
+    /** True once this trigger holds the lock; false when it gives way to the run that's going. */
+    private suspend fun admit(trigger: BackupTrigger): Boolean {
+        if (mutex.tryLock()) return true
+        val userRequested = trigger == BackupTrigger.UserRequested
+        val waits = admission.withLock {
+            when {
+                userRequested -> {
+                    userRequestsWaiting++
+                    activeWork?.cancel(Superseded())
+                    true
+                }
+                trigger == BackupTrigger.Foreground -> activeTrigger != BackupTrigger.Foreground
+                else -> false
+            }
+        }
+        if (!waits) return false
+        try {
+            mutex.lock()
+        } finally {
+            if (userRequested) withContext(NonCancellable) { admission.withLock { userRequestsWaiting-- } }
+        }
+        return true
+    }
+
+    private class Superseded : CancellationException("\"Back up now\" took over")
+
     private suspend fun noteForStuckAlert(request: BackupRunRequest, outcome: BackupRunOutcome) {
         if (outcome != BackupRunOutcome.Paused) {
             ledger.markRan()
-            scheduler.onBackupRan()
+            scheduler.onBackupRan(workLeft = ledger.counts().workLeft)
             return
         }
         val reason = _status.value.pauseReason
@@ -141,9 +231,9 @@ class PhotoBackupRun(
     }
 
     /**
-     * The network settings hold for the whole run, not just its start. Losing Wi-Fi under Wi-Fi only pauses it.
-     * Losing what videos need starts it over, which leaves videos out and carries on with photos. An Outbox send
-     * already under way isn't recalled.
+     * The network settings, free space and heat hold for the whole run, not just its start. Losing Wi-Fi under
+     * Wi-Fi only, running low on space or getting too hot pauses it. Losing what videos need starts it over, which
+     * leaves videos out and carries on with photos. A send already under way isn't recalled.
      */
     private suspend fun followingTheNetwork(run: suspend () -> BackupRunOutcome): BackupRunOutcome {
         while (true) {
@@ -160,31 +250,28 @@ class PhotoBackupRun(
                 change.cancel()
                 outcome
             }
-            change.onAwait { lost ->
+            change.onAwait { reason ->
                 running.cancelAndJoin()
-                when (lost) {
-                    LostNetwork.Wifi -> {
-                        scheduler.rearm(settings())
-                        paused(BackupPauseReason.WaitingForWifi)
-                    }
-                    LostNetwork.Videos -> null
+                reason?.let {
+                    scheduler.rearm(settings())
+                    paused(it)
                 }
             }
         }
     }
 
-    private suspend fun awaitNetworkChange(): LostNetwork {
+    /** The reason to pause, or null when only what videos need was lost. */
+    private suspend fun awaitNetworkChange(): BackupPauseReason? {
         val videosWereAllowed = networkAllowsVideos(settings(), probe.state())
         while (true) {
             delay(NETWORK_RECHECK)
             val current = settings()
             val state = probe.state()
-            if (backupPauseReason(current, state, interactive = true) == BackupPauseReason.WaitingForWifi) return LostNetwork.Wifi
-            if (videosWereAllowed && !networkAllowsVideos(current, state)) return LostNetwork.Videos
+            val reason = backupPauseReason(current, state, interactive = true)
+            if (reason in PAUSES_MID_RUN) return reason
+            if (videosWereAllowed && !networkAllowsVideos(current, state)) return null
         }
     }
-
-    private enum class LostNetwork { Wifi, Videos }
 
     private suspend fun runLocked(request: BackupRunRequest): BackupRunOutcome = coroutineScope {
         val interactive = request.isInteractive
@@ -215,6 +302,7 @@ class PhotoBackupRun(
         }
         if (interactive) ledger.requeueFailed()
         if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
+        val before = ledger.counts()
 
         val includeVideos = backupVideosAllowed(current, deviceState, interactive)
         val initialBackupDone = ledger.isInitialBackupDone()
@@ -251,9 +339,19 @@ class PhotoBackupRun(
             if (!initialBackupDone) ledger.markInitialBackupDone()
         }
         scheduler.rearm(settings())
+        // A write that failed on a full phone can be the run's last work, ending it before the watcher looks.
+        backupPauseReason(settings(), probe.state(), interactive = true)?.takeIf { it in DEVICE_PAUSES }?.let {
+            return@coroutineScope paused(it)
+        }
         refreshStatus()
         val outcome = if (request.budget.isExpired) BackupRunOutcome.OutOfTime else BackupRunOutcome.Finished
         Logger.i(tag = TAG) { "end trigger=${request.trigger} outcome=$outcome counts=$counts" }
+        // A run that moved nothing would only loop; it waits for the usual triggers.
+        val madeProgress = counts.done > before.done || counts.pending < before.pending
+        if (outcome == BackupRunOutcome.OutOfTime && counts.unsent > 0 && madeProgress) {
+            Logger.i(tag = TAG) { "continuing: ${counts.unsent} left" }
+            scheduler.continueSoon(settings())
+        }
         outcome
     }
 
@@ -268,7 +366,7 @@ class PhotoBackupRun(
     private suspend fun reconcileHandedOff() {
         val handedOff = ledger.rowsInOutbox().mapNotNull { row -> row.uniqueId?.let { row to Uuid.parse(it) } }.toMap()
         val sending = uploader.stillSending(handedOff)
-        for (uniqueId in handedOff.values - sending) ledger.onOutboxDropped(uniqueId, "no send under way")
+        for (uniqueId in handedOff.values - sending) ledger.onOutboxDropped(uniqueId, "no send under way", countsAttempt = false)
     }
 
     private suspend fun pipeline(
@@ -329,7 +427,10 @@ class PhotoBackupRun(
     private suspend fun hash(row: DeviceBackupAsset) {
         guarded(row) {
             val hashed = hasher.hash(row.deviceAssetId, BackupMediaType.ofCode(row.mediaType))
-            ledger.markHashed(row.deviceAssetId, hashed.contentHash, hashed.uniqueId)
+            row.contentHash?.let { previous ->
+                Logger.i(tag = TAG) { "rehashed ${row.deviceAssetId} modifiedAt=${row.modifiedAt} unchanged=${previous == hashed.contentHash}" }
+            }
+            ledger.markHashed(row.deviceAssetId, hashed.contentHash, hashed.uniqueId, hashed.sizeBytes)
         }
     }
 
@@ -365,7 +466,12 @@ class PhotoBackupRun(
             } catch (e: Exception) {
                 // Not knowing means not uploading: a failed check can't prove the photo isn't there.
                 Logger.w(tag = TAG, throwable = e) { "dedupe check failed" }
-                batch.forEach { ledger.recordFailure(it, e.message ?: "dedupe check failed") }
+                val reason = e.message ?: "dedupe check failed"
+                if (e.isOutage()) {
+                    ledger.deferForOutage(batch, reason)
+                    return
+                }
+                batch.forEach { ledger.recordFailure(it, reason) }
                 continue
             }
             for ((row, uniqueId) in ids) {
@@ -410,7 +516,8 @@ class PhotoBackupRun(
             ledger.deferForOtherVideoWork(row)
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
-            ledger.recordFailure(row, e.message ?: e::class.simpleName.orEmpty())
+            // A full phone fails the write, not the photo; the watcher pauses the run.
+            if (!probe.state().isPhoneStorageLow) ledger.recordFailure(row, e.message ?: e::class.simpleName.orEmpty())
         }
     }
 
@@ -420,7 +527,9 @@ class PhotoBackupRun(
         val isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video
         while (true) {
             val outboxHasRoom = !isVideo || results.unsettled.value.size < MAX_OUTBOX_HANDED_OFF
-            if (ledger.handedOffCount() < uploader.maxHandedOff && outboxHasRoom) return true
+            // Rows the Outbox is backing off don't hold up the rest; twice the limit stops an outage staging the library.
+            val hasRoom = ledger.sendingCount() < uploader.maxHandedOff && ledger.handedOffCount() < uploader.maxHandedOff * 2
+            if (hasRoom && outboxHasRoom) return true
             val waitingIsUseful = if (uploader.outlivesProcess) interactive else results.unsettled.value.isNotEmpty()
             if (!waitingIsUseful || !awaitActivity()) return false
         }
@@ -453,7 +562,12 @@ class PhotoBackupRun(
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
         private val STATUS_REFRESH_GAP: Duration = 1.seconds
         private val NETWORK_RECHECK: Duration = 5.seconds
+        private val DEVICE_PAUSES = setOf(BackupPauseReason.PhoneStorageLow, BackupPauseReason.TooHot)
+        private val PAUSES_MID_RUN = DEVICE_PAUSES + BackupPauseReason.WaitingForWifi
 
         val WORKER_BUDGET: Duration = 9.minutes
     }
 }
+
+private fun Exception.isOutage(): Boolean =
+    isTransientNetworkFailure() || (this is ServerException && (status >= 500 || status == 408 || status == 429))

@@ -41,7 +41,7 @@ import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.chat.services.renderer.toMessageDataType
-import id.homebase.chat.widget.replyQuoteMediaPayloads
+import id.homebase.chat.widget.replyQuoteConversationMediaPayloads
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
@@ -181,6 +181,25 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendSharedFilesToTarge
             }
         } catch (e: CancellationException) {
             ids.values.forEach { id -> update { it.withoutPendingSend(id, clearProgress = true) } }
+            throw e
+        } catch (e: Throwable) {
+            if (failure == null) failure = e
+        }
+    }
+    failure?.let { throw it }
+}
+
+// The visible chat goes first; a failed target doesn't stop the rest, and the first failure is rethrown.
+internal suspend fun sendToEveryTarget(
+    targets: List<Uuid>,
+    visibleConversationId: Uuid,
+    send: suspend (conversationId: Uuid) -> Unit,
+) {
+    var failure: Throwable? = null
+    for (target in targets.sortedBy { it != visibleConversationId }) {
+        try {
+            send(target)
+        } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
             if (failure == null) failure = e
@@ -652,6 +671,8 @@ internal class MessageActionsHandler(
                     targetConversationIds = conversationIds
                 )
                 sendEvent(ShowInfoMessage(MR.string.chat_message_forwarded))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.e("Failed to send forward message", e)
                 sendEvent(
@@ -996,20 +1017,33 @@ internal class MessageActionsHandler(
             )?.let { vCardDescriptorFactory.toDescriptor(it) }
 
             if (contactCard != null) {
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
-                chatMessageSenderService.sendNewTypedMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    content = MessageContent.ContactCard(contactCard),
-                    previousMessageUniqueId = null,
-                )
+                sendToEveryTarget(targets, conversationId) { targetId ->
+                    val newMessageId = Uuid.random()
+                    if (targetId == conversationId) pendingMessageId = newMessageId
+                    chatMessageSenderService.sendNewTypedMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = targetId,
+                        content = MessageContent.ContactCard(contactCard),
+                        previousMessageUniqueId = null,
+                    )
+                }
                 return
             }
 
             if (descriptor.fileNames.isEmpty()) {
-                // Text/URL only
-                addMessage(conversationId, text)
+                sendToEveryTarget(targets, conversationId) { targetId ->
+                    if (targetId == conversationId) {
+                        addMessage(targetId, text)
+                    } else {
+                        chatMessageSenderService.sendNewMessage(
+                            messageUniqueId = Uuid.random(),
+                            conversationId = targetId,
+                            messageText = text,
+                            previousMessageUniqueId = null,
+                            payloadBundle = null,
+                        )
+                    }
+                }
             } else {
                 // Build AttachmentInput list from shared files
                 val attachments =
@@ -1287,7 +1321,7 @@ internal fun MessageUiModel.toReplyPreview(): ReplyPreview {
         // Trim before truncate: leading newlines would otherwise render as a bare "…" in the quote.
         message = viewOnce?.displayLabel ?: content.trim().truncateToCodePoints(80),
         previewThumbnail = previewThumbnail.takeIf {
-            viewOnce == null && payloads.replyQuoteMediaPayloads().firstOrNull()?.isVisualMedia() == true
+            replyQuoteConversationMediaPayloads().firstOrNull()?.isVisualMedia() == true
         },
         context = (messageContent as? MessageContent.Event)?.descriptor
             ?.let { ReplyContext.event(it.startUtcMs) },

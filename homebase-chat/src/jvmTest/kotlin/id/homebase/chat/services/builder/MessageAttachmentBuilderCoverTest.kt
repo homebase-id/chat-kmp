@@ -52,7 +52,7 @@ class MessageAttachmentBuilderCoverTest {
             override fun getFileSize(path: String): Long = bytes.size.toLong()
             override suspend fun writeBytesToTempFile(
                 bytes: ByteArray, prefix: String, suffix: String,
-            ): String = fail("writeBytesToTempFile")
+            ): String = "/tmp/final-image.webp"
             override suspend fun writeBytesToShareOutboundFile(
                 bytes: ByteArray, suffix: String,
             ): String = fail("writeBytesToShareOutboundFile")
@@ -72,7 +72,7 @@ class MessageAttachmentBuilderCoverTest {
         )
         val payload = bundle.payloads.single()
         assertEquals("chat_web0", payload.key)
-        assertEquals("image/jpeg", payload.contentType)
+        assertEquals("image/webp", payload.contentType, "This tiny JPEG saves over a quarter as WebP")
         assertTrue(payload.previewThumbnail != null, "cover must carry an embedded preview thumb")
         assertTrue(bundle.thumbnails.isNotEmpty(), "cover must generate at least one thumbnail")
         assertTrue(bundle.thumbnails.all { it.key == "chat_web0" }, "thumbnails inherit the cover key")

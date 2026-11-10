@@ -4,11 +4,11 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.image.MediaQuality
 import kotlin.test.Test
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
- * The badge policy: only an explicitly recorded [MediaQuality.HIGH] shows an HD badge.
+ * The badge policy: only an explicitly recorded [MediaQuality.ORIGINAL] shows an HD badge.
  *
  * Absent is "not recorded", never "standard" — every photo sent before the flag shipped
  * reads as absent, and many of those were HD. Absent and standard therefore render
@@ -25,12 +25,21 @@ class MediaQualityBadgeTest {
         )
 
     @Test
-    fun highQuality_isBadged() {
+    fun original_isBadgedOriginal() {
         val wire = DescriptorContent.descriptorContentFromImage(
             isSticker = false,
-            quality = MediaQuality.HIGH,
+            quality = MediaQuality.ORIGINAL,
         )
-        assertTrue(image(wire).isHighQualityImage())
+        assertEquals(MediaQuality.ORIGINAL, image(wire).badgedQuality())
+    }
+
+    @Test
+    fun hd_isBadgedHd() {
+        val wire = DescriptorContent.descriptorContentFromImage(
+            isSticker = false,
+            quality = MediaQuality.HD,
+        )
+        assertEquals(MediaQuality.HD, image(wire).badgedQuality())
     }
 
     @Test
@@ -39,18 +48,18 @@ class MediaQualityBadgeTest {
             isSticker = false,
             quality = MediaQuality.STANDARD,
         )
-        assertFalse(image(wire).isHighQualityImage())
+        assertNull(image(wire).badgedQuality())
     }
 
     @Test
     fun legacyBlankDescriptor_isNotBadged() {
         // Every image sent before the flag shipped.
-        assertFalse(image("").isHighQualityImage())
+        assertNull(image("").badgedQuality())
     }
 
     @Test
     fun nullDescriptor_isNotBadged() {
-        assertFalse(image(null).isHighQualityImage())
+        assertNull(image(null).badgedQuality())
     }
 
     @Test
@@ -59,25 +68,25 @@ class MediaQualityBadgeTest {
             isSticker = true,
             format = "image/png",
         )
-        assertFalse(image(wire, contentType = "image/png").isHighQualityImage())
+        assertNull(image(wire, contentType = "image/png").badgedQuality())
     }
 
     @Test
     fun malformedDescriptor_isNotBadged_noThrow() {
-        assertFalse(image("{not json").isHighQualityImage())
+        assertNull(image("{not json").badgedQuality())
     }
 
     @Test
     fun unknownQualityValue_isNotBadged() {
         // A future client could record a quality this build has never heard of; coercing
         // it to a badge would be a guess.
-        assertFalse(image("""{"isSticker":false,"quality":"ultra"}""").isHighQualityImage())
+        assertNull(image("""{"isSticker":false,"quality":"ultra"}""").badgedQuality())
     }
 
     @Test
     fun linkPreviewJsonArrayDescriptor_isNotBadged() {
         // chat_links / chat_loc payloads are image/* but store a JSON array here.
-        assertFalse(image("""[{"url":"https://example.com"}]""").isHighQualityImage())
+        assertNull(image("""[{"url":"https://example.com"}]""").badgedQuality())
     }
 
     @Test
@@ -87,6 +96,6 @@ class MediaQualityBadgeTest {
             contentType = "video/mp4",
             descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""",
         )
-        assertFalse(descriptor.isHighQualityImage())
+        assertNull(descriptor.badgedQuality())
     }
 }

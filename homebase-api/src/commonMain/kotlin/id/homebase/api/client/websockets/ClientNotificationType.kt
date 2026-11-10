@@ -28,6 +28,7 @@ enum class ClientNotificationType {
     liveRelay,
     publicProfileContentPublished,
     pendingEnrollmentsAwaiting,
+    peerSendResult,
     unused,
     error,
     authenticationError

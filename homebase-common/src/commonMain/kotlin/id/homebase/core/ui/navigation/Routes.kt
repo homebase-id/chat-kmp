@@ -140,10 +140,6 @@ sealed class Route {
     data object EmailSecrets : Route()
 
     @Serializable
-    @SerialName("email-settings")
-    data object EmailSettings : Route()
-
-    @Serializable
     @SerialName("email-mode-switch")
     data object EmailModeSwitch : Route()
 
@@ -172,10 +168,6 @@ sealed class Route {
     data object Photobase : Route()
 
     @Serializable
-    @SerialName("photobase-settings")
-    data object PhotobaseSettings : Route()
-
-    @Serializable
     @SerialName("photo-backup-keep-open")
     data object PhotoBackupKeepOpen : Route()
 
@@ -201,10 +193,6 @@ sealed class Route {
     data class OpenedFile(val path: String, val name: String, val mimeType: String? = null, val sizeBytes: Long = 0) : Route()
 
     @Serializable
-    @SerialName("vault-settings")
-    data object VaultSettings : Route()
-
-    @Serializable
     @SerialName("vault-entry-detail")
     data class VaultEntryDetail(val fileId: String, val sectionTitle: String) : Route()
 
@@ -218,10 +206,6 @@ sealed class Route {
     @Serializable
     @SerialName("contactbook")
     data object ContactBook : Route()
-
-    @Serializable
-    @SerialName("contactbook-settings")
-    data object ContactBookSettings : Route()
 
     @Serializable
     @SerialName("contactbook-detail")
@@ -301,21 +285,10 @@ sealed class Route {
     @SerialName("apps-settings")
     data object AppsSettings : Route()
 
+    /** [page] names an `AppsPage` in homebase-core. */
     @Serializable
-    @SerialName("moments-settings")
-    data object MomentsSettings : Route()
-
-    @Serializable
-    @SerialName("feed-settings")
-    data object FeedSettings : Route()
-
-    @Serializable
-    @SerialName("filesync-settings")
-    data object FilesyncSettings : Route()
-
-    @Serializable
-    @SerialName("calls-settings")
-    data object CallsSettings : Route()
+    @SerialName("app-settings")
+    data class AppSettings(val page: String) : Route()
 
     @Serializable
     @SerialName("location")

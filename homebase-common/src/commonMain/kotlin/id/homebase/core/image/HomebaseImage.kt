@@ -18,17 +18,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
@@ -36,6 +41,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.ui.assets.HomebaseIcons
@@ -45,6 +51,7 @@ import id.homebase.resources.error
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.getKoin
 import org.koin.compose.koinInject
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -83,9 +90,25 @@ fun HomebaseImage(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     colorFilter: ColorFilter? = null,  // ← Add this par
     onLoaded: (() -> Unit)? = null,
+    stepUpToPayload: Boolean = false,
+    /** Shows only the embedded preview and fetches nothing, unless the thumbnail is already in memory. */
+    deferLoad: Boolean = false,
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
+    val koin = getKoin()
+
+    // Decode preview thumbnail for immediate display
+    val previewBitmap =
+        remember(imageData.previewThumbnail) {
+            imageData.previewThumbnail?.content?.let {
+                try {
+                    it.bytes.decodeToImageBitmap()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
 
     // Paint the already-decoded thumbnail synchronously on the first frame
     // instead of the tiny embedded preview. The thumbnail cache key is
@@ -99,28 +122,22 @@ fun HomebaseImage(
     // Pending (local, not-yet-uploaded) files have no server thumbnail to key
     // against, so they fall through to the raw data + embedded preview.
     val platformContext = LocalPlatformContext.current
-    val model: Any = remember(imageData, platformContext) {
+    // Starts false for every image: the thumbnail shows first, so a slow payload never holds it back.
+    var steppedUp by remember(imageData) { mutableStateOf(false) }
+    var stepUpFailed by remember(imageData) { mutableStateOf(false) }
+    var displaySize by remember(imageData) { mutableStateOf<ImageSize?>(null) }
+    var lastSharpPainter by remember(imageData) { mutableStateOf<Painter?>(null) }
+    val thumbnailKey = remember(imageData) { HomebaseImageKeyer.thumbnailCacheKey(imageData) }
+    val model: Any = remember(imageData, platformContext, steppedUp) {
         if (!imageData.isPending) {
             ImageRequest.Builder(platformContext)
-                .data(imageData)
-                .placeholderMemoryCacheKey(HomebaseImageKeyer.thumbnailCacheKey(imageData))
+                .data(if (steppedUp) imageData.copy(loadFullPayload = true) else imageData)
+                .placeholderMemoryCacheKey(thumbnailKey)
                 .build()
         } else {
             imageData
         }
     }
-
-    // Decode preview thumbnail for immediate display
-    val previewBitmap =
-        remember(imageData.previewThumbnail) {
-            imageData.previewThumbnail?.content?.let {
-                try {
-                    it.bytes.decodeToImageBitmap()
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        }
 
     // Gesture modifier
     var customModified =
@@ -156,16 +173,66 @@ fun HomebaseImage(
         }
     }
 
+    @Composable
+    fun PreviewOrPlaceholder(modifier: Modifier, colorFilter: ColorFilter? = null) {
+        if (previewBitmap != null) {
+            Image(
+                bitmap = previewBitmap,
+                contentDescription = contentDescription,
+                contentScale = contentScale,
+                alignment = alignment,
+                colorFilter = colorFilter,
+                modifier = modifier,
+            )
+        } else {
+            placeholder?.invoke()
+        }
+    }
+
+    val deferred = deferLoad && !imageData.isPending &&
+        remember(thumbnailKey) { imageLoader.memoryCache?.get(MemoryCache.Key(thumbnailKey)) == null }
+    if (deferred) {
+        PreviewOrPlaceholder(customModified.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }), colorFilter)
+        return
+    }
+
     SubcomposeAsyncImage(
         model = model,
         imageLoader = imageLoader,
         contentDescription = contentDescription,
-        modifier = customModified,
+        modifier = if (stepUpToPayload) customModified.onSizeChanged { displaySize = ImageSize(it.width, it.height) } else customModified,
         contentScale = contentScale,
         colorFilter = colorFilter
     ) {
         val state by painter.state.collectAsStateWithLifecycle()
         if (onLoaded != null && state is AsyncImagePainter.State.Success) LaunchedEffect(Unit) { onLoaded() }
+
+        val measured = displaySize
+        if (stepUpToPayload) (state as? AsyncImagePainter.State.Success)?.let { lastSharpPainter = it.painter }
+        val canStepUp = stepUpToPayload && state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
+            !imageData.loadFullPayload && !imageData.isPending &&
+            measured != null && shouldStepUpToPayload(measured, imageData)
+        if (canStepUp) {
+            // The wait is what keeps a fling from downloading every payload it passes:
+            // scrolling away cancels this before it fires.
+            LaunchedEffect(Unit) {
+                val full = imageData.copy(loadFullPayload = true)
+                val loader = koin.getOrNull<HomebaseImageLoader>()
+                if (loader?.hasStepUpFailed(full) == true) {
+                    stepUpFailed = true
+                    return@LaunchedEffect
+                }
+                if (loader?.isFullPayloadCached(full) != true) delay(STEP_UP_SETTLE_MILLIS)
+                steppedUp = true
+            }
+        }
+        if (steppedUp && state is AsyncImagePainter.State.Error) {
+            LaunchedEffect(Unit) {
+                koin.getOrNull<HomebaseImageLoader>()?.markStepUpFailed(imageData.copy(loadFullPayload = true))
+                stepUpFailed = true
+                steppedUp = false
+            }
+        }
 
         // Blur only the low-res embedded preview; cached thumbnails and full
         // images are already sharp so the target is 0f for those states.
@@ -174,7 +241,7 @@ fun HomebaseImage(
                 (state as AsyncImagePainter.State.Loading).painter != null)
 
         val blurRadius = animateFloatAsState(
-            targetValue = if (hasSharpImage) 0f else 10f,
+            targetValue = if (hasSharpImage) 0f else PREVIEW_BLUR_DP,
             animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
             label = "blur"
         )
@@ -182,6 +249,18 @@ fun HomebaseImage(
         // Applied to every branch so the animation transitions smoothly
         // across state changes (e.g. blurred preview → sharp full image).
         val blurMod = Modifier.animatedBlur(blurRadius)
+
+        val failedStepUpFallback = lastSharpPainter.takeIf { steppedUp && state is AsyncImagePainter.State.Error }
+        if (failedStepUpFallback != null) {
+            Image(
+                painter = failedStepUpFallback,
+                contentDescription = contentDescription,
+                contentScale = contentScale,
+                alignment = alignment,
+                modifier = Modifier.fillMaxSize(),
+            )
+            return@SubcomposeAsyncImage
+        }
 
         when (state) {
             is AsyncImagePainter.State.Loading -> {
@@ -195,32 +274,12 @@ fun HomebaseImage(
                         alignment = alignment,
                         modifier = Modifier.fillMaxSize().then(blurMod)
                     )
-                } else if (previewBitmap != null) {
-                    Image(
-                        bitmap = previewBitmap,
-                        contentDescription = contentDescription,
-                        contentScale = contentScale,
-                        alignment = alignment,
-                        modifier = Modifier.fillMaxSize().then(blurMod)
-                    )
                 } else {
-                    placeholder?.invoke()
+                    PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
                 }
             }
 
-            is AsyncImagePainter.State.Empty -> {
-                if (previewBitmap != null) {
-                    Image(
-                        bitmap = previewBitmap,
-                        contentDescription = contentDescription,
-                        contentScale = contentScale,
-                        alignment = alignment,
-                        modifier = Modifier.fillMaxSize().then(blurMod)
-                    )
-                } else {
-                    placeholder?.invoke()
-                }
-            }
+            is AsyncImagePainter.State.Empty -> PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
 
             is AsyncImagePainter.State.Success -> {
                 SubcomposeAsyncImageContent(
@@ -235,17 +294,7 @@ fun HomebaseImage(
                 println("HomebaseImage Error: ${errorState.result.throwable.message}")
 
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    if (previewBitmap != null) {
-                        Image(
-                            bitmap = previewBitmap,
-                            contentDescription = contentDescription,
-                            contentScale = contentScale,
-                            alignment = alignment,
-                            modifier = Modifier.fillMaxSize().then(blurMod)
-                        )
-                    } else {
-                        placeholder?.invoke()
-                    }
+                    PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
 
                     // Show error overlay on top
                     if (error != null) {
@@ -277,3 +326,6 @@ private fun Modifier.animatedBlur(radiusDp: State<Float>): Modifier = graphicsLa
         clip = false
     }
 }
+
+private const val STEP_UP_SETTLE_MILLIS = 600L
+private const val PREVIEW_BLUR_DP = 10f

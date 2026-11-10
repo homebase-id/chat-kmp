@@ -8,6 +8,26 @@ import kotlin.test.assertTrue
 
 class ImageFormatDetectorTest {
 
+    @Test
+    fun isAnimated_pngWithAnOverflowingChunkLengthIsNotAnimated() {
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x7F, -1, -1, -1) +
+            "tEXt".encodeToByteArray() + ByteArray(8)
+        assertFalse(ImageFormatDetector.isAnimated(png))
+    }
+
+    private fun ftyp(major: String, vararg compatible: String): ByteArray {
+        val size = 16 + compatible.size * 4
+        return byteArrayOf(0, 0, 0, size.toByte()) + "ftyp".encodeToByteArray() + major.encodeToByteArray() +
+            ByteArray(4) + compatible.joinToString("").encodeToByteArray() + ByteArray(8)
+    }
+
+    @Test
+    fun isAnimated_seesASequenceDeclaredOnlyAsACompatibleBrand() {
+        assertTrue(ImageFormatDetector.isAnimated(ftyp("mif1", "miaf", "msf1")))
+        assertTrue(ImageFormatDetector.isAnimated(ftyp("avif", "avis")))
+        assertFalse(ImageFormatDetector.isAnimated(ftyp("heic", "mif1", "heic")))
+    }
+
     // =========================================================
     // detectFormat
     // =========================================================

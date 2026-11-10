@@ -3,6 +3,7 @@ package id.homebase.imageeditor.core.io
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
 import id.homebase.imageeditor.core.Size
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Bytes + metadata produced by [CropPreprocessor.prepare].
@@ -30,7 +31,7 @@ object CropPreprocessor {
     /** Maximum edge length of the preview bitmap, in pixels. */
     const val DEFAULT_PREVIEW_MAX_EDGE: Int = 2048
 
-    fun prepare(
+    suspend fun prepare(
         srcBytes: ByteArray,
         previewMaxEdge: Int = DEFAULT_PREVIEW_MAX_EDGE,
     ): CropPreprocessorResult? {
@@ -44,6 +45,8 @@ object CropPreprocessor {
                 outputFormat = ImageFormat.PNG, // lossless preview
                 quality = 100,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             return null
         }
