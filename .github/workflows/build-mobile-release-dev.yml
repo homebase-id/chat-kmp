@@ -23,6 +23,8 @@ concurrency:
 
 jobs:
   build-android:
+    # Experiment branch: no Play upload.
+    if: false
     runs-on: ubuntu-latest
 
     steps:
@@ -227,6 +229,7 @@ jobs:
           # IOS_RELEASE_LINK_OOM.md. Applied by a gated freeCompilerArgs block
           # in homebase-core/build.gradle.kts.
           homebase.native.disableDevirtualization=true
+          homebase.native.profilePhases=true
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
           tail -n 20 gradle.properties
@@ -273,7 +276,7 @@ jobs:
           echo "keychain watcher started (log: $RUNNER_TEMP/keychain-watcher.log)"
 
       - name: Build iOS
-        timeout-minutes: 180
+        timeout-minutes: 300
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj
