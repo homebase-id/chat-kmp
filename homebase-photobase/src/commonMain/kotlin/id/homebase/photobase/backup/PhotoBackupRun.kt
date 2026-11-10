@@ -339,7 +339,7 @@ class PhotoBackupRun(
     private suspend fun reconcileHandedOff() {
         val handedOff = ledger.rowsInOutbox().mapNotNull { row -> row.uniqueId?.let { row to Uuid.parse(it) } }.toMap()
         val sending = uploader.stillSending(handedOff)
-        for (uniqueId in handedOff.values - sending) ledger.onOutboxDropped(uniqueId, "no send under way")
+        for (uniqueId in handedOff.values - sending) ledger.onOutboxDropped(uniqueId, "no send under way", countsAttempt = false)
     }
 
     private suspend fun pipeline(
@@ -496,7 +496,9 @@ class PhotoBackupRun(
         val isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video
         while (true) {
             val outboxHasRoom = !isVideo || results.unsettled.value.size < MAX_OUTBOX_HANDED_OFF
-            if (ledger.handedOffCount() < uploader.maxHandedOff && outboxHasRoom) return true
+            // Rows the Outbox is backing off don't hold up the rest; twice the limit stops an outage staging the library.
+            val hasRoom = ledger.sendingCount() < uploader.maxHandedOff && ledger.handedOffCount() < uploader.maxHandedOff * 2
+            if (hasRoom && outboxHasRoom) return true
             val waitingIsUseful = if (uploader.outlivesProcess) interactive else results.unsettled.value.isNotEmpty()
             if (!waitingIsUseful || !awaitActivity()) return false
         }

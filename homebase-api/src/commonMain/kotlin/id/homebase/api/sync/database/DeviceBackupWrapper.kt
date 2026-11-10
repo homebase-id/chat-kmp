@@ -48,6 +48,9 @@ class DeviceBackupWrapper(
     suspend fun countInStates(states: List<Long>): Long =
         databaseManager.readValue("deviceBackup.countInStates") { assets.countInStates(states).executeAsOne() }
 
+    suspend fun countSending(states: List<Long>, retrying: String): Long =
+        databaseManager.readValue("deviceBackup.countSending") { assets.countSending(states, retrying).executeAsOne() }
+
     suspend fun bytesByState(): Map<Long, Long> =
         databaseManager.readValue("deviceBackup.bytesByState") {
             assets.bytesByState().executeAsList().associate { it.state to it.bytes }

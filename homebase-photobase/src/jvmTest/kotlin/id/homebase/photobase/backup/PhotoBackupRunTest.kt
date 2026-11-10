@@ -701,6 +701,39 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun rowsTheOutboxIsBackingOffDoNotStopNewUploads() = runTest {
+        val first = List(6) { asset("a$it") }
+        source.next = fullListing(*first.toTypedArray())
+        val uploader = uploader()
+        uploader.sendsFail = true
+        val (run, _) = newRun(uploader)
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(6, ledger.rowsInOutbox().size)
+
+        uploader.sendsFail = false
+        uploader.stillSending = true
+        source.next = fullListing(*(first + asset("b")).toTypedArray())
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("b"))
+    }
+
+    @Test
+    fun anOutboxFailingEverySendStillStopsAtTwiceTheLimit() = runTest {
+        source.next = fullListing(*List(30) { asset("a$it") }.toTypedArray())
+        val uploader = uploader()
+        uploader.sendsFail = true
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertTrue(uploader.handedOff.size <= 14, "handed off ${uploader.handedOff.size}")
+    }
+
+    @Test
     fun aSendThatOutlivesTheProcessIsNotWaitedFor() = runTest {
         source.next = fullListing(*List(10) { asset("a$it") }.toTypedArray())
         val uploader = uploader()
