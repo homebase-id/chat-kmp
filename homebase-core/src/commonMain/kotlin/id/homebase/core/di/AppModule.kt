@@ -201,7 +201,6 @@ import id.homebase.photobase.gallery.photoGalleryStore
 import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
 import id.homebase.photobase.gallery.PhotoGalleryStore
 import id.homebase.photobase.gallery.PhotoGallerySync
-import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.backup.AssetHasher
