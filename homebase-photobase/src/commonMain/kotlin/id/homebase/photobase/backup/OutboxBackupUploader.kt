@@ -87,7 +87,7 @@ class OutboxBackupUploader(
         expectedDigest: ByteArray,
     ): HandOffResult {
         val part = exported.parts.single()
-        if (!hasher.digest(part.path).contentEquals(expectedDigest)) return HandOffResult.ChangedUnderUs
+        if (!exported.isHashedCopy && !hasher.digest(part.path).contentEquals(expectedDigest)) return HandOffResult.ChangedUnderUs
         fun videoMetadata(tiny: EmbeddedThumb?) = photoMetadata(
             uniqueId,
             PhotobaseProtocol.VideoDataType,

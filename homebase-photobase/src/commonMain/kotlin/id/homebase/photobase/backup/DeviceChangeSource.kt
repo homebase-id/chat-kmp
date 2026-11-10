@@ -44,7 +44,8 @@ data class ExportedPart(
     val isTemporary: Boolean,
 )
 
-data class ExportedAsset(val parts: List<ExportedPart>, val fileName: String)
+/** [isHashedCopy]: these are the very files that were hashed, so their digest is already known. */
+data class ExportedAsset(val parts: List<ExportedPart>, val fileName: String, val isHashedCopy: Boolean = false)
 
 /** In a run's context when its window is too short to download from cloud storage. */
 object NoCloudDownloads : CoroutineContext.Element, CoroutineContext.Key<NoCloudDownloads> {
