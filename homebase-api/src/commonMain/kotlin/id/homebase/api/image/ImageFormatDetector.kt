@@ -6,6 +6,9 @@ import co.touchlab.kermit.Logger
  * Image format detection and validation utilities
  */
 object ImageFormatDetector {
+    /** What a file can stay as, or a bubble can load directly, on every client. */
+    val TYPES_EVERY_CLIENT_CAN_DECODE: Set<String> = setOf("image/jpeg", "image/png", "image/webp")
+
 
     /**
      * Detects the image format based on magic bytes
@@ -70,7 +73,35 @@ object ImageFormatDetector {
     }
 
     // A single-frame GIF counts as still.
-    fun isAnimated(bytes: ByteArray): Boolean = isAnimatedGif(bytes) || isAnimatedWebp(bytes)
+    fun isAnimated(bytes: ByteArray): Boolean =
+        isAnimatedGif(bytes) || isAnimatedWebp(bytes) || isAnimatedPng(bytes) || isImageSequence(bytes)
+
+    // An APNG announces itself with an acTL chunk before the first image data.
+    private fun isAnimatedPng(b: ByteArray): Boolean {
+        if (b.size < 8 || b[0] != 0x89.toByte() || b.decodeToString(1, 4) != "PNG") return false
+        var at = 8
+        while (at + 8 <= b.size) {
+            val type = b.decodeToString(at + 4, at + 8)
+            if (type == "acTL") return true
+            if (type == "IDAT") return false
+            val length = u32be(b, at)
+            if (length < 0 || length > b.size - at - 12) return false
+            at += 12 + length
+        }
+        return false
+    }
+
+    // Animated HEIC and AVIF are ISO image sequences, declared as the major brand or a compatible one.
+    private fun isImageSequence(b: ByteArray): Boolean {
+        if (b.size < 12 || b.decodeToString(4, 8) != "ftyp") return false
+        if (b.decodeToString(8, 12) in IMAGE_SEQUENCE_BRANDS) return true
+        val boxSize = u32be(b, 0)
+        val end = if (boxSize in 16..b.size) boxSize else return false
+        return (16 until end - 3 step 4).any { b.decodeToString(it, it + 4) in COMPATIBLE_SEQUENCE_BRANDS }
+    }
+
+    private val IMAGE_SEQUENCE_BRANDS = setOf("avis", "msf1", "hevc", "hevx")
+    private val COMPATIBLE_SEQUENCE_BRANDS = setOf("avis", "msf1")
 
     fun isAnimatedGif(b: ByteArray): Boolean {
         if (b.size < 13 || b.decodeToString(0, 3) != "GIF") return false
@@ -135,6 +166,8 @@ object ImageFormatDetector {
     }
 
     private fun u16le(b: ByteArray, at: Int): Int = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
+
+    private fun u32be(b: ByteArray, at: Int): Int = (0..3).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }
 
     private const val VP8X_ANIMATION_FLAG = 0x02
 

@@ -7,6 +7,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
+// Sizes and limits for exercising createImageThumbnail, the path profile avatars take.
+private val baseThumbSizes = listOf(
+    ThumbnailInstruction(quality = 84, maxPixelDimension = 320, maxBytes = 26 * 1024),
+    ThumbnailInstruction(quality = 84, maxPixelDimension = 640, maxBytes = 102 * 1024),
+    ThumbnailInstruction(quality = 76, maxPixelDimension = 1080, maxBytes = 291 * 1024),
+    ThumbnailInstruction(quality = 76, maxPixelDimension = 1600, maxBytes = 640 * 1024),
+)
+
 class CreateImageThumbnailTest {
 
     // =========================================================
@@ -174,13 +182,12 @@ class CreateImageThumbnailTest {
     // =========================================================
 
     @Test
-    fun createThumbnail_exactSizeOptimization_bypassesReencoding() = runTest {
-        // basn6a08.png is 32x32, 184 bytes. Instruction: maxPixelDimension=32, maxBytes=1024.
-        // Since naturalMax == maxDim and size <= maxBytes and not tiny, should return original bytes.
+    fun createThumbnail_exactSizeSource_isReallyWebp() = runTest {
         val bytes = ImageTestHelper.loadImage("pngsuite/basn6a08.png")
         val instr = ThumbnailInstruction(quality = 84, maxPixelDimension = 32, maxBytes = 1024)
         val result = createImageThumbnail(bytes, "key", instr, isTinyThumb = false)
-        assertTrue(result.thumbnailBytes.contentEquals(bytes), "Should return original bytes as-is")
+        assertEquals("image/webp", result.contentType)
+        assertEquals("RIFF", result.thumbnailBytes.copyOf(4).decodeToString())
     }
 
     @Test

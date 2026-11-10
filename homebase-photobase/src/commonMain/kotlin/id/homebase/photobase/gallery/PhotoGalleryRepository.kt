@@ -37,48 +37,48 @@ fun interface PhotoGalleryPageSource {
     suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage
 }
 
-/** Network only: the Photos drive is never synced, so a page is what the server says right now. */
+/** The one server query for the library. Network only, and it serves oldest first directly: the device can't. */
 class PhotoGalleryRepository(
     private val queryProvider: DriveQueryProvider,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoGalleryPageSource {
+    internal suspend fun query(cursor: String?, limit: Int, ordering: QueryBatchSortOrder) = queryProvider.queryBatch(
+        photosDriveId,
+        QueryBatchRequest(
+            queryParams = FileQueryParams(
+                fileType = listOf(PhotobaseProtocol.PhotoFileType),
+                fileState = listOf(FileState.Active),
+            ),
+            resultOptionsRequest = QueryBatchResultOptionsRequest(
+                cursorState = cursor,
+                maxRecords = limit,
+                includeMetadataHeader = true,
+                ordering = ordering,
+                sorting = QueryBatchSortField.UserDate,
+            ),
+        ),
+    )
+
     // Parsing and decrypting a page of headers doesn't belong on the view model's Main.
     override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage = withContext(Dispatchers.Default) {
-            val querying = TimeSource.Monotonic.markNow()
-            val response = queryProvider.queryBatch(
-                photosDriveId,
-                QueryBatchRequest(
-                    queryParams = FileQueryParams(
-                        fileType = listOf(PhotobaseProtocol.PhotoFileType),
-                        fileState = listOf(FileState.Active),
-                    ),
-                    resultOptionsRequest = QueryBatchResultOptionsRequest(
-                        cursorState = cursor,
-                        maxRecords = if (cursor == null) FIRST_PAGE_SIZE else PAGE_SIZE,
-                        includeMetadataHeader = true,
-                        ordering = if (newestFirst) QueryBatchSortOrder.NewestFirst else QueryBatchSortOrder.OldestFirst,
-                        sorting = QueryBatchSortField.UserDate,
-                    ),
-                ),
-            )
-            val queryTook = querying.elapsedNow()
-            val parsing = TimeSource.Monotonic.markNow()
-            val items = response.searchResults.mapNotNull { it.toGalleryItem() }
-            Logger.i(tag = "PhotoGallery") {
-                "page query=$queryTook parse=${parsing.elapsedNow()} newestFirst=$newestFirst first=${items.firstOrNull()?.capturedAtMs} last=${items.lastOrNull()?.capturedAtMs} count=${items.size}"
-            }
-            PhotoGalleryPage(
-                items = items,
-                nextCursor = response.cursorState?.takeIf { response.hasMoreRows && it != cursor },
-            )
-    }
-
-    private companion object {
-        // A phone shows about 24 tiles, and the query is what the first screen waits on.
-        const val FIRST_PAGE_SIZE = 40
-        const val PAGE_SIZE = 100
+        val querying = TimeSource.Monotonic.markNow()
+        val ordering = if (newestFirst) QueryBatchSortOrder.NewestFirst else QueryBatchSortOrder.OldestFirst
+        val response = query(cursor, galleryPageSize(cursor), ordering)
+        val queryTook = querying.elapsedNow()
+        val parsing = TimeSource.Monotonic.markNow()
+        val items = response.searchResults.mapNotNull { it.toGalleryItem() }
+        Logger.i(tag = "PhotoGallery") {
+            "page query=$queryTook parse=${parsing.elapsedNow()} newestFirst=$newestFirst first=${items.firstOrNull()?.capturedAtMs} last=${items.lastOrNull()?.capturedAtMs} count=${items.size}"
+        }
+        PhotoGalleryPage(
+            items = items,
+            nextCursor = response.cursorState?.takeIf { response.hasMoreRows && it != cursor },
+        )
     }
 }
+
+// A phone shows about 24 tiles, and the first page is what the first screen waits on.
+internal fun galleryPageSize(cursor: String?) = if (cursor == null) 40 else 100
 
 internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
     val appData = fileMetadata.appData

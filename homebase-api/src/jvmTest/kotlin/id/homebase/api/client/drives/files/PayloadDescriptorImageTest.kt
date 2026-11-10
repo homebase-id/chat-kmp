@@ -1,5 +1,8 @@
 package id.homebase.api.client.drives.files
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.image.MediaQuality
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -87,7 +90,7 @@ class PayloadDescriptorImageTest {
     fun quality_roundTripsThroughTheWire() {
         val serialized = DescriptorContent.descriptorContentFromImage(
             isSticker = false,
-            quality = MediaQuality.HIGH,
+            quality = MediaQuality.ORIGINAL,
         )
         assertTrue(
             serialized.contains("\"quality\":\"high\""),
@@ -95,7 +98,7 @@ class PayloadDescriptorImageTest {
         )
         val info = imageDescriptor(serialized).descriptorInfo()
         assertTrue(info is DescriptorContent.ImageFile, "Expected ImageFile, got $info")
-        assertEquals(MediaQuality.HIGH, info.quality)
+        assertEquals(MediaQuality.ORIGINAL, info.quality)
 
         val standard = DescriptorContent.descriptorContentFromImage(
             isSticker = false,
@@ -127,7 +130,7 @@ class PayloadDescriptorImageTest {
         ).descriptorInfo()
         assertTrue(info is DescriptorContent.ImageFile)
         assertTrue(info.isSticker)
-        assertEquals(MediaQuality.HIGH, info.quality)
+        assertEquals(MediaQuality.ORIGINAL, info.quality)
     }
 
     @Test
@@ -187,5 +190,43 @@ class PayloadDescriptorImageTest {
             "StickerFile.png",
             imageDescriptor("""{"isSticker":true}""").filename(),
         )
+    }
+
+    @Test
+    fun originalIsStillHighOnTheWire() {
+        val wire = DescriptorContent.descriptorContentFromImage(isSticker = false, quality = MediaQuality.ORIGINAL)
+        assertTrue(wire.contains("\"high\""), wire)
+    }
+
+    @Test
+    fun anExistingHighReadsAsOriginal() {
+        val info = imageDescriptor("""{"isSticker":false,"quality":"high"}""").descriptorInfo() as DescriptorContent.ImageFile
+        assertEquals(MediaQuality.ORIGINAL, info.quality)
+    }
+
+    @Test
+    fun hdHasItsOwnWireCode() {
+        val wire = DescriptorContent.descriptorContentFromImage(isSticker = false, quality = MediaQuality.HD)
+        assertTrue(wire.contains("\"hd\""), wire)
+        val info = imageDescriptor(wire).descriptorInfo() as DescriptorContent.ImageFile
+        assertEquals(MediaQuality.HD, info.quality)
+    }
+
+    /** What a client built before HD reads: its enum has no "hd", and losing the descriptor would lose isSticker. */
+    @Serializable
+    private enum class QualityBeforeHd {
+        @SerialName("standard") STANDARD,
+        @SerialName("high") HIGH,
+    }
+
+    @Serializable
+    private data class ImageFileBeforeHd(val isSticker: Boolean = false, val quality: QualityBeforeHd? = null)
+
+    @Test
+    fun aClientFromBeforeHdReadsItAsNotRecorded() {
+        val wire = DescriptorContent.descriptorContentFromImage(isSticker = true, quality = MediaQuality.HD)
+        val read = OdinSystemSerializer.deserialize<ImageFileBeforeHd>(wire)
+        assertEquals(true, read.isSticker)
+        assertNull(read.quality)
     }
 }

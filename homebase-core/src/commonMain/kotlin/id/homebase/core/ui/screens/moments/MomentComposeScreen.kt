@@ -241,8 +241,8 @@ fun MomentComposeScreen(
                                 viewModel.onAction(MomentComposeUiAction.RequestDraw(id))
                             },
                             mediaQuality = uiState.mediaQuality,
-                            onToggleMediaQuality = {
-                                viewModel.onAction(MomentComposeUiAction.ToggleMediaQuality)
+                            onSetMediaQuality = {
+                                viewModel.onAction(MomentComposeUiAction.SetMediaQuality(it))
                             },
                             onTrimChange = { id, startMs, endMs ->
                                 viewModel.onAction(MomentComposeUiAction.ApplyTrim(id, startMs, endMs))

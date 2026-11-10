@@ -3,6 +3,7 @@ package id.homebase.imageeditor.core.io
 import id.homebase.api.image.ImageUtils
 import id.homebase.imageeditor.core.EditorModel
 import id.homebase.imageeditor.core.RectF
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -21,7 +22,7 @@ class CropFinalizerExifTest {
         this::class.java.getResourceAsStream("/test_images/$path")?.readBytes()
             ?: error("fixture not found: $path")
 
-    @Test fun fullCropOfLandscapeFixturePreservesDisplayOrientation() {
+    @Test fun fullCropOfLandscapeFixturePreservesDisplayOrientation() = runTest {
         // Landscape_*.jpg are 600x450 in display coords.
         for (i in 1..8) {
             val bytes = loadFixture("orientation/Landscape_$i.jpg")
@@ -60,7 +61,7 @@ class CropFinalizerExifTest {
         }
     }
 
-    @Test fun fullCropOfPortraitFixturePreservesDisplayOrientation() {
+    @Test fun fullCropOfPortraitFixturePreservesDisplayOrientation() = runTest {
         // Portrait_*.jpg are 450x600 in display coords.
         for (i in 1..8) {
             val bytes = loadFixture("orientation/Portrait_$i.jpg")
@@ -84,7 +85,7 @@ class CropFinalizerExifTest {
         }
     }
 
-    @Test fun snapRotate90SwapsOutputDimensions() {
+    @Test fun snapRotate90SwapsOutputDimensions() = runTest {
         val bytes = loadFixture("roof_test_800x600.jpg")
         val prep = CropPreprocessor.prepare(bytes) ?: error("preprocess failed")
         val model = EditorModel.create()
@@ -104,7 +105,7 @@ class CropFinalizerExifTest {
         )
     }
 
-    @Test fun maxEdgeCapShrinksOutput() {
+    @Test fun maxEdgeCapShrinksOutput() = runTest {
         val bytes = loadFixture("roof_test_800x600.jpg")
         val prep = CropPreprocessor.prepare(bytes) ?: error("preprocess failed")
         val model = EditorModel.create()

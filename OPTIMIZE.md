@@ -142,6 +142,40 @@ Still needs the iPhone: the share of the 400–700 ms conversation open spent in
 `parseChatMarkdown` versus layout, cold and warm, and the one-time SQLCipher in-place encryption
 of a large database on an old device.
 
+### 2026-11-07, image pipeline (#2221), desktop JVM (macOS), test fixtures, not phone photos
+
+`IMAGE_BENCH=1 ./gradlew :homebase-api:jvmTest --tests '*ThumbnailPerfBench*' --rerun -i`, median of
+5 runs of `createThumbnails`, run back to back against unmodified main.
+
+| Fixture | Time before | Time after | 320px before | 320px after | 640px before | 640px after | Tiny before | Tiny after |
+|---|---|---|---|---|---|---|---|---|
+| 5760x4320 JPEG | 270 ms | 215 ms | 1 KB | 1 KB | 2 KB | 3 KB | 62 B | 550 B |
+| waterhouse.jpg | 256 ms | 204 ms | 18 KB | 14 KB | 59 KB | 48 KB | 240 B | 654 B |
+| 800x600 JPEG | 80 ms | 73 ms | 16 KB (q44) | 22 KB (q84) | 97 KB | 82 KB | 286 B | 678 B |
+| dice.png | 111 ms | 115 ms | 14 KB | 15 KB | 37 KB | 36 KB | 368 B | 764 B |
+
+Tiny previews grew mostly because Skia was writing a 456-byte sRGB colour profile into each one, which is now stripped. No phone numbers yet: time, memory and
+bytes on a real iPhone and Android phone for 12 MP and 48 MP HEIC and JPEG are still open in #2221.
+
+### 2026-11-07, media table (#2230), desktop JVM (macOS), test fixtures, not phone photos
+
+`createMediaImages` from the same bench. These fixtures are already compressed and small, so treat them
+as a shape, not as real byte counts. #2230's q60 and q70 still need checking on real photos, faces
+included.
+
+| Fixture | Setting | Thumbnails | Final image |
+|---|---|---|---|
+| waterhouse.jpg | Standard | 427x240 q70 16 KB, 853x480 q70 54 KB, 1439x810 q70 133 KB | 2048x1153 q60 236 KB |
+| waterhouse.jpg | HD | 427x240 q80 20 KB, 853x480 q80 69 KB, 1439x810 q76 147 KB, 2048x1153 q70 262 KB | 2048x1153 q80 339 KB |
+| waterhouse.jpg | Original | 427x240 q80 20 KB, 853x480 q80 69 KB, 1439x810 q80 170 KB, 2048x1153 q76 288 KB | The file |
+| 800x600 JPEG | Standard | 320x240 q70 15 KB, 640x480 q70 57 KB, 800x600 q70 101 KB | 800x600 q70 101 KB |
+
+### 2026-11-07, Photobase thumbnail cache size, from the media table measurements above
+
+Small on Original was 14-20 KB across these fixtures, so a 1 GiB cache holds about 50,000 photos. The
+fixtures are small and already compressed, so real photos will probably cost more and hold fewer.
+Measure on a real library before trusting this.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
