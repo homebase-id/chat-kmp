@@ -68,6 +68,19 @@ CHAT_UI_BENCH=1 ./gradlew :homebase-chat:jvmTest --tests '*bench.*Bench*' --reru
   Skipped unless `CHAT_UI_BENCH=1`, so CI never runs them.
 - A warm desktop JVM is the best case. A phone, and the first open on a cold process, are slower.
 
+### Payload hasher throughput (JVM, web, iOS simulator)
+
+```bash
+HASHER_BENCH=1 ./gradlew :homebase-api:jvmTest --tests '*HasherThroughputBench*' --rerun -i
+HASHER_BENCH=1 ./gradlew :homebase-api:wasmJsBrowserTest --tests '*HasherThroughputBench*' --rerun -i
+```
+
+- BLAKE3 and SHA-256 MB/s over at most 300 ms each (the browser runner fails a test after 2 s).
+- Excluded from every test task unless `HASHER_BENCH=1` (`homebase-api/build.gradle.kts`): CI
+  runner speed varies too much for a timing test to gate a build.
+- CI's debug builds, 2026-11-10: JVM BLAKE3 81 MB/s, SHA-256 75 MB/s; web BLAKE3 5 MB/s, SHA-256
+  16 MB/s.
+
 ### On a device
 
 `homebase.log` already carries:
