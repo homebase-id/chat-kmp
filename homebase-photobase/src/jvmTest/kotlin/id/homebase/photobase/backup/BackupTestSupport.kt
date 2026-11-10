@@ -69,6 +69,7 @@ internal class FakeUploader(
     val handedOff = mutableListOf<String>()
     var result: (DeviceBackupAsset) -> HandOffResult = { HandOffResult.Queued }
     var sendsComplete = true
+    var sendsFail = false
     var stillSending = false
     var kicks = 0
     var markedBackground = false
@@ -83,7 +84,11 @@ internal class FakeUploader(
             scope.launch {
                 delay(sendTime)
                 eventBus.emit(BackendEvent.OutboxEvent.ItemStarted(PhotobaseProtocol.DriveAlias, uniqueId))
-                eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotobaseProtocol.DriveAlias, uniqueId))
+                if (sendsFail) {
+                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(PhotobaseProtocol.DriveAlias, uniqueId))
+                } else {
+                    eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotobaseProtocol.DriveAlias, uniqueId))
+                }
             }
         }
         return outcome

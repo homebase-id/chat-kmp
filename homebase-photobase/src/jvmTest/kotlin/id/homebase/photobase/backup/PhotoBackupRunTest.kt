@@ -1,5 +1,7 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.client.NetworkException
+import id.homebase.api.client.ServerException
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.Blake3Hasher
@@ -19,6 +21,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.IOException
 import kotlinx.coroutines.test.testTimeSource
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -247,6 +250,37 @@ class PhotoBackupRunTest {
         val row = ledger.row("a")!!
         assertEquals(BackupState.Hashed.code, row.state)
         assertEquals(1, row.attempts)
+        assertTrue(row.nextAttemptAt > now)
+    }
+
+    @Test
+    fun anOutageDuringDedupeCostsNoAttemptAndStopsChecking() = runTest {
+        dedupeFailure = NetworkException(IOException("no route to host"))
+        source.next = fullListing(asset("a"), asset("b"), asset("c"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+
+        assertTrue(uploader.handedOff.isEmpty())
+        assertEquals(1, dedupeCalls.size)
+        val rows = listOf("a", "b", "c").map { ledger.row(it)!! }
+        assertTrue(rows.all { it.attempts == 0L })
+        val checked = dedupeCalls.single().toSet()
+        assertTrue(rows.filter { idOf(it.deviceAssetId) in checked }.all { it.nextAttemptAt > now })
+    }
+
+    @Test
+    fun aServerErrorDuringDedupeCostsNoAttempt() = runTest {
+        dedupeFailure = ServerException(503, null, null)
+        source.next = fullListing(asset("a"))
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+
+        val row = ledger.row("a")!!
+        assertEquals(BackupState.Hashed.code, row.state)
+        assertEquals(0, row.attempts)
         assertTrue(row.nextAttemptAt > now)
     }
 
@@ -707,6 +741,39 @@ class PhotoBackupRunTest {
 
         assertEquals(BackupRunOutcome.Finished, outcome)
         assertTrue(uploader.handedOff.size <= 8, "handed off ${uploader.handedOff.size}")
+    }
+
+    @Test
+    fun rowsTheOutboxIsBackingOffDoNotStopNewUploads() = runTest {
+        val first = List(6) { asset("a$it") }
+        source.next = fullListing(*first.toTypedArray())
+        val uploader = uploader()
+        uploader.sendsFail = true
+        val (run, _) = newRun(uploader)
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(6, ledger.rowsInOutbox().size)
+
+        uploader.sendsFail = false
+        uploader.stillSending = true
+        source.next = fullListing(*(first + asset("b")).toTypedArray())
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("b"))
+    }
+
+    @Test
+    fun anOutboxFailingEverySendStillStopsAtTwiceTheLimit() = runTest {
+        source.next = fullListing(*List(30) { asset("a$it") }.toTypedArray())
+        val uploader = uploader()
+        uploader.sendsFail = true
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertTrue(uploader.handedOff.size <= 14, "handed off ${uploader.handedOff.size}")
     }
 
     @Test
