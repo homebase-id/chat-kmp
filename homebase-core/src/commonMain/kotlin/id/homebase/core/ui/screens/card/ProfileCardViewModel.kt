@@ -704,8 +704,6 @@ class ProfileCardViewModel(
 
     fun onPhotoChanged() = load(force = true)
 
-    fun onCirclesChanged() = load(force = true)
-
     /** Reloads so the new circle's card exists, then lands on it and saves it with only the photo and name showing. */
     fun onCircleCreated(id: String, openCard: Boolean) {
         viewModelScope.launch {
