@@ -45,7 +45,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -126,7 +129,7 @@ fun PhotoGalleryScreen(
     }
 }
 
-/** Outlives the grid while the viewer covers it: where it was, what it last had on top, and where to come back to. */
+/** Outlives the grid while the viewer covers it. */
 private class GridMemory(val state: LazyGridState) {
     var newestFirst: Boolean? = null
     var topId: Uuid? = null
@@ -156,9 +159,8 @@ private fun GalleryViewer(
 ) {
     val items = remember(uiState.days) { uiState.days.flatMap { it.items } }
     val openedFileId by rememberUpdatedState(uiState.openedFileId)
-    val pagerState = rememberPagerState(
-        initialPage = items.indexOfFirst { it.fileId == uiState.openedFileId }.coerceAtLeast(0),
-    ) { items.size }
+    val initialPage = remember { items.indexOfFirst { it.fileId == uiState.openedFileId }.coerceAtLeast(0) }
+    val pagerState = rememberPagerState(initialPage) { items.size }
     val close = { onAction(PhotoGalleryUiAction.CloseViewer) }
     BackHandler(onBack = close)
     val showUI = remember { mutableStateOf(true) }
@@ -173,7 +175,7 @@ private fun GalleryViewer(
         if (opened != pagerState.settledPage) pagerState.scrollToPage(opened)
         snapshotFlow { pagerState.settledPage }.collect { page ->
             val item = items.getOrNull(page) ?: return@collect
-            if (item.fileId != openedFileId) onAction(PhotoGalleryUiAction.ViewerMovedTo(item))
+            if (item.fileId != openedFileId) onAction(PhotoGalleryUiAction.Open(item))
             if (page >= items.size - VIEWER_LOAD_MORE_WHEN_WITHIN) onAction(PhotoGalleryUiAction.LoadMore)
         }
     }
@@ -356,17 +358,18 @@ private fun PhotoGrid(
         }.collect { (_, nearEnd) -> if (nearEnd) onAction(PhotoGalleryUiAction.LoadMore) }
     }
     // Settled rather than isScrollInProgress: a finger held still mid-drag is a pause too.
-    var settled by remember { mutableStateOf(true) }
+    // A State, not a value: read in each unstarted tile's effect, so a flip doesn't recompose the grid.
+    val settled = remember { mutableStateOf(true) }
     LaunchedEffect(gridState) {
         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
             .drop(1)
             .collectLatest {
-                if (settled) {
-                    settled = false
+                if (settled.value) {
+                    settled.value = false
                     onAction(PhotoGalleryUiAction.Scrolling(true))
                 }
                 delay(SETTLE_MILLIS)
-                settled = true
+                settled.value = true
                 onAction(PhotoGalleryUiAction.Scrolling(false))
             }
     }
@@ -407,15 +410,18 @@ private fun PhotoGrid(
 @Composable
 private fun PhotoCell(
     item: PhotoGalleryItem,
-    settled: Boolean,
+    settled: State<Boolean>,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onShown: () -> Unit,
     onClick: () -> Unit,
 ) {
     // Once started a tile keeps loading through the next scroll; only leaving the screen cancels it.
-    var started by remember(item.fileId) { mutableStateOf(settled) }
-    LaunchedEffect(settled) { if (settled) started = true }
+    var started by remember(item.fileId) { mutableStateOf(Snapshot.withoutReadObservation { settled.value }) }
+    if (!started) LaunchedEffect(item.fileId) {
+        snapshotFlow { settled.value }.first { it }
+        started = true
+    }
     val isVideo = item.payload.isVideo()
     val description = stringResource(if (isVideo) MR.string.photobase_gallery_video else MR.string.photobase_gallery_photo)
     Box(

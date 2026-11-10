@@ -120,6 +120,7 @@ internal class FullPayloadByteCache(
     suspend fun clear() {
         mutex.withLock {
             entries.clear()
+            failedStepUps.clear()
             sizeBytes = 0L
             // Forget the in-flight slots and advance the epoch so any load still
             // running (e.g. a decrypt that was underway when logout fired) cannot

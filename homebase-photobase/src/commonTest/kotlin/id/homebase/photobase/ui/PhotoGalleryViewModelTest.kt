@@ -273,7 +273,7 @@ class PhotoGalleryViewModelTest {
         advanceUntilIdle()
 
         viewModel.onAction(PhotoGalleryUiAction.Open(first))
-        viewModel.onAction(PhotoGalleryUiAction.ViewerMovedTo(second))
+        viewModel.onAction(PhotoGalleryUiAction.Open(second))
 
         assertEquals(second.fileId, viewModel.uiState.value.openedFileId)
     }

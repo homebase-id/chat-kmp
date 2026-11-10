@@ -49,9 +49,8 @@ sealed interface PhotoGalleryUiAction {
     data object ThumbnailShown : PhotoGalleryUiAction
     data object ToggleSort : PhotoGalleryUiAction
     data class Scrolling(val scrolling: Boolean) : PhotoGalleryUiAction
+    /** Tapped in the grid, or swiped to in the viewer. */
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
-    /** Swiped to [item] in the full-screen viewer. */
-    data class ViewerMovedTo(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
 }
 
@@ -112,7 +111,6 @@ class PhotoGalleryViewModel(
                 reload()
             }
             is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
-            is PhotoGalleryUiAction.ViewerMovedTo -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
             PhotoGalleryUiAction.CloseViewer -> {
                 _uiState.update { it.copy(openedFileId = null) }
                 if (reloadOnClose) {

@@ -127,11 +127,12 @@ fun HomebaseImage(
     var stepUpFailed by remember(imageData) { mutableStateOf(false) }
     var displaySize by remember(imageData) { mutableStateOf<ImageSize?>(null) }
     var lastSharpPainter by remember(imageData) { mutableStateOf<Painter?>(null) }
+    val thumbnailKey = remember(imageData) { HomebaseImageKeyer.thumbnailCacheKey(imageData) }
     val model: Any = remember(imageData, platformContext, steppedUp) {
         if (!imageData.isPending) {
             ImageRequest.Builder(platformContext)
                 .data(if (steppedUp) imageData.copy(loadFullPayload = true) else imageData)
-                .placeholderMemoryCacheKey(HomebaseImageKeyer.thumbnailCacheKey(imageData))
+                .placeholderMemoryCacheKey(thumbnailKey)
                 .build()
         } else {
             imageData
@@ -172,9 +173,8 @@ fun HomebaseImage(
         }
     }
 
-    if (deferLoad && !imageData.isPending &&
-        imageLoader.memoryCache?.get(MemoryCache.Key(HomebaseImageKeyer.thumbnailCacheKey(imageData))) == null
-    ) {
+    @Composable
+    fun PreviewOrPlaceholder(modifier: Modifier, colorFilter: ColorFilter? = null) {
         if (previewBitmap != null) {
             Image(
                 bitmap = previewBitmap,
@@ -182,11 +182,15 @@ fun HomebaseImage(
                 contentScale = contentScale,
                 alignment = alignment,
                 colorFilter = colorFilter,
-                modifier = customModified.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }),
+                modifier = modifier,
             )
         } else {
             placeholder?.invoke()
         }
+    }
+
+    if (deferLoad && !imageData.isPending && imageLoader.memoryCache?.get(MemoryCache.Key(thumbnailKey)) == null) {
+        PreviewOrPlaceholder(customModified.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }), colorFilter)
         return
     }
 
@@ -268,32 +272,12 @@ fun HomebaseImage(
                         alignment = alignment,
                         modifier = Modifier.fillMaxSize().then(blurMod)
                     )
-                } else if (previewBitmap != null) {
-                    Image(
-                        bitmap = previewBitmap,
-                        contentDescription = contentDescription,
-                        contentScale = contentScale,
-                        alignment = alignment,
-                        modifier = Modifier.fillMaxSize().then(blurMod)
-                    )
                 } else {
-                    placeholder?.invoke()
+                    PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
                 }
             }
 
-            is AsyncImagePainter.State.Empty -> {
-                if (previewBitmap != null) {
-                    Image(
-                        bitmap = previewBitmap,
-                        contentDescription = contentDescription,
-                        contentScale = contentScale,
-                        alignment = alignment,
-                        modifier = Modifier.fillMaxSize().then(blurMod)
-                    )
-                } else {
-                    placeholder?.invoke()
-                }
-            }
+            is AsyncImagePainter.State.Empty -> PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
 
             is AsyncImagePainter.State.Success -> {
                 SubcomposeAsyncImageContent(
@@ -308,17 +292,7 @@ fun HomebaseImage(
                 println("HomebaseImage Error: ${errorState.result.throwable.message}")
 
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    if (previewBitmap != null) {
-                        Image(
-                            bitmap = previewBitmap,
-                            contentDescription = contentDescription,
-                            contentScale = contentScale,
-                            alignment = alignment,
-                            modifier = Modifier.fillMaxSize().then(blurMod)
-                        )
-                    } else {
-                        placeholder?.invoke()
-                    }
+                    PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
 
                     // Show error overlay on top
                     if (error != null) {

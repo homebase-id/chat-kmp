@@ -165,7 +165,6 @@ class ImagePipelineContractTest {
         for ((sizes, limit) in limits) {
             val (from, to) = sizes
             val spread = deviation(middleGreens(stripesAfter(stripes(from, 1), from, to, viaDecoder)))
-            println("stripes $from -> $to viaDecoder=$viaDecoder deviation $spread")
             assertTrue(spread <= limit, "$from -> $to deviated by $spread")
         }
     }

@@ -165,8 +165,10 @@ class DriveFileProviderCached(
             .build()
     }
 
+    private fun dedicatedThumbFor(driveId: Uuid): DedicatedThumbCache? = dedicatedThumbCache?.takeIf { it.driveId == driveId }
+
     private fun thumbCacheFor(driveId: Uuid): DiskCache =
-        dedicatedThumbDiskCache?.takeIf { driveId == dedicatedThumbCache?.driveId } ?: thumbDiskCache
+        dedicatedThumbDiskCache?.takeIf { dedicatedThumbFor(driveId) != null } ?: thumbDiskCache
 
     // HLS playback range-chunks get their OWN cache (#845): every byte-range a
     // player requests is an independent LRU entry, so one long video used to
@@ -382,8 +384,8 @@ class DriveFileProviderCached(
             lastModified: Long? = null
     ): ByteApiResponse {
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-        val dedicated = dedicatedThumbCache?.takeIf { it.driveId == driveId }
-        return readThrough(thumbCacheFor(driveId), cacheKey, thumbnailSemaphore, "ThumbIO", dedicated?.cancelWhenUnwatched == true) {
+        val cancelWhenUnwatched = dedicatedThumbFor(driveId)?.cancelWhenUnwatched == true
+        return readThrough(thumbCacheFor(driveId), cacheKey, thumbnailSemaphore, "ThumbIO", cancelWhenUnwatched) {
             delegate.getThumbBytesRawNetwork(driveId, fileId, payloadKey, width, height, lastModified)
         }
     }
