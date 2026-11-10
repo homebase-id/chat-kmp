@@ -18,6 +18,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.testTimeSource
 import kotlin.test.AfterTest
@@ -620,6 +621,38 @@ class PhotoBackupRunTest {
         assertEquals(BackupPauseReason.StorageFull, run.status.value.pauseReason)
 
         assertTrue(source.checkpointsSeen.isEmpty())
+    }
+
+    @Test
+    fun aPhoneThatFillsUpMidRunPausesAndTheFailedWriteCostsNoAttempt() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        hashGates["a"] = gate
+        source.next = fullListing(asset("a"))
+        val (run, _) = newRun(uploader())
+
+        val outcome = async { run.run(request()) }
+        runCurrent()
+        probe.state = probe.state.copy(freeStorageBytes = 1024)
+        gate.completeExceptionally(IllegalStateException("No space left on device"))
+
+        assertEquals(BackupRunOutcome.Paused, outcome.await())
+        assertEquals(BackupPauseReason.PhoneStorageLow, run.status.value.pauseReason)
+        assertEquals(0, ledger.row("a")?.attempts)
+        assertEquals(BackupState.New.code, state("a"))
+    }
+
+    @Test
+    fun aHotPhoneStopsStartingWorkAndCarriesOnOnceCool() = runTest {
+        source.next = fullListing(asset("a"))
+        probe.state = probe.state.copy(isOverheated = true)
+        val (run, _) = newRun(uploader())
+
+        assertEquals(BackupRunOutcome.Paused, run.run(request(trigger = BackupTrigger.Foreground)))
+        assertEquals(BackupPauseReason.TooHot, run.status.value.pauseReason)
+
+        probe.state = probe.state.copy(isOverheated = false)
+        assertEquals(BackupRunOutcome.Finished, run.run(request()))
+        assertEquals(BackupState.Done.code, state("a"))
     }
 
     @Test

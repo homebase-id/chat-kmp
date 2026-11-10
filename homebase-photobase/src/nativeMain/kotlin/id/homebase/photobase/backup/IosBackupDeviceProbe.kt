@@ -5,7 +5,13 @@ import platform.UIKit.UIApplication
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.Foundation.NSHomeDirectory
+import platform.Foundation.NSNumber
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSProcessInfoThermalState
+import platform.Foundation.NSURL
+import platform.Foundation.NSURLVolumeAvailableCapacityForImportantUsageKey
+import platform.Foundation.thermalState
 import platform.Foundation.isLowPowerModeEnabled
 import platform.Network.nw_path_get_status
 import platform.Network.nw_path_is_expensive
@@ -39,7 +45,15 @@ class IosBackupDeviceProbe : BackupDeviceProbe {
                 batteryState == UIDeviceBatteryState.UIDeviceBatteryStateFull,
             isBatteryLow = level in 0f..LOW_BATTERY,
             isLowPowerMode = NSProcessInfo.processInfo.isLowPowerModeEnabled(),
+            freeStorageBytes = freeStorageBytes(),
+            isOverheated = NSProcessInfo.processInfo.thermalState.value >= NSProcessInfoThermalState.NSProcessInfoThermalStateSerious.value,
         )
+    }
+
+    // "Important usage" counts space iOS would purge to make room, which it does for writes like these.
+    private fun freeStorageBytes(): Long? {
+        val values = NSURL.fileURLWithPath(NSHomeDirectory()).resourceValuesForKeys(listOf(NSURLVolumeAvailableCapacityForImportantUsageKey), null)
+        return (values?.get(NSURLVolumeAvailableCapacityForImportantUsageKey) as? NSNumber)?.longLongValue
     }
 
     override fun libraryAccess(): LibraryAccess = when (PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)) {
