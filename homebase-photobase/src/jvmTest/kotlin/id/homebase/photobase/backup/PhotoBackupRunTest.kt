@@ -241,6 +241,27 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun forgettingTheDriveEmptiesTheLedgerSoEveryPhotoIsAskedAboutAgain() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        run.run(request())
+        advanceUntilIdle()
+        uploader.handedOff.clear()
+        dedupeCalls.clear()
+
+        run.forget()
+
+        assertEquals(null, ledger.row("a"))
+        assertEquals(0, run.status.value.backedUpCount)
+        assertFalse(ledger.isInitialBackupDone())
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(setOf(idOf("a"), idOf("b")), dedupeCalls.flatten().toSet())
+        assertEquals(setOf("a", "b"), uploader.handedOff.toSet())
+    }
+
+    @Test
     fun aFailedDedupeUploadsNothingAndRetriesLater() = runTest {
         dedupeFailure = IllegalStateException("server down")
         source.next = fullListing(asset("a"))

@@ -119,6 +119,11 @@ class PhotoBackupController(
         }
     }
 
+    suspend fun forgetDrive() {
+        foregroundJob?.cancel()
+        run?.forget()
+    }
+
     fun retryFailures() {
         val run = run ?: return
         scope.launch {

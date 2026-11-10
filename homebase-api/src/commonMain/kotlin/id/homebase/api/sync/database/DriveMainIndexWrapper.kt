@@ -276,6 +276,16 @@ class DriveMainIndexWrapper(
         }
     }
 
+    /** One drive's records, tags and sync cursor, together: a drive that's gone from the server takes all of it. */
+    suspend fun deleteDrive(identityId: Uuid, driveId: Uuid) {
+        databaseManager.withWriteTransaction { db ->
+            db.driveMainIndexQueries.deleteByDrive(identityId, driveId)
+            db.driveTagIndexQueries.deleteByDrive(identityId, driveId)
+            db.driveLocalTagIndexQueries.deleteByDrive(identityId, driveId)
+            db.keyValueQueries.deleteByKey(driveId)
+        }
+    }
+
     suspend fun deleteAll(): Boolean {
         return databaseManager.withWriteValue { delegate.deleteAll().value > 0 }
     }

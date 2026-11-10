@@ -64,6 +64,10 @@ class PhotoGalleryStoreTest {
         override suspend fun save(files: List<HomebaseFile>) {
             local = (local + files).distinctBy { it.fileId }
         }
+
+        override suspend fun forget() {
+            local = emptyList()
+        }
     }
 
     private val noOldestFirst = PhotoGalleryPageSource { _, _ -> error("newest first must stay on the device") }
