@@ -68,10 +68,12 @@ kotlin {
             // code), and EscapeAnalysis — which for a framework already refuses to unfold
             // non-devirtualized call sites — degrades to pessimistic lifetimes.
             // Trade-off: a somewhat larger, slower binary; local/dev builds are unaffected.
+            // RemoveRedundantCallsToStaticInitializersPhase: without devirtualization its call graph
+            // grew to 11.8 GB live and 54 min (IOS_RELEASE_LINK_OOM.md); debug builds skip it too.
             if (buildType == org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE &&
                 providers.gradleProperty("homebase.native.disableDevirtualization").orNull == "true"
             ) {
-                freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis"
+                freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis,RemoveRedundantCallsToStaticInitializersPhase"
             }
             // Export homebase-api to make FFmpegKitBridge accessible from Swift
             export(project(":homebase-api"))
