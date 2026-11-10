@@ -98,6 +98,8 @@ class PhotoBackupRun(
 
     suspend fun takeOtherPushWake(gap: Duration): Boolean = ledger.takeOtherPushWake(gap)
 
+    suspend fun hasUnsentWork(): Boolean = ledger.counts().unsent > 0
+
     suspend fun refreshStatus() {
         val counts = ledger.counts()
         val failures = ledger.failures(MAX_FAILURES_SHOWN)
@@ -292,6 +294,7 @@ class PhotoBackupRun(
         }
         if (interactive) ledger.requeueFailed()
         if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
+        val before = ledger.counts()
 
         val includeVideos = backupVideosAllowed(current, deviceState, interactive)
         val initialBackupDone = ledger.isInitialBackupDone()
@@ -331,6 +334,12 @@ class PhotoBackupRun(
         refreshStatus()
         val outcome = if (request.budget.isExpired) BackupRunOutcome.OutOfTime else BackupRunOutcome.Finished
         Logger.i(tag = TAG) { "end trigger=${request.trigger} outcome=$outcome counts=$counts" }
+        // A run that moved nothing would only loop; it waits for the usual triggers.
+        val madeProgress = counts.done > before.done || counts.pending < before.pending
+        if (outcome == BackupRunOutcome.OutOfTime && counts.unsent > 0 && madeProgress) {
+            Logger.i(tag = TAG) { "continuing: ${counts.unsent} left" }
+            scheduler.continueSoon(settings())
+        }
         outcome
     }
 

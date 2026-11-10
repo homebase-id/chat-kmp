@@ -31,7 +31,9 @@ data class LedgerCounts(
     val failed: Long,
     val doneBytes: Long = 0,
     val remainingBytes: Long = 0,
-)
+) {
+    val unsent: Long get() = pending + inOutbox + uploading
+}
 
 /** The one place backup state changes, and what decides whether a photo is backed up. */
 class BackupLedger(
