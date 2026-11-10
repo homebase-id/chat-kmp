@@ -67,13 +67,11 @@ import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AttributeFields
 import id.homebase.core.ui.screens.profile.AudienceBadge
-import id.homebase.core.ui.screens.profile.AudiencePicker
 import id.homebase.core.ui.screens.profile.EditorActions
 import id.homebase.core.ui.screens.profile.PanelHeader
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.isAttributeValid
-import id.homebase.core.ui.screens.profile.otherCirclesOf
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
@@ -81,7 +79,6 @@ import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_add_title
 import id.homebase.resources.profile_card_content_add_visible
 import id.homebase.resources.profile_card_content_empty
-import id.homebase.resources.profile_card_content_public_off_note
 import id.homebase.resources.profile_card_content_shown_everyone
 import id.homebase.resources.profile_card_content_shown_to
 import id.homebase.resources.profile_card_content_sees_circle
@@ -100,8 +97,12 @@ import id.homebase.core.ui.screens.profile.ConflictRow
 import id.homebase.core.ui.screens.profile.conflictValue
 import id.homebase.core.ui.screens.profile.audienceSummary
 import id.homebase.core.ui.screens.profile.audience
+import id.homebase.core.ui.screens.profile.isOnCard
 import id.homebase.resources.profile_card_content_edit_title
 import id.homebase.resources.profile_card_content_delete
+import id.homebase.resources.profile_card_audience_public
+import id.homebase.resources.profile_card_sheet_available_on
+import androidx.compose.ui.platform.testTag
 import id.homebase.resources.profile_card_content_more
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
 
@@ -342,7 +343,6 @@ internal fun ContentSheet(
     onAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
     onEdit: (Map<String, String>, ProfileAudience) -> Unit = { _, _ -> },
     onDelete: ((Uuid) -> Unit)? = null,
-    onCirclesChanged: (() -> Unit)? = null,
 ) {
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
@@ -415,19 +415,26 @@ internal fun ContentSheet(
                     )
                 }
             } else {
-                AudiencePicker(
-                    audience = audience,
-                    circles = circles,
-                    onChange = { audience = it },
-                    otherCircles = otherCirclesOf(editing.audience, audience),
-                    onCircleCreated = onCirclesChanged,
+                Text(
+                    text = stringResource(MR.string.profile_card_sheet_available_on),
+                    style = MaterialTheme.typography.labelLarge,
                 )
-                if (editing.audience == ProfileAudience.Public && audience != ProfileAudience.Public) {
-                    Text(
-                        text = stringResource(MR.string.profile_card_content_public_off_note),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val pills = listOf<Triple<CardAudience, String, String?>>(
+                        Triple(CardAudience.Public, stringResource(MR.string.profile_card_audience_public), null),
+                    ) + circles.map { Triple(CardAudience.Circle(it.id, it.name), it.name, it.emoji) }
+                    pills.forEach { (pillCard, label, emoji) ->
+                        val selected = when (pillCard) {
+                            CardAudience.Public -> audience == ProfileAudience.Public
+                            is CardAudience.Circle -> audience.isOnCard(pillCard.id)
+                        }
+                        FilterChip(
+                            selected = selected,
+                            onClick = { audience = audience.shownOn(pillCard, !selected, editing.audience, circles) ?: audience },
+                            label = { Text(listOfNotNull(emoji, label).joinToString(" ")) },
+                            modifier = Modifier.testTag("audience_pill_$label"),
+                        )
+                    }
                 }
                 editing.conflicts.forEach { record ->
                     ConflictRow(
