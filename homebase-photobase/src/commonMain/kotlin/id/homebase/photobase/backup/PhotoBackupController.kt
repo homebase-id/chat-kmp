@@ -109,6 +109,15 @@ class PhotoBackupController(
 
     fun batteryGuidance(): BatteryGuidance? = triggers?.batteryGuidance()
 
+    /** The drive can lose files the phone has marked Done, and nothing else asks the server about those again. */
+    fun recheckDriveAndBackUp() {
+        val run = run ?: return
+        scope.launch {
+            run.recheckDrive()
+            backUpNow()
+        }
+    }
+
     fun retryFailures() {
         val run = run ?: return
         scope.launch {

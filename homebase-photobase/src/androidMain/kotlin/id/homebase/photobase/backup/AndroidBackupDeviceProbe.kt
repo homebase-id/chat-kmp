@@ -44,6 +44,10 @@ class AndroidBackupDeviceProbe(private val context: Context) : BackupDeviceProbe
         }
     }
 
+    override fun photoLocationsWithheld(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) != PackageManager.PERMISSION_GRANTED
+
     private companion object {
         const val LOW_BATTERY_PERCENT = 15
     }
