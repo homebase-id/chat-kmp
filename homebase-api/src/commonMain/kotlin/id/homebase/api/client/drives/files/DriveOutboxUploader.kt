@@ -236,6 +236,14 @@ class DriveOutboxUploader(
             return
         }
 
+        if (serverFileIsOurLandedHeaderOnlyCreate(original, serverFile)) {
+            Logger.i(
+                "$TAG retryAsUpdate: server already holds our create for uniqueId=$uniqueId " +
+                        "(same key header and content, header-only) — treating as Sent (lost-ack create)"
+            )
+            return
+        }
+
         // The server rejects an update whose AES key differs from the existing
         // file's ("AES key must match"). When the client's key has diverged
         // (local DB lost the key and minted a fresh one, or a replaceEnqueue
@@ -252,8 +260,8 @@ class DriveOutboxUploader(
         )
         if (rekeyed != null) {
             Logger.w(
-                "$TAG retryAsUpdate: local AES key diverged from the server file for uniqueId=$uniqueId — " +
-                        "re-encrypted the header with the server's key"
+                "$TAG retryAsUpdate: re-encrypted the header under a fresh IV with the server's key for uniqueId=$uniqueId " +
+                        "(local key diverged=${original.keyHeader.aesKey != serverFile.keyHeader.aesKey})"
             )
         }
 
@@ -563,13 +571,14 @@ class KeyHeaderTransformRefused(cause: Throwable) : Exception("key header transf
  * OutboxFailureClassifier): when `retryAsUpdate` converts a failed
  * UploadNewFile into an update and the client's AES key has diverged from the
  * server file's, re-encrypt the request with the SERVER's key (fresh IV) so
- * the update is acceptable instead of deterministically rejected.
+ * the update is acceptable instead of deterministically rejected. The IV is
+ * always fresh, also when the keys match: the server refuses an update that
+ * reuses the file's IV.
  *
  * Returns null when re-keying doesn't apply and the standard versionTag-stamp
  * path is correct or the only option:
  *  - the request isn't encrypted, or the server header has no usable key;
- *  - the keys already match (the common case — e.g. chat's edit-coalesce
- *    reuses the pending create's key);
+
  *  - the request carries payloads or thumbnails: their bytes are
  *    pre-encrypted on disk with the client key, and re-encrypting
  *    arbitrarily large media in memory is not safe. Those requests take the
@@ -589,7 +598,6 @@ internal suspend fun rekeyedUpdateForExistingServerFile(
     if (!original.metadata.isEncrypted) return null
     if (serverKeyHeader == KeyHeader.empty()) return null
     if (original.payloads.isNotEmpty() || original.thumbnails.isNotEmpty()) return null
-    if (original.keyHeader.aesKey == serverKeyHeader.aesKey) return null
     val uniqueId = original.metadata.appData.uniqueId ?: return null
 
     val newKeyHeader = KeyHeader(
@@ -683,6 +691,24 @@ internal fun serverFileIsOurLandedCreate(
     if (original.keyHeader.aesKey != serverKey.aesKey) return false
     val serverPayloadKeys = serverFile.fileMetadata.payloads?.mapTo(mutableSetOf()) { it.key } ?: emptySet()
     return original.payloads.all { it.key in serverPayloadKeys }
+}
+
+/**
+ * The header-only twin of [serverFileIsOurLandedCreate]: the server holds exactly our create
+ * (same key header, so same AES key and IV, and the same content), so only its reply was lost.
+ * An update would reuse the IV and be rejected with "you must change the Iv".
+ */
+@OptIn(ExperimentalEncodingApi::class)
+internal suspend fun serverFileIsOurLandedHeaderOnlyCreate(
+    original: UploadFileRequest,
+    serverFile: HomebaseFile,
+): Boolean {
+    if (original.payloads.isNotEmpty() || original.thumbnails.isNotEmpty()) return false
+    if (!original.metadata.isEncrypted) return false
+    val serverKey = serverFile.keyHeader
+    if (serverKey == KeyHeader.empty() || serverKey != original.keyHeader) return false
+    val ourContent = original.metadata.appData.content?.let { original.keyHeader.decrypt(Base64.decode(it)).decodeToString() }
+    return ourContent == serverFile.fileMetadata.appData.content
 }
 
 /** A payload-carrying retry whose AES key differs from the file it would update on a zero-knowledge drive. */
