@@ -238,6 +238,8 @@ kotlin {
     val runHasherBench = providers.environmentVariable("HASHER_BENCH").orNull == "1"
     tasks.withType(AbstractTestTask::class.java).configureEach {
         if (!runHasherBench) filter.excludeTestsMatching("id.homebase.api.crypto.HasherThroughputBench.*")
+        // Kotlin/Native's runner otherwise drops assertion messages from the CI log.
+        testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 
     compilerOptions {
