@@ -4,6 +4,7 @@ android-compileSdk = "37"
 # CMP 1.13 needs compileSdk 37.1; its platform carries SDK extension 23, so no compileSdkExtension.
 android-compileSdkMinor = "1"
 android-minSdk = "28"
+android-ndk = "27.1.12297006"
 android-targetSdk = "36"
 androidx-activity = "1.13.0"
 androidx-appcompat = "1.8.0"
@@ -252,6 +253,7 @@ nucleus-notification-linux = { module = "io.github.kdroidfilter:nucleus.notifica
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+androidNativeLibrary = { id = "com.android.library", version.ref = "agp" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
