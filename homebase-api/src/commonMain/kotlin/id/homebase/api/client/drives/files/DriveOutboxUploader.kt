@@ -578,7 +578,6 @@ class KeyHeaderTransformRefused(cause: Throwable) : Exception("key header transf
  * Returns null when re-keying doesn't apply and the standard versionTag-stamp
  * path is correct or the only option:
  *  - the request isn't encrypted, or the server header has no usable key;
-
  *  - the request carries payloads or thumbnails: their bytes are
  *    pre-encrypted on disk with the client key, and re-encrypting
  *    arbitrarily large media in memory is not safe. Those requests take the
@@ -666,9 +665,8 @@ internal fun stampDescriptorsWithReceipts(
  * dropped right after the server created the file — the
  * `SocketException: Software caused connection abort` case). The signal:
  *
- *  - the request is payload-carrying (header-only divergence is handled by
- *    [rekeyedUpdateForExistingServerFile]; only payload requests hit the
- *    unrecoverable "must change the Iv" loop);
+ *  - the request is payload-carrying (header-only requests are
+ *    [serverFileIsOurLandedHeaderOnlyCreate]'s);
  *  - the server file's AES key equals ours — a random 256-bit key only matches
  *    if the server file is the one *we* created, not a stale/foreign file that
  *    happens to share the (also random) uniqueId;
