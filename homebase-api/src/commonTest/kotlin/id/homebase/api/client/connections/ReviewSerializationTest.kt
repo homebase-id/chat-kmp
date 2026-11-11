@@ -84,6 +84,21 @@ class ReviewSerializationTest {
             OdinSystemSerializer.deserialize<ConnectionRequestResult>("""{"outcome":1}""").outcome,
         )
     }
+
+    /** The server refuses to connect while this identity's own data needs an upgrade. */
+    @Test
+    fun aSenderRequiresUpgradeOutcomeParsesAsStringOrNumber() {
+        assertEquals(
+            AutoConnectOutcome.SenderRequiresUpgrade,
+            OdinSystemSerializer
+                .deserialize<ConnectionRequestResult>("""{"outcome":"senderRequiresUpgrade"}""")
+                .outcome,
+        )
+        assertEquals(
+            AutoConnectOutcome.SenderRequiresUpgrade,
+            OdinSystemSerializer.deserialize<ConnectionRequestResult>("""{"outcome":13}""").outcome,
+        )
+    }
 }
 
 /**

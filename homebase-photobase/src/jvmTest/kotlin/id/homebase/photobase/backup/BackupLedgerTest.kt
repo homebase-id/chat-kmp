@@ -243,6 +243,32 @@ class BackupLedgerTest {
     }
 
     @Test
+    fun aBackgroundUploadThatLandsBeforeItIsMarkedSendingIsDone() = runTest {
+        val id = Uuid.random()
+        ledger.apply(fullListing(asset("a")), null)
+        ledger.markHashed("a", "ff", id, 10)
+
+        ledger.onOutboxCompleted(id)
+        assertEquals(BackupState.Hashed.code, stateOf("a"))
+        ledger.markSending(id, taskId = 7)
+
+        assertEquals(BackupState.Done.code, stateOf("a"))
+    }
+
+    @Test
+    fun anEarlyVerdictGoesStale() = runTest {
+        val id = Uuid.random()
+        ledger.apply(fullListing(asset("a")), null)
+        ledger.markHashed("a", "ff", id, 10)
+
+        ledger.onOutboxCompleted(id)
+        now += 2.minutes.inWholeMilliseconds
+
+        assertEquals(false, ledger.markQueued("a"))
+        assertEquals(BackupState.Queued.code, stateOf("a"))
+    }
+
+    @Test
     fun dueExceptReadsPastOnlyTheSeenRowsStillDue() = runTest {
         val ids = (0 until 100).map { "a%03d".format(it) }
         ledger.apply(fullListing(*ids.map { asset(it, createdAtMs = 1000L + it.drop(1).toLong()) }.toTypedArray()), null)
