@@ -149,9 +149,9 @@ class PayloadBundleEncryptionService(
      * serial (#1297). Stripping the metadata segments keeps the compressed pixel data
      * bit-identical, unlike a re-encode.
      *
-     * Fail-soft by design: [ImageMetadataScrubber] returns its input untouched on anything
-     * it can't parse, and a read failure here falls back to the original path rather than
-     * failing the send. The cost of that is a leak, not a crash, so it is logged loudly.
+     * Fail-soft by design: a file that can't be read, isn't a format the scrubber handles, or
+     * couldn't be parsed goes out as it is rather than failing the send. The cost of that is a
+     * leak, not a crash, so it is logged loudly.
      */
     private suspend fun scrubImageMetadata(payload: PayloadFile): String {
         if (!payload.contentType.startsWith("image/")) return payload.filePath
@@ -163,15 +163,17 @@ class PayloadBundleEncryptionService(
             }
             return payload.filePath
         }
-        val scrubbed = ImageMetadataScrubber.scrubOrNull(original) ?: run {
-            Logger.w(tag = TAG) {
-                "metadata scrub skipped — ${payload.contentType} (sniffed ${ImageFormatDetector.detectFormat(original)}) " +
-                    "isn't a format the scrubber handles; its EXIF/XMP goes out intact"
-            }
-            return payload.filePath
+        val why = when (val outcome = ImageMetadataScrubber.scrubWithOutcome(original)) {
+            is ImageMetadataScrubber.Outcome.Scrubbed -> return fileOps.writeBytesToTempFile(outcome.bytes, "scrubbed_", ".img")
+            ImageMetadataScrubber.Outcome.NothingToStrip -> return payload.filePath
+            ImageMetadataScrubber.Outcome.UnsupportedFormat -> "isn't a format the scrubber handles"
+            ImageMetadataScrubber.Outcome.Unparseable -> "couldn't be parsed"
         }
-        if (scrubbed === original) return payload.filePath
-        return fileOps.writeBytesToTempFile(scrubbed, "scrubbed_", ".img")
+        Logger.w(tag = TAG) {
+            "metadata scrub skipped — ${payload.contentType} (sniffed ${ImageFormatDetector.detectFormat(original)}) " +
+                "$why; any EXIF/XMP goes out intact"
+        }
+        return payload.filePath
     }
 
     private suspend fun encryptFile(
