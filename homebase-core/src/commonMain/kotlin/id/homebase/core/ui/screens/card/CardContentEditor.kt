@@ -243,7 +243,7 @@ internal fun CardContentEditor(
     val notOnCard = if (circleCard) emptyList() else items.filter { it.shown && it.renderable && it.hidden }
     val unrenderable = if (circleCard) emptyList() else items.filter { it.shown && !it.renderable }
     val couldAdd = if (circleCard) emptyList() else items.filterNot { it.shown }
-    val present = items.map { it.type }.toSet()
+    val present = items.addableTypesPresent(card)
     val missingSocials = SOCIAL_ATTRIBUTE_TYPES.filter { it !in present }
     val missingMore = ATTRIBUTE_SPECS.filter { it.type in MORE_TYPES && it.type !in present }
     val linkGroups = listOf(onCard.filter { it.type == ProfileAttributeTypes.LINK }, onCard.filter { it.type in CARD_SOCIAL_TYPES })

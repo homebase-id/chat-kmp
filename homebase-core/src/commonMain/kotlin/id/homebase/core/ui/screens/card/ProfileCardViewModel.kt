@@ -140,6 +140,7 @@ data class ContentWrite(
     val existing: ProfileAttribute?,
     val itemLabel: String,
     val announce: Boolean = false,
+    val removal: Boolean = false,
 )
 
 internal data class CardImportSource(val audience: CardAudience, val newItems: Int)
@@ -157,6 +158,7 @@ sealed interface ProfileCardEvent {
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
     data class AudienceChanged(val itemLabel: String, val nowPublic: Boolean) : ProfileCardEvent
+    data object ContentRemovedFromCard : ProfileCardEvent
 }
 
 interface ProfileCardSource {
@@ -559,7 +561,9 @@ class ProfileCardViewModel(
         val item = state.contentItems.firstOrNull { it.id == id }?.takeUnless { it.required } ?: return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
         if (audience == attribute.audience(state.circles)) return
-        requestWrite(ContentWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true))
+        val card = state.selectedAudience
+        val removal = card is CardAudience.Circle && item.shown && !card.shows(audience)
+        requestWrite(ContentWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true, removal = removal))
     }
 
     fun onPublicConfirmed() {
@@ -641,7 +645,7 @@ class ProfileCardViewModel(
     }
 
     private fun writeContent(write: ContentWrite) {
-        val (type, data, audience, existing, itemLabel, announce) = write
+        val (type, data, audience, existing, itemLabel, announce, removal) = write
         dropImportUndo()
         val card = _uiState.value.selectedAudience
         _uiState.update { it.copy(isContentBusy = true) }
@@ -654,6 +658,11 @@ class ProfileCardViewModel(
                 return@launch
             }
             applyAttributes(listOf(saved), saved = true, removed = deleteDuplicates(existing))
+            if (removal) {
+                audienceUndo = existing
+                _events.tryEmit(ProfileCardEvent.ContentRemovedFromCard)
+                return@launch
+            }
             val movedAcrossPublic = existing != null && (audience == ProfileAudience.Public) != (existing.audience(circles) == ProfileAudience.Public)
             if (announce && movedAcrossPublic) {
                 audienceUndo = existing

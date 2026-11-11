@@ -261,6 +261,7 @@ class ConnectionRequestService(
             AutoConnectOutcome.RecipientRejected,
             AutoConnectOutcome.RecipientIdentityNotConfigured,
             AutoConnectOutcome.RecipientRequiresUpgrade,
+            AutoConnectOutcome.SenderRequiresUpgrade,
             AutoConnectOutcome.InvalidRequest,
             AutoConnectOutcome.Failed,
             AutoConnectOutcome.Unknown -> Unit

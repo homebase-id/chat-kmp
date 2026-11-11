@@ -108,6 +108,7 @@
     <string name="auto_connect_recipient_rejected">%1$s tager ikke imod forbindelser lige nu.</string>
     <string name="auto_connect_recipient_not_configured">%1$s har ikke færdiggjort opsætningen af sin identitet endnu.</string>
     <string name="auto_connect_recipient_requires_upgrade">%1$s's server skal opdateres, før du kan forbinde.</string>
+    <string name="auto_connect_sender_requires_upgrade">Din identitet skal opdateres, før du kan forbinde. Log ind på din ejer konsol for at opdatere den, og prøv så igen.</string>
     <string name="auto_connect_invalid_request">Ugyldig anmodning.</string>
     <string name="auto_connect_invalid_request_with_detail">Ugyldig anmodning: %1$s.</string>
     <string name="auto_connect_failed_generic">Noget gik galt. Prøv igen.</string>
@@ -1904,6 +1905,7 @@
     <string name="profile_card_nameless_public_confirm">Fortsæt</string>
     <string name="profile_card_content_now_public">%1$s er nu offentlig</string>
     <string name="profile_card_content_now_hidden">%1$s er ikke længere offentlig</string>
+    <string name="profile_card_content_removed_from_card">Fjernet fra dette kort</string>
     <string name="profile_card_editor_title">Kortdesign</string>
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>

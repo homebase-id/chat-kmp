@@ -8,6 +8,7 @@ import android.graphics.ImageDecoder
 import androidx.exifinterface.media.ExifInterface
 import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.imageresize.NativeResize
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import kotlin.math.max
@@ -20,37 +21,28 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     override fun scaledTo(width: Int, height: Int): PipelineBitmap =
         AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true))
 
-    // Not getPixels, which unpremultiplies and converts to sRGB, and would turn a P3 photo into sRGB.
-    override fun readPixels(): ByteArray {
-        val eightBit = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        val pixels = ByteArray(eightBit.width * eightBit.height * 4)
-        eightBit.copyPixelsToBuffer(ByteBuffer.wrap(pixels))
-        if (eightBit !== bitmap) eightBit.recycle()
-        return pixels
+    // An OutOfMemoryError is an Error, so the send's fail-soft catch would miss it and the app would crash.
+    override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = try {
+        val eightBit = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else checkNotNull(bitmap.copy(Bitmap.Config.ARGB_8888, false))
+        try {
+            AndroidPipelineBitmap(lanczos(eightBit, width, height))
+        } finally {
+            if (eightBit !== bitmap) eightBit.recycle()
+        }
+    } catch (e: OutOfMemoryError) {
+        throw IllegalStateException("Not enough memory to scale the image", e)
     }
 
-    override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap {
-        val colorSpace = bitmap.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
-        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, bitmap.hasAlpha(), colorSpace)
-        out.copyPixelsFromBuffer(ByteBuffer.wrap(pixels))
-        return AndroidPipelineBitmap(out)
-    }
-
-    // Lanczos works on Java heap copies while the bitmap lives in native memory, so the decode
-    // guard doesn't bound it; short of heap, the platform's filter is a softer result, not a failed send.
-    override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap {
-        val runtime = Runtime.getRuntime()
-        val freeHeap = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
-        if (lanczosPeakBytes(this.width, this.height, width, height) > freeHeap * HEAP_SHARE_FOR_SCALING) {
-            Logger.w(tag = TAG) { "Not enough heap for Lanczos at ${this.width}x${this.height} -> ${width}x$height; using the platform filter" }
-            return scaledTo(width, height)
+    private fun lanczos(source: Bitmap, width: Int, height: Int): Bitmap {
+        val colorSpace = source.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
+        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, source.hasAlpha(), colorSpace)
+        try {
+            NativeResize.lanczos(source, out)
+        } catch (e: Throwable) {
+            out.recycle()
+            throw e
         }
-        // An Error, so the send's fail-soft catch would miss it and the app would crash.
-        return try {
-            super.resampledTo(width, height)
-        } catch (e: OutOfMemoryError) {
-            throw IllegalStateException("Not enough memory to scale the image", e)
-        }
+        return out
     }
 
     // compress reports failure by writing nothing, and an empty result would pass any byte limit.
@@ -69,7 +61,6 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
 }
 
 private const val TAG = "ImagePipeline"
-private const val HEAP_SHARE_FOR_SCALING = 0.75
 
 private class HeaderRead : RuntimeException(null, null, false, false)
 
