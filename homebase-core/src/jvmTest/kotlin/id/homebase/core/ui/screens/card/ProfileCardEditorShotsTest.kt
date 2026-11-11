@@ -889,9 +889,9 @@ class ProfileCardEditorShotsTest {
         }
     }
 
-    // CARD_EXPORT_DIR holds real exportPng() PNGs (390x844 compact card at 1080 wide), one per design.
+    // CARD_EXPORT_DIR holds real exportPng() PNGs, one per design: tile-sized from a narrow page, or the 390x844 compact card.
     @Test
-    fun introTilesFitTheExportedCard() {
+    fun introTilesShowTheExportedCard() {
         val exports = System.getenv("CARD_EXPORT_DIR")?.let(::File)?.listFiles { f -> f.extension == "png" }.orEmpty().sorted()
         for (file in exports) {
             val still = ImageIO.read(file).toComposeImageBitmap()

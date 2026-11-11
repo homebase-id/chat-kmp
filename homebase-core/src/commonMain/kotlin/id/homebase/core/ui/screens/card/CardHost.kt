@@ -65,6 +65,9 @@ interface CardHost {
     fun probeEdges()
     fun requestPaint()
 
+    // A narrow page exports what it shows, so a host with no snapshot() is laid out at a tile's size while it captures tiles.
+    fun sizeForTiles(on: Boolean) {}
+
     // Callers keep the image (tiles, covers), so each call must return a new one, never a reused buffer.
     suspend fun snapshot(): ImageBitmap?
     fun dispose()

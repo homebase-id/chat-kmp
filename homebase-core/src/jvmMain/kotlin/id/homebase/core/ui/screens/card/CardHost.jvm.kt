@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -12,11 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.toSize
 import io.github.kdroidfilter.webview.wry.Rgba
 import io.github.kdroidfilter.webview.wry.WryWebViewPanel
 import java.awt.Container
@@ -50,7 +52,9 @@ actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?, sh
     val layoutDirection = LocalLayoutDirection.current
     var size by remember { mutableStateOf(Size.Zero) }
     val radii = cssCornerRadii(shape, size, density, layoutDirection)
-    LaunchedEffect(cardHost, radii) { cardHost.roundCorners(radii) }
+    // Every card frame sits on surfaceContainer; wry's view is opaque, so the page paints that outside its corners.
+    val outside = MaterialTheme.colorScheme.surfaceContainer.toArgb()
+    LaunchedEffect(cardHost, radii, outside) { cardHost.roundCorners(radii, outside) }
     key(cardHost) {
         val slot = remember { CardSlot(cardHost) }
         DisposableEffect(slot) {
@@ -85,6 +89,8 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     private var hadWebView = false
     private var sawLoading = false
     private var shown = false
+    private var tileSized = false
+    private var sizeBeforeTiles: Dimension? = null
     private var cornersScript = ""
     private val awaitedReplies = mutableSetOf<KClass<out CardEvent>>()
 
@@ -142,12 +148,13 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         park()
     }
 
-    // html clips to the corners and body takes over scrolling, else the clip would scroll away with the page.
-    fun roundCorners(radii: String?) {
+    // body becomes the scroller so its clip stays put; html, outside the clip, takes the frame's backdrop.
+    fun roundCorners(radii: String?, outsideArgb: Int) {
+        val outside = "rgb(${outsideArgb shr 16 and 0xFF},${outsideArgb shr 8 and 0xFF},${outsideArgb and 0xFF})"
         cornersScript = radii?.let {
             "(function(){var s=document.getElementById('hb-corners')||document.head.appendChild(document.createElement('style'));" +
-                "s.id='hb-corners';s.textContent='html{background:transparent!important;height:100%;overflow:hidden;" +
-                "clip-path:inset(0 round $it)}body{height:100%;overflow-y:auto}'})()"
+                "s.id='hb-corners';s.textContent='html{background:$outside!important;height:100%;overflow:hidden}" +
+                "body{height:100%;overflow-y:auto;clip-path:inset(0 round $it)}'})()"
         } ?: "(function(){var s=document.getElementById('hb-corners');if(s)s.remove()})()"
         applyCorners()
     }
@@ -155,6 +162,15 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     private fun applyCorners() {
         val script = cornersScript.ifEmpty { return }
         scope.launch(webView) { panel.evaluateJavaScript(script) {} }
+    }
+
+    // Back to the last view's size after, so a later export (sharing) gets the page that view showed.
+    override fun sizeForTiles(on: Boolean) {
+        tileSized = on
+        if (panel.parent is CardSlot) return
+        if (on) sizeBeforeTiles = panel.size else sizeBeforeTiles?.let { panel.size = it }
+        if (!on) sizeBeforeTiles = null
+        park()
     }
 
     override fun loadUrl(url: String) {
@@ -188,6 +204,7 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         // so it is created at 1x1 and given the parking size once it exists.
         val size = when {
             !hadWebView -> Dimension(1, 1)
+            tileSized -> TILE_SIZE
             panel.width > 1 && panel.height > 1 -> panel.size
             else -> layeredPane.size
         }
@@ -262,5 +279,6 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     private companion object {
         const val IPC_POLL_MS = 16L
         const val PARK_MARGIN = 100
+        val TILE_SIZE = Dimension(CAPTURE_LAYOUT_WIDTH.value.toInt(), (CAPTURE_LAYOUT_WIDTH.value / CARD_THUMB_ASPECT).toInt())
     }
 }

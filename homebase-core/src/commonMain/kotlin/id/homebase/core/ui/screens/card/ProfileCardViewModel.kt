@@ -457,6 +457,7 @@ class ProfileCardViewModel(
         val host = _host.value ?: return
         host.isLoaded.first { it }
         var touched = false
+        host.sizeForTiles(true)
         try {
             for (card in _uiState.value.cards) {
                 if (interruptedByViewer(ignoreViewing)) return
@@ -486,11 +487,12 @@ class ProfileCardViewModel(
                 _introTiles.update { it + (key to image) }
             }
         } finally {
+            host.sizeForTiles(false)
             if (touched) lastRendered?.let(host::render)
         }
     }
 
-    // Desktop and web have no native snapshot, so the page draws the still itself: its compact card, whatever the view's width.
+    // Desktop and web have no native snapshot, so the page draws the still itself: what it shows when narrow, else its compact card at 390x844.
     @OptIn(ExperimentalResourceApi::class)
     private suspend fun exportedStill(host: CardHost): ImageBitmap? {
         val png = withTimeoutOrNull(EXPORT_TIMEOUT) {
