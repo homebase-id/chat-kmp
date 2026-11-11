@@ -70,12 +70,12 @@ fun rememberInAppCameraManager(
     val currentOnOpenGallery by rememberUpdatedState(onOpenGallery)
     if (launcher.isOpen) {
         val fade = remember { Animatable(1f) }
-        val handoff = launcher.handoffEpoch
-        if (handoff != null) {
+        val epoch = launcher.handoffEpoch
+        if (epoch != null) {
             val exitSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-            LaunchedEffect(handoff) {
+            LaunchedEffect(epoch) {
                 val waiting = TimeSource.Monotonic.markNow()
-                if (awaitHandoff(launcher.handoff, handoff)) {
+                if (awaitHandoff(launcher.handoff, epoch)) {
                     Logger.d(tag = "InAppCamera") { "Capture receiver drew it after ${waiting.elapsedNow().inWholeMilliseconds} ms" }
                 } else {
                     Logger.w(tag = "InAppCamera") { "Capture receiver never reported it drawn; closing at the ceiling" }
@@ -91,7 +91,7 @@ fun rememberInAppCameraManager(
             allowedModes = allowedModes,
             mirrorFront = rememberMirrorFrontCamera(),
             warmEngine = launcher.warmEngine,
-            handingOff = handoff != null,
+            handingOff = epoch != null,
             fade = { fade.value },
             onOpenGallery = if (onOpenGallery == null) null else {
                 {
