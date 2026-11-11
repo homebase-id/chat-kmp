@@ -71,16 +71,7 @@ private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hid
 internal fun isOrderableType(type: String): Boolean = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
 
 // The socials the page links; the web's unlinkable ones and the Homebase id never reach the card.
-internal val CARD_SOCIAL_TYPES = listOf(
-    ProfileAttributeTypes.TWITTER,
-    ProfileAttributeTypes.FACEBOOK,
-    ProfileAttributeTypes.INSTAGRAM,
-    ProfileAttributeTypes.TIKTOK,
-    ProfileAttributeTypes.LINKEDIN,
-    ProfileAttributeTypes.YOUTUBE,
-    ProfileAttributeTypes.SNAPCHAT,
-    ProfileAttributeTypes.GITHUB,
-)
+internal val CARD_SOCIAL_TYPES = cardSocialFields.values.map { it.attributeType }
 
 // The page draws these and nothing else; the card orders only links and socials, as one block each.
 internal val CARD_RENDERED_TYPES = setOf(

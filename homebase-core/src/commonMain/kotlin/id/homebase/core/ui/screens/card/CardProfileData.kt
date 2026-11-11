@@ -25,9 +25,9 @@ private const val TAG = "CardData"
 internal const val CARD_IMAGE_MAX_EDGE = 1080
 private const val CARD_IMAGE_JPEG_QUALITY = 85
 
-private class CardSocialField(val attributeType: String, val field: ProfileField, val hosts: Set<String>)
+internal class CardSocialField(val attributeType: String, val field: ProfileField, val hosts: Set<String>)
 
-private val cardSocialFields = mapOf(
+internal val cardSocialFields = mapOf(
     ProfileAttributeTypes.KEY_TWITTER to CardSocialField(ProfileAttributeTypes.TWITTER, ProfileField.TWITTER, setOf("twitter.com", "x.com")),
     ProfileAttributeTypes.KEY_FACEBOOK to CardSocialField(ProfileAttributeTypes.FACEBOOK, ProfileField.FACEBOOK, setOf("facebook.com", "fb.com")),
     ProfileAttributeTypes.KEY_INSTAGRAM to CardSocialField(ProfileAttributeTypes.INSTAGRAM, ProfileField.INSTAGRAM, setOf("instagram.com")),

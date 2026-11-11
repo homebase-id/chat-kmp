@@ -265,6 +265,7 @@ internal data class AttributeSpec(
     val type: String,
     val icon: ImageVector,
     val labelRes: StringResource,
+    val social: Boolean = false,
 )
 
 internal val ATTRIBUTE_SPECS = listOf(
@@ -276,41 +277,25 @@ internal val ATTRIBUTE_SPECS = listOf(
     AttributeSpec(ProfileAttributeTypes.EMAIL, Icons.Outlined.Email, MR.string.profile_edit_email),
     AttributeSpec(ProfileAttributeTypes.PHONE, Icons.Outlined.Call, MR.string.profile_edit_phone),
     AttributeSpec(ProfileAttributeTypes.ADDRESS, Icons.Outlined.LocationOn, MR.string.contactbook_detail_location),
-    AttributeSpec(ProfileAttributeTypes.TWITTER, Icons.Outlined.Tag, MR.string.profile_edit_twitter),
-    AttributeSpec(ProfileAttributeTypes.FACEBOOK, Icons.Outlined.ThumbUp, MR.string.profile_edit_facebook),
-    AttributeSpec(ProfileAttributeTypes.INSTAGRAM, Icons.Outlined.PhotoCamera, MR.string.profile_edit_instagram),
-    AttributeSpec(ProfileAttributeTypes.TIKTOK, Icons.Outlined.MusicNote, MR.string.profile_edit_tiktok),
-    AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.WorkOutline, MR.string.profile_edit_linkedin),
-    AttributeSpec(ProfileAttributeTypes.YOUTUBE, Icons.Outlined.SmartDisplay, MR.string.profile_edit_youtube),
-    AttributeSpec(ProfileAttributeTypes.SNAPCHAT, Icons.Outlined.CameraFront, MR.string.profile_edit_snapchat),
-    AttributeSpec(ProfileAttributeTypes.GITHUB, Icons.Outlined.Code, MR.string.profile_edit_github),
-    AttributeSpec(ProfileAttributeTypes.DISCORD, Icons.Outlined.Forum, MR.string.profile_edit_discord),
-    AttributeSpec(ProfileAttributeTypes.STACKOVERFLOW, Icons.Outlined.QuestionAnswer, MR.string.profile_edit_stackoverflow),
-    AttributeSpec(ProfileAttributeTypes.STEAM, Icons.Outlined.SportsEsports, MR.string.profile_edit_steam),
-    AttributeSpec(ProfileAttributeTypes.MINECRAFT, Icons.Outlined.ViewInAr, MR.string.profile_edit_minecraft),
-    AttributeSpec(ProfileAttributeTypes.EPIC, Icons.Outlined.VideogameAsset, MR.string.profile_edit_epic),
-    AttributeSpec(ProfileAttributeTypes.RIOT, Icons.Outlined.Gamepad, MR.string.profile_edit_riot),
-    AttributeSpec(ProfileAttributeTypes.HOMEBASE_ID, Icons.Outlined.Fingerprint, MR.string.profile_edit_homebase_id),
+    AttributeSpec(ProfileAttributeTypes.TWITTER, Icons.Outlined.Tag, MR.string.profile_edit_twitter, social = true),
+    AttributeSpec(ProfileAttributeTypes.FACEBOOK, Icons.Outlined.ThumbUp, MR.string.profile_edit_facebook, social = true),
+    AttributeSpec(ProfileAttributeTypes.INSTAGRAM, Icons.Outlined.PhotoCamera, MR.string.profile_edit_instagram, social = true),
+    AttributeSpec(ProfileAttributeTypes.TIKTOK, Icons.Outlined.MusicNote, MR.string.profile_edit_tiktok, social = true),
+    AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.WorkOutline, MR.string.profile_edit_linkedin, social = true),
+    AttributeSpec(ProfileAttributeTypes.YOUTUBE, Icons.Outlined.SmartDisplay, MR.string.profile_edit_youtube, social = true),
+    AttributeSpec(ProfileAttributeTypes.SNAPCHAT, Icons.Outlined.CameraFront, MR.string.profile_edit_snapchat, social = true),
+    AttributeSpec(ProfileAttributeTypes.GITHUB, Icons.Outlined.Code, MR.string.profile_edit_github, social = true),
+    AttributeSpec(ProfileAttributeTypes.DISCORD, Icons.Outlined.Forum, MR.string.profile_edit_discord, social = true),
+    AttributeSpec(ProfileAttributeTypes.STACKOVERFLOW, Icons.Outlined.QuestionAnswer, MR.string.profile_edit_stackoverflow, social = true),
+    AttributeSpec(ProfileAttributeTypes.STEAM, Icons.Outlined.SportsEsports, MR.string.profile_edit_steam, social = true),
+    AttributeSpec(ProfileAttributeTypes.MINECRAFT, Icons.Outlined.ViewInAr, MR.string.profile_edit_minecraft, social = true),
+    AttributeSpec(ProfileAttributeTypes.EPIC, Icons.Outlined.VideogameAsset, MR.string.profile_edit_epic, social = true),
+    AttributeSpec(ProfileAttributeTypes.RIOT, Icons.Outlined.Gamepad, MR.string.profile_edit_riot, social = true),
+    AttributeSpec(ProfileAttributeTypes.HOMEBASE_ID, Icons.Outlined.Fingerprint, MR.string.profile_edit_homebase_id, social = true),
 )
 
 /** Handle-only attributes: one unlabelled field holding the username. */
-internal val SOCIAL_ATTRIBUTE_TYPES = listOf(
-    ProfileAttributeTypes.TWITTER,
-    ProfileAttributeTypes.FACEBOOK,
-    ProfileAttributeTypes.INSTAGRAM,
-    ProfileAttributeTypes.TIKTOK,
-    ProfileAttributeTypes.LINKEDIN,
-    ProfileAttributeTypes.YOUTUBE,
-    ProfileAttributeTypes.SNAPCHAT,
-    ProfileAttributeTypes.GITHUB,
-    ProfileAttributeTypes.DISCORD,
-    ProfileAttributeTypes.STACKOVERFLOW,
-    ProfileAttributeTypes.STEAM,
-    ProfileAttributeTypes.MINECRAFT,
-    ProfileAttributeTypes.EPIC,
-    ProfileAttributeTypes.RIOT,
-    ProfileAttributeTypes.HOMEBASE_ID,
-)
+internal val SOCIAL_ATTRIBUTE_TYPES = ATTRIBUTE_SPECS.filter { it.social }.map { it.type }
 
 
 @Composable
