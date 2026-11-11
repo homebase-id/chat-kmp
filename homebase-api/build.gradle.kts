@@ -255,6 +255,10 @@ kotlin {
         jvmMain.get().dependsOn(skiaMain)
         nativeMain.get().dependsOn(skiaMain)
         wasmJsMain.get().dependsOn(skiaMain)
+        // Desktop and web have no native resampler, so they share the Kotlin Lanczos.
+        val kotlinResamplerMain = create("kotlinResamplerMain") { dependsOn(skiaMain) }
+        jvmMain.get().dependsOn(kotlinResamplerMain)
+        wasmJsMain.get().dependsOn(kotlinResamplerMain)
 
         val javaMain = create("javaMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(javaMain)
