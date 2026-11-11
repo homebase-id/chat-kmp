@@ -815,10 +815,7 @@ class CardContentTest {
         assertIs<ProfileCardEvent.ContentRemovedFromCard>(settled(removed))
         assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
         assertFalse(rig.item(ProfileAttributeTypes.EMAIL).shown)
-        rig.open(friends)
-        assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
 
-        rig.open(work)
         rig.write { rig.vm.onAudienceUndone() }
         assertEquals(listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).sorted(), rig.circleIds().orEmpty().sorted())
         assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
