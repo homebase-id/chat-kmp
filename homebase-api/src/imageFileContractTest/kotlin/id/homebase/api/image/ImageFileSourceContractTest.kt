@@ -41,7 +41,7 @@ class ImageFileSourceContractTest {
         return bytes to ops.writeBytesToTempFile(bytes, "file_source_", ".jpg").also { written += it }
     }
 
-    private fun opensDirectly(path: String) = openImageFile(path)?.use { true } ?: false
+    private fun opensDirectly(path: String) = openImageFile(path, ops)?.use { true } ?: false
 
     @Test
     fun aPathMakesTheSameImagesAsItsBytes() = runTest {

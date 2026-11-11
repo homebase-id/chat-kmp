@@ -45,7 +45,7 @@ expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
 /** [readImageMetadata] for the file at [path], reading only its header where the platform can. */
 suspend fun readImageMetadata(path: String, fileOps: FileOperationsProvider): ImageMetadata? =
     withContext(Dispatchers.Default) {
-        val file = openImageFile(path) ?: return@withContext readImageMetadata(fileOps.readFileBytes(path))
+        val file = openImageFile(path, fileOps) ?: return@withContext readImageMetadata(fileOps.readFileBytes(path))
         file.use { it.metadata() }
     }
 

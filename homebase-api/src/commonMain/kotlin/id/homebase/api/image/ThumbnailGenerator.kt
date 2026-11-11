@@ -7,16 +7,11 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 val tinyThumbSize = ThumbnailInstruction(quality = 76, maxPixelDimension = 20, maxBytes = MAX_TINY_BYTES)
 
-/**
- * Everything made from one image in one decode. [finalImage] is the payload, null where the file itself is.
- * [sourceFormat] and [sourceByteCount] describe the file, so a caller needn't read it again to ask.
- */
+/** Everything made from one image in one decode. [finalImage] is the payload, null where the file itself is. */
 class MediaImages(
     val displayedSize: ImageSize,
     val tiny: EmbeddedThumb?,
@@ -24,7 +19,6 @@ class MediaImages(
     val finalImage: RenderedImage?,
     val sourceFormat: String? = null,
     val sourceByteCount: Long? = null,
-    /** Only read when asked for. */
     val metadata: ImageMetadata? = null,
 )
 
@@ -47,18 +41,13 @@ suspend fun createMediaImages(
     allowFinalImage: Boolean = true,
     readMetadata: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
-    val media = if (isSvg(imageBytes)) {
-        createSvgImages(imageBytes, payloadKey, setting)
-    } else {
-        openImageSource(imageBytes).use { mediaImagesFrom(it, imageBytes, payloadKey, setting, allowFinalImage, readMetadata) }
+    if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
+    openImageSource(imageBytes).use {
+        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata)
     }
-    media.withSource(ImageFormatDetector.detectFormat(imageBytes), imageBytes.size.toLong())
 }
 
-/**
- * [createMediaImages] for the file at [path]. On the phones the decoder reads the file itself, so it
- * never sits in memory whole; elsewhere, and for a Photos-library asset or an SVG, the bytes are read once.
- */
+/** [createMediaImages] for the file at [path], which the phones' decoders read without it ever sitting in memory whole. */
 suspend fun createMediaImages(
     path: String,
     fileOps: FileOperationsProvider,
@@ -67,42 +56,35 @@ suspend fun createMediaImages(
     allowFinalImage: Boolean = true,
     readMetadata: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
-    val file = openImageFile(path)
+    val header = fileOps.readFileHeaderBytes(path)
+    val file = openImageFile(path, fileOps).takeUnless { isSvg(header) }
         ?: return@withContext createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata)
-    file.use {
-        val header = fileOps.readFileHeaderBytes(path)
-        if (isSvg(header)) {
-            return@withContext createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata)
-        }
-        mediaImagesFrom(it, header, payloadKey, setting, allowFinalImage, readMetadata)
-            .withSource(ImageFormatDetector.detectFormat(header), fileOps.getFileSize(path))
-    }
+    file.use { mediaImagesFrom(it, header, fileOps.getFileSize(path), payloadKey, setting, allowFinalImage, readMetadata) }
 }
 
 // Every check here needs only the header: a GIF keeps its file whether or not it animates.
 private suspend fun mediaImagesFrom(
     source: ImageSource,
     header: ByteArray,
+    byteCount: Long,
     payloadKey: String,
     setting: MediaQuality,
     allowFinalImage: Boolean,
     readMetadata: Boolean,
 ): MediaImages {
-    val gif = ImageFormatDetector.detectFormat(header) == "image/gif"
+    val format = ImageFormatDetector.detectFormat(header)
+    val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
     val media = renderPlanned(source, payloadKey, displayedSize = null) { size ->
         val plan = planMediaImages(size, setting)
         plan.copy(thumbnails = if (gif) emptyList() else plan.thumbnails, finalImage = if (keepsItsFile) null else plan.finalImage)
     }
-    val metadata = if (readMetadata) source.metadata() else null
-    if (!gif) return MediaImages(media.displayedSize, media.tiny, media.thumbnails, media.finalImage, metadata = metadata)
     // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
     val natural = media.displayedSize
-    return MediaImages(natural, media.tiny?.copy(pixelWidth = natural.pixelWidth, pixelHeight = natural.pixelHeight), media.thumbnails, null, metadata = metadata)
+    val tiny = if (gif) media.tiny?.copy(pixelWidth = natural.pixelWidth, pixelHeight = natural.pixelHeight) else media.tiny
+    val metadata = if (readMetadata) source.metadata() else null
+    return MediaImages(natural, tiny, media.thumbnails, media.finalImage, format, byteCount, metadata)
 }
-
-private fun MediaImages.withSource(format: String?, byteCount: Long) =
-    MediaImages(displayedSize, tiny, thumbnails, finalImage, format, byteCount, metadata)
 
 // Vector data is resolution-independent, so a 16x16 favicon still gets its full set of thumbnails:
 // it's planned from a render at the largest row rather than from its declared size.
@@ -126,8 +108,7 @@ private suspend fun renderPlanned(
     planFor: (ImageSize) -> MediaImagePlan,
 ): MediaImages {
     var plan: MediaImagePlan? = null
-    val context = currentCoroutineContext()
-    val result = renderFrom(source, { context.ensureActive() }) { size -> planFor(size).also { plan = it }.toOutputs() }
+    val result = renderImages(source) { size -> planFor(size).also { plan = it }.toOutputs() }
     val thumbnailCount = plan!!.thumbnails.size
     return MediaImages(
         displayedSize = displayedSize ?: result.displayedSize,

@@ -49,16 +49,16 @@ import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.kCGBitmapByteOrder32Big
 import platform.CoreGraphics.kCGColorSpaceDisplayP3
 import platform.CoreGraphics.kCGColorSpaceSRGB
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.accessSecurityScope
 import id.homebase.api.file.isPhotoLibraryPath
-import id.homebase.api.foundation.toByteArray
-import platform.Foundation.CFBridgingRelease
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
-import platform.Foundation.NSDictionary
 import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
 import platform.Foundation.dataWithBytes
-import platform.Foundation.dataWithContentsOfFile
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
 import platform.ImageIO.CGImageSourceCreateThumbnailAtIndex
 import platform.ImageIO.CGImageSourceCreateWithData
@@ -110,10 +110,7 @@ private class ImageIoSource(
         }
     }
 
-    override fun metadata(): ImageMetadata? {
-        val props = CGImageSourceCopyPropertiesAtIndex(source, 0.convert(), null) ?: return null
-        return (CFBridgingRelease(props) as? NSDictionary)?.let(::buildMetadata)
-    }
+    override fun metadata(): ImageMetadata? = source.readMetadata()
 
     override fun close() {
         try {
@@ -180,13 +177,10 @@ private fun openWithImageIo(bytes: ByteArray): ImageSource? {
     return ImageIoSource(source, displayed, fallback = { SkiaImageSource(bytes) })
 }
 
-// Holds the security scope from open to close, so a Files-app pick outside the sandbox stays readable.
-internal actual fun openImageFile(path: String): ImageSource? {
+internal actual fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource? {
     if (isPhotoLibraryPath(path)) return null
-    val url = NSURL.fileURLWithPath(path.removePrefix("file://"))
-    val accessed = url.startAccessingSecurityScopedResource()
-    val stopAccess = { if (accessed) url.stopAccessingSecurityScopedResource() }
-    val cfUrl: CFURLRef? = CFBridgingRetain(url)?.reinterpret()
+    val closeScope = accessSecurityScope(path)
+    val cfUrl: CFURLRef? = CFBridgingRetain(NSURL.fileURLWithPath(path))?.reinterpret()
     val source = try {
         cfUrl?.let { CGImageSourceCreateWithURL(it, null) }
     } finally {
@@ -195,14 +189,11 @@ internal actual fun openImageFile(path: String): ImageSource? {
     val displayed = source?.let(::displayedSizeOf)
     if (source == null || displayed == null) {
         source?.let(::CFRelease)
-        stopAccess()
+        closeScope()
         return null
     }
-    val readWhole = {
-        val data = NSData.dataWithContentsOfFile(path) ?: throw IllegalArgumentException("Couldn't read $path")
-        SkiaImageSource(data.toByteArray())
-    }
-    return ImageIoSource(source, displayed, fallback = readWhole, onClose = stopAccess)
+    val readWhole = { SkiaImageSource(FileSystem.SYSTEM.read(path.toPath()) { readByteArray() }) }
+    return ImageIoSource(source, displayed, fallback = readWhole, onClose = closeScope)
 }
 
 // CF lookups, not NSDictionary.objectForKey: a CFStringRef key doesn't bridge to NSString in K/N.

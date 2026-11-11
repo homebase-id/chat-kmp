@@ -17,6 +17,7 @@ import platform.Foundation.NSNumber
 import platform.Foundation.dataWithBytes
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
 import platform.ImageIO.CGImageSourceCreateWithData
+import platform.ImageIO.CGImageSourceRef
 import platform.ImageIO.kCGImagePropertyExifDateTimeOriginal
 import platform.ImageIO.kCGImagePropertyExifDictionary
 import platform.ImageIO.kCGImagePropertyExifOffsetTimeOriginal
@@ -48,10 +49,7 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
         try {
             val source = CGImageSourceCreateWithData(cfData, null) ?: return null
             try {
-                val cfProps = CGImageSourceCopyPropertiesAtIndex(source, 0.convert(), null)
-                    ?: return null
-                val props = CFBridgingRelease(cfProps) as? NSDictionary ?: return null
-                buildMetadata(props)
+                source.readMetadata()
             } finally {
                 CFRelease(source)
             }
@@ -64,7 +62,12 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
     }
 }
 
-internal fun buildMetadata(props: NSDictionary): ImageMetadata {
+internal fun CGImageSourceRef.readMetadata(): ImageMetadata? {
+    val cfProps = CGImageSourceCopyPropertiesAtIndex(this, 0.convert(), null) ?: return null
+    return (CFBridgingRelease(cfProps) as? NSDictionary)?.let(::buildMetadata)
+}
+
+private fun buildMetadata(props: NSDictionary): ImageMetadata {
     val exif = props.objectForKey(kCGImagePropertyExifDictionary) as? NSDictionary
     val tiff = props.objectForKey(kCGImagePropertyTIFFDictionary) as? NSDictionary
     val gps = props.objectForKey(kCGImagePropertyGPSDictionary) as? NSDictionary

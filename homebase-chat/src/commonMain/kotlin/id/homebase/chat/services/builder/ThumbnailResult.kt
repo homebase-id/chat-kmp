@@ -9,7 +9,6 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 data class ThumbnailResult(
     val preview: EmbeddedThumb?,
     val thumbnails: List<ThumbnailFile>,
-    /** The source file's detected type, so the builder needn't read the file again to ask. */
     val sourceFormat: String?,
     val sourceByteCount: Long?,
     /** What a Standard or HD send should carry instead of the file, made from the same decode. */

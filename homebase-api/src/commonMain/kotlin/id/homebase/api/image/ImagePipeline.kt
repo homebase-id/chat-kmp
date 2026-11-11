@@ -1,6 +1,8 @@
 package id.homebase.api.image
 
+import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -96,12 +98,8 @@ internal interface PipelineBitmap : AutoCloseable {
 
 internal expect fun openImageSource(bytes: ByteArray): ImageSource
 
-/**
- * The image at [path] without reading the file into memory: the decoder reads only what it needs.
- * Null where the platform decodes only bytes, or can't open [path] itself (a Photos-library asset),
- * so the caller reads the bytes instead. A source from a path behaves exactly like one from its bytes.
- */
-internal expect fun openImageFile(path: String): ImageSource?
+/** [path] for the decoder to read itself, like its bytes would; null where [fileOps] must read the bytes. */
+internal expect fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource?
 
 /**
  * Makes every planned image from one decode, largest to smallest, each scaled from the one above.
@@ -109,10 +107,12 @@ internal expect fun openImageFile(path: String): ImageSource?
  * keeps the plan's order.
  */
 suspend fun renderImages(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput>): RenderedImages =
-    withContext(Dispatchers.Default) {
-        val context = coroutineContext
-        openImageSource(bytes).use { renderFrom(it, { context.ensureActive() }, plan) }
-    }
+    withContext(Dispatchers.Default) { openImageSource(bytes).use { renderImages(it, plan) } }
+
+internal suspend fun renderImages(source: ImageSource, plan: (ImageSize) -> List<ImageOutput>): RenderedImages {
+    val context = currentCoroutineContext()
+    return renderFrom(source, { context.ensureActive() }, plan)
+}
 
 internal suspend fun renderFrom(
     source: ImageSource,

@@ -39,17 +39,22 @@ import kotlin.coroutines.resumeWithException
 
 internal fun isPhotoLibraryPath(path: String) = path.startsWith("ph://") || path.contains("/L0/")
 
+/** Opens [path]'s security scope, so a Files-app pick outside the sandbox stays readable; call the result to close it. */
+@OptIn(ExperimentalForeignApi::class)
+internal fun accessSecurityScope(path: String): () -> Unit {
+    val url = NSURL.fileURLWithPath(path)
+    val accessed = url.startAccessingSecurityScopedResource()
+    return { if (accessed) url.stopAccessingSecurityScopedResource() }
+}
+
 class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, "") {
 
-    // Held from open to close so Files-app picks outside the sandbox stay readable for the whole stream.
-    @OptIn(ExperimentalForeignApi::class)
     override fun openSource(path: String): Source {
-        val url = NSURL.fileURLWithPath(path)
-        val accessed = url.startAccessingSecurityScopedResource()
+        val closeScope = accessSecurityScope(path)
         val source = try {
             super.openSource(path)
         } catch (t: Throwable) {
-            if (accessed) url.stopAccessingSecurityScopedResource()
+            closeScope()
             throw t
         }
         return object : ForwardingSource(source) {
@@ -57,7 +62,7 @@ class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, 
                 try {
                     super.close()
                 } finally {
-                    if (accessed) url.stopAccessingSecurityScopedResource()
+                    closeScope()
                 }
             }
         }

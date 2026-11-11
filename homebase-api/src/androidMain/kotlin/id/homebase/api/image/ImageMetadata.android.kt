@@ -21,7 +21,6 @@ internal fun ExifInterface.toImageMetadata(): ImageMetadata {
             ?: getAttribute(ExifInterface.TAG_OFFSET_TIME)
     )
 
-    val latLong = latLong
     val altitude = if (hasAttribute(ExifInterface.TAG_GPS_ALTITUDE)) {
         getAltitude(Double.NaN).takeUnless { it.isNaN() }
     } else null

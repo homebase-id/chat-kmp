@@ -25,11 +25,11 @@ class ImageIoSourceTest {
         val ops = IOSFileOperationsProvider()
         val path = ops.writeBytesToTempFile(png, "imageio_file_", ".png")
         try {
-            assertNotNull(openImageFile(path), "ImageIO should have opened the file").use { source ->
+            assertNotNull(openImageFile(path, ops), "ImageIO should have opened the file").use { source ->
                 assertFalse(source is SkiaImageSource)
                 assertEquals(ImageSize(300, 200), source.displayedSize)
             }
-            assertNull(openImageFile("ph://not-a-file"))
+            assertNull(openImageFile("ph://not-a-file", ops))
         } finally {
             ops.deleteTempFile(path)
         }
