@@ -84,3 +84,10 @@ iOS bundles do not carry them.
     Noto Color Emoji (noto_color_emoji.ttf)
         (c) The Noto Project Authors, SIL Open Font License 1.1.
         https://github.com/googlefonts/noto-emoji
+
+The Android image resizer bundles stb_image_resize2 by Jeff Roberts and
+Jorge L. Rodriguez, used under its public-domain dedication (Unlicense),
+with MIT as the alternative, at upstream commit 703100c5f8 of
+https://github.com/nothings/stb_image_resize:
+
+    homebase-imageresize/src/main/cpp/stb_image_resize2.h

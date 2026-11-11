@@ -92,7 +92,7 @@ class CardWireTest {
         assertEquals(ProfileVisibility.CONNECTED.wireValue, body["visibility"]?.jsonPrimitive?.content)
         assertEquals(3, body["priority"]?.jsonPrimitive?.int)
         assertEquals(listOf("c-friends"), body["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
-        assertEquals(JsonPrimitive("Friends"), body["data"]!!.jsonObject["label"])
+        assertFalse("label" in body["data"]!!.jsonObject)
         assertFalse("id" in body)
     }
 

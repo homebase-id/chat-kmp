@@ -85,7 +85,7 @@ class CardContentTest {
     private suspend fun Rig.open(card: CardAudience, stored: Boolean = false) {
         vm.onCardOpened(card)
         vm.await { it.selectedAudience == card && (!stored || it.selectedCard?.isDefault == false) }
-        val expected = if (card is CardAudience.Circle) CardAudiencePayload("circle", card.label) else CardAudiencePayload("public")
+        val expected = if (card is CardAudience.Circle) CardAudiencePayload("circle") else CardAudiencePayload("public")
         settle { host.rendered.lastOrNull()?.audience == expected }
     }
 
