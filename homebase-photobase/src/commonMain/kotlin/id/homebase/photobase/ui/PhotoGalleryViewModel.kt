@@ -3,6 +3,7 @@ package id.homebase.photobase.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -239,7 +240,8 @@ internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
             fileId = fileId,
             driveId = driveId,
             payloadKey = payload.key,
-            keyHeader = keyHeader,
+            // The player decrypts with exactly this header, and each payload has its own IV.
+            keyHeader = payload.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
             payload = payload,
         )
     } else {
