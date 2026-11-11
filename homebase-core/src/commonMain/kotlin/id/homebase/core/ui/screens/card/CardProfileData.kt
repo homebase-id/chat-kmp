@@ -56,12 +56,10 @@ fun buildCardPayload(
     val values = onCard.visibleValues(canSee)
     val socialIds = cardSocialFields.mapValues { (_, social) -> onCard.firstOrNull { it.type == social.attributeType }?.id?.toString() }
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
-    val status = text(ProfileField.STATUS)
-    // A status scoped to this card's circle is more specific than the homepage tagLine; a public one isn't.
-    val ownStatus = status?.takeIf {
-        onCard.visibleAttribute(ProfileAttributeTypes.STATUS, canSee, listOf(ProfileAttributeTypes.KEY_STATUS))
-            ?.acl?.isVisibleTo(ProfileVisibility.ANONYMOUS) == false
-    }
+    val statusRecord = onCard.visibleAttribute(ProfileAttributeTypes.STATUS, canSee, listOf(ProfileAttributeTypes.KEY_STATUS))
+    val status = statusRecord?.string(ProfileAttributeTypes.KEY_STATUS)?.trim()?.ifEmpty { null }
+    // A status scoped narrower than Public is more specific than the homepage tagLine.
+    val ownStatus = status.takeIf { statusRecord?.acl?.isVisibleTo(ProfileVisibility.ANONYMOUS) == false }
     return CardPayload(
         design = design,
         audience = audience.toPayload(),

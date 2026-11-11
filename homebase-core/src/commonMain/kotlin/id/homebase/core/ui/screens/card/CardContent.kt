@@ -85,10 +85,10 @@ internal val CARD_RENDERED_TYPES = setOf(
     ProfileAttributeTypes.LINK,
 ) + CARD_SOCIAL_TYPES
 
-// Each add makes a new record, so the profile can hold several; a status is one per audience, the most specific winning.
+// Each add makes a new record, so the profile can hold several; the card shows the most specific status.
 internal val REPEATABLE_TYPES = setOf(ProfileAttributeTypes.LINK, ProfileAttributeTypes.PHONE, ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.STATUS)
 
-// A card already has its own status unless the only one it shows is the Public one a circle card inherits.
+// An inherited (locked) Public status doesn't count, so a circle card can still add its own.
 internal fun List<CardContentItem>.addableTypesPresent(): Set<String> =
     filterNot { it.type == ProfileAttributeTypes.STATUS && (!it.shown || it.locked) }.map { it.type }.toSet()
 
