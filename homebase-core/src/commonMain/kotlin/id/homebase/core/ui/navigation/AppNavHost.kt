@@ -336,7 +336,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.TextButton
 import id.homebase.core.upgrade.PendingUpgradeState
-import id.homebase.resources.cancel
 import androidx.compose.ui.window.DialogProperties
 import id.homebase.resources.pending_upgrade_snackbar_message
 import id.homebase.resources.profile_card_nfc_shared
