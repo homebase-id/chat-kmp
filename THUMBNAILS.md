@@ -377,7 +377,9 @@ Every platform has one interface, `ImageSource` plus `PipelineBitmap`, whose KDo
 |---|---|---|
 | **Photos (Photobase)** | **Keeps everything,** in every setting: GPS, EXIF and XMP. It's the user's own zero-knowledge encrypted library. | None |
 | **Chat** | **Always stripped** (`PayloadBundleEncryptionService.scrubImageMetadata`, #1297), so recipients don't get the sender's location or camera serial | None |
-| **Moments** | Unchanged: the per-image location selector decides whether GPS travels, in the `MediaInfo` sidecar | None |
+| **Moments** | **Stripped** by the same upload scrub as chat, HEIC on Original included. The per-image location selector decides whether GPS travels, in the `MediaInfo` sidecar | None |
+
+The scrubber handles JPEG, PNG, WebP and HEIC. Any other image format (GIF, BMP, AVIF) goes out with its metadata intact, and the upload logs a warning naming the format.
 
 **One API, one required parameter.** The same pipeline serves chat and Photos, so the caller says what happens to the final image's metadata. The parameter is something like `metadata = Keep` or `Strip`.
 

@@ -1,5 +1,6 @@
 package id.homebase.api.image
 
+import id.homebase.api.lib.image.ImageFormatDetector
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -286,5 +287,19 @@ class ImageMetadataScrubberTest {
         assertSame(gif, ImageMetadataScrubber.scrub(gif))
         val empty = ByteArray(0)
         assertContentEquals(empty, ImageMetadataScrubber.scrub(empty))
+    }
+
+    // The send path warns on anything supports() rejects, so a new format can't leak silently.
+    @Test
+    fun supports_coversEveryScrubbedFormatAndNothingElse() {
+        listOf(jpeg(), png(), webp(), HeicFixtures.geotaggedRotated).forEach {
+            assertTrue(ImageMetadataScrubber.supports(it), ImageFormatDetector.detectFormat(it))
+        }
+        val avif = HeicFixtures.geotaggedRotated.copyOf().also { "avif".encodeToByteArray().copyInto(it, 8) }
+        val bmp = "BM".encodeToByteArray() + ByteArray(30)
+        val gif = "GIF89a".encodeToByteArray() + ByteArray(20) { 4 }
+        listOf(gif, bmp, avif, ByteArray(0)).forEach {
+            assertFalse(ImageMetadataScrubber.supports(it), it.decodeToString(0, minOf(12, it.size)))
+        }
     }
 }

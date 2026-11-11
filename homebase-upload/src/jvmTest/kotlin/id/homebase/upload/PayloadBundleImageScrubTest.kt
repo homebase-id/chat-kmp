@@ -1,5 +1,9 @@
 package id.homebase.upload
 
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
+import co.touchlab.kermit.platformLogWriter
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.eventbus.EventBus
@@ -188,6 +192,43 @@ class PayloadBundleImageScrubTest {
             provider.deleteTempFile(src)
             staged?.let { provider.deleteTempFile(it) }
         }
+    }
+
+    @Test
+    fun encryptBundle_unsupportedImageFormat_goesOutUnchangedWithAWarning() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val svc = service(provider)
+        val key = KeyHeader.newRandom16()
+        val gif = "GIF89a".encodeToByteArray() + ByteArray(32) { 4 }
+        val src = provider.writeBytesToTempFile(gif, "unsupported_", ".gif")
+        var staged: String? = null
+        val warnings = mutableListOf<String>()
+        Logger.setLogWriters(
+            object : LogWriter() {
+                override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+                    if (severity >= Severity.Warn) warnings += message
+                }
+            }
+        )
+        try {
+            val payload = svc.encryptBundle(
+                Uuid.random(),
+                bundle(PayloadFile(key = "p0", filePath = src, contentType = "image/gif")),
+                key.aesKey,
+                this,
+            ).payloads.single()
+            staged = payload.filePath
+            assertContentEquals(
+                KeyHeader(aesKey = key.aesKey, iv = assertNotNull(payload.iv)).encryptDataAes(gif),
+                File(staged).readBytes(),
+            )
+        } finally {
+            Logger.setLogWriters(platformLogWriter())
+            provider.deleteTempFile(src)
+            staged?.let { provider.deleteTempFile(it) }
+        }
+        val warning = warnings.single()
+        assertTrue("image/gif" in warning && "intact" in warning, warning)
     }
 
     private fun indexOfSub(haystack: ByteArray, needle: ByteArray): Int {

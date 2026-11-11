@@ -13,6 +13,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.encryptFileStreaming
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.video.VideoPayloadProgressPhase
 import id.homebase.api.video.VideoPayloadProcessor
@@ -159,6 +160,13 @@ class PayloadBundleEncryptionService(
         } catch (t: Throwable) {
             Logger.w(throwable = t, tag = TAG) {
                 "metadata scrub skipped — could not read ${payload.filePath}"
+            }
+            return payload.filePath
+        }
+        if (!ImageMetadataScrubber.supports(original)) {
+            Logger.w(tag = TAG) {
+                "metadata scrub skipped — ${payload.contentType} (sniffed ${ImageFormatDetector.detectFormat(original)}) " +
+                    "isn't a format the scrubber handles; its EXIF/XMP goes out intact"
             }
             return payload.filePath
         }

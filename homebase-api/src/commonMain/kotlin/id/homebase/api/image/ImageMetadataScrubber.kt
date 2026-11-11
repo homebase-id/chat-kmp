@@ -27,6 +27,9 @@ object ImageMetadataScrubber {
      * nothing to remove or the format isn't handled. Callers can use referential equality
      * (`result === bytes`) to skip re-writing the file.
      */
+    fun supports(bytes: ByteArray): Boolean =
+        isJpeg(bytes) || isPng(bytes) || isWebp(bytes) || ImageFormatDetector.isHeic(bytes)
+
     fun scrub(bytes: ByteArray): ByteArray = when {
         isJpeg(bytes) -> scrubJpeg(bytes)
         isPng(bytes) -> scrubPng(bytes)
