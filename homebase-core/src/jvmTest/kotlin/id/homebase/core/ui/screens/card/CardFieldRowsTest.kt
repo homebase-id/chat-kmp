@@ -91,7 +91,6 @@ class CardFieldRowsTest {
                     circles = circles,
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    importSources = emptyList(),
                     showCardsButton = true,
                     onAudience = { id, audience ->
                         audiences += id to audience
@@ -102,7 +101,6 @@ class CardFieldRowsTest {
                     onAdd = { _, _ -> },
                     onChangePhoto = {},
                     onRemovePhoto = {},
-                    onImport = {},
                     onFieldShown = { id, on ->
                         shown += id to on
                         current = current.withHidden(id.toString(), !on, known)
@@ -408,7 +406,6 @@ class CardFieldRowsTest {
                     circles = circles,
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    importSources = emptyList(),
                     showCardsButton = true,
                     onAudience = { _, _ -> },
                     onEdit = { _, _, _ -> },
@@ -416,7 +413,6 @@ class CardFieldRowsTest {
                     onAdd = { _, _ -> },
                     onChangePhoto = {},
                     onRemovePhoto = {},
-                    onImport = {},
                     onFieldShown = { _, _ -> },
                     onFieldsReordered = { reordered += it; fields = CardFields(order = it.map { id -> id.toString() }) },
                 )
@@ -455,7 +451,6 @@ class CardFieldRowsTest {
                     circles = circles,
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    importSources = emptyList(),
                     showCardsButton = true,
                     onAudience = { _, _ -> },
                     onEdit = { _, _, _ -> },
@@ -463,7 +458,6 @@ class CardFieldRowsTest {
                     onAdd = { _, _ -> },
                     onChangePhoto = {},
                     onRemovePhoto = {},
-                    onImport = {},
                     onFieldShown = { _, _ -> },
                     onFieldsReordered = { reordered += it; fields = CardFields(order = it.map { id -> id.toString() }) },
                 )
@@ -504,7 +498,6 @@ class CardFieldRowsTest {
                     circles = circles,
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    importSources = emptyList(),
                     showCardsButton = showCardsButton,
                     onAudience = { id, audience -> audiences += id to audience },
                     onEdit = { _, _, _ -> },
@@ -512,7 +505,6 @@ class CardFieldRowsTest {
                     onAdd = { _, _ -> },
                     onChangePhoto = {},
                     onRemovePhoto = {},
-                    onImport = {},
                     onFieldShown = { id, on ->
                         shown += id to on
                         current = current.withHidden(id.toString(), !on, known)
