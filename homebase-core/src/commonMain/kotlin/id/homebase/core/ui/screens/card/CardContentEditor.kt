@@ -83,6 +83,10 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import id.homebase.resources.profile_card_section_feed
+import id.homebase.resources.profile_card_section_feed_desc
+import id.homebase.resources.profile_card_sections_title
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.toShape
@@ -220,6 +224,8 @@ internal fun CardContentEditor(
     onImport: (CardAudience) -> Unit,
     modifier: Modifier = Modifier,
     onFieldShown: (Uuid, Boolean) -> Unit = { _, _ -> },
+    hiddenSections: Set<String> = emptySet(),
+    onSectionShown: (String, Boolean) -> Unit = { _, _ -> },
     onFieldsReordered: (List<Uuid>) -> Unit = {},
     busy: Boolean = false,
     onDesign: (() -> Unit)? = null,
@@ -495,6 +501,8 @@ internal fun CardContentEditor(
             Spacer(Modifier.height(24.dp))
             addAction()
         }
+        Spacer(Modifier.height(SECTION_GAP))
+        SectionSwitches(hiddenSections = hiddenSections, enabled = enabled, onShown = onSectionShown)
     }
 
     items.firstOrNull { it.id == editingId }?.let { item ->
@@ -549,6 +557,37 @@ internal fun CardContentEditor(
             },
             onDismiss = { copying = false },
         )
+    }
+}
+
+@Composable
+private fun SectionSwitches(hiddenSections: Set<String>, enabled: Boolean, onShown: (String, Boolean) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("card_sections")) {
+        Text(
+            stringResource(MR.string.profile_card_sections_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = colors.onSurface,
+            modifier = Modifier.semantics { heading() },
+        )
+        val on = CARD_SECTION_POSTS !in hiddenSections
+        Surface(color = colors.surfaceContainer, shape = groupedShape(0, 1), modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .heightIn(min = 56.dp)
+                    .testTag("section_$CARD_SECTION_POSTS")
+                    .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = { onShown(CARD_SECTION_POSTS, it) })
+                    .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(BADGE_GAP),
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(MR.string.profile_card_section_feed), style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
+                    Text(stringResource(MR.string.profile_card_section_feed_desc), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                }
+                Switch(checked = on, onCheckedChange = null, enabled = enabled)
+            }
+        }
     }
 }
 

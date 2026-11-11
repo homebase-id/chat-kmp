@@ -6,6 +6,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasTestTag
@@ -111,6 +113,41 @@ class CardFieldRowsTest {
                 )
             }
         }
+    }
+
+    @Test
+    fun theFeedSwitchAtTheBottomOfTheEditorReportsEachFlip() = runComposeUiTest {
+        val flips = mutableListOf<Pair<String, Boolean>>()
+        var hidden by mutableStateOf(emptySet<String>())
+        setContent {
+            MaterialTheme {
+                CardContentEditor(
+                    card = CardAudience.Public,
+                    items = cardContentItems(attributes, circles, CardAudience.Public, null),
+                    circles = circles,
+                    photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
+                    enabled = true,
+                    importSources = emptyList(),
+                    showCardsButton = true,
+                    onAudience = { _, _ -> },
+                    onEdit = { _, _, _ -> },
+                    onDelete = {},
+                    onAdd = { _, _ -> },
+                    onChangePhoto = {},
+                    onRemovePhoto = {},
+                    onImport = {},
+                    hiddenSections = hidden,
+                    onSectionShown = { kind, on ->
+                        flips += kind to on
+                        hidden = if (on) hidden - kind else hidden + kind
+                    },
+                )
+            }
+        }
+        onNodeWithTag("section_$CARD_SECTION_POSTS").assertIsOn().performClick()
+        onNodeWithTag("section_$CARD_SECTION_POSTS").assertIsOff().performClick()
+        onNodeWithTag("section_$CARD_SECTION_POSTS").assertIsOn()
+        assertEquals(listOf(CARD_SECTION_POSTS to false, CARD_SECTION_POSTS to true), flips)
     }
 
     private fun androidx.compose.ui.test.ComposeUiTest.row(section: String, text: String) = onNode(hasTestTag(section) and hasText(text))

@@ -2414,4 +2414,7 @@
     <string name="cd_media_quality_hd_badge">Sendt i HD</string>
     <string name="cd_media_quality_original_badge">Sendt som den originale fil</string>
     <string name="storage_cache_photo_thumbnails">Miniaturer af billeder</string>
+    <string name="profile_card_sections_title">Sektioner på dette kort</string>
+    <string name="profile_card_section_feed">Feed</string>
+    <string name="profile_card_section_feed_desc">Dine seneste offentlige opslag og billeder.</string>
 </resources>
