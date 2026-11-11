@@ -200,3 +200,42 @@ dev runs that were killed at 121 min are the same build that prod finishes in
    escalation already named above), or cut the link's live set. To find what
    holds it, MAT a heap dump from a deliberately capped run (e.g. `-Xmx9g`
    on a branch, `upload_to_testflight` off). Start with the webrtc-kmp jump.
+
+## 2026-11-10: the static-initializer phase owned the live set
+
+Prod and dev release builds hit the 180-min timeout (live set ≥11.5 GB on 12g; 31–39 Full GCs
+of ~200 s each in swap). Two runs on branches, TestFlight and Play upload off:
+
+**Profile** (run 42845381943, `macos-15-intel` 14 GB, `-Xprofile-phases`, a `jcmd
+GC.class_histogram` + main-thread stack every 10 min): green, link 129 min.
+
+| Phase | Time | Live during it |
+|---|---|---|
+| `RemoveRedundantCallsToStaticInitializersPhase` | **54 min** | **11.7–11.8 GB** |
+| `ObjectFiles` (external clang) | 36 min | ~2.9 GB (JVM idle) |
+| `ModuleBitcodeOptimization` + `LTOBitcodeOptimization` | 15 + 9.5 min | 3–5 GB |
+| Everything else | ~15 min | 3–5.7 GB |
+
+- The histogram during that phase: 176 M `CallGraphNode$CallSite` (5.6 GB) plus 2.9 GB of
+  `Object[]` holding them. The stacks are in `CallGraphBuilder.build` /
+  `StaticInitializersOptimization$InterproceduralAnalysis`.
+- Why it exploded: the phase builds its call graph with unfold factors `Int.MAX_VALUE`
+  (`LTO.kt`), and with devirtualization off every virtual call site gets an edge to every
+  override. Turning off devirtualization in July moved the call-graph cost here, and it has
+  grown with the app since.
+- Why skipping it is safe (2.4.21 `TopLevelPhases.runCodegen` bytecode): the phase runs only
+  when `shouldOptimize()`, so every debug build already runs without it. It only deletes
+  calls to file initializers that are already guarded; without it each call stays and checks
+  a flag.
+
+**Fix** (run 42874363855, `macos-15` 7 GB arm64, Xmx12g, otherwise main's settings):
+`-Xdisable-phases=DevirtualizationAnalysis,RemoveRedundantCallsToStaticInitializersPhase`.
+Green: `Build iOS` 92 min (was timing out at 180), link 76 min, **zero Full GCs**, peak
+heap after GC 6.6 GB. IPA 95 MB, the same as the profile run of the same commit.
+
+To profile phases again, add `-Xprofile-phases` to the release framework's `freeCompilerArgs` on
+a branch: the per-phase `Name: N msec` lines land in the gym log in `ios-jvm-oom-diagnostics`.
+
+The exported ObjC surface is large: `ComposeApp.h` is 7.9 MB with 3960 classes, and the
+framework binary is 375 MB. Exported declarations are DCE roots, so trimming `export()` would
+shrink the binary and the LLVM phases. Not measured yet.

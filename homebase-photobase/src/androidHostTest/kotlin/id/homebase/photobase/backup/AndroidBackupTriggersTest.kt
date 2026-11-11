@@ -75,6 +75,16 @@ class AndroidBackupTriggersTest {
     }
 
     @Test
+    fun aContinuationWaitsUnderTheUsersConstraintsAndIsNeverQueuedTwice() {
+        triggers.continueSoon(settings.copy(wifiOnly = true))
+        triggers.continueSoon(settings.copy(wifiOnly = true))
+
+        val waiting = WorkManager.getInstance(context).getWorkInfosForUniqueWork(AndroidBackupTriggers.CONTINUATION_WORK).get()
+        assertEquals(1, waiting.size)
+        assertEquals(NetworkType.UNMETERED, waiting.single().constraints.requiredNetworkType)
+    }
+
+    @Test
     fun turningBackupOffStopsTheWatch() {
         triggers.rearm(settings)
 

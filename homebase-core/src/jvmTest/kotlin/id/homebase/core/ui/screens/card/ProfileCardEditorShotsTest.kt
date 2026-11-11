@@ -1,5 +1,10 @@
 package id.homebase.core.ui.screens.card
 
+import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.test.onChildren
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -335,14 +340,86 @@ class ProfileCardEditorShotsTest {
         editor("k16-profile-cards-off", editorPublic, showCard = false),
         editor("k16-profile-cards-off-friends", editorBase, showCard = false),
         editor("k16-profile-edit-item", editorBase, showCard = false, act = {
+            onNodeWithTag("never_on_card_toggle").performSemanticsAction(SemanticsActions.OnClick)
+            mainClock.advanceTimeBy(SETTLE_MS)
             onNode(SemanticsMatcher("edits the phone") { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Edit Phone" }).performClick()
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
         editor("k16-profile-add-more", editorBase, showCard = false, act = {
-            onNodeWithContentDescription("Add new: More").performClick()
+            onNodeWithContentDescription("Add new: More").performSemanticsAction(SemanticsActions.OnClick)
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
     )
+
+    private fun hiding(state: ProfileCardUiState, audience: CardAudience, vararg types: String) = state.copy(
+        cards = state.cards.map { card ->
+            if (!card.audience.isSameAs(audience)) card else card.copy(
+                overrides = card.overrides.copy(fields = CardFields(hidden = state.attributes.filter { it.type in types }.map { it.id.toString() })),
+            )
+        },
+    )
+    private val k15Friends = hiding(editorBase, friendsCard, ProfileAttributeTypes.BIO_SUMMARY, ProfileAttributeTypes.TWITTER)
+    private val k15Public = hiding(editorPublic, CardAudience.Public, ProfileAttributeTypes.TWITTER)
+    private val k15AllHidden = hiding(editorBase, friendsCard, ProfileAttributeTypes.BIO_SUMMARY, ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.LINK, ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.NAME)
+    private val k15Long = hiding(
+        editorBase.copy(cards = editorBase.cards + card(longCircle), circles = editorBase.circles + CardCircle(longCircle.id, longCircle.label), selectedAudience = longCircle),
+        longCircle, ProfileAttributeTypes.BIO_SUMMARY,
+    )
+    private val TALL = 1500
+    private val k15Reorder = editorBase.copy(
+        attributes = editorBase.attributes + listOf("recipes", "garden").map { attribute(ProfileAttributeTypes.LINK, ProfileAttributeTypes.KEY_LINK_TARGET, "https://bagend.example/$it", ProfileVisibility.CONNECTED, listOf(FRIENDS_CIRCLE_ID)) },
+    )
+    private val k15Shots = listOf(
+        editor("k15-friends", k15Friends, h = TALL),
+        editor("k15-friends-top", k15Friends),
+        editor("k15-public", k15Public, h = TALL),
+        editor("k15-work", hiding(editorWork, workCard, ProfileAttributeTypes.LINK), h = TALL),
+        editor("k15-all-hidden", k15AllHidden, h = TALL),
+        editor("k15-empty", editorEmpty, h = TALL),
+        editor("k15-single-card", k15Public.copy(cards = listOf(public)), h = TALL),
+        editor("k15-long-circle", k15Long, h = TALL),
+        editor("k15-font-scale", k15Friends, fontScale = 1.6f, h = 2200),
+        editor("k15-rtl", k15Friends, rtl = true, h = TALL),
+        editor("k15-small", k15Friends, w = 360, h = TALL),
+        editor("k15-busy", k15Friends.copy(isContentBusy = true), h = TALL),
+        editor("k15-wide", k15Friends, w = 900, h = 1100),
+        editor("k15-reorder", k15Reorder, w = 360, h = TALL),
+        editor("k15-reorder-menu", k15Reorder, w = 360, act = {
+            mainClock.autoAdvance = true
+            onAllNodesWithTag("field_handle", useUnmergedTree = true)[2].performScrollTo()
+            mainClock.autoAdvance = false
+            onAllNodesWithTag("field_handle", useUnmergedTree = true)[1].performSemanticsAction(SemanticsActions.OnClick)
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        editor("k15-reorder-drag", k15Reorder, w = 360, act = {
+            mainClock.autoAdvance = true
+            onAllNodesWithTag("field_handle", useUnmergedTree = true)[2].performScrollTo()
+            mainClock.autoAdvance = false
+            onAllNodesWithTag("field_handle", useUnmergedTree = true)[1].performTouchInput {
+                down(center)
+                repeat(4) { moveBy(androidx.compose.ui.geometry.Offset(0f, 12f)) }
+            }
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        editor("k15-public-hidden-open", k15Public, h = TALL, act = {
+            onNodeWithTag("not_visible").onChildren().onFirst().performSemanticsAction(SemanticsActions.OnClick)
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        editor("k15-add-sheet", k15Friends, act = {
+            onNodeWithTag("content_add").performSemanticsAction(SemanticsActions.OnClick)
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        editor("k15-loading", k15Friends.copy(cards = emptyList())),
+        editor("k15-error", k15Friends.copy(cards = emptyList(), loadFailed = true)),
+        editor("k15-empty-small", editorEmpty, w = 360, h = 640),
+    )
+
+    @Test
+    fun k15FieldDisplayRendersEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in k15Shots) render(shot, dark)
+        }
+    }
 
     private fun polishCustomise(name: String, state: ProfileCardUiState, act: ComposeUiTest.() -> Unit = {}) =
         Shot(name, state, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = act)
@@ -695,6 +772,7 @@ class ProfileCardEditorShotsTest {
             onOption = { _, _ -> },
             onBlockOrder = {},
             onSave = {},
+            onDesign = {}.takeIf { shot.showCard },
             snackbarHostState = remember { SnackbarHostState() },
             // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
             onContentAudience = { _, _ ->
@@ -706,7 +784,7 @@ class ProfileCardEditorShotsTest {
             },
         ) { layoutWidth ->
             when (shot.preview) {
-                Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))
+                Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth), shot.state.contentItems.filter { it.onCard }.takeIf { shot.mode == EditorMode.Content })
                 Preview.Real -> RealCard(dark, shot.state, Modifier.fillMaxSize().laidOutAt(layoutWidth))
                 else -> CardSurface(
                     uiState = shot.state,
@@ -735,11 +813,13 @@ class ProfileCardEditorShotsTest {
 
     // Real-size type laid out at the viewer's width, so the shot shows the preview's scale-down, not a reflow.
     @Composable
-    private fun StandInCard(design: String, palette: CardPalette?, modifier: Modifier) {
-        val name = "Samwise Gamgee"
-        val headline = "HOMEBASE / NEW IDENTITY OWNER"
+    private fun StandInCard(design: String, palette: CardPalette?, modifier: Modifier, fields: List<CardContentItem>? = null) {
+        // In the content editor the stand-in draws what the editor says is on the card, in its order, so the two can be compared.
+        val name = fields?.firstOrNull { it.type == ProfileAttributeTypes.NAME }?.text ?: "Samwise Gamgee"
+        val headline = if (fields == null) "HOMEBASE / NEW IDENTITY OWNER" else fields.firstOrNull { it.type == ProfileAttributeTypes.BIO_SUMMARY }?.text.orEmpty()
         val link = "samwise.gamgee.demo.rocks/posts"
-        val rows = listOf("Chat with me", "Moments", "Instagram", "LinkedIn", "Website")
+        val rows = fields?.filter { it.orderable }?.map { if (it.type == ProfileAttributeTypes.LINK) it.text else "${stringResource(typeLabel(it.type))}: ${it.text}" }
+            ?: listOf("Chat with me", "Moments", "Instagram", "LinkedIn", "Website")
         fun hex(value: String) = Color(hexToArgb(value))
         val ink = palette?.ink?.let(::hex) ?: Color(CardDesign.inkArgb(design))
         val ground = palette?.ground?.let(::hex) ?: Color(CardDesign.baseArgb(design))

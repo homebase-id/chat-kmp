@@ -31,6 +31,7 @@ sealed interface BackupSettingsUiAction {
     data class SetAlbums(val albumIds: Set<String>) : BackupSettingsUiAction
     data object LoadAlbums : BackupSettingsUiAction
     data object BackUpNow : BackupSettingsUiAction
+    data object RecheckDriveAndBackUp : BackupSettingsUiAction
     data object RetryFailures : BackupSettingsUiAction
     data object PermissionChanged : BackupSettingsUiAction
 }
@@ -72,8 +73,12 @@ class BackupSettingsViewModel(
                 _uiState.update { it.copy(albums = albums) }
             }
             BackupSettingsUiAction.BackUpNow -> controller.backUpNow()
+            BackupSettingsUiAction.RecheckDriveAndBackUp -> controller.recheckDriveAndBackUp()
             BackupSettingsUiAction.RetryFailures -> controller.retryFailures()
-            BackupSettingsUiAction.PermissionChanged -> controller.onAppForeground()
+            BackupSettingsUiAction.PermissionChanged -> {
+                controller.onAppForeground()
+                controller.refreshStatus()
+            }
         }
     }
 }

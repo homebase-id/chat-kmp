@@ -214,7 +214,7 @@ class NotificationService(
     private val messageResolver: NotificationMessageResolver? = null,
     private val replacedSignIns: Flow<ApiCredentials>,
     private val httpClient: HttpClient,
-) {
+) : AppNavigator {
 
     private val pushHandover = object : PushHandoverSteps {
         override val hasPush = !isDesktop()
@@ -373,7 +373,7 @@ class NotificationService(
     fun onVoipToken(token: String) {
         voipToken = token
         Logger.i(tag = "NotificationService") { "VoIP token received (${token.length} chars)" }
-        scope.launch { notificationBackend.getPushToken()?.let { registerToken(it) } }
+        scope.launch { getToken()?.let { registerToken(it) } }
     }
 
     /**
@@ -756,28 +756,25 @@ class NotificationService(
     }
 
     /** Navigate to a specific conversation (used for deep links and share shortcuts). */
-    fun navigateToConversation(
+    override fun navigateToConversation(
         conversationId: String,
-        source: NotificationNavigationEvent.OpenConversation.Source =
-            NotificationNavigationEvent.OpenConversation.Source.NotificationTap,
+        source: NotificationNavigationEvent.OpenConversation.Source,
     ) {
-        _navigationEvents.trySend(
-            NotificationNavigationEvent.OpenConversation(conversationId, source)
-        )
+        emitNavigationEvent(NotificationNavigationEvent.OpenConversation(conversationId, source))
     }
 
     /** Navigate to the moments composer (used for the "New Moment" share deep link). */
-    fun navigateToMomentCompose() {
-        _navigationEvents.trySend(NotificationNavigationEvent.OpenMomentCompose)
+    override fun navigateToMomentCompose() {
+        emitNavigationEvent(NotificationNavigationEvent.OpenMomentCompose)
     }
 
     /** Navigate to the WebDrop composer (used for the "New WebDrop" share deep link). */
-    fun navigateToWebDropCompose() {
-        _navigationEvents.trySend(NotificationNavigationEvent.OpenWebDropCompose)
+    override fun navigateToWebDropCompose() {
+        emitNavigationEvent(NotificationNavigationEvent.OpenWebDropCompose)
     }
 
     fun navigateToApp(route: Route) {
-        _navigationEvents.trySend(NotificationNavigationEvent.OpenApp(route))
+        emitNavigationEvent(NotificationNavigationEvent.OpenApp(route))
     }
 
     /** Displays a rich notification using platform-specific APIs. */

@@ -21,5 +21,6 @@ enum class VideoQuality {
 // LOW is not reachable from the user-facing toggle; it stays for callers that ask for it directly.
 fun MediaQuality.toVideoQuality(): VideoQuality = when (this) {
     MediaQuality.STANDARD -> VideoQuality.STANDARD
-    MediaQuality.HIGH -> VideoQuality.HIGH
+    // Original too: compression is what strips a video's location and guarantees it plays on every client.
+    MediaQuality.HD, MediaQuality.ORIGINAL -> VideoQuality.HIGH
 }

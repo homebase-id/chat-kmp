@@ -56,6 +56,16 @@ class BackupPolicyTest {
     }
 
     @Test
+    fun aFullOrHotPhonePausesEvenWithTheAppOpen() {
+        val on = BackupSettings(enabled = true)
+        val full = online.copy(freeStorageBytes = 100L * 1024 * 1024)
+        assertEquals(BackupPauseReason.PhoneStorageLow, backupPauseReason(on, full, interactive = true))
+        assertEquals(BackupPauseReason.TooHot, backupPauseReason(on, online.copy(isOverheated = true), interactive = true))
+        assertNull(backupPauseReason(on, online.copy(freeStorageBytes = 10L * 1024 * 1024 * 1024), interactive = false))
+        assertNull(backupPauseReason(on, online.copy(freeStorageBytes = null), interactive = false), "unknown space doesn't pause")
+    }
+
+    @Test
     fun anOpenAppIgnoresBatteryButNotWifiOnly() {
         val on = BackupSettings(enabled = true, chargingOnly = true)
         assertNull(backupPauseReason(on, online.copy(isBatteryLow = true), interactive = true))

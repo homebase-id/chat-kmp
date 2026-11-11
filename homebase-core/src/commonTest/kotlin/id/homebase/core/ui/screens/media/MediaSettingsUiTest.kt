@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 class MediaSettingsUiTest {
 
     @Test
-    fun showsTitleAndBothQualities() = runComposeUiTest {
+    fun showsTitleAndAllThreeQualities() = runComposeUiTest {
         setTestLocale("en-US")
         setContent {
             MaterialTheme {
@@ -32,7 +32,8 @@ class MediaSettingsUiTest {
         }
         onNodeWithText("Media").assertExists()
         onNodeWithText("Standard").assertExists()
-        onNodeWithText("High").assertExists()
+        onNodeWithText("HD").assertExists()
+        onNodeWithText("Original").assertExists()
     }
 
     @Test
@@ -41,17 +42,17 @@ class MediaSettingsUiTest {
         setContent {
             MaterialTheme {
                 MediaSettingsUi(
-                    uiState = MediaSettingsUiState(mediaQuality = MediaQuality.HIGH),
+                    uiState = MediaSettingsUiState(mediaQuality = MediaQuality.ORIGINAL),
                     onAction = {},
                     onBackClick = {},
                 )
             }
         }
-        onNodeWithTag(MediaQuality.HIGH.code).assertIsSelected()
+        onNodeWithTag(MediaQuality.ORIGINAL.code).assertIsSelected()
     }
 
     @Test
-    fun selectingHighEmitsTheAction() = runComposeUiTest {
+    fun selectingOriginalEmitsTheAction() = runComposeUiTest {
         setTestLocale("en-US")
         var selected: MediaQuality? = null
         setContent {
@@ -65,8 +66,8 @@ class MediaSettingsUiTest {
                 )
             }
         }
-        onNodeWithTag(MediaQuality.HIGH.code).performClick()
-        assertEquals(MediaQuality.HIGH, selected)
+        onNodeWithTag(MediaQuality.ORIGINAL.code).performClick()
+        assertEquals(MediaQuality.ORIGINAL, selected)
     }
 
     @Test

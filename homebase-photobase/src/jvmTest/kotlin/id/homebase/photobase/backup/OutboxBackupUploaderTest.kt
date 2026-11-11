@@ -67,7 +67,7 @@ class OutboxBackupUploaderTest {
         val ledger = BackupLedger(db.deviceBackup) { 1000 }
         ledger.apply(fullListing(asset(id, createdAtMs = 12345, mediaType = mediaType)), null)
         val hashed = HashedAsset(parts.map { digest(it) })
-        ledger.markHashed(id, hashed.contentHash, hashed.uniqueId)
+        ledger.markHashed(id, hashed.contentHash, hashed.uniqueId, 10)
         return ledger.row(id)!! to hashed.uniqueId
     }
 
@@ -180,6 +180,23 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
+    fun aVideosTinyPreviewGoesInsideTheEncryptedContent() = runTest {
+        val bytes = "video bytes".encodeToByteArray()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("v.mp4", bytes), "video/mp4", false)), PreviewingEncryptor())
+
+        uploader.handOff(row, uniqueId)
+
+        val (_, request) = queuedRequest(uniqueId)
+        assertNull(request.metadata.appData.previewThumbnail)
+        assertNull(request.payloads.single().previewThumbnail)
+        val decrypted = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
+        val read = OdinSystemSerializer.deserialize<PhotoContent>(decrypted)
+        assertNotNull(read.tiny, "The tiny preview should land in the encrypted content")
+        assertEquals("image/webp", read.tinyType)
+    }
+
+    @Test
     fun aVideoThatChangedIsNotEncoded() = runTest {
         val (row, uniqueId) = rowFor("a", BackupMediaType.Video, "before".encodeToByteArray())
         val encryptor = PreviewingEncryptor()
@@ -216,8 +233,9 @@ private class PreviewingEncryptor : PayloadBundleEncryptor {
 
     override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle {
         calls++
-        val preview = id.homebase.api.client.drives.upload.EmbeddedThumb(1, 1, "image/webp")
-        return bundle!!.copy(payloads = bundle.payloads.map { it.copy(previewThumbnail = preview, isPreEncrypted = true, iv = ByteArray(16)) }, previewThumbs = listOf(preview))
+        // On the payload and nowhere else, which is where the real video processing puts it.
+        val preview = id.homebase.api.client.drives.upload.EmbeddedThumb(1, 1, "image/webp", id.homebase.api.serialization.Base64Bytes(byteArrayOf(9, 9)))
+        return bundle!!.copy(payloads = bundle.payloads.map { it.copy(previewThumbnail = preview, isPreEncrypted = true, iv = ByteArray(16)) })
     }
 }
 

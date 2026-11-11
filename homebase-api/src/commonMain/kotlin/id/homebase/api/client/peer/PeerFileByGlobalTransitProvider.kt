@@ -15,6 +15,7 @@ import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import kotlinx.coroutines.flow.Flow
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -76,6 +77,26 @@ class PeerFileByGlobalTransitProvider(
             return null
         }
         return decrypted(response, keyHeader)
+    }
+
+    /**
+     * A whole payload, decrypted, to [consume] as it streams in; false on 404. Peer route only, and outside the
+     * payload and HLS chunk caches: a whole-file download must neither depend on the CDN nor evict video segments.
+     * The cipher's padding is stripped, so the plaintext is exactly the original bytes.
+     */
+    suspend fun streamPayloadDecrypted(
+        peer: OdinId,
+        driveId: Uuid,
+        globalTransitId: Uuid,
+        payloadKey: String,
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean {
+        require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
+        return driveFileHttpProvider.streamDecrypted(
+            "/peer/$peer/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey", keyHeader, onProgress, consume,
+        )
     }
 
     /** Null on 404. */

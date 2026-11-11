@@ -20,11 +20,11 @@ class MediaQualityPreferenceTest {
     fun roundTripsAndMirrorsIntoPreferenceState() {
         val prefs = UserPreferences(InMemorySettings())
 
-        prefs.mediaQuality = MediaQuality.HIGH
+        prefs.mediaQuality = MediaQuality.ORIGINAL
 
-        assertEquals(MediaQuality.HIGH, prefs.mediaQuality)
+        assertEquals(MediaQuality.ORIGINAL, prefs.mediaQuality)
         // The composer's HD chip and the settings screen both read the mirrored flow.
-        assertEquals(MediaQuality.HIGH, prefs.preferenceState.value.mediaQuality)
+        assertEquals(MediaQuality.ORIGINAL, prefs.preferenceState.value.mediaQuality)
     }
 
     @Test

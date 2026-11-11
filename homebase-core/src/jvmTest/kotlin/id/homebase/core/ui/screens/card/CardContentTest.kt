@@ -212,7 +212,7 @@ class CardContentTest {
     }
 
     @Test
-    fun aPublicItemIsLockedOnACircleCardAndCannotBeSwitchedOffSilently() = runTest(dispatcher) {
+    fun aPublicItemSwitchedOffOnACircleCardStaysOnTheOtherCirclesOnly() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
         val rig = rig(wire)
@@ -220,12 +220,8 @@ class CardContentTest {
 
         val item = rig.item(ProfileAttributeTypes.BIO_SUMMARY)
         assertTrue(item.shown && item.locked)
-        rig.vm.toggle(bio, false)
-        assertEquals(0, wire.puts)
-        assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
-
-        rig.write { rig.vm.onContentEdited(bio, emptyMap(), ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID))) }
-        assertEquals(listOf(FAMILY_CIRCLE_ID), rig.circleIds())
+        rig.write { rig.vm.toggle(bio, false) }
+        assertEquals(setOf(FAMILY_CIRCLE_ID, WORK_CIRCLE_ID), rig.circleIds()?.toSet())
         assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
         assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).locked)
     }
@@ -725,7 +721,11 @@ class CardContentTest {
         val all = setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID)
         assertEquals(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID)), ProfileAudience.OnlyMe.shownOn(friends, true, null))
         assertNull(ProfileAudience.OnlyMe.shownOn(friends, false, null))
-        assertNull(ProfileAudience.Public.shownOn(friends, false, null))
+        assertNull(ProfileAudience.Public.shownOn(friends, true, null))
+        val twoCircles = listOf(CardCircle(FAMILY_CIRCLE_ID, "Family"), CardCircle(FRIENDS_CIRCLE_ID, "Friends"))
+        assertEquals(ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID)), ProfileAudience.Public.shownOn(friends, false, null, twoCircles))
+        assertEquals(ProfileAudience.OnlyMe, ProfileAudience.Public.shownOn(friends, false, null, listOf(CardCircle(FRIENDS_CIRCLE_ID, "Friends"))))
+        assertEquals(ProfileAudience.OnlyMe, ProfileAudience.Public.shownOn(friends, false, null))
         assertEquals(ProfileAudience.Circles(all), ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID)).shownOn(friends, true, null))
         assertEquals(ProfileAudience.OnlyMe, ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID)).shownOn(friends, false, null))
         assertEquals(
@@ -755,7 +755,7 @@ class CardContentTest {
         val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
         val rig = rig(wire)
         rig.open(CardAudience.Public)
-        assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).everyCard)
+        assertEquals(ProfileAudience.Public, rig.item(ProfileAttributeTypes.BIO_SUMMARY).audience)
 
         rig.write { rig.vm.toggle(bio, false) }
 
@@ -872,7 +872,7 @@ class CardContentTest {
         assertEquals(ProfileAudience.OnlyMe, birthday.audience)
         assertFalse(birthday.shown)
         val nickname = rig.item(ProfileAttributeTypes.NICKNAME)
-        assertTrue(nickname.shown && !nickname.everyCard)
+        assertTrue(nickname.shown && nickname.audience != ProfileAudience.Public)
         assertEquals("Mr. Underhill", nickname.text)
     }
 
@@ -1010,5 +1010,160 @@ class CardContentTest {
         assertEquals(before.circleIdList, rig.circleIds())
         assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
         assertEquals(before, rig.vm.uiState.value.attributes.single { it.id == phoneId }.acl)
+    }
+
+    private fun Rig.cardPuts() = wire.putBodies.map { it.jsonObject }.filter { it.str("type") == ProfileAttributeTypes.PROFILE_CARD }
+
+    private fun JsonObject.fieldIds(vararg path: String) =
+        path.fold(this as JsonElement?) { node, key -> (node as? JsonObject)?.get(key) }?.jsonArray?.map { it.jsonPrimitive.content }
+
+    @Test
+    fun hidingAPublicFieldFromTheFriendsCardLeavesItPublicAndOffThatCardOnly() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val rig = rig(wire, withCards = true)
+        rig.open(friends)
+        assertEquals("Second breakfast", rig.rendered { it.data.bio != null }.data.bio)
+
+        rig.vm.onFieldShown(bio, false)
+        settle { rig.cardPuts().any { it.fieldIds("data", "overrides", "fields", "hidden") == listOf(bio.toString()) } }
+
+        val item = rig.item(ProfileAttributeTypes.BIO_SUMMARY)
+        assertTrue(item.shown && item.hidden && !item.onCard)
+        assertEquals(ProfileAudience.Public, item.audience)
+        assertNull(rig.rendered { it.data.bio == null }.data.bio)
+        assertTrue(wire.putBodies.none { it.jsonObject.str("type") == ProfileAttributeTypes.BIO_SUMMARY })
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.cardPuts().last()["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
+
+        rig.open(CardAudience.Public)
+        assertEquals("Second breakfast", rig.rendered { it.data.bio != null }.data.bio)
+        assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).onCard)
+        rig.open(family)
+        assertEquals("Second breakfast", rig.rendered { it.data.bio != null }.data.bio)
+
+        rig.open(friends)
+        assertNull(rig.rendered { it.data.bio == null }.data.bio)
+        rig.vm.onFieldShown(bio, true)
+        assertEquals("Second breakfast", rig.rendered { it.data.bio != null }.data.bio)
+        settle { rig.cardPuts().last()["data"]!!.jsonObject["overrides"]?.jsonObject?.get("fields") == null }
+    }
+
+    @Test
+    fun theNameCannotBeSwitchedOffThePublicCard() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val rig = rig(wire, withCards = true)
+        rig.open(CardAudience.Public)
+        val name = rig.item(ProfileAttributeTypes.NAME)
+        assertTrue(name.required && !name.hidden)
+
+        rig.vm.onFieldShown(name.id, false)
+
+        assertEquals(0, wire.puts)
+        assertTrue(rig.item(ProfileAttributeTypes.NAME).onCard)
+        assertEquals("Frodo", rig.host.rendered.last().data.displayName)
+    }
+
+    @Test
+    fun hidingTheRestOfThePublicCardStillLeavesAValidCardWithItsName() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val status = wire.seed(ProfileAttributeTypes.STATUS, "anonymous", data(ProfileAttributeTypes.KEY_STATUS, "Elevenses"))
+        val rig = rig(wire, withCards = true)
+        rig.open(CardAudience.Public)
+
+        rig.vm.onFieldShown(bio, false)
+        rig.vm.onFieldShown(status, false)
+
+        val card = rig.rendered { it.data.bio == null && it.data.headline == null }
+        assertEquals("Frodo", card.data.displayName)
+        assertEquals(setOf(bio.toString(), status.toString()), rig.vm.uiState.value.selectedCard!!.overrides.fields!!.hidden!!.toSet())
+    }
+
+    @Test
+    fun theOrderSetInTheEditorIsTheOrderOnTheCardAndIsStoredWithIt() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val ids = listOf("a", "b", "c").map {
+            wire.seed(ProfileAttributeTypes.LINK, "anonymous", JsonObject(mapOf(
+                ProfileAttributeTypes.KEY_LINK_TARGET to JsonPrimitive("https://shire.example/$it"),
+                ProfileAttributeTypes.KEY_LINK_TEXT to JsonPrimitive(it),
+            )))
+        }
+        val rig = rig(wire, withCards = true)
+        rig.open(friends)
+        val before = rig.rendered { it.data.links.size == 3 }.data.links.map { it.text }
+        val reversed = rig.vm.uiState.value.contentItems.filter { it.type == ProfileAttributeTypes.LINK }.map { it.id }.reversed()
+
+        rig.vm.onFieldsReordered(reversed)
+        settle { rig.cardPuts().any { it.fieldIds("data", "overrides", "fields", "order") == reversed.map(Uuid::toString) } }
+
+        assertEquals(before.reversed(), rig.rendered { p -> p.data.links.map { it.text } == before.reversed() }.data.links.map { it.text })
+        assertEquals(reversed, rig.vm.uiState.value.contentItems.filter { it.type == ProfileAttributeTypes.LINK }.map { it.id })
+        assertTrue(ids.toSet() == reversed.toSet())
+        rig.open(CardAudience.Public)
+        assertEquals(before, rig.rendered { it.data.links.size == 3 }.data.links.map { it.text })
+    }
+
+    @Test
+    fun reorderingTwoSocialsChangesTheRenderedSocialsAndIsStoredByAttributeId() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val twitter = wire.seed(ProfileAttributeTypes.TWITTER, "anonymous", data(ProfileAttributeTypes.KEY_TWITTER, "frodo"))
+        val instagram = wire.seed(ProfileAttributeTypes.INSTAGRAM, "anonymous", data(ProfileAttributeTypes.KEY_INSTAGRAM, "frodo.b"))
+        val rig = rig(wire, withCards = true)
+        rig.open(friends)
+        assertEquals(
+            listOf(ProfileAttributeTypes.KEY_TWITTER, ProfileAttributeTypes.KEY_INSTAGRAM),
+            rig.rendered { it.data.socials.size == 2 }.data.socials.map { it.type },
+        )
+
+        rig.vm.onFieldsReordered(listOf(instagram, twitter))
+        settle { rig.cardPuts().any { it.fieldIds("data", "overrides", "fields", "order") == listOf(instagram.toString(), twitter.toString()) } }
+
+        assertEquals(
+            listOf(ProfileAttributeTypes.KEY_INSTAGRAM, ProfileAttributeTypes.KEY_TWITTER),
+            rig.rendered { p -> p.data.socials.firstOrNull()?.type == ProfileAttributeTypes.KEY_INSTAGRAM }.data.socials.map { it.type },
+        )
+
+        rig.open(CardAudience.Public)
+        assertEquals(
+            listOf(ProfileAttributeTypes.KEY_TWITTER, ProfileAttributeTypes.KEY_INSTAGRAM),
+            rig.rendered { it.data.socials.size == 2 }.data.socials.map { it.type },
+        )
+    }
+
+    @Test
+    fun theNameStatusAndBioHaveNoOrderOfTheirOwn() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val status = wire.seed(ProfileAttributeTypes.STATUS, "anonymous", data(ProfileAttributeTypes.KEY_STATUS, "Elevenses"))
+        val rig = rig(wire, withCards = true)
+        rig.open(friends)
+        val before = rig.rendered { it.data.bio != null && it.data.headline != null }
+        val puts = wire.puts
+
+        rig.vm.onFieldsReordered(listOf(bio, status))
+        settle { true }
+
+        assertEquals(puts, wire.puts)
+        assertNull(rig.vm.uiState.value.selectedCard!!.overrides.fields)
+        assertEquals(before.data, rig.host.rendered.last().data)
+    }
+
+    @Test
+    fun aFieldAddedAfterTheOrderWasSetAppearsAtTheEnd() {
+        val first = Uuid.random()
+        val second = Uuid.random()
+        val added = Uuid.random()
+        val fields = CardFields(order = listOf(second.toString(), first.toString()))
+        assertEquals(listOf(second, first, added), listOf(first, added, second).inCardOrder(fields) { it.toString() })
+    }
+
+    @Test
+    fun fieldChoicesNeverTouchAccessAndPruneIdsOfDeletedFields() {
+        val kept = Uuid.random().toString()
+        val gone = Uuid.random().toString()
+        val hidden = CardFields().withHidden(kept, hidden = true, known = setOf(kept)).withHidden(gone, hidden = true, known = setOf(kept))
+        assertEquals(CardFields(hidden = listOf(kept)), hidden)
+        assertNull(hidden.withHidden(kept, hidden = false, known = setOf(kept)))
+        assertNull(CardFields(order = listOf(kept, gone)).withOrder(listOf(kept), setOf(kept)))
     }
 }

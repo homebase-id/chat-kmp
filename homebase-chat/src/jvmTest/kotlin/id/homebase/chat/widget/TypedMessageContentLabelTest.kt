@@ -6,6 +6,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import id.homebase.chat.poll.PollDescriptor
@@ -43,6 +45,16 @@ class TypedMessageContentLabelTest {
         val label = typedMessageContentLabel(MessageContent.Poll(null))
         assertEquals(MessageContent.UNPARSEABLE_POLL_LABEL, label?.text)
         assertEquals(Icons.Default.BarChart, label?.icon)
+    }
+
+    @Test
+    fun agentUi_and_action_useTheirKindIcons() {
+        val card = MessageContent.AgentUi(id.homebase.chat.agentui.AgentUiDescriptor(fallback = "Draft", title = "Draft post"))
+        assertEquals("Draft post", typedMessageContentLabel(card)?.text)
+        assertEquals(Icons.Default.SmartToy, typedMessageContentLabel(card)?.icon)
+        assertEquals(MessageContent.UNPARSEABLE_AGENT_UI_LABEL, typedMessageContentLabel(MessageContent.AgentUi(null))?.text)
+        assertEquals(Icons.Default.TouchApp, typedMessageContentLabel(MessageContent.AgentUiAction(null))?.icon)
+        assertEquals(MessageContent.UNPARSEABLE_AGENT_ACTION_LABEL, typedMessageContentLabel(MessageContent.AgentUiAction(null))?.text)
     }
 
     @Test

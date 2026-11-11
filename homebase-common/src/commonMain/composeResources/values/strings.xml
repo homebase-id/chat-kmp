@@ -992,6 +992,11 @@
     <string name="chat_poll_one_vote">1 vote</string>
     <string name="chat_poll_vote_count">%1$d votes</string>
     <string name="chat_poll_unparseable">Unable to display this poll. Please update the app.</string>
+    <string name="chat_agent_ui_unparseable">Unable to display this card. Please update the app.</string>
+    <string name="chat_agent_ui_action_failed">Couldn't send that action. Try again.</string>
+    <string name="chat_agent_ui_action_you">You chose %1$s</string>
+    <string name="chat_agent_ui_action_other">%1$s chose %2$s</string>
+    <string name="chat_agent_ui_open_image">View image</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
     <string name="chat_file_share_you_one">You shared 1 file · %1$s</string>
@@ -1656,14 +1661,7 @@
     <string name="settings_data_storage">Data and storage</string>
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
     <string name="settings_media_quality_standard">Standard</string>
-    <string name="settings_media_quality_high">High</string>
-    <string name="settings_media_quality_standard_description">Photos up to 1600 pixels and video at 720p. Uploads faster and uses far less data.</string>
-    <string name="settings_media_quality_high_description">Photos exactly as they are and video at 1080p.</string>
-    <string name="settings_media_quality_footer">Either way, what you save to your device is the version that was sent.</string>
-    <string name="chat_media_quality_hd">HD</string>
-    <string name="cd_media_quality_high_on">High quality is on. Tap to send smaller photos and videos.</string>
-    <string name="cd_media_quality_high_off">High quality is off. Tap to send photos and videos at full quality.</string>
-    <string name="cd_media_quality_hd_badge">Sent in high quality</string>
+    <string name="settings_media_quality_footer">Whichever you choose, what you save to your device is the version that was sent.</string>
 
     <!-- Auto-save incoming media -->
     <string name="settings_media_autosave_header">Saving what you receive</string>
@@ -2497,13 +2495,41 @@
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
     <string name="profile_card_design_action">Design</string>
     <string name="profile_card_content_on_card">On this card</string>
-    <string name="profile_card_content_could_add">Also on your profile</string>
-    <string name="profile_card_content_every_card">On every card</string>
-    <string name="profile_card_content_every_card_desc">Public, so everyone sees these on every card.</string>
+    <string name="profile_card_content_on_card_desc">Switch one off to leave it off this card.</string>
+    <string name="profile_card_content_not_on_card">Not on this card</string>
+    <string name="profile_card_content_not_on_card_desc">This circle can still see these on your profile.</string>
+    <string name="profile_card_content_never_on_card_desc">Can't go on a card. Still on your profile.</string>
+    <string name="profile_card_field_hide">Hide %1$s from this card</string>
+    <string name="profile_card_field_show">Show %1$s on this card</string>
+    <string name="profile_card_field_move_up">Move %1$s up</string>
+    <string name="profile_card_field_move_down">Move %1$s down</string>
+    <string name="profile_card_content_on_card_desc_reorder">Drag to reorder links or accounts, or switch one off.</string>
+    <string name="profile_card_content_front">On the card</string>
+    <string name="profile_card_content_front_desc">Shown on the card face</string>
+    <string name="profile_card_content_front_empty">Use the up arrow on a shared field to show it on the card</string>
+    <string name="profile_card_content_back">Shared, not shown</string>
+    <string name="profile_card_content_back_desc">They get it, but it isn't on the card face</string>
+    <string name="profile_card_content_unavailable">Not shared</string>
+    <string name="profile_card_content_unavailable_only_me">Only you</string>
+    <string name="profile_card_content_unavailable_only">Only %1$s</string>
+    <string name="profile_card_content_unavailable_names_more">%1$s and %2$d more</string>
+    <string name="profile_card_content_unavailable_desc">People with this card can't see these</string>
+    <string name="profile_card_field_to_back">Move %1$s to Shared, not shown</string>
+    <string name="profile_card_field_to_front">Show %1$s on the card</string>
+    <string name="profile_card_field_remove">Stop sharing %1$s with this card</string>
+    <string name="profile_card_field_add_title">Add %1$s to this card</string>
+    <string name="profile_card_sheet_available_on">Available on:</string>
+    <string name="profile_card_content_not_on_card_desc_public">Still public on your profile.</string>
+    <string name="profile_card_content_hidden_public">Not visible to everyone (%1$d)</string>
+    <string name="profile_card_content_hidden_circle">Not visible to this circle (%1$d)</string>
+    <string name="profile_card_content_hidden_desc">Change who can see one to put it on this card.</string>
+    <string name="profile_card_content_sees_public">Anyone with your link sees this card</string>
+    <string name="profile_card_content_sees_circle">Only this circle sees this card</string>
+    <string name="profile_card_content_saving">Saving…</string>
+    <string name="profile_card_field_reorder">Reorder %1$s</string>
     <string name="profile_card_content_edit_this">Edit %1$s</string>
     <string name="profile_card_content_edit_title">Edit</string>
     <string name="profile_card_content_delete">Delete from every card</string>
-    <string name="profile_card_content_every_card_circle">Public, so everyone sees these. To hide one from this card, tap it and change who can see it.</string>
     <string name="profile_card_content_more">More</string>
     <string name="profile_card_switcher">Card to edit</string>
     <string name="profile_card_content_add_new">Add new</string>
@@ -2559,7 +2585,6 @@
     <string name="profile_card_content_empty">Nothing else on this card yet. Add something below.</string>
     <string name="profile_card_content_shown_to">Shown to %1$s</string>
     <string name="profile_card_content_shown_everyone">Shown to everyone</string>
-    <string name="profile_card_content_public_off_note">Turning Public off takes this off the Public card.</string>
     <string name="profile_card_content_add_title">Add content</string>
     <string name="profile_card_content_add_visible">Shown on the %1$s card</string>
     <string name="profile_card_content_save_failed">Couldn't save that change.</string>
@@ -3315,6 +3340,9 @@
     <string name="photobase_backup_enable_desc">Keep your phone's library on your Homebase drive, encrypted, in full quality.</string>
     <string name="photobase_backup_status">Status</string>
     <string name="photobase_backup_now">Back up now</string>
+    <string name="photobase_backup_now_start">Start</string>
+    <string name="photobase_refresh_status">Refresh backup status</string>
+    <string name="photobase_refresh_status_desc">Checks your drive for every photo and video, and backs up any that are missing.</string>
     <string name="photobase_backup_albums">Albums</string>
     <string name="photobase_backup_albums_default">Camera</string>
     <string name="photobase_backup_wifi_only">Wi-Fi only</string>
@@ -3335,6 +3363,8 @@
     <string name="photobase_library_limited">Backing up only the photos you selected.</string>
     <string name="photobase_library_allow">Allow access</string>
     <string name="photobase_library_allow_all">Allow all photos</string>
+    <string name="photobase_location_withheld">Backups don't include where your photos were taken.</string>
+    <string name="photobase_location_allow">Include locations</string>
     <string name="photobase_status_title">Backup status</string>
     <string name="photobase_status_running">Backing up</string>
     <string name="photobase_status_up_to_date">Waiting for the next backup</string>
@@ -3350,6 +3380,8 @@
     <string name="photobase_status_paused_battery">Paused: low battery</string>
     <string name="photobase_status_paused_low_power">Paused: Low Power Mode</string>
     <string name="photobase_status_paused_storage">Paused: your Homebase storage is full</string>
+    <string name="photobase_status_paused_phone_storage">Paused: phone storage is low</string>
+    <string name="photobase_status_paused_too_hot">Paused: phone is too hot</string>
     <string name="photobase_status_last_success">Last finished backup</string>
     <string name="photobase_status_never">Not yet</string>
     <string name="photobase_status_backed_up">Backed up</string>
@@ -3393,4 +3425,13 @@
     <string name="photobase_keep_open_body">Backing up. Leave this screen open and plug in your phone: the screen stays on and dark.</string>
     <string name="photobase_keep_open_progress">%1$s of %2$s</string>
     <string name="photobase_keep_open_done">Done</string>
+    <string name="settings_media_quality_hd">HD</string>
+    <string name="settings_media_quality_original">Original</string>
+    <string name="settings_media_quality_standard_description">Photos up to 2048 pixels and video at 720p. Looks good, sends quickly and keeps screenshots readable.</string>
+    <string name="settings_media_quality_hd_description">Photos up to 4096 pixels and video at 1080p. Stays sharp when zoomed.</string>
+    <string name="settings_media_quality_original_description">The exact photo file, with nothing compressed, and video at 1080p. Uses the most data.</string>
+    <string name="cd_media_quality_choice">Media quality: %1$s. Tap to change.</string>
+    <string name="cd_media_quality_hd_badge">Sent in HD</string>
+    <string name="cd_media_quality_original_badge">Sent as the original file</string>
+    <string name="storage_cache_photo_thumbnails">Photo thumbnails</string>
 </resources>

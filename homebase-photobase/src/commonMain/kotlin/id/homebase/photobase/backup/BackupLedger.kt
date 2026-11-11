@@ -29,9 +29,15 @@ data class LedgerCounts(
     val uploading: Long,
     val done: Long,
     val failed: Long,
-    val doneBytes: Long = 0,
-    val remainingBytes: Long = 0,
-)
+    /** Null while any row it covers has no known size, rather than an undercount. */
+    val doneBytes: Long? = 0,
+    val remainingBytes: Long? = 0,
+) {
+    val unsent: Long get() = pending + inOutbox + uploading
+
+    /** Failed rows count: a foreground run retries them. */
+    val workLeft: Boolean get() = unsent + failed > 0
+}
 
 /** The one place backup state changes, and what decides whether a photo is backed up. */
 class BackupLedger(
@@ -60,6 +66,7 @@ class BackupLedger(
         } else {
             listedAssets.mapNotNull { asset -> store.selectById(asset.id) }.associateBy { it.deviceAssetId }
         }
+        var restarts = 0
         store.inTransaction {
             for (asset in listedAssets) {
                 val row = existing[asset.id]
@@ -67,13 +74,15 @@ class BackupLedger(
                 val albums = asset.albumIds.joinToString(ALBUM_SEPARATOR)
                 when {
                     row == null -> insertOrIgnore(
-                        asset.id, albums, asset.mediaType.code, asset.createdAtMs, asset.modifiedAtMs, asset.sizeBytes, initial.code,
+                        asset.id, albums, asset.mediaType.code, asset.createdAtMs, asset.modifiedAtMs, asset.sizeBytes ?: 0, initial.code,
                     )
                     row.state == BackupState.DeletedOnDevice.code ||
                         row.modifiedAt != asset.modifiedAtMs ||
-                        row.size != asset.sizeBytes -> restart(
-                        albums, asset.mediaType.code, asset.createdAtMs, asset.modifiedAtMs, asset.sizeBytes, initial.code, asset.id,
-                    )
+                        (asset.sizeBytes != null && row.size != asset.sizeBytes) -> {
+                        Logger.d(tag = TAG) { "restart ${asset.id}: modifiedAt ${row.modifiedAt}->${asset.modifiedAtMs} size ${row.size}->${asset.sizeBytes}" }
+                        restarts++
+                        restart(albums, asset.mediaType.code, asset.createdAtMs, asset.modifiedAtMs, asset.sizeBytes ?: 0, initial.code, asset.id)
+                    }
                     row.albumIds != albums -> updateAlbums(albums, asset.id)
                 }
             }
@@ -81,6 +90,7 @@ class BackupLedger(
                 setState(BackupState.DeletedOnDevice.code, null, 0, 0, id)
             }
         }
+        if (restarts > 0) Logger.i(tag = TAG) { "restarted $restarts of ${listedAssets.size} listed" }
         changed()
     }
 
@@ -105,6 +115,15 @@ class BackupLedger(
     suspend fun lastSuccessMs(): Long? = store.checkpoints()[LAST_SUCCESS_KEY]?.toLongOrNull()
 
     suspend fun markSucceeded() = store.saveCheckpoints(mapOf(LAST_SUCCESS_KEY to nowMs().toString()))
+
+    /** Persisted: the process can die between a background run and the next app open. */
+    suspend fun markWokenInBackground() = store.saveCheckpoints(mapOf(WOKEN_IN_BACKGROUND_KEY to "1"))
+
+    suspend fun takeWokenInBackground(): Boolean {
+        val woken = store.checkpoints()[WOKEN_IN_BACKGROUND_KEY] == "1"
+        if (woken) store.saveCheckpoints(mapOf(WOKEN_IN_BACKGROUND_KEY to "0"))
+        return woken
+    }
 
     suspend fun markRan() = store.saveCheckpoints(mapOf(LAST_RAN_KEY to nowMs().toString()))
 
@@ -138,8 +157,8 @@ class BackupLedger(
 
     suspend fun row(id: String): DeviceBackupAsset? = store.selectById(id)
 
-    suspend fun markHashed(id: String, contentHash: String, uniqueId: Uuid) {
-        store.markHashed(id, contentHash, uniqueId.toString(), BackupState.Hashed.code)
+    suspend fun markHashed(id: String, contentHash: String, uniqueId: Uuid, sizeBytes: Long) {
+        store.markHashed(id, contentHash, uniqueId.toString(), BackupState.Hashed.code, sizeBytes)
         changed()
     }
 
@@ -149,7 +168,7 @@ class BackupLedger(
     }
 
     suspend fun markQueued(id: String) {
-        store.setState(id, BackupState.Queued.code, null, 0, 0)
+        store.setState(id, BackupState.Queued.code, null, row(id)?.attempts ?: 0, 0)
         changed()
     }
 
@@ -184,6 +203,13 @@ class BackupLedger(
         changed()
     }
 
+    /** Counts no attempt: an unreachable server says nothing about the photos. */
+    suspend fun deferForOutage(rows: List<DeviceBackupAsset>, reason: String) {
+        val retryAt = nowMs() + OUTAGE_RETRY.inWholeMilliseconds
+        for (row in rows) store.setState(row.deviceAssetId, row.state, reason, row.attempts, retryAt)
+        changed()
+    }
+
     suspend fun clearNotOnDeviceDeferrals() = store.clearBackoffForReason(NOT_ON_DEVICE)
 
     suspend fun markSending(uniqueId: Uuid, taskId: Long) {
@@ -204,47 +230,65 @@ class BackupLedger(
         changed()
     }
 
+    /** Until the Outbox starts it again on its own backoff, the row takes no send slot. */
     suspend fun onOutboxRetrying(uniqueId: Uuid) {
-        store.setStateOfUnique(uniqueId.toString(), IN_OUTBOX, BackupState.Queued.code, null, 0, 0)
+        store.setStateOfUnique(uniqueId.toString(), IN_OUTBOX, BackupState.Queued.code, OUTBOX_RETRYING, 0, 0)
         changed()
     }
 
-    /** A drop never loses a photo: back to HASHED with a backoff, so a later run sends it again. */
-    suspend fun onOutboxDropped(uniqueId: Uuid, reason: String) {
-        val attempts = (store.selectByUnique(uniqueId.toString()).maxOfOrNull { it.attempts } ?: 0) + 1
+    /** A drop never loses a photo: back to HASHED with a backoff, or FAILED once its attempts are used up. */
+    suspend fun onOutboxDropped(uniqueId: Uuid, reason: String, countsAttempt: Boolean = true) {
+        val added = if (countsAttempt) 1L else 0L
+        val attempts = (store.selectByUnique(uniqueId.toString()).maxOfOrNull { it.attempts } ?: 0) + added
+        val state = if (attempts >= MAX_ATTEMPTS) BackupState.Failed else BackupState.Hashed
         store.setStateOfUnique(
             uniqueId.toString(),
             IN_OUTBOX,
-            BackupState.Hashed.code,
+            state.code,
             reason,
             nowMs() + backoff(attempts).inWholeMilliseconds,
-            1,
+            added,
         )
         changed()
     }
 
     suspend fun rowsInOutbox(): List<DeviceBackupAsset> = store.selectInStates(IN_OUTBOX)
 
+    suspend fun clear() {
+        store.deleteAll()
+        changed()
+    }
+
     suspend fun requeueFailed() {
         store.requeueFailed(BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code)
         changed()
     }
 
+    /** Done is only what the phone remembers: this sends every Done row back through the server check. */
+    suspend fun recheckDone() {
+        store.recheckDone(BackupState.Done.code, BackupState.New.code, BackupState.Hashed.code)
+        changed()
+    }
+
     suspend fun handedOffCount(): Long = store.countInStates(listOf(BackupState.Queued.code, BackupState.Uploading.code))
+
+    suspend fun sendingCount(): Long = store.countSending(IN_OUTBOX, OUTBOX_RETRYING)
 
     suspend fun counts(): LedgerCounts {
         val byState = store.countByState()
         fun count(state: BackupState) = byState[state.code] ?: 0
         val bytes = store.bytesByState()
-        fun bytes(state: BackupState) = bytes[state.code] ?: 0
+        val unknown = store.unknownSizeByState()
+        fun bytes(states: List<BackupState>): Long? =
+            if (states.any { (unknown[it.code] ?: 0) > 0 }) null else states.sumOf { bytes[it.code] ?: 0 }
         return LedgerCounts(
             pending = count(BackupState.New) + count(BackupState.Hashed),
             inOutbox = count(BackupState.Queued),
             uploading = count(BackupState.Uploading),
             done = count(BackupState.Done),
             failed = count(BackupState.Failed),
-            doneBytes = bytes(BackupState.Done),
-            remainingBytes = listOf(BackupState.New, BackupState.Hashed, BackupState.Queued, BackupState.Uploading).sumOf(::bytes),
+            doneBytes = bytes(listOf(BackupState.Done)),
+            remainingBytes = bytes(listOf(BackupState.New, BackupState.Hashed, BackupState.Queued, BackupState.Uploading)),
         )
     }
 
@@ -258,6 +302,8 @@ class BackupLedger(
         private const val NOT_ON_DEVICE = "not on this device"
         private val NOT_ON_DEVICE_RETRY = 6.hours
         private val VIDEO_YIELD_RETRY = 1.minutes
+        private val OUTAGE_RETRY = 5.minutes
+        private const val OUTBOX_RETRYING = "waiting for the Outbox to retry"
         private const val OWN_KEY_PREFIX = "photobase."
         private const val INITIAL_DONE_KEY = "${OWN_KEY_PREFIX}initialBackupDone"
         private const val SCOPE_KEY = "${OWN_KEY_PREFIX}albumScope"
@@ -265,6 +311,8 @@ class BackupLedger(
         private const val LAST_RAN_KEY = "${OWN_KEY_PREFIX}lastRanMs"
         private const val LAST_OTHER_PUSH_WAKE_KEY = "${OWN_KEY_PREFIX}lastOtherPushWakeMs"
         private const val LAST_STUCK_ALERT_KEY = "${OWN_KEY_PREFIX}lastStuckAlertMs"
+        private const val WOKEN_IN_BACKGROUND_KEY = "${OWN_KEY_PREFIX}wokenInBackground"
+        private const val TAG = "BackupLedger"
         val STUCK_AFTER: Duration = 24.hours
         private val FIRST_RETRY: Duration = 1.minutes
         private val LONGEST_RETRY: Duration = 6.hours

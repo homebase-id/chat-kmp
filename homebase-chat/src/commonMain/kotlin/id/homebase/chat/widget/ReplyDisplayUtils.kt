@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.util.markdownToPlainPreview
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -18,6 +19,12 @@ fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
     this?.filter { payload ->
         payload.key != ChatProtocol.DefaultPayloadKey && !payload.isInternalDescriptor()
     }.orEmpty()
+
+fun MessageUiModel.conversationMediaPayloads(): List<PayloadDescriptor> =
+    if (messageContent?.payloadsAreConversationMedia == false) emptyList() else payloads.mediaPayloads()
+
+fun MessageUiModel.replyQuoteConversationMediaPayloads(): List<PayloadDescriptor> =
+    if (messageContent?.payloadsAreConversationMedia == false) emptyList() else payloads.replyQuoteMediaPayloads()
 
 // mediaPayloads() minus PAYLOAD_KEY_LINKS: a link preview uploads with an image content-type
 // (so it passes isVisualMedia()) but no THUMB_SMALL/MEDIUM thumbnails, so a reply quote asking

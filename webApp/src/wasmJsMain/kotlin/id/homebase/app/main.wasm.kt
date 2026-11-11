@@ -22,6 +22,8 @@ import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.permission.installPermissionCallbackListener
+import id.homebase.core.share.IncomingLinks
 import id.homebase.core.ui.navigation.AppLink
 import id.homebase.core.widget.ComposerAutocompleteProbe
 import id.homebase.core.widget.initLazyStabilityFlags
@@ -70,6 +72,9 @@ fun main() {
     // sql.js compiles its wasm asynchronously: started first, it compiles while Koin builds.
     val sqlJs = MainScope().async(start = CoroutineStart.UNDISPATCHED) { initWebSqlJs() }
     AppStartup.startKoin()
+    installPermissionCallbackListener { url ->
+        AppStartup.whenStarted { GlobalContext.get().get<IncomingLinks>().handle(url) }
+    }
     MainScope().launch {
         sqlJs.await()
         bootStage("Opening database…", 60)

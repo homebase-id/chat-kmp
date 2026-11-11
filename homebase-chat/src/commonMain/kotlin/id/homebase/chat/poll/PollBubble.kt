@@ -1,5 +1,6 @@
 package id.homebase.chat.poll
 
+import id.homebase.chat.widget.UnparseableTypedChip
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -94,11 +95,7 @@ fun PollBubble(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
 ) {
     if (descriptor == null || !descriptor.isValid()) {
-        UnparseablePollBubble(
-            modifier = modifier,
-            contentColor = contentColor,
-            containerColor = containerColor,
-        )
+        UnparseableTypedChip(Icons.Default.HowToVote, stringResource(MR.string.chat_poll_unparseable), modifier, containerColor, contentColor.copy(alpha = 0.85f))
         return
     }
 
@@ -368,34 +365,6 @@ private fun PollOptionRow(
                         cornerRadius = CornerRadius(size.height / 2),
                     )
                 },
-        )
-    }
-}
-
-@Composable
-private fun UnparseablePollBubble(
-    modifier: Modifier,
-    contentColor: Color,
-    containerColor: Color,
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(containerColor)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Default.HowToVote,
-            contentDescription = null,
-            tint = contentColor.copy(alpha = 0.7f),
-            modifier = Modifier.size(18.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = stringResource(MR.string.chat_poll_unparseable),
-            style = MaterialTheme.typography.bodyMedium,
-            color = contentColor.copy(alpha = 0.85f),
         )
     }
 }

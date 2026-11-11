@@ -46,6 +46,19 @@ import okio.Path.Companion.toPath
 import okio.buffer
 import okio.use
 
+/** A drive whose thumbnails get their own disk cache, so a large library can't push out everything else. */
+data class DedicatedThumbCache(
+    val driveId: Uuid,
+    val maxSizeBytes: Long,
+    val statsId: String,
+    /** A download is cancelled once nobody waits for it: right for a grid, wrong for a contact row's avatar. */
+    val cancelWhenUnwatched: Boolean = false,
+) {
+    companion object {
+        const val DIRECTORY_NAME = "homebase-drive-thumbs-v1"
+    }
+}
+
 /**
  * Disk-backed, encrypted cache for authenticated drive file bytes. Wraps
  * [DriveFileHttpProvider] so callers get transparent read-through caching
@@ -92,7 +105,8 @@ import okio.use
 class DriveFileProviderCached(
         httpClient: HttpClient,
         credentialsManager: CredentialsManager,
-        private val fileOperationsProvider: FileOperationsProvider
+        private val fileOperationsProvider: FileOperationsProvider,
+        private val dedicatedThumbCache: DedicatedThumbCache? = null,
 ) {
     private val delegate: DriveFileHttpProvider =
             DriveFileHttpProvider(httpClient, credentialsManager)
@@ -104,7 +118,11 @@ class DriveFileProviderCached(
     private val thumbnailSemaphore = Semaphore(30)
 
     private val fetchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val inFlight = HashMap<String, Deferred<ByteApiResponse>>()
+    private class InFlight(val fetch: Deferred<ByteApiResponse>, val cancelWhenUnwatched: Boolean) {
+        var waiters = 0
+    }
+
+    private val inFlight = HashMap<String, InFlight>()
     private val inFlightMutex = Mutex()
 
     // Bumped by clearCaches under inFlightMutex; a fetch only writes its result if the generation
@@ -138,6 +156,19 @@ class DriveFileProviderCached(
             .fileSystem(fileSystem)
             .maxSizeBytes(300L * 1024L * 1024L) // 300MB
             .build()
+
+    private val dedicatedThumbDiskCache: DiskCache? = dedicatedThumbCache?.let {
+        DiskCache.Builder()
+            .directory("$directory/${DedicatedThumbCache.DIRECTORY_NAME}".toPath())
+            .fileSystem(fileSystem)
+            .maxSizeBytes(it.maxSizeBytes)
+            .build()
+    }
+
+    private fun dedicatedThumbFor(driveId: Uuid): DedicatedThumbCache? = dedicatedThumbCache?.takeIf { it.driveId == driveId }
+
+    private fun thumbCacheFor(driveId: Uuid): DiskCache =
+        dedicatedThumbDiskCache?.takeIf { dedicatedThumbFor(driveId) != null } ?: thumbDiskCache
 
     // HLS playback range-chunks get their OWN cache (#845): every byte-range a
     // player requests is an independent LRU entry, so one long video used to
@@ -353,9 +384,24 @@ class DriveFileProviderCached(
             lastModified: Long? = null
     ): ByteApiResponse {
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-        return readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO") {
+        val cancelWhenUnwatched = dedicatedThumbFor(driveId)?.cancelWhenUnwatched == true
+        return readThrough(thumbCacheFor(driveId), cacheKey, thumbnailSemaphore, "ThumbIO", cancelWhenUnwatched) {
             delegate.getThumbBytesRawNetwork(driveId, fileId, payloadKey, width, height, lastModified)
         }
+    }
+
+    /** Brings a thumbnail into the cache if it isn't there, without reading one that already is. */
+    suspend fun ensureThumbCached(
+            driveId: Uuid,
+            fileId: Uuid,
+            payloadKey: String,
+            width: Int,
+            height: Int,
+            lastModified: Long? = null
+    ) {
+        val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
+        val held = thumbCacheFor(driveId).openSnapshot(cacheKey.toDiskKey())?.use { true } ?: false
+        if (!held) getThumbBytesRaw(driveId, fileId, payloadKey, width, height, lastModified)
     }
 
     /**
@@ -385,12 +431,14 @@ class DriveFileProviderCached(
     internal suspend fun inFlightCount(): Int = inFlightMutex.withLock { inFlight.size }
 
     // One in-flight fetch per cache key, run on fetchScope so a cancelled caller only abandons its
-    // await. The same fetch also owns the cache write, gated by the generation it started under.
+    // await, unless [cancelWhenUnwatched] and it was the last one waiting. The same fetch also owns
+    // the cache write, gated by the generation it started under.
     private suspend fun readThrough(
             cache: DiskCache,
             cacheKey: String,
             semaphore: Semaphore,
             logTag: String,
+            cancelWhenUnwatched: Boolean = false,
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse {
         while (true) {
@@ -398,18 +446,33 @@ class DriveFileProviderCached(
             readCachedOrLog(cache, cacheKey, logTag)?.let { return it }
 
             val startedGeneration: Int
-            val deferred = inFlightMutex.withLock {
+            val entry = inFlightMutex.withLock {
                 startedGeneration = generation
-                inFlight[cacheKey] ?: fetchScope.async(start = CoroutineStart.LAZY) {
-                    fetchAndStore(cache, cacheKey, semaphore, logTag, startedGeneration, fetch)
-                }.also { inFlight[cacheKey] = it }
+                val entry = inFlight[cacheKey] ?: InFlight(
+                    fetchScope.async(start = CoroutineStart.LAZY) {
+                        fetchAndStore(cache, cacheKey, semaphore, logTag, startedGeneration, fetch)
+                    },
+                    cancelWhenUnwatched,
+                ).also { inFlight[cacheKey] = it }
+                entry.waiters++
+                entry
             }
-            deferred.start()
+            entry.fetch.start()
             try {
-                return deferred.await()
+                return entry.fetch.await()
             } catch (e: CancellationException) {
                 if (!currentCoroutineContext().isActive || generation == startedGeneration) throw e
+            } finally {
+                withContext(NonCancellable) { leave(cacheKey, entry) }
             }
+        }
+    }
+
+    private suspend fun leave(cacheKey: String, entry: InFlight) = inFlightMutex.withLock {
+        entry.waiters--
+        if (entry.waiters == 0 && entry.cancelWhenUnwatched && !entry.fetch.isCompleted) {
+            entry.fetch.cancel()
+            if (inFlight[cacheKey] === entry) inFlight.remove(cacheKey)
         }
     }
 
@@ -459,7 +522,7 @@ class DriveFileProviderCached(
             }
         } finally {
             withContext(NonCancellable) {
-                inFlightMutex.withLock { if (inFlight[cacheKey] === self) inFlight.remove(cacheKey) }
+                inFlightMutex.withLock { if (inFlight[cacheKey]?.fetch === self) inFlight.remove(cacheKey) }
             }
         }
     }
@@ -471,17 +534,17 @@ class DriveFileProviderCached(
     suspend fun readPayloadThrough(
             cacheKey: String,
             fetch: suspend () -> ByteApiResponse
-    ): ByteApiResponse = readThrough(payloadDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch)
+    ): ByteApiResponse = readThrough(payloadDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch = fetch)
 
     suspend fun readThumbThrough(
             cacheKey: String,
             fetch: suspend () -> ByteApiResponse
-    ): ByteApiResponse = readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO", fetch)
+    ): ByteApiResponse = readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO", fetch = fetch)
 
     suspend fun readHlsChunkThrough(
             cacheKey: String,
             fetch: suspend () -> ByteApiResponse
-    ): ByteApiResponse = readThrough(hlsChunkDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch)
+    ): ByteApiResponse = readThrough(hlsChunkDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch = fetch)
 
     suspend fun getThumbBytesDecrypted(
             driveId: Uuid,
@@ -646,7 +709,7 @@ class DriveFileProviderCached(
             lastModified: Long? = null
     ) {
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-        seedCache(thumbDiskCache, cacheKey, "ThumbIO", bytes, contentType)
+        seedCache(thumbCacheFor(driveId), cacheKey, "ThumbIO", bytes, contentType)
     }
 
     private suspend fun seedCache(
@@ -709,7 +772,7 @@ class DriveFileProviderCached(
                 val w = thumb.pixelWidth ?: continue
                 val h = thumb.pixelHeight ?: continue
                 moveCacheEntry(
-                        cache = thumbDiskCache,
+                        cache = thumbCacheFor(driveId),
                         // Seeds are written with lastModified = null; the synced
                         // descriptor's lastModified is what readers use from now on.
                         oldKey = buildThumbCacheKey(driveId, oldFileId, descriptor.key, w, h, null),
@@ -816,6 +879,13 @@ class DriveFileProviderCached(
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
         }
         try {
+            dedicatedThumbDiskCache?.clear()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "dedicated thumb cache clear failed" }
+        }
+        try {
             hlsChunkDiskCache.clear()
         } catch (e: CancellationException) {
             throw e
@@ -830,33 +900,18 @@ class DriveFileProviderCached(
     // must not hide the other row. Returns sentinel `sizeBytes = CacheStats.UNAVAILABLE`
     // (-1L) so the UI can render a visible "Unavailable" row when one cache is
     // unhealthy.
-    suspend fun getCacheStats(): List<CacheStats> {
-        val out = ArrayList<CacheStats>(2)
-        try {
-            out.add(CacheStats(id = "drive_payloads", sizeBytes = payloadDiskCache.size, maxBytes = payloadDiskCache.maxSize))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_payloads stats unavailable" }
-            out.add(CacheStats(id = "drive_payloads", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
-        }
-        try {
-            out.add(CacheStats(id = "drive_thumbnails", sizeBytes = thumbDiskCache.size, maxBytes = thumbDiskCache.maxSize))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_thumbnails stats unavailable" }
-            out.add(CacheStats(id = "drive_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
-        }
-        try {
-            out.add(CacheStats(id = "hls_chunks", sizeBytes = hlsChunkDiskCache.size, maxBytes = hlsChunkDiskCache.maxSize))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "hls_chunks stats unavailable" }
-            out.add(CacheStats(id = "hls_chunks", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
-        }
-        return out
+    suspend fun getCacheStats(): List<CacheStats> = listOfNotNull(
+        statsOf("drive_payloads", payloadDiskCache),
+        statsOf("drive_thumbnails", thumbDiskCache),
+        dedicatedThumbDiskCache?.let { statsOf(dedicatedThumbCache!!.statsId, it) },
+        statsOf("hls_chunks", hlsChunkDiskCache),
+    )
+
+    private fun statsOf(id: String, cache: DiskCache): CacheStats = try {
+        CacheStats(id = id, sizeBytes = cache.size, maxBytes = cache.maxSize)
+    } catch (e: Throwable) {
+        Logger.w(tag = "DriveFileProviderCached", throwable = e) { "$id stats unavailable" }
+        CacheStats(id = id, sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L)
     }
 }
 

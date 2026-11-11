@@ -35,16 +35,10 @@ class AppsSettingsScreenTest {
     private val fired = mutableListOf<String>()
     private val actions = AppsSettingsActions(
         onBack = { fired += "back" },
-        onFeedSettings = { fired += "feed" },
-        onMomentsSettings = { fired += "moments" },
-        onVaultSettings = { fired += "vault" },
-        onFilesyncSettings = { fired += "filesync" },
-        onEmailSettings = { fired += "email" },
+        onOpenPage = { fired += it.name },
         onOpenWebDrop = { fired += "webdrop" },
         onLocation = { fired += "location" },
-        onContactBookSettings = { fired += "contactBook" },
-        onCallsSettings = { fired += "calls" },
-        onPhotobaseSettings = { fired += "photobase" },
+        photobaseAvailable = true,
     )
 
     private fun ComposeUiTest.apps(screenActions: AppsSettingsActions = actions) = setContent {
@@ -53,7 +47,7 @@ class AppsSettingsScreenTest {
 
     @Test
     fun aDarkPhotobaseHasNoRow() = runComposeUiTest {
-        apps(actions.copy(onPhotobaseSettings = null))
+        apps(actions.copy(photobaseAvailable = false))
         onNodeWithTag("photobaseSettingsButton").assertDoesNotExist()
     }
 
@@ -129,16 +123,16 @@ class AppsSettingsScreenTest {
     fun theTenNavigationRowsCallTheirActions() = runComposeUiTest {
         apps()
         listOf(
-            "feedSettingsButton" to "feed",
-            "momentsSettingsButton" to "moments",
-            "vaultSettingsButton" to "vault",
-            "filesyncSettingsButton" to "filesync",
-            "photobaseSettingsButton" to "photobase",
-            "emailSettingsButton" to "email",
+            "feedSettingsButton" to "Feed",
+            "momentsSettingsButton" to "Moments",
+            "vaultSettingsButton" to "Vault",
+            "filesyncSettingsButton" to "Filesync",
+            "photobaseSettingsButton" to "Photobase",
+            "emailSettingsButton" to "Email",
             "webDropButton" to "webdrop",
             "locationSettingsButton" to "location",
-            "contactBookSettingsButton" to "contactBook",
-            "callsSettingsButton" to "calls",
+            "contactBookSettingsButton" to "Contacts",
+            "callsSettingsButton" to "Calls",
         ).forEach { (tag, route) ->
             tap(tag)
             assertEquals(route, fired.last(), tag)

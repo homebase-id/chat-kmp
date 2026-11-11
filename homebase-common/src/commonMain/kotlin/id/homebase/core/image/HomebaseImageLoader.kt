@@ -134,7 +134,7 @@ class HomebaseImageLoader(
         // actually stores. Keying the request (and thus the disk cache) by the
         // native size deduplicates entries across measured sizes/devices and lets
         // the read hit what the sender seeded under the optimistic fileId.
-        val nativeSize = selectThumbSize(targetSize, data.availableThumbSizes)
+        val nativeSize = thumbSizeToRequest(targetSize, data)
 
         return withRetry(retryConfig, TAG) {
             val response = try {
@@ -206,6 +206,13 @@ class HomebaseImageLoader(
             fetchFullPayloadUncached(data, retryConfig)
         }
     }
+
+    suspend fun isFullPayloadCached(data: HomebaseImageData): Boolean =
+        fullPayloadCache.contains(fullPayloadCacheKey(data))
+
+    suspend fun markStepUpFailed(data: HomebaseImageData) = fullPayloadCache.markStepUpFailed(fullPayloadCacheKey(data))
+
+    suspend fun hasStepUpFailed(data: HomebaseImageData): Boolean = fullPayloadCache.hasStepUpFailed(fullPayloadCacheKey(data))
 
     /**
      * Drop all cached decrypted full-payload bytes. Wire to the same triggers as

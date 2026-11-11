@@ -32,6 +32,8 @@ import id.homebase.core.logging.setupIOSCrashHandler
 import id.homebase.core.location.tracking.observeAppForeground
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.settings.UserPreferencesHelper
+import id.homebase.core.share.IncomingLinks
+import org.koin.mp.KoinPlatformTools
 import kotlinx.cinterop.ExperimentalForeignApi
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.runBlocking
@@ -117,6 +119,11 @@ fun whenStarted(block: () -> Unit) = AppStartup.whenStarted(block)
 /** For Swift: a push that arrived while the database was shut is shown and synced once startup has run. Main thread. */
 fun onPushArrivedBeforeDatabase(title: String?, body: String?, data: Map<String, String>) =
     AppStartup.whenStarted { NotificationEntry.fromKoin().onPushArrivedAsync(title, body, data) {} }
+
+// Koin is resolved inside the block: with a crash report pending, Swift defers initializeApp.
+fun handleIncomingLink(url: String) = AppStartup.whenStarted {
+    KoinPlatformTools.defaultContext().get().get<IncomingLinks>().handle(url)
+}
 
 private var protectedDataObserver: NSObjectProtocol? = null
 

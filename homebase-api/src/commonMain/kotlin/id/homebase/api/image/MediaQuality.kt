@@ -4,10 +4,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * How hard an outgoing photo or video is compressed before upload.
+ * How an outgoing photo or video is prepared before upload.
  *
- * [HIGH] is a byte-for-byte contract: the picked file's bytes reach the wire unmodified
- * (bar the EXIF scrub every image already gets).
+ * [ORIGINAL] is a byte-for-byte contract for photos: the picked file's bytes reach the wire
+ * unmodified (bar the EXIF scrub every image already gets). Videos are still compressed.
  */
 @Serializable
 enum class MediaQuality(val code: String) {
@@ -15,8 +15,12 @@ enum class MediaQuality(val code: String) {
     @SerialName("standard")
     STANDARD("standard"),
 
+    @SerialName("hd")
+    HD("hd"),
+
+    // "high" because every "high" photo already on the wire and in saved settings is an exact file.
     @SerialName("high")
-    HIGH("high");
+    ORIGINAL("high");
 
     companion object {
         fun fromCode(code: String?): MediaQuality = entries.find { it.code == code } ?: STANDARD

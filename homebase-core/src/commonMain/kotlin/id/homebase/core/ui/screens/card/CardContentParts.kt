@@ -29,6 +29,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ButtonShapes
@@ -64,13 +67,11 @@ import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AttributeFields
 import id.homebase.core.ui.screens.profile.AudienceBadge
-import id.homebase.core.ui.screens.profile.AudiencePicker
 import id.homebase.core.ui.screens.profile.EditorActions
 import id.homebase.core.ui.screens.profile.PanelHeader
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.isAttributeValid
-import id.homebase.core.ui.screens.profile.otherCirclesOf
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
@@ -78,9 +79,10 @@ import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_add_title
 import id.homebase.resources.profile_card_content_add_visible
 import id.homebase.resources.profile_card_content_empty
-import id.homebase.resources.profile_card_content_public_off_note
 import id.homebase.resources.profile_card_content_shown_everyone
 import id.homebase.resources.profile_card_content_shown_to
+import id.homebase.resources.profile_card_content_sees_circle
+import id.homebase.resources.profile_card_content_sees_public
 import id.homebase.resources.profile_edit_add_group_social
 import id.homebase.resources.profile_edit_bio
 import id.homebase.resources.profile_edit_email
@@ -95,8 +97,12 @@ import id.homebase.core.ui.screens.profile.ConflictRow
 import id.homebase.core.ui.screens.profile.conflictValue
 import id.homebase.core.ui.screens.profile.audienceSummary
 import id.homebase.core.ui.screens.profile.audience
+import id.homebase.core.ui.screens.profile.isOnCard
 import id.homebase.resources.profile_card_content_edit_title
 import id.homebase.resources.profile_card_content_delete
+import id.homebase.resources.profile_card_audience_public
+import id.homebase.resources.profile_card_sheet_available_on
+import androidx.compose.ui.platform.testTag
 import id.homebase.resources.profile_card_content_more
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
 
@@ -122,10 +128,11 @@ internal val MORE_TYPES = listOf(
 internal val SECTION_INSET = 24.dp
 internal val GROUP_OUTER_CORNER = 20.dp
 internal val GROUP_INNER_CORNER = 4.dp
+private val LIFTED_CORNER = 28.dp
 internal val ROW_GAP = 2.dp
 internal val BADGE_SIZE = 40.dp
 internal val BADGE_GAP = 16.dp
-private val HEADING_BADGE_SIZE = 36.dp
+private val HEADING_BADGE_SIZE = 56.dp
 private val ADD_PADDING = 12.dp
 
 @Composable
@@ -134,6 +141,7 @@ internal fun AudienceHeading(card: CardAudience, emoji: String? = null) {
         CardAudience.Public -> stringResource(MR.string.profile_card_content_shown_everyone)
         is CardAudience.Circle -> stringResource(MR.string.profile_card_content_shown_to, audienceLabel(card))
     }
+    val sees = stringResource(if (card is CardAudience.Circle) MR.string.profile_card_content_sees_circle else MR.string.profile_card_content_sees_public)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { heading() },
@@ -143,21 +151,35 @@ internal fun AudienceHeading(card: CardAudience, emoji: String? = null) {
             container = audienceContainer(card),
             content = onAudienceContainer(card),
             size = HEADING_BADGE_SIZE,
-            iconSize = 20.dp,
+            iconSize = 28.dp,
             emoji = emoji,
         )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleLargeEmphasized,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Spacer(Modifier.width(16.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.headlineSmallEmphasized,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = sees,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
+internal fun addIcon(kind: AddKind): ImageVector = when (kind) {
+    AddKind.Social -> Icons.Outlined.Share
+    AddKind.More -> Icons.Outlined.MoreHoriz
+    else -> typeIcon(kind.type)
+}
+
 // Only what can be added shows; a kind that can't be added is left out rather than shown disabled.
+// Rows that don't fit the width wrap into a second connected group rather than scrolling off the edge.
 @Composable
 internal fun AddGroup(
     isAvailable: (AddKind) -> Boolean,
@@ -168,64 +190,117 @@ internal fun AddGroup(
     if (kinds.isEmpty()) return
     val labels = kinds.map { stringResource(addLabel(it)) }
     val title = stringResource(MR.string.profile_card_content_add_new)
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 8.dp).semantics { heading() },
-    )
     val measurer = rememberTextMeasurer()
     val style = MaterialTheme.typography.labelLarge
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val gaps = ButtonGroupDefaults.ConnectedSpaceBetween * (kinds.size - 1)
-        val needed = with(density) {
-            labels.sumOf { measurer.measure(it, style).size.width } .toDp()
-        } + ADD_PADDING * 2 * kinds.size + gaps
-        val fits = needed <= maxWidth
-        val buttons: @Composable (Modifier) -> Unit = { weighted ->
-            kinds.forEachIndexed { index, kind ->
-                val toggle = connectedButtonShapes(index, kinds.size)
-                FilledTonalButton(
-                    onClick = { onAdd(kind) },
-                    enabled = enabled,
-                    shapes = ButtonShapes(shape = toggle.shape, pressedShape = toggle.pressedShape),
-                    contentPadding = PaddingValues(horizontal = ADD_PADDING),
-                    modifier = weighted
-                        .minimumInteractiveComponentSize()
-                        .heightIn(min = ButtonDefaults.MinHeight)
-                        .semantics { contentDescription = "$title: ${labels[index]}" },
-                ) {
-                    Text(labels[index], maxLines = 1, softWrap = false)
-                }
+        val widths = labels.map { label ->
+            with(density) { measurer.measure(label, style).size.width.toDp() } + ADD_PADDING * 2 + ButtonDefaults.IconSize + ButtonDefaults.IconSpacing
+        }
+        val rows = mutableListOf(mutableListOf<Int>())
+        var used = 0.dp
+        widths.forEachIndexed { index, width ->
+            val gap = if (rows.last().isEmpty()) 0.dp else ButtonGroupDefaults.ConnectedSpaceBetween
+            if (rows.last().isNotEmpty() && used + gap + width > maxWidth) {
+                rows += mutableListOf(index)
+                used = width
+            } else {
+                rows.last() += index
+                used += gap + width
             }
         }
-        val spacing = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
-        if (fits) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = spacing) { buttons(Modifier.weight(1f)) }
-        } else {
-            val scroll = rememberScrollState()
-            Row(Modifier.fillMaxWidth().fadingEdges(scroll).horizontalScroll(scroll), horizontalArrangement = spacing) { buttons(Modifier) }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            rows.forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+                    row.forEachIndexed { position, index ->
+                        val toggle = connectedButtonShapes(position, row.size)
+                        FilledTonalButton(
+                            onClick = { onAdd(kinds[index]) },
+                            enabled = enabled,
+                            shapes = ButtonShapes(shape = toggle.shape, pressedShape = toggle.pressedShape),
+                            contentPadding = PaddingValues(horizontal = ADD_PADDING),
+                            modifier = Modifier
+                                .weight(1f)
+                                .minimumInteractiveComponentSize()
+                                .heightIn(min = ButtonDefaults.MinHeight)
+                                .semantics { contentDescription = "$title: ${labels[index]}" },
+                        ) {
+                            Icon(addIcon(kinds[index]), contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                            Text(labels[index], maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-internal fun EmptyContent() {
-    Text(
-        text = stringResource(MR.string.profile_card_content_empty),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+internal fun AddSheet(
+    isAvailable: (AddKind) -> Boolean,
+    onAdd: (AddKind) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val kinds = AddKind.entries.filter(isAvailable)
+    val title = stringResource(MR.string.profile_card_content_add_new)
+    AdaptiveSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(ROW_GAP),
+        ) {
+            PanelHeader(icon = Icons.Outlined.Add, title = stringResource(MR.string.profile_card_content_add_title), modifier = Modifier.padding(bottom = 12.dp))
+            kinds.forEachIndexed { index, kind ->
+                val label = stringResource(addLabel(kind))
+                androidx.compose.material3.Surface(
+                    onClick = { dismiss { onDismiss(); onAdd(kind) } },
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = groupedShape(index, kinds.size),
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$title: $label" },
+                ) {
+                    Row(
+                        modifier = Modifier.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(BADGE_GAP),
+                    ) {
+                        Icon(addIcon(kind), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(label, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        }
+    }
 }
 
-// The M3 Expressive grouped list: one rounded block whose rows meet with tight inner corners.
-internal fun groupedShape(index: Int, count: Int) = RoundedCornerShape(
-    topStart = if (index == 0) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
-    topEnd = if (index == 0) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
-    bottomStart = if (index == count - 1) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
-    bottomEnd = if (index == count - 1) GROUP_OUTER_CORNER else GROUP_INNER_CORNER,
-)
+// The empty card's one job is getting something onto it, so the add choices sit right in the prompt.
+@Composable
+internal fun EmptyContent(add: @Composable () -> Unit) {
+    androidx.compose.material3.Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(GROUP_OUTER_CORNER),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(
+                text = stringResource(MR.string.profile_card_content_empty),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            add()
+        }
+    }
+}
+
+// The M3 Expressive grouped list: one rounded block whose rows meet with tight inner corners; a lifted row rounds out fully.
+internal fun groupedShape(index: Int, count: Int, lift: Float = 0f): RoundedCornerShape {
+    fun corner(outer: Boolean) = androidx.compose.ui.unit.lerp(if (outer) GROUP_OUTER_CORNER else GROUP_INNER_CORNER, LIFTED_CORNER, lift)
+    return RoundedCornerShape(
+        topStart = corner(index == 0),
+        topEnd = corner(index == 0),
+        bottomStart = corner(index == count - 1),
+        bottomEnd = corner(index == count - 1),
+    )
+}
 
 // Off is an outlined circle, on is a filled cookie: the badge morphs between them on the spatial spring as the switch flips.
 @Composable
@@ -268,7 +343,6 @@ internal fun ContentSheet(
     onAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
     onEdit: (Map<String, String>, ProfileAudience) -> Unit = { _, _ -> },
     onDelete: ((Uuid) -> Unit)? = null,
-    onCirclesChanged: (() -> Unit)? = null,
 ) {
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
@@ -341,19 +415,26 @@ internal fun ContentSheet(
                     )
                 }
             } else {
-                AudiencePicker(
-                    audience = audience,
-                    circles = circles,
-                    onChange = { audience = it },
-                    otherCircles = otherCirclesOf(editing.audience, audience),
-                    onCircleCreated = onCirclesChanged,
+                Text(
+                    text = stringResource(MR.string.profile_card_sheet_available_on),
+                    style = MaterialTheme.typography.labelLarge,
                 )
-                if (editing.audience == ProfileAudience.Public && audience != ProfileAudience.Public) {
-                    Text(
-                        text = stringResource(MR.string.profile_card_content_public_off_note),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val pills = listOf<Triple<CardAudience, String, String?>>(
+                        Triple(CardAudience.Public, stringResource(MR.string.profile_card_audience_public), null),
+                    ) + circles.map { Triple(CardAudience.Circle(it.id, it.name), it.name, it.emoji) }
+                    pills.forEach { (pillCard, label, emoji) ->
+                        val selected = when (pillCard) {
+                            CardAudience.Public -> audience == ProfileAudience.Public
+                            is CardAudience.Circle -> audience.isOnCard(pillCard.id)
+                        }
+                        FilterChip(
+                            selected = selected,
+                            onClick = { audience = audience.shownOn(pillCard, !selected, editing.audience, circles) ?: audience },
+                            label = { Text(listOfNotNull(emoji, label).joinToString(" ")) },
+                            modifier = Modifier.testTag("audience_pill_$label"),
+                        )
+                    }
                 }
                 editing.conflicts.forEach { record ->
                     ConflictRow(

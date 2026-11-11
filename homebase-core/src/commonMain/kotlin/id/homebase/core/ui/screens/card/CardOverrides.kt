@@ -1,5 +1,8 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.util.strictBoolean
+import id.homebase.api.util.strictDouble
+import id.homebase.api.util.strictString
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -9,8 +12,6 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.doubleOrNull
 
 /** Mirrors `CardOverrides` in odin-js `cards/overrides.ts`; property order matches the shared golden fixtures. */
 @Serializable
@@ -20,6 +21,7 @@ data class CardOverrides(
     val portraits: List<CardPortrait>? = null,
     val blocks: List<CardBlock>? = null,
     val socials: String? = null,
+    val fields: CardFields? = null,
 ) {
     fun isEmpty(): Boolean = this == EMPTY
 
@@ -33,37 +35,38 @@ data class CardOverrides(
             CardOverrides(
                 palette = json.field("palette") { o ->
                     CardPalette(
-                        ground = o.text("ground"), ink = o.text("ink"), muted = o.text("muted"),
-                        accent = o.text("accent"), surface = o.text("surface"), surfaceInk = o.text("surfaceInk"),
+                        ground = o.strictString("ground"), ink = o.strictString("ink"), muted = o.strictString("muted"),
+                        accent = o.strictString("accent"), surface = o.strictString("surface"), surfaceInk = o.strictString("surfaceInk"),
                     )
                 },
                 type = json.field("type") { o ->
                     CardTypeface(
-                        display = o.text("display"), text = o.text("text"),
-                        label = o.text("label"), displayCase = o.text("displayCase"),
+                        display = o.strictString("display"), text = o.strictString("text"),
+                        label = o.strictString("label"), displayCase = o.strictString("displayCase"),
                     )
                 },
                 portraits = (json["portraits"] as? JsonArray)?.mapNotNull { el ->
                     (el as? JsonObject)?.let { o ->
                         CardPortrait(
-                            source = o.text("source"), shape = o.text("shape"), ring = o.number("ring"),
-                            shadow = o.text("shadow"), tilt = o.number("tilt"), tape = o.flag("tape"), mono = o.flag("mono"),
+                            source = o.strictString("source"), shape = o.strictString("shape"), ring = o.strictDouble("ring"),
+                            shadow = o.strictString("shadow"), tilt = o.strictDouble("tilt"), tape = o.strictBoolean("tape"), mono = o.strictBoolean("mono"),
                         )
                     }
                 },
                 blocks = (json["blocks"] as? JsonArray)?.mapNotNull { el ->
                     val o = el as? JsonObject
-                    o?.text("kind")?.let { CardBlock(it, o.text("presentation")) }
+                    o?.strictString("kind")?.let { CardBlock(it, o.strictString("presentation")) }
                 },
-                socials = json.text("socials"),
+                socials = json.strictString("socials"),
+                fields = json.field("fields") { o -> CardFields(order = o.texts("order"), hidden = o.texts("hidden")) },
             )
 
         private fun <T> JsonObject.field(key: String, read: (JsonObject) -> T): T? =
             (this[key] as? JsonObject)?.let(read)
 
-        private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
-        private fun JsonObject.flag(key: String): Boolean? = (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
-        private fun JsonObject.number(key: String): Double? = (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
+        private fun JsonObject.texts(key: String): List<String>? =
+            (this[key] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+
     }
 }
 
@@ -108,3 +111,6 @@ data class CardPortrait(
 
 @Serializable
 data class CardBlock(val kind: String, val presentation: String? = null)
+
+@Serializable
+data class CardFields(val order: List<String>? = null, val hidden: List<String>? = null)

@@ -165,6 +165,7 @@ private fun PinnedBarContent(item: PinnedBarItem, onUiAction: (ConversationListU
  */
 fun MessageUiModel.pinnedPreviewBody(): String = when (val c = messageContent) {
     is MessageContent.Poll -> c.descriptor?.question
+    is MessageContent.AgentUi -> c.descriptor?.summaryLine()
     is MessageContent.Event -> c.descriptor?.title
     is MessageContent.Groodle -> c.descriptor?.title
     is MessageContent.Location -> c.descriptor?.let { it.caption?.takeIf(String::isNotBlank) ?: it.address }
