@@ -85,11 +85,11 @@ class ArticleWebViewModel(
                         authToken = credentials.clientAccessToken,
                         isDark = isDark,
                     ),
-                    error = if (url == null) "Not an article" else null,
                 )
             } catch (e: Exception) {
                 Logger.e(e, tag = "ArticleWebViewModel") { "Failed to prepare the article page" }
-                _uiState.update { it.copy(error = e.message?.takeIf { m -> m.isNotBlank() } ?: "Failed to load the article.") }
+                val message = e.message?.takeIf { it.isNotBlank() } ?: "Failed to load the article."
+                _uiState.update { it.copy(error = message) }
             }
         }
     }
