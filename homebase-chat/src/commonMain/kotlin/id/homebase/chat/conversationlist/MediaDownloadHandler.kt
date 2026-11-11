@@ -37,6 +37,8 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.chat.agentui.agentUiImagePayloads
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.extensionForMimeType
 import id.homebase.resources.MR
@@ -489,19 +491,7 @@ internal class MediaDownloadHandler(
                         }
 
                         messagesUiState.update {
-                            it.copy(
-                                fullScreenOverlay = FullScreenOverlay.ViewMessageData(
-                                    messageId = action.message.id,
-                                    title = title,
-                                    userDate = action.message.userDate,
-                                    content = action.message.content,
-                                    fileId = action.message.fileId,
-                                    driveId = chatTargetDrive.alias,
-                                    payloads = action.message.payloads,
-                                    selectedPayloadKey = action.payloadKey,
-                                    keyHeader = action.message.keyHeader,
-                                )
-                            )
+                            it.copy(fullScreenOverlay = imageViewerFor(action.message, title, action.payloadKey))
                         }
                     }
 
@@ -756,4 +746,20 @@ internal class MediaDownloadHandler(
             ?: "bin"
         return "$name.$ext"
     }
+}
+
+/** An agent card's header is its descriptor and its payloads include the tree, so its viewer pages only the card's images, uncaptioned. */
+internal fun imageViewerFor(message: MessageUiModel, title: String, selectedPayloadKey: String): FullScreenOverlay.ViewMessageData {
+    val agentCard = message.messageContent is MessageContent.AgentUi
+    return FullScreenOverlay.ViewMessageData(
+        messageId = message.id,
+        title = title,
+        userDate = message.userDate,
+        content = if (agentCard) "" else message.content,
+        fileId = message.fileId,
+        driveId = chatTargetDrive.alias,
+        payloads = if (agentCard) message.agentUiImagePayloads() else message.payloads.orEmpty(),
+        selectedPayloadKey = selectedPayloadKey,
+        keyHeader = message.keyHeader,
+    )
 }

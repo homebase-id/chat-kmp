@@ -38,6 +38,10 @@ deleteByFile:
 DELETE FROM DriveLocalTagIndex
 WHERE identityId = ? AND driveId = ? AND fileId = ?;
 
+deleteByDrive:
+DELETE FROM DriveLocalTagIndex
+WHERE identityId = ? AND driveId = ?;
+
 -- Delete all records (for testing)
 deleteAll:
 DELETE FROM DriveLocalTagIndex;

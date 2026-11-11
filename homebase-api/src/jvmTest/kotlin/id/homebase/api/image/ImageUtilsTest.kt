@@ -139,7 +139,7 @@ class ImageUtilsTest {
     // =========================================================
 
     @Test
-    fun resize_downscale_landscapeJpeg() {
+    fun resize_downscale_landscapeJpeg() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 400, 400)
         assertEquals(400, result.size.pixelWidth)
@@ -150,7 +150,7 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_noResizeNeeded_alreadyFits() {
+    fun resize_noResizeNeeded_alreadyFits() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 1000, 1000)
         assertEquals(800, result.size.pixelWidth)
@@ -158,7 +158,7 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_toSquareTarget() {
+    fun resize_toSquareTarget() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100)
         assertEquals(100, result.size.pixelWidth)
@@ -166,7 +166,7 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_highRes_to1600() {
+    fun resize_highRes_to1600() = runTest {
         val bytes = ImageTestHelper.loadImage("5760_x_4320.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 1600, 1600)
         assertEquals(1600, result.size.pixelWidth)
@@ -174,7 +174,7 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_tinyTarget20x20() {
+    fun resize_tinyTarget20x20() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 20, 20)
         assertTrue(max(result.size.pixelWidth, result.size.pixelHeight) <= 20)
@@ -182,42 +182,42 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_pngToJpeg() {
+    fun resize_pngToJpeg() = runTest {
         val bytes = ImageTestHelper.loadImage("dice.png")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100, outputFormat = ImageFormat.JPEG)
         ImageTestHelper.assertValidJpeg(result.bytes)
     }
 
     @Test
-    fun resize_pngToWebp() {
+    fun resize_pngToWebp() = runTest {
         val bytes = ImageTestHelper.loadImage("dice.png")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100, outputFormat = ImageFormat.WEBP)
         ImageTestHelper.assertValidWebp(result.bytes)
     }
 
     @Test
-    fun resize_pngToPng() {
+    fun resize_pngToPng() = runTest {
         val bytes = ImageTestHelper.loadImage("dice.png")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100, outputFormat = ImageFormat.PNG)
         ImageTestHelper.assertValidPng(result.bytes)
     }
 
     @Test
-    fun resize_webpToJpeg() {
+    fun resize_webpToJpeg() = runTest {
         val bytes = ImageTestHelper.loadImage("1_webp_a.webp")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100, outputFormat = ImageFormat.JPEG)
         ImageTestHelper.assertValidJpeg(result.bytes)
     }
 
     @Test
-    fun resize_gifToWebp() {
+    fun resize_gifToWebp() = runTest {
         val bytes = ImageTestHelper.loadImage("mountain_800.gif")
         val result = ImageUtils.resizePreserveAspect(bytes, 200, 200, outputFormat = ImageFormat.WEBP)
         ImageTestHelper.assertValidWebp(result.bytes)
     }
 
     @Test
-    fun resize_transparentPngToWebp() {
+    fun resize_transparentPngToWebp() = runTest {
         val bytes = ImageTestHelper.loadImage("shirt_transparent.png")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100, outputFormat = ImageFormat.WEBP)
         ImageTestHelper.assertValidWebp(result.bytes)
@@ -226,14 +226,14 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_32x32pngInto20x20() {
+    fun resize_32x32pngInto20x20() = runTest {
         val bytes = ImageTestHelper.loadImage("pngsuite/basn6a08.png")
         val result = ImageUtils.resizePreserveAspect(bytes, 20, 20)
         assertTrue(max(result.size.pixelWidth, result.size.pixelHeight) <= 20)
     }
 
     @Test
-    fun resize_qualityParameter_affectsFileSize() {
+    fun resize_qualityParameter_affectsFileSize() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val lowQ = ImageUtils.resizePreserveAspect(bytes, 400, 400, outputFormat = ImageFormat.JPEG, quality = 10)
         val highQ = ImageUtils.resizePreserveAspect(bytes, 400, 400, outputFormat = ImageFormat.JPEG, quality = 95)
@@ -244,7 +244,7 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_outputIsDecodable() {
+    fun resize_outputIsDecodable() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 200, 200)
         val decoded = ImageUtils.getNaturalSize(result.bytes)
@@ -253,21 +253,21 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_maxWidthZero_unconstrainedWidth() {
+    fun resize_maxWidthZero_unconstrainedWidth() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 0, 300)
         assertEquals(300, result.size.pixelHeight)
     }
 
     @Test
-    fun resize_maxHeightZero_unconstrainedHeight() {
+    fun resize_maxHeightZero_unconstrainedHeight() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 400, 0)
         assertEquals(400, result.size.pixelWidth)
     }
 
     @Test
-    fun resize_bmpFallback_outputIsPng() {
+    fun resize_bmpFallback_outputIsPng() = runTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100, outputFormat = ImageFormat.BMP)
         // BMP maps to PNG internally in JVM impl
@@ -564,7 +564,7 @@ class ImageUtilsTest {
     // =========================================================
 
     @Test
-    fun resize_cmykJpeg_doesNotCrash() {
+    fun resize_cmykJpeg_doesNotCrash() = runTest {
         val bytes = ImageTestHelper.loadImage("cmyk_logo.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100)
         assertTrue(result.bytes.isNotEmpty())
@@ -572,7 +572,7 @@ class ImageUtilsTest {
     }
 
     @Test
-    fun resize_colorProfileErrorJpeg_doesNotCrash() {
+    fun resize_colorProfileErrorJpeg_doesNotCrash() = runTest {
         val bytes = ImageTestHelper.loadImage("color_profile_error.jpg")
         val result = ImageUtils.resizePreserveAspect(bytes, 100, 100)
         assertTrue(result.bytes.isNotEmpty())

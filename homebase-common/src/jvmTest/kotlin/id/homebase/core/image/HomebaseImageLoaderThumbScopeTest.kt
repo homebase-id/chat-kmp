@@ -3,6 +3,7 @@ package id.homebase.core.image
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -85,15 +86,16 @@ class HomebaseImageLoaderThumbScopeTest {
                 sharedSecret = SecureByteArray(ByteArray(32) { 0x01 }),
             )
         )
-        val driveCache = DriveFileProviderCached(httpClient, credentialsManager, fileOps)
-        loader = HomebaseImageLoader(
-            driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache),
-            fileOperationsProvider = fileOps,
-            peerFileProvider = PeerFileByGlobalTransitProvider(
-                httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache,
-            ),
-        )
+        loader = loaderOver(DriveFileProviderCached(httpClient, credentialsManager, fileOps))
     }
+
+    private fun loaderOver(driveCache: DriveFileProviderCached) = HomebaseImageLoader(
+        driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache),
+        fileOperationsProvider = fileOps,
+        peerFileProvider = PeerFileByGlobalTransitProvider(
+            httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache,
+        ),
+    )
 
     @AfterTest
     fun tearDown() {
@@ -113,6 +115,28 @@ class HomebaseImageLoaderThumbScopeTest {
 
             assertContentEquals(thumbBytes, next?.bytes)
             assertEquals(1, requests.get())
+        }
+    }
+
+    @Test
+    fun `on a drive that cancels unwatched downloads, the last caller leaving cancels the fetch`() = runBlocking {
+        withTimeout(10_000) {
+            val grid = loaderOver(
+                DriveFileProviderCached(
+                    httpClient,
+                    credentialsManager,
+                    fileOps,
+                    DedicatedThumbCache(avatar.driveId, 1024L * 1024L, "grid", cancelWhenUnwatched = true),
+                ),
+            )
+            val tile = launch(Dispatchers.Default) { grid.loadThumbnail(avatar, size) }
+            requestArrived.await()
+            tile.cancelAndJoin()
+            releaseResponse.complete(Unit)
+
+            grid.loadThumbnail(avatar, size)
+
+            assertEquals(2, requests.get())
         }
     }
 

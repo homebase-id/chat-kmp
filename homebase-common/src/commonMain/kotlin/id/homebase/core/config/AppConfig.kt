@@ -619,7 +619,7 @@ private val photosDrive = TargetDriveAccessRequest(
     alias = photosLabeledDrive.drive.alias.toString(),
     type = photosLabeledDrive.drive.type.toString(),
     name = photosLabeledDrive.label,
-    description = "Photos and videos backed up by Homebase Photobase",
+    description = "Photos and videos backed up by Homebase Photos",
     permissions = listOf(DrivePermission.Read, DrivePermission.Write),
     driveSlug = PhotobaseProtocol.DriveSlug,
     driveTypeSlug = PhotobaseProtocol.DriveTypeSlug,
@@ -632,14 +632,14 @@ val photosTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(phot
 
 val photobaseAppRegistration = AppRegistrationParams(
     appId = PhotobaseProtocol.AppId,
-    name = "Homebase Photobase",
+    name = "Homebase Photos",
     appSlug = PhotobaseProtocol.AppSlug,
     drives = listOf(photosDrive),
     circles = listOf(
         AppCircleDeclaration(
             slug = PhotobaseProtocol.CircleSlug,
             name = "Photobase",
-            description = "People who can see the photos you share through Homebase Photobase",
+            description = "People who can see the photos you share through Homebase Photos",
             emoji = "📷",
             drives = listOf(
                 photosDrive.copy(permissions = listOf(DrivePermission.Read), driveTypeSlug = null, grantOnly = true),

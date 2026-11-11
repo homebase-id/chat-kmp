@@ -235,6 +235,11 @@ kotlin {
             }
         }
 
+    val runHasherBench = providers.environmentVariable("HASHER_BENCH").orNull == "1"
+    tasks.withType(AbstractTestTask::class.java).configureEach {
+        if (!runHasherBench) filter.excludeTestsMatching("id.homebase.api.crypto.HasherThroughputBench.*")
+    }
+
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
     }
@@ -297,6 +302,10 @@ kotlin {
         // coverage of these tests.
         val jvmAndNativeTest = create("jvmAndNativeTest") { dependsOn(commonTest.get()) }
         val skiaTest = create("skiaTest") { dependsOn(commonTest.get()) }
+        // Compiled into both skiaTest and Android's device tests: the image contract has to hold
+        // on the real Android decoders too, and KGP refuses a dependsOn across the two test trees.
+        skiaTest.kotlin.srcDir("src/imageContractTest/kotlin")
+        getByName("androidDeviceTest").kotlin.srcDir("src/imageContractTest/kotlin")
         jvmTest.get().dependsOn(skiaTest)
         nativeTest.get().dependsOn(skiaTest)
         wasmJsTest.get().dependsOn(skiaTest)

@@ -14,31 +14,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.core.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.settings.label
 import id.homebase.resources.MR
 import id.homebase.resources.cd_media_quality_hd_badge
-import id.homebase.resources.chat_media_quality_hd
+import id.homebase.resources.cd_media_quality_original_badge
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * True only when the payload explicitly records [MediaQuality.HIGH].
+ * The quality to badge a photo with, or null for none.
  *
- * A missing quality is "not recorded", not "standard": every photo sent before the flag
- * shipped reads that way, and badging those as standard would mislabel the HD ones. Absent
- * and standard therefore render identically — no badge.
+ * A missing quality is "not recorded", not "standard": every photo sent before the flag shipped
+ * reads that way, and badging those as standard would mislabel the rest. Absent and standard
+ * therefore render identically, with no badge.
  */
-fun PayloadDescriptor.isHighQualityImage(): Boolean =
-    (descriptorInfo() as? DescriptorContent.ImageFile)?.quality == MediaQuality.HIGH
+fun PayloadDescriptor.badgedQuality(): MediaQuality? =
+    (descriptorInfo() as? DescriptorContent.ImageFile)?.quality?.takeIf { it != MediaQuality.STANDARD }
 
 /**
- * HD marker overlaid on a photo. Carries its own scrim because it sits on arbitrary picture
+ * Quality marker overlaid on a photo. Carries its own scrim because it sits on arbitrary picture
  * content, where no surface role can guarantee contrast.
  */
 @Composable
-fun HdBadge(modifier: Modifier = Modifier) {
-    val label = stringResource(MR.string.chat_media_quality_hd)
-    val description = stringResource(MR.string.cd_media_quality_hd_badge)
+fun MediaQualityBadge(quality: MediaQuality, modifier: Modifier = Modifier) {
+    val label = stringResource(quality.label)
+    val description = stringResource(
+        if (quality == MediaQuality.ORIGINAL) MR.string.cd_media_quality_original_badge else MR.string.cd_media_quality_hd_badge
+    )
     Box(
         modifier = modifier
             .padding(6.dp)
@@ -56,4 +60,9 @@ fun HdBadge(modifier: Modifier = Modifier) {
             color = HomebaseTheme.extendedColors.bubbleSentOnSurface,
         )
     }
+}
+
+fun PayloadDescriptor.recordedImageSize(): ImageSize? {
+    val image = descriptorInfo() as? DescriptorContent.ImageFile ?: return null
+    return ImageSize(image.pixelWidth ?: return null, image.pixelHeight ?: return null)
 }

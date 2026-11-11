@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.readImageMetadata
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.VideoThumbnailService
@@ -242,10 +241,8 @@ class MomentComposeViewModel(
                 }
             }
 
-            MomentComposeUiAction.ToggleMediaQuality -> {
-                userPreferences.mediaQuality =
-                    if (userPreferences.mediaQuality == MediaQuality.HIGH) MediaQuality.STANDARD
-                    else MediaQuality.HIGH
+            is MomentComposeUiAction.SetMediaQuality -> {
+                userPreferences.mediaQuality = action.quality
                 _uiState.update { it.copy(mediaQuality = userPreferences.mediaQuality) }
             }
         }

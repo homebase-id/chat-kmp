@@ -49,7 +49,7 @@ actual fun ByteArray.toImageBitmap(): ImageBitmap? {
 
 actual object ImageUtils {
 
-    private fun decodeImage(bytes: ByteArray): Image {
+    internal fun decodeImage(bytes: ByteArray): Image {
         val inputBytes = if (ImageFormatDetector.isHeic(bytes)) {
             convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
         } else bytes
@@ -57,7 +57,7 @@ actual object ImageUtils {
         return Image.makeFromEncoded(inputBytes)
     }
 
-    private fun encodedFormatFor(format: ImageFormat): EncodedImageFormat = when (format) {
+    internal fun encodedFormatFor(format: ImageFormat): EncodedImageFormat = when (format) {
         ImageFormat.WEBP -> EncodedImageFormat.WEBP
         ImageFormat.JPEG -> EncodedImageFormat.JPEG
         ImageFormat.PNG -> EncodedImageFormat.PNG
@@ -65,49 +65,13 @@ actual object ImageUtils {
         ImageFormat.GIF -> EncodedImageFormat.WEBP // GIF encoding not supported, fallback to WEBP
     }
 
-    actual fun resizePreserveAspect(
+    actual suspend fun resizePreserveAspect(
         srcBytes: ByteArray,
         maxWidth: Int,
         maxHeight: Int,
         outputFormat: ImageFormat,
         quality: Int
-    ): ImageResult {
-        val srcImage = decodeImage(srcBytes)
-        val naturalW = srcImage.width
-        val naturalH = srcImage.height
-
-        val (targetW, targetH) = calculateTargetDimensions(naturalW, naturalH, maxWidth, maxHeight)
-
-        // If no resize needed
-        if (targetW == naturalW && targetH == naturalH) {
-            val format = encodedFormatFor(outputFormat)
-            val data = srcImage.encodeToData(format, quality)
-            return ImageResult(
-                bytes = data?.bytes ?: srcBytes,
-                naturalSize = ImageSize(naturalW, naturalH),
-                size = ImageSize(naturalW, naturalH)
-            )
-        }
-
-        // Create surface for resized image
-        val surface = Surface.makeRasterN32Premul(targetW, targetH)
-        val canvas = surface.canvas
-
-        // Scale and draw
-        canvas.scale(targetW.toFloat() / naturalW, targetH.toFloat() / naturalH)
-        canvas.drawImage(srcImage, 0f, 0f)
-
-        // Get the resized image
-        val resized = surface.makeImageSnapshot()
-        val encoded = resized.encodeToData(encodedFormatFor(outputFormat), quality)
-            ?: throw IllegalStateException("Failed to encode resized image")
-
-        return ImageResult(
-            bytes = encoded.bytes,
-            naturalSize = ImageSize(naturalW, naturalH),
-            size = ImageSize(targetW, targetH)
-        )
-    }
+    ): ImageResult = resizeThroughPipeline(srcBytes, maxWidth, maxHeight, outputFormat, quality)
 
     actual fun compressOnly(
         srcBytes: ByteArray,
@@ -230,10 +194,8 @@ actual object ImageUtils {
         )
     }
 
-    actual fun getNaturalSize(srcBytes: ByteArray): ImageSize {
-        val img = decodeImage(srcBytes)
-        return ImageSize(img.width, img.height)
-    }
+    actual fun getNaturalSize(srcBytes: ByteArray): ImageSize =
+        openImageSource(srcBytes).use { it.displayedSize }
 
     actual fun hasNonOpaquePixels(srcBytes: ByteArray): Boolean {
         return try {

@@ -35,6 +35,8 @@ import id.homebase.resources.settings_media_autosave_unmetered_description
 import id.homebase.resources.settings_media_camera_header
 import id.homebase.resources.settings_media_mirror_front
 import id.homebase.resources.settings_media_mirror_front_description
+import id.homebase.core.settings.description
+import id.homebase.core.settings.label
 import id.homebase.resources.settings_media_quality_footer
 import id.homebase.resources.settings_media_quality_header
 import org.jetbrains.compose.resources.stringResource

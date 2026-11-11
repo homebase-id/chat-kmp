@@ -1,5 +1,7 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.client.NetworkException
+import id.homebase.api.client.ServerException
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.Blake3Hasher
@@ -18,7 +20,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.IOException
 import kotlinx.coroutines.test.testTimeSource
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -45,8 +49,9 @@ class PhotoBackupRunTest {
     private var dedupeFailure: Exception? = null
     private var storageFull = false
     private var signedIn = CompletableDeferred(true)
-    private var backupRans = 0
+    private val ranWithWorkLeft = mutableListOf<Boolean>()
     private var stuckAlerts = 0
+    private var continuations = 0
 
     @AfterTest
     fun close() = db.close()
@@ -84,7 +89,8 @@ class PhotoBackupRunTest {
             auth = { signedIn.await() },
             scheduler = object : BackupScheduler {
                 override fun rearm(settings: BackupSettings) = Unit
-                override fun onBackupRan() { backupRans++ }
+                override fun onBackupRan(workLeft: Boolean) { ranWithWorkLeft += workLeft }
+                override fun continueSoon(settings: BackupSettings) { continuations++ }
                 override suspend fun alertBackupStuck() { stuckAlerts++ }
             },
             isStorageFull = { storageFull },
@@ -208,6 +214,54 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun refreshingTheStatusUploadsWhatTheDriveLostAndKeepsWhatItHas() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        run.run(request())
+        advanceUntilIdle()
+        existing += idOf("a")
+        uploader.handedOff.clear()
+        dedupeCalls.clear()
+
+        run.run(request(trigger = BackupTrigger.UserRequested))
+        advanceUntilIdle()
+        assertTrue(dedupeCalls.isEmpty())
+        assertTrue(uploader.handedOff.isEmpty())
+
+        run.recheckDrive()
+        run.run(request(trigger = BackupTrigger.UserRequested))
+        advanceUntilIdle()
+
+        assertEquals(setOf(idOf("a"), idOf("b")), dedupeCalls.flatten().toSet())
+        assertEquals(listOf("b"), uploader.handedOff)
+        assertEquals(BackupState.Done.code, state("a"))
+        assertEquals(BackupState.Done.code, state("b"))
+        assertEquals(2, ledger.counts().done)
+    }
+
+    @Test
+    fun forgettingTheDriveEmptiesTheLedgerSoEveryPhotoIsAskedAboutAgain() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        run.run(request())
+        advanceUntilIdle()
+        uploader.handedOff.clear()
+        dedupeCalls.clear()
+
+        run.forget()
+
+        assertEquals(null, ledger.row("a"))
+        assertEquals(0, run.status.value.backedUpCount)
+        assertFalse(ledger.isInitialBackupDone())
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(setOf(idOf("a"), idOf("b")), dedupeCalls.flatten().toSet())
+        assertEquals(setOf("a", "b"), uploader.handedOff.toSet())
+    }
+
+    @Test
     fun aFailedDedupeUploadsNothingAndRetriesLater() = runTest {
         dedupeFailure = IllegalStateException("server down")
         source.next = fullListing(asset("a"))
@@ -220,6 +274,37 @@ class PhotoBackupRunTest {
         val row = ledger.row("a")!!
         assertEquals(BackupState.Hashed.code, row.state)
         assertEquals(1, row.attempts)
+        assertTrue(row.nextAttemptAt > now)
+    }
+
+    @Test
+    fun anOutageDuringDedupeCostsNoAttemptAndStopsChecking() = runTest {
+        dedupeFailure = NetworkException(IOException("no route to host"))
+        source.next = fullListing(asset("a"), asset("b"), asset("c"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+
+        assertTrue(uploader.handedOff.isEmpty())
+        assertEquals(1, dedupeCalls.size)
+        val rows = listOf("a", "b", "c").map { ledger.row(it)!! }
+        assertTrue(rows.all { it.attempts == 0L })
+        val checked = dedupeCalls.single().toSet()
+        assertTrue(rows.filter { idOf(it.deviceAssetId) in checked }.all { it.nextAttemptAt > now })
+    }
+
+    @Test
+    fun aServerErrorDuringDedupeCostsNoAttempt() = runTest {
+        dedupeFailure = ServerException(503, null, null)
+        source.next = fullListing(asset("a"))
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+
+        val row = ledger.row("a")!!
+        assertEquals(BackupState.Hashed.code, row.state)
+        assertEquals(0, row.attempts)
         assertTrue(row.nextAttemptAt > now)
     }
 
@@ -407,7 +492,7 @@ class PhotoBackupRunTest {
         run.run(request())
 
         assertEquals(0, stuckAlerts)
-        assertEquals(0, backupRans)
+        assertEquals(emptyList(), ranWithWorkLeft)
     }
 
     @Test
@@ -417,7 +502,18 @@ class PhotoBackupRunTest {
 
         run.run(request())
 
-        assertEquals(1, backupRans)
+        assertEquals(listOf(false), ranWithWorkLeft, "nothing left, so iOS removes the stuck alert")
+    }
+
+    @Test
+    fun aRunThatLeavesWorkSaysSo() = runTest {
+        source.next = fullListing(asset("a"))
+        dedupeFailure = IllegalStateException("bad answer")
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+
+        assertEquals(listOf(true), ranWithWorkLeft)
     }
 
     @Test
@@ -432,6 +528,31 @@ class PhotoBackupRunTest {
         val counts = ledger.counts()
         assertTrue(counts.pending > 0, "some assets must be left: $counts")
         assertFalse(ledger.isInitialBackupDone())
+        assertEquals(1, continuations, "it backed some up, so another run carries on")
+    }
+
+    @Test
+    fun aRunOutOfTimeThatMovedNothingDoesNotAskForAnother() = runTest {
+        hashTime = 30.seconds
+        source.next = fullListing(asset("a"), asset("b"))
+        val (run, _) = newRun(uploader())
+
+        assertEquals(BackupRunOutcome.OutOfTime, run.run(request(limit = 25.seconds)))
+
+        assertEquals(0, continuations)
+    }
+
+    @Test
+    fun aRunThatFinishesOrPausesDoesNotAskForAnother() = runTest {
+        source.next = fullListing(asset("a"))
+        val (run, _) = newRun(uploader())
+        run.run(request())
+
+        probe.state = probe.state.copy(isUnmetered = false)
+        source.next = fullListing(asset("a"), asset("b"))
+        run.run(request(limit = 25.seconds))
+
+        assertEquals(0, continuations)
     }
 
     @Test
@@ -456,7 +577,7 @@ class PhotoBackupRunTest {
     }
 
     @Test
-    fun aSecondRunWhileOneIsGoingDoesNothing() = runTest {
+    fun aSecondBackgroundRunWhileOneIsGoingDoesNothing() = runTest {
         hashTime = 10.seconds
         source.next = fullListing(asset("a"))
         val (run, _) = newRun(uploader())
@@ -466,6 +587,95 @@ class PhotoBackupRunTest {
         assertEquals(BackupRunOutcome.AlreadyRunning, run.run(request()))
 
         first.join()
+    }
+
+    @Test
+    fun backUpNowTakesOverFromAForegroundRun() = runTest {
+        source.next = fullListing(asset("a"), asset("b"), asset("c"))
+        hashTime = 10.seconds
+        val uploader = uploader(sendTime = 60.seconds)
+        val (run, _) = newRun(uploader)
+        val foreground = async { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(1.seconds)
+
+        val userRequested = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.Superseded, foreground.await())
+        assertEquals(BackupRunOutcome.Finished, userRequested.await())
+        assertEquals(setOf("a", "b", "c"), uploader.handedOff.toSet())
+        assertEquals(3, ledger.counts().done)
+    }
+
+    @Test
+    fun aNewBackUpNowReplacesTheOneGoing() = runTest {
+        source.next = fullListing(asset("a"))
+        hashTime = 10.seconds
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        val first = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceTimeBy(1.seconds)
+
+        source.next = fullListing(asset("a"), asset("b"))
+        val second = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.Superseded, first.await())
+        assertEquals(BackupRunOutcome.Finished, second.await())
+        assertEquals(setOf("a", "b"), uploader.handedOff.toSet())
+    }
+
+    @Test
+    fun openingTheAppDuringABackgroundRunCarriesOnAfterIt() = runTest {
+        source.next = fullListing(*List(20) { asset("a$it") }.toTypedArray())
+        hashTime = 10.seconds
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        val background = async { run.run(request(limit = 25.seconds)) }
+        advanceTimeBy(1.seconds)
+
+        val foreground = async { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.OutOfTime, background.await())
+        assertEquals(BackupRunOutcome.Finished, foreground.await())
+        assertEquals(20, ledger.counts().done)
+    }
+
+    @Test
+    fun aForegroundRunWaitingBehindBackUpNowLeavesItToBackUpNow() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        hashTime = 10.seconds
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        val background = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        val foreground = async { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(1.seconds)
+
+        val userRequested = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.Superseded, background.await())
+        assertEquals(BackupRunOutcome.Superseded, foreground.await())
+        assertEquals(BackupRunOutcome.Finished, userRequested.await())
+        assertEquals(2, ledger.counts().done)
+    }
+
+    @Test
+    fun aSupersededRunsCallerBeingCancelledStillCancels() = runTest {
+        source.next = fullListing(asset("a"))
+        hashTime = 10.seconds
+        val (run, _) = newRun(uploader())
+        val foreground = launch { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(1.seconds)
+
+        foreground.cancel()
+        val userRequested = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceUntilIdle()
+
+        assertTrue(foreground.isCancelled)
+        assertEquals(BackupRunOutcome.Finished, userRequested.await())
     }
 
     @Test
@@ -493,6 +703,54 @@ class PhotoBackupRunTest {
         assertEquals(BackupPauseReason.StorageFull, run.status.value.pauseReason)
 
         assertTrue(source.checkpointsSeen.isEmpty())
+    }
+
+    @Test
+    fun aPhoneThatFillsUpMidRunPausesAndTheFailedWriteCostsNoAttempt() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        hashGates["a"] = gate
+        source.next = fullListing(asset("a"))
+        val (run, _) = newRun(uploader())
+
+        val outcome = async { run.run(request()) }
+        runCurrent()
+        probe.state = probe.state.copy(freeStorageBytes = 1024)
+        gate.completeExceptionally(IllegalStateException("No space left on device"))
+
+        assertEquals(BackupRunOutcome.Paused, outcome.await())
+        assertEquals(BackupPauseReason.PhoneStorageLow, run.status.value.pauseReason)
+        assertEquals(0, ledger.row("a")?.attempts)
+        assertEquals(BackupState.New.code, state("a"))
+    }
+
+    @Test
+    fun aHotPhoneStopsStartingWorkAndCarriesOnOnceCool() = runTest {
+        source.next = fullListing(asset("a"))
+        probe.state = probe.state.copy(isOverheated = true)
+        val (run, _) = newRun(uploader())
+
+        assertEquals(BackupRunOutcome.Paused, run.run(request(trigger = BackupTrigger.Foreground)))
+        assertEquals(BackupPauseReason.TooHot, run.status.value.pauseReason)
+
+        probe.state = probe.state.copy(isOverheated = false)
+        assertEquals(BackupRunOutcome.Finished, run.run(request()))
+        assertEquals(BackupState.Done.code, state("a"))
+    }
+
+    @Test
+    fun statusSaysWhenPhotoLocationsAreWithheld() = runTest {
+        val (run, _) = newRun(uploader())
+
+        run.refreshStatus()
+        assertFalse(run.status.value.photoLocationsWithheld)
+
+        probe.locationsWithheld = true
+        run.refreshStatus()
+        assertTrue(run.status.value.photoLocationsWithheld)
+
+        probe.access = LibraryAccess.None
+        run.refreshStatus()
+        assertFalse(run.status.value.photoLocationsWithheld)
     }
 
     @Test
@@ -544,7 +802,7 @@ class PhotoBackupRunTest {
     fun aRowWhoseSendVanishedIsSettledByDedupe() = runTest {
         val id = idOf("a")
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", id)
+        ledger.markHashed("a", "ff", id, 10)
         ledger.markQueued("a")
         existing += id
         source.next = fullListing(asset("a"))
@@ -575,6 +833,39 @@ class PhotoBackupRunTest {
 
         assertEquals(BackupRunOutcome.Finished, outcome)
         assertTrue(uploader.handedOff.size <= 8, "handed off ${uploader.handedOff.size}")
+    }
+
+    @Test
+    fun rowsTheOutboxIsBackingOffDoNotStopNewUploads() = runTest {
+        val first = List(6) { asset("a$it") }
+        source.next = fullListing(*first.toTypedArray())
+        val uploader = uploader()
+        uploader.sendsFail = true
+        val (run, _) = newRun(uploader)
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(6, ledger.rowsInOutbox().size)
+
+        uploader.sendsFail = false
+        uploader.stillSending = true
+        source.next = fullListing(*(first + asset("b")).toTypedArray())
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("b"))
+    }
+
+    @Test
+    fun anOutboxFailingEverySendStillStopsAtTwiceTheLimit() = runTest {
+        source.next = fullListing(*List(30) { asset("a$it") }.toTypedArray())
+        val uploader = uploader()
+        uploader.sendsFail = true
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertTrue(uploader.handedOff.size <= 14, "handed off ${uploader.handedOff.size}")
     }
 
     @Test
@@ -696,7 +987,7 @@ class PhotoBackupRunTest {
     fun otherDrivesEventsAreIgnored() = runTest {
         val id = idOf("a")
         ledger.apply(fullListing(asset("a")), null)
-        ledger.markHashed("a", "ff", id)
+        ledger.markHashed("a", "ff", id, 10)
         ledger.markQueued("a")
         val results = BackupOutboxResults(ledger, eventBus, PhotobaseProtocol.DriveAlias, backgroundScope)
         results.start()

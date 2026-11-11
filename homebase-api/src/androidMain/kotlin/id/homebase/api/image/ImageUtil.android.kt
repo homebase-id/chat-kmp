@@ -8,7 +8,6 @@ import android.graphics.Matrix
 import android.os.Build
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.scale
 import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayInputStream
@@ -94,7 +93,7 @@ actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
  */
 actual object ImageUtils {
 
-    private fun decodeBitmap(bytes: ByteArray): Bitmap {
+    internal fun decodeBitmap(bytes: ByteArray, sampleSize: Int = 1): Bitmap {
         val isHeic = ImageFormatDetector.isHeic(bytes)
         val inputBytes = if (isHeic) {
             convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
@@ -102,6 +101,7 @@ actual object ImageUtils {
         val options = BitmapFactory.Options().apply {
             inPreferredConfig = Bitmap.Config.ARGB_8888
             inMutable = true
+            inSampleSize = sampleSize
         }
         val bitmap = BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
             ?: throw IllegalArgumentException("Failed to decode image bytes")
@@ -160,7 +160,7 @@ actual object ImageUtils {
             Bitmap.CompressFormat.WEBP
         }
 
-    private fun encodeBitmap(bitmap: Bitmap, format: ImageFormat, quality: Int): ByteArray {
+    internal fun encodeBitmap(bitmap: Bitmap, format: ImageFormat, quality: Int): ByteArray {
         val compressFormat = when (format) {
             ImageFormat.JPEG -> Bitmap.CompressFormat.JPEG
             ImageFormat.PNG -> Bitmap.CompressFormat.PNG
@@ -174,43 +174,13 @@ actual object ImageUtils {
         return stream.toByteArray()
     }
 
-    actual fun resizePreserveAspect(
+    actual suspend fun resizePreserveAspect(
         srcBytes: ByteArray,
         maxWidth: Int,
         maxHeight: Int,
         outputFormat: ImageFormat,
         quality: Int
-    ): ImageResult {
-        val srcBitmap = decodeBitmap(srcBytes)
-        val naturalW = srcBitmap.width
-        val naturalH = srcBitmap.height
-
-        val (targetW, targetH) = calculateTargetDimensions(naturalW, naturalH, maxWidth, maxHeight)
-
-        // If no resize needed
-        if (targetW == naturalW && targetH == naturalH) {
-            val encoded = encodeBitmap(srcBitmap, outputFormat, quality)
-            srcBitmap.recycle()
-            return ImageResult(
-                bytes = encoded,
-                naturalSize = ImageSize(naturalW, naturalH),
-                size = ImageSize(naturalW, naturalH)
-            )
-        }
-
-        // Resize the bitmap
-        val resized = srcBitmap.scale(targetW, targetH)
-        val encoded = encodeBitmap(resized, outputFormat, quality)
-
-        srcBitmap.recycle()
-        if (resized != srcBitmap) resized.recycle()
-
-        return ImageResult(
-            bytes = encoded,
-            naturalSize = ImageSize(naturalW, naturalH),
-            size = ImageSize(targetW, targetH)
-        )
-    }
+    ): ImageResult = resizeThroughPipeline(srcBytes, maxWidth, maxHeight, outputFormat, quality)
 
     actual fun compressOnly(
         srcBytes: ByteArray,
@@ -288,16 +258,8 @@ actual object ImageUtils {
         )
     }
 
-    actual fun getNaturalSize(srcBytes: ByteArray): ImageSize {
-        val inputBytes = if (ImageFormatDetector.isHeic(srcBytes)) {
-            convertHeicToJpeg(srcBytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG for size detection")
-        } else srcBytes
-        val options = BitmapFactory.Options().apply {
-            inJustDecodeBounds = true
-        }
-        BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
-        return ImageSize(options.outWidth, options.outHeight)
-    }
+    actual fun getNaturalSize(srcBytes: ByteArray): ImageSize =
+        openImageSource(srcBytes).use { it.displayedSize }
 
     actual fun hasNonOpaquePixels(srcBytes: ByteArray): Boolean {
         var bitmap: Bitmap? = null

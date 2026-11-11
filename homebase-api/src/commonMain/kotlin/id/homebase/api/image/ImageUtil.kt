@@ -26,7 +26,7 @@ expect object ImageUtils {
      * Resize to fit inside (maxWidth x maxHeight) while preserving aspect ratio.
      * If maxWidth or maxHeight are <= 0, it will not scale on that axis.
      */
-    fun resizePreserveAspect(
+    suspend fun resizePreserveAspect(
         srcBytes: ByteArray,
         maxWidth: Int,
         maxHeight: Int,

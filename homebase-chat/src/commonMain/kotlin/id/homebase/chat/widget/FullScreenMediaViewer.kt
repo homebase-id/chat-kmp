@@ -40,6 +40,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,9 +72,9 @@ import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.widget.isCopyChord
+import id.homebase.core.settings.label
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
-import id.homebase.resources.chat_media_quality_hd
 import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
@@ -104,12 +105,16 @@ fun FullScreenMediaViewer(
     onDelete: ((messageId: Uuid) -> Unit)? = null,
     onDismiss: () -> Unit,
     onNavigateToMessage: (() -> Unit)? = null,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    // A host paging several viewers shares one, so hidden chrome stays hidden across a swipe.
+    showUIState: MutableState<Boolean> = remember { mutableStateOf(true) },
+    // False for a neighbouring page a host composes off screen: it mustn't take the keyboard.
+    isFocused: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
-    var showUI by remember { mutableStateOf(true) }
+    var showUI by showUIState
     var showMenu by remember { mutableStateOf(false) }
 
     val initialPage = remember(data) {
@@ -132,7 +137,7 @@ fun FullScreenMediaViewer(
         })
     val copyAction = currentImageAction(onCopyImage)
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(focusRequester) { focusRequester.requestFocus() }
+    LaunchedEffect(focusRequester, isFocused) { if (isFocused) focusRequester.requestFocus() }
 
     BoxWithConstraints(
         // Deliberate divergence from the chat bubble: the bubble renders stickers
@@ -254,11 +259,10 @@ fun FullScreenMediaViewer(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        val currentIsHighQuality = currentPayload?.isHighQualityImage() == true
-                        val hdLabel = stringResource(MR.string.chat_media_quality_hd)
+                        val qualityLabel = currentPayload?.badgedQuality()?.let { stringResource(it.label) }
                         val timestamp = formatTimestamp(data.userDate)
                         Text(
-                            text = if (currentIsHighQuality) "$timestamp · $hdLabel" else timestamp,
+                            text = if (qualityLabel != null) "$timestamp · $qualityLabel" else timestamp,
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }

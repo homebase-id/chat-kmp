@@ -212,7 +212,7 @@ class CardContentTest {
     }
 
     @Test
-    fun aPublicItemIsLockedOnACircleCardAndCannotBeSwitchedOffSilently() = runTest(dispatcher) {
+    fun aPublicItemSwitchedOffOnACircleCardStaysOnTheOtherCirclesOnly() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
         val rig = rig(wire)
@@ -220,12 +220,8 @@ class CardContentTest {
 
         val item = rig.item(ProfileAttributeTypes.BIO_SUMMARY)
         assertTrue(item.shown && item.locked)
-        rig.vm.toggle(bio, false)
-        assertEquals(0, wire.puts)
-        assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
-
-        rig.write { rig.vm.onContentEdited(bio, emptyMap(), ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID))) }
-        assertEquals(listOf(FAMILY_CIRCLE_ID), rig.circleIds())
+        rig.write { rig.vm.toggle(bio, false) }
+        assertEquals(setOf(FAMILY_CIRCLE_ID, WORK_CIRCLE_ID), rig.circleIds()?.toSet())
         assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
         assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).locked)
     }
@@ -725,7 +721,11 @@ class CardContentTest {
         val all = setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID)
         assertEquals(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID)), ProfileAudience.OnlyMe.shownOn(friends, true, null))
         assertNull(ProfileAudience.OnlyMe.shownOn(friends, false, null))
-        assertNull(ProfileAudience.Public.shownOn(friends, false, null))
+        assertNull(ProfileAudience.Public.shownOn(friends, true, null))
+        val twoCircles = listOf(CardCircle(FAMILY_CIRCLE_ID, "Family"), CardCircle(FRIENDS_CIRCLE_ID, "Friends"))
+        assertEquals(ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID)), ProfileAudience.Public.shownOn(friends, false, null, twoCircles))
+        assertEquals(ProfileAudience.OnlyMe, ProfileAudience.Public.shownOn(friends, false, null, listOf(CardCircle(FRIENDS_CIRCLE_ID, "Friends"))))
+        assertEquals(ProfileAudience.OnlyMe, ProfileAudience.Public.shownOn(friends, false, null))
         assertEquals(ProfileAudience.Circles(all), ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID)).shownOn(friends, true, null))
         assertEquals(ProfileAudience.OnlyMe, ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID)).shownOn(friends, false, null))
         assertEquals(

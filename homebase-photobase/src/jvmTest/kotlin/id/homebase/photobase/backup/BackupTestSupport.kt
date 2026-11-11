@@ -53,9 +53,11 @@ internal class FakeSource(var next: DeviceChanges = fullListing()) : DeviceChang
 internal class FakeProbe(
     var access: LibraryAccess = LibraryAccess.Full,
     var state: DeviceState = DeviceState(hasNetwork = true, isUnmetered = true, isCharging = true, isBatteryLow = false, isLowPowerMode = false),
+    var locationsWithheld: Boolean = false,
 ) : BackupDeviceProbe {
     override suspend fun state() = state
     override fun libraryAccess() = access
+    override fun photoLocationsWithheld() = locationsWithheld
 }
 
 /** Answers like the real Outbox would: through the event bus, after [sendTime] of virtual time. */
@@ -67,6 +69,7 @@ internal class FakeUploader(
     val handedOff = mutableListOf<String>()
     var result: (DeviceBackupAsset) -> HandOffResult = { HandOffResult.Queued }
     var sendsComplete = true
+    var sendsFail = false
     var stillSending = false
     var kicks = 0
     var markedBackground = false
@@ -81,7 +84,11 @@ internal class FakeUploader(
             scope.launch {
                 delay(sendTime)
                 eventBus.emit(BackendEvent.OutboxEvent.ItemStarted(PhotobaseProtocol.DriveAlias, uniqueId))
-                eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotobaseProtocol.DriveAlias, uniqueId))
+                if (sendsFail) {
+                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(PhotobaseProtocol.DriveAlias, uniqueId))
+                } else {
+                    eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotobaseProtocol.DriveAlias, uniqueId))
+                }
             }
         }
         return outcome

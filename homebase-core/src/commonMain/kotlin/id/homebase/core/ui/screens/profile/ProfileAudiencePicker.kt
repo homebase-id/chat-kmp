@@ -423,17 +423,6 @@ internal fun audienceSummary(
     }
 }
 
-/** Stored circles without a card that [audiences] hold, named where the name is known. */
-@Composable
-internal fun otherCirclesOf(vararg audiences: ProfileAudience): List<CardCircle> {
-    val fallback = stringResource(MR.string.profile_edit_audience_other_circle)
-    return audiences
-        .flatMap { (it as? ProfileAudience.Circles)?.otherIds.orEmpty() }
-        .distinct()
-        .sorted()
-        .map { CardCircle(it, fallback) }
-}
-
 /** A detail's icon in a cookie badge beside its name: the header of its editor. */
 @Composable
 internal fun PanelHeader(icon: ImageVector, title: String, subtitle: String? = null, modifier: Modifier = Modifier) {

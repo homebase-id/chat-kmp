@@ -510,12 +510,20 @@ Make `summaryLine()` (or whatever you named it) good and you're done.
 ## Payload-bearing typed kinds
 
 `sendNewTypedMessage(..., payloadBundle = bundle)` lets a typed kind carry media.
-Two kinds do:
+Three kinds do:
 
 - **Event cover photo** (`event/EventComposerSheet.kt`): an optional image under
   `chat_web0`, rendered above the card.
 - **ViewOnce** (`dataType = 216`, `viewonce/`): exactly one photo or video under
   `chat_web0`, which only the viewer may ever load.
+- **AgentUi** (`dataType = 219`, `agentui/`): an agent-sent JSON tree under `agent_ui` plus images
+  under `chat_web0..9`; see `AGENT_UI.md`. It has no composer or attachment entry.
+
+A kind whose content is usually small but can outgrow the header (AgentUi) can carry it either
+way: an optional field in the descriptor when the encrypted descriptor still fits
+`MaxHeaderContentBytes`, a payload otherwise. Check the encrypted size, not the plaintext
+(`HomebaseProtocol.fitsHeaderContent`, which `ChatMessageSizer` uses too). The bytes already live in the drive payload cache, so do
+not add a second byte cache; AGENT_UI.md §2 describes how AgentUi loads and holds decoded trees.
 
 For a kind whose media must stay private, as ViewOnce's does:
 
