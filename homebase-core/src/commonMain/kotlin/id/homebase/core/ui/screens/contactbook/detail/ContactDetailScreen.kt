@@ -56,7 +56,9 @@ import androidx.compose.material.icons.outlined.WavingHand
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuGroup
+import androidx.compose.material3.DropdownMenuPopup
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -172,6 +174,8 @@ import id.homebase.resources.contact_unreview_confirm
 import id.homebase.resources.contact_unreview_failed
 import id.homebase.resources.contact_unreview_title
 import org.jetbrains.compose.resources.StringResource
+import androidx.compose.ui.graphics.vector.ImageVector
+import id.homebase.resources.contactbook_detail_rebuild_conversation_hint
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
@@ -651,85 +655,95 @@ private val contactDetailTabs = listOf(
     ContactDetailTab.ABOUT,
 )
 
-/**
- * Overflow (⋮) menu of management actions — sync, disconnect, block/unblock, delete — kept out of
- * the browsing flow. Destructive items are tinted error.
- */
 @Composable
 private fun ManagementMenu(
     uiState: ContactDetailUiState,
     onAction: (ContactDetailAction) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    val error = MaterialTheme.colorScheme.error
     IconButton(onClick = { open = true }) {
         Icon(
             Icons.Default.MoreVert,
             contentDescription = stringResource(MR.string.contactbook_detail_manage),
         )
     }
-    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-        if (uiState.hasOdinId) {
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.contactbook_detail_sync)) },
-                leadingIcon = { Icon(Icons.Outlined.Sync, contentDescription = null) },
-                onClick = { open = false; onAction(ContactDetailAction.SyncClicked) },
-            )
-            if (uiState.conversationId != null) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.contactbook_detail_rebuild_conversation)) },
-                    leadingIcon = { Icon(Icons.Outlined.Healing, contentDescription = null) },
-                    onClick = { open = false; onAction(ContactDetailAction.RebuildConversationClicked) },
-                )
-            }
-            if (uiState.isConnected && !uiState.needsReview) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.contact_unreview_action)) },
-                    leadingIcon = { Icon(Icons.Outlined.WavingHand, contentDescription = null) },
-                    onClick = { open = false; onAction(ContactDetailAction.UnreviewClicked) },
-                )
-            }
-            if (uiState.isConnected) {
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(MR.string.contactbook_detail_disconnect), color = error)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.PersonRemove, contentDescription = null, tint = error)
-                    },
-                    onClick = { open = false; onAction(ContactDetailAction.DisconnectClicked) },
-                )
-            }
-            if (uiState.isBlocked) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.contactbook_detail_unblock)) },
-                    leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
-                    onClick = { open = false; onAction(ContactDetailAction.UnblockClicked) },
-                )
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(MR.string.contactbook_detail_remove_blocked), color = error)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.PersonRemove, contentDescription = null, tint = error)
-                    },
-                    onClick = { open = false; onAction(ContactDetailAction.RemoveBlockedClicked) },
-                )
-            } else {
-                DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.contactbook_detail_block), color = error) },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.Block, contentDescription = null, tint = error)
-                    },
-                    onClick = { open = false; onAction(ContactDetailAction.BlockClicked) },
+    DropdownMenuPopup(expanded = open, onDismissRequest = { open = false }) {
+        ManagementMenuGroups(uiState) { open = false; onAction(it) }
+    }
+}
+
+private class ManagementEntry(
+    val label: StringResource,
+    val icon: ImageVector,
+    val action: ContactDetailAction,
+    val destructive: Boolean = false,
+    val hint: StringResource? = null,
+)
+
+private fun managementGroups(s: ContactDetailUiState): List<List<ManagementEntry>> {
+    val maintenance = buildList {
+        if (s.hasOdinId) {
+            add(ManagementEntry(MR.string.contactbook_detail_sync, Icons.Outlined.Sync, ContactDetailAction.SyncClicked))
+            if (s.conversationId != null) {
+                add(
+                    ManagementEntry(
+                        MR.string.contactbook_detail_rebuild_conversation,
+                        Icons.Outlined.Healing,
+                        ContactDetailAction.RebuildConversationClicked,
+                        hint = MR.string.contactbook_detail_rebuild_conversation_hint,
+                    ),
                 )
             }
         }
-        DropdownMenuItem(
-            text = { Text(stringResource(MR.string.contactbook_detail_delete), color = error) },
-            leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = error) },
-            onClick = { open = false; onAction(ContactDetailAction.DeleteClicked) },
-        )
+    }
+    val relationship = buildList {
+        if (s.hasOdinId && s.isConnected && !s.needsReview) {
+            add(ManagementEntry(MR.string.contact_unreview_action, Icons.Outlined.WavingHand, ContactDetailAction.UnreviewClicked))
+        }
+        if (s.hasOdinId && s.isBlocked) {
+            add(ManagementEntry(MR.string.contactbook_detail_unblock, Icons.Outlined.Block, ContactDetailAction.UnblockClicked))
+        }
+    }
+    val destructive = buildList {
+        if (s.hasOdinId) {
+            if (s.isConnected) {
+                add(ManagementEntry(MR.string.contactbook_detail_disconnect, Icons.Outlined.PersonRemove, ContactDetailAction.DisconnectClicked, destructive = true))
+            }
+            add(
+                if (s.isBlocked) {
+                    ManagementEntry(MR.string.contactbook_detail_remove_blocked, Icons.Outlined.PersonRemove, ContactDetailAction.RemoveBlockedClicked, destructive = true)
+                } else {
+                    ManagementEntry(MR.string.contactbook_detail_block, Icons.Outlined.Block, ContactDetailAction.BlockClicked, destructive = true)
+                },
+            )
+        }
+        add(ManagementEntry(MR.string.contactbook_detail_delete, Icons.Outlined.Delete, ContactDetailAction.DeleteClicked, destructive = true))
+    }
+    return listOf(maintenance, relationship, destructive).filter { it.isNotEmpty() }
+}
+
+@Composable
+internal fun ManagementMenuGroups(
+    uiState: ContactDetailUiState,
+    onAction: (ContactDetailAction) -> Unit,
+) {
+    val groups = managementGroups(uiState)
+    val error = MaterialTheme.colorScheme.error
+    val destructiveColors = MenuDefaults.itemColors(textColor = error, leadingIconColor = error)
+    groups.forEachIndexed { groupIndex, entries ->
+        if (groupIndex > 0) Spacer(Modifier.height(MenuDefaults.GroupSpacing))
+        DropdownMenuGroup(shapes = MenuDefaults.groupShape(groupIndex, groups.size)) {
+            entries.forEachIndexed { index, entry ->
+                DropdownMenuItem(
+                    onClick = { onAction(entry.action) },
+                    text = { Text(stringResource(entry.label)) },
+                    shape = MenuDefaults.itemShape(index, entries.size).shape,
+                    leadingIcon = { Icon(entry.icon, contentDescription = null) },
+                    supportingText = entry.hint?.let { hint -> { Text(stringResource(hint)) } },
+                    colors = if (entry.destructive) destructiveColors else MenuDefaults.itemColors(),
+                )
+            }
+        }
     }
 }
 
