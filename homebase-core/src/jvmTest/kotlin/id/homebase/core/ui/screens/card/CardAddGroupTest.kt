@@ -13,6 +13,9 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
+import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
+import id.homebase.core.ui.screens.profile.SOCIAL_ATTRIBUTE_TYPES
 import kotlin.test.Test
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -64,6 +67,13 @@ class CardAddGroupTest {
 
     @Test
     fun socialIsLeftOutOnceEveryNetworkIsUsed() = runComposeUiTest {
+        editor(*SOCIAL_ATTRIBUTE_TYPES.map { attribute(it, PROFILE_TYPE_FIELDS.getValue(it).single().second, "samgamgee") }.toTypedArray())
+        chip("Social").assertDoesNotExist()
+        chip("Link").assertIsEnabled()
+    }
+
+    @Test
+    fun theWebConsolesOtherNetworksAreStillOfferedOnceTheFirstFiveAreUsed() = runComposeUiTest {
         editor(
             attribute(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "samgamgee"),
             attribute(ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.KEY_FACEBOOK, "sam.gamgee"),
@@ -71,8 +81,23 @@ class CardAddGroupTest {
             attribute(ProfileAttributeTypes.TIKTOK, ProfileAttributeTypes.KEY_TIKTOK, "samgamgee"),
             attribute(ProfileAttributeTypes.LINKEDIN, ProfileAttributeTypes.KEY_LINKEDIN, "samgamgee"),
         )
-        chip("Social").assertDoesNotExist()
-        chip("Link").assertIsEnabled()
+        chip("Social").assertIsEnabled()
+    }
+
+    @Test
+    fun everySocialTheEditorOffersHasALabelIconAndOneField() {
+        SOCIAL_ATTRIBUTE_TYPES.forEach { type ->
+            kotlin.test.assertTrue(ATTRIBUTE_SPECS.any { it.type == type }, type)
+            kotlin.test.assertEquals(1, PROFILE_TYPE_FIELDS.getValue(type).size, type)
+        }
+        kotlin.test.assertTrue(CARD_SOCIAL_TYPES.all { it in SOCIAL_ATTRIBUTE_TYPES })
+    }
+
+    @Test
+    fun anUnlinkableSocialIsListedInTheEditorButNeverDrawnOnTheCard() {
+        val steam = cardContentItems(listOf(attribute(ProfileAttributeTypes.STEAM, ProfileAttributeTypes.KEY_STEAM, "samgamgee")), emptyList(), CardAudience.Public).single()
+        kotlin.test.assertTrue(steam.shown)
+        kotlin.test.assertFalse(steam.renderable)
     }
 
     @Test

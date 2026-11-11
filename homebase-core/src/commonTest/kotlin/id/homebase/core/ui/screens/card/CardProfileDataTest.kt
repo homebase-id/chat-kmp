@@ -271,6 +271,33 @@ class CardProfileDataTest {
         assertEquals("frodo", socialUsername("tiktok", "frodo"))
         assertEquals("frodo", socialUsername("tiktok", "@frodo"))
         assertEquals("frodo", socialUsername("tiktok", "https://www.tiktok.com/@frodo?lang=en"))
+        assertEquals("@frodo", socialUsername("youtube", "https://www.youtube.com/@frodo"))
+        assertEquals("@frodo", socialUsername("youtube", "@frodo"))
+        assertEquals("channel/UC123", socialUsername("youtube", "https://youtube.com/channel/UC123?si=x"))
+        assertNull(socialUsername("youtube", "@"))
+        assertEquals("frodo", socialUsername("snapchat", "https://www.snapchat.com/add/frodo"))
+        assertEquals("frodo", socialUsername("snapchat", "frodo"))
+        assertNull(socialUsername("snapchat", "https://snapchat.com/discover/frodo"))
+        assertEquals("frodo", socialUsername("github", "https://github.com/frodo/ring"))
+    }
+
+    @Test
+    fun theCardLinksTheWebsLinkableSocialsAndDropsTheRest() {
+        assertEquals(
+            listOf(CardSocial("youtube", "@frodo"), CardSocial("snapchat", "frodo"), CardSocial("github", "frodo")),
+            socials(
+                ProfileField.YOUTUBE to "@frodo",
+                ProfileField.SNAPCHAT to "frodo",
+                ProfileField.GITHUB to "frodo",
+                ProfileField.DISCORD to "frodo",
+                ProfileField.STACKOVERFLOW to "frodo",
+                ProfileField.STEAM to "frodo",
+                ProfileField.MINECRAFT to "frodo",
+                ProfileField.EPIC to "frodo",
+                ProfileField.RIOT to "frodo",
+                ProfileField.HOMEBASE_ID to "frodo.dotyou.cloud",
+            ),
+        )
     }
 
     @Test

@@ -162,7 +162,7 @@ class ProfileCardScreenFlowTest {
                                 step = EditorStep.Design,
                                 onStep = {},
                                 onBack = { opened = null },
-                                onSelect = viewModel::onDesignPicked,
+                                onSelect = viewModel::onDesignSelected,
                                 onOption = viewModel::onOptionSelected,
                                 onBlockOrder = viewModel::onBlockOrderChanged,
                                 onSave = viewModel::onSaveDesign,
@@ -220,7 +220,7 @@ class ProfileCardScreenFlowTest {
     }
 
     @Test
-    fun pickingADesignSavesItAndBackLeavesNothingUnsaved() {
+    fun pickingADesignSavesOnlyOnSaveAndBackLeavesNothingUnsaved() {
         val fixtures = ProfileCardViewModelTest()
         val wire = CardWireHarness()
         val repository: ProfileRepository = runBlocking { wire.profileRepository() }
@@ -245,7 +245,7 @@ class ProfileCardScreenFlowTest {
                         step = EditorStep.Design,
                         onStep = {},
                         onBack = { mode = EditorMode.Content },
-                        onSelect = viewModel::onDesignPicked,
+                        onSelect = viewModel::onDesignSelected,
                         onOption = viewModel::onOptionSelected,
                         onBlockOrder = viewModel::onBlockOrderChanged,
                         onSave = viewModel::onSaveDesign,
@@ -258,6 +258,9 @@ class ProfileCardScreenFlowTest {
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Choose a design").fetchSemanticsNodes().isNotEmpty() }
 
             onNodeWithContentDescription("Poster").performClick()
+            waitForIdle()
+            assertTrue(wire.putBodies.none { it.jsonObject["data"]?.jsonObject?.get("design") == JsonPrimitive(CardDesign.POSTER) })
+            onNodeWithContentDescription("Save").performClick()
             waitUntil(timeoutMillis = 10_000) {
                 wire.putBodies.any { body ->
                     body.jsonObject["type"]?.jsonPrimitive?.content == ProfileAttributeTypes.PROFILE_CARD &&
