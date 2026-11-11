@@ -19,9 +19,11 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.requests.CirclesRefusedException
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.chat.services.requests.RefusedCircles
+import id.homebase.core.config.dataUpgradeReturnUrl
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.toCircleUuids
+import id.homebase.core.upgrade.dataUpgradeUrl
 import id.homebase.resources.MR
 import id.homebase.resources.auto_connect_blocked
 import id.homebase.resources.auto_connect_failed_generic
@@ -106,6 +108,18 @@ class ConnectRequestViewModel(
                         alreadySentRecipient = null,
                         uiEvent = ConnectRequestEvent.OpenUrl(
                             "https://${owner.odinId.domainName}/owner/connections"
+                        ),
+                    )
+                }
+            }
+
+            // Built on tap, not with the failure: on desktop the return URL starts a local callback server.
+            ConnectRequestAction.OpenDataUpgradeClicked -> {
+                val owner = ownerSessionRepository.user.value ?: return
+                _state.update {
+                    it.copy(
+                        uiEvent = ConnectRequestEvent.OpenUrl(
+                            dataUpgradeUrl(owner.odinId.domainName, dataUpgradeReturnUrl())
                         ),
                     )
                 }
@@ -267,7 +281,12 @@ data class ConnectRequestState(
     val uiEvent: ConnectRequestEvent? = null,
 )
 
-data class ConnectFailure(val res: StringResource, val args: List<Any> = emptyList())
+/** [offersDataUpgrade]: the refusal is this identity's own pending upgrade, so offer the link to run it. */
+data class ConnectFailure(
+    val res: StringResource,
+    val args: List<Any> = emptyList(),
+    val offersDataUpgrade: Boolean = false,
+)
 
 private fun ConnectRequestState.closed() = copy(
     isSending = false,
@@ -277,6 +296,9 @@ private fun ConnectRequestState.closed() = copy(
     resolution = RecipientResolution.Idle,
     circleError = null,
 )
+
+private val SenderRequiresUpgradeFailure =
+    ConnectFailure(MR.string.auto_connect_sender_requires_upgrade, offersDataUpgrade = true)
 
 private fun ConnectionRequestResult.failureMessage(recipient: OdinId): ConnectFailure {
     val who = listOf(recipient.domainName)
@@ -290,8 +312,7 @@ private fun ConnectionRequestResult.failureMessage(recipient: OdinId): ConnectFa
             ConnectFailure(MR.string.auto_connect_recipient_not_configured, who)
         AutoConnectOutcome.RecipientRequiresUpgrade ->
             ConnectFailure(MR.string.auto_connect_recipient_requires_upgrade, who)
-        AutoConnectOutcome.SenderRequiresUpgrade ->
-            ConnectFailure(MR.string.auto_connect_sender_requires_upgrade)
+        AutoConnectOutcome.SenderRequiresUpgrade -> SenderRequiresUpgradeFailure
         AutoConnectOutcome.InvalidRequest -> detail
             ?.let { ConnectFailure(MR.string.auto_connect_invalid_request_with_detail, listOf(it)) }
             ?: ConnectFailure(MR.string.auto_connect_invalid_request)
@@ -306,8 +327,7 @@ private fun ClientException.failureMessage(recipient: OdinId): ConnectFailure = 
         ConnectFailure(MR.string.auto_connect_invalid_request)
     OdinClientErrorCode.RecipientRequiresUpgrade ->
         ConnectFailure(MR.string.auto_connect_recipient_requires_upgrade, listOf(recipient.domainName))
-    OdinClientErrorCode.SenderRequiresUpgrade ->
-        ConnectFailure(MR.string.auto_connect_sender_requires_upgrade)
+    OdinClientErrorCode.SenderRequiresUpgrade -> SenderRequiresUpgradeFailure
     else -> ConnectFailure(MR.string.auto_connect_failed_generic)
 }
 
@@ -322,6 +342,8 @@ sealed interface ConnectRequestAction {
     data class SendClicked(val circleIds: Set<String>) : ConnectRequestAction
     data object DismissAlreadySentDialog : ConnectRequestAction
     data object OpenOwnerConsoleClicked : ConnectRequestAction
+    /** Opens the owner console's data-upgrade page, from a "your identity needs an update" refusal. */
+    data object OpenDataUpgradeClicked : ConnectRequestAction
     data object EventConsumed : ConnectRequestAction
 }
 
