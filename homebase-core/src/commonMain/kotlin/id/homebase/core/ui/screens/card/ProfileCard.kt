@@ -88,7 +88,6 @@ data class ProfileCard(
             putAll(extra)
             put(KEY_DESIGN, JsonPrimitive(design))
             if (!overrides.isEmpty()) put(KEY_OVERRIDES, overrides.toJson())
-            if (audience is CardAudience.Circle) put(ProfileAttributeTypes.KEY_LABEL, JsonPrimitive(audience.label))
         },
     )
 
