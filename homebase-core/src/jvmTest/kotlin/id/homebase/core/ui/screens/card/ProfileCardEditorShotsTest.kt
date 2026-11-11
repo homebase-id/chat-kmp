@@ -650,8 +650,8 @@ class ProfileCardEditorShotsTest {
     }
 
     @Test
-    fun saveIsACheckInTheTopBarOnlyOnTheCustomiseStep() {
-        for ((step, expected) in listOf(EditorStep.Design to 0, EditorStep.Customise to 1)) {
+    fun saveIsACheckInTheTopBarOnEveryStep() {
+        for ((step, expected) in listOf(EditorStep.Design to 1, EditorStep.Customise to 1)) {
             var saved = 0
             runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
                 setContent {

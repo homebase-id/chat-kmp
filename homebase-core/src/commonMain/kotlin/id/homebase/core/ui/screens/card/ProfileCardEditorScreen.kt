@@ -167,6 +167,7 @@ import id.homebase.resources.profile_card_nameless_public_message
 import id.homebase.resources.profile_card_nameless_public_title
 import id.homebase.resources.profile_card_content_now_hidden
 import id.homebase.resources.profile_card_content_now_public
+import id.homebase.resources.profile_card_content_removed_from_card
 import id.homebase.resources.profile_avatar_edit_error_upload
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_delete
@@ -305,6 +306,14 @@ fun ProfileCardEditorScreen(
                     )
                     if (result == SnackbarResult.ActionPerformed) viewModel.onAudienceUndone()
                 }
+                ProfileCardEvent.ContentRemovedFromCard -> launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = TranslationUtil.getString(MR.string.profile_card_content_removed_from_card),
+                        actionLabel = importUndo,
+                        withDismissAction = true,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) viewModel.onAudienceUndone()
+                }
                 is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
             }
         }
@@ -355,7 +364,7 @@ fun ProfileCardEditorScreen(
             step = step,
             onStep = { step = it },
             onBack = requestBack,
-            onSelect = viewModel::onDesignPicked,
+            onSelect = viewModel::onDesignSelected,
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
             onStyle = viewModel::onStyleSelected,
@@ -578,7 +587,7 @@ internal fun ProfileCardEditorContent(
                     title = if (contentOpen) stringResource(MR.string.profile_edit_title) else null,
                     onPreview = { previewOpen = true }.takeIf { contentOpen && showCard },
                     onDesign = onDesign.takeIf { contentOpen && contentLayout == ContentLayout.PanelOnly },
-                    onSave = onSave.takeIf { !contentOpen && step == EditorStep.Customise && !uiState.isCircleReadOnly },
+                    onSave = onSave.takeIf { !contentOpen && !uiState.isCircleReadOnly },
                     canSave = uiState.canSaveDesign,
                     isSaving = uiState.isSavingDesign,
                 )

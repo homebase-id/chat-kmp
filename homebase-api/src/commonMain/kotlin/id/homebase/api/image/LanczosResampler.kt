@@ -144,9 +144,5 @@ internal suspend fun resampleLanczos(pixels: ByteArray, width: Int, height: Int,
     return result
 }
 
-internal fun lanczosIntermediateBytes(width: Int, height: Int, outWidth: Int, outHeight: Int): Long =
+private fun lanczosIntermediateBytes(width: Int, height: Int, outWidth: Int, outHeight: Int): Long =
     min(outWidth.toLong() * height, width.toLong() * outHeight) * CHANNELS
-
-/** What [resampleLanczos] holds at its peak: the source, the intermediate and the result. */
-internal fun lanczosPeakBytes(width: Int, height: Int, outWidth: Int, outHeight: Int): Long =
-    (width.toLong() * height + outWidth.toLong() * outHeight) * CHANNELS + lanczosIntermediateBytes(width, height, outWidth, outHeight)

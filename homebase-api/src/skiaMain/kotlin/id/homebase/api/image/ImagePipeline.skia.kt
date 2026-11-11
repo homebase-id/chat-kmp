@@ -28,7 +28,15 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
         return SkiaPipelineBitmap(surface.snapshotAndClose())
     }
 
-    override fun readPixels(): ByteArray {
+    override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap =
+        SkiaPipelineBitmap(resampleNatively(image, width, height) ?: resampledInKotlin(width, height))
+
+    private suspend fun resampledInKotlin(width: Int, height: Int): Image {
+        val pixels = resampleLanczos(readPixels(), image.width, image.height, width, height)
+        return Image.makeRaster(info(width, height), pixels, width * 4)
+    }
+
+    private fun readPixels(): ByteArray {
         val bitmap = Bitmap()
         try {
             bitmap.allocPixels(info(image.width, image.height))
@@ -38,9 +46,6 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
             bitmap.close()
         }
     }
-
-    override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap =
-        SkiaPipelineBitmap(Image.makeRaster(info(width, height), pixels, width * 4))
 
     private fun info(width: Int, height: Int) = ImageInfo(width, height, ColorType.N32, ColorAlphaType.PREMUL, image.colorSpace)
 
@@ -63,6 +68,12 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
 
     override fun close() = image.close()
 }
+
+/**
+ * [PipelineBitmap.resampledTo] between the platform's own pixel buffers, or null where the platform
+ * has nothing better than the shared Kotlin Lanczos, which works on Kotlin heap copies.
+ */
+internal expect fun resampleNatively(image: Image, width: Int, height: Int): Image?
 
 /** Skia reads EXIF rotation itself and decodes lazily, so the size costs no pixels. */
 internal class SkiaImageSource(bytes: ByteArray) : ImageSource {

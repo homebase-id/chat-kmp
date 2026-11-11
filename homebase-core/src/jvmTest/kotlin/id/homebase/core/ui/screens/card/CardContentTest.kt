@@ -85,7 +85,7 @@ class CardContentTest {
     private suspend fun Rig.open(card: CardAudience, stored: Boolean = false) {
         vm.onCardOpened(card)
         vm.await { it.selectedAudience == card && (!stored || it.selectedCard?.isDefault == false) }
-        val expected = if (card is CardAudience.Circle) CardAudiencePayload("circle", card.label) else CardAudiencePayload("public")
+        val expected = if (card is CardAudience.Circle) CardAudiencePayload("circle") else CardAudiencePayload("public")
         settle { host.rendered.lastOrNull()?.audience == expected }
     }
 
@@ -178,6 +178,71 @@ class CardContentTest {
         assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
         rig.open(friends)
         assertFalse(rig.item(ProfileAttributeTypes.EMAIL).shown)
+    }
+
+    private fun Rig.statusOffered() = ProfileAttributeTypes.STATUS !in vm.uiState.value.contentItems.addableTypesPresent(vm.uiState.value.selectedAudience)
+
+    private fun CardWireHarness.body(id: Uuid) = storedBodies[storedIds.indexOf(id.toString())]
+
+    // Seeds [visibility]/[circles] as the existing status (none when null), adds the Friends card's own, and returns the rig.
+    private suspend fun addFriendsStatusOver(visibility: String?, circles: List<String>? = null): Rig {
+        val wire = CardWireHarness()
+        val existing = visibility?.let { wire.seed(ProfileAttributeTypes.STATUS, it, data(ProfileAttributeTypes.KEY_STATUS, "Shared status"), circles) }
+        val before = existing?.let { wire.body(it) }
+        val rig = rig(wire)
+        rig.open(friends)
+        assertTrue(rig.statusOffered())
+
+        rig.write { rig.vm.onContentAdded(ProfileAttributeTypes.STATUS, mapOf(ProfileAttributeTypes.KEY_STATUS to "Second breakfast")) }
+
+        assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
+        assertEquals(if (existing == null) 1 else 2, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.STATUS })
+        existing?.let { assertEquals(before, wire.body(it)) }
+        assertFalse(rig.statusOffered())
+        rig.rendered { it.data.headline == "Second breakfast" }
+        return rig
+    }
+
+    @Test
+    fun aStatusSharedWithSeveralCirclesLeavesRoomForTheFriendsCardsOwn() = runTest(dispatcher) {
+        val rig = addFriendsStatusOver("connected", listOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID))
+        rig.open(family)
+        assertEquals("Shared status", rig.rendered { it.data.headline != null }.data.headline)
+    }
+
+    @Test
+    fun aStatusForEveryConnectionLeavesRoomForTheFriendsCardsOwn() = runTest(dispatcher) {
+        val rig = addFriendsStatusOver("connected")
+        rig.open(work)
+        assertEquals("Shared status", rig.rendered { it.data.headline != null }.data.headline)
+    }
+
+    @Test
+    fun anInheritedPublicStatusLeavesRoomForTheFriendsCardsOwn() = runTest(dispatcher) {
+        val rig = addFriendsStatusOver("anonymous")
+        rig.open(CardAudience.Public)
+        assertEquals("Shared status", rig.rendered { it.data.headline != null }.data.headline)
+        rig.open(family)
+        assertEquals("Shared status", rig.rendered { it.data.headline != null }.data.headline)
+    }
+
+    @Test
+    fun withNoStatusTheFriendsCardCanAddItsOwn() = runTest(dispatcher) {
+        val rig = addFriendsStatusOver(null)
+        rig.open(family)
+        assertNull(rig.rendered { true }.data.headline)
+    }
+
+    @Test
+    fun aStatusScopedToExactlyTheFriendsCardIsNotOfferedAgainThere() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        wire.seed(ProfileAttributeTypes.STATUS, "connected", data(ProfileAttributeTypes.KEY_STATUS, "Friends only"), listOf(FRIENDS_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(friends)
+        assertFalse(rig.statusOffered())
+        rig.open(family)
+        assertTrue(rig.statusOffered())
     }
 
     @Test
@@ -470,6 +535,39 @@ class CardContentTest {
     }
 
     @Test
+    fun removingFromACircleCardOnlyTakesThatCircleOffTheItem() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val email = wire.seed(ProfileAttributeTypes.EMAIL, "connected", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"), listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(work)
+        val removed = async { rig.vm.events.first { it is ProfileCardEvent.ContentRemovedFromCard } }
+
+        rig.write { rig.vm.toggle(email, false) }
+
+        assertIs<ProfileCardEvent.ContentRemovedFromCard>(settled(removed))
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
+        assertFalse(rig.item(ProfileAttributeTypes.EMAIL).shown)
+
+        rig.write { rig.vm.onAudienceUndone() }
+        assertEquals(listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).sorted(), rig.circleIds().orEmpty().sorted())
+        assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
+    }
+
+    @Test
+    fun removingAPublicItemFromACircleCardSaysRemovedFromThisCardNotNoLongerPublic() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val rig = rig(wire)
+        rig.open(work)
+        val announced = async { rig.vm.events.first { it is ProfileCardEvent.ContentRemovedFromCard || it is ProfileCardEvent.AudienceChanged } }
+
+        rig.write { rig.vm.toggle(bio, false) }
+
+        assertIs<ProfileCardEvent.ContentRemovedFromCard>(settled(announced))
+        assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
+    }
+
+    @Test
     fun deletingAnItemTakesItOffEveryCard() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val email = wire.seed(ProfileAttributeTypes.EMAIL, "connected", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"), listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID))
@@ -516,15 +614,15 @@ class CardContentTest {
     @Test
     fun aLeftoverWithOtherDataIsShownForTheUserToRemove() = runTest(dispatcher) {
         val wire = CardWireHarness()
-        wire.seed(ProfileAttributeTypes.STATUS, "anonymous", data(ProfileAttributeTypes.KEY_STATUS, "Off on an adventure"))
-        val other = wire.seed(ProfileAttributeTypes.STATUS, "connected", data(ProfileAttributeTypes.KEY_STATUS, "At home"))
+        wire.seed(ProfileAttributeTypes.NICKNAME, "anonymous", data(ProfileAttributeTypes.KEY_NICKNAME, "Mr. Underhill"))
+        val other = wire.seed(ProfileAttributeTypes.NICKNAME, "connected", data(ProfileAttributeTypes.KEY_NICKNAME, "Ring-bearer"))
         val rig = rig(wire)
 
-        assertEquals(listOf(other), rig.item(ProfileAttributeTypes.STATUS).conflicts.map { it.id })
+        assertEquals(listOf(other), rig.item(ProfileAttributeTypes.NICKNAME).conflicts.map { it.id })
         rig.delete { rig.vm.onContentDeleted(other) }
 
-        assertTrue(rig.item(ProfileAttributeTypes.STATUS).conflicts.isEmpty())
-        assertEquals("Off on an adventure", rig.item(ProfileAttributeTypes.STATUS).text)
+        assertTrue(rig.item(ProfileAttributeTypes.NICKNAME).conflicts.isEmpty())
+        assertEquals("Mr. Underhill", rig.item(ProfileAttributeTypes.NICKNAME).text)
     }
 
     @Test

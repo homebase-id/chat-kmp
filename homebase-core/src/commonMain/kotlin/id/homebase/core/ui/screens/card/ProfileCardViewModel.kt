@@ -132,6 +132,7 @@ data class ContentWrite(
     val existing: ProfileAttribute?,
     val itemLabel: String,
     val announce: Boolean = false,
+    val removal: Boolean = false,
 )
 
 sealed interface ProfileCardEvent {
@@ -146,6 +147,7 @@ sealed interface ProfileCardEvent {
     data object ContentSaveFailed : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
     data class AudienceChanged(val itemLabel: String, val nowPublic: Boolean) : ProfileCardEvent
+    data object ContentRemovedFromCard : ProfileCardEvent
 }
 
 interface ProfileCardSource {
@@ -299,7 +301,6 @@ class ProfileCardViewModel(
     private val _designCover = MutableStateFlow<ImageBitmap?>(null)
     val designCover: StateFlow<ImageBitmap?> = _designCover.asStateFlow()
     private var designSwitchJob: Job? = null
-    private var designSaveJob: Job? = null
 
     private val _events = MutableSharedFlow<ProfileCardEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ProfileCardEvent> = _events.asSharedFlow()
@@ -360,26 +361,6 @@ class ProfileCardViewModel(
         designSwitchJob = viewModelScope.launch {
             coverOutgoingDesign()
             render()
-        }
-    }
-
-    /** The design picker saves as it picks; Customise's own Save is for the options. */
-    fun onDesignPicked(design: String) {
-        onDesignSelected(design)
-        saveLatestPick()
-    }
-
-    // One save in flight; picks made meanwhile collapse into the last one, saved when it lands.
-    private fun saveLatestPick() {
-        if (designSaveJob?.isActive == true) return
-        designSaveJob = viewModelScope.launch {
-            while (true) {
-                _uiState.first { !it.isSavingDesign }
-                val picked = _uiState.value.previewDesign
-                if (picked == null || !_uiState.value.canSaveDesign) break
-                saveDesign(leaveAfter = false)?.join()
-                if (_uiState.value.previewDesign == picked) break
-            }
         }
     }
 
@@ -547,7 +528,9 @@ class ProfileCardViewModel(
         val item = state.contentItems.firstOrNull { it.id == id }?.takeUnless { it.required } ?: return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
         if (audience == attribute.audience(state.circles)) return
-        requestWrite(ContentWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true))
+        val card = state.selectedAudience
+        val removal = card is CardAudience.Circle && item.shown && !card.shows(audience)
+        requestWrite(ContentWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true, removal = removal))
     }
 
     fun onPublicConfirmed() {
@@ -628,7 +611,7 @@ class ProfileCardViewModel(
     }
 
     private fun writeContent(write: ContentWrite) {
-        val (type, data, audience, existing, itemLabel, announce) = write
+        val (type, data, audience, existing, itemLabel, announce, removal) = write
         dropUndo()
         val card = _uiState.value.selectedAudience
         _uiState.update { it.copy(isContentBusy = true) }
@@ -641,6 +624,11 @@ class ProfileCardViewModel(
                 return@launch
             }
             applyAttributes(listOf(saved), saved = true, removed = deleteDuplicates(existing))
+            if (removal) {
+                audienceUndo = existing
+                _events.tryEmit(ProfileCardEvent.ContentRemovedFromCard)
+                return@launch
+            }
             val movedAcrossPublic = existing != null && (audience == ProfileAudience.Public) != (existing.audience(circles) == ProfileAudience.Public)
             if (announce && movedAcrossPublic) {
                 audienceUndo = existing
@@ -744,24 +732,19 @@ class ProfileCardViewModel(
     }
 
     fun onPreviewDiscarded() {
-        if (designSaveJob?.isActive == true) return
         if (_uiState.value.previewDesign == null && _uiState.value.previewOverrides == null) return
         _uiState.update { it.copy(previewDesign = null, previewOverrides = null) }
         render()
     }
 
     fun onSaveDesign() {
-        saveDesign(leaveAfter = true)
-    }
-
-    private fun saveDesign(leaveAfter: Boolean): Job? {
         val state = _uiState.value
-        if (!state.canSaveDesign) return null
-        if (state.isCircleSelected) return saveCircleCard(state, leaveAfter)
+        if (!state.canSaveDesign) return
+        if (state.isCircleSelected) return saveCircleCard(state)
         val design = state.design
         val overrides = state.overrides.takeIf { state.previewOverrides != null }
         _uiState.update { it.copy(isSavingDesign = true) }
-        return viewModelScope.launch {
+        viewModelScope.launch {
             val saved = attempt("saving card design $design") { source.saveDesign(design) } != null
             if (saved) writeCard(UnsavedCard(design, overrides).also { unsavedCard = it })
             _uiState.update {
@@ -779,16 +762,16 @@ class ProfileCardViewModel(
                 else it.copy(isSavingDesign = false)
             }
             if (saved) render()
-            if (!saved) _events.tryEmit(ProfileCardEvent.DesignSaveFailed) else if (leaveAfter) _events.tryEmit(ProfileCardEvent.DesignSaved)
+            if (!saved) _events.tryEmit(ProfileCardEvent.DesignSaveFailed) else _events.tryEmit(ProfileCardEvent.DesignSaved)
         }
     }
 
-    private fun saveCircleCard(state: ProfileCardUiState, leaveAfter: Boolean): Job? {
-        val card = state.selectedCard ?: return null
+    private fun saveCircleCard(state: ProfileCardUiState) {
+        val card = state.selectedCard ?: return
         val overrides = state.overrides.takeIf { state.previewOverrides != null }
         val updated = card.withDesign(state.design, overrides)
         _uiState.update { it.copy(isSavingDesign = true) }
-        return viewModelScope.launch {
+        viewModelScope.launch {
             val stored = attempt("saving the ${card.audience} card") { source.saveCircleCard(updated) }
             _uiState.update {
                 val newerPick = it.previewDesign?.takeIf { p -> p != updated.design }
@@ -807,11 +790,11 @@ class ProfileCardViewModel(
                 load()
             }
             val event = when {
-                stored != null -> ProfileCardEvent.DesignSaved.takeIf { leaveAfter }
+                stored != null -> ProfileCardEvent.DesignSaved
                 !source.supportsCircleCards -> ProfileCardEvent.CircleCardsUnsupported
                 else -> ProfileCardEvent.DesignSaveFailed
             }
-            event?.let(_events::tryEmit)
+            _events.tryEmit(event)
         }
     }
 
