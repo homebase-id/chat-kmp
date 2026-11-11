@@ -211,18 +211,13 @@ private fun ContactCardDetailContent(
 
             if (onSaveToContacts != null) {
                 Spacer(Modifier.height(20.dp))
-                Button(
-                    onClick = { onSaveToContacts(descriptor) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) {
-                    Icon(
-                        imageVector = saveActionIcon(alreadySaved),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = stringResource(saveActionLabel(alreadySaved)))
-                }
+                SaveContactMenuButton(
+                    descriptor = descriptor,
+                    alreadySaved = alreadySaved,
+                    onSaveToContacts = { card, _ -> onSaveToContacts(card) },
+                    filled = true,
+                    snackbarHostState = snackbarHostState,
+                )
             }
 
             ValueSection(

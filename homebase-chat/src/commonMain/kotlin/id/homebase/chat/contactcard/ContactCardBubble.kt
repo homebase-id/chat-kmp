@@ -212,24 +212,12 @@ fun ContactCardBubble(
                     if (onSaveToContacts != null) {
                         // Unweighted, the label measures first at large font scale and leaves the
                         // timestamp and delivery tick nothing.
-                        TextButton(
-                            onClick = { onSaveToContacts(descriptor, alreadySaved) },
+                        SaveContactMenuButton(
+                            descriptor = descriptor,
+                            alreadySaved = alreadySaved,
+                            onSaveToContacts = onSaveToContacts,
                             modifier = Modifier.weight(1f, fill = false),
-                            contentPadding = ButtonDefaults.TextButtonWithIconContentPadding,
-                        ) {
-                            Icon(
-                                imageVector = saveActionIcon(alreadySaved),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(saveActionLabel(alreadySaved)),
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                        )
                     }
                     footer?.invoke()
                 }

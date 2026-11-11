@@ -2423,4 +2423,8 @@
     <string name="profile_card_sections_title">Sektioner på dette kort</string>
     <string name="profile_card_section_feed">Feed</string>
     <string name="profile_card_section_feed_desc">Dine seneste offentlige opslag og billeder.</string>
+    <string name="chat_contact_card_save_homebase">Homebase-kontakter</string>
+    <string name="chat_contact_card_update_homebase">Opdater Homebase-kontakt</string>
+    <string name="chat_contact_card_save_phone">Telefonkontakter</string>
+    <string name="chat_contact_card_save_phone_failed">Ingen kontakt-app fundet</string>
 </resources>
