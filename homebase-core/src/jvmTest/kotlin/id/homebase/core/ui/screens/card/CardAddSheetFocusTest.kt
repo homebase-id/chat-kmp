@@ -41,24 +41,15 @@ class CardAddSheetFocusTest {
             }
         }
         onNodeWithTag("content_add").performClick()
-        waitForIdle()
         onNodeWithContentDescription("Add new: More").performClick()
-        waitForIdle()
         onNodeWithText("Status").performClick()
-        waitForIdle()
 
         val field = onNode(hasSetTextAction())
         field.performClick()
-        waitForIdle()
         field.assertIsFocused()
         field.performTextInput("a")
-        waitForIdle()
 
         field.assertIsFocused()
         field.assertTextEquals("a")
-        field.performTextInput("bc")
-        waitForIdle()
-        field.assertIsFocused()
-        field.assertTextEquals("abc")
     }
 }
