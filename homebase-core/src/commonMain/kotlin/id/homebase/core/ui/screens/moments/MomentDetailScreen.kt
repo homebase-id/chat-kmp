@@ -146,13 +146,11 @@ import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.only
-import androidx.compose.ui.platform.LocalDensity
 import id.homebase.core.util.KeyboardPanelState
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.sheetComposerInset
 import id.homebase.core.widget.composerKeyHandler
@@ -2171,11 +2169,10 @@ private fun CommentsSheet(
         }
     }
     // Read outside the sheet: inside it the sheet's own imePadding() consumes the inset.
-    val composerPanel = rememberKeyboardPanelState()
+    val imeOffset = rememberImeOffsetState()
+    val composerPanel = rememberKeyboardPanelState(imeOffset)
     val topInsets = BottomSheetDefaults.windowInsets.only(WindowInsetsSides.Top)
-    val density = LocalDensity.current
-    val imeInsets = WindowInsets.ime
-    val imeVisible by remember(density) { derivedStateOf { imeInsets.getBottom(density) > 0 } }
+    val imeVisible by remember(imeOffset) { derivedStateOf { imeOffset.isImeVisible } }
     val targetFraction = heightFraction?.let { commentsSheetHeightFraction(it, imeVisible) }
     val animatedFraction by animateFloatAsState(targetFraction ?: 0f)
     ModalBottomSheet(
