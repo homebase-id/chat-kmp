@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.Dp
@@ -55,7 +56,7 @@ private const val COVER_DOWNSCALE = 2.0
 actual fun createCardHost(odinId: String): CardHost = IosCardHost(cardPageUrl(odinId))
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?, shape: Shape) {
     val cardHost = host as IosCardHost
     // UIKit views ignore a graphicsLayer, and pageZoom leaves the page laid out at the frame's width, so scale the view itself.
     BoxWithConstraints(modifier = modifier) {

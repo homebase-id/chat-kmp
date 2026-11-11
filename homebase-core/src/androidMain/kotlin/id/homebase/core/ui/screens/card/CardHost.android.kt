@@ -19,6 +19,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.Dp
@@ -30,7 +31,7 @@ actual fun createCardHost(odinId: String): CardHost =
     AndroidCardHost(KoinPlatformTools.defaultContext().get().get<Context>(), cardPageUrl(odinId))
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?, shape: Shape) {
     val cardHost = host as AndroidCardHost
     key(cardHost.webView) {
         AndroidView(

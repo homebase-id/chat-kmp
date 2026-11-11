@@ -119,6 +119,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -433,6 +434,7 @@ private fun ProfileCardViewer(
                         cover = cover?.image,
                         coverHeld = coverHeld,
                         modifier = Modifier.fillMaxSize(),
+                        shape = cardSheetShape(),
                     )
                     SnackbarHost(
                         hostState = snackbarHostState,
@@ -946,6 +948,7 @@ internal fun CardSurface(
     paintWhileAttached: suspend (onPainted: () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     layoutWidth: Dp? = null,
+    shape: Shape = RectangleShape,
     cover: ImageBitmap? = null,
     coverHeld: Boolean = false,
     skeleton: Boolean = false,
@@ -987,7 +990,7 @@ internal fun CardSurface(
         }
         // An unsupported server's /card is its public site, which desktop and web would float over the message.
         if (!uiState.cardUnsupported && attached && !overlaid) {
-            host?.let { CardHostView(host = it, modifier = Modifier.fillMaxSize(), layoutWidth = layoutWidth) }
+            host?.let { CardHostView(host = it, modifier = Modifier.fillMaxSize(), layoutWidth = layoutWidth, shape = shape) }
         }
         if (cover != null && !uiState.cardUnsupported) {
             AnimatedVisibility(

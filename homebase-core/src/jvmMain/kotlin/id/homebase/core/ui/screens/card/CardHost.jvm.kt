@@ -2,10 +2,20 @@ package id.homebase.core.ui.screens.card
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.unit.Dp
 import io.github.kdroidfilter.webview.wry.Rgba
 import io.github.kdroidfilter.webview.wry.WryWebViewPanel
@@ -34,14 +44,19 @@ import kotlinx.coroutines.withContext
 actual fun createCardHost(odinId: String): CardHost = DesktopCardHost(cardPageUrl(odinId))
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?, shape: Shape) {
     val cardHost = host as DesktopCardHost
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    var size by remember { mutableStateOf(Size.Zero) }
+    val radii = cssCornerRadii(shape, size, density, layoutDirection)
+    LaunchedEffect(cardHost, radii) { cardHost.roundCorners(radii) }
     key(cardHost) {
         val slot = remember { CardSlot(cardHost) }
         DisposableEffect(slot) {
             onDispose { cardHost.leave(slot) }
         }
-        SwingPanel(factory = { slot }, modifier = modifier)
+        SwingPanel(factory = { slot }, modifier = modifier.onSizeChanged { size = it.toSize() })
     }
 }
 
@@ -70,6 +85,7 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     private var hadWebView = false
     private var sawLoading = false
     private var shown = false
+    private var cornersScript = ""
     private val awaitedReplies = mutableSetOf<KClass<out CardEvent>>()
 
     // wry dispatch_syncs onto the AppKit main queue, which a main thread spinning AWT's run loop for an
@@ -124,6 +140,21 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         shown = false
         updatePolling()
         park()
+    }
+
+    // html clips to the corners and body takes over scrolling, else the clip would scroll away with the page.
+    fun roundCorners(radii: String?) {
+        cornersScript = radii?.let {
+            "(function(){var s=document.getElementById('hb-corners')||document.head.appendChild(document.createElement('style'));" +
+                "s.id='hb-corners';s.textContent='html{background:transparent!important;height:100%;overflow:hidden;" +
+                "clip-path:inset(0 round $it)}body{height:100%;overflow-y:auto}'})()"
+        } ?: "(function(){var s=document.getElementById('hb-corners');if(s)s.remove()})()"
+        applyCorners()
+    }
+
+    private fun applyCorners() {
+        val script = cornersScript.ifEmpty { return }
+        scope.launch(webView) { panel.evaluateJavaScript(script) {} }
     }
 
     override fun loadUrl(url: String) {
@@ -217,6 +248,7 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
             sawLoading = true
         } else if (sawLoading || poll.url == pageUrl) {
             sawLoading = false
+            applyCorners()
             onMainFrameFinished()
         }
     }

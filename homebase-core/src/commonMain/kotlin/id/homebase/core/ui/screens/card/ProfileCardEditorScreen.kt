@@ -438,6 +438,7 @@ private fun ProfileCardEditor(
                 paintWhileAttached = viewModel::paintWhileAttached,
                 modifier = Modifier.fillMaxSize(),
                 layoutWidth = layoutWidth,
+                shape = MaterialTheme.shapes.extraLargeIncreased,
                 cover = designCover,
                 coverHeld = uiState.isSwitchingDesign,
                 skeleton = true,
