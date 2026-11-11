@@ -94,6 +94,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
@@ -972,13 +973,15 @@ internal fun CardSurface(
     val live = painted && uiState.isCardReady
     // Desktop and web paint the card's native view over Compose, so it steps aside while a dialog, menu or tooltip is over it.
     val overlays = LocalOpenOverlays.current.takeIf { isDesktopOrWeb() }
-    var bounds by remember { mutableStateOf<Rect?>(null) }
-    val overlaid = overlays != null && bounds?.let(overlays::covers) == true
+    val bounds = remember { mutableStateOf<Rect?>(null) }
+    val overlaid by remember(overlays) {
+        derivedStateOf { overlays != null && bounds.value?.let(overlays::covers) == true }
+    }
 
     Box(
         modifier = modifier
             .drawBehind { drawRect(ground()) }
-            .then(if (overlays != null) Modifier.onGloballyPositioned { bounds = it.boundsInWindow() } else Modifier),
+            .then(if (overlays != null) Modifier.onGloballyPositioned { bounds.value = it.boundsInWindow() } else Modifier),
     ) {
         if (uiState.loadFailed) {
             CardErrorPlate(

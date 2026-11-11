@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -50,8 +51,10 @@ actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?, sh
     val cardHost = host as DesktopCardHost
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    var size by remember { mutableStateOf(Size.Zero) }
-    val radii = cssCornerRadii(shape, size, density, layoutDirection)
+    val size = remember { mutableStateOf(Size.Zero) }
+    val radii by remember(shape, density, layoutDirection) {
+        derivedStateOf { cssCornerRadii(shape, size.value, density, layoutDirection) }
+    }
     // Every card frame sits on surfaceContainer; wry's view is opaque, so the page paints that outside its corners.
     val outside = MaterialTheme.colorScheme.surfaceContainer.toArgb()
     LaunchedEffect(cardHost, radii, outside) { cardHost.roundCorners(radii, outside) }
@@ -60,7 +63,7 @@ actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?, sh
         DisposableEffect(slot) {
             onDispose { cardHost.leave(slot) }
         }
-        SwingPanel(factory = { slot }, modifier = modifier.onSizeChanged { size = it.toSize() })
+        SwingPanel(factory = { slot }, modifier = modifier.onSizeChanged { size.value = it.toSize() })
     }
 }
 
@@ -168,8 +171,10 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     override fun sizeForTiles(on: Boolean) {
         tileSized = on
         if (panel.parent is CardSlot) return
-        if (on) sizeBeforeTiles = panel.size else sizeBeforeTiles?.let { panel.size = it }
-        if (!on) sizeBeforeTiles = null
+        if (on) sizeBeforeTiles = panel.size else {
+            sizeBeforeTiles?.let { panel.size = it }
+            sizeBeforeTiles = null
+        }
         park()
     }
 

@@ -101,9 +101,9 @@ fun rememberNewCircleAction(onCreated: (String) -> Unit): () -> Unit {
             }
         }
     }
-    if (state.accessCheckFailed) ReportOverlay()
     viewModel.permission?.let { ExtendPermissionDialog(viewModel = it) }
     if (state.accessCheckFailed) {
+        ReportOverlay()
         AlertDialog(
             onDismissRequest = viewModel::onAccessFailureAcknowledged,
             text = { Text(stringResource(MR.string.circle_create_access_check_failed)) },
