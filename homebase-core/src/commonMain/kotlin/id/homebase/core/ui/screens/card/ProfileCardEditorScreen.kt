@@ -319,7 +319,7 @@ fun ProfileCardEditorScreen(
                     )
                     if (result == SnackbarResult.ActionPerformed) viewModel.onAudienceUndone()
                 }
-                is ProfileCardEvent.ContentRemovedFromCard -> launch {
+                ProfileCardEvent.ContentRemovedFromCard -> launch {
                     val result = snackbarHostState.showSnackbar(
                         message = TranslationUtil.getString(MR.string.profile_card_content_removed_from_card),
                         actionLabel = importUndo,

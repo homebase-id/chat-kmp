@@ -158,7 +158,7 @@ sealed interface ProfileCardEvent {
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
     data class AudienceChanged(val itemLabel: String, val nowPublic: Boolean) : ProfileCardEvent
-    data class ContentRemovedFromCard(val itemLabel: String) : ProfileCardEvent
+    data object ContentRemovedFromCard : ProfileCardEvent
 }
 
 interface ProfileCardSource {
@@ -561,7 +561,9 @@ class ProfileCardViewModel(
         val item = state.contentItems.firstOrNull { it.id == id }?.takeUnless { it.required } ?: return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
         if (audience == attribute.audience(state.circles)) return
-        requestWrite(ContentWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true))
+        val card = state.selectedAudience
+        val removal = card is CardAudience.Circle && item.shown && !card.shows(audience)
+        requestWrite(ContentWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true, removal = removal))
     }
 
     fun onPublicConfirmed() {
@@ -627,13 +629,6 @@ class ProfileCardViewModel(
         val state = _uiState.value
         if (state.isContentBusy) return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
-        val card = state.selectedAudience
-        val rest = (card as? CardAudience.Circle)?.let { attribute.audience(state.circles).shownOn(it, false, null, state.circles) }
-        if (rest != null && rest != ProfileAudience.OnlyMe && rest.isSavable) {
-            val label = state.contentItems.firstOrNull { it.id == id }?.text.orEmpty()
-            writeContent(ContentWrite(attribute.type, attribute.data, rest, attribute, label, removal = true))
-            return
-        }
         dropImportUndo()
         _uiState.update { it.copy(isContentBusy = true) }
         viewModelScope.launch {
@@ -665,7 +660,7 @@ class ProfileCardViewModel(
             applyAttributes(listOf(saved), saved = true, removed = deleteDuplicates(existing))
             if (removal) {
                 audienceUndo = existing
-                _events.tryEmit(ProfileCardEvent.ContentRemovedFromCard(itemLabel))
+                _events.tryEmit(ProfileCardEvent.ContentRemovedFromCard)
                 return@launch
             }
             val movedAcrossPublic = existing != null && (audience == ProfileAudience.Public) != (existing.audience(circles) == ProfileAudience.Public)
