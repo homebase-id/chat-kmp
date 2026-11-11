@@ -157,6 +157,8 @@ data class FilesyncSharingState(
     val sharers: List<OdinId> = emptyList(),
     /** The sharers whose files this identity's computers sync. */
     val syncedSharers: Set<OdinId> = emptySet(),
+    /** From the developer menu, until computers act on the choice. */
+    val syncOffered: Boolean = false,
     /** Whose shared files are shown. */
     val sharer: OdinId? = null,
     /** The folder of theirs shown, below what they share at the top. */
@@ -181,6 +183,9 @@ data class FilesyncSharingState(
     val losingAccess: List<OdinId>? = null,
 ) {
     val viewing: Boolean get() = sharer != null || recipient != null
+
+    /** Whose "Sync to my computers" is shown: the sharer's, at the top of what they share. */
+    val syncSwitchFor: OdinId? get() = sharer?.takeIf { syncOffered && sharerPath.isEmpty() }
 }
 
 @Immutable

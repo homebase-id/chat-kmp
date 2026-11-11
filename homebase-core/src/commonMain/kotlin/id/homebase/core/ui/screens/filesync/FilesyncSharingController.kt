@@ -75,6 +75,7 @@ internal class FilesyncSharingController(
     private var sharedNodes = emptyList<FilesyncNode>()
     private var shownFolder: Uuid? = null
     private var sharedInJob: Job? = null
+    private var sharersJob: Job? = null
     private var recipientFilesJob: Job? = null
     private val recipientHandles = mutableMapOf<Uuid, FilesyncHandle>()
     private var pendingMove: (suspend () -> Unit)? = null
@@ -207,7 +208,8 @@ internal class FilesyncSharingController(
     }
 
     private fun loadSharers() {
-        scope.launch {
+        sharersJob?.cancel()
+        sharersJob = scope.launch {
             guarded { sharing.sharers() }?.let { sharers ->
                 update { s -> s.copy(sharers = sharers.map { it.odinId }, syncedSharers = sharers.filter { it.sync }.mapTo(HashSet()) { it.odinId }) }
             }

@@ -38,7 +38,7 @@ import kotlin.uuid.Uuid
 private const val TAG = "FilesyncEditor"
 
 // What another device's newer word looks like in a per-file answer: the node is left as it is.
-internal val ChangedElsewhere = setOf(OdinClientErrorCode.VersionTagMismatch, OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile)
+private val ChangedElsewhere = setOf(OdinClientErrorCode.VersionTagMismatch, OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile)
 
 /**
  * [skipped]: items another device changed or deleted meanwhile, left as they are. [recovered]: restored where no listing
@@ -328,37 +328,46 @@ class FilesyncEditor(
 
     /** False when the node changed or went since it was read; that's another device's newer word, not a failure. */
     internal suspend fun write(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid): Boolean {
-        val request = liveNodeUpdate(nodeId, handle, content, parentId)
-        return try {
-            driveUploadProvider.updateFileByFileId(request, onVersionConflict = { null }) != null
-        } catch (e: NotFoundException) {
-            if (!e.fromIdentity) throw e
-            false
-        } catch (e: ClientException) {
-            if (e.errorCode !in ChangedElsewhere) throw e
-            false
-        }.also { if (!it) Logger.i(tag = TAG) { "node $nodeId changed elsewhere; left as it is" } }
+        return driveUploadProvider.updateUnlessChangedElsewhere(liveNodeUpdate(nodeId, handle, content, parentId))
+            .also { if (!it) Logger.i(tag = TAG) { "node $nodeId changed elsewhere; left as it is" } }
     }
 }
+
+/** False when the file changed or went since it was read; that's another device's newer word, not a failure. */
+internal suspend fun DriveUploadProvider.updateUnlessChangedElsewhere(request: UpdateFileByFileIdRequest): Boolean =
+    try {
+        updateFileByFileId(request, onVersionConflict = { null }) != null
+    } catch (e: NotFoundException) {
+        if (!e.fromIdentity) throw e
+        false
+    } catch (e: ClientException) {
+        if (e.errorCode !in ChangedElsewhere) throw e
+        false
+    }
+
+/** A Filesync drive file's whole header replaced in place; [metadata], encrypted with [keyHeader], carries the versionTag guarding it. */
+internal fun filesyncUpdate(fileId: Uuid, keyHeader: KeyHeader, metadata: UploadFileMetadata) = UpdateFileByFileIdRequest(
+    driveId = FilesyncProtocol.DriveAlias,
+    fileId = fileId,
+    keyHeader = keyHeader,
+    instructions = FileUpdateInstructionSet(
+        transferIv = ByteArrayUtil.getRndByteArray(16),
+        locale = UpdateLocale.Local,
+        recipients = emptyList(),
+        manifest = UpdateManifest.build(),
+    ),
+    metadata = metadata,
+)
 
 /** [content] (everything read, unknown keys too) as a live node in [parentId]: the node's own key with a new IV, guarded by its versionTag. */
 internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid): UpdateFileByFileIdRequest {
     val keyHeader = handle.keyWithNewIv()
-    return UpdateFileByFileIdRequest(
-        driveId = FilesyncProtocol.DriveAlias,
-        fileId = handle.fileId,
-        keyHeader = keyHeader,
-        instructions = FileUpdateInstructionSet(
-            transferIv = ByteArrayUtil.getRndByteArray(16),
-            locale = UpdateLocale.Local,
-            recipients = emptyList(),
-            manifest = UpdateManifest.build(),
-        ),
-        metadata = liveNodeMetadata(nodeId, handle, content, parentId, keyHeader),
-    )
+    return filesyncUpdate(handle.fileId, keyHeader, liveNodeMetadata(nodeId, handle, content, parentId, keyHeader))
 }
 
-internal fun FilesyncHandle.keyWithNewIv() = KeyHeader(ByteArrayUtil.getRndByteArray(16), keyHeader.aesKey)
+internal fun FilesyncHandle.keyWithNewIv() = keyHeader.withNewIv()
+
+internal fun KeyHeader.withNewIv() = KeyHeader(ByteArrayUtil.getRndByteArray(16), aesKey)
 
 /** The whole header of a node as it is read, with [content], under [keyHeader]: guarded by the version it was read at. */
 internal suspend fun liveNodeMetadata(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid, keyHeader: KeyHeader): UploadFileMetadata =

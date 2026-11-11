@@ -39,10 +39,6 @@ import id.homebase.api.client.drives.shares.DriveShareProvider
 import id.homebase.api.client.drives.shares.ShareRequest
 import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.client.drives.upload.DriveUploadProvider
-import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
-import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocale
-import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
@@ -51,7 +47,6 @@ import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.withRetryResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.toSecureByteArray
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.HashUtil
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -561,7 +556,7 @@ class FilesyncSharing(
 
     /** Keeps [sharer] among [sharers], so their files can be found again without the chat message that told of them. */
     suspend fun keepSharer(sharer: OdinId) {
-        if (sharers().any { it.odinId == sharer }) return
+        if (markerFiles().any { it.sharer == sharer }) return
         addMarker(sharer, sync = false)
     }
 
@@ -592,30 +587,10 @@ class FilesyncSharing(
 
     /** False when another device changed or removed it since it was read. */
     private suspend fun updateMarker(file: MarkerFile, sync: Boolean): Boolean {
-        val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), file.file.keyHeader.aesKey)
+        val keyHeader = file.file.keyHeader.withNewIv()
         val appData = file.file.fileMetadata.appData
         val metadata = markerMetadata(appData.uniqueId, appData.userDate, file.marker.copy(sync = sync), file.file.fileMetadata.versionTag)
-        val request = UpdateFileByFileIdRequest(
-            driveId = FilesyncProtocol.DriveAlias,
-            fileId = file.file.fileId,
-            keyHeader = keyHeader,
-            instructions = FileUpdateInstructionSet(
-                transferIv = ByteArrayUtil.getRndByteArray(16),
-                locale = UpdateLocale.Local,
-                recipients = emptyList(),
-                manifest = UpdateManifest.build(),
-            ),
-            metadata = metadata.encryptContent(keyHeader),
-        )
-        return try {
-            uploads.updateFileByFileId(request, onVersionConflict = { null }) != null
-        } catch (e: NotFoundException) {
-            if (!e.fromIdentity) throw e
-            false
-        } catch (e: ClientException) {
-            if (e.errorCode !in ChangedElsewhere) throw e
-            false
-        }
+        return uploads.updateUnlessChangedElsewhere(filesyncUpdate(file.file.fileId, keyHeader, metadata.encryptContent(keyHeader)))
     }
 
     private fun markerMetadata(uniqueId: Uuid?, userDate: Long?, marker: FilesyncMarker, versionTag: Uuid? = null) = UploadFileMetadata(
