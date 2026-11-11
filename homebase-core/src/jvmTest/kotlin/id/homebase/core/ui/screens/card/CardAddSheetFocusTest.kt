@@ -28,7 +28,6 @@ class CardAddSheetFocusTest {
                     circles = listOf(CardCircle(FRIENDS_CIRCLE_ID, "Friends")),
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    importSources = emptyList(),
                     showCardsButton = true,
                     onAudience = { _, _ -> },
                     onEdit = { _, _, _ -> },
@@ -36,7 +35,6 @@ class CardAddSheetFocusTest {
                     onAdd = { _, _ -> },
                     onChangePhoto = {},
                     onRemovePhoto = {},
-                    onImport = {},
                 )
             }
         }
