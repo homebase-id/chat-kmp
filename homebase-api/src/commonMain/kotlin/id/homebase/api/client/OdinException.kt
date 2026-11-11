@@ -159,6 +159,8 @@ enum class OdinClientErrorCode(val value: Int) {
     CannotSendConnectionRequestToValidConnection(5005),
     RemoteServerMissingOutgoingRequest(5006),
     ConnectionRequestAlreadySent(5007),
+    RecipientRequiresUpgrade(5009),
+    SenderRequiresUpgrade(5011),
 
     // App or YouAuth Domain Errors 60xx
     AppNotRegistered(6001),

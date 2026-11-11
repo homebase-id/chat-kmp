@@ -31,6 +31,9 @@ enum class AutoConnectOutcome(val code: Int) {
     InvalidRequest(10),
     RecipientIdentityNotConfigured(11),
     RecipientRequiresUpgrade(12),
+
+    // This identity's own server must be updated before it can connect; nothing was sent.
+    SenderRequiresUpgrade(13),
     Failed(99),
 
     // Sentinel for forward-compatibility — any server-side enum value we don't
