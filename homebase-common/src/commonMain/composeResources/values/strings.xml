@@ -2460,6 +2460,16 @@
     <string name="profile_edit_instagram">Instagram</string>
     <string name="profile_edit_tiktok">TikTok</string>
     <string name="profile_edit_linkedin">LinkedIn</string>
+    <string name="profile_edit_youtube">YouTube</string>
+    <string name="profile_edit_snapchat">Snapchat</string>
+    <string name="profile_edit_github">GitHub</string>
+    <string name="profile_edit_discord">Discord</string>
+    <string name="profile_edit_stackoverflow">Stack Overflow</string>
+    <string name="profile_edit_steam">Steam</string>
+    <string name="profile_edit_minecraft">Minecraft</string>
+    <string name="profile_edit_epic">Epic Games</string>
+    <string name="profile_edit_riot">Riot Games</string>
+    <string name="profile_edit_homebase_id">Homebase ID</string>
 
     <string name="profile_edit_visibility_public">Public</string>
     <string name="profile_edit_visibility_circles">Circles</string>

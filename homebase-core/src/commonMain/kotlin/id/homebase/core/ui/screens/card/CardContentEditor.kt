@@ -177,6 +177,7 @@ import id.homebase.resources.profile_edit_audience_other_circle
 import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_empty
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
+import id.homebase.core.ui.screens.profile.SOCIAL_ATTRIBUTE_TYPES
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
 import id.homebase.core.ui.screens.profile.AudienceBadge
 import id.homebase.resources.cancel
@@ -243,7 +244,7 @@ internal fun CardContentEditor(
     val unrenderable = if (circleCard) emptyList() else items.filter { it.shown && !it.renderable }
     val couldAdd = if (circleCard) emptyList() else items.filterNot { it.shown }
     val present = items.map { it.type }.toSet()
-    val missingSocials = CARD_SOCIAL_TYPES.filter { it !in present }
+    val missingSocials = SOCIAL_ATTRIBUTE_TYPES.filter { it !in present }
     val missingMore = ATTRIBUTE_SPECS.filter { it.type in MORE_TYPES && it.type !in present }
     val linkGroups = listOf(onCard.filter { it.type == ProfileAttributeTypes.LINK }, onCard.filter { it.type in CARD_SOCIAL_TYPES })
     val canReorder = linkGroups.any { it.size > 1 }
@@ -522,7 +523,7 @@ internal fun CardContentEditor(
             type = type,
             card = card,
             circles = circles,
-            socials = if (type in CARD_SOCIAL_TYPES) missingSocials else emptyList(),
+            socials = if (type in SOCIAL_ATTRIBUTE_TYPES) missingSocials else emptyList(),
             onAdd = { t, updates ->
                 pendingId = null
                 onAdd(t, updates)

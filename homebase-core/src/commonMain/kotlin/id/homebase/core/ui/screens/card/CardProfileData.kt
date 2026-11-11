@@ -33,6 +33,9 @@ private val cardSocialFields = mapOf(
     ProfileAttributeTypes.KEY_INSTAGRAM to CardSocialField(ProfileAttributeTypes.INSTAGRAM, ProfileField.INSTAGRAM, setOf("instagram.com")),
     ProfileAttributeTypes.KEY_TIKTOK to CardSocialField(ProfileAttributeTypes.TIKTOK, ProfileField.TIKTOK, setOf("tiktok.com")),
     ProfileAttributeTypes.KEY_LINKEDIN to CardSocialField(ProfileAttributeTypes.LINKEDIN, ProfileField.LINKEDIN, setOf("linkedin.com")),
+    ProfileAttributeTypes.KEY_YOUTUBE to CardSocialField(ProfileAttributeTypes.YOUTUBE, ProfileField.YOUTUBE, setOf("youtube.com")),
+    ProfileAttributeTypes.KEY_SNAPCHAT to CardSocialField(ProfileAttributeTypes.SNAPCHAT, ProfileField.SNAPCHAT, setOf("snapchat.com")),
+    ProfileAttributeTypes.KEY_GITHUB to CardSocialField(ProfileAttributeTypes.GITHUB, ProfileField.GITHUB, setOf("github.com")),
 )
 
 fun buildCardPayload(
@@ -104,11 +107,18 @@ internal fun socialUsername(type: String, raw: String): String? {
         val segments = afterScheme.substringAfter('/', missingDelimiterValue = "")
             .substringBefore('?').substringBefore('#')
             .split('/').filter { it.isNotEmpty() }
-        if (type == ProfileAttributeTypes.KEY_LINKEDIN) segments.takeIf { it.firstOrNull() == "in" }?.getOrNull(1) else segments.firstOrNull()
+        when (type) {
+            ProfileAttributeTypes.KEY_LINKEDIN -> segments.takeIf { it.firstOrNull() == "in" }?.getOrNull(1)
+            ProfileAttributeTypes.KEY_SNAPCHAT -> segments.takeIf { it.firstOrNull() == "add" }?.getOrNull(1)
+            ProfileAttributeTypes.KEY_YOUTUBE -> segments.joinToString("/")
+            else -> segments.firstOrNull()
+        }
     } else {
         value
     }
-    return handle?.removePrefix("@")?.takeIf { it.isNotEmpty() && it.none(Char::isWhitespace) }
+    // The page appends a YouTube handle as is, and youtube.com/@name is the handle's URL.
+    val bare = if (type == ProfileAttributeTypes.KEY_YOUTUBE) handle else handle?.removePrefix("@")
+    return bare?.takeIf { it.removePrefix("@").isNotEmpty() && it.none(Char::isWhitespace) }
 }
 
 /**
