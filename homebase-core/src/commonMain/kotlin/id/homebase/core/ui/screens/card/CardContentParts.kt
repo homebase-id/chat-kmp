@@ -355,7 +355,9 @@ internal fun ContentSheet(
         fun value(field: ProfileField) = fields.firstOrNull { it.first == field }?.let { data[it.second] }.orEmpty()
         val main = fields.firstOrNull()?.first
         val filled = if (link) linkUrl.isNotEmpty() && isWebUrl(linkUrl) else main != null && value(main).isNotBlank()
-        val canSave = filled && (link || isAttributeValid(shownType, ::value)) && audience.isSavableWith(circles)
+        // Outside the &&: a memoized ::value there only gets a group once filled, so the first character rebuilt the sheet.
+        val valid = isAttributeValid(shownType, ::value)
+        val canSave = filled && valid && audience.isSavableWith(circles)
         val updates = if (link) {
             mapOf(ProfileAttributeTypes.KEY_LINK_TEXT to data[ProfileAttributeTypes.KEY_LINK_TEXT].orEmpty(), ProfileAttributeTypes.KEY_LINK_TARGET to linkUrl)
         } else {
