@@ -1,8 +1,10 @@
 package id.homebase.core.ui.screens.card
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.isVisibleTo
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
 import id.homebase.core.image.CachedImage
@@ -11,6 +13,7 @@ import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.profileNameValue
+import id.homebase.core.ui.screens.profile.visibleAttribute
 import id.homebase.core.ui.screens.profile.visibleBio
 import id.homebase.core.ui.screens.profile.visibleLinks
 import id.homebase.core.ui.screens.profile.visibleValues
@@ -53,6 +56,12 @@ fun buildCardPayload(
     val values = onCard.visibleValues(canSee)
     val socialIds = cardSocialFields.mapValues { (_, social) -> onCard.firstOrNull { it.type == social.attributeType }?.id?.toString() }
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
+    val status = text(ProfileField.STATUS)
+    // A status scoped to this card's circle is more specific than the homepage tagLine; a public one isn't.
+    val ownStatus = status?.takeIf {
+        onCard.visibleAttribute(ProfileAttributeTypes.STATUS, canSee, listOf(ProfileAttributeTypes.KEY_STATUS))
+            ?.acl?.isVisibleTo(ProfileVisibility.ANONYMOUS) == false
+    }
     return CardPayload(
         design = design,
         audience = audience.toPayload(),
@@ -63,7 +72,7 @@ fun buildCardPayload(
             firstName = text(ProfileField.GIVEN_NAME),
             surName = text(ProfileField.SURNAME),
             displayName = profileNameValue(values)?.trim(),
-            headline = tagLine?.trim()?.ifEmpty { null } ?: text(ProfileField.STATUS),
+            headline = ownStatus ?: tagLine?.trim()?.ifEmpty { null } ?: status,
             // The public site's card shows the summary, never the full bio.
             bio = onCard.visibleBio(canSee)?.trim()?.ifEmpty { null },
             photo = photoSrc?.ifBlank { null }?.let(::CardImage),

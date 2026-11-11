@@ -181,6 +181,28 @@ class CardContentTest {
     }
 
     @Test
+    fun aStatusAddedOnTheFriendsCardIsItsOwnRecordAndBeatsThePublicOneThere() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val public = wire.seed(ProfileAttributeTypes.STATUS, "anonymous", data(ProfileAttributeTypes.KEY_STATUS, "Off on an adventure"))
+        val rig = rig(wire)
+        rig.open(friends)
+        assertTrue(rig.vm.uiState.value.contentItems.single { it.id == public }.locked)
+        assertFalse(ProfileAttributeTypes.STATUS in rig.vm.uiState.value.contentItems.addableTypesPresent())
+
+        rig.write { rig.vm.onContentAdded(ProfileAttributeTypes.STATUS, mapOf(ProfileAttributeTypes.KEY_STATUS to "Second breakfast")) }
+
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
+        assertEquals(2, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.STATUS })
+        assertTrue(ProfileAttributeTypes.STATUS in rig.vm.uiState.value.contentItems.addableTypesPresent())
+        assertTrue(rig.vm.uiState.value.contentItems.single { it.type == ProfileAttributeTypes.STATUS && it.id != public }.conflicts.isEmpty())
+        val stored = wire.profileRepository().loadAttributes()
+        fun statusOn(card: CardAudience) = stored.visibleValues(card.aclFilter())[ProfileField.STATUS]
+        assertEquals("Second breakfast", statusOn(friends))
+        assertEquals("Off on an adventure", statusOn(family))
+        assertEquals("Off on an adventure", statusOn(CardAudience.Public))
+    }
+
+    @Test
     fun aSecondEmailIsItsOwnItemAndEachGoesOnACardOnItsOwn() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val home = wire.seed(ProfileAttributeTypes.EMAIL, "owner", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"))
@@ -849,15 +871,15 @@ class CardContentTest {
     @Test
     fun aLeftoverWithOtherDataIsShownForTheUserToRemove() = runTest(dispatcher) {
         val wire = CardWireHarness()
-        wire.seed(ProfileAttributeTypes.STATUS, "anonymous", data(ProfileAttributeTypes.KEY_STATUS, "Off on an adventure"))
-        val other = wire.seed(ProfileAttributeTypes.STATUS, "connected", data(ProfileAttributeTypes.KEY_STATUS, "At home"))
+        wire.seed(ProfileAttributeTypes.NICKNAME, "anonymous", data(ProfileAttributeTypes.KEY_NICKNAME, "Mr. Underhill"))
+        val other = wire.seed(ProfileAttributeTypes.NICKNAME, "connected", data(ProfileAttributeTypes.KEY_NICKNAME, "Ring-bearer"))
         val rig = rig(wire)
 
-        assertEquals(listOf(other), rig.item(ProfileAttributeTypes.STATUS).conflicts.map { it.id })
+        assertEquals(listOf(other), rig.item(ProfileAttributeTypes.NICKNAME).conflicts.map { it.id })
         rig.delete { rig.vm.onContentDeleted(other) }
 
-        assertTrue(rig.item(ProfileAttributeTypes.STATUS).conflicts.isEmpty())
-        assertEquals("Off on an adventure", rig.item(ProfileAttributeTypes.STATUS).text)
+        assertTrue(rig.item(ProfileAttributeTypes.NICKNAME).conflicts.isEmpty())
+        assertEquals("Mr. Underhill", rig.item(ProfileAttributeTypes.NICKNAME).text)
     }
 
     @Test
