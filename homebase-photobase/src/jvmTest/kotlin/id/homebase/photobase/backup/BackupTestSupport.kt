@@ -71,6 +71,8 @@ internal class FakeUploader(
     var sendsComplete = true
     var sendsFail = false
     var stillSending = false
+    /** Answers before handOff returns, as a busy Outbox can for a small photo. */
+    var answersBeforeReturning = false
     var kicks = 0
     var markedBackground = false
     override var outlivesProcess = false
@@ -80,7 +82,11 @@ internal class FakeUploader(
         handedOff += row.deviceAssetId
         markedBackground = currentCoroutineContext()[id.homebase.api.video.BackgroundVideoWork.Key] != null
         val outcome = result(row)
-        if (outcome == HandOffResult.Queued && sendsComplete) {
+        if (outcome == HandOffResult.Queued && sendsComplete && answersBeforeReturning) {
+            eventBus.emit(BackendEvent.OutboxEvent.ItemStarted(PhotobaseProtocol.DriveAlias, uniqueId))
+            eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotobaseProtocol.DriveAlias, uniqueId))
+            delay(1)
+        } else if (outcome == HandOffResult.Queued && sendsComplete) {
             scope.launch {
                 delay(sendTime)
                 eventBus.emit(BackendEvent.OutboxEvent.ItemStarted(PhotobaseProtocol.DriveAlias, uniqueId))
