@@ -86,3 +86,4 @@ internal fun ((FeedWebRequest) -> FeedWebRequestDecision).toRequestInterceptor()
 
 /** Android's WebView ships with DOM storage (localStorage) off; desktop and iOS engines default it on. */
 internal expect fun enableDomStorage(view: NativeWebView)
+actual val FeedWebViewAvailable: Boolean = true
