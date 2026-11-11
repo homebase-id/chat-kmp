@@ -241,4 +241,23 @@ class BackupLedgerTest {
         assertTrue(ledger.isInitialBackupDone())
         assertEquals(now, ledger.lastSuccessMs())
     }
+
+    @Test
+    fun dueExceptReadsPastOnlyTheSeenRowsStillDue() = runTest {
+        val ids = (0 until 100).map { "a%03d".format(it) }
+        ledger.apply(fullListing(*ids.map { asset(it, createdAtMs = 1000L + it.drop(1).toLong()) }.toTypedArray()), null)
+        val seen = mutableSetOf<String>()
+        val batches = mutableListOf<List<String>>()
+        while (true) {
+            val batch = ledger.dueExcept(BackupState.New, includeVideos = true, batch = 10, newestFirst = false, seen = seen)
+            if (batch.isEmpty()) break
+            batches += batch.map { it.deviceAssetId }
+            seen += batches.last()
+            // Hashing moves most rows on; one per batch is still in flight, so still due.
+            batch.drop(1).forEach { ledger.markHashed(it.deviceAssetId, "ff", Uuid.random(), 10) }
+        }
+
+        assertTrue(batches.all { it.size <= 10 }, "batch sizes ${batches.map { it.size }}")
+        assertEquals(ids, batches.flatten().sorted())
+    }
 }
