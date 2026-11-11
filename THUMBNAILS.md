@@ -407,7 +407,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 - **Thumbnails and the tiny are WebP.** It's the best size for the quality among the formats every client can decode.
 - **Re-encoded final images are WebP.** A kept source stays JPEG, PNG or WebP, as it was.
-- **HEIC is never uploaded as a final image on Standard or HD,** because browsers can't decode it. Original uploads the file as it is.
+- **HEIC is never uploaded as a final image on Standard or HD,** because browsers can't decode it. Original uploads the file as it is, from chat and Vault too: no JPEG conversion first. The upload's metadata strip overwrites the HEIF Exif and XMP items in place, so the image data and the `irot`/`imir` orientation stay byte-identical. On web, the full-screen viewer shows the largest thumbnail instead of a HEIC payload.
 
 ## Where each caller lands
 

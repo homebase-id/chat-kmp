@@ -15,7 +15,6 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFiles
-import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.upload.PayloadBundle
@@ -91,22 +90,11 @@ class VaultUploaderService(
         label: String?,
         uniqueId: Uuid,
     ): Uuid? {
-        // heic_converted_*.jpg temps created by convertHeicIfNeeded outlive that
-        // call but are fully consumed once encryptBundle has read them into the
-        // encrypted payloads. Reap them in finally so they don't linger in
-        // cacheDir — same per-send discipline as the resolved copies.
-        val heicTemps = mutableListOf<String>()
         return try {
             val keyHeader = KeyHeader.newRandom16()
 
-            val resolvedFiles = files.map { (path, contentType) ->
-                val converted = convertHeicIfNeeded(path, contentType)
-                if (converted.first != path) heicTemps += converted.first
-                converted
-            }
-
             var pdfPageCount: Int? = null
-            val bundle = buildMultiPayloadBundle(resolvedFiles, { pdfPageCount = it }, notePreview)
+            val bundle = buildMultiPayloadBundle(files, { pdfPageCount = it }, notePreview)
 
             val content = OdinSystemSerializer.serialize(
                 VaultFileContent(name = entryName, label = label, notes = notes, pdfPageCount = pdfPageCount)
@@ -141,8 +129,6 @@ class VaultUploaderService(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue multi-payload upload: $entryName" }
             null
-        } finally {
-            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
         }
     }
 
@@ -164,25 +150,16 @@ class VaultUploaderService(
         newFiles: List<Pair<String, String>>,
         scope: CoroutineScope,
     ): Boolean {
-        // See uploadResolvedFiles: reap the heic_converted_*.jpg temps once the
-        // bundle has been encrypted, so they don't linger in cacheDir.
-        val heicTemps = mutableListOf<String>()
         return try {
             val existingMaxIndex =
                 file.payloadDescriptors.mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
                     .maxOrNull() ?: -1
             val startIndex = existingMaxIndex + 1
 
-            val resolvedFiles = newFiles.map { (path, contentType) ->
-                val converted = convertHeicIfNeeded(path, contentType)
-                if (converted.first != path) heicTemps += converted.first
-                converted
-            }
-
             val allPayloads = mutableListOf<PayloadFile>()
             val allThumbnails = mutableListOf<ThumbnailFile>()
 
-            resolvedFiles.forEachIndexed { i, (filePath, contentType) ->
+            newFiles.forEachIndexed { i, (filePath, contentType) ->
                 val key = vaultPayloadKey(startIndex + i)
                 var previewThumbnail: EmbeddedThumb? = null
                 var thumbnails = emptyList<ThumbnailFile>()
@@ -225,8 +202,6 @@ class VaultUploaderService(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
             false
-        } finally {
-            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
         }
     }
 
@@ -234,8 +209,7 @@ class VaultUploaderService(
      * Replaces the image payload at [payloadKey] in place with [newFilePath]
      * (the edited bytes). Same encryption/thumbnail/outbox path as
      * [appendResolvedPages] — only the key is reused so the page is updated
-     * rather than appended. HEIC inputs are converted to JPEG just like the
-     * add/append paths.
+     * rather than appended.
      */
     suspend fun replacePagePayload(
         file: VaultEntry,
@@ -261,17 +235,13 @@ class VaultUploaderService(
         contentType: String,
         scope: CoroutineScope,
     ): Boolean {
-        val heicTemps = mutableListOf<String>()
         return try {
-            val (resolvedPath, resolvedType) = convertHeicIfNeeded(newFilePath, contentType)
-            if (resolvedPath != newFilePath) heicTemps += resolvedPath
-
             var previewThumbnail: EmbeddedThumb? = null
             var thumbnails = emptyList<ThumbnailFile>()
-            if (resolvedType.startsWith("image/")) {
+            if (contentType.startsWith("image/")) {
                 try {
                     val result = MessageThumbnailGenerator.generate(
-                        resolvedPath, payloadKey, fileOperationsProvider,
+                        newFilePath, payloadKey, fileOperationsProvider,
                     )
                     previewThumbnail = result.preview
                     thumbnails = result.thumbnails
@@ -282,8 +252,8 @@ class VaultUploaderService(
 
             val payload = PayloadFile(
                 key = payloadKey,
-                filePath = resolvedPath,
-                contentType = resolvedType,
+                filePath = newFilePath,
+                contentType = contentType,
                 previewThumbnail = previewThumbnail,
             )
 
@@ -304,8 +274,6 @@ class VaultUploaderService(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue replace page $payloadKey on ${file.uniqueId}" }
             false
-        } finally {
-            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
         }
     }
 
@@ -489,20 +457,5 @@ class VaultUploaderService(
             thumbnails = allThumbnails,
             previewThumbs = allPreviews,
         )
-    }
-
-    private suspend fun convertHeicIfNeeded(
-        filePath: String,
-        contentType: String,
-    ): Pair<String, String> {
-        if (contentType != "image/heic" && contentType != "image/heif") {
-            return filePath to contentType
-        }
-        val heicBytes = fileOperationsProvider.readFileBytes(filePath)
-        val jpegBytes = convertHeicToJpeg(heicBytes) ?: return filePath to contentType
-        val convertedPath = fileOperationsProvider.writeBytesToTempFile(
-            jpegBytes, "heic_converted_", ".jpg"
-        )
-        return convertedPath to "image/jpeg"
     }
 }
