@@ -310,7 +310,6 @@ class ProfileCardViewModel(
     private val _designCover = MutableStateFlow<ImageBitmap?>(null)
     val designCover: StateFlow<ImageBitmap?> = _designCover.asStateFlow()
     private var designSwitchJob: Job? = null
-    private var designSaveJob: Job? = null
 
     private val _events = MutableSharedFlow<ProfileCardEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ProfileCardEvent> = _events.asSharedFlow()
@@ -372,26 +371,6 @@ class ProfileCardViewModel(
         designSwitchJob = viewModelScope.launch {
             coverOutgoingDesign()
             render()
-        }
-    }
-
-    /** The design picker saves as it picks; Customise's own Save is for the options. */
-    fun onDesignPicked(design: String) {
-        onDesignSelected(design)
-        saveLatestPick()
-    }
-
-    // One save in flight; picks made meanwhile collapse into the last one, saved when it lands.
-    private fun saveLatestPick() {
-        if (designSaveJob?.isActive == true) return
-        designSaveJob = viewModelScope.launch {
-            while (true) {
-                _uiState.first { !it.isSavingDesign }
-                val picked = _uiState.value.previewDesign
-                if (picked == null || !_uiState.value.canSaveDesign) break
-                saveDesign(leaveAfter = false)?.join()
-                if (_uiState.value.previewDesign == picked) break
-            }
         }
     }
 
@@ -815,7 +794,6 @@ class ProfileCardViewModel(
     }
 
     fun onPreviewDiscarded() {
-        if (designSaveJob?.isActive == true) return
         if (_uiState.value.previewDesign == null && _uiState.value.previewOverrides == null) return
         _uiState.update { it.copy(previewDesign = null, previewOverrides = null) }
         render()

@@ -646,6 +646,30 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun pickingADesignIsADraftUntilSaveAndDiscardKeepsTheOldOne() = runTest(dispatcher) {
+        val source = FakeSource(profile)
+        val vm = viewModel(FakeHost(), source)
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        advanceUntilIdle()
+
+        assertTrue(source.savedDesigns.isEmpty())
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertTrue(vm.uiState.value.canSaveDesign)
+
+        vm.onPreviewDiscarded()
+
+        assertEquals(CardDesign.LINKS, vm.uiState.value.design)
+        assertTrue(source.savedDesigns.isEmpty())
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(listOf(CardDesign.POSTER), source.savedDesigns)
+    }
+
+    @Test
     fun savingTheUnchangedDesignDoesNothing() = runTest(dispatcher) {
         val source = FakeSource(profile)
         val vm = viewModel(FakeHost(), source)
