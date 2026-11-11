@@ -2553,6 +2553,7 @@
     <string name="profile_card_nameless_public_confirm">Continue</string>
     <string name="profile_card_content_now_public">%1$s is now public</string>
     <string name="profile_card_content_now_hidden">%1$s is no longer public</string>
+    <string name="profile_card_content_removed_from_card">Removed from this card</string>
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>

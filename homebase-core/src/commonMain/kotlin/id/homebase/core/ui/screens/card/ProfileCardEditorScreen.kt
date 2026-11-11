@@ -168,6 +168,7 @@ import id.homebase.resources.profile_card_nameless_public_message
 import id.homebase.resources.profile_card_nameless_public_title
 import id.homebase.resources.profile_card_content_now_hidden
 import id.homebase.resources.profile_card_content_now_public
+import id.homebase.resources.profile_card_content_removed_from_card
 import id.homebase.resources.profile_card_import_done
 import id.homebase.resources.profile_avatar_edit_error_upload
 import id.homebase.resources.profile_avatar_edit_error_too_large
@@ -313,6 +314,14 @@ fun ProfileCardEditorScreen(
                             if (event.nowPublic) MR.string.profile_card_content_now_public else MR.string.profile_card_content_now_hidden,
                             event.itemLabel,
                         ),
+                        actionLabel = importUndo,
+                        withDismissAction = true,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) viewModel.onAudienceUndone()
+                }
+                is ProfileCardEvent.ContentRemovedFromCard -> launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = TranslationUtil.getString(MR.string.profile_card_content_removed_from_card),
                         actionLabel = importUndo,
                         withDismissAction = true,
                     )

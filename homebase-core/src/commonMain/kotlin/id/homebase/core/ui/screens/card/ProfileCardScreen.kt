@@ -325,7 +325,7 @@ private fun ProfileCardViewer(
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
                 ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
-                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported, ProfileCardEvent.ImportUndoExpired, is ProfileCardEvent.AudienceChanged -> Unit
+                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported, ProfileCardEvent.ImportUndoExpired, is ProfileCardEvent.AudienceChanged, is ProfileCardEvent.ContentRemovedFromCard -> Unit
             }
         }
     }
