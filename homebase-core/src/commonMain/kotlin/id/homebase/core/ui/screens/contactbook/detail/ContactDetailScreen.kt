@@ -731,15 +731,26 @@ internal fun ManagementMenuGroups(
     val error = MaterialTheme.colorScheme.error
     val destructiveColors = MenuDefaults.itemColors(textColor = error, leadingIconColor = error)
     groups.forEachIndexed { groupIndex, entries ->
-        if (groupIndex > 0) Spacer(Modifier.height(MenuDefaults.GroupSpacing))
-        DropdownMenuGroup(shapes = MenuDefaults.groupShape(groupIndex, groups.size)) {
+        if (groupIndex > 0) Spacer(Modifier.height(6.dp))
+        DropdownMenuGroup(
+            shapes = MenuDefaults.groupShape(groupIndex, groups.size),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
             entries.forEachIndexed { index, entry ->
                 DropdownMenuItem(
                     onClick = { onAction(entry.action) },
                     text = { Text(stringResource(entry.label)) },
                     shape = MenuDefaults.itemShape(index, entries.size).shape,
                     leadingIcon = { Icon(entry.icon, contentDescription = null) },
-                    supportingText = entry.hint?.let { hint -> { Text(stringResource(hint)) } },
+                    supportingText = entry.hint?.let { hint ->
+                        {
+                            Text(
+                                stringResource(hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
                     colors = if (entry.destructive) destructiveColors else MenuDefaults.itemColors(),
                 )
             }
