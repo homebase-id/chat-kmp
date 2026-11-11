@@ -158,7 +158,7 @@
     <string name="pending_upgrade_snackbar_message">Your identity requires a data upgrade</string>
     <string name="pending_upgrade_snackbar_action">Upgrade</string>
     <string name="pending_upgrade_title">Data upgrade required</string>
-    <string name="pending_upgrade_message">Your identity has a pending upgrade. Please visit your owner console to run the automated upgrade process.</string>
+    <string name="pending_upgrade_message">Your identity needs a data upgrade. Until you run it, new contacts can't message you, and other features may stop working. It takes a minute in your owner console.</string>
     <string name="pending_upgrade_confirm">Upgrade Now</string>
     <string name="upgrade_running_message">Upgrading your identity…</string>
 
