@@ -182,7 +182,7 @@ class CardContentTest {
 
     private fun Rig.statusOffered() = ProfileAttributeTypes.STATUS !in vm.uiState.value.contentItems.addableTypesPresent(vm.uiState.value.selectedAudience)
 
-    private fun CardWireHarness.body(id: Uuid) = storedIds.zip(storedBodies).toMap()[id.toString()]
+    private fun CardWireHarness.body(id: Uuid) = storedBodies[storedIds.indexOf(id.toString())]
 
     // Seeds [visibility]/[circles] as the existing status (none when null), adds the Friends card's own, and returns the rig.
     private suspend fun addFriendsStatusOver(visibility: String?, circles: List<String>? = null): Rig {
@@ -200,7 +200,7 @@ class CardContentTest {
         assertEquals(if (existing == null) 1 else 2, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.STATUS })
         existing?.let { assertEquals(before, wire.body(it)) }
         assertFalse(rig.statusOffered())
-        assertEquals("Second breakfast", rig.rendered { it.data.headline == "Second breakfast" }.data.headline)
+        rig.rendered { it.data.headline == "Second breakfast" }
         return rig
     }
 
