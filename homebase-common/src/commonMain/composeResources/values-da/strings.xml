@@ -1777,7 +1777,7 @@
     <string name="contactbook_action_conversation_rebuilt">Samtalen er repareret og sendt til dem</string>
     <string name="contactbook_action_conversation_rebuild_not_needed">Din server har stadig denne samtale. Der er intet at reparere.</string>
     <string name="contactbook_action_conversation_rebuild_queued">Samtalen er stadig ved at blive sendt. Prøv igen, når den er færdig.</string>
-    <string name="contactbook_error_conversation_rebuild">Samtalen kunne ikke genopbygges</string>
+    <string name="contactbook_error_conversation_rebuild">Samtalen kunne ikke repareres</string>
     <string name="contactbook_action_request_accepted">Forbindelsesanmodning accepteret.</string>
     <string name="contactbook_action_request_rejected">Forbindelsesanmodning afvist.</string>
     <string name="contactbook_action_request_cancelled">Forbindelsesanmodning annulleret.</string>

@@ -2281,7 +2281,7 @@
     <string name="contactbook_action_conversation_rebuilt">Conversation repaired and sent to them</string>
     <string name="contactbook_action_conversation_rebuild_not_needed">Your server still has this conversation. Nothing to repair.</string>
     <string name="contactbook_action_conversation_rebuild_queued">This conversation is still being sent. Try again once it's done.</string>
-    <string name="contactbook_error_conversation_rebuild">Couldn't rebuild the conversation</string>
+    <string name="contactbook_error_conversation_rebuild">Couldn't repair the conversation</string>
     <string name="contactbook_action_request_accepted">Connection request accepted.</string>
     <string name="contactbook_action_request_rejected">Connection request declined.</string>
     <string name="contactbook_action_request_cancelled">Connection request canceled.</string>
