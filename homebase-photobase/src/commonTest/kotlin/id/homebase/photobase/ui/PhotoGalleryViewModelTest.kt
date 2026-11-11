@@ -1,6 +1,7 @@
 package id.homebase.photobase.ui
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -17,10 +18,12 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -283,5 +286,16 @@ class PhotoGalleryViewModelTest {
         val video = item(1, contentType = "video/mp4")
 
         assertEquals(video.payload.key, assertIs<FullScreenOverlay.VideoPlayerData>(video.toViewer()).payloadKey)
+    }
+
+    @Test
+    fun aVideoDecryptsWithItsPayloadIvNotTheFiles() {
+        val payloadIv = KeyHeader.newRandom16().iv
+        val video = item(1, contentType = "video/mp4").let { it.copy(payload = it.payload.copy(iv = Base64Bytes(payloadIv))) }
+
+        val keyHeader = assertIs<FullScreenOverlay.VideoPlayerData>(video.toViewer()).keyHeader
+
+        assertContentEquals(payloadIv, keyHeader.iv)
+        assertSame(video.keyHeader.aesKey, keyHeader.aesKey)
     }
 }

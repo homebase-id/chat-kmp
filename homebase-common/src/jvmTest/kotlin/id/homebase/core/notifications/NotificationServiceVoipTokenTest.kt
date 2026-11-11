@@ -61,9 +61,11 @@ class NotificationServiceVoipTokenTest {
             httpClient = httpClient,
         )
 
+        val callsAfterInit = backend.pushTokenCalls
+
         service.onVoipToken("voip-token")
 
-        assertEquals(1, backend.pushTokenCalls)
+        assertEquals(callsAfterInit + 1, backend.pushTokenCalls)
         assertTrue(escaped.isEmpty(), "push token failure escaped into the scope: $escaped")
         assertEquals(0, requests)
         scope.coroutineContext[Job]?.cancel()

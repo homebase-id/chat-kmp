@@ -85,7 +85,7 @@ class CardContentTest {
     private suspend fun Rig.open(card: CardAudience, stored: Boolean = false) {
         vm.onCardOpened(card)
         vm.await { it.selectedAudience == card && (!stored || it.selectedCard?.isDefault == false) }
-        val expected = if (card is CardAudience.Circle) CardAudiencePayload("circle", card.label) else CardAudiencePayload("public")
+        val expected = if (card is CardAudience.Circle) CardAudiencePayload("circle") else CardAudiencePayload("public")
         settle { host.rendered.lastOrNull()?.audience == expected }
     }
 
@@ -865,6 +865,39 @@ class CardContentTest {
         assertEquals("+4520000000", put.str("data", ProfileAttributeTypes.KEY_PHONE))
         assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
         assertEquals(1, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.PHONE })
+    }
+
+    @Test
+    fun removingFromACircleCardOnlyTakesThatCircleOffTheItem() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val email = wire.seed(ProfileAttributeTypes.EMAIL, "connected", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"), listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(work)
+        val removed = async { rig.vm.events.first { it is ProfileCardEvent.ContentRemovedFromCard } }
+
+        rig.write { rig.vm.toggle(email, false) }
+
+        assertIs<ProfileCardEvent.ContentRemovedFromCard>(settled(removed))
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
+        assertFalse(rig.item(ProfileAttributeTypes.EMAIL).shown)
+
+        rig.write { rig.vm.onAudienceUndone() }
+        assertEquals(listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).sorted(), rig.circleIds().orEmpty().sorted())
+        assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
+    }
+
+    @Test
+    fun removingAPublicItemFromACircleCardSaysRemovedFromThisCardNotNoLongerPublic() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val rig = rig(wire)
+        rig.open(work)
+        val announced = async { rig.vm.events.first { it is ProfileCardEvent.ContentRemovedFromCard || it is ProfileCardEvent.AudienceChanged } }
+
+        rig.write { rig.vm.toggle(bio, false) }
+
+        assertIs<ProfileCardEvent.ContentRemovedFromCard>(settled(announced))
+        assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
     }
 
     @Test

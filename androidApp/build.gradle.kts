@@ -97,6 +97,8 @@ android {
 
         create("dev") {
             applicationIdSuffix = ".dev"
+            // homebase-imageresize is a plain Android library with only debug/release variants.
+            matchingFallbacks += listOf("release")
 
             // Enables code shrinking and optimization. Identifier obfuscation is
             // turned off via -dontobfuscate in proguard-rules.pro.

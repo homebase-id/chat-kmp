@@ -7,6 +7,11 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.post
+import io.ktor.client.request.request
+import io.ktor.http.HttpMethod
+import kotlinx.atomicfu.atomic
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import io.ktor.client.call.body
 import io.ktor.client.request.accept
 import io.ktor.client.request.forms.MultiPartFormDataContent
@@ -314,52 +319,58 @@ abstract class OdinApiProviderBase(
         timeout { requestTimeoutMillis = UPLOAD_TIMEOUT_BASE_MS + bytes / UPLOAD_MIN_BYTES_PER_MS }
     }
 
+    protected open val uploadStallTimeout: Duration get() = UPLOAD_STALL_TIMEOUT
+
     protected suspend fun plainPostMultipart(
         url: String,
         token: String,
         formData: MultiPartFormDataContent,
         onProgress: UploadProgress? = null
-    ): ApiResponse {
-        requireHostInUrl(url)
-
-        return request(
-            {
-                httpClient.post(url) {
-                    bearerAuth(token)
-                    setBody(formData)
-                    uploadTimeout(formData)
-
-                    onUpload { sent, total ->
-                        onProgress?.invoke(sent, total)
-                    }
-                }
-            },
-            secret = null
-        )
-    }
+    ): ApiResponse = multipartUpload(HttpMethod.Post, url, token, formData, onProgress)
 
     protected suspend fun plainPatchMultipart(
         url: String,
         token: String,
         formData: MultiPartFormDataContent,
         onProgress: UploadProgress? = null
+    ): ApiResponse = multipartUpload(HttpMethod.Patch, url, token, formData, onProgress)
+
+    private suspend fun multipartUpload(
+        method: HttpMethod,
+        url: String,
+        token: String,
+        formData: MultiPartFormDataContent,
+        onProgress: UploadProgress?,
     ): ApiResponse {
         requireHostInUrl(url)
+        val total = formData.contentLength
+        val sent = atomic(0L)
+        val stalled = {
+            UploadStalledException(uploadStallTimeout, sent.value, total).also {
+                Logger.w(tag = "HttpIO") { "${method.value} $url: ${it.message}" }
+            }
+        }
 
-        return request(
-            {
-                httpClient.patch(url) {
-                    bearerAuth(token)
-                    setBody(formData)
-                    uploadTimeout(formData)
+        return withIdleTimeout(uploadStallTimeout, stalled) { progress ->
+            request(
+                {
+                    httpClient.request(url) {
+                        this.method = method
+                        bearerAuth(token)
+                        setBody(formData)
+                        uploadTimeout(formData)
 
-                    onUpload { sent, total ->
-                        onProgress?.invoke(sent, total)
+                        onUpload { bytesSent, totalBytes ->
+                            sent.value = bytesSent
+                            // Without a length the end of the body is unknowable, so the first byte disarms it.
+                            progress(total == null || bytesSent >= total)
+                            onProgress?.invoke(bytesSent, totalBytes)
+                        }
                     }
-                }
-            },
-            secret = null
-        )
+                },
+                secret = null
+            )
+        }
     }
 
     protected suspend fun encryptedGet(
@@ -642,6 +653,9 @@ abstract class OdinApiProviderBase(
 }
 
 private const val UPLOAD_TIMEOUT_BASE_MS = 5 * 60_000L
+
+// Rides out a Wi-Fi/cellular handover and TCP's retransmission backoff (about 63 s over six retries).
+private val UPLOAD_STALL_TIMEOUT = 90.seconds
 
 // About 16 KB/s: a 4 GiB upload gets about three days.
 private const val UPLOAD_MIN_BYTES_PER_MS = 16L

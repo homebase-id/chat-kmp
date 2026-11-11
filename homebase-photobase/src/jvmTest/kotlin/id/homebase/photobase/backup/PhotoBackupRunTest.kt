@@ -198,6 +198,24 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aLargeLibraryIsCheckedInBatchesThatDoNotGrow() = runTest {
+        val assets = (0 until 200).map { asset("a$it", createdAtMs = 1000L + it) }
+        assets.forEach { existing += idOf(it.id) }
+        source.next = fullListing(*assets.toTypedArray())
+        // Hashed by an earlier run that ran out of time, so the whole backlog is due for a check at once.
+        ledger.apply(source.next, null)
+        assets.forEach { ledger.markHashed(it.id, "ff", idOf(it.id), 10) }
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(200, ledger.counts().done)
+        assertEquals(200, dedupeCalls.sumOf { it.size })
+        assertTrue(dedupeCalls.all { it.size <= 20 }, "dedupe batch sizes ${dedupeCalls.map { it.size }}")
+    }
+
+    @Test
     fun whatIsAlreadyOnTheDriveIsNeverUploaded() = runTest {
         existing += idOf("a")
         source.next = fullListing(asset("a"), asset("b"))
@@ -377,6 +395,71 @@ class PhotoBackupRunTest {
         assertEquals(BackupRunOutcome.Paused, outcome.await())
         assertEquals(BackupPauseReason.WaitingForWifi, run.status.value.pauseReason)
         assertEquals(BackupState.New.code, state("slow"))
+    }
+
+    @Test
+    fun turningBackupOffStopsARunThatIsGoing() = runTest {
+        hashGates["slow"] = CompletableDeferred()
+        source.next = fullListing(asset("slow"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        val outcome = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceTimeBy(1.seconds)
+        settings = settings.copy(enabled = false)
+        advanceTimeBy(6.seconds)
+
+        assertEquals(BackupRunOutcome.Paused, outcome.await())
+        assertEquals(BackupPauseReason.BackupOff, run.status.value.pauseReason)
+        assertEquals(BackupState.New.code, state("slow"))
+        assertTrue(uploader.handedOff.isEmpty())
+    }
+
+    @Test
+    fun stopReturnsOnlyOnceTheRunHasEnded() = runTest {
+        hashGates["slow"] = CompletableDeferred()
+        source.next = fullListing(asset("slow"))
+        val (run, _) = newRun(uploader())
+
+        val outcome = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        run.stop()
+
+        assertTrue(outcome.isCompleted)
+        assertFalse(run.status.value.isRunning)
+    }
+
+    @Test
+    fun anUploadThatFinishesBeforeTheHandOffReturnsIsStillDone() = runTest {
+        source.next = fullListing(asset("a"))
+        val uploader = uploader().apply { answersBeforeReturning = true }
+        val (run, results) = newRun(uploader)
+        val started = testTimeSource.markNow()
+
+        run.run(request())
+
+        assertEquals(BackupState.Done.code, state("a"))
+        assertTrue(results.unsettled.value.isEmpty())
+        assertTrue(started.elapsedNow() < 1.minutes, "waited ${started.elapsedNow()} for a verdict that had already come")
+    }
+
+    @Test
+    fun aRunWaitingForTheLockGivesWayToForget() = runTest {
+        hashGates["slow"] = CompletableDeferred()
+        source.next = fullListing(asset("slow"))
+        val (run, _) = newRun(uploader())
+        val going = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        val waiting = async { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(1.seconds)
+
+        val forgetting = async { run.forget() }
+        advanceTimeBy(10.seconds)
+
+        assertTrue(forgetting.isCompleted, "forget waited behind the run queued before it")
+        assertTrue(going.isCompleted)
+        assertEquals(BackupRunOutcome.AlreadyRunning, waiting.await())
+        assertEquals(null, state("slow"))
     }
 
     @Test
