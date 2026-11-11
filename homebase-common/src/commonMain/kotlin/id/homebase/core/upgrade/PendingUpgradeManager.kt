@@ -12,6 +12,19 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
+/**
+ * The owner console's data-upgrade page for [domainName], sending the owner back to [returnUrl]
+ * when it is non-empty.  The one place this link is built: the pending-upgrade prompt and the
+ * connect dialog's "your identity needs an update" refusal both open it.
+ */
+fun dataUpgradeUrl(domainName: String, returnUrl: String): String = buildString {
+    append("https://$domainName/owner/data-upgrade")
+    if (returnUrl.isNotEmpty()) {
+        append("?returnUrl=")
+        append(returnUrl.encodeURLParameter())
+    }
+}
+
 sealed interface PendingUpgradeState {
     data object None : PendingUpgradeState
     data class ShowSnackbar(val upgradeUrl: String, val epoch: Long = 0) : PendingUpgradeState
@@ -78,14 +91,7 @@ class PendingUpgradeManager(
             return
         }
 
-        val returnUrl = dataUpgradeReturnUrl()
-        val upgradeUrl = buildString {
-            append("https://${domain.domainName}/owner/data-upgrade")
-            if (returnUrl.isNotEmpty()) {
-                append("?returnUrl=")
-                append(returnUrl.encodeURLParameter())
-            }
-        }
+        val upgradeUrl = dataUpgradeUrl(domain.domainName, dataUpgradeReturnUrl())
         val nowMs = clock.now().toEpochMilliseconds()
         val elapsedDays = (nowMs - firstSeenMs) / (1000 * 60 * 60 * 24)
 

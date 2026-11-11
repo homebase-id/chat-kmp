@@ -187,7 +187,7 @@ class PhotoBackupController(
     /** Runs before logout wipes anything: nothing here may outlive the identity. */
     suspend fun onBeforeLogout(hasSession: Boolean = true) {
         foregroundJob?.cancel()
-        run?.cancelActive()
+        run?.stop()
         triggers?.rearm(BackupSettings(enabled = false))
         // Without a session the schedule can't be cancelled, so it keeps firing until another phone or login replaces it.
         if (hasSession && settingsStore.settings.value.enabled) pushSchedule.cancelBeforeLogout()

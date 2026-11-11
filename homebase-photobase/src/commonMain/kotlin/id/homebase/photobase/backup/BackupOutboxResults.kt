@@ -49,6 +49,9 @@ class BackupOutboxResults(
         _unsettled.update { it + uniqueId }
     }
 
+    /** The verdict beat the hand-off: [onEvent] already ran for it, so nothing will settle it later. */
+    fun onSettledBeforeHandOff(uniqueId: Uuid) = settled(uniqueId)
+
     private fun onProgress(event: BackendEvent) {
         if (event is BackendEvent.OutboxEvent.ItemProgress && event.driveId == photosDriveId) _progress.update { it + 1 }
     }
