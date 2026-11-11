@@ -803,6 +803,39 @@ class CardContentTest {
     }
 
     @Test
+    fun removingFromACircleCardOnlyTakesThatCircleOffTheItem() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val email = wire.seed(ProfileAttributeTypes.EMAIL, "connected", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"), listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(work)
+        val removed = async { rig.vm.events.first { it is ProfileCardEvent.ContentRemovedFromCard } }
+
+        rig.write { rig.vm.toggle(email, false) }
+
+        assertIs<ProfileCardEvent.ContentRemovedFromCard>(settled(removed))
+        assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
+        assertFalse(rig.item(ProfileAttributeTypes.EMAIL).shown)
+
+        rig.write { rig.vm.onAudienceUndone() }
+        assertEquals(listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).sorted(), rig.circleIds().orEmpty().sorted())
+        assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
+    }
+
+    @Test
+    fun removingAPublicItemFromACircleCardSaysRemovedFromThisCardNotNoLongerPublic() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val rig = rig(wire)
+        rig.open(work)
+        val announced = async { rig.vm.events.first { it is ProfileCardEvent.ContentRemovedFromCard || it is ProfileCardEvent.AudienceChanged } }
+
+        rig.write { rig.vm.toggle(bio, false) }
+
+        assertIs<ProfileCardEvent.ContentRemovedFromCard>(settled(announced))
+        assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
+    }
+
+    @Test
     fun deletingAnItemTakesItOffEveryCard() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val email = wire.seed(ProfileAttributeTypes.EMAIL, "connected", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"), listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID))
