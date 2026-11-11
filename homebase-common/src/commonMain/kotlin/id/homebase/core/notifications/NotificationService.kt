@@ -362,6 +362,8 @@ class NotificationService(
         })
 
         notificationBackend.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
+        // KMPNotifier doesn't replay a token delivered before this listener attached (iOS before the first unlock).
+        scope.launch { getToken()?.let(::registerToken) }
     }
 
     @kotlin.concurrent.Volatile
