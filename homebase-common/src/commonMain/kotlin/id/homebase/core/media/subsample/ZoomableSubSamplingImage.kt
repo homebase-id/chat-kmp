@@ -282,7 +282,7 @@ fun ZoomableSubSamplingImage(
  * source. No-op when the key or either scope is absent.
  */
 @Composable
-private fun Modifier.fullScreenImageSharedBounds(
+fun Modifier.fullScreenImageSharedBounds(
     sharedContentStateKey: String?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,

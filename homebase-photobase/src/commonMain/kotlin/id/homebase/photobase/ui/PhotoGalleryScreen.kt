@@ -8,6 +8,7 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,12 +68,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
+import id.homebase.core.HomebaseConstants
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.media.subsample.fullScreenImageSharedBounds
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.core.util.formatMomentDate
@@ -116,7 +119,8 @@ fun PhotoGalleryScreen(
             viewModel.onAction(action)
         }
     }
-    val fadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    // On the shared-bounds clock, or the tile and viewer fade out of step with the morph.
+    val fadeSpec = tween<Float>(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = uiState.openedFileId != null,
@@ -181,12 +185,18 @@ private fun GalleryViewer(
             if (page >= items.size - VIEWER_LOAD_MORE_WHEN_WITHIN) onAction(PhotoGalleryUiAction.LoadMore)
         }
     }
+    val shown = items.getOrNull(pagerState.settledPage)
     HorizontalPager(
         state = pagerState,
         key = { items[it].fileId.toString() },
         beyondViewportPageCount = 1,
         pageSpacing = 24.dp,
-        modifier = Modifier.fillMaxSize(),
+        // Around the pager, not inside a page: from inside a page the open animation restarts mid-flight and jumps.
+        modifier = Modifier.fillMaxSize().fullScreenImageSharedBounds(
+            shown?.let { "image-${it.fileId}-${it.payload.key}" },
+            sharedTransitionScope,
+            animatedVisibilityScope,
+        ),
     ) { page ->
         val item = items[page]
         val settled = page == pagerState.settledPage
@@ -194,9 +204,8 @@ private fun GalleryViewer(
             is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                 data = viewer,
                 onDismiss = close,
-                // Only the open photo: a neighbour would fly in from its grid tile too.
-                sharedTransitionScope = sharedTransitionScope.takeIf { settled },
-                animatedVisibilityScope = animatedVisibilityScope.takeIf { settled },
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
                 showUIState = showUI,
                 isFocused = settled,
             )
