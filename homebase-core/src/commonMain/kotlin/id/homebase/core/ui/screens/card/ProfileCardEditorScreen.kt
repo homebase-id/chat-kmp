@@ -657,13 +657,13 @@ internal fun ProfileCardEditorContent(
                     }
                 } else if (contentOpen && contentLayout == ContentLayout.CompactHeader) {
                     val selectedCard = uiState.cards.firstOrNull { it.audience == uiState.selectedAudience }
-                    val capturing = host != null && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+                    val capturing = host != null && uiState.cards.isNotEmpty()
                     LaunchedEffect(capturing, host, uiState.contentSaves, uiState.selectedAudience, uiState.cards) {
                         if (capturing) onCaptureTiles()
                     }
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         // Occluded by the opaque column above it: the host only has to be attached for the snapshot.
-                        if (capturing && host != null) {
+                        if (capturing && host != null && !isDesktopOrWeb()) {
                             CardHostView(
                                 host = host,
                                 modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),

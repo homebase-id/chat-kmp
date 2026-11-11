@@ -59,6 +59,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import id.homebase.core.ui.screens.profile.computeAttributeEdit
 
 private const val TAG = "ProfileCard"
@@ -473,7 +475,7 @@ class ProfileCardViewModel(
                     host.events.onSubscription { host.requestPaint() }.first { it is CardEvent.Painted }
                 }
                 if (interruptedByViewer(ignoreViewing)) return
-                val image = attempt("capturing the ${card.audience.logName()} intro tile") { host.snapshot() }
+                val image = attempt("capturing the ${card.audience.logName()} intro tile") { host.snapshot() ?: exportedStill(host) }
                 if (image == null) {
                     Logger.i(tag = TAG) { "card intro: no snapshot for ${card.audience.logName()}, tile stays a placeholder" }
                     return
@@ -486,6 +488,15 @@ class ProfileCardViewModel(
         } finally {
             if (touched) lastRendered?.let(host::render)
         }
+    }
+
+    // Desktop and web have no native snapshot, so the page draws the still itself: its compact card, whatever the view's width.
+    @OptIn(ExperimentalResourceApi::class)
+    private suspend fun exportedStill(host: CardHost): ImageBitmap? {
+        val png = withTimeoutOrNull(EXPORT_TIMEOUT) {
+            host.events.onSubscription { host.exportPng() }.first { it is CardEvent.Png || it is CardEvent.Error }
+        } as? CardEvent.Png ?: return null
+        return withContext(Dispatchers.Default) { decodeCardPng(png.base64)?.decodeToImageBitmap() }
     }
 
     private fun selectAudience(audience: CardAudience) {

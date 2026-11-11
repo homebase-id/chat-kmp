@@ -933,6 +933,22 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun noSnapshotTakesTheTileFromThePagesExport() = runTest(dispatcher) {
+        val fake = FakeHost()
+        fake.onRender = { fake.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        fake.onPaintRequest = { fake.send(CardEvent.Painted) }
+        fake.onExport = { fake.send(CardEvent.Png(base64 = ONE_PIXEL_PNG, width = 1, height = 1)) }
+        val host = object : CardHost by fake {
+            override suspend fun snapshot(): ImageBitmap? = null
+        }
+        val vm = viewModel(host, FakeSource(profile))
+
+        vm.captureIntroTiles()
+
+        assertEquals(1, vm.introTiles.value["public"]?.width)
+    }
+
+    @Test
     fun capturingStopsOnceTheViewerOpens() = runTest(dispatcher) {
         val host = FakeHost()
         host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }
@@ -2184,3 +2200,5 @@ class ProfileCardViewModelTest {
         CardDesign.all.forEach { assertNotNull(CardDesignSpecs.of(it), it) }
     }
 }
+
+private const val ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="

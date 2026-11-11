@@ -106,8 +106,7 @@ internal fun CardIntro(
         lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
         attached = true
     }
-    // Desktop and web hand back no snapshot, and their native view cannot sit under Compose content.
-    val capturing = host != null && attached && !uiState.viewing && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+    val capturing = host != null && attached && !uiState.viewing && uiState.cards.isNotEmpty()
     LaunchedEffect(capturing, host, revision, uiState.cards) {
         if (capturing) onCapture()
     }
@@ -116,7 +115,8 @@ internal fun CardIntro(
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainer) {
             Box {
                 // Occluded by the opaque content below: it only has to be attached and laid out for the snapshot.
-                if (capturing) {
+                // Desktop and web export the still from the page instead; their native view paints over Compose.
+                if (capturing && !isDesktopOrWeb()) {
                     CardHostView(
                         host = host,
                         modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
