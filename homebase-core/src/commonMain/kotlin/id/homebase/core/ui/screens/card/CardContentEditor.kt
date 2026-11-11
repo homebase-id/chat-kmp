@@ -21,7 +21,6 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -44,7 +43,6 @@ import id.homebase.resources.profile_card_content_hidden_public
 import id.homebase.resources.profile_card_content_not_on_card_desc_public
 import id.homebase.resources.profile_card_content_on_card_desc_reorder
 import id.homebase.resources.profile_card_content_saving
-import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_field_reorder
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilledTonalIconButton
@@ -70,7 +68,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -81,7 +78,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import id.homebase.resources.profile_card_section_feed
@@ -120,10 +116,6 @@ import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_remove
 import id.homebase.resources.profile_card_content_name_required
 import id.homebase.resources.profile_card_content_on_card
-import id.homebase.resources.profile_card_import_action
-import id.homebase.resources.profile_card_import_count
-import id.homebase.resources.profile_card_import_hint
-import id.homebase.resources.profile_card_import_title
 import id.homebase.resources.profile_card_photo_circle_pending
 import id.homebase.resources.profile_card_photo_label
 import id.homebase.resources.profile_card_photo_own_circle
@@ -133,7 +125,6 @@ import id.homebase.resources.profile_edit_photo_inherits_public
 import id.homebase.resources.profile_edit_photo_public_caption
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectableGroup
@@ -181,6 +172,7 @@ import id.homebase.resources.profile_edit_audience_other_circle
 import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_empty
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
+import id.homebase.core.ui.screens.profile.SOCIAL_ATTRIBUTE_TYPES
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
 import id.homebase.core.ui.screens.profile.AudienceBadge
 import id.homebase.resources.cancel
@@ -213,7 +205,6 @@ internal fun CardContentEditor(
     circles: List<CardCircle>,
     photo: CardPhotoUi,
     enabled: Boolean,
-    importSources: List<CardImportSource>,
     showCardsButton: Boolean,
     onAudience: (Uuid, ProfileAudience) -> Unit,
     onEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
@@ -221,21 +212,18 @@ internal fun CardContentEditor(
     onAdd: (String, Map<String, String>) -> Unit,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
-    onImport: (CardAudience) -> Unit,
     modifier: Modifier = Modifier,
     onFieldShown: (Uuid, Boolean) -> Unit = { _, _ -> },
     hiddenSections: Set<String> = emptySet(),
     onSectionShown: (String, Boolean) -> Unit = { _, _ -> },
     onFieldsReordered: (List<Uuid>) -> Unit = {},
     busy: Boolean = false,
-    onDesign: (() -> Unit)? = null,
     edge: Dp = 16.dp,
 ) {
     var editingId by remember { mutableStateOf<Uuid?>(null) }
     var adding by remember { mutableStateOf<String?>(null) }
     var choosingMore by remember { mutableStateOf(false) }
     var choosingKind by remember { mutableStateOf(false) }
-    var copying by remember { mutableStateOf(false) }
     var pendingId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(enabled) { if (enabled) pendingId = null }
     // A circle's card splits into front, back and not available; with cards off this is the profile editor, so it keeps every field.
@@ -248,8 +236,8 @@ internal fun CardContentEditor(
     val notOnCard = if (circleCard) emptyList() else items.filter { it.shown && it.renderable && it.hidden }
     val unrenderable = if (circleCard) emptyList() else items.filter { it.shown && !it.renderable }
     val couldAdd = if (circleCard) emptyList() else items.filterNot { it.shown }
-    val present = items.map { it.type }.toSet()
-    val missingSocials = CARD_SOCIAL_TYPES.filter { it !in present }
+    val present = items.addableTypesPresent(card)
+    val missingSocials = SOCIAL_ATTRIBUTE_TYPES.filter { it !in present }
     val missingMore = ATTRIBUTE_SPECS.filter { it.type in MORE_TYPES && it.type !in present }
     val linkGroups = listOf(onCard.filter { it.type == ProfileAttributeTypes.LINK }, onCard.filter { it.type in CARD_SOCIAL_TYPES })
     val canReorder = linkGroups.any { it.size > 1 }
@@ -347,25 +335,6 @@ internal fun CardContentEditor(
         ) { SavingLine(Modifier.padding(top = 12.dp)) }
         Spacer(Modifier.height(16.dp))
         PhotoRow(card = card, photo = photo, onChange = onChangePhoto, onRemove = onRemovePhoto)
-        if (importSources.isNotEmpty() || onDesign != null) {
-            Spacer(Modifier.height(16.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (importSources.isNotEmpty()) {
-                    OutlinedButton(onClick = { copying = true }, enabled = enabled, shapes = ButtonDefaults.shapes()) {
-                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(stringResource(MR.string.profile_card_import_action), maxLines = 1)
-                    }
-                }
-                if (onDesign != null) {
-                    OutlinedButton(onClick = onDesign, enabled = enabled, shapes = ButtonDefaults.shapes()) {
-                        Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(stringResource(MR.string.profile_card_design_action), maxLines = 1)
-                    }
-                }
-            }
-        }
         Spacer(Modifier.height(SECTION_GAP))
         SectionLabel(
             stringResource(if (circleCard) MR.string.profile_card_content_front else MR.string.profile_card_content_on_card),
@@ -530,7 +499,7 @@ internal fun CardContentEditor(
             type = type,
             card = card,
             circles = circles,
-            socials = if (type in CARD_SOCIAL_TYPES) missingSocials else emptyList(),
+            socials = if (type in SOCIAL_ATTRIBUTE_TYPES) missingSocials else emptyList(),
             onAdd = { t, updates ->
                 pendingId = null
                 onAdd(t, updates)
@@ -546,16 +515,6 @@ internal fun CardContentEditor(
                 adding = it.type
             },
             onDismiss = { choosingMore = false },
-        )
-    }
-    if (copying) {
-        CopyFromSheet(
-            sources = importSources,
-            onPick = {
-                pendingId = null
-                onImport(it)
-            },
-            onDismiss = { copying = false },
         )
     }
 }
@@ -1165,50 +1124,6 @@ private fun CardsSheetRow(label: String, checked: Boolean, enabled: Boolean, tag
     ) {
         Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
         Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-internal fun CopyFromSheet(sources: List<CardImportSource>, onPick: (CardAudience) -> Unit, onDismiss: () -> Unit) {
-    AdaptiveSheet(onDismiss = onDismiss) {
-        Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PanelHeader(
-                icon = Icons.Outlined.ContentCopy,
-                title = stringResource(MR.string.profile_card_import_title),
-                subtitle = stringResource(MR.string.profile_card_import_hint),
-            )
-            sources.forEach { source ->
-                val name = audienceLabel(source.audience)
-                val count = pluralStringResource(MR.plurals.profile_card_import_count, source.newItems, source.newItems)
-                Surface(
-                    onClick = { dismiss { onDismiss(); onPick(source.audience) } },
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "$name, $count" },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        CookieBadge(
-                            icon = audienceIcon(source.audience),
-                            container = audienceContainer(source.audience),
-                            content = onAudienceContainer(source.audience),
-                            size = 40.dp,
-                            iconSize = 20.dp,
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(count, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

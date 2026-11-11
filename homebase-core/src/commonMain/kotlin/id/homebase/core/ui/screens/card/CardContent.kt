@@ -14,6 +14,7 @@ import id.homebase.core.ui.screens.profile.profileNameValue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
+import id.homebase.core.ui.screens.profile.SOCIAL_ATTRIBUTE_TYPES
 import id.homebase.core.ui.screens.profile.formatBirthday
 import id.homebase.core.ui.screens.profile.profileAddressValue
 
@@ -78,13 +79,8 @@ private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hid
 
 internal fun isOrderableType(type: String): Boolean = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
 
-internal val CARD_SOCIAL_TYPES = listOf(
-    ProfileAttributeTypes.TWITTER,
-    ProfileAttributeTypes.FACEBOOK,
-    ProfileAttributeTypes.INSTAGRAM,
-    ProfileAttributeTypes.TIKTOK,
-    ProfileAttributeTypes.LINKEDIN,
-)
+// The socials the page links; the web's unlinkable ones and the Homebase id never reach the card.
+internal val CARD_SOCIAL_TYPES = cardSocialFields.values.map { it.attributeType }
 
 // The page draws these and nothing else; the card orders only links and socials, as one block each.
 internal val CARD_RENDERED_TYPES = setOf(
@@ -94,8 +90,12 @@ internal val CARD_RENDERED_TYPES = setOf(
     ProfileAttributeTypes.LINK,
 ) + CARD_SOCIAL_TYPES
 
-// Each add makes a new record, so the profile can hold several.
-internal val REPEATABLE_TYPES = setOf(ProfileAttributeTypes.LINK, ProfileAttributeTypes.PHONE, ProfileAttributeTypes.EMAIL)
+// Each add makes a new record, so the profile can hold several; the card shows the most specific status.
+internal val REPEATABLE_TYPES = setOf(ProfileAttributeTypes.LINK, ProfileAttributeTypes.PHONE, ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.STATUS)
+
+// Only a status scoped to exactly this card counts: one shared wider (Public, all connections, other circles) leaves room for the card's own.
+internal fun List<CardContentItem>.addableTypesPresent(card: CardAudience): Set<String> =
+    filterNot { it.type == ProfileAttributeTypes.STATUS && it.audience != card.newItemAudience() }.map { it.type }.toSet()
 
 private val LEADING_TYPES = listOf(
     ProfileAttributeTypes.NAME,
@@ -177,7 +177,7 @@ internal fun cardContentItems(
             loaded.links.mapNotNull { link ->
                 item(link, link.string(ProfileAttributeTypes.KEY_LINK_TEXT)?.ifBlank { null } ?: link.string(ProfileAttributeTypes.KEY_LINK_TARGET))
             } +
-            CARD_SOCIAL_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } }
+            SOCIAL_ATTRIBUTE_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } }
         ).inCardOrder(fields) { it.id.toString() }
 }
 
@@ -198,17 +198,4 @@ private fun contentText(attribute: ProfileAttribute): String? {
         ProfileAttributeTypes.BIRTHDAY -> values[ProfileField.BIRTHDAY]?.ifBlank { null }?.let { formatBirthday(it) ?: it }
         else -> PROFILE_TYPE_FIELDS[attribute.type]?.firstOrNull()?.first?.let { values[it] }
     }
-}
-
-internal class ImportStep(val attribute: ProfileAttribute, val previous: ProfileAudience, val next: ProfileAudience)
-
-// A card's photo is never copied: widening it onto another card would stop it being scoped to one circle.
-internal fun importPlan(attributes: List<ProfileAttribute>, circles: List<CardCircle>, from: CardAudience, into: CardAudience): List<ImportStep> {
-    val byId = attributes.associateBy { it.id }
-    return cardContentItems(attributes, circles, from)
-        .filter { it.shown && !into.shows(it.audience) }
-        .mapNotNull { item ->
-            val attribute = byId[item.id] ?: return@mapNotNull null
-            item.audience.shownOn(into, true, null)?.let { ImportStep(attribute, item.audience, it) }
-        }
 }

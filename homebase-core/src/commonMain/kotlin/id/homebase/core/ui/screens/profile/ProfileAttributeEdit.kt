@@ -14,6 +14,7 @@ enum class ProfileField {
     PHONE, PHONE_LABEL,
     ADDRESS_LABEL, ADDRESS1, ADDRESS2, POSTCODE, CITY, COUNTRY,
     TWITTER, FACEBOOK, INSTAGRAM, TIKTOK, LINKEDIN,
+    YOUTUBE, SNAPCHAT, GITHUB, DISCORD, STACKOVERFLOW, STEAM, MINECRAFT, EPIC, RIOT, HOMEBASE_ID,
 }
 
 internal val PROFILE_TYPE_FIELDS: Map<String, List<Pair<ProfileField, String>>> = mapOf(
@@ -65,6 +66,16 @@ internal val PROFILE_TYPE_FIELDS: Map<String, List<Pair<ProfileField, String>>> 
     ProfileAttributeTypes.LINKEDIN to listOf(
         ProfileField.LINKEDIN to ProfileAttributeTypes.KEY_LINKEDIN,
     ),
+    ProfileAttributeTypes.YOUTUBE to listOf(ProfileField.YOUTUBE to ProfileAttributeTypes.KEY_YOUTUBE),
+    ProfileAttributeTypes.SNAPCHAT to listOf(ProfileField.SNAPCHAT to ProfileAttributeTypes.KEY_SNAPCHAT),
+    ProfileAttributeTypes.GITHUB to listOf(ProfileField.GITHUB to ProfileAttributeTypes.KEY_GITHUB),
+    ProfileAttributeTypes.DISCORD to listOf(ProfileField.DISCORD to ProfileAttributeTypes.KEY_DISCORD),
+    ProfileAttributeTypes.STACKOVERFLOW to listOf(ProfileField.STACKOVERFLOW to ProfileAttributeTypes.KEY_STACKOVERFLOW),
+    ProfileAttributeTypes.STEAM to listOf(ProfileField.STEAM to ProfileAttributeTypes.KEY_STEAM),
+    ProfileAttributeTypes.MINECRAFT to listOf(ProfileField.MINECRAFT to ProfileAttributeTypes.KEY_MINECRAFT),
+    ProfileAttributeTypes.EPIC to listOf(ProfileField.EPIC to ProfileAttributeTypes.KEY_EPIC),
+    ProfileAttributeTypes.RIOT to listOf(ProfileField.RIOT to ProfileAttributeTypes.KEY_RIOT),
+    ProfileAttributeTypes.HOMEBASE_ID to listOf(ProfileField.HOMEBASE_ID to ProfileAttributeTypes.KEY_HOMEBASE_ID),
 )
 
 /** One attribute that actually changed, with its full replacement `data` and its audience. */

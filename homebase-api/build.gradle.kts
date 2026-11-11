@@ -238,6 +238,8 @@ kotlin {
     val runHasherBench = providers.environmentVariable("HASHER_BENCH").orNull == "1"
     tasks.withType(AbstractTestTask::class.java).configureEach {
         if (!runHasherBench) filter.excludeTestsMatching("id.homebase.api.crypto.HasherThroughputBench.*")
+        // Kotlin/Native's runner otherwise drops assertion messages from the CI log.
+        testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 
     compilerOptions {
@@ -323,6 +325,7 @@ kotlin {
         listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/dbContractTest/kotlin") }
         getByName("androidDeviceTest").kotlin.srcDir("src/dbContractTest/kotlin")
         androidMain.dependencies {
+            implementation(project(":homebase-imageresize"))
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)

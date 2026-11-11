@@ -1,8 +1,10 @@
 package id.homebase.core.ui.screens.card
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.isVisibleTo
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
 import id.homebase.core.image.CachedImage
@@ -11,6 +13,7 @@ import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.profile.ProfileField
 import id.homebase.core.ui.screens.profile.profileNameValue
+import id.homebase.core.ui.screens.profile.visibleAttribute
 import id.homebase.core.ui.screens.profile.visibleBio
 import id.homebase.core.ui.screens.profile.visibleLinks
 import id.homebase.core.ui.screens.profile.visibleValues
@@ -25,14 +28,17 @@ private const val TAG = "CardData"
 internal const val CARD_IMAGE_MAX_EDGE = 1080
 private const val CARD_IMAGE_JPEG_QUALITY = 85
 
-private class CardSocialField(val attributeType: String, val field: ProfileField, val hosts: Set<String>)
+internal class CardSocialField(val attributeType: String, val field: ProfileField, val hosts: Set<String>)
 
-private val cardSocialFields = mapOf(
+internal val cardSocialFields = mapOf(
     ProfileAttributeTypes.KEY_TWITTER to CardSocialField(ProfileAttributeTypes.TWITTER, ProfileField.TWITTER, setOf("twitter.com", "x.com")),
     ProfileAttributeTypes.KEY_FACEBOOK to CardSocialField(ProfileAttributeTypes.FACEBOOK, ProfileField.FACEBOOK, setOf("facebook.com", "fb.com")),
     ProfileAttributeTypes.KEY_INSTAGRAM to CardSocialField(ProfileAttributeTypes.INSTAGRAM, ProfileField.INSTAGRAM, setOf("instagram.com")),
     ProfileAttributeTypes.KEY_TIKTOK to CardSocialField(ProfileAttributeTypes.TIKTOK, ProfileField.TIKTOK, setOf("tiktok.com")),
     ProfileAttributeTypes.KEY_LINKEDIN to CardSocialField(ProfileAttributeTypes.LINKEDIN, ProfileField.LINKEDIN, setOf("linkedin.com")),
+    ProfileAttributeTypes.KEY_YOUTUBE to CardSocialField(ProfileAttributeTypes.YOUTUBE, ProfileField.YOUTUBE, setOf("youtube.com")),
+    ProfileAttributeTypes.KEY_SNAPCHAT to CardSocialField(ProfileAttributeTypes.SNAPCHAT, ProfileField.SNAPCHAT, setOf("snapchat.com")),
+    ProfileAttributeTypes.KEY_GITHUB to CardSocialField(ProfileAttributeTypes.GITHUB, ProfileField.GITHUB, setOf("github.com")),
 )
 
 fun buildCardPayload(
@@ -53,6 +59,10 @@ fun buildCardPayload(
     val values = onCard.visibleValues(canSee)
     val socialIds = cardSocialFields.mapValues { (_, social) -> onCard.firstOrNull { it.type == social.attributeType }?.id?.toString() }
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
+    val statusRecord = onCard.visibleAttribute(ProfileAttributeTypes.STATUS, canSee, listOf(ProfileAttributeTypes.KEY_STATUS))
+    val status = statusRecord?.string(ProfileAttributeTypes.KEY_STATUS)?.trim()?.ifEmpty { null }
+    // A status scoped narrower than Public is more specific than the homepage tagLine.
+    val ownStatus = status.takeIf { statusRecord?.acl?.isVisibleTo(ProfileVisibility.ANONYMOUS) == false }
     return CardPayload(
         design = design,
         audience = audience.toPayload(),
@@ -63,7 +73,7 @@ fun buildCardPayload(
             firstName = text(ProfileField.GIVEN_NAME),
             surName = text(ProfileField.SURNAME),
             displayName = profileNameValue(values)?.trim(),
-            headline = tagLine?.trim()?.ifEmpty { null } ?: text(ProfileField.STATUS),
+            headline = ownStatus ?: tagLine?.trim()?.ifEmpty { null } ?: status,
             // The public site's card shows the summary, never the full bio.
             bio = onCard.visibleBio(canSee)?.trim()?.ifEmpty { null },
             photo = photoSrc?.ifBlank { null }?.let(::CardImage),
@@ -104,11 +114,18 @@ internal fun socialUsername(type: String, raw: String): String? {
         val segments = afterScheme.substringAfter('/', missingDelimiterValue = "")
             .substringBefore('?').substringBefore('#')
             .split('/').filter { it.isNotEmpty() }
-        if (type == ProfileAttributeTypes.KEY_LINKEDIN) segments.takeIf { it.firstOrNull() == "in" }?.getOrNull(1) else segments.firstOrNull()
+        when (type) {
+            ProfileAttributeTypes.KEY_LINKEDIN -> segments.takeIf { it.firstOrNull() == "in" }?.getOrNull(1)
+            ProfileAttributeTypes.KEY_SNAPCHAT -> segments.takeIf { it.firstOrNull() == "add" }?.getOrNull(1)
+            ProfileAttributeTypes.KEY_YOUTUBE -> segments.joinToString("/")
+            else -> segments.firstOrNull()
+        }
     } else {
         value
     }
-    return handle?.removePrefix("@")?.takeIf { it.isNotEmpty() && it.none(Char::isWhitespace) }
+    // The page appends a YouTube handle as is, and youtube.com/@name is the handle's URL.
+    val bare = if (type == ProfileAttributeTypes.KEY_YOUTUBE) handle else handle?.removePrefix("@")
+    return bare?.takeIf { it.removePrefix("@").isNotEmpty() && it.none(Char::isWhitespace) }
 }
 
 /**

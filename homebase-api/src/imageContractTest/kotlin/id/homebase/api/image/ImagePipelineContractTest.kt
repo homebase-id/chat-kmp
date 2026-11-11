@@ -161,12 +161,13 @@ class ImagePipelineContractTest {
     }
 
     private suspend fun assertStripesTurnGrey(viaDecoder: Boolean) {
-        val limits = listOf(4000 to 400 to 5.0, 4032 to 2048 to 5.0, 2048 to 1080 to 5.0, 1080 to 640 to 5.0, 4000 to 2667 to 5.0, 3000 to 2048 to 5.0, 2560 to 2048 to 30.0)
-        for ((sizes, limit) in limits) {
+        val limits = listOf(4000 to 400 to 5.0, 8064 to 2048 to 5.0, 6000 to 2048 to 5.0, 4032 to 2048 to 5.0, 2048 to 1080 to 5.0, 1080 to 640 to 5.0, 4000 to 2667 to 5.0, 3000 to 2048 to 5.0, 2560 to 2048 to 30.0)
+        val failures = limits.mapNotNull { (sizes, limit) ->
             val (from, to) = sizes
             val spread = deviation(middleGreens(stripesAfter(stripes(from, 1), from, to, viaDecoder)))
-            assertTrue(spread <= limit, "$from -> $to deviated by $spread")
+            "$from -> $to deviated by $spread".takeIf { spread > limit }
         }
+        assertTrue(failures.isEmpty(), failures.joinToString())
     }
 
     @Test

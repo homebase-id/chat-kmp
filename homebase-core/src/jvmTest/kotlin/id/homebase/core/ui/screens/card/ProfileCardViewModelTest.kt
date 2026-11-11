@@ -646,6 +646,30 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun pickingADesignIsADraftUntilSaveAndDiscardKeepsTheOldOne() = runTest(dispatcher) {
+        val source = FakeSource(profile)
+        val vm = viewModel(FakeHost(), source)
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        advanceUntilIdle()
+
+        assertTrue(source.savedDesigns.isEmpty())
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertTrue(vm.uiState.value.canSaveDesign)
+
+        vm.onPreviewDiscarded()
+
+        assertEquals(CardDesign.LINKS, vm.uiState.value.design)
+        assertTrue(source.savedDesigns.isEmpty())
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(listOf(CardDesign.POSTER), source.savedDesigns)
+    }
+
+    @Test
     fun savingTheUnchangedDesignDoesNothing() = runTest(dispatcher) {
         val source = FakeSource(profile)
         val vm = viewModel(FakeHost(), source)
@@ -876,7 +900,6 @@ class ProfileCardViewModelTest {
         assertEquals(CardAudience.Public, state.selectedAudience)
         assertEquals(1, state.cards.size)
         assertEquals("public", host.rendered.last().audience?.kind)
-        assertNull(host.rendered.last().audience?.label)
     }
 
     @Test
@@ -922,8 +945,8 @@ class ProfileCardViewModelTest {
 
         vm.captureIntroTiles()
 
-        val labels = host.rendered.drop(before).map { it.audience?.label ?: "public" }
-        assertEquals(listOf("public", "Family", "Friends", "public"), labels)
+        val labels = host.rendered.drop(before).map { it.audience?.kind ?: "none" }
+        assertEquals(listOf("public", "circle", "circle", "public"), labels)
         assertEquals(setOf("public", FAMILY_CIRCLE_ID.lowercase(), FRIENDS_CIRCLE_ID.lowercase()), vm.introTiles.value.keys)
         assertEquals(CardDesign.DOSSIER, host.rendered.drop(before)[2].design)
 
@@ -1001,7 +1024,7 @@ class ProfileCardViewModelTest {
         vm.captureIntroTiles()
         assertEquals(afterOpen, host.rendered.size)
         assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
-        assertEquals("Friends", host.rendered.last().audience?.label)
+        assertEquals("circle", host.rendered.last().audience?.kind)
     }
 
     @Test
@@ -1026,10 +1049,9 @@ class ProfileCardViewModelTest {
         val payload = host.rendered.last()
         assertEquals(CardDesign.DOSSIER, payload.design)
         assertEquals("circle", payload.audience?.kind)
-        assertEquals("Friends", payload.audience?.label)
         assertEquals(overrides, payload.overrides)
         assertTrue(payload.toJson().contains(""""overrides":{"palette":{"accent":"#ff0000"}}"""))
-        assertTrue(payload.toJson().contains(""""audience":{"kind":"circle","label":"Friends"}"""))
+        assertTrue(payload.toJson().contains(""""audience":{"kind":"circle"}"""))
 
         vm.onCardOpened(CardAudience.Public)
 
@@ -1332,7 +1354,7 @@ class ProfileCardViewModelTest {
         assertEquals(vm.uiState.value.cards.first { it.audience == bookCard }.priority, save.priority)
         assertEquals(listOf(book.id), save.circleIds)
         assertEquals(ProfileVisibility.CONNECTED, save.visibility)
-        assertEquals(JsonPrimitive("Book club"), save.data["label"])
+        assertFalse("label" in save.data)
         assertEquals(JsonPrimitive(CardDesign.POSTER), save.data["design"])
         assertEquals(bookCard, vm.uiState.value.selectedAudience)
     }
@@ -1525,7 +1547,7 @@ class ProfileCardViewModelTest {
         assertEquals(20, save.priority)
         assertEquals(ProfileVisibility.CONNECTED, save.visibility)
         assertEquals(JsonPrimitive(CardDesign.POSTER), save.data["design"])
-        assertEquals(JsonPrimitive("Friends"), save.data["label"])
+        assertFalse("label" in save.data)
         assertEquals("bar", (save.data["overrides"] as JsonObject)["socials"]?.jsonPrimitive?.content)
         assertTrue(source.savedDesigns.isEmpty())
         assertEquals(0, source.cardWrites.value)
@@ -1740,7 +1762,7 @@ class ProfileCardViewModelTest {
         assertEquals(JsonPrimitive("connected"), put["visibility"])
         assertEquals(Json.parseToJsonElement("[\"$FRIENDS_CIRCLE_ID\"]"), put["circleIds"])
         assertEquals(JsonPrimitive(20), put["priority"])
-        assertEquals(JsonPrimitive("Friends"), put["data"]!!.jsonObject["label"])
+        assertFalse("label" in put["data"]!!.jsonObject)
         assertEquals(2, wire.storedIds.size)
 
         vm.onDesignSelected(CardDesign.COLLAGE)
