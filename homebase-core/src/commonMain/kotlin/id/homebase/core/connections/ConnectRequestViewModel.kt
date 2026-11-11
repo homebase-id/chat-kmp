@@ -31,6 +31,7 @@ import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
 import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
+import id.homebase.resources.auto_connect_sender_requires_upgrade
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -289,6 +290,8 @@ private fun ConnectionRequestResult.failureMessage(recipient: OdinId): ConnectFa
             ConnectFailure(MR.string.auto_connect_recipient_not_configured, who)
         AutoConnectOutcome.RecipientRequiresUpgrade ->
             ConnectFailure(MR.string.auto_connect_recipient_requires_upgrade, who)
+        AutoConnectOutcome.SenderRequiresUpgrade ->
+            ConnectFailure(MR.string.auto_connect_sender_requires_upgrade)
         AutoConnectOutcome.InvalidRequest -> detail
             ?.let { ConnectFailure(MR.string.auto_connect_invalid_request_with_detail, listOf(it)) }
             ?: ConnectFailure(MR.string.auto_connect_invalid_request)
@@ -301,6 +304,10 @@ private fun ClientException.failureMessage(recipient: OdinId): ConnectFailure = 
         ConnectFailure(MR.string.auto_connect_blocked, listOf(recipient.domainName))
     OdinClientErrorCode.ConnectionRequestToYourself ->
         ConnectFailure(MR.string.auto_connect_invalid_request)
+    OdinClientErrorCode.RecipientRequiresUpgrade ->
+        ConnectFailure(MR.string.auto_connect_recipient_requires_upgrade, listOf(recipient.domainName))
+    OdinClientErrorCode.SenderRequiresUpgrade ->
+        ConnectFailure(MR.string.auto_connect_sender_requires_upgrade)
     else -> ConnectFailure(MR.string.auto_connect_failed_generic)
 }
 
