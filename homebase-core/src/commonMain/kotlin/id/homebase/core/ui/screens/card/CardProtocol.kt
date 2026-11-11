@@ -45,11 +45,11 @@ data class CardPayload(
 )
 
 @Serializable
-data class CardAudiencePayload(val kind: String, val label: String? = null)
+data class CardAudiencePayload(val kind: String)
 
 fun CardAudience.toPayload(): CardAudiencePayload = when (this) {
     CardAudience.Public -> CardAudiencePayload(kind = "public")
-    is CardAudience.Circle -> CardAudiencePayload(kind = "circle", label = label.trim().ifEmpty { null })
+    is CardAudience.Circle -> CardAudiencePayload(kind = "circle")
 }
 
 @Serializable

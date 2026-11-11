@@ -42,13 +42,13 @@ class CardRepositoryTest {
     }
 
     @Test
-    fun circleCardRoundTripsWithItsLabelAndPriority() {
+    fun circleCardRoundTripsWithItsPriorityAndDropsAStoredLabel() {
         val data = buildJsonObject { put("design", "dossier"); put("label", "Friends") }
         val card = ProfileCard.from(profileCardAttribute(data, ProfileVisibility.CONNECTED, listOf("c1"), priority = 2))!!
 
-        assertEquals(CardAudience.Circle("c1", "Friends"), card.audience)
+        assertEquals(CardAudience.Circle("c1", ""), card.audience)
         assertEquals(2, card.priority)
-        assertEquals(data, card.toData())
+        assertEquals(buildJsonObject { put("design", "dossier") }, card.toData())
     }
 
     @Test
@@ -178,7 +178,7 @@ class CardRepositoryTest {
         assertEquals(listOf("c-friends"), write.circleIds)
         assertEquals(20, write.priority)
         assertNull(write.id)
-        assertEquals(JsonPrimitive("Friends"), write.data["label"])
+        assertFalse("label" in write.data)
         assertEquals(JsonPrimitive("dossier"), write.data["design"])
         assertEquals(friends, saved.audience)
         assertEquals(store.attributes.single().id, saved.id)
@@ -198,7 +198,7 @@ class CardRepositoryTest {
         assertEquals(20, write.priority)
         assertEquals(listOf("c-friends"), write.circleIds)
         assertEquals(JsonPrimitive("collage"), write.data["design"])
-        assertEquals(JsonPrimitive("Friends"), write.data["label"])
+        assertFalse("label" in write.data)
     }
 
     @Test
