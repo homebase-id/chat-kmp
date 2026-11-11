@@ -15,17 +15,20 @@ import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.HierarchyBoundsAdapter
 import java.awt.event.HierarchyEvent
+import java.util.concurrent.Executors
 import javax.swing.JLayeredPane
 import javax.swing.JPanel
 import javax.swing.RootPaneContainer
 import javax.swing.SwingUtilities
 import kotlin.reflect.KClass
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 actual fun createCardHost(odinId: String): CardHost = DesktopCardHost(cardPageUrl(odinId))
 
@@ -67,6 +70,11 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     private var sawLoading = false
     private var shown = false
     private val awaitedReplies = mutableSetOf<KClass<out CardEvent>>()
+
+    // wry dispatch_syncs onto the AppKit main queue, which a main thread spinning AWT's run loop for an
+    // invokeAndWait (accessibility, the screen menu bar) never drains: called on the EDT, the two wait on each other.
+    private val webViewExecutor = Executors.newSingleThreadExecutor { Thread(it, "card-webview").apply { isDaemon = true } }
+    private val webView = webViewExecutor.asCoroutineDispatcher()
 
     // wry only exposes a drain call for window.ipc messages, so poll while the card shows or a reply is due.
     private val polling = MutableStateFlow(false)
@@ -130,10 +138,12 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
             CardCommand.ProbeEdges -> CardEvent.Edges::class
             CardCommand.RequestPaint -> CardEvent.Painted::class
         }.let(::awaitReply)
-        panel.evaluateJavaScript(command.script()) {}
+        val script = command.script()
+        scope.launch(webView) { panel.evaluateJavaScript(script) {} }
     }
 
     override fun release() {
+        webViewExecutor.shutdown()
         val parent = panel.parent ?: return
         parent.remove(panel)
         parent.repaint()
@@ -172,20 +182,31 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         polling.value = shown || awaitedReplies.isNotEmpty()
     }
 
-    private fun pollWebView() {
-        val hasWebView = panel.isReady()
+    private suspend fun pollWebView() {
+        val trackLoad = CardEvent.Loaded::class in awaitedReplies
+        val poll = withContext(webView) {
+            val ready = panel.isReady()
+            WebViewPoll(
+                ready = ready,
+                messages = panel.drainIpcMessages(),
+                loading = ready && trackLoad && panel.isLoading(),
+                url = if (ready && trackLoad) panel.getCurrentUrl() else null,
+            )
+        }
         // A destroyed webview's replacement starts a fresh page, which has to say `loaded` again.
-        if (hadWebView && !hasWebView) loadPage()
-        hadWebView = hasWebView
-        panel.drainIpcMessages().forEach(::onBridgeMessage)
-        if (hasWebView && CardEvent.Loaded::class in awaitedReplies) trackMainFrame()
+        if (hadWebView && !poll.ready) loadPage()
+        hadWebView = poll.ready
+        poll.messages.forEach(::onBridgeMessage)
+        if (poll.ready && CardEvent.Loaded::class in awaitedReplies) trackMainFrame(poll)
     }
 
+    private class WebViewPoll(val ready: Boolean, val messages: List<String>, val loading: Boolean, val url: String?)
+
     // wry reports no page-load events; a load can also finish between two polls.
-    private fun trackMainFrame() {
-        if (panel.isLoading()) {
+    private fun trackMainFrame(poll: WebViewPoll) {
+        if (poll.loading) {
             sawLoading = true
-        } else if (sawLoading || panel.getCurrentUrl() == pageUrl) {
+        } else if (sawLoading || poll.url == pageUrl) {
             sawLoading = false
             onMainFrameFinished()
         }
