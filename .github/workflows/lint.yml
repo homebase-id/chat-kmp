@@ -20,6 +20,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # Before Gradle, so a missing entry fails in seconds. Swift-implemented Kotlin interfaces must be
+      # listed member by member; the iOS build doesn't catch a missing one (homebase-core/objc-entry-points.txt).
+      - name: Check the ObjC export list
+        run: python3 scripts/check-objc-entry-points.py
+
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
