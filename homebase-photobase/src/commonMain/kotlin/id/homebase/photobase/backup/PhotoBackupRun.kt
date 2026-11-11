@@ -433,8 +433,7 @@ class PhotoBackupRun(
                 }
             }
             while (!request.budget.isExpired) {
-                val batch = ledger.due(BackupState.New, includeVideos, HASH_BATCH + claimed.size, newestFirst)
-                    .filter { it.deviceAssetId !in claimed }
+                val batch = ledger.dueExcept(BackupState.New, includeVideos, HASH_BATCH, newestFirst, claimed)
                 if (batch.isEmpty()) break
                 for (row in batch) {
                     claimed += row.deviceAssetId
@@ -470,8 +469,7 @@ class PhotoBackupRun(
             // Read before the query: a hash landing just after it must not look like the last word.
             val hashingDone = hashing.isCompleted
             val seen = ledger.changes.value
-            val batch = ledger.due(BackupState.Hashed, includeVideos, DEDUPE_BATCH + checked.size, newestFirst)
-                .filter { it.deviceAssetId !in checked }
+            val batch = ledger.dueExcept(BackupState.Hashed, includeVideos, DEDUPE_BATCH, newestFirst, checked)
             if (batch.isEmpty()) {
                 if (hashingDone) return
                 coroutineScope {

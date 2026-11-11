@@ -198,6 +198,24 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aLargeLibraryIsCheckedInBatchesThatDoNotGrow() = runTest {
+        val assets = (0 until 200).map { asset("a$it", createdAtMs = 1000L + it) }
+        assets.forEach { existing += idOf(it.id) }
+        source.next = fullListing(*assets.toTypedArray())
+        // Hashed by an earlier run that ran out of time, so the whole backlog is due for a check at once.
+        ledger.apply(source.next, null)
+        assets.forEach { ledger.markHashed(it.id, "ff", idOf(it.id), 10) }
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(200, ledger.counts().done)
+        assertEquals(200, dedupeCalls.sumOf { it.size })
+        assertTrue(dedupeCalls.all { it.size <= 20 }, "dedupe batch sizes ${dedupeCalls.map { it.size }}")
+    }
+
+    @Test
     fun whatIsAlreadyOnTheDriveIsNeverUploaded() = runTest {
         existing += idOf("a")
         source.next = fullListing(asset("a"), asset("b"))
