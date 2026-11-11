@@ -32,19 +32,15 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
         SkiaPipelineBitmap(resampleNatively(image, width, height) ?: resampledInKotlin(width, height))
 
     private suspend fun resampledInKotlin(width: Int, height: Int): Image {
-        val pixels = resampleLanczos(readPixels(), image.width, image.height, width, height)
-        return Image.makeRaster(info(width, height), pixels, width * 4)
-    }
-
-    private fun readPixels(): ByteArray {
         val bitmap = Bitmap()
-        try {
+        val pixels = try {
             bitmap.allocPixels(info(image.width, image.height))
             check(image.readPixels(bitmap, 0, 0)) { "Couldn't read the image's pixels" }
-            return bitmap.readPixels() ?: throw IllegalStateException("Couldn't read the image's pixels")
+            bitmap.readPixels() ?: throw IllegalStateException("Couldn't read the image's pixels")
         } finally {
             bitmap.close()
         }
+        return Image.makeRaster(info(width, height), resampleLanczos(pixels, image.width, image.height, width, height), width * 4)
     }
 
     private fun info(width: Int, height: Int) = ImageInfo(width, height, ColorType.N32, ColorAlphaType.PREMUL, image.colorSpace)

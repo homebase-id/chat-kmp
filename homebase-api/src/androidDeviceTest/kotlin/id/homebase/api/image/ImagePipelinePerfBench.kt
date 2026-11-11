@@ -10,7 +10,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.sin
@@ -28,21 +27,20 @@ class ImagePipelinePerfBench {
         assumeTrue("Pass imageBench=true to run", args.getString("imageBench") == "true")
         results.delete()
         log("maxMemory=${Runtime.getRuntime().maxMemory() / MB} MB, runs=$runs")
-        var jpeg12: ByteArray? = null
-        for ((width, height) in listOf(4000 to 3000, 8000 to 6000)) {
+        val jpegs = listOf(4000 to 3000, 8000 to 6000).map { (width, height) ->
             val pixels = photoLike(width, height)
-            val jpeg = jpeg(pixels)
-            val heic = heic(pixels, width, height)
+            val jpeg = ImageUtils.encodeBitmap(pixels, ImageFormat.JPEG, 90)
+            val heic = heic(pixels)
             pixels.recycle()
-            if (jpeg12 == null) jpeg12 = jpeg
             log("${width}x$height JPEG ${jpeg.size / 1024} KB, HEIC ${heic.size / 1024} KB")
             for ((format, bytes) in listOf("JPEG" to jpeg, "HEIC" to heic)) {
                 for (quality in listOf(MediaQuality.STANDARD, MediaQuality.HD)) {
                     measure("createMediaImages ${width}x$height $format ${quality.name}") { createMediaImages(bytes, "bench", quality) }
                 }
             }
+            jpeg
         }
-        openImageSource(jpeg12!!).use { source ->
+        openImageSource(jpegs.first()).use { source ->
             source.decode(4000).use { full ->
                 measure("Lanczos 4000x3000 -> 2048x1536") { full.resampledTo(2048, 1536).close() }
                 full.resampledTo(2048, 1536).use { mid ->
@@ -106,12 +104,9 @@ class ImagePipelinePerfBench {
 
     private fun channel(value: Double) = value.toInt().coerceIn(0, 255)
 
-    private fun jpeg(bitmap: Bitmap): ByteArray =
-        ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
-
-    private fun heic(bitmap: Bitmap, width: Int, height: Int): ByteArray {
+    private fun heic(bitmap: Bitmap): ByteArray {
         val file = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "bench.heic")
-        HeifWriter.Builder(file.path, width, height, HeifWriter.INPUT_MODE_BITMAP).setQuality(90).build().use {
+        HeifWriter.Builder(file.path, bitmap.width, bitmap.height, HeifWriter.INPUT_MODE_BITMAP).setQuality(90).build().use {
             it.start()
             it.addBitmap(bitmap)
             it.stop(60_000)
@@ -119,7 +114,7 @@ class ImagePipelinePerfBench {
         return file.readBytes().also { file.delete() }
     }
 
-    // Also to a file, so the results outlive a dropped USB connection: adb pull /sdcard/Android/data/id.homebase.api.test/cache/image-bench.txt
+    // A file outlives a dropped USB link, where logcat output would be lost.
     private val results = File(InstrumentationRegistry.getInstrumentation().targetContext.externalCacheDir, "image-bench.txt")
 
     private fun log(message: String) {

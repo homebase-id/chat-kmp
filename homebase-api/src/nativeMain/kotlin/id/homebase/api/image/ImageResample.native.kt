@@ -30,22 +30,20 @@ internal actual fun resampleNatively(image: Image, width: Int, height: Int): Ima
     if (info.colorType != ColorType.RGBA_8888 && info.colorType != ColorType.BGRA_8888) return null
     val source = checkNotNull(image.peekPixels()) { "The pipeline only makes raster images" }
     val bitmap = Bitmap()
+    var destination: Pixmap? = null
     try {
         check(bitmap.allocPixels(info.withWidthHeight(width, height))) { "Couldn't allocate $width x $height pixels" }
-        val destination = checkNotNull(bitmap.peekPixels())
-        try {
-            memScoped {
-                val from = buffer(source)
-                val to = buffer(destination)
-                checkVImage(vImageScale_ARGB8888(from.ptr, to.ptr, null, kvImageHighQualityResampling), "scale")
-                if (!info.isOpaque) checkVImage(vImageClipToAlpha_RGBA8888(to.ptr, to.ptr, kvImageNoFlags), "clip to alpha")
-            }
-        } finally {
-            destination.close()
+        val to = checkNotNull(bitmap.peekPixels()).also { destination = it }
+        memScoped {
+            val fromBuffer = buffer(source)
+            val toBuffer = buffer(to)
+            checkVImage(vImageScale_ARGB8888(fromBuffer.ptr, toBuffer.ptr, null, kvImageHighQualityResampling), "scale")
+            if (!info.isOpaque) checkVImage(vImageClipToAlpha_RGBA8888(toBuffer.ptr, toBuffer.ptr, kvImageNoFlags), "clip to alpha")
         }
         bitmap.setImmutable()
         return Image.makeFromBitmap(bitmap)
     } finally {
+        destination?.close()
         source.close()
         bitmap.close()
     }
