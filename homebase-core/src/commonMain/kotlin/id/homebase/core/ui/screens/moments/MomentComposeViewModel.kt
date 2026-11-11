@@ -334,8 +334,7 @@ class MomentComposeViewModel(
     private fun extractImageMetadata(attachmentId: Uuid, imagePath: String) {
         viewModelScope.launch {
             val metadata = runCatching {
-                val bytes = fileOperationsProvider.readFileBytes(imagePath)
-                readImageMetadata(bytes)
+                readImageMetadata(imagePath, fileOperationsProvider)
             }.getOrElse { e ->
                 Logger.w(throwable = e, tag = TAG) { "EXIF read failed for $attachmentId" }
                 null

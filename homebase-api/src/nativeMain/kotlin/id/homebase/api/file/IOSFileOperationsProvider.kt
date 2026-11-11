@@ -37,9 +37,9 @@ import platform.posix.memcpy
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, "") {
+internal fun isPhotoLibraryPath(path: String) = path.startsWith("ph://") || path.contains("/L0/")
 
-    private fun isPhotoLibraryPath(path: String) = path.startsWith("ph://") || path.contains("/L0/")
+class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, "") {
 
     // Held from open to close so Files-app picks outside the sandbox stay readable for the whole stream.
     @OptIn(ExperimentalForeignApi::class)

@@ -54,11 +54,14 @@ class RenderedImages(val displayedSize: ImageSize, val images: List<RenderedImag
  * - [decode] decodes at most once per source, upright, with a long edge of at least
  *   `min(minLongEdge, displayedSize's long edge)`. Decoding less than the full image is encouraged.
  * - Both throw on bytes the platform can't read.
+ * - [metadata] reads the file's EXIF without decoding pixels, or is null where the platform can't.
  */
 internal interface ImageSource : AutoCloseable {
     val displayedSize: ImageSize
 
     fun decode(minLongEdge: Int): PipelineBitmap
+
+    fun metadata(): ImageMetadata?
 }
 
 /**
@@ -92,6 +95,13 @@ internal interface PipelineBitmap : AutoCloseable {
 }
 
 internal expect fun openImageSource(bytes: ByteArray): ImageSource
+
+/**
+ * The image at [path] without reading the file into memory: the decoder reads only what it needs.
+ * Null where the platform decodes only bytes, or can't open [path] itself (a Photos-library asset),
+ * so the caller reads the bytes instead. A source from a path behaves exactly like one from its bytes.
+ */
+internal expect fun openImageFile(path: String): ImageSource?
 
 /**
  * Makes every planned image from one decode, largest to smallest, each scaled from the one above.

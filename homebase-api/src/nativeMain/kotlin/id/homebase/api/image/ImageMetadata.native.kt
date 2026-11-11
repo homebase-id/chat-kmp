@@ -64,7 +64,7 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
     }
 }
 
-private fun buildMetadata(props: NSDictionary): ImageMetadata {
+internal fun buildMetadata(props: NSDictionary): ImageMetadata {
     val exif = props.objectForKey(kCGImagePropertyExifDictionary) as? NSDictionary
     val tiff = props.objectForKey(kCGImagePropertyTIFFDictionary) as? NSDictionary
     val gps = props.objectForKey(kCGImagePropertyGPSDictionary) as? NSDictionary

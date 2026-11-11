@@ -14,7 +14,8 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.createThumbnails
+import id.homebase.api.image.ImageMetadata
+import id.homebase.api.image.createMediaImages
 import id.homebase.api.image.readImageMetadata
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DeviceBackupAsset
@@ -47,9 +48,9 @@ class BackupRequestBuilder(
                 payloads[index] = payloads[index].copy(iv = hashed.iv, hash = hashed.hash)
             }
             val primaryKey = KeyHeader(payloads.first().iv!!, keyHeader.aesKey)
-            val imageBytes = fileOps.readFileBytes(exported.parts.first().path)
+            val imagePath = exported.parts.first().path
             val (prepared, exif) = timed(BackupStage.Thumbnails) {
-                prepareImage(imageBytes, payloads.first().key) to readExifSoftly(imageBytes)
+                prepareImage(imagePath, payloads.first().key) ?: (null to readExifSoftly(imagePath))
             }
             val metadata = photoMetadata(
                 uniqueId,
@@ -85,9 +86,9 @@ class BackupRequestBuilder(
     private class PreparedImage(val width: Int, val height: Int, val tiny: EmbeddedThumb?, val thumbnails: List<ThumbnailFile>)
 
     // A format the decoder can't read is still worth keeping: the bytes back up without previews.
-    private suspend fun prepareImage(imageBytes: ByteArray, payloadKey: String): PreparedImage? = try {
-        val (size, tiny, thumbnails) = createThumbnails(imageBytes, payloadKey)
-        PreparedImage(size.pixelWidth, size.pixelHeight, tiny, thumbnails)
+    private suspend fun prepareImage(path: String, payloadKey: String): Pair<PreparedImage, ImageMetadata?>? = try {
+        val media = createMediaImages(path, fileOps, payloadKey, readMetadata = true)
+        PreparedImage(media.displayedSize.pixelWidth, media.displayedSize.pixelHeight, media.tiny, media.thumbnails) to media.metadata
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -95,8 +96,10 @@ class BackupRequestBuilder(
         null
     }
 
-    private fun readExifSoftly(imageBytes: ByteArray) = try {
-        readImageMetadata(imageBytes)
+    private suspend fun readExifSoftly(path: String) = try {
+        readImageMetadata(path, fileOps)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Logger.w(tag = TAG, throwable = e) { "no readable EXIF" }
         null

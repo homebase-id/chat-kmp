@@ -3,19 +3,29 @@ package id.homebase.api.image
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 val tinyThumbSize = ThumbnailInstruction(quality = 76, maxPixelDimension = 20, maxBytes = MAX_TINY_BYTES)
 
-/** Everything made from one image in one decode. [finalImage] is the payload, null where the file itself is. */
+/**
+ * Everything made from one image in one decode. [finalImage] is the payload, null where the file itself is.
+ * [sourceFormat] and [sourceByteCount] describe the file, so a caller needn't read it again to ask.
+ */
 class MediaImages(
     val displayedSize: ImageSize,
     val tiny: EmbeddedThumb?,
     val thumbnails: List<ThumbnailFile>,
     val finalImage: RenderedImage?,
+    val sourceFormat: String? = null,
+    val sourceByteCount: Long? = null,
+    /** Only read when asked for. */
+    val metadata: ImageMetadata? = null,
 )
 
 private fun isSvg(bytes: ByteArray): Boolean {
@@ -35,20 +45,64 @@ suspend fun createMediaImages(
     payloadKey: String,
     setting: MediaQuality = MediaQuality.ORIGINAL,
     allowFinalImage: Boolean = true,
+    readMetadata: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
-    if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
+    val media = if (isSvg(imageBytes)) {
+        createSvgImages(imageBytes, payloadKey, setting)
+    } else {
+        openImageSource(imageBytes).use { mediaImagesFrom(it, imageBytes, payloadKey, setting, allowFinalImage, readMetadata) }
+    }
+    media.withSource(ImageFormatDetector.detectFormat(imageBytes), imageBytes.size.toLong())
+}
 
-    val gif = ImageFormatDetector.detectFormat(imageBytes) == "image/gif"
-    val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(imageBytes)
-    val media = renderPlanned(imageBytes, payloadKey, displayedSize = null) { size ->
+/**
+ * [createMediaImages] for the file at [path]. On the phones the decoder reads the file itself, so it
+ * never sits in memory whole; elsewhere, and for a Photos-library asset or an SVG, the bytes are read once.
+ */
+suspend fun createMediaImages(
+    path: String,
+    fileOps: FileOperationsProvider,
+    payloadKey: String,
+    setting: MediaQuality = MediaQuality.ORIGINAL,
+    allowFinalImage: Boolean = true,
+    readMetadata: Boolean = false,
+): MediaImages = withContext(Dispatchers.Default) {
+    val file = openImageFile(path)
+        ?: return@withContext createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata)
+    file.use {
+        val header = fileOps.readFileHeaderBytes(path)
+        if (isSvg(header)) {
+            return@withContext createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata)
+        }
+        mediaImagesFrom(it, header, payloadKey, setting, allowFinalImage, readMetadata)
+            .withSource(ImageFormatDetector.detectFormat(header), fileOps.getFileSize(path))
+    }
+}
+
+// Every check here needs only the header: a GIF keeps its file whether or not it animates.
+private suspend fun mediaImagesFrom(
+    source: ImageSource,
+    header: ByteArray,
+    payloadKey: String,
+    setting: MediaQuality,
+    allowFinalImage: Boolean,
+    readMetadata: Boolean,
+): MediaImages {
+    val gif = ImageFormatDetector.detectFormat(header) == "image/gif"
+    val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
+    val media = renderPlanned(source, payloadKey, displayedSize = null) { size ->
         val plan = planMediaImages(size, setting)
         plan.copy(thumbnails = if (gif) emptyList() else plan.thumbnails, finalImage = if (keepsItsFile) null else plan.finalImage)
     }
-    if (!gif) return@withContext media
+    val metadata = if (readMetadata) source.metadata() else null
+    if (!gif) return MediaImages(media.displayedSize, media.tiny, media.thumbnails, media.finalImage, metadata = metadata)
     // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
     val natural = media.displayedSize
-    MediaImages(natural, media.tiny?.copy(pixelWidth = natural.pixelWidth, pixelHeight = natural.pixelHeight), media.thumbnails, null)
+    return MediaImages(natural, media.tiny?.copy(pixelWidth = natural.pixelWidth, pixelHeight = natural.pixelHeight), media.thumbnails, null, metadata = metadata)
 }
+
+private fun MediaImages.withSource(format: String?, byteCount: Long) =
+    MediaImages(displayedSize, tiny, thumbnails, finalImage, format, byteCount, metadata)
 
 // Vector data is resolution-independent, so a 16x16 favicon still gets its full set of thumbnails:
 // it's planned from a render at the largest row rather than from its declared size.
@@ -56,7 +110,9 @@ private suspend fun createSvgImages(bytes: ByteArray, payloadKey: String, settin
     val natural = getSvgDimensions(bytes) ?: ImageSize(320, 320)
     return try {
         val raster = ImageUtils.rasterizeSvg(bytes, largestThumbnailLongEdge(setting), ImageFormat.PNG, 100)
-        renderPlanned(raster.bytes, payloadKey, natural) { planMediaImages(it, setting).copy(finalImage = null) }
+        openImageSource(raster.bytes).use { source ->
+            renderPlanned(source, payloadKey, natural) { planMediaImages(it, setting).copy(finalImage = null) }
+        }
     } catch (e: Exception) {
         if (e is CancellationException) throw e
         MediaImages(natural, null, emptyList(), null)
@@ -64,13 +120,14 @@ private suspend fun createSvgImages(bytes: ByteArray, payloadKey: String, settin
 }
 
 private suspend fun renderPlanned(
-    bytes: ByteArray,
+    source: ImageSource,
     payloadKey: String,
     displayedSize: ImageSize?,
     planFor: (ImageSize) -> MediaImagePlan,
 ): MediaImages {
     var plan: MediaImagePlan? = null
-    val result = renderImages(bytes) { size -> planFor(size).also { plan = it }.toOutputs() }
+    val context = currentCoroutineContext()
+    val result = renderFrom(source, { context.ensureActive() }) { size -> planFor(size).also { plan = it }.toOutputs() }
     val thumbnailCount = plan!!.thumbnails.size
     return MediaImages(
         displayedSize = displayedSize ?: result.displayedSize,
