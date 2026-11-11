@@ -76,9 +76,9 @@ kotlin {
                 freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis,RemoveRedundantCallsToStaticInitializersPhase"
             }
             // Only the Kotlin API Swift uses gets ObjC bridges: a Swift call to anything else fails to
-            // compile until it is added to the list. The full export made the release link take up to
-            // twice as long (IOS_RELEASE_LINK_OOM.md). Debug uses it too, so Xcode shows a missing entry
-            // at once. The input line relinks when only the list changes.
+            // compile until it is added to the list. Every exported member is a DCE root, so the full
+            // export gave LLVM a 19% bigger framework to compile (IOS_RELEASE_LINK_OOM.md). Debug uses it
+            // too, so Xcode shows a missing entry at once. The input line relinks when only the list changes.
             val objcEntryPoints = project.file("objc-entry-points.txt")
             freeCompilerArgs += "-Xbinary=objcExportEntryPointsPath=${objcEntryPoints.absolutePath}"
             linkTaskProvider.configure { inputs.file(objcEntryPoints).withPropertyName("objcExportEntryPoints") }

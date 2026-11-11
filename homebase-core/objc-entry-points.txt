@@ -1,7 +1,7 @@
 // ObjC export list of the ComposeApp framework, debug and release (-Xbinary=objcExportEntryPointsPath in
 // homebase-core/build.gradle.kts). Only the Kotlin functions and properties listed here get ObjC bridges in the
 // header Swift sees; classes stay. Exporting all 35,000+ members made the release link the slowest step of the
-// iOS build; this list cut it by 27-49% in two paired CI runs (IOS_RELEASE_LINK_OOM.md).
+// iOS build; with this list LLVM compiles a 16% smaller framework (IOS_RELEASE_LINK_OOM.md).
 //
 // Swift calls a Kotlin function or property that is not listed: Swift fails to compile ("has no member"). Add it.
 // Swift IMPLEMENTS a Kotlin interface: list every member BY NAME. Kotlin calls those members, and a missing one
