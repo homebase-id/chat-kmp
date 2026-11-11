@@ -237,5 +237,39 @@ To profile phases again, add `-Xprofile-phases` to the release framework's `free
 a branch: the per-phase `Name: N msec` lines land in the gym log in `ios-jvm-oom-diagnostics`.
 
 The exported ObjC surface is large: `ComposeApp.h` is 7.9 MB with 3960 classes, and the
-framework binary is 375 MB. Exported declarations are DCE roots, so trimming `export()` would
-shrink the binary and the LLVM phases. Not measured yet.
+framework binary is 375 MB. Exported declarations are DCE roots, so trimming the export
+shrinks the binary and the LLVM phases: see the next section.
+
+## 2026-11-11: an ObjC export list halves the LLVM phases
+
+K/N 2.4.21 can limit ObjC export to a list of entry points
+(`-Xbinary=objcExportEntryPointsPath=homebase-core/objc-entry-points.txt`). Only the listed
+functions and properties get ObjC bridges, and the rest are no longer DCE roots; classes stay
+in the header. Swift used 169 of the 35,746 exported members.
+
+Runs on branch `ios-link-experiments` (dev workflow, TestFlight off, `-Xprofile-phases` on
+both sides). Each pair started together on `macos-15` with #2287's settings:
+
+| | Link | LTO / Module / ObjectFiles | Peak heap (Remark) | Framework | IPA |
+|---|---|---|---|---|---|
+| Without the list, run 43007215840 | 98 min | 30.5 / 24.7 / 16.0 min | 6.5 GB | 377 MB | 102.3 MB |
+| With the list, run 43007197113 | **50 min** | 12.1 / 10.1 / 11.7 min | 5.7 GB | 316 MB | 92.8 MB |
+| Without the list, run 42988668452 | 98 min | 28.6 / 25.4 / 17.8 min | 6.3 GB | 377 MB | 102.3 MB |
+| With the list, run 42988672351 (Swift failed, below) | 71 min | 20.4 / 16.7 / 12.8 min | 5.6 GB | 316 MB | |
+
+`ComposeApp.h` went from 7.9 MB to 1.8 MB. The same runner type swings a lot: the 2026-11-11
+nightly (#2287, no list) needed 58 min for the whole `Build iOS` step, where the paired runs
+above needed 98 min for the link alone.
+
+The first run failed at the Swift compile: `callable <Interface>.*` on a Kotlin interface that
+Swift implements also matches the `equals`/`hashCode`/`toString` every interface inherits,
+which then became required protocol methods. Those interfaces list their members by name, and
+`scripts/check-objc-entry-points.py` (Lint workflow) fails when one is missing, because a
+missing member is dropped from the protocol without a compile error and fails at runtime.
+
+Measured in the same batch, and not worth it for time:
+
+- `-Xbinary=smallBinary=true` (run 42988676346): link 101 min. It sets the LLVM size level to
+  aggressive, which moves work between the LLVM phases. IPA 102.3 → 89.5 MB, if size ever matters.
+- `-Xoverride-konan-properties=clangOptFlags.ios_arm64=-O1` (run 42988680049): link 106 min,
+  `ObjectFiles` unchanged, framework 361 MB.

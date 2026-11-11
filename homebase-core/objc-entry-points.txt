@@ -1,0 +1,92 @@
+// ObjC export list of the ComposeApp framework, debug and release (-Xbinary=objcExportEntryPointsPath in
+// homebase-core/build.gradle.kts). Only the Kotlin functions and properties listed here get ObjC bridges in the
+// header Swift sees; classes stay. Exporting all 35,000+ members made the release link the slowest step of the
+// iOS build; this list cut it by 27-49% in two paired CI runs (IOS_RELEASE_LINK_OOM.md).
+//
+// Swift calls a Kotlin function or property that is not listed: Swift fails to compile ("has no member"). Add it.
+// Swift IMPLEMENTS a Kotlin interface: list every member BY NAME. Kotlin calls those members, and a missing one
+// is dropped from the protocol, so Swift still compiles and the call fails at runtime;
+// scripts/check-objc-entry-points.py (Lint workflow) catches that. Never ".*" on such an interface: the
+// wildcard also matches the equals/hashCode/toString every interface inherits, which then become required
+// protocol methods the Swift classes don't implement.
+//
+// Format: "<function|property|callable> <fq.name>", or "<kind> <fq.Parent>.*" for the direct members of a
+// class or object. Overrides of a listed member are exported too.
+
+// homebase-core: top-level functions Swift calls (MainViewControllerKt, PhotoBackupBackgroundTasksKt, ...)
+function id.homebase.core.MainViewController
+function id.homebase.core.armCrashHandlingAndCheckPending
+function id.homebase.core.clearPendingCrash
+function id.homebase.core.initializeApp
+function id.homebase.core.isDatabaseOpen
+function id.homebase.core.onPushArrivedBeforeDatabase
+function id.homebase.core.whenStarted
+function id.homebase.core.handleIncomingLink
+function id.homebase.core.isPhotobaseEnabled
+function id.homebase.core.registerPhotoBackupBackgroundTasks
+function id.homebase.core.startListeningForPhotoBackupUploads
+function id.homebase.core.diagnostics.logPrevention
+function id.homebase.core.diagnostics.logLaunchTrace
+function id.homebase.core.notifications.logPushChain
+
+// homebase-core: objects and classes Swift uses
+callable id.homebase.core.MainViewControllerRef.*
+callable id.homebase.core.NotificationActionBridge.*
+callable id.homebase.core.NotificationActionBridge.Companion.*
+callable id.homebase.core.share.OpenedFileBridge.*
+callable id.homebase.core.vault.VaultPrivacyBridge.*
+
+// homebase-common
+property id.homebase.core.notifications.CallKitBridge.hostsOutgoingCalls
+function id.homebase.core.notifications.CallKitBridge.reportOutgoing
+function id.homebase.core.notifications.CallKitBridge.reportConnected
+function id.homebase.core.notifications.CallKitBridge.reportVideo
+function id.homebase.core.notifications.CallKitBridge.reportCaller
+function id.homebase.core.notifications.CallKitBridge.reportEnded
+function id.homebase.core.notifications.CallKitBridge.reportEndedElsewhere
+function id.homebase.core.notifications.CallKitBridge.requestAnswer
+function id.homebase.core.notifications.CallKitBridge.requestEnd
+function id.homebase.core.notifications.CallKitActions.accept
+function id.homebase.core.notifications.CallKitActions.endOrDecline
+function id.homebase.core.notifications.CallKitActions.setMuted
+function id.homebase.core.notifications.CallPictureInPictureBridge.start
+function id.homebase.core.notifications.CallPictureInPictureBridge.stop
+callable id.homebase.core.notifications.VoipTokenRelay.*
+callable id.homebase.core.notifications.CallKitBridgeHolder.*
+callable id.homebase.core.notifications.CallPictureInPictureBridgeHolder.*
+callable id.homebase.core.notifications.CallPushRouter.*
+callable id.homebase.core.notifications.NotificationEntry.*
+callable id.homebase.core.notifications.NotificationEntry.Companion.*
+callable id.homebase.core.camera.CameraOrientationLock.*
+callable id.homebase.core.util.CreatedIdentityRelay.*
+function id.homebase.core.logging.CrashlyticsBridge.setCrashlyticsCollectionEnabled
+function id.homebase.core.logging.CrashlyticsBridge.log
+function id.homebase.core.logging.CrashlyticsBridge.recordException
+callable id.homebase.core.logging.CrashlyticsBridgeHolder.*
+
+// homebase-api
+function id.homebase.api.platform.BackgroundUploadBridge.enqueue
+function id.homebase.api.platform.BackgroundUploadBridge.cancelAll
+function id.homebase.api.platform.BackgroundUploadBridge.activeUploadKeys
+callable id.homebase.api.platform.BackgroundUploadBridgeHolder.*
+callable id.homebase.api.platform.BackgroundUploadResults.*
+callable id.homebase.api.platform.BackgroundUploadResults.Result.*
+function id.homebase.api.platform.ContinuedProcessingBridge.begin
+function id.homebase.api.platform.ContinuedProcessingHandle.reportProgress
+function id.homebase.api.platform.ContinuedProcessingHandle.end
+callable id.homebase.api.platform.ContinuedProcessingBridgeHolder.*
+function id.homebase.api.video.FFmpegKitBridge.executeFFmpeg
+function id.homebase.api.video.FFmpegKitBridge.executeFFmpegAsync
+function id.homebase.api.video.FFmpegKitBridge.executeFFmpegAsyncArgs
+function id.homebase.api.video.FFmpegKitBridge.cancelAllFFmpegSessions
+function id.homebase.api.video.FFmpegKitBridge.cancelFFmpegSession
+function id.homebase.api.video.FFmpegKitBridge.getMediaInformation
+function id.homebase.api.video.FFmpegKitBridge.getFfmpegVersionBanner
+callable id.homebase.api.video.FFmpegKitBridgeHolder.*
+callable id.homebase.api.video.FFmpegResult.*
+callable id.homebase.api.video.MediaInfo.*
+callable id.homebase.api.video.StreamInfo.*
+
+// kmpnotifier
+callable com.mmk.kmpnotifier.notification.NotifierManager.*
+callable com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Ios.*
