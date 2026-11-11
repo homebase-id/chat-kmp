@@ -1,6 +1,8 @@
 package id.homebase.chat.services.convo
 
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.StatusMessage
 import kotlin.test.Test
@@ -280,9 +282,14 @@ class ConversationServiceOutboxOrderingTest {
             val rows = fixture.drainOutboxInDependencyOrder()
 
             listOf(result.conversationId, adminUniqueId).forEach { uid ->
-                val json = rows.single { it.uniqueId == uid }.json.decodeToString()
-                assertTrue(alice in json && bob in json, "outbox row $uid must enqueue both peers as transit recipients: $json")
-                assertTrue(fixture.testDomain !in json.substringAfter("recipients"), "self must not be a transit recipient of $uid")
+                val request = OdinSystemSerializer.deserialize<UploadFileRequest>(
+                    rows.single { it.uniqueId == uid }.json.decodeToString()
+                )
+                assertEquals(
+                    setOf(alice, bob),
+                    request.transitOptions?.recipients?.map { it.domainName }?.toSet(),
+                    "outbox row $uid must enqueue every peer, and not self, as a transit recipient",
+                )
             }
         }
     }
