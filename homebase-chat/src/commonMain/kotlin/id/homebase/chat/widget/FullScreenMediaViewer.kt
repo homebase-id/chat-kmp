@@ -111,6 +111,7 @@ fun FullScreenMediaViewer(
     showUIState: MutableState<Boolean> = remember { mutableStateOf(true) },
     // False for a neighbouring page a host composes off screen: it mustn't take the keyboard.
     isFocused: Boolean = true,
+    heroContentAspect: Float? = null,
 ) {
     val scope = rememberCoroutineScope()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -192,6 +193,7 @@ fun FullScreenMediaViewer(
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        heroContentAspect = heroContentAspect,
                     )
                 }
 
@@ -218,6 +220,7 @@ fun FullScreenMediaViewer(
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        heroContentAspect = heroContentAspect,
                     )
                 }
 
