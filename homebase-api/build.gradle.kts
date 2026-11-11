@@ -323,6 +323,7 @@ kotlin {
         listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/dbContractTest/kotlin") }
         getByName("androidDeviceTest").kotlin.srcDir("src/dbContractTest/kotlin")
         androidMain.dependencies {
+            implementation(project(":homebase-imageresize"))
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)
