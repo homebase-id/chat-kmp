@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -50,6 +52,17 @@ class BackupLedger(
     val changes: StateFlow<Long> = _changes.asStateFlow()
 
     private fun changed() = _changes.update { it + 1 }
+
+    // The uploader can answer before markQueued/markSending runs; the verdict waits here for it, briefly.
+    private val handOffs = Mutex()
+    private val earlyVerdicts = LinkedHashMap<String, Pair<Long, Verdict>>()
+
+    private sealed interface Verdict {
+        data object Started : Verdict
+        data object Completed : Verdict
+        data object Retrying : Verdict
+        data class Dropped(val reason: String, val countsAttempt: Boolean) : Verdict
+    }
 
     /**
      * Commits [changes] in one transaction. The caller saves the checkpoint only after this returns:
@@ -167,9 +180,14 @@ class BackupLedger(
         changed()
     }
 
-    suspend fun markQueued(id: String) {
-        store.setState(id, BackupState.Queued.code, null, row(id)?.attempts ?: 0, 0)
+    /** True when the Outbox had already settled it, so there's nothing left to wait for. */
+    suspend fun markQueued(id: String): Boolean = handOffs.withLock {
+        val row = row(id)
+        store.setState(id, BackupState.Queued.code, null, row?.attempts ?: 0, 0)
+        val early = row?.uniqueId?.let { takeEarlyVerdict(it) }
+        early?.let { apply(Uuid.parse(row.uniqueId!!), it) }
         changed()
+        early != null && early != Verdict.Started
     }
 
     suspend fun markSkipped(id: String, reason: String) {
@@ -212,49 +230,73 @@ class BackupLedger(
 
     suspend fun clearNotOnDeviceDeferrals() = store.clearBackoffForReason(NOT_ON_DEVICE)
 
-    suspend fun markSending(uniqueId: Uuid, taskId: Long) {
+    suspend fun markSending(uniqueId: Uuid, taskId: Long) = handOffs.withLock {
         store.setUploadTask(uniqueId.toString(), BackupState.Uploading.code, taskId)
+        takeEarlyVerdict(uniqueId.toString())?.let { apply(uniqueId, it) }
         changed()
     }
 
-    suspend fun onOutboxStarted(uniqueId: Uuid) {
-        store.setStateOfUnique(uniqueId.toString(), listOf(BackupState.Queued.code), BackupState.Uploading.code, null, 0, 0)
-        changed()
-    }
+    suspend fun onOutboxStarted(uniqueId: Uuid) = verdict(uniqueId, Verdict.Started)
 
-    suspend fun onOutboxCompleted(uniqueId: Uuid) {
-        store.selectByUnique(uniqueId.toString()).forEach {
-            Logger.i(tag = "BackupLag") { "lagMs=${nowMs() - it.createdAt} mediaType=${it.mediaType}" }
-        }
-        store.setStateOfUnique(uniqueId.toString(), IN_OUTBOX, BackupState.Done.code, null, 0, 0)
-        changed()
-    }
+    suspend fun onOutboxCompleted(uniqueId: Uuid) = verdict(uniqueId, Verdict.Completed)
 
     /** Until the Outbox starts it again on its own backoff, the row takes no send slot. */
-    suspend fun onOutboxRetrying(uniqueId: Uuid) {
-        store.setStateOfUnique(uniqueId.toString(), IN_OUTBOX, BackupState.Queued.code, OUTBOX_RETRYING, 0, 0)
+    suspend fun onOutboxRetrying(uniqueId: Uuid) = verdict(uniqueId, Verdict.Retrying)
+
+    /** A drop never loses a photo: back to HASHED with a backoff, or FAILED once its attempts are used up. */
+    suspend fun onOutboxDropped(uniqueId: Uuid, reason: String, countsAttempt: Boolean = true) =
+        verdict(uniqueId, Verdict.Dropped(reason, countsAttempt))
+
+    private suspend fun verdict(uniqueId: Uuid, verdict: Verdict) = handOffs.withLock {
+        val rows = store.selectByUnique(uniqueId.toString())
+        if (rows.none { it.state in IN_OUTBOX } && rows.any { it.state == BackupState.Hashed.code }) {
+            earlyVerdicts.remove(uniqueId.toString())
+            earlyVerdicts[uniqueId.toString()] = nowMs() to verdict
+            while (earlyVerdicts.size > MAX_EARLY_VERDICTS) earlyVerdicts.remove(earlyVerdicts.keys.first())
+        } else {
+            apply(uniqueId, verdict)
+        }
         changed()
     }
 
-    /** A drop never loses a photo: back to HASHED with a backoff, or FAILED once its attempts are used up. */
-    suspend fun onOutboxDropped(uniqueId: Uuid, reason: String, countsAttempt: Boolean = true) {
+    private fun takeEarlyVerdict(uniqueId: String): Verdict? {
+        val (at, verdict) = earlyVerdicts.remove(uniqueId) ?: return null
+        return verdict.takeIf { nowMs() - at <= EARLY_VERDICT_LIFETIME.inWholeMilliseconds }
+    }
+
+    private suspend fun apply(uniqueId: Uuid, verdict: Verdict) {
+        val id = uniqueId.toString()
+        when (verdict) {
+            Verdict.Started -> store.setStateOfUnique(id, listOf(BackupState.Queued.code), BackupState.Uploading.code, null, 0, 0)
+            Verdict.Completed -> {
+                store.selectByUnique(id).forEach {
+                    Logger.i(tag = "BackupLag") { "lagMs=${nowMs() - it.createdAt} mediaType=${it.mediaType}" }
+                }
+                store.setStateOfUnique(id, IN_OUTBOX, BackupState.Done.code, null, 0, 0)
+            }
+            Verdict.Retrying -> store.setStateOfUnique(id, IN_OUTBOX, BackupState.Queued.code, OUTBOX_RETRYING, 0, 0)
+            is Verdict.Dropped -> applyDrop(id, verdict.reason, verdict.countsAttempt)
+        }
+    }
+
+    private suspend fun applyDrop(uniqueId: String, reason: String, countsAttempt: Boolean) {
         val added = if (countsAttempt) 1L else 0L
-        val attempts = (store.selectByUnique(uniqueId.toString()).maxOfOrNull { it.attempts } ?: 0) + added
+        val attempts = (store.selectByUnique(uniqueId).maxOfOrNull { it.attempts } ?: 0) + added
         val state = if (attempts >= MAX_ATTEMPTS) BackupState.Failed else BackupState.Hashed
         store.setStateOfUnique(
-            uniqueId.toString(),
+            uniqueId,
             IN_OUTBOX,
             state.code,
             reason,
             nowMs() + backoff(attempts).inWholeMilliseconds,
             added,
         )
-        changed()
     }
 
     suspend fun rowsInOutbox(): List<DeviceBackupAsset> = store.selectInStates(IN_OUTBOX)
 
     suspend fun clear() {
+        handOffs.withLock { earlyVerdicts.clear() }
         store.deleteAll()
         changed()
     }
@@ -316,6 +358,8 @@ class BackupLedger(
         val STUCK_AFTER: Duration = 24.hours
         private val FIRST_RETRY: Duration = 1.minutes
         private val LONGEST_RETRY: Duration = 6.hours
+        private const val MAX_EARLY_VERDICTS = 64
+        private val EARLY_VERDICT_LIFETIME = 1.minutes
         private val IN_OUTBOX = listOf(BackupState.Queued.code, BackupState.Uploading.code)
 
         fun backoff(attempts: Long): Duration {

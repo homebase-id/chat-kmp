@@ -412,6 +412,39 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun anUploadThatFinishesBeforeTheHandOffReturnsIsStillDone() = runTest {
+        source.next = fullListing(asset("a"))
+        val uploader = uploader().apply { answersBeforeReturning = true }
+        val (run, results) = newRun(uploader)
+        val started = testTimeSource.markNow()
+
+        run.run(request())
+
+        assertEquals(BackupState.Done.code, state("a"))
+        assertTrue(results.unsettled.value.isEmpty())
+        assertTrue(started.elapsedNow() < 1.minutes, "waited ${started.elapsedNow()} for a verdict that had already come")
+    }
+
+    @Test
+    fun aRunWaitingForTheLockGivesWayToForget() = runTest {
+        hashGates["slow"] = CompletableDeferred()
+        source.next = fullListing(asset("slow"))
+        val (run, _) = newRun(uploader())
+        val going = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        val waiting = async { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(1.seconds)
+
+        val forgetting = async { run.forget() }
+        advanceTimeBy(10.seconds)
+
+        assertTrue(forgetting.isCompleted, "forget waited behind the run queued before it")
+        assertTrue(going.isCompleted)
+        assertEquals(BackupRunOutcome.AlreadyRunning, waiting.await())
+        assertEquals(null, state("slow"))
+    }
+
+    @Test
     fun losingWifiDoesNotStopARunThatMayUseMobileData() = runTest {
         settings = settings.copy(wifiOnly = false)
         hashGates["slow"] = CompletableDeferred()
