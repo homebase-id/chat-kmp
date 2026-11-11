@@ -98,6 +98,7 @@ fun AdaptiveSheet(
     contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.windowInsets },
     content: @Composable AdaptiveSheetScope.() -> Unit,
 ) {
+    ReportOverlay()
     val currentOnDismiss = rememberUpdatedState(onDismiss)
     val scope = rememberCoroutineScope()
     val dismissing = remember { mutableStateOf(false) }

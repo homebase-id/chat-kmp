@@ -18,7 +18,7 @@ import java.awt.event.HierarchyEvent
 import java.util.concurrent.Executors
 import javax.swing.JLayeredPane
 import javax.swing.JPanel
-import javax.swing.JFrame
+import javax.swing.RootPaneContainer
 import javax.swing.SwingUtilities
 import kotlin.reflect.KClass
 import kotlinx.coroutines.CoroutineStart
@@ -167,11 +167,10 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         }
     }
 
-    // A frame, never a dialog or popup: with window layers those are short-lived windows whose close would destroy the webview.
-    private fun parkingWindow(): JFrame? {
-        (SwingUtilities.getWindowAncestor(panel) as? JFrame)?.let { return it }
-        val showing = Window.getWindows().filterIsInstance<JFrame>().filter { it.isShowing }
-        return showing.firstOrNull { it.isActive } ?: showing.firstOrNull()
+    private fun parkingWindow(): RootPaneContainer? {
+        (SwingUtilities.getWindowAncestor(panel) as? RootPaneContainer)?.let { return it }
+        val showing = Window.getWindows().filter { it.isShowing && it is RootPaneContainer }
+        return (showing.firstOrNull { it.isActive } ?: showing.firstOrNull()) as? RootPaneContainer
     }
 
     private fun awaitReply(reply: KClass<out CardEvent>) {

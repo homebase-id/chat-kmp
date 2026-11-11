@@ -3,6 +3,8 @@
 package id.homebase.core.ui.screens.settings
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -31,6 +33,7 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
+import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.help.HelpScreen
@@ -40,6 +43,7 @@ import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.widget.ProvideSettingsChrome
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.rememberTabSlideFade
 import id.homebase.resources.MR
 import id.homebase.resources.close
@@ -62,7 +66,7 @@ internal data class SettingsPaneActions(
     val onOpenProfileCardEditor: () -> Unit,
 )
 
-private enum class ProfilePage { Avatar, Editor }
+private enum class ProfilePage { Avatar, Card, CardEditor }
 
 @Composable
 internal fun SettingsPaneHost(
@@ -77,6 +81,15 @@ internal fun SettingsPaneHost(
     var category by remember { mutableStateOf(requested?.category ?: SettingsCategory.General) }
     var appsPage by remember { mutableStateOf(requested?.appsPage) }
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
+    var editorOpenedFromCard by remember { mutableStateOf(false) }
+    var editorOpensDesign by remember { mutableStateOf(false) }
+    val openEditor = { fromCard: Boolean, design: Boolean ->
+        editorOpenedFromCard = fromCard
+        editorOpensDesign = design
+        profilePage = ProfilePage.CardEditor
+    }
+    // A wide window gives the card the whole window, rail hidden, rather than this pane.
+    val cardFullWindow = isExpandedLayout() && profileCardEnabled
     // Pre-warms the card page; its host lives as long as the Settings entry.
     val cardViewModel = if (profileCardEnabled) koinViewModel<ProfileCardViewModel>() else null
     cardViewModel?.let { StartCardHostWhenSettled(it) }
@@ -104,6 +117,8 @@ internal fun SettingsPaneHost(
                     val from = initialState.second
                     val to = targetState.second
                     when {
+                        // The card pages host a native view that neither fades nor can run twice at once.
+                        from.isCard() || to.isCard() -> EnterTransition.None togetherWith ExitTransition.None
                         from == to && initialState.third != targetState.third ->
                             tabSlideFade.transform(targetState.third != null)
                         from == to -> fadeIn(enterFade) togetherWith fadeOut(exitFade)
@@ -120,19 +135,22 @@ internal fun SettingsPaneHost(
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
                             onSelectAppsPage = { appsPage = it },
-                            // The card's native view can't live in this pane's own window, so its pages are full-window routes.
                             onProfileEdit = {
-                                if (cardViewModel == null) {
-                                    profilePage = ProfilePage.Editor
-                                } else {
+                                if (cardFullWindow) {
                                     SettingsPaneRequest.open(shownCategory)
                                     actions.onOpenProfileCardEditor()
+                                } else {
+                                    openEditor(false, false)
                                 }
                             },
                             onProfileAvatarEdit = { profilePage = ProfilePage.Avatar },
                             onProfileCard = {
-                                SettingsPaneRequest.open(shownCategory)
-                                actions.onOpenProfileCard()
+                                if (cardFullWindow) {
+                                    SettingsPaneRequest.open(shownCategory)
+                                    actions.onOpenProfileCard()
+                                } else {
+                                    profilePage = ProfilePage.Card
+                                }
                             }.takeIf { cardViewModel != null },
                             actions = actions,
                             emailMailboxMode = emailMailboxMode,
@@ -149,13 +167,23 @@ internal fun SettingsPaneHost(
                                 onNavigateToCropper = actions.onNavigateToCropper,
                             )
 
-                            // Without the card flag this is still Edit profile, with no card view in it.
-                            ProfilePage.Editor -> ProfileCardEditorScreen(
-                                viewModel = koinViewModel(),
+                            ProfilePage.Card -> cardViewModel?.let {
+                                ProfileCardScreen(
+                                    viewModel = it,
+                                    onBack = { profilePage = null },
+                                    onEdit = { openEditor(true, false) },
+                                    onChangeDesign = { openEditor(true, true) },
+                                )
+                            }
+
+                            // Without the card flag this is still Edit profile, so its view model is made here when needed.
+                            ProfilePage.CardEditor -> ProfileCardEditorScreen(
+                                viewModel = cardViewModel ?: koinViewModel(),
                                 avatarViewModel = koinViewModel(),
-                                onBack = { profilePage = null },
+                                onBack = { profilePage = if (editorOpenedFromCard) ProfilePage.Card else null },
                                 onNavigateToCropper = actions.onNavigateToCropper,
-                                cardsEnabled = false,
+                                cardsEnabled = profileCardEnabled,
+                                openDesign = editorOpensDesign,
                             )
                         }
                     }
@@ -192,6 +220,8 @@ internal fun SettingsPaneHeader(onDismiss: () -> Unit) {
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
+
+private fun ProfilePage?.isCard() = this == ProfilePage.Card || this == ProfilePage.CardEditor
 
 @Composable
 private fun CategoryPage(

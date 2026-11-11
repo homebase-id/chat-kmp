@@ -195,6 +195,7 @@ import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_load_failed_desc
 import id.homebase.resources.profile_edit_retry
 import id.homebase.core.widget.WithTooltip
+import id.homebase.core.widget.ReportOverlay
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.graphics.Color
 
@@ -1034,6 +1035,7 @@ private fun ReorderHandle(display: FieldDisplay, enabled: Boolean, label: String
     ) {
         Icon(Icons.Rounded.DragHandle, contentDescription = null, tint = colors.onSurfaceVariant)
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            ReportOverlay()
             display.moveUp?.let { up ->
                 DropdownMenuItem(
                     text = { Text(moveUpLabel) },

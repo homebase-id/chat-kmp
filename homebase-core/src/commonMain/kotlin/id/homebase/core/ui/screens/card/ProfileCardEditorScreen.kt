@@ -110,6 +110,8 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import id.homebase.core.widget.WithTooltip
+import id.homebase.core.widget.ProvideOpenOverlays
+import id.homebase.core.widget.ReportOverlay
 import id.homebase.core.util.isDesktopOrWeb
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Brush
@@ -227,6 +229,20 @@ fun ProfileCardEditorScreen(
     cardsEnabled: Boolean = true,
     // Opened straight on the design picker, back leaves the editor instead of stepping to the content list.
     openDesign: Boolean = false,
+) {
+    ProvideOpenOverlays {
+        ProfileCardEditor(viewModel, avatarViewModel, onBack, onNavigateToCropper, cardsEnabled, openDesign)
+    }
+}
+
+@Composable
+private fun ProfileCardEditor(
+    viewModel: ProfileCardViewModel,
+    avatarViewModel: ProfileAvatarEditViewModel,
+    onBack: () -> Unit,
+    onNavigateToCropper: (Uuid) -> Unit,
+    cardsEnabled: Boolean,
+    openDesign: Boolean,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
@@ -417,6 +433,7 @@ fun ProfileCardEditorScreen(
                 skeleton = true,
             )
         }
+        if (avatarState.removalToConfirm != null) ReportOverlay()
         PhotoRemovalConfirmDialog(avatarState.removalToConfirm, avatarViewModel::onAction)
         if (uiState.pendingImport != null) {
             ImportPublicDialog(onConfirm = viewModel::onImportConfirmed, onDismiss = viewModel::onImportCancelled)
@@ -432,6 +449,7 @@ fun ProfileCardEditorScreen(
 
 @Composable
 private fun ImportPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
@@ -448,6 +466,7 @@ private fun ImportPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 
 @Composable
 internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
@@ -464,6 +483,7 @@ internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismis
 
 @Composable
 internal fun NamelessPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
@@ -1370,6 +1390,7 @@ internal enum class EditorMode { Content, Design }
 
 @Composable
 private fun DiscardDialog(onKeep: () -> Unit, onDiscard: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onKeep,
         title = { Text(stringResource(MR.string.profile_card_discard_title)) },

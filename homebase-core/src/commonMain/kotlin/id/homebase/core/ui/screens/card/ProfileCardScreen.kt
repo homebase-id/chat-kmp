@@ -85,6 +85,7 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -143,8 +144,6 @@ import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import id.homebase.resources.MR
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_retry
@@ -188,6 +187,12 @@ import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import id.homebase.core.widget.WithTooltip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import id.homebase.core.widget.LocalOpenOverlays
+import id.homebase.core.widget.ProvideOpenOverlays
+import id.homebase.core.widget.ReportOverlay
 
 // Wide windows get a card-width sheet rather than the page's full website layout.
 internal val WIDE_SHEET_MAX_WIDTH = 480.dp
@@ -244,9 +249,11 @@ fun ProfileCardScreen(
     onChangeDesign: () -> Unit,
 ) {
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
-    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = true) }
-    IntroViewerSwitch(viewModel = viewModel, onBack = onBack, onNewCircle = newCircle) { onClose ->
-        ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
+    ProvideOpenOverlays {
+        val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = true) }
+        IntroViewerSwitch(viewModel = viewModel, onBack = onBack, onNewCircle = newCircle) { onClose ->
+            ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
+        }
     }
 }
 
@@ -423,22 +430,18 @@ private fun ProfileCardViewer(
                         coverHeld = coverHeld,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    val snackbar: @Composable () -> Unit = {
-                        SnackbarHost(
-                            hostState = snackbarHostState,
-                            modifier = Modifier
-                                .then(
-                                    if (bands.bottom) Modifier
-                                    else Modifier.navigationBarsPadding().padding(bottom = TOOLBAR_BAND_HEIGHT),
-                                )
-                                .padding(8.dp),
-                        )
-                    }
-                    // Over the card's native view only a popup, a window of its own on desktop, can be seen.
-                    if (isDesktopOrWeb()) {
-                        if (snackbarHostState.currentSnackbarData != null) Popup(alignment = Alignment.BottomCenter, properties = PopupProperties(focusable = false)) { snackbar() }
-                    } else {
-                        Box(Modifier.align(Alignment.BottomCenter)) { snackbar() }
+                    SnackbarHost(
+                        hostState = snackbarHostState,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .then(
+                                if (bands.bottom) Modifier
+                                else Modifier.navigationBarsPadding().padding(bottom = TOOLBAR_BAND_HEIGHT),
+                            )
+                            .padding(8.dp),
+                    ) { data ->
+                        ReportOverlay()
+                        Snackbar(data)
                     }
                 }
                 SheetTopChrome(
@@ -483,6 +486,7 @@ private fun ProfileCardViewer(
 // A circle card is never what gets shared, so the toolbar stays the same on every card and the swap is said here, where it happens.
 @Composable
 internal fun SharePublicCardDialog(circleLabel: String, saveInsteadOfShare: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
@@ -829,6 +833,7 @@ internal fun AudienceChip(
 
 @Composable
 internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     val message = when (audience) {
         CardAudience.Public -> stringResource(MR.string.profile_card_reset_message_public)
         is CardAudience.Circle ->
@@ -883,6 +888,7 @@ internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDism
 
 @Composable
 internal fun ReadOnlyCardDialog(onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
@@ -957,8 +963,16 @@ internal fun CardSurface(
         if (attached && host != null) paintWhileAttached { painted = true }
     }
     val live = painted && uiState.isCardReady
+    // Desktop and web paint the card's native view over Compose, so it steps aside while a dialog, menu or tooltip is over it.
+    val overlays = LocalOpenOverlays.current.takeIf { isDesktopOrWeb() }
+    var bounds by remember { mutableStateOf<Rect?>(null) }
+    val overlaid = overlays != null && bounds?.let(overlays::covers) == true
 
-    Box(modifier = modifier.drawBehind { drawRect(ground()) }) {
+    Box(
+        modifier = modifier
+            .drawBehind { drawRect(ground()) }
+            .then(if (overlays != null) Modifier.onGloballyPositioned { bounds = it.boundsInWindow() } else Modifier),
+    ) {
         if (uiState.loadFailed) {
             CardErrorPlate(
                 message = MR.string.profile_edit_load_failed,
@@ -968,7 +982,7 @@ internal fun CardSurface(
             return@Box
         }
         // An unsupported server's /card is its public site, which desktop and web would float over the message.
-        if (!uiState.cardUnsupported && attached) {
+        if (!uiState.cardUnsupported && attached && !overlaid) {
             host?.let { CardHostView(host = it, modifier = Modifier.fillMaxSize(), layoutWidth = layoutWidth) }
         }
         if (cover != null && !uiState.cardUnsupported) {
