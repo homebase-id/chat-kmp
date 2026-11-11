@@ -17,12 +17,16 @@ interface Platform {
     val name: PlatformType
 }
 
+/** The running target: [PlatformType.ANDROID], [PlatformType.IOS], [PlatformType.JVM] (desktop) or [PlatformType.JS] (web). Never [PlatformType.NATIVE]. */
 expect fun getPlatform(): Platform
 
+/** True only on Android. Equivalent to `getPlatform().name == PlatformType.ANDROID`. */
 expect fun isAndroid(): Boolean
 
+/** True only on iOS; iPhone and iPad both count. Equivalent to `getPlatform().name == PlatformType.IOS`. */
 expect fun isIos(): Boolean
 
+/** Intended to surface [message] to the user. Currently a no-op on every platform; callers must not rely on it showing anything. Never throws. */
 expect fun showMessage(title: String, message: String)
 
 // URL encoder compatible with UTF-8 encoding

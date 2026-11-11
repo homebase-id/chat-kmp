@@ -3,6 +3,10 @@ package id.homebase.chat.widget.video
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
+/**
+ * Plays the local video at [filePath] inline with the platform's controls, looping until it leaves composition.
+ * [onFirstFrameRendered] fires once, on the main thread, when the first frame is painted. An unreadable file draws nothing.
+ */
 @Composable
 expect fun LocalVideoPlayerSurface(
     filePath: String,
