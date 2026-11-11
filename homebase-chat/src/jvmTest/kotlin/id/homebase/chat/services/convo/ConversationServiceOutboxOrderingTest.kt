@@ -262,4 +262,28 @@ class ConversationServiceOutboxOrderingTest {
             )
         }
     }
+
+    @Test
+    fun createConversation_group_conversationAndAdminRowsCarryEveryPeerAsTransitRecipient() = runTest {
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val alice = "alice.test"
+            val bob = "bob.test"
+
+            val result = service.createConversation(
+                recipients = listOf(OdinId(alice), OdinId(bob)),
+                title = "the fellowship",
+                payloadBundle = null,
+            )
+
+            val adminUniqueId = ChatProtocol.getAdminFileUniqueId(result.conversationId)
+            val rows = fixture.drainOutboxInDependencyOrder()
+
+            listOf(result.conversationId, adminUniqueId).forEach { uid ->
+                val json = rows.single { it.uniqueId == uid }.json.decodeToString()
+                assertTrue(alice in json && bob in json, "outbox row $uid must enqueue both peers as transit recipients: $json")
+                assertTrue(fixture.testDomain !in json.substringAfter("recipients"), "self must not be a transit recipient of $uid")
+            }
+        }
+    }
 }
