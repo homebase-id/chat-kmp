@@ -14,6 +14,8 @@ import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.value
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryGetValue
 import platform.CoreFoundation.CFDictionarySetValue
@@ -77,12 +79,11 @@ private class ImageIoSource(
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
             ?: throw IllegalStateException("Couldn't create decode options")
-        // ImageIO aliases on reductions under 2x and can land a pixel off the plan, so it makes one of at least 2x or none.
-        // Only the memory guard can force a smaller one, as on Android.
+        // ImageIO aliases on reductions under 2x and can land a pixel off the plan, so only the memory guard forces one.
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
-        val guarded = memoryGuardScale(displayedSize, 1, minLongEdge)?.let { ceil(longEdge * it).toLong() } ?: Long.MAX_VALUE
+        val guarded = memoryGuardScale(displayedSize, minLongEdge)?.let { ceil(longEdge * it).toInt() } ?: Int.MAX_VALUE
         val coarse = if (longEdge >= minLongEdge.toLong() * 2) minOf(minLongEdge * 2, (longEdge + 1) / 2) else longEdge
-        val coarseEdge = minOf(coarse.toLong(), guarded).toInt()
+        val coarseEdge = minOf(coarse, guarded)
         val maxSize = CFBridgingRetain(NSNumber(int = coarseEdge))
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
@@ -177,6 +178,21 @@ private fun cfInt(dict: CFDictionaryRef, key: CFStringRef?): Int? = memScoped {
     val number: CFNumberRef = CFDictionaryGetValue(dict, key)?.reinterpret() ?: return null
     val out = alloc<IntVar>()
     if (CFNumberGetValue(number, kCFNumberIntType, out.ptr)) out.value else null
+}
+
+// About 96 MB of pixels. A 12 MP photo stays a full, clean decode; a 48 MP one doesn't.
+private const val FULL_DECODE_PIXEL_LIMIT = 24_000_000L
+
+/**
+ * How far to shrink a decode that would otherwise pass [FULL_DECODE_PIXEL_LIMIT], or null to leave
+ * it alone. A memory guard, not a quality step: it never goes below what the largest output needs.
+ */
+private fun memoryGuardScale(size: ImageSize, minLongEdge: Int): Double? {
+    val pixels = size.pixelWidth.toDouble() * size.pixelHeight
+    val longEdge = max(size.pixelWidth, size.pixelHeight)
+    if (pixels <= FULL_DECODE_PIXEL_LIMIT || longEdge <= minLongEdge) return null
+    val smallest = minLongEdge.toDouble() / longEdge
+    return max(smallest, min(sqrt(FULL_DECODE_PIXEL_LIMIT / pixels), smallest * 2))
 }
 
 internal actual fun openImageSource(bytes: ByteArray): ImageSource =

@@ -2,7 +2,6 @@ package id.homebase.api.image
 
 import kotlinx.coroutines.test.runTest
 import kotlin.math.abs
-import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -138,18 +137,6 @@ class ImagePipelineContractTest {
     }
 
     private fun stripes(width: Int, half: Int) = png(width, STRIPES_HEIGHT) { x, _ -> if ((x / half) % 2 == 0) BLACK else WHITE }
-
-    // Skips the edges, where the filter's window runs off the image.
-    private fun middleGreens(bytes: ByteArray): List<Int> {
-        val image = decoded(bytes)
-        val row = image.height / 2
-        return (image.width / 8 until image.width * 7 / 8).map { (image.pixels[row * image.width + it] shr 8) and 0xFF }
-    }
-
-    private fun deviation(values: List<Int>): Double {
-        val mean = values.average()
-        return sqrt(values.sumOf { (it - mean) * (it - mean) } / values.size)
-    }
 
     private suspend fun stripesAfter(source: ByteArray, sourceWidth: Int, target: Int, viaDecoder: Boolean): ByteArray {
         val outputs = buildList {
