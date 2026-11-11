@@ -101,7 +101,7 @@ fun rememberNewCircleAction(onCreated: (String) -> Unit): () -> Unit {
             }
         }
     }
-    if (viewModel.permission != null || state.accessCheckFailed) ReportOverlay()
+    if (state.accessCheckFailed) ReportOverlay()
     viewModel.permission?.let { ExtendPermissionDialog(viewModel = it) }
     if (state.accessCheckFailed) {
         AlertDialog(
