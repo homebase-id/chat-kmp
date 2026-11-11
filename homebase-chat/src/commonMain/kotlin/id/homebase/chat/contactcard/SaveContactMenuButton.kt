@@ -1,6 +1,9 @@
 package id.homebase.chat.contactcard
 
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +16,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +25,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -37,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,7 +59,13 @@ import id.homebase.resources.chat_contact_card_update_homebase_supporting
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
-internal val SaveContactMenuShape = RoundedCornerShape(20.dp)
+internal val SaveContactMenuShape = RoundedCornerShape(24.dp)
+internal val SaveContactMenuWidth = 336.dp
+internal val SaveContactMenuShadow = 2.dp
+private val SaveContactItemShape = RoundedCornerShape(16.dp)
+
+@Composable
+internal fun saveContactMenuBorder() = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
 
 /**
  * The card's Save button. With a [deviceSaver] it opens a menu (Homebase contacts / Phone
@@ -96,7 +106,10 @@ internal fun SaveContactMenuButton(
                 offset = DpOffset(0.dp, 4.dp),
                 shape = SaveContactMenuShape,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.widthIn(min = 264.dp),
+                tonalElevation = 0.dp,
+                shadowElevation = SaveContactMenuShadow,
+                border = saveContactMenuBorder(),
+                modifier = Modifier.width(SaveContactMenuWidth),
             ) {
                 SaveContactMenuItems(
                     alreadySaved = alreadySaved,
@@ -132,6 +145,7 @@ internal fun ColumnScope.SaveContactMenuItems(
             if (alreadySaved) MR.string.chat_contact_card_update_homebase_supporting
             else MR.string.chat_contact_card_save_homebase_supporting,
         ),
+        emphasized = true,
         onClick = onHomebase,
     )
     SaveDestinationItem(
@@ -142,29 +156,38 @@ internal fun ColumnScope.SaveContactMenuItems(
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SaveDestinationItem(
     icon: ImageVector,
     title: String,
     supporting: String,
     onClick: () -> Unit,
+    emphasized: Boolean = false,
 ) {
+    val colors = MaterialTheme.colorScheme
     DropdownMenuItem(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     supporting,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 2,
                 )
             }
         },
         leadingIcon = {
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = if (emphasized) colors.primaryContainer else colors.secondaryContainer,
+                contentColor = if (emphasized) colors.onPrimaryContainer else colors.onSecondaryContainer,
                 modifier = Modifier.size(40.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -173,8 +196,11 @@ private fun SaveDestinationItem(
             }
         },
         onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-        modifier = Modifier.padding(horizontal = 4.dp),
+        contentPadding = PaddingValues(start = 8.dp, end = 16.dp),
+        modifier = Modifier
+            .padding(horizontal = 8.dp)
+            .heightIn(min = 64.dp)
+            .clip(SaveContactItemShape),
     )
 }
 
@@ -194,7 +220,10 @@ private fun RowScope.SaveButtonContent(alreadySaved: Boolean, hasMenu: Boolean, 
         modifier = Modifier.weight(1f, fill = false),
     )
     if (hasMenu) {
-        val turn by animateFloatAsState(if (expanded) 180f else 0f)
+        val turn by animateFloatAsState(
+            targetValue = if (expanded) 180f else 0f,
+            animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow),
+        )
         Spacer(Modifier.width(4.dp))
         Icon(
             imageVector = Icons.Outlined.ExpandMore,

@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.contacts.DeviceContactSaver
+import id.homebase.core.contacts.rememberDeviceContactSaver
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.avatars.IdentityAvatar
@@ -86,6 +88,7 @@ fun ContactCardBubble(
     authorOdinId: String? = null,
     photo: HomebaseImageData? = null,
     footer: (@Composable () -> Unit)? = null,
+    deviceSaver: DeviceContactSaver? = rememberDeviceContactSaver(),
 ) {
     if (descriptor == null || !descriptor.isValid()) {
         UnparseableTypedChip(
@@ -217,6 +220,7 @@ fun ContactCardBubble(
                             alreadySaved = alreadySaved,
                             onSaveToContacts = onSaveToContacts,
                             modifier = Modifier.weight(1f, fill = false),
+                            deviceSaver = deviceSaver,
                         )
                     }
                     footer?.invoke()
@@ -239,6 +243,7 @@ fun ContactCardBubble(
                 }
             },
             alreadySaved = alreadySaved,
+            deviceSaver = deviceSaver,
             // Same: the conversation this swaps to would otherwise open behind the dialog.
             onMessageIdentity = onMessageIdentity?.let { message ->
                 { identity ->

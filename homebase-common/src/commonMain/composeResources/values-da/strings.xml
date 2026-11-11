@@ -2429,5 +2429,5 @@
     <string name="chat_contact_card_save_phone_failed">Ingen kontakt-app fundet</string>
     <string name="chat_contact_card_save_homebase_supporting">Gem dem i din Homebase</string>
     <string name="chat_contact_card_update_homebase_supporting">Opdater de gemte oplysninger</string>
-    <string name="chat_contact_card_save_phone_supporting">Åbn i telefonens Kontakter-app</string>
+    <string name="chat_contact_card_save_phone_supporting">Åbner telefonens Kontakter-app</string>
 </resources>
