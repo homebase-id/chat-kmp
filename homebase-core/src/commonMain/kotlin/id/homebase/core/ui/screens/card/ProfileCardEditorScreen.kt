@@ -377,7 +377,7 @@ fun ProfileCardEditorScreen(
             step = step,
             onStep = { step = it },
             onBack = requestBack,
-            onSelect = viewModel::onDesignPicked,
+            onSelect = viewModel::onDesignSelected,
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
             onStyle = viewModel::onStyleSelected,
@@ -622,7 +622,7 @@ internal fun ProfileCardEditorContent(
                     onBack = onBack,
                     title = if (contentOpen) stringResource(MR.string.profile_edit_title) else null,
                     onPreview = { previewOpen = true }.takeIf { contentOpen && showCard },
-                    onSave = onSave.takeIf { !contentOpen && step == EditorStep.Customise && !uiState.isCircleReadOnly },
+                    onSave = onSave.takeIf { !contentOpen && !uiState.isCircleReadOnly },
                     canSave = uiState.canSaveDesign,
                     isSaving = uiState.isSavingDesign,
                 )
