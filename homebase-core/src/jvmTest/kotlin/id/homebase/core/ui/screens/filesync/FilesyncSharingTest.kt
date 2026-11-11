@@ -21,6 +21,7 @@ import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.crypto.ShareKeys
@@ -134,6 +135,7 @@ class FilesyncSharingTest {
     private var downPeers = emptySet<String>()
     private var collaborative = false
     private var markerConflicts = 0
+    private val markerFileIds = mutableSetOf<Uuid>()
     private var filesyncRefused = false
     private var storedShareKey: String? = null
     private val merry = OdinId("merry.test")
@@ -179,9 +181,12 @@ class FilesyncSharingTest {
                 else circles
             path.endsWith("/query-batch") -> sharedPages.removeFirstOrNull() ?: """{"searchResults":[],"hasMoreRows":false}"""
             path.endsWith("/files") -> """{"fileId":"${Uuid.random()}","driveId":"${SystemDriveConstants.transientTempDrive.alias}","newVersionTag":"${Uuid.random()}"}"""
-            "/drives/${FilesyncProtocol.DriveAlias}/files/" in path && request.method == HttpMethod.Patch ->
+            // Only a marker's in-place update is expected; any other PATCH falls through to "unexpected".
+            request.method == HttpMethod.Patch && path.substringAfterLast('/').let { id -> markerFileIds.any { it.toString() == id } } ->
                 if (markerConflicts-- > 0) return@MockEngine respond("""{"title":"changed","errorCode":"versionTagMismatch"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
                 else """{"fileId":"${path.substringAfterLast('/')}","driveId":"${FilesyncProtocol.DriveAlias}","newVersionTag":"${Uuid.random()}"}"""
+            path.endsWith("/drives/${FilesyncProtocol.DriveAlias}/files/soft-delete-batch") ->
+                """{"results":[{"fileId":"${decrypted(call, appSecret).jsonObject["files"]!!.jsonArray.single().jsonObject["fileId"]!!.jsonPrimitive.content}"}]}"""
             else -> error("unexpected ${request.method} $path")
         }
         respond(body, headers = json)
@@ -488,8 +493,11 @@ class FilesyncSharingTest {
         fileId: Uuid = Uuid.random(),
         versionTag: Uuid? = null,
         key: KeyHeader = KeyHeader.newRandom16(),
+        uniqueId: Uuid = Uuid.random(),
+        extra: String = "",
     ): String {
-        val syncField = sync?.let { ""","sync":$it""" }.orEmpty()
+        markerFileIds += fileId
+        val syncField = sync?.let { ""","sync":$it""" }.orEmpty() + extra
         return OdinSystemSerializer.serialize(
             ServerFile(
                 fileId = fileId,
@@ -502,7 +510,7 @@ class FilesyncSharingTest {
                     senderOdinId = sender,
                     versionTag = versionTag,
                     appData = AppFileMetaData(
-                        uniqueId = Uuid.random(),
+                        uniqueId = uniqueId,
                         fileType = FilesyncProtocol.MarkerFileType,
                         content = Base64.encode(runBlocking { key.encryptDataAes("""{"odinId":"$names","driveAlias":"${FilesyncProtocol.DriveAlias}"$syncField}""".encodeToByteArray()) }),
                     ),
@@ -527,27 +535,71 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun aSharerIsSyncedWhenAnyOfTheirMarkersSaysSo() = runTest {
-        sharedPages += """{"searchResults":[${marker("sam.test", frodo, sync = true)}, ${marker("merry.test", frodo)}, ${marker("sam.test", null, sync = false)}],"hasMoreRows":false}"""
+    fun onlyAMarkerOfOurOwnTurnsSyncOnAndOneASharerLeftNever() = runTest {
+        sharedPages += """{"searchResults":[${marker("merry.test", frodo, sync = true)}, ${marker("sam.test", sam, sync = true)}, ${marker("pippin.test", null, sync = true)}],"hasMoreRows":false}"""
 
-        assertEquals(listOf(FilesyncSharer(sam, sync = true), FilesyncSharer(merry, sync = false)), sharing.sharers())
+        assertEquals(
+            listOf(FilesyncSharer(merry, sync = true), FilesyncSharer(sam, sync = false), FilesyncSharer(OdinId("pippin.test"), sync = true)),
+            sharing.sharers(),
+        )
     }
 
     @Test
-    fun syncingASharerChangesTheirMarkerInPlaceAtTheVersionRead() = runTest {
+    fun syncingASharerChangesOurMarkerInPlaceAtTheVersionReadKeepingWhatItHolds() = runTest {
         val fileId = Uuid.random()
         val versionTag = Uuid.random()
         val key = KeyHeader.newRandom16()
-        sharedPages += """{"searchResults":[${marker("sam.test", frodo, fileId = fileId, versionTag = versionTag, key = key)}],"hasMoreRows":false}"""
+        val id = FilesyncSharing.markerId(sam, frodo)
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo, fileId = fileId, versionTag = versionTag, key = key, uniqueId = id, extra = ""","folder":"Sam"""")}],"hasMoreRows":false}"""
 
         sharing.setSync(sam, true)
 
-        assertTrue(calls.none { it.path.endsWith("/files") }, "no new marker")
+        val asked = decrypted(calls.single { it.path.endsWith("/query-batch") }, appSecret).jsonObject["queryParams"]!!.jsonObject
+        assertEquals(listOf(id.toString()), asked["clientUniqueIdAtLeastOne"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertTrue(calls.none { it.path.endsWith("/files") || it.path.endsWith("soft-delete-batch") })
         val update = calls.single { it.request.method == HttpMethod.Patch }
         assertEquals("/api/v2/drives/${FilesyncProtocol.DriveAlias}/files/$fileId", update.path)
-        val appData = sentMarker(update, key)
-        assertEquals(versionTag.toString(), appData.first["versionTag"]!!.jsonPrimitive.content)
-        assertEquals(FilesyncMarker("sam.test", FilesyncProtocol.DriveAlias, sync = true), appData.second)
+        val (metadata, content) = sentMarker(update, key)
+        assertEquals(versionTag.toString(), metadata["versionTag"]!!.jsonPrimitive.content)
+        assertEquals(false, metadata["allowDistribution"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals(true, metadata["isEncrypted"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals(SecurityGroupType.Owner.value, metadata["accessControlList"]!!.jsonObject["requiredSecurityGroup"]!!.jsonPrimitive.content)
+        val appData = metadata["appData"]!!.jsonObject
+        assertEquals(id.toString(), appData["uniqueId"]!!.jsonPrimitive.content)
+        assertEquals(FilesyncProtocol.MarkerFileType, appData["fileType"]!!.jsonPrimitive.int)
+        assertEquals(0, appData["dataType"]!!.jsonPrimitive.int)
+        assertEquals(Json.parseToJsonElement("""{"odinId":"sam.test","driveAlias":"${FilesyncProtocol.DriveAlias}","folder":"Sam","sync":true}"""), content)
+    }
+
+    @Test
+    fun withNoMarkerYetSyncingWritesOursAlreadyOn() = runTest {
+        sharing.setSync(sam, true)
+
+        val added = calls.single { it.path.endsWith("/files") }
+        val (metadata, content) = sentMarker(added)
+        assertEquals(FilesyncSharing.markerId(sam, frodo).toString(), metadata["appData"]!!.jsonObject["uniqueId"]!!.jsonPrimitive.content)
+        assertEquals(true, content.jsonObject["sync"]!!.jsonPrimitive.content.toBoolean())
+    }
+
+    @Test
+    fun aMarkerSamLeftWhereOursGoesIsReplacedToTurnSyncOnAndLeftAloneToTurnItOff() = runTest {
+        val foreign = Uuid.random()
+        val foreignVersion = Uuid.random()
+        val id = FilesyncSharing.markerId(sam, frodo)
+        sharedPages += """{"searchResults":[${marker("sam.test", sam, fileId = foreign, versionTag = foreignVersion, uniqueId = id)}],"hasMoreRows":false}"""
+        sharing.setSync(sam, false)
+        assertTrue(calls.none { it.request.method == HttpMethod.Patch || it.path.endsWith("soft-delete-batch") || it.path.endsWith("/files") })
+
+        calls.clear()
+        sharedPages += """{"searchResults":[${marker("sam.test", sam, fileId = foreign, versionTag = foreignVersion, uniqueId = id)}],"hasMoreRows":false}"""
+        sharing.setSync(sam, true)
+
+        val deleted = decrypted(calls.single { it.path.endsWith("soft-delete-batch") }, appSecret).jsonObject["files"]!!.jsonArray.single().jsonObject
+        assertEquals(foreign.toString(), deleted["fileId"]!!.jsonPrimitive.content)
+        assertEquals(foreignVersion.toString(), deleted["versionTag"]!!.jsonPrimitive.content)
+        assertTrue(calls.none { it.request.method == HttpMethod.Patch }, "an update would keep Sam as its sender")
+        val (_, content) = sentMarker(calls.single { it.path.endsWith("/files") })
+        assertEquals(true, content.jsonObject["sync"]!!.jsonPrimitive.content.toBoolean())
     }
 
     @Test
@@ -566,13 +618,22 @@ class FilesyncSharingTest {
     }
 
     @Test
+    fun aMarkerThatKeepsChangingElsewhereGivesUpAfterAFewTries() = runTest {
+        repeat(3) { sharedPages += """{"searchResults":[${marker("sam.test", frodo, versionTag = Uuid.random())}],"hasMoreRows":false}""" }
+        markerConflicts = 3
+
+        assertFailsWith<IllegalStateException> { sharing.setSync(sam, true) }
+        assertEquals(3, calls.count { it.request.method == HttpMethod.Patch })
+    }
+
+    @Test
     fun turningSyncOffKeepsTheMarkerAndOneAlreadyAsAskedIsLeftAlone() = runTest {
         val key = KeyHeader.newRandom16()
         sharedPages += """{"searchResults":[${marker("sam.test", frodo, sync = true, versionTag = Uuid.random(), key = key)}],"hasMoreRows":false}"""
         sharing.setSync(sam, false)
         val off = calls.single { it.request.method == HttpMethod.Patch }
-        assertEquals(false, sentMarker(off, key).second.sync)
-        assertTrue(calls.none { it.request.method == HttpMethod.Delete }, "the marker keeps Sam in Shared with me")
+        assertEquals(false, sentMarker(off, key).second.jsonObject["sync"]!!.jsonPrimitive.content.toBoolean())
+        assertTrue(calls.none { it.request.method == HttpMethod.Delete || it.path.endsWith("soft-delete-batch") }, "the marker keeps Sam in Shared with me")
 
         calls.clear()
         sharedPages += """{"searchResults":[${marker("sam.test", frodo, sync = false, versionTag = Uuid.random(), key = key)}],"hasMoreRows":false}"""
@@ -587,17 +648,17 @@ class FilesyncSharingTest {
         assertTrue(calls.none { it.path.endsWith("/files") || it.request.method == HttpMethod.Patch })
     }
 
-    // The fileMetadata an update sent, and the marker in its content, opened with the marker's own key.
-    private suspend fun sentMarker(update: Call, key: KeyHeader): Pair<JsonObject, FilesyncMarker> {
-        val parts = multipart(update.body, update.request)
+    // The fileMetadata a marker write sent and its content, opened with the key it was sent under ([key]: the marker's own).
+    private suspend fun sentMarker(write: Call, key: KeyHeader? = null): Pair<JsonObject, JsonElement> {
+        val parts = multipart(write.body, write.request)
         val transferIv = Base64.decode(Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject["transferIv"]!!.jsonPrimitive.content)
         val descriptor = Json.parseToJsonElement(AesCbc.decrypt(parts.getValue("metadata"), appSecret, transferIv).decodeToString()).jsonObject
         val sentKey = OdinSystemSerializer.json.decodeFromJsonElement(EncryptedKeyHeader.serializer(), descriptor["encryptedKeyHeader"]!!)
             .decryptAesToKeyHeader(SecureByteArray(appSecret))
-        assertTrue(sentKey.aesKey.toByteArray().contentEquals(key.aesKey.toByteArray()), "the marker keeps its key")
+        if (key != null) assertTrue(sentKey.aesKey.toByteArray().contentEquals(key.aesKey.toByteArray()), "the marker keeps its key")
         val metadata = descriptor["fileMetadata"]!!.jsonObject
         val content = sentKey.decrypt(Base64.decode(metadata["appData"]!!.jsonObject["content"]!!.jsonPrimitive.content)).decodeToString()
-        return metadata to OdinSystemSerializer.deserialize<FilesyncMarker>(content)
+        return metadata to Json.parseToJsonElement(content)
     }
 
     @Test
@@ -709,7 +770,7 @@ class FilesyncSharingTest {
 
         val options = decrypted(calls.single { it.path.endsWith("/query-batch") }, appSecret).jsonObject["resultOptionsRequest"]!!.jsonObject
         assertEquals("newestFirst", options["ordering"]!!.jsonPrimitive.content)
-        assertEquals("anyChangeDate", options["sorting"]!!.jsonPrimitive.content)
+        assertEquals("createdDate", options["sorting"]!!.jsonPrimitive.content)
     }
 
     @Test

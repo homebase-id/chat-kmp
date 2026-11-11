@@ -81,6 +81,7 @@ internal class FilesyncSharingController(
     private var pendingMove: (suspend () -> Unit)? = null
     // In the order asked: a quick on-then-off must reach the marker in that order.
     private val syncWrites = Mutex()
+    private var syncAsked = 0
 
     fun start() {
         scope.launch {
@@ -216,16 +217,22 @@ internal class FilesyncSharingController(
         }
     }
 
-    /** Shown at once, then read back, so a change that didn't go through shows as it is. */
+    /** Shown at once and undone if it fails; the newest choice is read back once it lands, earlier ones are passed over. */
     fun setSync(sharer: OdinId, sync: Boolean) {
-        update { it.copy(syncedSharers = if (sync) it.syncedSharers + sharer else it.syncedSharers - sharer) }
+        showSync(sharer, sync)
+        val asked = ++syncAsked
         scope.launch {
-            syncWrites.withLock {
+            val written = syncWrites.withLock {
                 attempt("changing whether computers sync $sharer's files", FilesyncError.SyncChoiceFailed) { sharing.setSync(sharer, sync) }
             }
+            if (asked != syncAsked) return@launch
+            if (written == null) showSync(sharer, !sync)
             loadSharers()
         }
     }
+
+    private fun showSync(sharer: OdinId, sync: Boolean) =
+        update { it.copy(syncedSharers = if (sync) it.syncedSharers + sharer else it.syncedSharers - sharer) }
 
     /** Marks which of [folderId]'s nodes are shared; with sharing off, remembers it for when it's on. */
     fun loadSharedIn(folderId: Uuid? = shownFolder) {

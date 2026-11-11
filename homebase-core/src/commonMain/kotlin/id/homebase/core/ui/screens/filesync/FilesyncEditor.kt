@@ -367,8 +367,6 @@ internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, conten
 
 internal fun FilesyncHandle.keyWithNewIv() = keyHeader.withNewIv()
 
-internal fun KeyHeader.withNewIv() = KeyHeader(ByteArrayUtil.getRndByteArray(16), aesKey)
-
 /** The whole header of a node as it is read, with [content], under [keyHeader]: guarded by the version it was read at. */
 internal suspend fun liveNodeMetadata(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid, keyHeader: KeyHeader): UploadFileMetadata =
     filesyncMetadata(nodeId, parentId, handle.fileType, content.toString(), ArchivalStatus.None, handle.versionTag).encryptContent(keyHeader)

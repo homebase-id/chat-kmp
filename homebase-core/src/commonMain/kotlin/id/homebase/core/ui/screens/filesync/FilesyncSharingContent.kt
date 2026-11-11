@@ -482,7 +482,6 @@ internal fun FilesyncShareView(
                         stringResource(if (incoming) MR.string.filesync_view_from_body else MR.string.filesync_view_to_body),
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    sharing.syncSwitchFor?.let { SharerSyncSwitch(it, it in sharing.syncedSharers, onAction) }
                     if (!incoming && shown is FilesyncAudience.Group) {
                         val members = shown.members.joinToString { it.domainName }
                         Text(members, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -493,6 +492,8 @@ internal fun FilesyncShareView(
                 TextButton(onClick = { onAction(FilesyncUiAction.CloseShareView) }) { Text(stringResource(MR.string.filesync_view_close)) }
             }
         }
+        // Below the card, not on it: the row's surface roles don't sit on secondaryContainer.
+        sharing.syncSwitchFor?.let { SharerSyncSwitch(it, it in sharing.syncedSharers, onAction, modifier = Modifier.padding(horizontal = 8.dp)) }
         if (incoming) {
             IncomingFiles(sharing, transfer, uploads, writes, onAction, gutter = 16.dp, listModifier = Modifier.fillMaxSize().padding(horizontal = 8.dp))
         } else SharedFilesBody(sharing.recipientFilesFailed, sharing.recipientFiles?.size, MR.string.filesync_view_to_none) {
