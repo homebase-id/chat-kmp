@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.Dp
 import io.github.kdroidfilter.webview.wry.Rgba
 import io.github.kdroidfilter.webview.wry.WryWebViewPanel
 import java.awt.Container
+import java.awt.Dimension
 import java.awt.Window
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -152,7 +153,13 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
     private fun park() {
         val layeredPane = parkingWindow()?.layeredPane ?: return
         moveInto(layeredPane)
-        val size = panel.size.takeIf { it.width > 0 && it.height > 0 } ?: layeredPane.size
+        // wry creates the native view at the window's top-left at the panel's size, moving it only on a 16ms timer,
+        // so it is created at 1x1 and given the parking size once it exists.
+        val size = when {
+            !hadWebView -> Dimension(1, 1)
+            panel.width > 1 && panel.height > 1 -> panel.size
+            else -> layeredPane.size
+        }
         panel.setBounds(-size.width - PARK_MARGIN, 0, size.width, size.height)
         panel.doLayout()
     }
@@ -195,7 +202,9 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         }
         // A destroyed webview's replacement starts a fresh page, which has to say `loaded` again.
         if (hadWebView && !poll.ready) loadPage()
+        val created = !hadWebView && poll.ready
         hadWebView = poll.ready
+        if (created && panel.parent !is CardSlot) park()
         poll.messages.forEach(::onBridgeMessage)
         if (poll.ready && CardEvent.Loaded::class in awaitedReplies) trackMainFrame(poll)
     }

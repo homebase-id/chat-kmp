@@ -94,6 +94,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -193,6 +194,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import id.homebase.core.widget.LocalOpenOverlays
 import id.homebase.core.widget.ProvideOpenOverlays
 import id.homebase.core.widget.ReportOverlay
+import id.homebase.core.ui.navigation.LocalPaneEntered
 
 // Wide windows get a card-width sheet rather than the page's full website layout.
 internal val WIDE_SHEET_MAX_WIDTH = 480.dp
@@ -214,9 +216,11 @@ private const val SKELETON_PULSE_MS = 900
 @Composable
 fun StartCardHostWhenSettled(viewModel: ProfileCardViewModel) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val paneEntered = LocalPaneEntered.current
     LaunchedEffect(viewModel, lifecycle) {
         // Building the host (first-use Chromium init + page load) blocks the main thread ~1s; a nav entry is RESUMED only once its enter transition ends.
         lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
+        snapshotFlow { paneEntered.value }.first { it }
         withFrameNanos { }
         viewModel.startHost()
     }

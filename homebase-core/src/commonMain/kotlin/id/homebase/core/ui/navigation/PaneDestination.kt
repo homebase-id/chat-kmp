@@ -19,6 +19,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
@@ -42,6 +45,9 @@ import androidx.navigation.compose.dialog
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import kotlinx.coroutines.flow.first
+
+/** False while a floating pane's enter animation runs: a pane is a dialog entry, RESUMED before its own animation ends. */
+internal val LocalPaneEntered = compositionLocalOf<State<Boolean>> { mutableStateOf(true) }
 
 private val PaneMaxWidth = 980.dp
 private val PaneMaxHeight = 800.dp
@@ -110,6 +116,7 @@ internal fun FloatingPaneContainer(
     }
 
     val appear = remember { MutableTransitionState(false).apply { targetState = true } }
+    val entered = remember { derivedStateOf { appear.isIdle && appear.currentState } }
     LaunchedEffect(dismissRequested) {
         if (!dismissRequested) return@LaunchedEffect
         appear.targetState = false
@@ -151,7 +158,9 @@ internal fun FloatingPaneContainer(
             // No tonal elevation: it tints only the pane's surface-coloured Surfaces (Scaffolds), not rows that paint the colour.
             shadowElevation = if (floating) 6.dp else 0.dp,
         ) {
-            if (floating) paneContent() else content()
+            CompositionLocalProvider(LocalPaneEntered provides entered) {
+                if (floating) paneContent() else content()
+            }
         }
     }
 }
