@@ -14,6 +14,7 @@ import id.homebase.core.ui.screens.profile.profileNameValue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
+import id.homebase.core.ui.screens.profile.SOCIAL_ATTRIBUTE_TYPES
 import id.homebase.core.ui.screens.profile.formatBirthday
 import id.homebase.core.ui.screens.profile.profileAddressValue
 
@@ -69,13 +70,8 @@ private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hid
 
 internal fun isOrderableType(type: String): Boolean = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
 
-internal val CARD_SOCIAL_TYPES = listOf(
-    ProfileAttributeTypes.TWITTER,
-    ProfileAttributeTypes.FACEBOOK,
-    ProfileAttributeTypes.INSTAGRAM,
-    ProfileAttributeTypes.TIKTOK,
-    ProfileAttributeTypes.LINKEDIN,
-)
+// The socials the page links; the web's unlinkable ones and the Homebase id never reach the card.
+internal val CARD_SOCIAL_TYPES = cardSocialFields.values.map { it.attributeType }
 
 // The page draws these and nothing else; the card orders only links and socials, as one block each.
 internal val CARD_RENDERED_TYPES = setOf(
@@ -172,7 +168,7 @@ internal fun cardContentItems(
             loaded.links.mapNotNull { link ->
                 item(link, link.string(ProfileAttributeTypes.KEY_LINK_TEXT)?.ifBlank { null } ?: link.string(ProfileAttributeTypes.KEY_LINK_TARGET))
             } +
-            CARD_SOCIAL_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } }
+            SOCIAL_ATTRIBUTE_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } }
         ).inCardOrder(fields) { it.id.toString() }
 }
 
