@@ -148,7 +148,7 @@ internal fun FloatingPaneContainer(
             } else {
                 MaterialTheme.colorScheme.background
             },
-            tonalElevation = if (floating) 6.dp else 0.dp,
+            // No tonal elevation: it tints only the pane's surface-coloured Surfaces (Scaffolds), not rows that paint the colour.
             shadowElevation = if (floating) 6.dp else 0.dp,
         ) {
             if (floating) paneContent() else content()
