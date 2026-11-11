@@ -2537,6 +2537,9 @@
     <string name="profile_card_content_sees_public">Anyone with your link sees this card</string>
     <string name="profile_card_content_sees_circle">Only this circle sees this card</string>
     <string name="profile_card_content_saving">Saving…</string>
+    <string name="profile_card_sections_title">Sections on this card</string>
+    <string name="profile_card_section_feed">Feed</string>
+    <string name="profile_card_section_feed_desc">Your latest public posts and photos.</string>
     <string name="profile_card_field_reorder">Reorder %1$s</string>
     <string name="profile_card_content_edit_this">Edit %1$s</string>
     <string name="profile_card_content_edit_title">Edit</string>
