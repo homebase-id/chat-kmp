@@ -42,7 +42,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.Lifecycle
@@ -301,7 +303,18 @@ private fun NewCircleTile(onClick: () -> Unit) {
 @Composable
 internal fun CardStill(card: ProfileCard, still: ImageBitmap?, modifier: Modifier) {
     if (still != null) {
-        Image(bitmap = still, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
+        // The page exports a 390x844 card, taller than the tile, with designs that pin content to its bottom: show it whole,
+        // its own edge colours filling the sides.
+        val edge = remember(still) {
+            val column = still.toPixelMap(width = 1)
+            Brush.verticalGradient(listOf(column[0, 0], column[0, still.height - 1]))
+        }
+        Image(
+            bitmap = still,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = modifier.background(edge),
+        )
     } else {
         val palette = card.overrides.palette
         CardDesignThumbnail(

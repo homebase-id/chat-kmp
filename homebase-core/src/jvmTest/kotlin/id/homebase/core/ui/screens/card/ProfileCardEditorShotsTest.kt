@@ -889,6 +889,22 @@ class ProfileCardEditorShotsTest {
         }
     }
 
+    // CARD_EXPORT_DIR holds real exportPng() PNGs (390x844 compact card at 1080 wide), one per design.
+    @Test
+    fun introTilesFitTheExportedCard() {
+        val exports = System.getenv("CARD_EXPORT_DIR")?.let(::File)?.listFiles { f -> f.extension == "png" }.orEmpty().sorted()
+        for (file in exports) {
+            val still = ImageIO.read(file).toComposeImageBitmap()
+            val tiles = polishBase.cards.associate { audienceKey(it.audience) to still }
+            runDesktopComposeUiTest(width = (736 * SCALE).toInt(), height = (744 * SCALE).toInt()) {
+                mainClock.autoAdvance = false
+                setContent { themed(false) { CardIntro(polishBase, tiles, null, 0, {}, {}, {}, {}, {}, onNewCircle = {}) } }
+                mainClock.advanceTimeBy(SETTLE_MS)
+                save("intro-export-${file.nameWithoutExtension}", false)
+            }
+        }
+    }
+
     private companion object {
         const val SCALE = 2f
         const val PHONE_W = 412
