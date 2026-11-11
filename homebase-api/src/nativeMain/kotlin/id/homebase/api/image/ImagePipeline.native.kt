@@ -77,10 +77,12 @@ private class ImageIoSource(
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
             ?: throw IllegalStateException("Couldn't create decode options")
-        // ImageIO's own scaling aliases under 2x, and can land a pixel off the plan, so it only does the coarse part.
+        // ImageIO aliases on reductions under 2x and can land a pixel off the plan, so it makes one of at least 2x or none.
+        // Only the memory guard can force a smaller one, as on Android.
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
         val guarded = memoryGuardScale(displayedSize, 1, minLongEdge)?.let { ceil(longEdge * it).toLong() } ?: Long.MAX_VALUE
-        val coarseEdge = minOf(minLongEdge.toLong() * 2, longEdge.toLong(), guarded).toInt()
+        val coarse = if (longEdge >= minLongEdge.toLong() * 2) minOf(minLongEdge * 2, (longEdge + 1) / 2) else longEdge
+        val coarseEdge = minOf(coarse.toLong(), guarded).toInt()
         val maxSize = CFBridgingRetain(NSNumber(int = coarseEdge))
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
