@@ -1265,12 +1265,12 @@
     <string name="settings_vault_desc">Krypteret dokumentopbevaring</string>
     <string name="settings_feed_desc">Opslag fra dem, du følger</string>
     <string name="settings_native_feed">Indbygget feed (eksperimentel)</string>
-    <string name="settings_filesync_icon_desc">Vis Filesync i navigationslinjen</string>
+    <string name="settings_filesync_icon_desc">Vis Drive i navigationslinjen</string>
     <string name="settings_calls_beta">Tale- og videoopkald (beta)</string>
     <string name="settings_calls_beta_desc">Eksperimentel og kan gå ned. Genstart appen for at anvende.</string>
     <string name="nav_calls">Opkald</string>
     <string name="calls_home_subtitle">Din historik over tale- og videoopkald</string>
-    <string name="filesync_label">Filesync</string>
+    <string name="filesync_label">Drive</string>
     <string name="filesync_home_subtitle">Gennemse de filer, du synkroniserer fra dine computere</string>
     <string name="settings_location_desc">Privat placeringshistorik</string>
     <string name="settings_contactbook_desc">Din adressebog og cirkler</string>
@@ -1895,6 +1895,7 @@
     <string name="profile_card_nameless_public_confirm">Fortsæt</string>
     <string name="profile_card_content_now_public">%1$s er nu offentlig</string>
     <string name="profile_card_content_now_hidden">%1$s er ikke længere offentlig</string>
+    <string name="profile_card_content_removed_from_card">Fjernet fra dette kort</string>
     <string name="profile_card_editor_title">Kortdesign</string>
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>
