@@ -638,7 +638,7 @@ val photobaseAppRegistration = AppRegistrationParams(
     circles = listOf(
         AppCircleDeclaration(
             slug = PhotobaseProtocol.CircleSlug,
-            name = "Photobase",
+            name = "Photos",
             description = "People who can see the photos you share through Homebase Photos",
             emoji = "📷",
             drives = listOf(
