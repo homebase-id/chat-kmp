@@ -85,8 +85,12 @@ internal val CARD_RENDERED_TYPES = setOf(
     ProfileAttributeTypes.LINK,
 ) + CARD_SOCIAL_TYPES
 
-// Each add makes a new record, so the profile can hold several.
-internal val REPEATABLE_TYPES = setOf(ProfileAttributeTypes.LINK, ProfileAttributeTypes.PHONE, ProfileAttributeTypes.EMAIL)
+// Each add makes a new record, so the profile can hold several; the card shows the most specific status.
+internal val REPEATABLE_TYPES = setOf(ProfileAttributeTypes.LINK, ProfileAttributeTypes.PHONE, ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.STATUS)
+
+// Only a status scoped to exactly this card counts: one shared wider (Public, all connections, other circles) leaves room for the card's own.
+internal fun List<CardContentItem>.addableTypesPresent(card: CardAudience): Set<String> =
+    filterNot { it.type == ProfileAttributeTypes.STATUS && it.audience != card.newItemAudience() }.map { it.type }.toSet()
 
 private val LEADING_TYPES = listOf(
     ProfileAttributeTypes.NAME,

@@ -393,6 +393,21 @@ class CardProfileDataTest {
     }
 
     @Test
+    fun aCircleStatusBeatsThePublicStatusAndTagLineOnItsCircleCardOnly() {
+        val attributes = records(ProfileVisibility.ANONYMOUS, ProfileField.STATUS to "Public status") +
+            circleRecord(ProfileAttributeTypes.STATUS, ProfileAttributeTypes.KEY_STATUS, "Friends status", circleX)
+        fun headline(audience: CardAudience, tagLine: String?) =
+            buildCardPayload(odinId, attributes, CardDesign.BOARD, null, null, tagLine, audience = audience).data.headline
+
+        assertEquals("Friends status", headline(CardAudience.Circle(circleX, "Circle"), null))
+        assertEquals("Friends status", headline(CardAudience.Circle(circleX, "Circle"), "Tag line"))
+        assertEquals("Public status", headline(CardAudience.Circle(circleY, "Circle"), null))
+        assertEquals("Tag line", headline(CardAudience.Circle(circleY, "Circle"), "Tag line"))
+        assertEquals("Public status", headline(CardAudience.Public, null))
+        assertEquals("Tag line", headline(CardAudience.Public, "Tag line"))
+    }
+
+    @Test
     fun ownerOnlyAndIdentityLimitedRecordsNeverReachACircleCard() {
         val attributes = records(ProfileVisibility.OWNER, ProfileField.STATUS to "Owner only") + record(
             ProfileAttributeTypes.TWITTER,
