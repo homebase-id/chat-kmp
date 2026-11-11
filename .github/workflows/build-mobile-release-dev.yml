@@ -13,16 +13,22 @@ on:
           description: "Upload the IPA to TestFlight (untick for experiment/CI-debug runs)"
           type: boolean
           default: true
+        ios_experiment:
+          description: "EXPERIMENT BRANCH: comma list of profile, entrypoints, smallbinary, o1"
+          type: string
+          default: "profile"
 
 #  push:
 #    branches: [main]
 
 concurrency:
-  group: mobile-release-dev-${{ github.ref }}
+  group: mobile-release-dev-${{ github.ref }}-${{ inputs.ios_experiment }}
   cancel-in-progress: true
 
 jobs:
   build-android:
+    # Experiment branch: no Play upload.
+    if: false
     runs-on: ubuntu-latest
 
     steps:
@@ -227,6 +233,7 @@ jobs:
           # IOS_RELEASE_LINK_OOM.md. Applied by a gated freeCompilerArgs block
           # in homebase-core/build.gradle.kts.
           homebase.native.disableDevirtualization=true
+          homebase.native.experiment=${{ inputs.ios_experiment }}
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
           tail -n 20 gradle.properties
@@ -273,7 +280,7 @@ jobs:
           echo "keychain watcher started (log: $RUNNER_TEMP/keychain-watcher.log)"
 
       - name: Build iOS
-        timeout-minutes: 180
+        timeout-minutes: 300
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj
@@ -300,6 +307,9 @@ jobs:
           cp ~/Library/Logs/gym/*.log "$d/" 2>/dev/null || true
           find ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports \
             -newer "$GITHUB_WORKSPACE/gradlew" -type f -exec cp {} "$d/" \; 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/homebase-core/build" -name ComposeApp.h -exec cp {} "$d/" \; 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/homebase-core/build" -name ComposeApp -type f -size +1M -exec ls -la {} \; > "$d/framework-sizes.txt" 2>/dev/null || true
+          find "$GITHUB_WORKSPACE" -maxdepth 2 -name '*.ipa' -exec ls -la {} \; >> "$d/framework-sizes.txt" 2>/dev/null || true
           find "$GITHUB_WORKSPACE" -maxdepth 3 -name 'hs_err_pid*.log' -exec cp {} "$d/" \; 2>/dev/null || true
           ls -la "$d"
 

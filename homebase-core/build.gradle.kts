@@ -75,6 +75,18 @@ kotlin {
             ) {
                 freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis,RemoveRedundantCallsToStaticInitializersPhase"
             }
+            // EXPERIMENT BRANCH ONLY (ios-link-experiments): link options picked per dev-workflow run
+            // by its ios_experiment input, to measure what each one saves on the release link.
+            val experiments = providers.gradleProperty("homebase.native.experiment").orNull
+                .orEmpty().split(',').map { it.trim() }.toSet()
+            if (buildType == org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE) {
+                if ("profile" in experiments) freeCompilerArgs += "-Xprofile-phases"
+                if ("entrypoints" in experiments) {
+                    freeCompilerArgs += "-Xbinary=objcExportEntryPointsPath=${project.file("objc-entry-points.txt").absolutePath}"
+                }
+                if ("smallbinary" in experiments) freeCompilerArgs += "-Xbinary=smallBinary=true"
+                if ("o1" in experiments) freeCompilerArgs += "-Xoverride-konan-properties=clangOptFlags.ios_arm64=-O1"
+            }
             // Export homebase-api to make FFmpegKitBridge accessible from Swift
             export(project(":homebase-api"))
             export(project(":homebase-common"))

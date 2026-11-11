@@ -1,0 +1,61 @@
+// ObjC/Swift export allow-list for the release framework (-Xbinary=objcExportEntryPointsPath).
+// Only the functions and properties matched here get ObjC bridges; classes stay in the header.
+// Format: "<function|property|callable> <fq.name>" or "<kind> <fq.Parent>.*" (direct members only).
+// Overrides of a listed member are exposed too. A Kotlin interface that Swift IMPLEMENTS must list
+// all its members with ".*": Kotlin calls them through the bridge, and a missing one fails at
+// runtime, not at Swift compile time.
+
+// homebase-core: top-level functions Swift calls (MainViewControllerKt, PhotoBackupBackgroundTasksKt, ...)
+function id.homebase.core.MainViewController
+function id.homebase.core.armCrashHandlingAndCheckPending
+function id.homebase.core.clearPendingCrash
+function id.homebase.core.initializeApp
+function id.homebase.core.isDatabaseOpen
+function id.homebase.core.whenStarted
+function id.homebase.core.handleIncomingLink
+function id.homebase.core.isPhotobaseEnabled
+function id.homebase.core.registerPhotoBackupBackgroundTasks
+function id.homebase.core.startListeningForPhotoBackupUploads
+function id.homebase.core.diagnostics.logPrevention
+function id.homebase.core.diagnostics.logLaunchTrace
+function id.homebase.core.notifications.logPushChain
+
+// homebase-core: objects and classes Swift uses
+callable id.homebase.core.MainViewControllerRef.*
+callable id.homebase.core.NotificationActionBridge.*
+callable id.homebase.core.NotificationActionBridge.Companion.*
+callable id.homebase.core.share.OpenedFileBridge.*
+callable id.homebase.core.vault.VaultPrivacyBridge.*
+
+// homebase-common
+callable id.homebase.core.notifications.CallKitBridge.*
+callable id.homebase.core.notifications.CallKitActions.*
+callable id.homebase.core.notifications.CallPictureInPictureBridge.*
+callable id.homebase.core.notifications.VoipTokenRelay.*
+callable id.homebase.core.notifications.CallKitBridgeHolder.*
+callable id.homebase.core.notifications.CallPictureInPictureBridgeHolder.*
+callable id.homebase.core.notifications.CallPushRouter.*
+callable id.homebase.core.notifications.NotificationEntry.*
+callable id.homebase.core.notifications.NotificationEntry.Companion.*
+callable id.homebase.core.camera.CameraOrientationLock.*
+callable id.homebase.core.util.CreatedIdentityRelay.*
+callable id.homebase.core.logging.CrashlyticsBridge.*
+callable id.homebase.core.logging.CrashlyticsBridgeHolder.*
+
+// homebase-api
+callable id.homebase.api.platform.BackgroundUploadBridge.*
+callable id.homebase.api.platform.BackgroundUploadBridgeHolder.*
+callable id.homebase.api.platform.BackgroundUploadResults.*
+callable id.homebase.api.platform.BackgroundUploadResults.Result.*
+callable id.homebase.api.platform.ContinuedProcessingBridge.*
+callable id.homebase.api.platform.ContinuedProcessingHandle.*
+callable id.homebase.api.platform.ContinuedProcessingBridgeHolder.*
+callable id.homebase.api.video.FFmpegKitBridge.*
+callable id.homebase.api.video.FFmpegKitBridgeHolder.*
+callable id.homebase.api.video.FFmpegResult.*
+callable id.homebase.api.video.MediaInfo.*
+callable id.homebase.api.video.StreamInfo.*
+
+// kmpnotifier
+callable com.mmk.kmpnotifier.notification.NotifierManager.*
+callable com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Ios.*
