@@ -40,7 +40,6 @@ class CardAddGroupTest {
                     circles = emptyList(),
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    importSources = emptyList(),
                     showCardsButton = true,
                     onAudience = { _, _ -> },
                     onEdit = { _, _, _ -> },
@@ -48,7 +47,6 @@ class CardAddGroupTest {
                     onAdd = { _, _ -> },
                     onChangePhoto = {},
                     onRemovePhoto = {},
-                    onImport = {},
                 )
             }
         }
