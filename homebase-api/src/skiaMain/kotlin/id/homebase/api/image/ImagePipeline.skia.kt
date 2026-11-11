@@ -29,21 +29,7 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
     }
 
     override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap =
-        SkiaPipelineBitmap(resampleNatively(image, width, height) ?: resampledInKotlin(width, height))
-
-    private suspend fun resampledInKotlin(width: Int, height: Int): Image {
-        val bitmap = Bitmap()
-        val pixels = try {
-            bitmap.allocPixels(info(image.width, image.height))
-            check(image.readPixels(bitmap, 0, 0)) { "Couldn't read the image's pixels" }
-            bitmap.readPixels() ?: throw IllegalStateException("Couldn't read the image's pixels")
-        } finally {
-            bitmap.close()
-        }
-        return Image.makeRaster(info(width, height), resampleLanczos(pixels, image.width, image.height, width, height), width * 4)
-    }
-
-    private fun info(width: Int, height: Int) = ImageInfo(width, height, ColorType.N32, ColorAlphaType.PREMUL, image.colorSpace)
+        SkiaPipelineBitmap(resampleRaster(image, width, height))
 
     override fun encode(format: ImageFormat, quality: Int): ByteArray {
         val data = image.encodeToData(ImageUtils.encodedFormatFor(format), quality)
@@ -57,7 +43,7 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
 
     override fun inSrgb(): PipelineBitmap {
         if (isSrgb) return this
-        val surface = Surface.makeRaster(ImageInfo(image.width, image.height, ColorType.N32, ColorAlphaType.PREMUL, ColorSpace.sRGB))
+        val surface = Surface.makeRaster(ImageInfo(image.width, image.height, ColorType.N32, image.pipelineAlphaType, ColorSpace.sRGB))
         surface.canvas.drawImage(image, 0f, 0f)
         return SkiaPipelineBitmap(surface.snapshotAndClose())
     }
@@ -65,11 +51,12 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
     override fun close() = image.close()
 }
 
-/**
- * [PipelineBitmap.resampledTo] between the platform's own pixel buffers, or null where the platform
- * has nothing better than the shared Kotlin Lanczos, which works on Kotlin heap copies.
- */
-internal expect fun resampleNatively(image: Image, width: Int, height: Int): Image?
+/** [PipelineBitmap.resampledTo] for one of the pipeline's raster images: 8-bit, opaque or premultiplied. */
+internal expect suspend fun resampleRaster(image: Image, width: Int, height: Int): Image
+
+// Opaque only when the decoder says so, which lets an opaque photo skip the clamp to alpha.
+internal val Image.pipelineAlphaType: ColorAlphaType
+    get() = if (alphaType == ColorAlphaType.OPAQUE) ColorAlphaType.OPAQUE else ColorAlphaType.PREMUL
 
 /** Skia reads EXIF rotation itself and decodes lazily, so the size costs no pixels. */
 internal class SkiaImageSource(bytes: ByteArray) : ImageSource {
@@ -81,7 +68,7 @@ internal class SkiaImageSource(bytes: ByteArray) : ImageSource {
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val pixels = Bitmap()
         try {
-            pixels.allocPixels(ImageInfo(image.width, image.height, ColorType.N32, ColorAlphaType.PREMUL, image.colorSpace))
+            pixels.allocPixels(ImageInfo(image.width, image.height, ColorType.N32, image.pipelineAlphaType, image.colorSpace))
             check(image.readPixels(pixels, 0, 0)) { "Couldn't decode the image's pixels" }
             pixels.setImmutable()
             return SkiaPipelineBitmap(Image.makeFromBitmap(pixels))
@@ -102,4 +89,4 @@ private fun Surface.snapshotAndClose(): Image = try {
 
 // Taking the source's colour space is what keeps a Display P3 photo from being relabelled sRGB.
 private fun rasterSurface(source: Image, width: Int, height: Int): Surface =
-    Surface.makeRaster(ImageInfo(width, height, ColorType.N32, ColorAlphaType.PREMUL, source.colorSpace))
+    Surface.makeRaster(ImageInfo(width, height, ColorType.N32, source.pipelineAlphaType, source.colorSpace))

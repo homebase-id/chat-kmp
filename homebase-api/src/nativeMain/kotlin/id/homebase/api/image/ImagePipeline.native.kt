@@ -39,6 +39,7 @@ import platform.CoreGraphics.CGColorSpaceRelease
 import platform.CoreGraphics.CGContextDrawImage
 import platform.CoreGraphics.CGContextRelease
 import platform.CoreGraphics.CGImageAlphaInfo
+import platform.CoreGraphics.CGImageGetAlphaInfo
 import platform.CoreGraphics.CGImageGetColorSpace
 import platform.CoreGraphics.CGImageGetHeight
 import platform.CoreGraphics.CGImageGetWidth
@@ -109,6 +110,7 @@ private fun CGImageRef.toSkiaImage(): Image {
     val width = CGImageGetWidth(this).toInt()
     val height = CGImageGetHeight(this).toInt()
     val wide = CGImageGetColorSpace(this)?.let { CGColorSpaceIsWideGamutRGB(it) } == true
+    val opaque = CGImageGetAlphaInfo(this) in OPAQUE_ALPHA_INFO
     val colorSpace = CGColorSpaceCreateWithName(if (wide) kCGColorSpaceDisplayP3 else kCGColorSpaceSRGB)
     require(width.toLong() * 4 * height <= Int.MAX_VALUE) { "$width x $height is too large to decode" }
     val rowBytes = width * 4
@@ -137,11 +139,17 @@ private fun CGImageRef.toSkiaImage(): Image {
         width,
         height,
         ColorType.RGBA_8888,
-        ColorAlphaType.PREMUL,
+        if (opaque) ColorAlphaType.OPAQUE else ColorAlphaType.PREMUL,
         if (wide) ColorSpace.displayP3 else ColorSpace.sRGB,
     )
     return Image.makeRaster(info, pixels, rowBytes)
 }
+
+private val OPAQUE_ALPHA_INFO = setOf(
+    CGImageAlphaInfo.kCGImageAlphaNone,
+    CGImageAlphaInfo.kCGImageAlphaNoneSkipLast,
+    CGImageAlphaInfo.kCGImageAlphaNoneSkipFirst,
+)
 
 private fun openWithImageIo(bytes: ByteArray): ImageSource? {
     if (bytes.isEmpty()) return null
