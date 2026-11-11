@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onEach
 import kotlin.uuid.Uuid
 
-class HashedAsset(val contentDigests: List<ByteArray>) {
+class HashedAsset(val contentDigests: List<ByteArray>, val sizeBytes: Long = 0) {
     val uniqueId: Uuid = PhotoUniqueId.fromContentDigests(contentDigests)
 
     @OptIn(ExperimentalStdlibApi::class)
@@ -27,7 +27,10 @@ class AssetHasher(
     suspend fun hash(assetId: String, mediaType: BackupMediaType): HashedAsset {
         val exported = exports.export(assetId, mediaType)
         try {
-            val hashed = timed(BackupStage.Hash) { HashedAsset(exported.parts.map { digest(it.path) }) }
+            val hashed = timed(BackupStage.Hash) {
+                var size = 0L
+                HashedAsset(exported.parts.map { part -> digest(part.path) { size += it } }, size)
+            }
             exports.keep(assetId, mediaType, exported)
             return hashed
         } catch (e: Throwable) {
@@ -42,9 +45,12 @@ class AssetHasher(
 
     suspend fun forgetAll() = exports.forgetAll()
 
-    suspend fun digest(path: String): ByteArray {
+    suspend fun digest(path: String, onBytes: (Int) -> Unit = {}): ByteArray {
         val hasher = Blake3Hasher()
-        fileOps.readFileAsFlow(path).onEach { hasher.update(it) }.collect()
+        fileOps.readFileAsFlow(path).onEach {
+            hasher.update(it)
+            onBytes(it.size)
+        }.collect()
         return hasher.digest()
     }
 }

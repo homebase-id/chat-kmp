@@ -13,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TestTimeSource
 
 class HashedExportsTest {
     private val sizes = mutableMapOf<String, Long>()
@@ -37,7 +38,8 @@ class HashedExportsTest {
     }
 
     private val source = CountingSource()
-    private val exports = HashedExports(source, files)
+    private val clock = TestTimeSource()
+    private val exports = HashedExports(source, files, clock)
     private val hasher = AssetHasher(exports, files)
 
     @Test
@@ -83,13 +85,44 @@ class HashedExportsTest {
     }
 
     @Test
-    fun aVideoIsDeletedAfterHashingAndExportedAgain() = runTest {
+    fun aHashedVideoIsKeptForItsHandOffOutsideThePhotoAllowance() = runTest {
+        exportSize = 2L * 1024 * 1024 * 1024
         hasher.hash("a", BackupMediaType.Video)
+
+        val exported = exports.export("a", BackupMediaType.Video)
+
+        assertEquals(1, source.exports)
+        assertTrue(exported.isHashedCopy)
+        assertTrue(deleted.isEmpty())
+        assertTrue(exports.awaitRoom(2.minutes))
+    }
+
+    @Test
+    fun onlyOneVideoIsKeptAtATime() = runTest {
+        hasher.hash("a", BackupMediaType.Video)
+        hasher.hash("b", BackupMediaType.Video)
+
+        assertEquals(listOf("b-2"), deleted)
+        assertFalse(exports.export("b", BackupMediaType.Video).isHashedCopy)
+    }
+
+    @Test
+    fun aVideoKeptTooLongMakesWayAndIsExportedAgain() = runTest {
+        hasher.hash("a", BackupMediaType.Video)
+        clock += 31.minutes
+
+        hasher.hash("b", BackupMediaType.Video)
         assertEquals(listOf("a-1"), deleted)
+        assertTrue(exports.export("b", BackupMediaType.Video).isHashedCopy)
+        assertFalse(exports.export("a", BackupMediaType.Video).isHashedCopy)
+    }
 
-        exports.export("a", BackupMediaType.Video)
+    @Test
+    fun aVideoTooBigToKeepIsDeleted() = runTest {
+        exportSize = 5L * 1024 * 1024 * 1024
+        hasher.hash("a", BackupMediaType.Video)
 
-        assertEquals(2, source.exports)
+        assertEquals(listOf("a-1"), deleted)
     }
 
     @Test

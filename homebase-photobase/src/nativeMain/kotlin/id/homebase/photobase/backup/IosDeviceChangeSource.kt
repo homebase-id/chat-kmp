@@ -172,9 +172,10 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
                     id = asset.localIdentifier,
                     mediaType = mediaType,
                     createdAtMs = ((asset.creationDate?.timeIntervalSince1970 ?: 0.0) * 1000).toLong(),
-                    modifiedAtMs = ((asset.modificationDate?.timeIntervalSince1970 ?: 0.0) * 1000).toLong(),
-                    // PhotoKit has no public size; the ledger compares modifiedAt, which is enough.
-                    sizeBytes = 0,
+                    // Favourites, albums and system analysis move modificationDate too, but an unedited original can't change.
+                    modifiedAtMs = if (asset.hasAdjustments) ((asset.modificationDate?.timeIntervalSince1970 ?: 0.0) * 1000).toLong() else UNEDITED,
+                    // PhotoKit has no public size.
+                    sizeBytes = null,
                 ),
             )
         }
@@ -243,5 +244,6 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
 
     private companion object {
         const val TOKEN_KEY = "ios.changeToken"
+        const val UNEDITED = 0L
     }
 }

@@ -113,6 +113,10 @@ SELECT * FROM DriveMainIndex
 WHERE identityId = ? AND driveId = ? AND globalTransitId = ?;
 
 
+deleteByDrive:
+DELETE FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ?;
+
 -- Delete all records (for testing)
 deleteAll:
 DELETE FROM DriveMainIndex;

@@ -48,16 +48,24 @@ class DeviceBackupWrapper(
     suspend fun countInStates(states: List<Long>): Long =
         databaseManager.readValue("deviceBackup.countInStates") { assets.countInStates(states).executeAsOne() }
 
+    suspend fun countSending(states: List<Long>, retrying: String): Long =
+        databaseManager.readValue("deviceBackup.countSending") { assets.countSending(states, retrying).executeAsOne() }
+
     suspend fun bytesByState(): Map<Long, Long> =
         databaseManager.readValue("deviceBackup.bytesByState") {
             assets.bytesByState().executeAsList().associate { it.state to it.bytes }
         }
 
+    suspend fun unknownSizeByState(): Map<Long, Long> =
+        databaseManager.readValue("deviceBackup.unknownSizeByState") {
+            assets.unknownSizeByState().executeAsList().associate { it.state to it.COUNT }
+        }
+
     suspend fun selectFailures(state: Long, limit: Long): List<SelectFailures> =
         databaseManager.readValue("deviceBackup.selectFailures") { assets.selectFailures(state, limit).executeAsList() }
 
-    suspend fun markHashed(id: String, contentHash: String, uniqueId: String, state: Long) {
-        databaseManager.withWriteValue { assets.markHashed(contentHash, uniqueId, state, id) }
+    suspend fun markHashed(id: String, contentHash: String, uniqueId: String, state: Long, size: Long) {
+        databaseManager.withWriteValue { assets.markHashed(contentHash, uniqueId, state, size, id) }
     }
 
     suspend fun clearBackoffForReason(reason: String) {
@@ -85,6 +93,17 @@ class DeviceBackupWrapper(
 
     suspend fun requeueFailed(failedState: Long, newState: Long, hashedState: Long) {
         databaseManager.withWriteValue { assets.requeueFailed(newState, hashedState, failedState) }
+    }
+
+    suspend fun recheckDone(doneState: Long, newState: Long, hashedState: Long) {
+        databaseManager.withWriteValue { assets.recheckDone(newState, hashedState, doneState) }
+    }
+
+    suspend fun deleteAll() {
+        databaseManager.withWriteTransaction {
+            assets.deleteAll()
+            checkpoints.deleteAll()
+        }
     }
 
     suspend fun checkpoints(): Map<String, String> =

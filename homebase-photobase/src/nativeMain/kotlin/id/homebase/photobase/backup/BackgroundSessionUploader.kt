@@ -121,6 +121,8 @@ fun listenForBackgroundUploadResults(
             val uniqueId = Uuid.parseOrNull(result.uploadKey) ?: return@launch
             if (backgroundUploadLanded(result.status, result.body)) {
                 ledger.onOutboxCompleted(uniqueId)
+                // The run that handed this off ended with it unsent, so the stuck alert is still armed.
+                if (!ledger.counts().workLeft) cancelStuckAlert()
             } else {
                 Logger.w(tag = "BackgroundSessionUploader") { "upload $uniqueId: status=${result.status} error=${result.error}" }
                 ledger.onOutboxDropped(uniqueId, result.error ?: "upload refused: ${result.status}")

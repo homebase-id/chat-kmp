@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import co.touchlab.kermit.Logger
 import kotlin.time.Clock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -31,7 +32,7 @@ class LoopbackSignaling(
     }
 
     fun deliver(to: String, from: String, signal: CallSignal, receivedAtMs: Long = now()) {
-        inbox(to).tryEmit(InboundSignal(from, signal, receivedAtMs))
+        if (!inbox(to).tryEmit(InboundSignal(from, signal, receivedAtMs))) Logger.w(tag = "LoopbackSignaling") { "dropped a signal: inbox $to full, from $from" }
     }
 
     // Copy-on-write CAS: concurrent first lookups converge on one inbox, so no signal lands in a discarded flow.

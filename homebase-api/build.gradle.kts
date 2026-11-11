@@ -235,6 +235,11 @@ kotlin {
             }
         }
 
+    val runHasherBench = providers.environmentVariable("HASHER_BENCH").orNull == "1"
+    tasks.withType(AbstractTestTask::class.java).configureEach {
+        if (!runHasherBench) filter.excludeTestsMatching("id.homebase.api.crypto.HasherThroughputBench.*")
+    }
+
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
     }

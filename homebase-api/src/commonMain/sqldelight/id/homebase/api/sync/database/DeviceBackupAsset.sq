@@ -35,7 +35,7 @@ SELECT deviceAssetId FROM DeviceBackupAsset WHERE state != ?;
 restart:
 UPDATE DeviceBackupAsset
 SET albumIds = :albumIds, mediaType = :mediaType, createdAt = :createdAt, modifiedAt = :modifiedAt, size = :size,
-    state = :state, contentHash = NULL, uniqueId = NULL, attempts = 0, lastError = NULL, nextAttemptAt = 0, uploadTaskId = NULL
+    state = :state, uniqueId = NULL, attempts = 0, lastError = NULL, nextAttemptAt = 0, uploadTaskId = NULL
 WHERE deviceAssetId = :deviceAssetId;
 
 updateAlbums:
@@ -58,9 +58,11 @@ UPDATE DeviceBackupAsset
 SET lastError = NULL, nextAttemptAt = 0
 WHERE lastError = :reason;
 
+-- size 0 is unknown: only then does the hashed size replace it, so a listing that knows the size never disagrees with it.
 markHashed:
 UPDATE DeviceBackupAsset
-SET contentHash = :contentHash, uniqueId = :uniqueId, state = :state, lastError = NULL, attempts = 0, nextAttemptAt = 0
+SET contentHash = :contentHash, uniqueId = :uniqueId, state = :state, lastError = NULL, attempts = 0, nextAttemptAt = 0,
+    size = CASE WHEN size = 0 THEN :size ELSE size END
 WHERE deviceAssetId = :deviceAssetId;
 
 setState:
@@ -88,8 +90,14 @@ SELECT state, COUNT(*) FROM DeviceBackupAsset GROUP BY state;
 countInStates:
 SELECT COUNT(*) FROM DeviceBackupAsset WHERE state IN ?;
 
+countSending:
+SELECT COUNT(*) FROM DeviceBackupAsset WHERE state IN :states AND (lastError IS NULL OR lastError != :retrying);
+
 bytesByState:
 SELECT state, CAST(COALESCE(SUM(size), 0) AS INTEGER) AS bytes FROM DeviceBackupAsset GROUP BY state;
+
+unknownSizeByState:
+SELECT state, COUNT(*) FROM DeviceBackupAsset WHERE size = 0 GROUP BY state;
 
 selectFailures:
 SELECT deviceAssetId, lastError FROM DeviceBackupAsset WHERE state = :state ORDER BY createdAt DESC LIMIT :limit;
@@ -98,6 +106,11 @@ requeueFailed:
 UPDATE DeviceBackupAsset
 SET state = CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END, attempts = 0, nextAttemptAt = 0, lastError = NULL
 WHERE state = :failedState;
+
+recheckDone:
+UPDATE DeviceBackupAsset
+SET state = CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END, attempts = 0, nextAttemptAt = 0, lastError = NULL
+WHERE state = :doneState;
 
 deleteAll:
 DELETE FROM DeviceBackupAsset;
