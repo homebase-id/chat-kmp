@@ -35,8 +35,7 @@ object MessageThumbnailGenerator {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "MessageThumbnailGenerator", throwable = e) { "No thumbnails for $payloadKey; sending the file as it is" }
-            val format = ImageFormatDetector.detectFormat(fileOperationsProvider.readFileHeaderBytes(filePath))
-            return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceFormat = format, sourceByteCount = null)
+            return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceFormat = null, sourceByteCount = null)
         }
         return ThumbnailResult(
             preview = media.tiny,

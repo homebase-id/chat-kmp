@@ -62,9 +62,13 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
     }
 }
 
-internal fun CGImageSourceRef.readMetadata(): ImageMetadata? {
-    val cfProps = CGImageSourceCopyPropertiesAtIndex(this, 0.convert(), null) ?: return null
-    return (CFBridgingRelease(cfProps) as? NSDictionary)?.let(::buildMetadata)
+internal fun CGImageSourceRef.readMetadata(): ImageMetadata? = try {
+    CGImageSourceCopyPropertiesAtIndex(this, 0.convert(), null)
+        ?.let { CFBridgingRelease(it) as? NSDictionary }
+        ?.let(::buildMetadata)
+} catch (e: Throwable) {
+    Logger.w(throwable = e, tag = "readImageMetadata") { "iOS EXIF read failed" }
+    null
 }
 
 private fun buildMetadata(props: NSDictionary): ImageMetadata {

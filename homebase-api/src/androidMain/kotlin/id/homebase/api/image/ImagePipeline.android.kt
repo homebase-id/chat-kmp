@@ -167,7 +167,7 @@ private class AndroidImageSource(private val input: AndroidImageInput) : ImageSo
 
     override fun metadata(): ImageMetadata? = try {
         exif.toImageMetadata()
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         Logger.w(tag = TAG, throwable = e) { "Android EXIF read failed" }
         null
     }

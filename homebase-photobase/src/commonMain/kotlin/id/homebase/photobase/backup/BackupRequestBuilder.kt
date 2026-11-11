@@ -49,7 +49,7 @@ class BackupRequestBuilder(
             val imagePath = exported.parts.first().path
             val (prepared, exif) = timed(BackupStage.Thumbnails) {
                 val media = prepareImage(imagePath, payloads.first().key)
-                media to (media?.metadata ?: readExifSoftly(imagePath))
+                media to if (media != null) media.metadata else readExifSoftly(imagePath)
             }
             val metadata = photoMetadata(
                 uniqueId,

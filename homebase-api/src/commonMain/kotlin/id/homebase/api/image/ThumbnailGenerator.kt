@@ -56,17 +56,22 @@ suspend fun createMediaImages(
     allowFinalImage: Boolean = true,
     readMetadata: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
-    val header = fileOps.readFileHeaderBytes(path)
-    val file = openImageFile(path, fileOps).takeUnless { isSvg(header) }
-        ?: return@withContext createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata)
-    file.use { mediaImagesFrom(it, header, fileOps.getFileSize(path), payloadKey, setting, allowFinalImage, readMetadata) }
+    suspend fun fromBytes() = createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata)
+    // Opened first: where it can't be, the header read would cost a whole read of its own (a Photos-library asset).
+    val file = openImageFile(path, fileOps) ?: return@withContext fromBytes()
+    file.use {
+        val header = fileOps.readFileHeaderBytes(path)
+        if (isSvg(header) || !ImageFormatDetector.answersIsAnimated(header)) return@withContext fromBytes()
+        val byteCount = fileOps.getFileSize(path).takeIf { it > 0 }
+        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, readMetadata)
+    }
 }
 
 // Every check here needs only the header: a GIF keeps its file whether or not it animates.
 private suspend fun mediaImagesFrom(
     source: ImageSource,
     header: ByteArray,
-    byteCount: Long,
+    byteCount: Long?,
     payloadKey: String,
     setting: MediaQuality,
     allowFinalImage: Boolean,
