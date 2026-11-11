@@ -155,6 +155,8 @@ data class FilesyncSharingState(
     val sharedWith: FilesyncSharedWith? = null,
     /** The people who have files for this identity. */
     val sharers: List<OdinId> = emptyList(),
+    /** The sharers whose files this identity's computers sync. */
+    val syncedSharers: Set<OdinId> = emptySet(),
     /** Whose shared files are shown. */
     val sharer: OdinId? = null,
     /** The folder of theirs shown, below what they share at the top. */
@@ -273,6 +275,7 @@ sealed interface FilesyncUiAction {
     data class OpenFromChat(val sharer: OdinId?, val circleId: Uuid) : FilesyncUiAction
     data object DismissShareWith : FilesyncUiAction
     data class OpenSharer(val sharer: OdinId) : FilesyncUiAction
+    data class SetSharerSync(val sharer: OdinId, val sync: Boolean) : FilesyncUiAction
     data object CloseShareView : FilesyncUiAction
     data class OpenSharedFolder(val path: List<FilesyncCrumb>) : FilesyncUiAction
     data class OpenRecipient(val recipient: FilesyncAudience) : FilesyncUiAction
@@ -291,7 +294,7 @@ sealed interface FilesyncDiscussionAction : FilesyncUiAction
 enum class FilesyncError {
     MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
     SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, InheritFailed,
-    MoveCheckFailed, MoveSharingFailed,
+    MoveCheckFailed, MoveSharingFailed, SyncChoiceFailed,
 }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */

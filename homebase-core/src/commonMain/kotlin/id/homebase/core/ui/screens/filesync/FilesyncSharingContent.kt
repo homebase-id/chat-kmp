@@ -48,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
@@ -76,6 +77,7 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.common.util.formatBytes
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
@@ -114,6 +116,8 @@ import id.homebase.resources.filesync_shared_by_none
 import id.homebase.resources.filesync_shared_files_failed
 import id.homebase.resources.filesync_shared_with
 import id.homebase.resources.filesync_shared_with_me
+import id.homebase.resources.filesync_sync_sharer
+import id.homebase.resources.filesync_sync_sharer_hint
 import id.homebase.resources.filesync_shared_with_none
 import id.homebase.resources.filesync_sharing_body
 import id.homebase.resources.filesync_sharing_title
@@ -388,6 +392,27 @@ internal fun LazyListScope.sharerRows(sharers: List<OdinId>, onAction: (Filesync
     }
 }
 
+/** Everything [sharer] shares, synced to this identity's computers or not; offered from the developer menu until they read it. */
+@Composable
+private fun SharerSyncSwitch(sharer: OdinId, synced: Boolean, onAction: (FilesyncUiAction) -> Unit, modifier: Modifier = Modifier) {
+    val offered by koinInject<DeveloperPreferences>().filesyncSyncSharedEnabled.collectAsStateWithLifecycle()
+    if (!offered) return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .toggleable(value = synced, role = Role.Switch) { onAction(FilesyncUiAction.SetSharerSync(sharer, it)) }
+            .padding(vertical = 8.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(MR.string.filesync_sync_sharer), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(MR.string.filesync_sync_sharer_hint, sharer.domainName), style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = synced, onCheckedChange = null)
+    }
+}
+
 @Composable
 private fun PickerHeading(text: StringResource) {
     Text(
@@ -464,6 +489,7 @@ internal fun FilesyncShareView(
                         stringResource(if (incoming) MR.string.filesync_view_from_body else MR.string.filesync_view_to_body),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    sharing.sharer?.let { SharerSyncSwitch(it, it in sharing.syncedSharers, onAction) }
                     if (!incoming && shown is FilesyncAudience.Group) {
                         val members = shown.members.joinToString { it.domainName }
                         Text(members, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -693,6 +719,9 @@ internal fun FilesyncSharedFilesSheet(
                 IdentityAvatar(sharer, AvatarOptions(size = 36.dp))
                 Text(path.lastOrNull()?.name ?: sharer.domainName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (sharing.canAddHere) FilesyncUploadButton(writes.pickToAdd)
+            }
+            if (sharing.sharerPath.isEmpty()) {
+                SharerSyncSwitch(sharer, sharer in sharing.syncedSharers, onAction, modifier = Modifier.padding(horizontal = 24.dp))
             }
             IncomingFiles(sharing, transfer, uploads, writes, onAction, gutter = 24.dp, listModifier = Modifier.heightIn(max = 480.dp))
         }

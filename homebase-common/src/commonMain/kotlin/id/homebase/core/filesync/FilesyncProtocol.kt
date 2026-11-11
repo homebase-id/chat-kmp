@@ -16,7 +16,10 @@ object FilesyncProtocol {
 
     const val FolderFileType = 7101
     const val FileFileType = 7102
-    /** "Someone has files for you": kept on a person's own drive once they open what was shared, kept out of the tree. */
+    /**
+     * "Someone has files for you": kept on a person's own drive once they open what was shared, kept out of the tree.
+     * The desktop daemon reads its `sync` (FilesyncMarker) to sync that person's shares to every computer.
+     */
     const val MarkerFileType = 7103
 
     /** The circle granting drive Write, joined only by people a live Edit share reaches. */

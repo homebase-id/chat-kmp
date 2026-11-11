@@ -27,6 +27,7 @@ import id.homebase.api.client.connections.SealedMemberShareKeys
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
@@ -38,6 +39,10 @@ import id.homebase.api.client.drives.shares.DriveShareProvider
 import id.homebase.api.client.drives.shares.ShareRequest
 import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocale
+import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
@@ -46,6 +51,7 @@ import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.withRetryResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.toSecureByteArray
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.HashUtil
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -124,9 +130,15 @@ class FilesyncMoveSharing internal constructor(
     }
 }
 
-/** "[odinId] has files for you", left on the recipient's Filesync drive. */
+/**
+ * "[odinId] has files for you", left on the recipient's Filesync drive. The desktop daemon reads [sync] (missing is
+ * false): while it's true, every computer syncs what [odinId] shares into Homebase/Shared/<odinId>.
+ */
 @Serializable
-data class FilesyncMarker(val odinId: String, @Serializable(with = UuidSerializer::class) val driveAlias: Uuid)
+data class FilesyncMarker(val odinId: String, @Serializable(with = UuidSerializer::class) val driveAlias: Uuid, val sync: Boolean = false)
+
+/** A person who shares files with this identity; [sync]: its computers keep what they share. */
+data class FilesyncSharer(val odinId: OdinId, val sync: Boolean)
 
 sealed class FilesyncSharingException(message: String, cause: Throwable? = null) : Exception(message, cause) {
     /** Sharing writes as Filesync, which this device hasn't signed in to. */
@@ -512,11 +524,14 @@ class FilesyncSharing(
         return found
     }
 
-    /**
-     * The people this identity keeps a marker for, newest first. Its own markers are trusted; one someone else left (an
-     * older client's) only when it names its sender.
-     */
-    suspend fun sharers(): List<OdinId> {
+    /** The people this identity keeps a marker for, newest first; one synced when any of their markers says so. */
+    suspend fun sharers(): List<FilesyncSharer> =
+        markerFiles().groupBy { it.sharer }.map { (sharer, files) -> FilesyncSharer(sharer, files.any { it.marker.sync }) }
+
+    private class MarkerFile(val sharer: OdinId, val marker: FilesyncMarker, val file: HomebaseFile)
+
+    // Its own markers are trusted; one someone else left (an older client's) only when it names its sender.
+    private suspend fun markerFiles(): List<MarkerFile> {
         val self = appCredentials.getActiveCredentials()?.domain
         return query.queryBatch(
             FilesyncProtocol.DriveAlias,
@@ -534,8 +549,8 @@ class FilesyncSharing(
                 ?.let { runCatching { OdinSystemSerializer.deserialize<FilesyncMarker>(it) }.getOrNull() } ?: return@mapNotNull null
             val sender = file.fileMetadata.senderOdinId
             val named = runCatching { OdinId(marker.odinId) }.getOrNull() ?: return@mapNotNull null
-            named.takeIf { sender == null || sender == self || sender.domainName.equals(marker.odinId, ignoreCase = true) }
-        }.distinct()
+            MarkerFile(named, marker, file).takeIf { sender == null || sender == self || sender.domainName.equals(marker.odinId, ignoreCase = true) }
+        }
     }
 
     private fun whyUnopened(owner: OdinId, failures: Collection<Exception>): Exception =
@@ -546,28 +561,76 @@ class FilesyncSharing(
 
     /** Keeps [sharer] among [sharers], so their files can be found again without the chat message that told of them. */
     suspend fun keepSharer(sharer: OdinId) {
+        if (sharers().any { it.odinId == sharer }) return
+        addMarker(sharer, sync = false)
+    }
+
+    /** Whether this identity's computers sync what [sharer] shares: their markers change in place, never go. */
+    suspend fun setSync(sharer: OdinId, sync: Boolean) {
+        repeat(MARKER_ATTEMPTS) {
+            val files = markerFiles().filter { it.sharer == sharer }
+            val done = if (files.isEmpty()) addMarker(sharer, sync) else files.all { it.marker.sync == sync || updateMarker(it, sync) }
+            if (done) return
+        }
+        error("$sharer's marker kept changing elsewhere")
+    }
+
+    /** False when another device added it first. */
+    private suspend fun addMarker(sharer: OdinId, sync: Boolean): Boolean {
         val self = requireNotNull(appCredentials.getActiveCredentials()).domain
-        if (sharer in sharers()) return
         val keyHeader = KeyHeader.newRandom16()
-        val metadata = UploadFileMetadata(
-            allowDistribution = false,
-            isEncrypted = true,
-            accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
-            appData = UploadAppFileMetaData(
-                uniqueId = markerId(sharer, self),
-                fileType = FilesyncProtocol.MarkerFileType,
-                dataType = 0,
-                userDate = Clock.System.now().toEpochMilliseconds(),
-                content = OdinSystemSerializer.serialize(FilesyncMarker(sharer.domainName, FilesyncProtocol.DriveAlias)),
-            ),
-        ).encryptContent(keyHeader)
-        try {
+        val marker = FilesyncMarker(sharer.domainName, FilesyncProtocol.DriveAlias, sync)
+        val metadata = markerMetadata(markerId(sharer, self), Clock.System.now().toEpochMilliseconds(), marker).encryptContent(keyHeader)
+        return try {
             uploads.uploadFile(UploadFileRequest(driveId = FilesyncProtocol.DriveAlias, keyHeader = keyHeader, metadata = metadata))
+            true
         } catch (e: ClientException) {
-            // Another device kept it first.
             if (!e.isExistingFileWithUniqueId()) throw e
+            false
         }
     }
+
+    /** False when another device changed or removed it since it was read. */
+    private suspend fun updateMarker(file: MarkerFile, sync: Boolean): Boolean {
+        val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), file.file.keyHeader.aesKey)
+        val appData = file.file.fileMetadata.appData
+        val metadata = markerMetadata(appData.uniqueId, appData.userDate, file.marker.copy(sync = sync), file.file.fileMetadata.versionTag)
+        val request = UpdateFileByFileIdRequest(
+            driveId = FilesyncProtocol.DriveAlias,
+            fileId = file.file.fileId,
+            keyHeader = keyHeader,
+            instructions = FileUpdateInstructionSet(
+                transferIv = ByteArrayUtil.getRndByteArray(16),
+                locale = UpdateLocale.Local,
+                recipients = emptyList(),
+                manifest = UpdateManifest.build(),
+            ),
+            metadata = metadata.encryptContent(keyHeader),
+        )
+        return try {
+            uploads.updateFileByFileId(request, onVersionConflict = { null }) != null
+        } catch (e: NotFoundException) {
+            if (!e.fromIdentity) throw e
+            false
+        } catch (e: ClientException) {
+            if (e.errorCode !in ChangedElsewhere) throw e
+            false
+        }
+    }
+
+    private fun markerMetadata(uniqueId: Uuid?, userDate: Long?, marker: FilesyncMarker, versionTag: Uuid? = null) = UploadFileMetadata(
+        allowDistribution = false,
+        isEncrypted = true,
+        accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
+        appData = UploadAppFileMetaData(
+            uniqueId = uniqueId,
+            fileType = FilesyncProtocol.MarkerFileType,
+            dataType = 0,
+            userDate = userDate,
+            content = OdinSystemSerializer.serialize(marker),
+        ),
+        versionTag = versionTag,
+    )
 
     /** The files and folders [owner] shares with this identity, opened with the keys their shares unlock. */
     suspend fun sharedBy(owner: OdinId): List<Pair<FilesyncNode, FilesyncHandle>> =
@@ -798,6 +861,7 @@ class FilesyncSharing(
 
     companion object {
         private const val PAGE = 1000
+        private const val MARKER_ATTEMPTS = 3
         private val RETRY = RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException })
         private const val ADD_MANY_LIMIT = 500
         private const val PARALLEL = 8

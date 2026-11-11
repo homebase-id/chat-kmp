@@ -133,6 +133,7 @@ class FilesyncSharingTest {
     private var frodoReviewedUs = true
     private var downPeers = emptySet<String>()
     private var collaborative = false
+    private var markerConflicts = 0
     private var filesyncRefused = false
     private var storedShareKey: String? = null
     private val merry = OdinId("merry.test")
@@ -178,6 +179,9 @@ class FilesyncSharingTest {
                 else circles
             path.endsWith("/query-batch") -> sharedPages.removeFirstOrNull() ?: """{"searchResults":[],"hasMoreRows":false}"""
             path.endsWith("/files") -> """{"fileId":"${Uuid.random()}","driveId":"${SystemDriveConstants.transientTempDrive.alias}","newVersionTag":"${Uuid.random()}"}"""
+            "/drives/${FilesyncProtocol.DriveAlias}/files/" in path && request.method == HttpMethod.Patch ->
+                if (markerConflicts-- > 0) return@MockEngine respond("""{"title":"changed","errorCode":"versionTagMismatch"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
+                else """{"fileId":"${path.substringAfterLast('/')}","driveId":"${FilesyncProtocol.DriveAlias}","newVersionTag":"${Uuid.random()}"}"""
             else -> error("unexpected ${request.method} $path")
         }
         respond(body, headers = json)
@@ -477,11 +481,18 @@ class FilesyncSharingTest {
         assertEquals(FilesyncStatus.Live.archivalStatus.toSet(), params["archivalStatus"]!!.jsonArray.map { it.jsonPrimitive.int }.toSet())
     }
 
-    private fun marker(names: String, sender: OdinId?): String {
-        val key = KeyHeader.newRandom16()
+    private fun marker(
+        names: String,
+        sender: OdinId?,
+        sync: Boolean? = null,
+        fileId: Uuid = Uuid.random(),
+        versionTag: Uuid? = null,
+        key: KeyHeader = KeyHeader.newRandom16(),
+    ): String {
+        val syncField = sync?.let { ""","sync":$it""" }.orEmpty()
         return OdinSystemSerializer.serialize(
             ServerFile(
-                fileId = Uuid.random(),
+                fileId = fileId,
                 driveId = FilesyncProtocol.DriveAlias,
                 fileState = FileState.Active,
                 fileSystemType = FileSystemType.Standard,
@@ -489,10 +500,11 @@ class FilesyncSharingTest {
                 fileMetadata = FileMetadata(
                     isEncrypted = true,
                     senderOdinId = sender,
+                    versionTag = versionTag,
                     appData = AppFileMetaData(
                         uniqueId = Uuid.random(),
                         fileType = FilesyncProtocol.MarkerFileType,
-                        content = Base64.encode(runBlocking { key.encryptDataAes("""{"odinId":"$names","driveAlias":"${FilesyncProtocol.DriveAlias}"}""".encodeToByteArray()) }),
+                        content = Base64.encode(runBlocking { key.encryptDataAes("""{"odinId":"$names","driveAlias":"${FilesyncProtocol.DriveAlias}"$syncField}""".encodeToByteArray()) }),
                     ),
                 ),
                 serverMetadata = ServerMetadata(),
@@ -504,7 +516,88 @@ class FilesyncSharingTest {
     fun theSharersAreTheMarkersKeptHereAndOnesLeftByOthersOnlyWhenTheyNameTheirSender() = runTest {
         sharedPages += """{"searchResults":[${marker("merry.test", frodo)}, ${marker("sam.test", sam)}, ${marker("pippin.test", sam)}, ${marker("gandalf.test", null)}],"hasMoreRows":false}"""
 
-        assertEquals(listOf(merry, sam, OdinId("gandalf.test")), sharing.sharers())
+        assertEquals(listOf(merry, sam, OdinId("gandalf.test")), sharing.sharers().map { it.odinId })
+    }
+
+    @Test
+    fun theMarkerTheDesktopReadsSaysWhetherToSyncAndAnOlderOneMeansNo() {
+        val marker = FilesyncMarker("sam.test", FilesyncProtocol.DriveAlias, sync = true)
+        assertEquals("""{"odinId":"sam.test","driveAlias":"${FilesyncProtocol.DriveAlias}","sync":true}""", OdinSystemSerializer.serialize(marker))
+        assertEquals(false, OdinSystemSerializer.deserialize<FilesyncMarker>("""{"odinId":"sam.test","driveAlias":"${FilesyncProtocol.DriveAlias}"}""").sync)
+    }
+
+    @Test
+    fun aSharerIsSyncedWhenAnyOfTheirMarkersSaysSo() = runTest {
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo, sync = true)}, ${marker("merry.test", frodo)}, ${marker("sam.test", null, sync = false)}],"hasMoreRows":false}"""
+
+        assertEquals(listOf(FilesyncSharer(sam, sync = true), FilesyncSharer(merry, sync = false)), sharing.sharers())
+    }
+
+    @Test
+    fun syncingASharerChangesTheirMarkerInPlaceAtTheVersionRead() = runTest {
+        val fileId = Uuid.random()
+        val versionTag = Uuid.random()
+        val key = KeyHeader.newRandom16()
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo, fileId = fileId, versionTag = versionTag, key = key)}],"hasMoreRows":false}"""
+
+        sharing.setSync(sam, true)
+
+        assertTrue(calls.none { it.path.endsWith("/files") }, "no new marker")
+        val update = calls.single { it.request.method == HttpMethod.Patch }
+        assertEquals("/api/v2/drives/${FilesyncProtocol.DriveAlias}/files/$fileId", update.path)
+        val appData = sentMarker(update, key)
+        assertEquals(versionTag.toString(), appData.first["versionTag"]!!.jsonPrimitive.content)
+        assertEquals(FilesyncMarker("sam.test", FilesyncProtocol.DriveAlias, sync = true), appData.second)
+    }
+
+    @Test
+    fun aMarkerAnotherDeviceChangedMeanwhileIsReadAgainAndChanged() = runTest {
+        val key = KeyHeader.newRandom16()
+        val fresh = Uuid.random()
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo, versionTag = Uuid.random(), key = key)}],"hasMoreRows":false}"""
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo, versionTag = fresh, key = key)}],"hasMoreRows":false}"""
+        markerConflicts = 1
+
+        sharing.setSync(sam, true)
+
+        val updates = calls.filter { it.request.method == HttpMethod.Patch }
+        assertEquals(2, updates.size)
+        assertEquals(fresh.toString(), sentMarker(updates.last(), key).first["versionTag"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun turningSyncOffKeepsTheMarkerAndOneAlreadyAsAskedIsLeftAlone() = runTest {
+        val key = KeyHeader.newRandom16()
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo, sync = true, versionTag = Uuid.random(), key = key)}],"hasMoreRows":false}"""
+        sharing.setSync(sam, false)
+        val off = calls.single { it.request.method == HttpMethod.Patch }
+        assertEquals(false, sentMarker(off, key).second.sync)
+        assertTrue(calls.none { it.request.method == HttpMethod.Delete }, "the marker keeps Sam in Shared with me")
+
+        calls.clear()
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo, sync = false, versionTag = Uuid.random(), key = key)}],"hasMoreRows":false}"""
+        sharing.setSync(sam, false)
+        assertTrue(calls.none { it.request.method == HttpMethod.Patch })
+    }
+
+    @Test
+    fun keepingASharerAgainLeavesTheirSyncAsItIs() = runTest {
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo, sync = true)}],"hasMoreRows":false}"""
+        sharing.keepSharer(sam)
+        assertTrue(calls.none { it.path.endsWith("/files") || it.request.method == HttpMethod.Patch })
+    }
+
+    // The fileMetadata an update sent, and the marker in its content, opened with the marker's own key.
+    private suspend fun sentMarker(update: Call, key: KeyHeader): Pair<JsonObject, FilesyncMarker> {
+        val parts = multipart(update.body, update.request)
+        val transferIv = Base64.decode(Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject["transferIv"]!!.jsonPrimitive.content)
+        val descriptor = Json.parseToJsonElement(AesCbc.decrypt(parts.getValue("metadata"), appSecret, transferIv).decodeToString()).jsonObject
+        val sentKey = OdinSystemSerializer.json.decodeFromJsonElement(EncryptedKeyHeader.serializer(), descriptor["encryptedKeyHeader"]!!)
+            .decryptAesToKeyHeader(SecureByteArray(appSecret))
+        assertTrue(sentKey.aesKey.toByteArray().contentEquals(key.aesKey.toByteArray()), "the marker keeps its key")
+        val metadata = descriptor["fileMetadata"]!!.jsonObject
+        val content = sentKey.decrypt(Base64.decode(metadata["appData"]!!.jsonObject["content"]!!.jsonPrimitive.content)).decodeToString()
+        return metadata to OdinSystemSerializer.deserialize<FilesyncMarker>(content)
     }
 
     @Test

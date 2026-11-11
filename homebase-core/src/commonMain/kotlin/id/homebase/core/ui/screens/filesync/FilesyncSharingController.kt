@@ -18,6 +18,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Turning sharing on: signing in to Filesync too ([FilesyncSession]), and the permission its registration may lack. */
 class FilesyncSharingSetup(
@@ -76,6 +78,8 @@ internal class FilesyncSharingController(
     private var recipientFilesJob: Job? = null
     private val recipientHandles = mutableMapOf<Uuid, FilesyncHandle>()
     private var pendingMove: (suspend () -> Unit)? = null
+    // In the order asked: a quick on-then-off must reach the marker in that order.
+    private val syncWrites = Mutex()
 
     fun start() {
         scope.launch {
@@ -204,7 +208,20 @@ internal class FilesyncSharingController(
 
     private fun loadSharers() {
         scope.launch {
-            guarded { sharing.sharers() }?.let { sharers -> update { it.copy(sharers = sharers) } }
+            guarded { sharing.sharers() }?.let { sharers ->
+                update { s -> s.copy(sharers = sharers.map { it.odinId }, syncedSharers = sharers.filter { it.sync }.mapTo(HashSet()) { it.odinId }) }
+            }
+        }
+    }
+
+    /** Shown at once, then read back, so a change that didn't go through shows as it is. */
+    fun setSync(sharer: OdinId, sync: Boolean) {
+        update { it.copy(syncedSharers = if (sync) it.syncedSharers + sharer else it.syncedSharers - sharer) }
+        scope.launch {
+            syncWrites.withLock {
+                attempt("changing whether computers sync $sharer's files", FilesyncError.SyncChoiceFailed) { sharing.setSync(sharer, sync) }
+            }
+            loadSharers()
         }
     }
 

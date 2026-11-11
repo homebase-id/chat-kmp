@@ -38,7 +38,7 @@ import kotlin.uuid.Uuid
 private const val TAG = "FilesyncEditor"
 
 // What another device's newer word looks like in a per-file answer: the node is left as it is.
-private val ChangedElsewhere = setOf(OdinClientErrorCode.VersionTagMismatch, OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile)
+internal val ChangedElsewhere = setOf(OdinClientErrorCode.VersionTagMismatch, OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile)
 
 /**
  * [skipped]: items another device changed or deleted meanwhile, left as they are. [recovered]: restored where no listing

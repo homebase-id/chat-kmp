@@ -349,6 +349,7 @@ class FilesyncViewModel(
 
 
             is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
+            is FilesyncUiAction.SetSharerSync -> sharing.setSync(action.sharer, action.sync)
             FilesyncUiAction.CloseShareView -> sharing.closeShareView()
 
             is FilesyncUiAction.OpenSharedFolder -> sharing.openSharedFolder(action.path)
