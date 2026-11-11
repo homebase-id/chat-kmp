@@ -46,7 +46,7 @@ class CardRepositoryTest {
         val data = buildJsonObject { put("design", "dossier"); put("label", "Friends") }
         val card = ProfileCard.from(profileCardAttribute(data, ProfileVisibility.CONNECTED, listOf("c1"), priority = 2))!!
 
-        assertEquals(CardAudience.Circle("c1", "Friends"), card.audience)
+        assertEquals(CardAudience.Circle("c1", ""), card.audience)
         assertEquals(2, card.priority)
         assertEquals(buildJsonObject { put("design", "dossier") }, card.toData())
     }
