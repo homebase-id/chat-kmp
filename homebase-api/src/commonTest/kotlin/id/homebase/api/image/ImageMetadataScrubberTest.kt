@@ -5,6 +5,8 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -289,17 +291,17 @@ class ImageMetadataScrubberTest {
         assertContentEquals(empty, ImageMetadataScrubber.scrub(empty))
     }
 
-    // The send path warns on anything supports() rejects, so a new format can't leak silently.
+    // The send path warns on a null, so a new format can't leak silently.
     @Test
-    fun supports_coversEveryScrubbedFormatAndNothingElse() {
+    fun scrubOrNull_isNullOnlyForFormatsTheScrubberDoesNotHandle() {
         listOf(jpeg(), png(), webp(), HeicFixtures.geotaggedRotated).forEach {
-            assertTrue(ImageMetadataScrubber.supports(it), ImageFormatDetector.detectFormat(it))
+            assertNotNull(ImageMetadataScrubber.scrubOrNull(it), ImageFormatDetector.detectFormat(it))
         }
         val avif = HeicFixtures.geotaggedRotated.copyOf().also { "avif".encodeToByteArray().copyInto(it, 8) }
         val bmp = "BM".encodeToByteArray() + ByteArray(30)
         val gif = "GIF89a".encodeToByteArray() + ByteArray(20) { 4 }
         listOf(gif, bmp, avif, ByteArray(0)).forEach {
-            assertFalse(ImageMetadataScrubber.supports(it), it.decodeToString(0, minOf(12, it.size)))
+            assertNull(ImageMetadataScrubber.scrubOrNull(it), it.decodeToString(0, minOf(12, it.size)))
         }
     }
 }

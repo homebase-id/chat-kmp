@@ -163,14 +163,13 @@ class PayloadBundleEncryptionService(
             }
             return payload.filePath
         }
-        if (!ImageMetadataScrubber.supports(original)) {
+        val scrubbed = ImageMetadataScrubber.scrubOrNull(original) ?: run {
             Logger.w(tag = TAG) {
                 "metadata scrub skipped — ${payload.contentType} (sniffed ${ImageFormatDetector.detectFormat(original)}) " +
                     "isn't a format the scrubber handles; its EXIF/XMP goes out intact"
             }
             return payload.filePath
         }
-        val scrubbed = ImageMetadataScrubber.scrub(original)
         if (scrubbed === original) return payload.filePath
         return fileOps.writeBytesToTempFile(scrubbed, "scrubbed_", ".img")
     }
