@@ -91,8 +91,9 @@ class MomentsHeicOriginalScrubTest {
             assertTrue(original.exifItem().contains(gpsIfdTag), "fixture must carry a GPS IFD")
             assertFalse(uploaded.exifItem().contains(gpsIfdTag), "GPS IFD reached the wire")
             assertFalse(uploaded.exifItem().contains(gpsIfdTag.reversedArray()), "GPS IFD reached the wire")
-            assertNull(mediaInfo?.latitude)
-            assertNull(mediaInfo?.longitude)
+            assertNotNull(mediaInfo, "camera make keeps the sidecar")
+            assertNull(mediaInfo.latitude)
+            assertNull(mediaInfo.longitude)
         } finally {
             src.delete()
             if (sent.isCompleted) sent.await().first.payloads.forEach { File(it.filePath).delete() }

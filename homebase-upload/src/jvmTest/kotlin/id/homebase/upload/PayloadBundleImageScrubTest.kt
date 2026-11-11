@@ -3,7 +3,6 @@ package id.homebase.upload
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import co.touchlab.kermit.platformLogWriter
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.eventbus.EventBus
@@ -203,6 +202,7 @@ class PayloadBundleImageScrubTest {
         val src = provider.writeBytesToTempFile(gif, "unsupported_", ".gif")
         var staged: String? = null
         val warnings = mutableListOf<String>()
+        val previousWriters = Logger.config.logWriterList
         Logger.setLogWriters(
             object : LogWriter() {
                 override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
@@ -223,7 +223,7 @@ class PayloadBundleImageScrubTest {
                 File(staged).readBytes(),
             )
         } finally {
-            Logger.setLogWriters(platformLogWriter())
+            Logger.setLogWriters(previousWriters)
             provider.deleteTempFile(src)
             staged?.let { provider.deleteTempFile(it) }
         }
