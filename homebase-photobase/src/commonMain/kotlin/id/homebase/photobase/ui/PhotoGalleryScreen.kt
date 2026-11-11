@@ -8,6 +8,7 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +68,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.core.HomebaseConstants
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
@@ -116,7 +119,8 @@ fun PhotoGalleryScreen(
             viewModel.onAction(action)
         }
     }
-    val fadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    // On the shared-bounds clock, or the tile and viewer fade out of step with the morph.
+    val fadeSpec = tween<Float>(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = uiState.openedFileId != null,
@@ -199,6 +203,8 @@ private fun GalleryViewer(
                 animatedVisibilityScope = animatedVisibilityScope.takeIf { settled },
                 showUIState = showUI,
                 isFocused = settled,
+                // The tile is a square crop; without the photo's shape it can't uncrop into the viewer.
+                heroContentAspect = remember(item) { item.payload.aspectRatio() },
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {
@@ -229,6 +235,13 @@ private fun VideoStill(item: PhotoGalleryItem) {
             modifier = Modifier.size(64.dp),
         )
     }
+}
+
+private fun PayloadDescriptor.aspectRatio(): Float? {
+    val thumb = thumbnails?.lastOrNull() ?: previewThumbnail ?: return null
+    val w = thumb.pixelWidth ?: return null
+    val h = thumb.pixelHeight ?: return null
+    return if (w > 0 && h > 0) w.toFloat() / h.toFloat() else null
 }
 
 private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
