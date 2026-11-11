@@ -380,6 +380,38 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun turningBackupOffStopsARunThatIsGoing() = runTest {
+        hashGates["slow"] = CompletableDeferred()
+        source.next = fullListing(asset("slow"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        val outcome = async { run.run(request(trigger = BackupTrigger.UserRequested)) }
+        advanceTimeBy(1.seconds)
+        settings = settings.copy(enabled = false)
+        advanceTimeBy(6.seconds)
+
+        assertEquals(BackupRunOutcome.Paused, outcome.await())
+        assertEquals(BackupPauseReason.BackupOff, run.status.value.pauseReason)
+        assertEquals(BackupState.New.code, state("slow"))
+        assertTrue(uploader.handedOff.isEmpty())
+    }
+
+    @Test
+    fun stopReturnsOnlyOnceTheRunHasEnded() = runTest {
+        hashGates["slow"] = CompletableDeferred()
+        source.next = fullListing(asset("slow"))
+        val (run, _) = newRun(uploader())
+
+        val outcome = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        run.stop()
+
+        assertTrue(outcome.isCompleted)
+        assertFalse(run.status.value.isRunning)
+    }
+
+    @Test
     fun losingWifiDoesNotStopARunThatMayUseMobileData() = runTest {
         settings = settings.copy(wifiOnly = false)
         hashGates["slow"] = CompletableDeferred()

@@ -74,6 +74,7 @@ class PhotoBackupRun(
     val status: StateFlow<BackupStatus> = _status.asStateFlow()
 
     private var activeJob: Job? = null
+    private var activeRunEnded: Job? = null
 
     // Guards the three fields below, which callers outside the run's lock read and change.
     private val admission = Mutex()
@@ -84,6 +85,13 @@ class PhotoBackupRun(
     /** The OS took the time back: stop now, leaving every row where a later run can pick it up. */
     fun cancelActive() {
         activeJob?.cancel(CancellationException("backup run expired"))
+    }
+
+    /** Returns once the run that was going has written its last row, so a wipe after this can't be written over. */
+    suspend fun stop() {
+        val ended = activeRunEnded
+        cancelActive()
+        ended?.join()
     }
 
     /** Keeps the counts live for whoever is watching, including results that land with no run going. At most one refresh a second: a run ticks per row. */
@@ -155,6 +163,7 @@ class PhotoBackupRun(
             return BackupRunOutcome.AlreadyRunning
         }
         activeJob = currentCoroutineContext()[Job]
+        val ended = Job().also { activeRunEnded = it }
         _status.update { it.copy(isRunning = true) }
         val timings = BackupTimings()
         val started = TimeSource.Monotonic.markNow()
@@ -188,7 +197,9 @@ class PhotoBackupRun(
             hasher.forgetAll()
             Logger.i(tag = TAG) { "timing trigger=${request.trigger} total=${started.elapsedNow().inWholeMilliseconds}ms ${timings.summary()}" }
             activeJob = null
+            activeRunEnded = null
             _status.update { it.copy(isRunning = false) }
+            ended.complete()
             mutex.unlock()
         }
     }
@@ -231,8 +242,8 @@ class PhotoBackupRun(
     }
 
     /**
-     * The network settings, free space and heat hold for the whole run, not just its start. Losing Wi-Fi under
-     * Wi-Fi only, running low on space or getting too hot pauses it. Losing what videos need starts it over, which
+     * The network settings, free space and heat hold for the whole run, not just its start. Turning backup off, losing
+     * Wi-Fi under Wi-Fi only, running low on space or getting too hot pauses it. Losing what videos need starts it over, which
      * leaves videos out and carries on with photos. A send already under way isn't recalled.
      */
     private suspend fun followingTheNetwork(run: suspend () -> BackupRunOutcome): BackupRunOutcome {
@@ -267,6 +278,7 @@ class PhotoBackupRun(
             delay(NETWORK_RECHECK)
             val current = settings()
             val state = probe.state()
+            if (!current.enabled) return BackupPauseReason.BackupOff
             val reason = backupPauseReason(current, state, interactive = true)
             if (reason in PAUSES_MID_RUN) return reason
             if (videosWereAllowed && !networkAllowsVideos(current, state)) return null
