@@ -3,8 +3,6 @@
 package id.homebase.core.ui.screens.settings
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -33,7 +31,6 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
-import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.help.HelpScreen
@@ -61,9 +58,11 @@ internal data class SettingsPaneActions(
     val onNavigateToCropper: (Uuid) -> Unit,
     val onNavigateToDeveloperMenu: () -> Unit,
     val onNavigateToDefragmenter: () -> Unit,
+    val onOpenProfileCard: () -> Unit,
+    val onOpenProfileCardEditor: () -> Unit,
 )
 
-private enum class ProfilePage { Avatar, Card, CardEditor }
+private enum class ProfilePage { Avatar, Editor }
 
 @Composable
 internal fun SettingsPaneHost(
@@ -78,13 +77,6 @@ internal fun SettingsPaneHost(
     var category by remember { mutableStateOf(requested?.category ?: SettingsCategory.General) }
     var appsPage by remember { mutableStateOf(requested?.appsPage) }
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
-    var editorOpenedFromCard by remember { mutableStateOf(false) }
-    var editorOpensDesign by remember { mutableStateOf(false) }
-    val openEditor = { fromCard: Boolean, design: Boolean ->
-        editorOpenedFromCard = fromCard
-        editorOpensDesign = design
-        profilePage = ProfilePage.CardEditor
-    }
     // Pre-warms the card page; its host lives as long as the Settings entry.
     val cardViewModel = if (profileCardEnabled) koinViewModel<ProfileCardViewModel>() else null
     cardViewModel?.let { StartCardHostWhenSettled(it) }
@@ -112,8 +104,6 @@ internal fun SettingsPaneHost(
                     val from = initialState.second
                     val to = targetState.second
                     when {
-                        // The card pages host a native view that neither fades nor can run twice at once.
-                        from.isCard() || to.isCard() -> EnterTransition.None togetherWith ExitTransition.None
                         from == to && initialState.third != targetState.third ->
                             tabSlideFade.transform(targetState.third != null)
                         from == to -> fadeIn(enterFade) togetherWith fadeOut(exitFade)
@@ -130,9 +120,20 @@ internal fun SettingsPaneHost(
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
                             onSelectAppsPage = { appsPage = it },
-                            onProfileEdit = { openEditor(false, false) },
+                            // The card's native view can't live in this pane's own window, so its pages are full-window routes.
+                            onProfileEdit = {
+                                if (cardViewModel == null) {
+                                    profilePage = ProfilePage.Editor
+                                } else {
+                                    SettingsPaneRequest.open(shownCategory)
+                                    actions.onOpenProfileCardEditor()
+                                }
+                            },
                             onProfileAvatarEdit = { profilePage = ProfilePage.Avatar },
-                            onProfileCard = { profilePage = ProfilePage.Card }.takeIf { cardViewModel != null },
+                            onProfileCard = {
+                                SettingsPaneRequest.open(shownCategory)
+                                actions.onOpenProfileCard()
+                            }.takeIf { cardViewModel != null },
                             actions = actions,
                             emailMailboxMode = emailMailboxMode,
                         )
@@ -148,23 +149,13 @@ internal fun SettingsPaneHost(
                                 onNavigateToCropper = actions.onNavigateToCropper,
                             )
 
-                            ProfilePage.Card -> cardViewModel?.let {
-                                ProfileCardScreen(
-                                    viewModel = it,
-                                    onBack = { profilePage = null },
-                                    onEdit = { openEditor(true, false) },
-                                    onChangeDesign = { openEditor(true, true) },
-                                )
-                            }
-
-                            // Without the card flag this is still Edit profile, so its view model is made here when needed.
-                            ProfilePage.CardEditor -> ProfileCardEditorScreen(
-                                viewModel = cardViewModel ?: koinViewModel(),
+                            // Without the card flag this is still Edit profile, with no card view in it.
+                            ProfilePage.Editor -> ProfileCardEditorScreen(
+                                viewModel = koinViewModel(),
                                 avatarViewModel = koinViewModel(),
-                                onBack = { profilePage = if (editorOpenedFromCard) ProfilePage.Card else null },
+                                onBack = { profilePage = null },
                                 onNavigateToCropper = actions.onNavigateToCropper,
-                                cardsEnabled = profileCardEnabled,
-                                openDesign = editorOpensDesign,
+                                cardsEnabled = false,
                             )
                         }
                     }
@@ -201,8 +192,6 @@ internal fun SettingsPaneHeader(onDismiss: () -> Unit) {
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
-
-private fun ProfilePage?.isCard() = this == ProfilePage.Card || this == ProfilePage.CardEditor
 
 @Composable
 private fun CategoryPage(

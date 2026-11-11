@@ -1807,6 +1807,8 @@ fun AppNavHost(
                                                 onNavigateToDefragmenter = {
                                                     navController.navigate(Route.Defragmenter)
                                                 },
+                                                onOpenProfileCard = { navController.navigate(Route.ProfileCard) },
+                                                onOpenProfileCardEditor = { navController.navigate(Route.ProfileCardEditor()) },
                                             ),
                                             profileCardEnabled = profileCardEnabled,
                                             emailMailboxMode = emailMailboxMode,

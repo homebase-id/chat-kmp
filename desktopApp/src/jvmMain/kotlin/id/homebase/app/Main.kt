@@ -121,6 +121,9 @@ fun main() {
 
     // Off by default on desktop and web; without it custom text context menu items are dropped.
     ComposeFoundationFlags.isNewContextMenuEnabled = true
+    // The profile card's native webview sits above the window's Compose canvas; only a dialog, menu or
+    // tooltip in a window of its own can show over it.
+    System.setProperty("compose.layers.type", "WINDOW")
     // Force JNA to load its bundled native library. Without this, Windows may resolve
     // a mismatched jnidispatch.dll from the system path, causing Native.<clinit> to throw.
     // Must be set before any JNA-using class (FileKit, compose-native-tray) loads.

@@ -59,6 +59,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1303,9 +1306,11 @@ private fun DesignTile(
     val shape = RoundedCornerShape(corner)
     val label = stringResource(designLabel(design))
     val labelStyle = if (selected) typography.labelLargeEmphasized else typography.labelLarge
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
     Column(
         modifier = modifier
-            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .selectable(selected, interactions, LocalIndication.current, enabled, Role.RadioButton, onClick)
             .handCursor(enabled)
             .semantics { contentDescription = label },
     ) {
@@ -1319,7 +1324,8 @@ private fun DesignTile(
                     alpha = dim
                 }
                 .clip(shape)
-                .border(BorderStroke(ring, if (selected) colors.primary else colors.outlineVariant), shape),
+                .border(BorderStroke(ring, if (selected) colors.primary else colors.outlineVariant), shape)
+                .focusRing(focused, shape, colors.secondary),
         ) {
             CardDesignThumbnail(design = design, modifier = Modifier.fillMaxSize())
             Box(

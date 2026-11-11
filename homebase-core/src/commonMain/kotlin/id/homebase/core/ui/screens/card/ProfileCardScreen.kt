@@ -93,6 +93,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -134,6 +142,9 @@ import co.touchlab.kermit.Logger
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isExpandedLayout
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import id.homebase.resources.MR
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_retry
@@ -377,6 +388,7 @@ private fun ProfileCardViewer(
     val cover by viewModel.cover.collectAsStateWithLifecycle()
     var confirmPublicShare by rememberSaveable { mutableStateOf(false) }
 
+    val expanded = isExpandedLayout()
     CardExpressiveTheme {
         val bands = cardBands(uiState.design)
         val topColor by cardEdgeColor(uiState.cardTopArgb, uiState.design)
@@ -385,7 +397,8 @@ private fun ProfileCardViewer(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .widthIn(max = WIDE_SHEET_MAX_WIDTH)
+                    // A wide window gets the site's full-width card, which it lays out from 768 CSS px.
+                    .then(if (expanded) Modifier else Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH))
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))
                     .padding(top = 8.dp)
@@ -410,16 +423,23 @@ private fun ProfileCardViewer(
                         coverHeld = coverHeld,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    SnackbarHost(
-                        hostState = snackbarHostState,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .then(
-                                if (bands.bottom) Modifier
-                                else Modifier.navigationBarsPadding().padding(bottom = TOOLBAR_BAND_HEIGHT),
-                            )
-                            .padding(8.dp),
-                    )
+                    val snackbar: @Composable () -> Unit = {
+                        SnackbarHost(
+                            hostState = snackbarHostState,
+                            modifier = Modifier
+                                .then(
+                                    if (bands.bottom) Modifier
+                                    else Modifier.navigationBarsPadding().padding(bottom = TOOLBAR_BAND_HEIGHT),
+                                )
+                                .padding(8.dp),
+                        )
+                    }
+                    // Over the card's native view only a popup, a window of its own on desktop, can be seen.
+                    if (isDesktopOrWeb()) {
+                        if (snackbarHostState.currentSnackbarData != null) Popup(alignment = Alignment.BottomCenter, properties = PopupProperties(focusable = false)) { snackbar() }
+                    } else {
+                        Box(Modifier.align(Alignment.BottomCenter)) { snackbar() }
+                    }
                 }
                 SheetTopChrome(
                     uiState = uiState,
@@ -615,10 +635,12 @@ internal fun BoxScope.CardBottomChrome(
 // Native bands in the page's colour where a design has content under the chrome; the page has no safe-area support.
 private data class CardBands(val top: Boolean, val bottom: Boolean)
 
-private fun cardBands(design: String): CardBands = when (design) {
-    CardDesign.POSTER -> CardBands(top = false, bottom = true)
+// Desktop and web paint the card's native view over any Compose chrome, so there it never runs under the bars.
+private fun cardBands(design: String): CardBands = when {
+    isDesktopOrWeb() -> CardBands(top = true, bottom = true)
+    design == CardDesign.POSTER -> CardBands(top = false, bottom = true)
     // Its avatar reaches into the top strip; the bottom is decoration only.
-    CardDesign.BOARD -> CardBands(top = true, bottom = false)
+    design == CardDesign.BOARD -> CardBands(top = true, bottom = false)
     else -> CardBands(top = true, bottom = true)
 }
 
@@ -813,8 +835,24 @@ internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDism
             if (cardTemplateFor(audience) != null) stringResource(MR.string.profile_card_reset_message_template, audienceLabel(audience))
             else stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
     }
+    // Focused on open so a key reaches it; a Tab-focused Cancel takes Enter itself before it bubbles here.
+    // Armed by a press inside the dialog, so the release of the Enter that opened it can't confirm it.
+    val focus = remember { FocusRequester() }
+    var armed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier
+            .focusRequester(focus)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onKeyEvent false
+                when (event.type) {
+                    KeyEventType.KeyDown -> armed = true
+                    KeyEventType.KeyUp -> if (armed) onReset()
+                }
+                true
+            },
         icon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
         title = { Text(stringResource(MR.string.profile_card_reset_title), textAlign = TextAlign.Center) },
         text = {
@@ -984,13 +1022,11 @@ private fun ShareAction(
                 LoadingIndicator(modifier = Modifier.size(40.dp))
             }
         } else {
-            IconButton(onClick = onClick, enabled = enabled) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = stringResource(
-                        if (saveInsteadOfShare) MR.string.profile_card_save else MR.string.profile_card_share,
-                    ),
-                )
+            val label = stringResource(if (saveInsteadOfShare) MR.string.profile_card_save else MR.string.profile_card_share)
+            WithTooltip(label) {
+                IconButton(onClick = onClick, enabled = enabled) {
+                    Icon(imageVector = icon, contentDescription = label)
+                }
             }
         }
     }
