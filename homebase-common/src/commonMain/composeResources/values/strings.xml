@@ -1030,6 +1030,9 @@
     <string name="chat_contact_card_update_homebase">Update Homebase contact</string>
     <string name="chat_contact_card_save_phone">Phone contacts</string>
     <string name="chat_contact_card_save_phone_failed">No contacts app found</string>
+    <string name="chat_contact_card_save_homebase_supporting">Keep them in your Homebase</string>
+    <string name="chat_contact_card_update_homebase_supporting">Refresh the saved details</string>
+    <string name="chat_contact_card_save_phone_supporting">Open in your phone's Contacts app</string>
     <string name="chat_contact_card_title">Contact</string>
     <string name="chat_contact_card_call">Call</string>
     <string name="chat_contact_card_send_email">Send email</string>
