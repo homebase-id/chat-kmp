@@ -68,7 +68,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.HomebaseConstants
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.FullScreenMediaViewer
@@ -76,6 +75,7 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.media.subsample.fullScreenImageSharedBounds
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.core.util.formatMomentDate
@@ -185,12 +185,18 @@ private fun GalleryViewer(
             if (page >= items.size - VIEWER_LOAD_MORE_WHEN_WITHIN) onAction(PhotoGalleryUiAction.LoadMore)
         }
     }
+    val shown = items.getOrNull(pagerState.settledPage)
     HorizontalPager(
         state = pagerState,
         key = { items[it].fileId.toString() },
         beyondViewportPageCount = 1,
         pageSpacing = 24.dp,
-        modifier = Modifier.fillMaxSize(),
+        // Around the pager, not inside a page: from inside a page the open animation restarts mid-flight and jumps.
+        modifier = Modifier.fillMaxSize().fullScreenImageSharedBounds(
+            shown?.let { "image-${it.fileId}-${it.payload.key}" },
+            sharedTransitionScope,
+            animatedVisibilityScope,
+        ),
     ) { page ->
         val item = items[page]
         val settled = page == pagerState.settledPage
@@ -198,13 +204,10 @@ private fun GalleryViewer(
             is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                 data = viewer,
                 onDismiss = close,
-                // Only the open photo: a neighbour would fly in from its grid tile too.
-                sharedTransitionScope = sharedTransitionScope.takeIf { settled },
-                animatedVisibilityScope = animatedVisibilityScope.takeIf { settled },
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
                 showUIState = showUI,
                 isFocused = settled,
-                // The tile is a square crop; without the photo's shape it can't uncrop into the viewer.
-                heroContentAspect = remember(item) { item.payload.aspectRatio() },
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {
@@ -235,13 +238,6 @@ private fun VideoStill(item: PhotoGalleryItem) {
             modifier = Modifier.size(64.dp),
         )
     }
-}
-
-private fun PayloadDescriptor.aspectRatio(): Float? {
-    val thumb = thumbnails?.lastOrNull() ?: previewThumbnail ?: return null
-    val w = thumb.pixelWidth ?: return null
-    val h = thumb.pixelHeight ?: return null
-    return if (w > 0 && h > 0) w.toFloat() / h.toFloat() else null
 }
 
 private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {

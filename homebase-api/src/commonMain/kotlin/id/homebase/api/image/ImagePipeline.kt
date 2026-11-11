@@ -78,15 +78,12 @@ internal interface PipelineBitmap : AutoCloseable {
      */
     fun scaledTo(width: Int, height: Int): PipelineBitmap
 
-    /** Premultiplied 8-bit pixels in this bitmap's colour space, four bytes each, alpha last. */
-    fun readPixels(): ByteArray
-
-    /** A new bitmap of [readPixels]-shaped [pixels], in this bitmap's colour space, leaving this one open. */
-    fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap
-
-    /** A new bitmap at the given size, without aliasing at any ratio, leaving this one open. */
-    suspend fun resampledTo(width: Int, height: Int): PipelineBitmap =
-        withPixels(resampleLanczos(readPixels(), this.width, this.height, width, height), width, height)
+    /**
+     * A new bitmap at the given size, leaving this one open. A Lanczos filter whose reach grows with
+     * the reduction, so nothing aliases at any ratio, run on premultiplied pixels in this bitmap's
+     * colour space, with no colour left above its alpha. Phones resample in native memory.
+     */
+    suspend fun resampledTo(width: Int, height: Int): PipelineBitmap
 
     fun encode(format: ImageFormat, quality: Int): ByteArray
 
