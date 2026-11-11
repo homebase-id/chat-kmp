@@ -651,7 +651,7 @@ private fun PhotoRow(card: CardAudience, photo: CardPhotoUi, onChange: () -> Uni
                     .size(PHOTO_SIZE)
                     .clip(MaterialShapes.Cookie9Sided.toShape())
                     .background(colors.surfaceContainerHighest)
-                    .then(if (photo.canChange) Modifier.clickable(role = Role.Button, onClickLabel = change, onClick = onChange) else Modifier),
+                    .then(if (photo.canChange) Modifier.clickable(role = Role.Button, onClickLabel = change, onClick = onChange).handCursor() else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
                 ExistingAvatarContent(photo.photo, "CardContentEditor")
@@ -784,24 +784,28 @@ private fun EditorRow(
         val toggle: @Composable () -> Unit = {
             if (display != null && !item.required && !pending) {
                 val on = display.onCard
-                IconButton(
-                    onClick = display.onToggle,
-                    enabled = enabled,
-                    modifier = Modifier.testTag(if (on) "field_remove" else "field_add"),
-                ) {
-                    Icon(
-                        imageVector = if (on) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline,
-                        contentDescription = toggleLabel,
-                        tint = if (on) colors.onSurfaceVariant else colors.primary,
-                    )
+                WithTooltip(toggleLabel) {
+                    IconButton(
+                        onClick = display.onToggle,
+                        enabled = enabled,
+                        modifier = Modifier.testTag(if (on) "field_remove" else "field_add"),
+                    ) {
+                        Icon(
+                            imageVector = if (on) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline,
+                            contentDescription = toggleLabel,
+                            tint = if (on) colors.onSurfaceVariant else colors.primary,
+                        )
+                    }
                 }
             } else if (addable && !pending) {
-                IconButton(
-                    onClick = { addAudience?.let(onApply) ?: run { choosing = true } },
-                    enabled = enabled,
-                    modifier = Modifier.testTag("field_add"),
-                ) {
-                    Icon(Icons.Outlined.AddCircleOutline, contentDescription = addLabel, tint = colors.primary)
+                WithTooltip(addLabel) {
+                    IconButton(
+                        onClick = { addAudience?.let(onApply) ?: run { choosing = true } },
+                        enabled = enabled,
+                        modifier = Modifier.testTag("field_add"),
+                    ) {
+                        Icon(Icons.Outlined.AddCircleOutline, contentDescription = addLabel, tint = colors.primary)
+                    }
                 }
             }
         }
@@ -915,12 +919,16 @@ private fun CardFieldRow(
             if (removeSlot) {
                 Box(Modifier.size(ROW_SLOT), contentAlignment = Alignment.Center) {
                     if (onRemove != null) {
-                        IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
-                            Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
+                        WithTooltip(remove) {
+                            IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
+                                Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
+                            }
                         }
                     } else if (onAdd != null) {
-                        IconButton(onClick = onAdd, enabled = enabled, modifier = Modifier.testTag("field_add")) {
-                            Icon(Icons.Outlined.AddCircleOutline, contentDescription = add, tint = colors.primary)
+                        WithTooltip(add) {
+                            IconButton(onClick = onAdd, enabled = enabled, modifier = Modifier.testTag("field_add")) {
+                                Icon(Icons.Outlined.AddCircleOutline, contentDescription = add, tint = colors.primary)
+                            }
                         }
                     }
                 }
@@ -947,16 +955,19 @@ private fun CardFieldRow(
             }
             if (onMove != null) {
                 val onFront = display?.onCard == true
-                FilledTonalIconButton(
-                    onClick = onMove,
-                    enabled = enabled,
-                    modifier = Modifier.testTag(if (onFront) "field_to_back" else "field_to_front"),
-                ) {
-                    Icon(
-                        imageVector = if (onFront) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward,
-                        contentDescription = if (onFront) toBack else toFront,
-                        modifier = Modifier.size(20.dp),
-                    )
+                val moveLabel = if (onFront) toBack else toFront
+                WithTooltip(moveLabel) {
+                    FilledTonalIconButton(
+                        onClick = onMove,
+                        enabled = enabled,
+                        modifier = Modifier.testTag(if (onFront) "field_to_back" else "field_to_front"),
+                    ) {
+                        Icon(
+                            imageVector = if (onFront) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward,
+                            contentDescription = moveLabel,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
             when {
@@ -1189,6 +1200,7 @@ internal fun CardSwitcher(
             modifier = Modifier
                 .weight(1f)
                 .fadingEdges(scroll)
+                .wheelScrollsRow(scroll)
                 .horizontalScroll(scroll)
                 .padding(horizontal = 16.dp)
                 .semantics { contentDescription = label }

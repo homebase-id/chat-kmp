@@ -647,6 +647,7 @@ private fun Swatch(
             .size(SWATCH_TARGET)
             .revealWhenSelected(selected)
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .handCursor(enabled)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
@@ -690,7 +691,7 @@ private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp,
         ReorderableRow(
             list = order,
             onSettle = { from, to -> if (from != to) onChange(order.toMutableList().apply { add(to, removeAt(from)) }) },
-            modifier = Modifier.fillMaxWidth().fadingEdges(scroll).horizontalScroll(scroll).padding(horizontal = OPTION_SIDE_INSET),
+            modifier = Modifier.fillMaxWidth().fadingEdges(scroll).wheelScrollsRow(scroll).horizontalScroll(scroll).padding(horizontal = OPTION_SIDE_INSET),
             horizontalArrangement = Arrangement.spacedBy(BLOCK_TILE_SPACING, Alignment.CenterHorizontally),
         ) { index, kind, dragging ->
             key(kind) {
@@ -778,6 +779,7 @@ internal fun ScrollableChoiceRow(
     Row(
         modifier = modifier
             .fadingEdges(scroll)
+            .wheelScrollsRow(scroll)
             .horizontalScroll(scroll)
             .padding(horizontal = contentPadding)
             .selectableGroup(),

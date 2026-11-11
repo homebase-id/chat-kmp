@@ -106,6 +106,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
+import id.homebase.core.widget.WithTooltip
 import id.homebase.core.util.isDesktopOrWeb
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Brush
@@ -867,8 +868,11 @@ private fun EditorTopBar(
                 }
             }
             if (onPreview != null) {
-                IconButton(onClick = onPreview, shapes = IconButtonDefaults.shapes()) {
-                    Icon(Icons.Outlined.Visibility, contentDescription = stringResource(MR.string.profile_card_preview))
+                val previewLabel = stringResource(MR.string.profile_card_preview)
+                WithTooltip(previewLabel, below = true) {
+                    IconButton(onClick = onPreview, shapes = IconButtonDefaults.shapes()) {
+                        Icon(Icons.Outlined.Visibility, contentDescription = previewLabel)
+                    }
                 }
             } else if (onSave != null) {
                 FilledIconButton(
@@ -1269,7 +1273,7 @@ private fun DesignStrip(
                 state = state,
                 horizontalArrangement = Arrangement.spacedBy(DESIGN_TILE_SPACING),
                 contentPadding = PaddingValues(horizontal = DESIGN_STRIP_INSET),
-                modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(itemHeight).selectableGroup(),
+                modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(itemHeight).wheelScrollsRow(state).selectableGroup(),
             ) {
                 items(designs.size, key = { designs[it] }) { index -> tile(index, Modifier.size(itemWidth, itemHeight)) }
             }
@@ -1302,6 +1306,7 @@ private fun DesignTile(
     Column(
         modifier = modifier
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .handCursor(enabled)
             .semantics { contentDescription = label },
     ) {
         Box(

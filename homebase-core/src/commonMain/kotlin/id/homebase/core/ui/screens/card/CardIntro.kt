@@ -209,6 +209,7 @@ private fun IntroTile(card: ProfileCard, emoji: String?, still: ImageBitmap?, on
         modifier = Modifier
             .clip(shape)
             .clickable(role = Role.Button, onClick = onClick)
+            .handCursor()
             .semantics(mergeDescendants = true) { contentDescription = open }
             .padding(4.dp),
     ) {
@@ -238,6 +239,7 @@ private fun NewCircleTile(onClick: () -> Unit) {
         modifier = Modifier
             .clip(shape)
             .clickable(role = Role.Button, onClick = onClick)
+            .handCursor()
             .semantics(mergeDescendants = true) { contentDescription = title }
             .padding(4.dp),
     ) {
