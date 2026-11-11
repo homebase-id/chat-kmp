@@ -1,9 +1,11 @@
 // ObjC/Swift export allow-list for the release framework (-Xbinary=objcExportEntryPointsPath).
 // Only the functions and properties matched here get ObjC bridges; classes stay in the header.
 // Format: "<function|property|callable> <fq.name>" or "<kind> <fq.Parent>.*" (direct members only).
-// Overrides of a listed member are exposed too. A Kotlin interface that Swift IMPLEMENTS must list
-// all its members with ".*": Kotlin calls them through the bridge, and a missing one fails at
-// runtime, not at Swift compile time.
+// Overrides of a listed member are exposed too.
+// A Kotlin interface that Swift IMPLEMENTS lists every member BY NAME: Kotlin calls them through the
+// bridge, so a missing one fails at runtime, not at Swift compile time. Never ".*" on such an
+// interface: the wildcard also matches the equals/hashCode/toString every interface inherits, which
+// then become required protocol methods and break the Swift conformances (run 42988672351).
 
 // homebase-core: top-level functions Swift calls (MainViewControllerKt, PhotoBackupBackgroundTasksKt, ...)
 function id.homebase.core.MainViewController
@@ -28,9 +30,20 @@ callable id.homebase.core.share.OpenedFileBridge.*
 callable id.homebase.core.vault.VaultPrivacyBridge.*
 
 // homebase-common
-callable id.homebase.core.notifications.CallKitBridge.*
-callable id.homebase.core.notifications.CallKitActions.*
-callable id.homebase.core.notifications.CallPictureInPictureBridge.*
+property id.homebase.core.notifications.CallKitBridge.hostsOutgoingCalls
+function id.homebase.core.notifications.CallKitBridge.reportOutgoing
+function id.homebase.core.notifications.CallKitBridge.reportConnected
+function id.homebase.core.notifications.CallKitBridge.reportVideo
+function id.homebase.core.notifications.CallKitBridge.reportCaller
+function id.homebase.core.notifications.CallKitBridge.reportEnded
+function id.homebase.core.notifications.CallKitBridge.reportEndedElsewhere
+function id.homebase.core.notifications.CallKitBridge.requestAnswer
+function id.homebase.core.notifications.CallKitBridge.requestEnd
+function id.homebase.core.notifications.CallKitActions.accept
+function id.homebase.core.notifications.CallKitActions.endOrDecline
+function id.homebase.core.notifications.CallKitActions.setMuted
+function id.homebase.core.notifications.CallPictureInPictureBridge.start
+function id.homebase.core.notifications.CallPictureInPictureBridge.stop
 callable id.homebase.core.notifications.VoipTokenRelay.*
 callable id.homebase.core.notifications.CallKitBridgeHolder.*
 callable id.homebase.core.notifications.CallPictureInPictureBridgeHolder.*
@@ -39,18 +52,29 @@ callable id.homebase.core.notifications.NotificationEntry.*
 callable id.homebase.core.notifications.NotificationEntry.Companion.*
 callable id.homebase.core.camera.CameraOrientationLock.*
 callable id.homebase.core.util.CreatedIdentityRelay.*
-callable id.homebase.core.logging.CrashlyticsBridge.*
+function id.homebase.core.logging.CrashlyticsBridge.setCrashlyticsCollectionEnabled
+function id.homebase.core.logging.CrashlyticsBridge.log
+function id.homebase.core.logging.CrashlyticsBridge.recordException
 callable id.homebase.core.logging.CrashlyticsBridgeHolder.*
 
 // homebase-api
-callable id.homebase.api.platform.BackgroundUploadBridge.*
+function id.homebase.api.platform.BackgroundUploadBridge.enqueue
+function id.homebase.api.platform.BackgroundUploadBridge.cancelAll
+function id.homebase.api.platform.BackgroundUploadBridge.activeUploadKeys
 callable id.homebase.api.platform.BackgroundUploadBridgeHolder.*
 callable id.homebase.api.platform.BackgroundUploadResults.*
 callable id.homebase.api.platform.BackgroundUploadResults.Result.*
-callable id.homebase.api.platform.ContinuedProcessingBridge.*
-callable id.homebase.api.platform.ContinuedProcessingHandle.*
+function id.homebase.api.platform.ContinuedProcessingBridge.begin
+function id.homebase.api.platform.ContinuedProcessingHandle.reportProgress
+function id.homebase.api.platform.ContinuedProcessingHandle.end
 callable id.homebase.api.platform.ContinuedProcessingBridgeHolder.*
-callable id.homebase.api.video.FFmpegKitBridge.*
+function id.homebase.api.video.FFmpegKitBridge.executeFFmpeg
+function id.homebase.api.video.FFmpegKitBridge.executeFFmpegAsync
+function id.homebase.api.video.FFmpegKitBridge.executeFFmpegAsyncArgs
+function id.homebase.api.video.FFmpegKitBridge.cancelAllFFmpegSessions
+function id.homebase.api.video.FFmpegKitBridge.cancelFFmpegSession
+function id.homebase.api.video.FFmpegKitBridge.getMediaInformation
+function id.homebase.api.video.FFmpegKitBridge.getFfmpegVersionBanner
 callable id.homebase.api.video.FFmpegKitBridgeHolder.*
 callable id.homebase.api.video.FFmpegResult.*
 callable id.homebase.api.video.MediaInfo.*
