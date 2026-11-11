@@ -19,8 +19,10 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,10 +90,16 @@ fun ConnectRequestBottomSheet(
             }
             is ConnectRequestEvent.SendError -> {
                 // Sheet stays open on error, so use the sheet's own snackbar
-                sheetSnackbarHostState.showSnackbar(
-                    getString(event.failure.res, *event.failure.args.toTypedArray())
+                val failure = event.failure
+                val result = sheetSnackbarHostState.showSnackbar(
+                    message = getString(failure.res, *failure.args.toTypedArray()),
+                    actionLabel = if (failure.offersDataUpgrade) getString(MR.string.settings_open_owner_console) else null,
+                    duration = if (failure.offersDataUpgrade) SnackbarDuration.Long else SnackbarDuration.Short,
                 )
                 viewModel.onAction(ConnectRequestAction.EventConsumed)
+                if (result == SnackbarResult.ActionPerformed) {
+                    viewModel.onAction(ConnectRequestAction.OpenDataUpgradeClicked)
+                }
             }
             is ConnectRequestEvent.OpenUrl -> {
                 viewModel.onAction(ConnectRequestAction.EventConsumed)
