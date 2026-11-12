@@ -857,8 +857,8 @@ class ProfileCardEditorShotsTest {
                     Shot("d-$slot-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = w, heightDp = h),
                     editor("d-$slot-content", polishBase, w = w, h = h, newCircle = true),
                     editor("d-$slot-content-photo", polishBase, w = w, h = h, photo = CardPhotoUi(null, true, true, false)),
-                    editor("d-$slot-content-copy-from", editorBase, w = w, h = h, act = {
-                        onNodeWithText("Copy from…").performClick()
+                    editor("d-$slot-content-design", editorBase, w = w, h = h, act = {
+                        onNodeWithContentDescription("Design").performClick()
                         mainClock.advanceTimeBy(SETTLE_MS)
                     }),
                     editor("d-$slot-content-add", k15Friends, w = w, h = h, act = {

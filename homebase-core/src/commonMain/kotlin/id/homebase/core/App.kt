@@ -28,6 +28,8 @@ import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.session.IdentityScopeProvider
 import org.koin.compose.koinInject
+import androidx.compose.runtime.CompositionLocalProvider
+import id.homebase.core.ui.navigation.LocalWindowTopInset
 import org.koin.compose.viewmodel.koinViewModel
 
 /** Main application entry point. Sets up theme, and navigation. */
@@ -68,6 +70,7 @@ fun App(
             callHost = { content -> CallHost(viewModel = koinViewModel(), modifier = Modifier.fillMaxSize(), content = content) },
         ) { contentTopInset ->
             IdentityScopeProvider {
+                CompositionLocalProvider(LocalWindowTopInset provides contentTopInset) {
                 AppNavHost(
                     // koinViewModel(), not koinInject(): the factory resolved outside a ViewModelStore leaks
                     // orphans whose collectors steal events from the single-consumer navigation channel.
@@ -76,6 +79,7 @@ fun App(
                     youAuthFlowManager = youAuthFlowManager,
                     topInset = contentTopInset,
                 )
+                }
             }
         }
         LaunchedEffect(navController) {

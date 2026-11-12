@@ -69,7 +69,7 @@ internal class WebCardHost(odinId: String) : CardHostBase(cardPageUrl(odinId, Ca
         is CardCommand.Render -> postCardCommand(frame, "render", command.payload.toJson(), origin)
         CardCommand.ExportPng -> postCardCommand(frame, "exportPng", null, origin)
         // A cross-origin frame runs none of our script: its colours stay the fallback ones and it paints as the browser composites it.
-        CardCommand.ProbeEdges -> Unit
+        CardCommand.ProbeEdges, is CardCommand.HostStyle -> Unit
         CardCommand.RequestPaint -> onBridgeMessage("""{"type":"hostPainted"}""")
     }
 
@@ -139,3 +139,8 @@ private fun hideCardFrame(frame: JsAny): Unit = js("{ frame.style.display = 'non
 private fun removeCardFrame(frame: JsAny): Unit = js(
     "{ if (frame.parentNode) frame.parentNode.removeChild(frame); }"
 )
+
+@Composable
+actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) = InlineAboveCard(modifier, content)
+
+internal actual val chromeFloatsOverCard: Boolean = false

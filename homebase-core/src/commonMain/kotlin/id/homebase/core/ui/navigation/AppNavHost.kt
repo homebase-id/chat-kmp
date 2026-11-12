@@ -1267,7 +1267,13 @@ fun AppNavHost(
                                                 openChats()
                                             },
                                             onShareCard = {
-                                                navController.navigate(Route.ProfileCard)
+                                                // Desktop and web show the card in the Settings pane, inside the window's layout.
+                                                if (isDesktopOrWeb()) {
+                                                    SettingsPaneRequest.openProfileCard()
+                                                    navController.navigate(Route.Settings)
+                                                } else {
+                                                    navController.navigate(Route.ProfileCard)
+                                                }
                                             }.takeIf { profileCardEnabled },
                                         )
                                     }
@@ -1820,8 +1826,6 @@ fun AppNavHost(
                                                 onNavigateToDefragmenter = {
                                                     navController.navigate(Route.Defragmenter)
                                                 },
-                                                onOpenProfileCard = { navController.navigate(Route.ProfileCard) },
-                                                onOpenProfileCardEditor = { navController.navigate(Route.ProfileCardEditor()) },
                                             ),
                                             profileCardEnabled = profileCardEnabled,
                                             emailMailboxMode = emailMailboxMode,

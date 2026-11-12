@@ -56,15 +56,20 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloseFullscreen
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Palette
@@ -132,6 +137,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
@@ -151,6 +158,8 @@ import id.homebase.resources.MR
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
+import id.homebase.resources.collapse
+import id.homebase.resources.expand
 import id.homebase.resources.cancel
 import id.homebase.resources.profile_card_reset_failed
 import id.homebase.resources.profile_card_circle_unsupported
@@ -200,6 +209,8 @@ import id.homebase.core.ui.navigation.LocalPaneEntered
 
 // Wide windows get a card-width sheet rather than the page's full website layout.
 internal val WIDE_SHEET_MAX_WIDTH = 480.dp
+// Past the site's 768 CSS px breakpoint, so the wide page shows, but no wider than it reads well.
+private val DESKTOP_PAGE_MAX_WIDTH = 1024.dp
 
 private val TOP_BAND_HEIGHT = 56.dp
 private val BAND_FADE_HEIGHT = 16.dp
@@ -238,8 +249,10 @@ internal fun CardExpressiveTheme(content: @Composable () -> Unit) {
     )
 }
 
+private val ZeroCorner = CornerSize(0.dp)
+
 @Composable
-internal fun cardSheetShape(): Shape =
+internal fun cardSheetShape(): CornerBasedShape =
     MaterialTheme.shapes.extraLargeIncreased.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
 
 // Read the returned state only in draw, so the colour animation redraws instead of recomposing the card.
@@ -253,12 +266,21 @@ fun ProfileCardScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onChangeDesign: () -> Unit,
+    fullWindow: Boolean = false,
+    onToggleFullWindow: (() -> Unit)? = null,
 ) {
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
     ProvideOpenOverlays {
         val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = true) }
         IntroViewerSwitch(viewModel = viewModel, onBack = onBack, onNewCircle = newCircle) { onClose ->
-            ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
+            ProfileCardViewer(
+                viewModel = viewModel,
+                onBack = onClose,
+                onEdit = onEdit,
+                onChangeDesign = onChangeDesign,
+                fullWindow = fullWindow,
+                onToggleFullWindow = onToggleFullWindow,
+            )
         }
     }
 }
@@ -305,6 +327,8 @@ private fun ProfileCardViewer(
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onChangeDesign: () -> Unit,
+    fullWindow: Boolean,
+    onToggleFullWindow: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
@@ -401,23 +425,33 @@ private fun ProfileCardViewer(
     val cover by viewModel.cover.collectAsStateWithLifecycle()
     var confirmPublicShare by rememberSaveable { mutableStateOf(false) }
 
-    val expanded = isExpandedLayout()
+    // Inside a pane the card keeps its card-width sheet; a whole wide window gets the site's wide page, which desktop caps at a reading width.
+    val inPane = onToggleFullWindow != null && !fullWindow
+    val wide = isExpandedLayout() && (onToggleFullWindow == null || fullWindow)
+    // In a pane the card is the pane's whole body, so it takes the pane's corners.
+    val sheetShape = if (inPane) MaterialTheme.shapes.extraLarge else cardSheetShape()
+    val sheetWidth = when {
+        inPane -> Modifier
+        !wide -> Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH)
+        isDesktopOrWeb() -> Modifier.widthIn(max = DESKTOP_PAGE_MAX_WIDTH)
+        else -> Modifier
+    }
+    val reservedBottom = TOOLBAR_BAND_HEIGHT + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    LaunchedEffect(host, reservedBottom) { if (!cardBands.bottom) host?.reserveBottom(reservedBottom) }
     CardExpressiveTheme {
-        val bands = cardBands(uiState.design)
+        val bands = cardBands
         val topColor by cardEdgeColor(uiState.cardTopArgb, uiState.design)
         val bottomColor by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    // A wide window gets the site's full-width card, which it lays out from 768 CSS px.
-                    .then(if (expanded) Modifier else Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH))
+                    .then(sheetWidth)
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top))
-                    .padding(top = 8.dp)
+                    .then(if (inPane) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)).padding(top = 8.dp))
                     // Rubber-banded: the sheet gives a little, and letting go past the threshold hands over to the real pop transition.
                     .graphicsLayer { translationY = maxPull * (1f - exp(-rawPull / maxPull)) }
-                    .clip(cardSheetShape())
+                    .clip(sheetShape)
                     .drawBehind { drawRect(bottomColor) },
             ) {
                 CardBandsLayout(
@@ -435,25 +469,15 @@ private fun ProfileCardViewer(
                         cover = cover?.image,
                         coverHeld = coverHeld,
                         modifier = Modifier.fillMaxSize(),
-                        shape = cardSheetShape(),
+                        // Under a band the sheet's clip rounds the top; the native view rounds only the corners it reaches.
+                        shape = if (bands.top) sheetShape.copy(topStart = ZeroCorner, topEnd = ZeroCorner) else sheetShape,
                     )
-                    SnackbarHost(
-                        hostState = snackbarHostState,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .then(
-                                if (bands.bottom) Modifier
-                                else Modifier.navigationBarsPadding().padding(bottom = TOOLBAR_BAND_HEIGHT),
-                            )
-                            .padding(8.dp),
-                    ) { data ->
-                        ReportOverlay()
-                        Snackbar(data)
-                    }
                 }
                 SheetTopChrome(
                     uiState = uiState,
                     onClose = leave,
+                    fullWindow = fullWindow,
+                    onToggleFullWindow = onToggleFullWindow,
                     // Over a band the whole strip drags; floating over the card only the handle does, so the card keeps its taps.
                     bandDrag = if (bands.top) dismissDrag else Modifier,
                     handleDrag = if (bands.top) Modifier else dismissDrag,
@@ -472,6 +496,7 @@ private fun ProfileCardViewer(
                     onChangeDesign = onChangeDesign,
                     onReset = viewModel::onResetCardConfirmed,
                     extraActions = { nfc?.let { CardNfcAction(it) } },
+                    snackbarHostState = snackbarHostState,
                 )
             }
         }
@@ -536,97 +561,105 @@ internal fun BoxScope.CardBottomChrome(
     onChangeDesign: () -> Unit,
     onReset: () -> Unit,
     extraActions: @Composable () -> Unit,
+    snackbarHostState: SnackbarHostState? = null,
 ) {
     var confirmReset by remember { mutableStateOf(false) }
     var explainReadOnly by remember { mutableStateOf(false) }
     val motion = MaterialTheme.motionScheme
-    Box(
+    // The snackbar shares the toolbar's layer, so on desktop it floats over the card too; the layer is no bigger than they are.
+    AboveCard(
         modifier = Modifier
             .align(Alignment.BottomCenter)
-            .fillMaxWidth()
             .semantics {
                 isTraversalGroup = true
                 traversalIndex = -1f
             }
             .navigationBarsPadding()
-            .height(TOOLBAR_BAND_HEIGHT),
-        contentAlignment = Alignment.Center,
+            .padding(bottom = (TOOLBAR_BAND_HEIGHT - FloatingToolbarDefaults.ContainerSize) / 2),
     ) {
-        // One toolbar: the quick actions as icons, Edit and Design as its labelled lead actions.
-        HorizontalFloatingToolbar(
-            expanded = true,
-            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                toolbarContainerColor = chromePillColor(),
-                toolbarContentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-            contentPadding = PaddingValues(start = 4.dp, end = 8.dp),
-        ) {
-            ShareAction(
-                isExporting = isExporting,
-                enabled = canShare,
-                saveInsteadOfShare = saveInsteadOfShare,
-                onClick = onShare,
-            )
-            extraActions()
-            // Absent on a card that's still its default, so nothing in the toolbar does nothing.
-            AnimatedVisibility(
-                visible = showsReset,
-                enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
-            ) {
-                val resetLabel = stringResource(MR.string.profile_card_reset_card)
-                WithTooltip(resetLabel) {
-                    IconButton(onClick = { confirmReset = true }, enabled = canReset) {
-                        Icon(Icons.Outlined.RestartAlt, contentDescription = resetLabel)
-                    }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            snackbarHostState?.let {
+                SnackbarHost(hostState = it) { data ->
+                    ReportOverlay()
+                    Snackbar(data, Modifier.padding(8.dp))
                 }
             }
-            Spacer(Modifier.width(4.dp))
-            // Read-only keeps the slot but turns quiet, so nothing promises an edit that can't be kept.
-            // Weighted without fill, a narrow screen or large text ellipsises the labels instead of clipping them.
-            AnimatedContent(
-                targetState = readOnly,
-                transitionSpec = {
-                    fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
-                },
-                modifier = Modifier.weight(1f, fill = false),
-            ) { locked ->
-                if (locked) {
-                    FilledTonalButton(
-                        onClick = { explainReadOnly = true },
-                        shapes = ButtonDefaults.shapes(),
-                        contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
-                    ) {
-                        Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(
-                            stringResource(MR.string.profile_card_read_only_why),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            // The label's own script sets its direction, so a trailing "?" isn't flipped by the layout's.
-                            style = LocalTextStyle.current.copy(textDirection = TextDirection.Content),
-                        )
-                    }
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = onEdit,
-                            shapes = ButtonDefaults.shapes(),
-                            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
-                        ) {
-                            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                            Text(stringResource(MR.string.edit), maxLines = 1)
+            // One toolbar: the quick actions as icons, Edit and Design as its labelled lead actions.
+            HorizontalFloatingToolbar(
+                expanded = true,
+                colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                    toolbarContainerColor = chromePillColor(),
+                    toolbarContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                contentPadding = PaddingValues(start = 4.dp, end = 8.dp),
+            ) {
+                ShareAction(
+                    isExporting = isExporting,
+                    enabled = canShare,
+                    saveInsteadOfShare = saveInsteadOfShare,
+                    onClick = onShare,
+                )
+                extraActions()
+                // Absent on a card that's still its default, so nothing in the toolbar does nothing.
+                AnimatedVisibility(
+                    visible = showsReset,
+                    enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                    exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                ) {
+                    val resetLabel = stringResource(MR.string.profile_card_reset_card)
+                    WithTooltip(resetLabel) {
+                        IconButton(onClick = { confirmReset = true }, enabled = canReset) {
+                            Icon(Icons.Outlined.RestartAlt, contentDescription = resetLabel)
                         }
+                    }
+                }
+                Spacer(Modifier.width(4.dp))
+                // Read-only keeps the slot but turns quiet, so nothing promises an edit that can't be kept.
+                // Weighted without fill, a narrow screen or large text ellipsises the labels instead of clipping them.
+                AnimatedContent(
+                    targetState = readOnly,
+                    transitionSpec = {
+                        fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                    },
+                    modifier = Modifier.weight(1f, fill = false),
+                ) { locked ->
+                    if (locked) {
                         FilledTonalButton(
-                            onClick = onChangeDesign,
+                            onClick = { explainReadOnly = true },
                             shapes = ButtonDefaults.shapes(),
                             contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
-                            modifier = Modifier.weight(1f, fill = false),
                         ) {
-                            Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                             Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                            Text(stringResource(MR.string.profile_card_design_action), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                stringResource(MR.string.profile_card_read_only_why),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                // The label's own script sets its direction, so a trailing "?" isn't flipped by the layout's.
+                                style = LocalTextStyle.current.copy(textDirection = TextDirection.Content),
+                            )
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = onEdit,
+                                shapes = ButtonDefaults.shapes(),
+                                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                            ) {
+                                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                                Text(stringResource(MR.string.edit), maxLines = 1)
+                            }
+                            FilledTonalButton(
+                                onClick = onChangeDesign,
+                                shapes = ButtonDefaults.shapes(),
+                                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                                modifier = Modifier.weight(1f, fill = false),
+                            ) {
+                                Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                                Text(stringResource(MR.string.profile_card_design_action), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 }
@@ -646,14 +679,8 @@ internal fun BoxScope.CardBottomChrome(
 // Native bands in the page's colour where a design has content under the chrome; the page has no safe-area support.
 private data class CardBands(val top: Boolean, val bottom: Boolean)
 
-// Desktop and web paint the card's native view over any Compose chrome, so there it never runs under the bars.
-private fun cardBands(design: String): CardBands = when {
-    isDesktopOrWeb() -> CardBands(top = true, bottom = true)
-    design == CardDesign.POSTER -> CardBands(top = false, bottom = true)
-    // Its avatar reaches into the top strip; the bottom is decoration only.
-    design == CardDesign.BOARD -> CardBands(top = true, bottom = false)
-    else -> CardBands(top = true, bottom = true)
-}
+// Web paints the card's frame over any Compose chrome, so only there does the chrome need bands of its own.
+private val cardBands = CardBands(top = !chromeFloatsOverCard, bottom = !chromeFloatsOverCard)
 
 @Composable
 private fun CardBandsLayout(
@@ -701,6 +728,8 @@ internal fun SheetTopChrome(
     bandDrag: Modifier,
     handleDrag: Modifier,
     modifier: Modifier = Modifier,
+    fullWindow: Boolean = false,
+    onToggleFullWindow: (() -> Unit)? = null,
 ) {
     val gap = with(LocalDensity.current) { CHROME_GAP.roundToPx() }
     val edge = with(LocalDensity.current) { 8.dp.roundToPx() }
@@ -715,13 +744,32 @@ internal fun SheetTopChrome(
                 traversalIndex = -1f
             },
         content = {
-            AudienceTitle(uiState)
-            ChromeIconButton(onClick = onClose) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = stringResource(MR.string.close),
-                    modifier = Modifier.size(20.dp),
-                )
+            AboveCard(Modifier) { AudienceTitle(uiState) }
+            AboveCard(Modifier) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    onToggleFullWindow?.let { toggle ->
+                        val label = stringResource(if (fullWindow) MR.string.collapse else MR.string.expand)
+                        WithTooltip(label) {
+                            ChromeIconButton(onClick = toggle) {
+                                Icon(
+                                    imageVector = if (fullWindow) Icons.Filled.CloseFullscreen else Icons.Filled.OpenInFull,
+                                    contentDescription = label,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+                    val closeLabel = stringResource(MR.string.close)
+                    WithTooltip(closeLabel) {
+                        ChromeIconButton(onClick = onClose) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = closeLabel,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                }
             }
             // An unmarked grab zone: Close is the visible way out, and a bare handle read as an empty chip.
             Box(
@@ -933,7 +981,7 @@ private fun ChromeIconButton(onClick: () -> Unit, modifier: Modifier = Modifier,
             color = chromePillColor(),
             contentColor = MaterialTheme.colorScheme.onSurface,
             shadowElevation = 2.dp,
-            modifier = Modifier.size(CHROME_CONTROL_SIZE),
+            modifier = Modifier.size(CHROME_CONTROL_SIZE).semantics { role = Role.Button },
         ) {
             Box(contentAlignment = Alignment.Center) { content() }
         }

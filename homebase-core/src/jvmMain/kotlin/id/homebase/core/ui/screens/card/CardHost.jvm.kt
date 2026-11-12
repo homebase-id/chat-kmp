@@ -151,14 +151,15 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         park()
     }
 
-    // body becomes the scroller so its clip stays put; html, outside the clip, takes the frame's backdrop.
+    // body becomes the scroller so its clip stays put; html, outside the clip, takes the frame's backdrop, which probeEdges skips.
     fun roundCorners(radii: String?, outsideArgb: Int) {
         val outside = "rgb(${outsideArgb shr 16 and 0xFF},${outsideArgb shr 8 and 0xFF},${outsideArgb and 0xFF})"
+        val html = "document.documentElement.toggleAttribute('$HOST_BACKDROP_ATTR',${radii != null})"
         cornersScript = radii?.let {
             "(function(){var s=document.getElementById('hb-corners')||document.head.appendChild(document.createElement('style'));" +
                 "s.id='hb-corners';s.textContent='html{background:$outside!important;height:100%;overflow:hidden}" +
-                "body{height:100%;overflow-y:auto;clip-path:inset(0 round $it)}'})()"
-        } ?: "(function(){var s=document.getElementById('hb-corners');if(s)s.remove()})()"
+                "body{height:100%;overflow-y:auto;clip-path:inset(0 round $it)}';$html})()"
+        } ?: "(function(){var s=document.getElementById('hb-corners');if(s)s.remove();$html})()"
         applyCorners()
     }
 
@@ -190,7 +191,8 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
             CardCommand.ExportPng -> CardEvent.Png::class
             CardCommand.ProbeEdges -> CardEvent.Edges::class
             CardCommand.RequestPaint -> CardEvent.Painted::class
-        }.let(::awaitReply)
+            is CardCommand.HostStyle -> null
+        }?.let(::awaitReply)
         val script = command.script()
         scope.launch(webView) { panel.evaluateJavaScript(script) {} }
     }

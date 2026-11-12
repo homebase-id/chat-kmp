@@ -121,6 +121,7 @@ internal class IosCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         setOpaque(false)
         setBackgroundColor(UIColor.clearColor)
         scrollView.setBackgroundColor(UIColor.clearColor)
+        scrollView.setShowsVerticalScrollIndicator(false)
         scrollView.contentInsetAdjustmentBehavior =
             UIScrollViewContentInsetAdjustmentBehavior.UIScrollViewContentInsetAdjustmentNever
         navigationDelegate = navigationPolicy
@@ -225,3 +226,8 @@ private class NavigationPolicy(
 
     private fun NSError.describe() = "$localizedDescription ($domain $code)"
 }
+
+@Composable
+actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) = InlineAboveCard(modifier, content)
+
+internal actual val chromeFloatsOverCard: Boolean = true
