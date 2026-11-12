@@ -1,6 +1,8 @@
 package id.homebase.api.image
 
+import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -54,11 +56,14 @@ class RenderedImages(val displayedSize: ImageSize, val images: List<RenderedImag
  * - [decode] decodes at most once per source, upright, with a long edge of at least
  *   `min(minLongEdge, displayedSize's long edge)`. Decoding less than the full image is encouraged.
  * - Both throw on bytes the platform can't read.
+ * - [metadata] reads the file's EXIF without decoding pixels, or is null where the platform can't.
  */
 internal interface ImageSource : AutoCloseable {
     val displayedSize: ImageSize
 
     fun decode(minLongEdge: Int): PipelineBitmap
+
+    fun metadata(): ImageMetadata?
 }
 
 /**
@@ -93,16 +98,21 @@ internal interface PipelineBitmap : AutoCloseable {
 
 internal expect fun openImageSource(bytes: ByteArray): ImageSource
 
+/** [path] for the decoder to read itself, like its bytes would; null where [fileOps] must read the bytes. */
+internal expect fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource?
+
 /**
  * Makes every planned image from one decode, largest to smallest, each scaled from the one above.
  * [plan] gets the displayed size, so nothing has to decode to find out what to ask for. The result
  * keeps the plan's order.
  */
 suspend fun renderImages(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput>): RenderedImages =
-    withContext(Dispatchers.Default) {
-        val context = coroutineContext
-        openImageSource(bytes).use { renderFrom(it, { context.ensureActive() }, plan) }
-    }
+    withContext(Dispatchers.Default) { openImageSource(bytes).use { renderImages(it, plan) } }
+
+internal suspend fun renderImages(source: ImageSource, plan: (ImageSize) -> List<ImageOutput>): RenderedImages {
+    val context = currentCoroutineContext()
+    return renderFrom(source, { context.ensureActive() }, plan)
+}
 
 internal suspend fun renderFrom(
     source: ImageSource,

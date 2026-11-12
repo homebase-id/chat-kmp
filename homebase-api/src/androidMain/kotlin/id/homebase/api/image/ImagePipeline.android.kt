@@ -5,11 +5,15 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorSpace
 import android.graphics.ImageDecoder
+import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import co.touchlab.kermit.Logger
-import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.file.AndroidFileOperationsProvider
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.imageresize.NativeResize
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.InputStream
 import java.nio.ByteBuffer
 import kotlin.math.max
 
@@ -64,43 +68,73 @@ private const val TAG = "ImagePipeline"
 
 private class HeaderRead : RuntimeException(null, null, false, false)
 
+private sealed interface AndroidImageInput {
+    fun decoderSource(): ImageDecoder.Source
+    fun openStream(): InputStream
+    fun allBytes(): ByteArray = openStream().use { it.readBytes() }
+    fun exif(): ExifInterface = openStream().use { ExifInterface(it) }
+
+    class Bytes(val bytes: ByteArray) : AndroidImageInput {
+        override fun decoderSource(): ImageDecoder.Source = ImageDecoder.createSource(ByteBuffer.wrap(bytes))
+        override fun openStream(): InputStream = ByteArrayInputStream(bytes)
+        override fun allBytes() = bytes
+    }
+
+    class Path(val file: File) : AndroidImageInput {
+        override fun decoderSource(): ImageDecoder.Source = ImageDecoder.createSource(file)
+        override fun openStream(): InputStream = file.inputStream()
+        override fun exif() = ExifInterface(file)
+    }
+
+    class Content(val files: AndroidFileOperationsProvider, val path: String) : AndroidImageInput {
+        override fun decoderSource(): ImageDecoder.Source = ImageDecoder.createSource(files.context.contentResolver, path.toUri())
+        override fun openStream(): InputStream = files.openContentStream(path)
+    }
+}
+
+private class Header(val size: ImageSize, val mimeType: String?)
+
 /**
  * ImageDecoder applies EXIF rotation and HEIF `irot` itself, and reads HEIC without a JPEG bridge.
  * BitmapFactory stays as the fallback for whatever it refuses.
  */
-private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
-    override val displayedSize: ImageSize = readWithDecoder() ?: readWithBitmapFactory()
+private class AndroidImageSource(private val input: AndroidImageInput) : ImageSource {
+    private val header: Header by lazy { readWithDecoder() ?: readWithBitmapFactory() }
+    private val exif: ExifInterface by lazy { input.exif() }
 
-    private fun readWithDecoder(): ImageSize? {
-        var size: ImageSize? = null
+    override val displayedSize get() = header.size
+
+    private fun readWithDecoder(): Header? {
+        var header: Header? = null
         try {
-            ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { _, info, _ ->
-                size = ImageSize(info.size.width, info.size.height)
+            ImageDecoder.decodeBitmap(input.decoderSource()) { _, info, _ ->
+                header = Header(ImageSize(info.size.width, info.size.height), info.mimeType)
                 throw HeaderRead() // Stops before any pixels are allocated.
             }
         } catch (_: HeaderRead) {
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "ImageDecoder couldn't read the header" }
         }
-        return size
+        return header
     }
 
-    private fun readWithBitmapFactory(): ImageSize {
+    private fun readWithBitmapFactory(): Header {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        input.openStream().use { BitmapFactory.decodeStream(it, null, options) }
         require(options.outWidth > 0 && options.outHeight > 0) { "Failed to read image size" }
-        val rotation = ExifInterface(ByteArrayInputStream(bytes)).rotationDegrees
-        return if (rotation == 90 || rotation == 270) {
+        val rotation = exif.rotationDegrees
+        val size = if (rotation == 90 || rotation == 270) {
             ImageSize(options.outHeight, options.outWidth)
         } else {
             ImageSize(options.outWidth, options.outHeight)
         }
+        return Header(size, options.outMimeType)
     }
 
     override fun decode(minLongEdge: Int): PipelineBitmap {
         // Only a JPEG decoder averages when it samples (DCT scaling). Every other format here picks
         // every Nth pixel, which is the aliasing this pipeline exists to remove.
-        val isJpeg = ImageFormatDetector.detectFormat(bytes) == "image/jpeg"
+        val isJpeg = header.mimeType == "image/jpeg"
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
         val sampleSize = if (isJpeg) sampleSizeFor(longEdge, minLongEdge) else 1
         val bitmap = try {
@@ -114,15 +148,22 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
     // Not setTargetSize: it decodes full size, then scales bilinearly, so it aliases and peaks higher.
     private fun decodeSampled(sampleSize: Int): Bitmap =
         try {
-            ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, _, _ ->
+            ImageDecoder.decodeBitmap(input.decoderSource()) { decoder, _, _ ->
                 decoder.setTargetSampleSize(sampleSize)
                 // A HARDWARE bitmap has no readable pixels, so compress would fail on it.
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "ImageDecoder refused the image; trying BitmapFactory" }
-            ImageUtils.decodeBitmap(bytes, sampleSize)
+            ImageUtils.decodeBitmap(input.allBytes(), sampleSize)
         }
+
+    override fun metadata(): ImageMetadata? = try {
+        exif.toImageMetadata()
+    } catch (e: Throwable) {
+        Logger.w(tag = TAG, throwable = e) { "Android EXIF read failed" }
+        null
+    }
 
     override fun close() = Unit
 }
@@ -134,4 +175,13 @@ private fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {
     return sample
 }
 
-internal actual fun openImageSource(bytes: ByteArray): ImageSource = AndroidImageSource(bytes)
+internal actual fun openImageSource(bytes: ByteArray): ImageSource = AndroidImageSource(AndroidImageInput.Bytes(bytes))
+
+internal actual fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource? {
+    val files = fileOps as? AndroidFileOperationsProvider
+    val input = when {
+        files != null && files.isContentUri(path) -> AndroidImageInput.Content(files, path)
+        else -> AndroidImageInput.Path(File(path).takeIf { it.isFile } ?: return null)
+    }
+    return AndroidImageSource(input)
+}

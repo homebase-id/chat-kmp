@@ -5,7 +5,6 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
-import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.video.toVideoQuality
 import id.homebase.upload.PayloadBundle
 
@@ -73,7 +72,7 @@ object MessageAttachmentBuilder {
                             if (attachment.forceSticker) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = true,
-                                    format = ImageFormatDetector.detectFormat(thumbs.sourceBytes),
+                                    format = thumbs.sourceFormat,
                                 )
                             } else if (recordedQuality != null || finalSize != null) {
                                 DescriptorContent.descriptorContentFromImage(
