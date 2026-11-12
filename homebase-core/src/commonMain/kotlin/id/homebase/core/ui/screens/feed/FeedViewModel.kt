@@ -89,7 +89,7 @@ class FeedViewModel(
                 }
 
                 val feedUrl = "https://$domain/apps/feed"
-                val script = buildInjectionScript(
+                val script = buildFeedInjectionScript(
                     sharedSecretBase64 = sharedSecretBase64,
                     authToken = token,
                     isDark = isDark,
@@ -121,7 +121,7 @@ class FeedViewModel(
         viewModelScope.launch {
             try {
                 val credentials = credentialsManager.requireActiveCredentials()
-                val script = buildInjectionScript(
+                val script = buildFeedInjectionScript(
                     sharedSecretBase64 = credentials.sharedSecret.base64Encode(),
                     authToken = credentials.clientAccessToken,
                     isDark = _uiState.value.isDarkMode,
@@ -133,30 +133,30 @@ class FeedViewModel(
         }
     }
 
-    companion object {
+    private companion object {
         private const val TAG = "FeedViewModel"
-
-        /** Escape a string for safe inclusion in a JS single-quoted string literal. */
-        private fun escapeForJs(value: String): String =
-            value.replace("\\", "\\\\").replace("'", "\\'")
-
-        private fun buildInjectionScript(
-            sharedSecretBase64: String,
-            authToken: String,
-            isDark: Boolean,
-        ): String {
-            val safeSecret = escapeForJs(sharedSecretBase64)
-            val safeToken = escapeForJs(authToken)
-            return """
-                (function() {
-                    try {
-                        localStorage.setItem('APPS_feed', '$safeSecret');
-                        localStorage.setItem('BX0900_feed', '$safeToken');
-                        localStorage.setItem('client_type', 'react-native-v2');
-                        localStorage.setItem('prefersDark', '${if (isDark) "1" else "0"}');
-                    } catch(e) { console.error('Feed injection error:', e); }
-                })();
-            """.trimIndent()
-        }
     }
+}
+
+/** Escape a string for safe inclusion in a JS single-quoted string literal. */
+private fun escapeForJs(value: String): String =
+    value.replace("\\", "\\\\").replace("'", "\\'")
+
+internal fun buildFeedInjectionScript(
+    sharedSecretBase64: String,
+    authToken: String,
+    isDark: Boolean,
+): String {
+    val safeSecret = escapeForJs(sharedSecretBase64)
+    val safeToken = escapeForJs(authToken)
+    return """
+        (function() {
+            try {
+                localStorage.setItem('APPS_feed', '$safeSecret');
+                localStorage.setItem('BX0900_feed', '$safeToken');
+                localStorage.setItem('client_type', 'react-native-v2');
+                localStorage.setItem('prefersDark', '${if (isDark) "1" else "0"}');
+            } catch(e) { console.error('Feed injection error:', e); }
+        })();
+    """.trimIndent()
 }

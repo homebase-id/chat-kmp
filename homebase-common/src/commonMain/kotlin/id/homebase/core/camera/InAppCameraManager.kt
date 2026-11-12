@@ -22,14 +22,15 @@ import kotlin.time.TimeSource
 internal const val HANDOFF_CEILING_MS = 1_500L
 
 /** True once the receiver reported the capture drawn, false when the ceiling ran out first. */
-internal suspend fun awaitHandoff(epoch: Int, ceilingMs: Long = HANDOFF_CEILING_MS): Boolean =
-    withTimeoutOrNull(ceilingMs) { CaptureHandoff.awaitShown(epoch) } != null
+internal suspend fun awaitHandoff(handoff: CaptureHandoff, epoch: Int, ceilingMs: Long = HANDOFF_CEILING_MS): Boolean =
+    withTimeoutOrNull(ceilingMs) { handoff.awaitShown(epoch) } != null
 
 @Stable
 class InAppCameraLauncher internal constructor() : PlatformCameraManager {
+    internal val handoff = CaptureHandoff()
     internal var isOpen by mutableStateOf(false)
     internal var galleryRequested by mutableStateOf(false)
-    /** Set while a delivered capture waits for its receiver to draw it, see [CaptureHandoff]. */
+    /** Set while a delivered capture waits for its receiver to draw it, see [resultShown]. */
     internal var handoffEpoch by mutableStateOf<Int?>(null)
     internal var warmer: CameraWarmer? = null
     internal var warmEngine: CameraEngine? = null
@@ -41,9 +42,17 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
         isOpen = true
     }
 
+    override fun resultShown() = handoff.contentShown()
+
     internal fun close() {
         isOpen = false
         handoffEpoch = null
+        releaseWarmEngine()
+    }
+
+    internal fun releaseWarmEngine() {
+        warmEngine?.release()
+        warmEngine = null
     }
 }
 
@@ -61,12 +70,12 @@ fun rememberInAppCameraManager(
     val currentOnOpenGallery by rememberUpdatedState(onOpenGallery)
     if (launcher.isOpen) {
         val fade = remember { Animatable(1f) }
-        val handoff = launcher.handoffEpoch
-        if (handoff != null) {
+        val epoch = launcher.handoffEpoch
+        if (epoch != null) {
             val exitSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-            LaunchedEffect(handoff) {
+            LaunchedEffect(epoch) {
                 val waiting = TimeSource.Monotonic.markNow()
-                if (awaitHandoff(handoff)) {
+                if (awaitHandoff(launcher.handoff, epoch)) {
                     Logger.d(tag = "InAppCamera") { "Capture receiver drew it after ${waiting.elapsedNow().inWholeMilliseconds} ms" }
                 } else {
                     Logger.w(tag = "InAppCamera") { "Capture receiver never reported it drawn; closing at the ceiling" }
@@ -76,17 +85,13 @@ fun rememberInAppCameraManager(
             }
         }
         DisposableEffect(launcher) {
-            onDispose {
-                // Adopted engines are released by the camera screen; this catches one it never got to.
-                launcher.warmEngine?.release()
-                launcher.warmEngine = null
-            }
+            onDispose { launcher.releaseWarmEngine() }
         }
         CameraCaptureDialog(
             allowedModes = allowedModes,
             mirrorFront = rememberMirrorFrontCamera(),
             warmEngine = launcher.warmEngine,
-            handingOff = handoff != null,
+            handingOff = epoch != null,
             fade = { fade.value },
             onOpenGallery = if (onOpenGallery == null) null else {
                 {
@@ -95,7 +100,7 @@ fun rememberInAppCameraManager(
                 }
             },
             onResult = { file ->
-                if (awaitResultShown) launcher.handoffEpoch = CaptureHandoff.begin() else launcher.close()
+                if (awaitResultShown) launcher.handoffEpoch = launcher.handoff.begin() else launcher.close()
                 currentOnResult(file)
             },
             onDismiss = {

@@ -158,7 +158,7 @@
     <string name="pending_upgrade_snackbar_message">Your identity requires a data upgrade</string>
     <string name="pending_upgrade_snackbar_action">Upgrade</string>
     <string name="pending_upgrade_title">Data upgrade required</string>
-    <string name="pending_upgrade_message">Your identity has a pending upgrade. Please visit your owner console to run the automated upgrade process.</string>
+    <string name="pending_upgrade_message">Your identity needs a data upgrade. Until you run it, new contacts can't message you, and other features may stop working. It takes a minute in your owner console.</string>
     <string name="pending_upgrade_confirm">Upgrade Now</string>
     <string name="upgrade_running_message">Upgrading your identity…</string>
 
@@ -1026,6 +1026,13 @@
     <string name="chat_contact_card_more">+%1$d more</string>
     <string name="chat_contact_card_save">Save to contacts</string>
     <string name="chat_contact_card_update">Update contact</string>
+    <string name="chat_contact_card_save_homebase">Homebase contacts</string>
+    <string name="chat_contact_card_update_homebase">Update Homebase contact</string>
+    <string name="chat_contact_card_save_phone">Phone contacts</string>
+    <string name="chat_contact_card_save_phone_failed">No contacts app found</string>
+    <string name="chat_contact_card_save_homebase_supporting">Keep them in your Homebase</string>
+    <string name="chat_contact_card_update_homebase_supporting">Refresh the saved details</string>
+    <string name="chat_contact_card_save_phone_supporting">Opens your phone's Contacts app</string>
     <string name="chat_contact_card_title">Contact</string>
     <string name="chat_contact_card_call">Call</string>
     <string name="chat_contact_card_send_email">Send email</string>
@@ -1158,6 +1165,10 @@
     <string name="chat_message_discard_draft">Discard draft?</string>
 
     <string name="chat_message_forward_to">Forward to</string>
+    <string name="chat_send_to">Send to</string>
+    <string name="chat_send_to_sent">Sent</string>
+    <string name="chat_send_to_hint">Select who to send to</string>
+    <string name="chat_send_to_count">Send · %1$d</string>
 
     <!-- Pinned messages bar (#887) -->
     <string name="chat_pin_message">Pin</string>
@@ -1765,6 +1776,8 @@
     <string name="dev_menu_profile_card_desc">Show your profile card in Settings and the profile editor.</string>
     <string name="dev_menu_photobase">Photos</string>
     <string name="dev_menu_photobase_desc">Show Photos and allow photo backup. Turning it off stops any backup that's running.</string>
+    <string name="dev_menu_filesync_sync_shared">Sync shared files to computers</string>
+    <string name="dev_menu_filesync_sync_shared_desc">Show "Sync to my computers" for each person in Drive's Shared with me. Computers don't act on it yet.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_force_logout">Force Logout (local only)</string>
@@ -3255,6 +3268,9 @@
     <string name="filesync_access_view">Can view and comment</string>
     <string name="filesync_access_edit">Can edit and comment</string>
     <string name="filesync_shared_with_me">Shared with me</string>
+    <string name="filesync_sync_sharer">Sync to my computers</string>
+    <string name="filesync_sync_sharer_hint">Files %1$s shares appear in Homebase/Shared/%1$s on your computers</string>
+    <string name="filesync_sync_sharer_failed">Couldn't change whether your computers sync these files. Try again.</string>
     <string name="filesync_shared_badge">Shared</string>
     <string name="filesync_inherit_failed">Uploaded, but it couldn't be shared like its folder. Share it again from its menu.</string>
     <string name="filesync_move_check_failed">Couldn't check who can see what you're moving, so nothing was moved.</string>

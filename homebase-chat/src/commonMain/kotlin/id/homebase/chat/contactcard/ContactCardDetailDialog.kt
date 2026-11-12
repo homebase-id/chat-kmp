@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -19,7 +21,6 @@ import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import id.homebase.core.clipboard.rememberCopyToClipboard
+import id.homebase.core.contacts.DeviceContactSaver
+import id.homebase.core.contacts.rememberDeviceContactSaver
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_card_action_unavailable
@@ -87,6 +90,7 @@ fun ContactCardDetailDialog(
     onMessageIdentity: ((String) -> Unit)? = null,
     authorOdinId: String? = null,
     photo: HomebaseImageData? = null,
+    deviceSaver: DeviceContactSaver? = rememberDeviceContactSaver(),
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -100,13 +104,14 @@ fun ContactCardDetailDialog(
             onMessageIdentity = onMessageIdentity,
             authorOdinId = authorOdinId,
             photo = photo,
+            deviceSaver = deviceSaver,
         )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ContactCardDetailContent(
+internal fun ContactCardDetailContent(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)?,
@@ -114,6 +119,7 @@ private fun ContactCardDetailContent(
     onMessageIdentity: ((String) -> Unit)?,
     authorOdinId: String?,
     photo: HomebaseImageData?,
+    deviceSaver: DeviceContactSaver?,
 ) {
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
@@ -178,6 +184,8 @@ private fun ContactCardDetailContent(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .wrapContentWidth(Alignment.CenterHorizontally)
+                .widthIn(max = 640.dp)
                 .padding(horizontal = 20.dp),
         ) {
             Spacer(Modifier.height(16.dp))
@@ -211,18 +219,14 @@ private fun ContactCardDetailContent(
 
             if (onSaveToContacts != null) {
                 Spacer(Modifier.height(20.dp))
-                Button(
-                    onClick = { onSaveToContacts(descriptor) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) {
-                    Icon(
-                        imageVector = saveActionIcon(alreadySaved),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = stringResource(saveActionLabel(alreadySaved)))
-                }
+                SaveContactMenuButton(
+                    descriptor = descriptor,
+                    alreadySaved = alreadySaved,
+                    onSaveToContacts = { card, _ -> onSaveToContacts(card) },
+                    filled = true,
+                    snackbarHostState = snackbarHostState,
+                    deviceSaver = deviceSaver,
+                )
             }
 
             ValueSection(

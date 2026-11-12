@@ -435,7 +435,7 @@ class PostCommentsService(
         val isPublic = !post.fileMetadata.isEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) {
-            KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
+            existing.keyHeader.withNewIv()
         } else {
             KeyHeader.empty()
         }
