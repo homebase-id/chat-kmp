@@ -201,6 +201,23 @@ class CallViewModelTest {
     }
 
     @Test
+    fun aPressOnTheEndedScreenSuspendsTheLingerAndReleaseRestartsIt() = rigTest { rig ->
+        rig.me.startCall(sam, video = false)
+        settle()
+        settle(RING_TIMEOUT_MS + 1)
+        assertEquals(CallPhase.Ended(CallEndReason.Missed), rig.ui.phase)
+        settle(ENDED_LINGER_MS - 500)
+        rig.vm.holdDismissal(true)
+        settle(ENDED_LINGER_MS * 3)
+        assertTrue(rig.ui.visible, "a finger on the ended screen keeps it up")
+        rig.vm.holdDismissal(false)
+        settle(ENDED_LINGER_MS - 100)
+        assertTrue(rig.ui.visible, "release restarts the full linger")
+        settle(200)
+        assertFalse(rig.ui.visible)
+    }
+
+    @Test
     fun failedCallStaysUpAndRetryRestartsTheCallToTheSamePeer() = rigTest(
         FakeCallScript(failConnect = true),
         FakeCallScript(),
