@@ -9,6 +9,8 @@ import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
 import platform.CoreFoundation.CFDataRef
 import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFRetain
+import platform.CoreFoundation.CFStringRef
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
@@ -72,41 +74,41 @@ internal fun CGImageSourceRef.readMetadata(): ImageMetadata? = try {
 }
 
 private fun buildMetadata(props: NSDictionary): ImageMetadata {
-    val exif = props.objectForKey(kCGImagePropertyExifDictionary) as? NSDictionary
-    val tiff = props.objectForKey(kCGImagePropertyTIFFDictionary) as? NSDictionary
-    val gps = props.objectForKey(kCGImagePropertyGPSDictionary) as? NSDictionary
+    val exif = props.objectForKey(kCGImagePropertyExifDictionary.ns) as? NSDictionary
+    val tiff = props.objectForKey(kCGImagePropertyTIFFDictionary.ns) as? NSDictionary
+    val gps = props.objectForKey(kCGImagePropertyGPSDictionary.ns) as? NSDictionary
 
     val capturedAt = parseExifLocalDateTime(
-        exif?.objectForKey(kCGImagePropertyExifDateTimeOriginal) as? String
+        exif?.objectForKey(kCGImagePropertyExifDateTimeOriginal.ns) as? String
     )
     val offset = parseExifUtcOffset(
-        exif?.objectForKey(kCGImagePropertyExifOffsetTimeOriginal) as? String
+        exif?.objectForKey(kCGImagePropertyExifOffsetTimeOriginal.ns) as? String
     )
 
-    val latRaw = (gps?.objectForKey(kCGImagePropertyGPSLatitude) as? NSNumber)?.doubleValue
-    val latRef = gps?.objectForKey(kCGImagePropertyGPSLatitudeRef) as? String
+    val latRaw = (gps?.objectForKey(kCGImagePropertyGPSLatitude.ns) as? NSNumber)?.doubleValue
+    val latRef = gps?.objectForKey(kCGImagePropertyGPSLatitudeRef.ns) as? String
     val lat = latRaw?.let { if (latRef.equals("S", ignoreCase = true)) -it else it }
 
-    val lonRaw = (gps?.objectForKey(kCGImagePropertyGPSLongitude) as? NSNumber)?.doubleValue
-    val lonRef = gps?.objectForKey(kCGImagePropertyGPSLongitudeRef) as? String
+    val lonRaw = (gps?.objectForKey(kCGImagePropertyGPSLongitude.ns) as? NSNumber)?.doubleValue
+    val lonRef = gps?.objectForKey(kCGImagePropertyGPSLongitudeRef.ns) as? String
     val lon = lonRaw?.let { if (lonRef.equals("W", ignoreCase = true)) -it else it }
 
-    val altRaw = (gps?.objectForKey(kCGImagePropertyGPSAltitude) as? NSNumber)?.doubleValue
-    val altRef = (gps?.objectForKey(kCGImagePropertyGPSAltitudeRef) as? NSNumber)?.intValue
+    val altRaw = (gps?.objectForKey(kCGImagePropertyGPSAltitude.ns) as? NSNumber)?.doubleValue
+    val altRef = (gps?.objectForKey(kCGImagePropertyGPSAltitudeRef.ns) as? NSNumber)?.intValue
     val altitude = altRaw?.let { if (altRef == 1) -it else it }
 
     val orientation = (
-        (props.objectForKey(kCGImagePropertyOrientation) as? NSNumber)?.intValue
-            ?: (tiff?.objectForKey(kCGImagePropertyTIFFOrientation) as? NSNumber)?.intValue
+        (props.objectForKey(kCGImagePropertyOrientation.ns) as? NSNumber)?.intValue
+            ?: (tiff?.objectForKey(kCGImagePropertyTIFFOrientation.ns) as? NSNumber)?.intValue
         )?.takeIf { it in 1..8 }
 
     val pixelWidth = (
-        (props.objectForKey(kCGImagePropertyPixelWidth) as? NSNumber)?.intValue
-            ?: (exif?.objectForKey(kCGImagePropertyExifPixelXDimension) as? NSNumber)?.intValue
+        (props.objectForKey(kCGImagePropertyPixelWidth.ns) as? NSNumber)?.intValue
+            ?: (exif?.objectForKey(kCGImagePropertyExifPixelXDimension.ns) as? NSNumber)?.intValue
         )?.takeIf { it > 0 }
     val pixelHeight = (
-        (props.objectForKey(kCGImagePropertyPixelHeight) as? NSNumber)?.intValue
-            ?: (exif?.objectForKey(kCGImagePropertyExifPixelYDimension) as? NSNumber)?.intValue
+        (props.objectForKey(kCGImagePropertyPixelHeight.ns) as? NSNumber)?.intValue
+            ?: (exif?.objectForKey(kCGImagePropertyExifPixelYDimension.ns) as? NSNumber)?.intValue
         )?.takeIf { it > 0 }
 
     return ImageMetadata(
@@ -118,9 +120,12 @@ private fun buildMetadata(props: NSDictionary): ImageMetadata {
         orientation = orientation,
         pixelWidth = pixelWidth,
         pixelHeight = pixelHeight,
-        cameraMake = (tiff?.objectForKey(kCGImagePropertyTIFFMake) as? String)
+        cameraMake = (tiff?.objectForKey(kCGImagePropertyTIFFMake.ns) as? String)
             ?.trim()?.takeIf { it.isNotEmpty() },
-        cameraModel = (tiff?.objectForKey(kCGImagePropertyTIFFModel) as? String)
+        cameraModel = (tiff?.objectForKey(kCGImagePropertyTIFFModel.ns) as? String)
             ?.trim()?.takeIf { it.isNotEmpty() },
     )
 }
+
+// NSDictionary.objectForKey boxes a raw CFStringRef instead of bridging it, so every lookup would miss.
+private val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!
