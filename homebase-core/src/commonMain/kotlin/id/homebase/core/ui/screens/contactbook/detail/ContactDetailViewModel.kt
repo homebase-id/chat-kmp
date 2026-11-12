@@ -638,11 +638,7 @@ class ContactDetailViewModel(
         val conversationId = _uiState.value.conversationId ?: return
         viewModelScope.launch {
             val event = try {
-                when (conversationService.rebuildOneOnOneConversation(conversationId).outcome) {
-                    ConversationService.OneOnOneRebuildOutcome.Rebuilt -> ContactDetailEvent.ConversationRebuilt
-                    ConversationService.OneOnOneRebuildOutcome.AlreadyOnServer -> ContactDetailEvent.ConversationRebuildNotNeeded
-                    ConversationService.OneOnOneRebuildOutcome.AlreadyQueued -> ContactDetailEvent.ConversationRebuildQueued
-                }
+                repairEventFor(conversationService.rebuildOneOnOneConversation(conversationId).outcome)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -24,7 +24,7 @@ internal fun chromeAutoHideEligible(ui: CallUiState, large: Boolean, held: Boole
 
 /** The dock, top bar and name pill of a phone video call: they fade after [ChromeIdleMs] without a touch, and a tap on the video toggles them. */
 @Stable
-internal class CallChromeState {
+class CallChromeState {
     var visible by mutableStateOf(true)
         private set
 
@@ -56,8 +56,8 @@ internal class CallChromeState {
 internal val LocalCallChrome = staticCompositionLocalOf<CallChromeState?> { null }
 
 @Composable
-internal fun HoldCallChrome(active: Boolean) {
-    val chrome = LocalCallChrome.current ?: return
+internal fun HoldCallChrome(active: Boolean, chrome: CallChromeState? = LocalCallChrome.current) {
+    if (chrome == null) return
     DisposableEffect(chrome, active) {
         if (active) chrome.holds++
         onDispose { if (active) chrome.holds-- }

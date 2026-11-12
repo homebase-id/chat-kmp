@@ -210,6 +210,11 @@ class ChatReadCountWrapper(
         }
     }
 
+    suspend fun selectLatestMessageUserDateMs(identityId: Uuid, groupId: Uuid): Long? =
+        databaseManager.readValue("chatReadCount.selectLatestMessageUserDate") {
+            delegate.selectLatestMessageUserDate(identityId, groupId).executeAsOneOrNull()?.latestUserDate
+        }
+
     /** Raw stored lastReadTime (epoch ms) for a conversation, or null if none. */
     suspend fun selectLastReadTimeMs(groupId: Uuid): Long? =
         databaseManager.readValue("chatReadCount.selectLastReadTimeMs") {

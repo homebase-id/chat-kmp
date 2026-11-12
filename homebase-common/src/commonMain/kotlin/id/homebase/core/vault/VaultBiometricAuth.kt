@@ -16,5 +16,8 @@ sealed interface BiometricResult {
  */
 expect suspend fun authenticateBiometric(title: String, subtitle: String): BiometricResult
 
-// False means authenticateBiometric can only return Unavailable, so a biometric lock would not protect anything.
+/**
+ * False means [authenticateBiometric] can only return [BiometricResult.Unavailable], so a biometric lock would not protect anything.
+ * True needs an enrolled biometric or device credential (Android and iOS) or an OS prompt that can run (desktop). Always false on web.
+ */
 expect fun isDeviceAuthAvailable(): Boolean

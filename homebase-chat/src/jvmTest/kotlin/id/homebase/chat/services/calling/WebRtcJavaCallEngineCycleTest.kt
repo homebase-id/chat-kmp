@@ -57,8 +57,8 @@ class WebRtcJavaCallEngineCycleTest {
             withTimeout(30_000) { connected.await() }
         } finally {
             scope.coroutineContext[Job]!!.cancelAndJoin()
-            a.close()
-            b.close()
+            a.closeBlocking()
+            b.closeBlocking()
         }
     }
 }

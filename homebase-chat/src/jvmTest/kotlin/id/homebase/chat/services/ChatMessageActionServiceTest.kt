@@ -591,6 +591,29 @@ class ChatMessageActionServiceTest {
         }
     }
 
+    @Test
+    fun markAllAsRead_loadsConversationFromDb_whenNotInMemory() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            fixture.conversationLoader.onLoad = { id ->
+                fixture.participantLookup.setLastRead(
+                    conversationId = id,
+                    lastRead = kotlin.time.Instant.fromEpochMilliseconds(1_000L),
+                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(5_000L),
+                )
+            }
+
+            service.markAllAsRead(convoId)
+
+            assertEquals(listOf(convoId), fixture.conversationLoader.loaded)
+            assertEquals(
+                listOf(convoId to 5_000L),
+                fixture.localLastReadUpdater.calls.map { it.conversationId to it.newLastReadTime.milliseconds },
+            )
+        }
+    }
+
     // -------------------------------------------------------------------
     // requireFileId — single-row primary-key lookup, no QueryBatch.
     // Was previously paying ~500ms latency on busy drives because it

@@ -93,6 +93,12 @@ class CallSendResolutionLadderTest {
     private class Encoder(var width: Int = 1920, var height: Int = 1080) {
         private var frames = 0.0
         private var seconds = 0.0
+        private var previous: Map<String, Any?> = emptyMap()
+
+        fun step(rung: SendLoadRung, fps: Double, encodeMs: Double): Int {
+            val now = tick(fps, encodeMs)
+            return rung.onStats(now, previous).also { previous = now }
+        }
 
         fun tick(fps: Double, encodeMs: Double): Map<String, Any?> {
             val count = fps * 5
@@ -110,11 +116,11 @@ class CallSendResolutionLadderTest {
     fun aSenderThatCannotEncode30FpsStepsDownARungEveryTwoSlowTicks() {
         val rung = SendLoadRung()
         val encoder = Encoder(1280, 720)
-        assertEquals(720, rung.onStats(encoder.tick(19.0, 79.3)))
-        assertEquals(540, rung.onStats(encoder.tick(22.0, 88.7)))
+        assertEquals(720, encoder.step(rung, 19.0, 79.3))
+        assertEquals(540, encoder.step(rung, 22.0, 88.7))
         encoder.width = 960; encoder.height = 540
-        assertEquals(540, rung.onStats(encoder.tick(18.0, 90.7)))
-        assertEquals(360, rung.onStats(encoder.tick(13.0, 61.0)))
+        assertEquals(540, encoder.step(rung, 18.0, 90.7))
+        assertEquals(360, encoder.step(rung, 13.0, 61.0))
     }
 
     // 13:56 Redmi in dim light: the camera gave 15 fps and each 270p frame took 12-14 ms.
@@ -122,20 +128,20 @@ class CallSendResolutionLadderTest {
     fun aCameraSlowedByLowLightIsNotAnOverloadedEncoder() {
         val rung = SendLoadRung()
         val encoder = Encoder(480, 270)
-        repeat(6) { assertEquals(720, rung.onStats(encoder.tick(15.0, 13.5))) }
+        repeat(6) { assertEquals(720, encoder.step(rung, 15.0, 13.5)) }
     }
 
     @Test
     fun itStepsBackUpOnlyWhenTheNextRungsPixelsWouldStillEncodeInTime() {
         val rung = SendLoadRung()
         val encoder = Encoder(1280, 720)
-        rung.onStats(encoder.tick(12.0, 70.0))
-        assertEquals(540, rung.onStats(encoder.tick(12.0, 70.0)))
+        encoder.step(rung, 12.0, 70.0)
+        assertEquals(540, encoder.step(rung, 12.0, 70.0))
         encoder.width = 960; encoder.height = 540
-        repeat(5) { assertEquals(540, rung.onStats(encoder.tick(30.0, 15.0))) }
-        assertEquals(720, rung.onStats(encoder.tick(30.0, 15.0)))
+        repeat(5) { assertEquals(540, encoder.step(rung, 30.0, 15.0)) }
+        assertEquals(720, encoder.step(rung, 30.0, 15.0))
         encoder.width = 1280; encoder.height = 720
-        repeat(12) { assertEquals(720, rung.onStats(encoder.tick(30.0, 25.0))) }
+        repeat(12) { assertEquals(720, encoder.step(rung, 30.0, 25.0)) }
     }
 
     @Test

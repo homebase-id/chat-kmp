@@ -117,6 +117,7 @@ class ChatMessageActionServiceTestFixture(
         private set
     lateinit var participantLookup: FakeConversationParticipantLookup
         private set
+    val conversationLoader = RecordingConversationLoader()
 
     // Owned outbox scope. The uploader's post-`Completed` bookkeeping hops to
     // `Dispatchers.IO`; if we attached it to `runTest`'s `backgroundScope` the
@@ -240,6 +241,7 @@ class ChatMessageActionServiceTestFixture(
         return ChatMessageActionService(
             conversationService = conversationService,
             participantLookup = participantLookup,
+            conversationLoader = conversationLoader,
             localLastReadUpdater = localLastReadUpdater,
             messageLookup = messageLookup,
             reactionProvider = reactionProvider,
@@ -716,4 +718,14 @@ class FakeConversationParticipantLookup :
         val convo = conversations[conversationId] ?: return
         conversations[conversationId] = convo.clearedDirtyIfUnchanged(pushed.milliseconds)
     }
+}
+
+class RecordingConversationLoader : id.homebase.chat.services.convo.ConversationLoader {
+    val loaded = mutableListOf<Uuid>()
+    var onLoad: (Uuid) -> Unit = {}
+    override suspend fun loadConversation(conversationId: Uuid) {
+        loaded += conversationId
+        onLoad(conversationId)
+    }
+    override suspend fun removeConversation(conversationId: Uuid) {}
 }

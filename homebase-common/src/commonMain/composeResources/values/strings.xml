@@ -2289,11 +2289,12 @@
     <string name="contactbook_action_blocked_connection_removed">Connection removed. They're still blocked.</string>
     <string name="contactbook_action_not_blocked">They're no longer blocked, so there was nothing to remove.</string>
     <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
-    <string name="contactbook_detail_rebuild_conversation">Rebuild conversation</string>
-    <string name="contactbook_action_conversation_rebuilt">Conversation rebuilt and sent to them</string>
-    <string name="contactbook_action_conversation_rebuild_not_needed">Your server still has this conversation. Nothing to rebuild.</string>
+    <string name="contactbook_detail_rebuild_conversation">Repair conversation</string>
+    <string name="contactbook_detail_rebuild_conversation_hint">If this chat stopped syncing</string>
+    <string name="contactbook_action_conversation_rebuilt">Conversation repaired and sent to them</string>
+    <string name="contactbook_action_conversation_rebuild_not_needed">Your server still has this conversation. Nothing to repair.</string>
     <string name="contactbook_action_conversation_rebuild_queued">This conversation is still being sent. Try again once it's done.</string>
-    <string name="contactbook_error_conversation_rebuild">Couldn't rebuild the conversation</string>
+    <string name="contactbook_error_conversation_rebuild">Couldn't repair the conversation</string>
     <string name="contactbook_action_request_accepted">Connection request accepted.</string>
     <string name="contactbook_action_request_rejected">Connection request declined.</string>
     <string name="contactbook_action_request_cancelled">Connection request canceled.</string>
@@ -3469,4 +3470,9 @@
     <string name="cd_media_quality_hd_badge">Sent in HD</string>
     <string name="cd_media_quality_original_badge">Sent as the original file</string>
     <string name="storage_cache_photo_thumbnails">Photo thumbnails</string>
+    <string name="feed_wide_people_title">People to follow</string>
+    <string name="feed_wide_channels_title">Channels</string>
+    <string name="feed_wide_see_all">See all</string>
+    <string name="feed_wide_suggestions_empty">No suggestions yet</string>
+    <string name="feed_wide_channels_empty">Channels you post to will show up here</string>
 </resources>

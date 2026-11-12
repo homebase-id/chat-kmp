@@ -105,11 +105,11 @@ class WebRtcJavaCallEngineTest {
             a.applyRemote(b.answerRestart(restart))
         } finally {
             scope.coroutineContext[Job]!!.cancelAndJoin()
-            a.close()
-            b.close()
+            a.closeBlocking()
+            b.closeBlocking()
             // A candidate that lands after close() must be dropped, not hit a disposed native connection.
             a.addIce("candidate:1 1 udp 2122260223 127.0.0.1 50000 typ host", "0", 0)
-            a.close()
+            a.closeBlocking()
         }
     }
 
@@ -122,8 +122,8 @@ class WebRtcJavaCallEngineTest {
             val ofKind = devices.filter { it.kind == kind }
             if (ofKind.isEmpty()) assertEquals(null, selected[kind]) else assertTrue(ofKind.any { it.id == selected[kind] }, "$kind has a selection")
         }
-        engine.close()
-        engine.close()
+        engine.closeBlocking()
+        engine.closeBlocking()
     }
 
     @Test
@@ -135,7 +135,7 @@ class WebRtcJavaCallEngineTest {
         engine.unregisterDeviceListener = { entered.countDown(); release.await(); MediaDevices.removeDeviceChangeListener(it) }
         try {
             val start = System.nanoTime()
-            runWithin(10_000) { engine.close() }
+            runWithin(10_000) { engine.closeBlocking() }
             val tookMs = (System.nanoTime() - start) / 1_000_000
             assertTrue(tookMs < 3_000, "close took $tookMs ms")
             if (registered) assertTrue(entered.count == 0L, "close never reached the listener teardown")

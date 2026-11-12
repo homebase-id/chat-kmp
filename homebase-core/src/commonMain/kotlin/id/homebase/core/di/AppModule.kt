@@ -128,7 +128,9 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.core.ChatNotificationActions
 import id.homebase.core.NotificationActionBridge
+import id.homebase.core.NotificationActions
 import id.homebase.core.audio.DefaultVoiceNotePlayback
 import id.homebase.core.audio.ProximityAudioRouter
 import id.homebase.core.audio.VoiceNotePlayback
@@ -487,7 +489,9 @@ val appModule = module {
             engineFactory = platformCallEngineFactory().takeIf { get<CallsPreferences>().enabled.value },
             stunUrls = get(),
             scope = get(),
-            onCallActiveChanged = { get<AuthConnectionCoordinator>().setCallActive(it) },
+            onCallActiveChanged = { active ->
+                get<AuthConnectionCoordinator>().run { if (active) holdWebSocket(CALL_WS_HOLD) else releaseWebSocket(CALL_WS_HOLD) }
+            },
             recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
         )
     }
@@ -1096,6 +1100,7 @@ val appModule = module {
         )
     }
     singleOf(::ConnectionRequestService)
+    single<NotificationActions> { ChatNotificationActions(get(), get(), get(), get()) }
     singleOf(::NotificationActionBridge)
     singleOf(::VaultStream)
     singleOf(::VaultService)
@@ -1675,7 +1680,11 @@ val appModule = module {
     }
 }
 
-// Common module that each platform will implement
+/**
+ * The Koin module with the bindings only this platform can provide (file operations, call and share
+ * plumbing). Calling it only builds the module; nothing is instantiated until Koin resolves a binding.
+ * Safe to call more than once; each call returns a new module.
+ */
 expect fun platformModule(): Module
 
 /** All Koin modules for the application. */
@@ -1760,3 +1769,4 @@ private fun Scope.photoBackupController(): PhotoBackupController {
 }
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds
+private const val CALL_WS_HOLD = "call"

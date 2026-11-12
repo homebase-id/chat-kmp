@@ -3,6 +3,7 @@ package id.homebase.chat.services.convo
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 /**
  * Result of merging a conversation-FILE refresh into an in-memory model.
@@ -201,3 +202,31 @@ internal fun mergeReloadedConversationRow(
         remoteLastReadAdvanced = reconciled.lastRead != prior.lastRead,
     )
 }
+
+internal class ReloadedRows(
+    val items: List<ConversationUiModel>,
+    val remoteLastReadAdvancedIds: List<Uuid>,
+)
+
+/**
+ * A full reload's [disk] rows reconciled against the [current] in-memory list, in [disk] order.
+ * Left is sticky until an explicit rejoin; the rest is [mergeReloadedConversationRow].
+ */
+internal fun reloadedRows(current: List<ConversationUiModel>, disk: List<ConversationUiModel>): ReloadedRows {
+    val priorById = current.associateBy { it.id }
+    val advanced = mutableListOf<Uuid>()
+    val items = disk.map { row ->
+        val prior = priorById[row.id]
+        val withLeft = if (prior?.conversationState == ConversationState.Left) {
+            row.copy(conversationState = ConversationState.Left)
+        } else row
+        val reload = mergeReloadedConversationRow(withLeft, prior)
+        if (reload.remoteLastReadAdvanced) advanced += row.id
+        reload.merged
+    }
+    return ReloadedRows(items, advanced)
+}
+
+/** Appends [conversation] unless its id is already listed; a keyed LazyColumn crashes on a duplicate id. */
+internal fun ConversationsData.withInserted(conversation: ConversationUiModel): ConversationsData =
+    if (items.any { it.id == conversation.id }) this else copy(items = items + conversation)
