@@ -28,6 +28,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -164,6 +165,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import org.koin.compose.getKoin
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.feed.FeedTimelineScreen
+import id.homebase.core.ui.screens.feed.PostComposeScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.feed.following.FollowingScreen
 import id.homebase.core.ui.screens.home.HomeScreen
@@ -1187,8 +1189,6 @@ fun AppNavHost(
                                         val scrollFeedToTop by entry.savedStateHandle
                                             .getStateFlow(SCROLL_TO_TOP_KEY, false)
                                             .collectAsStateWithLifecycle()
-                                        // ponytail: post composer disabled for now — the feed is read-only
-                                        // for posts. Restore the composer nav + Route.PostCompose below.
                                         FeedTimelineScreen(
                                             viewModel = koinViewModel(),
                                             onNavigateToDetail = {
@@ -1196,6 +1196,9 @@ fun AppNavHost(
                                             },
                                             onNavigateToFollowing = {
                                                 navController.navigate(Route.Following)
+                                            },
+                                            onNavigateToComposer = {
+                                                navController.navigate(Route.PostCompose)
                                             },
                                             onAuthorClick = {
                                                 navController.navigateToIdentity(it.domainName)
@@ -1210,6 +1213,18 @@ fun AppNavHost(
                                         // Legacy WebView feed — user opted out of the native feed.
                                         FeedScreen(viewModel = koinViewModel())
                                     }
+                                }
+                            }
+
+                            composable<Route.PostCompose>(
+                                enterTransition = { slideInVertically(initialOffsetY = { it }) },
+                                popExitTransition = { slideOutVertically(targetOffsetY = { it }) },
+                            ) {
+                                if (isAuthenticated) {
+                                    PostComposeScreen(
+                                        viewModel = koinViewModel(),
+                                        onClose = { navController.popBackStack() },
+                                    )
                                 }
                             }
 

@@ -253,6 +253,7 @@ import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.feed.services.ReportingUrlProvider
 import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
+import id.homebase.core.ui.screens.feed.PostComposeViewModel
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
@@ -1422,8 +1423,7 @@ val appModule = module {
     viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
 
-    // ponytail: PostComposeViewModel unregistered — the post composer is disabled for now. FeedPostSenderService
-    // stays registered (delete-post still uses it). Restore the composer VM + Route.PostCompose to re-enable.
+    viewModelOf(::PostComposeViewModel)
     // Explicit (not viewModelOf) for the FeedPermissionQualifier: the feed's drives are granted by the feed
     // extend-permissions flow, not the login one the unqualified ExtendPermissionViewModel checks.
     viewModel {

@@ -2423,4 +2423,20 @@
     <string name="profile_card_sections_title">Sektioner på dette kort</string>
     <string name="profile_card_section_feed">Feed</string>
     <string name="profile_card_section_feed_desc">Dine seneste offentlige opslag og billeder.</string>
+    <string name="feed_compose_title">Nyt opslag</string>
+    <string name="feed_compose_caption_placeholder">Hvad har du på hjertet?</string>
+    <string name="feed_compose_post">Opslå</string>
+    <string name="feed_compose_add_media">Tilføj billede</string>
+    <string name="feed_compose_camera">Tag billede</string>
+    <string name="feed_compose_attachment_image">Vedhæftning</string>
+    <string name="feed_compose_remove_attachment">Fjern vedhæftning</string>
+    <string name="feed_compose_channel">Kanal</string>
+    <string name="feed_compose_channel_public">Offentlig</string>
+    <string name="feed_compose_audience">Målgruppe</string>
+    <string name="feed_compose_audience_public">Offentlig</string>
+    <string name="feed_compose_audience_circles">Cirkler</string>
+    <string name="feed_compose_audience_circles_count">Cirkler (%1$d)</string>
+    <string name="feed_compose_circles_title">Del med cirkler</string>
+    <string name="feed_compose_circles_empty">Du har ingen cirkler endnu. Opret en under kontakter for at dele et opslag med den.</string>
+    <string name="feed_timeline_compose_action">Nyt opslag</string>
 </resources>
