@@ -180,7 +180,7 @@ class AppsEverywhereScreenshotTest {
             Row { states.forEach { Column(Modifier.background(MaterialTheme.colorScheme.surface)) { Rail(it, tab = TopLevelRoute.Apps.takeIf { _ -> it !== states[0] }) } } }
         }
     }
-    // The hub's identity header, section headers and rows sit on one surface; the pane's tint once reached only some of them.
+    // The hub's identity header, section headers and rows sit on one surface.
     @Test
     fun widePaneHubIsOneSurface() {
         for (dark in listOf(false, true)) {
