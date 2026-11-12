@@ -4,6 +4,7 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
 import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.gallery.GalleryImage
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
@@ -52,6 +53,13 @@ expect suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
  *   time via `readBytes()`.
  */
 expect suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile
+
+/**
+ * A gallery photo the send can read as many times as it needs: one that
+ * [FileOperationsProvider.isFetchedWholeOnEveryRead] is fetched once into a picker copy, under its
+ * own file name; anything else is returned as it is.
+ */
+expect suspend fun GalleryImage.materializeForUpload(fileOps: FileOperationsProvider): GalleryImage
 
 /**
  * The picked file's own modification time in epoch milliseconds, or null when the platform can't

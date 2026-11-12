@@ -91,6 +91,8 @@ class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, 
         if (isPhotoLibraryPath(path)) flow { emit(readPhotoLibraryAsset(path)) }
         else super.readFileAsFlow(path, chunkSize)
 
+    override fun isFetchedWholeOnEveryRead(path: String): Boolean = isPhotoLibraryPath(path)
+
     // getFileSize can't size a Photos-library asset (it reports 0), so probe the library
     // directly: the fetch returns nothing once the asset is deleted or the grant is revoked.
     @OptIn(ExperimentalForeignApi::class)

@@ -54,6 +54,12 @@ interface FileOperationsProvider {
     suspend fun sourceExists(path: String): Boolean = getFileSize(path) > 0L
 
     /**
+     * Whether every read of [path], header reads included, fetches the whole file again: true only
+     * for an iOS Photos-library asset. Copy such a source to a file once before reading it twice.
+     */
+    fun isFetchedWholeOnEveryRead(path: String): Boolean = false
+
+    /**
      * Write a RAW, pre-encryption source temp into `<cacheDir>/hb-scratch/upload-temp/` (see
      * [CacheAudit.UPLOAD_TEMP_DIR_NAME]). Disposable: the CacheSweeper reaps this dir on every
      * startup / "Clear caches", so a leaked temp self-heals and can't grow — a source that's gone

@@ -41,7 +41,7 @@ class PayloadBundleImageScrubTest {
     private val scanData = ByteArray(96) { (it % 241).toByte() }
 
     /** A JPEG carrying an EXIF block with Orientation=6 and a GPS IFD. */
-    private fun geotaggedJpeg(): ByteArray {
+    private fun geotaggedJpeg(scan: ByteArray = scanData): ByteArray {
         fun seg(marker: Int, payload: ByteArray): ByteArray {
             val len = payload.size + 2
             return byteArrayOf(0xFF.toByte(), marker.toByte(), (len shr 8).toByte(), (len and 0xFF).toByte()) +
@@ -62,7 +62,7 @@ class PayloadBundleImageScrubTest {
             seg(0xDB, ByteArray(65) { 3 }) +
             seg(0xC0, byteArrayOf(8, 0, 16, 0, 16, 1, 0x11, 0)) +
             byteArrayOf(0xFF.toByte(), 0xDA.toByte(), 0x00, 0x08, 1, 1, 0, 0, 0x3F, 0) +
-            scanData +
+            scan +
             byteArrayOf(0xFF.toByte(), 0xD9.toByte())
     }
 
@@ -139,26 +139,40 @@ class PayloadBundleImageScrubTest {
         }
     }
 
+    private class CountingFileOps(private val inner: FileOperationsProvider) : FileOperationsProvider by inner {
+        var wholeReads = 0
+
+        override suspend fun readFileBytes(path: String): ByteArray = inner.readFileBytes(path).also { wholeReads++ }
+
+        override fun readFileAsFlow(path: String, chunkSize: Int) = inner.readFileAsFlow(path, chunkSize).also { wholeReads++ }
+    }
+
+    // Bigger than one encrypt chunk and not a whole number of AES blocks, so the in-memory encrypt is pinned too.
     @Test
-    fun encryptBundle_leavesNoScrubbedTempBehind() = runTest {
-        val provider = JvmFileOperationsProvider()
+    fun encryptBundle_readsAScrubbedImageOnceAndWritesNoScrubbedCopy() = runTest {
+        val provider = CountingFileOps(JvmFileOperationsProvider())
         val svc = service(provider)
         val key = KeyHeader.newRandom16()
-        val src = provider.writeBytesToTempFile(geotaggedJpeg(), "scrub_src_", ".jpg")
+        val original = geotaggedJpeg(ByteArray(200_003) { (it % 241).toByte() })
+        val src = provider.writeBytesToTempFile(original, "scrub_src_", ".jpg")
+        val cacheBefore = File(provider.getCacheDirectory()).walk().map { it.path }.toSet()
         var staged: String? = null
         try {
-            staged = svc.encryptBundle(
+            val payload = svc.encryptBundle(
                 Uuid.random(),
                 bundle(PayloadFile(key = "p0", filePath = src, contentType = "image/jpeg")),
                 key.aesKey,
                 this,
-            ).payloads.single().filePath
+            ).payloads.single()
+            staged = payload.filePath
 
-            val leftovers = File(provider.getCacheDirectory())
-                .listFiles { f -> f.name.startsWith("scrubbed_") }
-                ?.toList()
-                .orEmpty()
-            assertTrue(leftovers.isEmpty(), "scrubbed temp must be reaped, found: $leftovers")
+            assertEquals(1, provider.wholeReads, "the scrub's read is the only one")
+            assertContentEquals(
+                KeyHeader(aesKey = key.aesKey, iv = assertNotNull(payload.iv)).encryptDataAes(ImageMetadataScrubber.scrub(original)),
+                File(staged).readBytes(),
+            )
+            val added = File(provider.getCacheDirectory()).walk().filter { it.isFile && it.path !in cacheBefore && it.path != staged }.toList()
+            assertTrue(added.isEmpty(), "no plaintext copy may be left behind, found: $added")
         } finally {
             provider.deleteTempFile(src)
             staged?.let { provider.deleteTempFile(it) }

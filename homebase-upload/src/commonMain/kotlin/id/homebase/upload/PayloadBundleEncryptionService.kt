@@ -10,6 +10,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import co.touchlab.kermit.Logger
 import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.crypto.encryptBytesToFile
 import id.homebase.api.crypto.encryptFileStreaming
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
@@ -101,11 +102,8 @@ class PayloadBundleEncryptionService(
                     newPayloads += result.payloads
                     newThumbnails += result.thumbnails
                 } else {
-                    val sourcePath = scrubImageMetadata(payload)
-                    val encryptedFile = encryptFile(sourcePath, keyHeader)
-                    if (sourcePath != payload.filePath) {
-                        runCatching { fileOps.deleteTempFile(sourcePath) }
-                    }
+                    val encryptedFile = scrubbedImage(payload)?.let { encryptBytesToStaging(it, keyHeader) }
+                        ?: encryptFile(payload.filePath, keyHeader)
                     newPayloads += payload.copy(
                         filePath = encryptedFile,
                         iv = keyHeader.iv,
@@ -141,8 +139,8 @@ class PayloadBundleEncryptionService(
     }
 
     /**
-     * Returns a path to [payload]'s bytes with EXIF/XMP metadata removed, or its own
-     * `filePath` when there was nothing to strip. The caller reaps the temp.
+     * [payload]'s bytes with EXIF/XMP metadata removed, or null to send its file as it is: there
+     * was nothing to strip. Kept in memory so the encrypt reads them, not the file again.
      *
      * Images are uploaded byte-for-byte — nothing on the send path re-encodes them — so a
      * camera JPEG otherwise reached the recipient carrying GPS, capture time and camera
@@ -153,19 +151,19 @@ class PayloadBundleEncryptionService(
      * couldn't be parsed goes out as it is rather than failing the send. The cost of that is a
      * leak, not a crash, so it is logged loudly.
      */
-    private suspend fun scrubImageMetadata(payload: PayloadFile): String {
-        if (!payload.contentType.startsWith("image/")) return payload.filePath
+    private suspend fun scrubbedImage(payload: PayloadFile): ByteArray? {
+        if (!payload.contentType.startsWith("image/")) return null
         val original = try {
             fileOps.readFileBytes(payload.filePath)
         } catch (t: Throwable) {
             Logger.w(throwable = t, tag = TAG) {
                 "metadata scrub skipped — could not read ${payload.filePath}"
             }
-            return payload.filePath
+            return null
         }
         val why = when (val outcome = ImageMetadataScrubber.scrubWithOutcome(original)) {
-            is ImageMetadataScrubber.Outcome.Scrubbed -> return fileOps.writeBytesToTempFile(outcome.bytes, "scrubbed_", ".img")
-            ImageMetadataScrubber.Outcome.NothingToStrip -> return payload.filePath
+            is ImageMetadataScrubber.Outcome.Scrubbed -> return outcome.bytes
+            ImageMetadataScrubber.Outcome.NothingToStrip -> return null
             ImageMetadataScrubber.Outcome.UnsupportedFormat -> "isn't a format the scrubber handles"
             ImageMetadataScrubber.Outcome.Unparseable -> "couldn't be parsed"
         }
@@ -173,7 +171,7 @@ class PayloadBundleEncryptionService(
             "metadata scrub skipped — ${payload.contentType} (sniffed ${ImageFormatDetector.detectFormat(original)}) " +
                 "$why; any EXIF/XMP goes out intact"
         }
-        return payload.filePath
+        return null
     }
 
     private suspend fun encryptFile(
@@ -189,6 +187,12 @@ class PayloadBundleEncryptionService(
         val path = fileOps.createOutboxStagingPath(prefix = "enc", suffix = ".encrypted")
         fileOps.encryptFileStreaming(inputFile, path, keyHeader)
 
+        return path
+    }
+
+    private suspend fun encryptBytesToStaging(plaintext: ByteArray, keyHeader: KeyHeader): String {
+        val path = fileOps.createOutboxStagingPath(prefix = "enc", suffix = ".encrypted")
+        fileOps.encryptBytesToFile(plaintext, path, keyHeader)
         return path
     }
 
