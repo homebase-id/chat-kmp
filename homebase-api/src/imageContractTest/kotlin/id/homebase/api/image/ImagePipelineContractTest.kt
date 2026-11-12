@@ -163,6 +163,18 @@ class ImagePipelineContractTest {
     @Test
     fun onePixelStripesTurnGreyWhenTheDecoderScales() = runTest { assertStripesTurnGrey(viaDecoder = true) }
 
+    // 1-pixel stripes are the one pattern a 2x2 average cancels exactly, so they can't catch it aliasing.
+    // Lanczos-3 itself leaves 5.7 at exactly 2x; a 2x2 average as the last step leaves 60.
+    @Test
+    fun threePixelStripesTurnGreyAtWholeAndNearWholeHalvings() = runTest {
+        val failures = listOf(854 to 427, 1708 to 427, 940 to 427, 3416 to 427).mapNotNull { (from, to) ->
+            val source = png(from, STRIPES_HEIGHT) { x, _ -> if (x % 3 == 0) BLACK else WHITE }
+            val spread = deviation(middleGreens(stripesAfter(source, from, to, viaDecoder = false)))
+            "$from -> $to deviated by $spread".takeIf { spread > 8.0 }
+        }
+        assertTrue(failures.isEmpty(), failures.joinToString())
+    }
+
     @Test
     fun coarseStripesKeepTheirContrast() = runTest {
         val greens = middleGreens(stripesAfter(stripes(1080, 8), 1080, 640, viaDecoder = false))
