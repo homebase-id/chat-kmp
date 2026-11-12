@@ -6,7 +6,6 @@ import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver
 import dev.onvoid.webrtc.PeerConnectionFactory
-import dev.onvoid.webrtc.PeerConnectionObserver
 import dev.onvoid.webrtc.RTCAnswerOptions
 import dev.onvoid.webrtc.RTCConfiguration
 import dev.onvoid.webrtc.RTCDataChannel
@@ -18,14 +17,12 @@ import dev.onvoid.webrtc.RTCIceCandidate
 import dev.onvoid.webrtc.RTCIceServer
 import dev.onvoid.webrtc.RTCOfferOptions
 import dev.onvoid.webrtc.RTCPeerConnection
-import dev.onvoid.webrtc.RTCPeerConnectionState
 import dev.onvoid.webrtc.RTCRtpSender
 import dev.onvoid.webrtc.RTCRtpTransceiver
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection
 import dev.onvoid.webrtc.RTCRtpTransceiverInit
 import dev.onvoid.webrtc.RTCSdpType
 import dev.onvoid.webrtc.RTCSessionDescription
-import dev.onvoid.webrtc.SetSessionDescriptionObserver
 import dev.onvoid.webrtc.logging.LogSink
 import dev.onvoid.webrtc.logging.Logging
 import dev.onvoid.webrtc.media.Device
@@ -51,8 +48,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.concurrent.timerTask
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -502,15 +497,13 @@ class WebRtcJavaCallEngine(
 
     private suspend fun setLocal(description: RTCSessionDescription) = suspendCancellableCoroutine { cont ->
         checkOpen()
-        peer.setLocalDescription(description, setObserver(cont))
+        peer.setLocalDescription(description, GuardedSetObserver(cont, ::failCall))
     }
 
     private suspend fun setRemote(description: RTCSessionDescription) = suspendCancellableCoroutine { cont ->
         checkOpen()
-        peer.setRemoteDescription(description, setObserver(cont))
+        peer.setRemoteDescription(description, GuardedSetObserver(cont, ::failCall))
     }
-
-    private fun setObserver(cont: kotlinx.coroutines.CancellableContinuation<Unit>) = GuardedSetObserver(cont, ::failCall)
 
     override fun setMuted(muted: Boolean) {
         micMuted = muted

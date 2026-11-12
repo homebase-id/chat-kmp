@@ -13,7 +13,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 class GuardedWebRtcCallbacksTest {
 
     @Test
-    fun aMapperThatThrowsNeverEscapesTheIceCallback() {
+    fun aMapperThatThrowsNeverEscapesTheConnectionCallback() {
         val errors = mutableListOf<Throwable>()
         val observer = GuardedPeerObserver(
             mapper = PeerEventMapper { error("boom") },
