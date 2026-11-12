@@ -350,10 +350,17 @@ internal fun desktopTier(width: Dp, height: Dp): CallTier = when {
 }
 
 
-/** Self-view snap corners: top-start, top-end, bottom-start, bottom-end. A short window clamps the bottom pair to the top. */
 /** The size the self-view's video is laid out at: stage size for the whole shrink, so the native surface is resized once at each end instead of every frame. */
 internal fun previewMeasureSize(fill: Float, pip: Size, stage: Size): Size = if (fill > 0f) stage else pip
 
+/** The centre of the stage-sized self-view that covers [shown], framed like the settled tile. */
+internal fun previewCropWindow(shown: Size, measured: Size): Rect {
+    val scale = maxOf(shown.width / measured.width, shown.height / measured.height)
+    val window = Size(shown.width / scale, shown.height / scale)
+    return Rect(Offset((measured.width - window.width) / 2, (measured.height - window.height) / 2), window)
+}
+
+/** Self-view snap corners: top-start, top-end, bottom-start, bottom-end. A short window clamps the bottom pair to the top. */
 internal fun previewCorners(width: Float, height: Float, pipW: Float, pipH: Float, margin: Float, top: Float, bottomReserve: Float): List<Offset> =
     snapCorners(Rect(margin, top, width - margin, height - bottomReserve), Size(pipW, pipH))
 
@@ -1167,15 +1174,18 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
                     val placeable = measurable.measure(Constraints.fixed(measured.width.roundToInt(), measured.height.roundToInt()))
                     val shownW = pipW + (stageW - pipW) * f
                     val shownH = pipH + (stageH - pipH) * f
-                    val shrink = shownW / measured.width
+                    val window = previewCropWindow(Size(shownW, shownH), measured)
+                    val shrink = shownW / window.width
                     layout(shownW.roundToInt(), shownH.roundToInt()) {
-                        if (shrink >= 1f) placeable.place(0, 0)
+                        if (window.size == measured) placeable.place(0, 0)
                         else placeable.placeWithLayer(0, 0) {
                             scaleX = shrink
                             scaleY = shrink
+                            translationX = -window.left * shrink
+                            translationY = -window.top * shrink
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                             clip = true
-                            this.shape = TopLeftWindow(measured.width, shownH / shrink, PreviewCorner.toPx() / shrink)
+                            this.shape = CropWindow(window, PreviewCorner.toPx() / shrink)
                         }
                     }
                 }
@@ -1244,9 +1254,9 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
     }
 }
 
-private class TopLeftWindow(val width: Float, val height: Float, val radius: Float) : Shape {
+private class CropWindow(val window: Rect, val radius: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: androidx.compose.ui.unit.Density) =
-        androidx.compose.ui.graphics.Outline.Rounded(androidx.compose.ui.geometry.RoundRect(0f, 0f, width, height, androidx.compose.ui.geometry.CornerRadius(radius)))
+        androidx.compose.ui.graphics.Outline.Rounded(androidx.compose.ui.geometry.RoundRect(window, androidx.compose.ui.geometry.CornerRadius(radius)))
 }
 
 private const val PreviewShrinkMs = 400
