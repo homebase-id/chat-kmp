@@ -117,7 +117,7 @@ class CallControllerTest {
         lateinit var net: LoopbackSignaling
         val recordClose: (FakeCallEngine) -> CallEngine = { fake ->
             object : CallEngine by fake {
-                override fun close() {
+                override suspend fun close() {
                     val hungUp = net.sent.any { it.from == frodo && it.signal is CallSignal.Hangup }
                     timeline += if (hungUp) "closed after hangup" else "closed before hangup"
                     fake.close()
@@ -139,13 +139,40 @@ class CallControllerTest {
     }
 
     @Test
+    fun hangupEndsTheCallWhileAnEngineCloseIsStillSuspendedAndTheCloseStillCompletes() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val slowClose: (FakeCallEngine) -> CallEngine = { fake ->
+            object : CallEngine by fake {
+                override suspend fun close() {
+                    gate.await()
+                    fake.close()
+                }
+            }
+        }
+        val (_, a, b) = pair(wrapA = slowClose)
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+
+        a.controller.hangup()
+        runCurrent()
+
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
+        assertTrue(!a.engines.single().closed)
+        gate.complete(Unit)
+        runCurrent()
+        assertTrue(a.engines.single().closed)
+    }
+
+    @Test
     fun aCallPlacedRightAfterHangingUpOpensItsEngineOnlyOnceTheLastOneHasClosed() = runTest {
         val timeline = mutableListOf<String>()
         val record: (FakeCallEngine) -> CallEngine = { fake ->
             val n = timeline.count { it.startsWith("created") } + 1
             timeline += "created $n"
             object : CallEngine by fake {
-                override fun close() {
+                override suspend fun close() {
                     timeline += "closed $n"
                     fake.close()
                 }

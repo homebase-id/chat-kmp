@@ -3,6 +3,7 @@ package id.homebase.chat.services.calling
 import id.homebase.core.notifications.CallNotificationActions
 import id.homebase.core.notifications.CallNotifier
 import id.homebase.core.notifications.CallPushRouter
+import id.homebase.core.notifications.PushInterceptors
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -95,8 +96,8 @@ class DesktopCallRingSinkTest {
         "data" to """{"senderId":"$sam","timestamp":1,"options":{"appId":"app","typeId":"$typeId","tagId":"$callId"}}""",
     )
 
-    private fun ring(callId: String) = CallPushRouter.tryHandle(payload(CallPushRouter.RING_TYPE_ID, callId))
-    private fun hangup(callId: String) = CallPushRouter.tryHandle(payload(CallPushRouter.HANGUP_TYPE_ID, callId))
+    private fun ring(callId: String) = PushInterceptors.tryHandle(payload(CallPushRouter.RING_TYPE_ID, callId))
+    private fun hangup(callId: String) = PushInterceptors.tryHandle(payload(CallPushRouter.HANGUP_TYPE_ID, callId))
 
     @Test
     fun ringingFocusesTheCallWindowStartsTheToneOnceAndStopRetractsBoth() = runTest {
