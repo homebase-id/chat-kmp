@@ -1114,7 +1114,6 @@ fun AuthConnectionState.toConnectionStatus(): AppConnectionStatus = when {
 class WebSocketHolds {
     private val current = MutableStateFlow<Set<String>>(emptySet())
 
-    val reasons: Set<String> get() = current.value
     val held: Boolean get() = current.value.isNotEmpty()
 
     /** True when [reason] was not already holding. */

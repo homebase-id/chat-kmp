@@ -1,7 +1,6 @@
 package id.homebase.core.auth
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -30,7 +29,6 @@ class AuthConnectionCoordinatorHoldsTest {
         holds.hold("live-share")
         holds.release("call")
         assertTrue(holds.held)
-        assertEquals(setOf("live-share"), holds.reasons)
         holds.release("live-share")
         assertFalse(holds.held)
     }

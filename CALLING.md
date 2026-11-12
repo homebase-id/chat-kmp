@@ -208,7 +208,7 @@ stays as the safety net. Baseline measured before the pin: source 3840x2160 at 3
 ### Keep-awake and picture-in-picture
 
 While a call is `Connecting`, `Connected` or `Reconnecting` (`CallPhase.isInCall`) the phone screen stays on
-(`KeepScreenOn`), and `AuthConnectionCoordinator.setCallActive` keeps the notify WebSocket open even when the app is
+(`KeepScreenOn`), and `AuthConnectionCoordinator.holdWebSocket("call")` keeps the notify WebSocket open even when the app is
 backgrounded or in PiP, because answer, ICE and hangup ride it.
 
 A video call that is `Connected` or `Reconnecting` goes into a system PiP window when the user leaves the app
