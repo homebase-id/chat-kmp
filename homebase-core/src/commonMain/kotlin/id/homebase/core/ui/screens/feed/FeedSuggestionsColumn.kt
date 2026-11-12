@@ -1,26 +1,39 @@
 package id.homebase.core.ui.screens.feed
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Tag
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,28 +69,25 @@ internal fun FeedSuggestionsColumn(
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
-        modifier = modifier.padding(top = 10.dp, bottom = 16.dp),
+        modifier = modifier,
+        contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(FeedColumnGap),
     ) {
         item(key = "people") {
             SuggestionCard {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = stringResource(MR.string.feed_wide_people_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f).padding(vertical = 12.dp),
-                    )
+                    SectionTitle(stringResource(MR.string.feed_wide_people_title), Modifier.weight(1f))
                     TextButton(onClick = onSeeAll) { Text(stringResource(MR.string.feed_wide_see_all)) }
                 }
                 if (people.isEmpty()) {
                     Text(
                         text = stringResource(MR.string.feed_wide_suggestions_empty),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
                     )
                 }
                 people.forEach { person ->
@@ -94,20 +104,11 @@ internal fun FeedSuggestionsColumn(
         if (channelNames.isNotEmpty()) {
             item(key = "channels") {
                 SuggestionCard {
-                    Text(
-                        text = stringResource(MR.string.feed_wide_channels_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    SectionTitle(
+                        stringResource(MR.string.feed_wide_channels_title),
+                        Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
                     )
-                    channelNames.forEach { name ->
-                        Text(
-                            text = name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                        )
-                    }
+                    channelNames.forEach { name -> ChannelRow(name) }
                 }
             }
         }
@@ -115,16 +116,27 @@ internal fun FeedSuggestionsColumn(
 }
 
 @Composable
+private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = modifier,
+    )
+}
+
+@Composable
 private fun SuggestionCard(content: @Composable () -> Unit) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(bottom = 6.dp)) { content() }
+        Column(modifier = Modifier.padding(bottom = 12.dp)) { content() }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SuggestedPersonRow(
     person: SuggestedPerson,
@@ -136,23 +148,80 @@ private fun SuggestedPersonRow(
     // OdinId construction hashes, so it is kept out of the recomposition path.
     val odin = remember(person.odinId) { OdinId(person.odinId) }
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 20.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         IdentityAvatar(odinId = odin, displayName = displayName, options = AvatarOptions(size = 40.dp, onClick = onClick))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = displayName,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!displayName.equals(person.odinId, ignoreCase = true)) {
+                Text(
+                    text = person.odinId,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        val height = ButtonDefaults.ExtraSmallContainerHeight
+        ToggleButton(
+            checked = person.isFollowed,
+            onCheckedChange = { follow -> if (follow) onFollow() else onUnfollow() },
+            shapes = ToggleButtonDefaults.shapesFor(height),
+            colors = ToggleButtonDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            ),
+            contentPadding = ButtonDefaults.contentPaddingFor(height),
+            modifier = Modifier.heightIn(min = height),
+        ) {
+            if (person.isFollowed) {
+                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.ExtraSmallIconSize))
+                Spacer(Modifier.width(ButtonDefaults.ExtraSmallIconSpacing))
+                Text(stringResource(MR.string.feed_following_following))
+            } else {
+                Text(stringResource(MR.string.feed_following_follow))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelRow(name: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.shapes.small),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Outlined.Tag,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(18.dp),
+            )
+        }
         Text(
-            text = displayName,
-            style = MaterialTheme.typography.bodyMedium,
+            text = name,
+            style = MaterialTheme.typography.bodyLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        if (person.isFollowed) {
-            OutlinedButton(onClick = onUnfollow) { Text(stringResource(MR.string.feed_following_following)) }
-        } else {
-            Button(onClick = onFollow) { Text(stringResource(MR.string.feed_following_follow)) }
-        }
     }
 }
 
