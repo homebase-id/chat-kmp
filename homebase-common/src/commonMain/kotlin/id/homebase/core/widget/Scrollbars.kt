@@ -7,6 +7,10 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
+/**
+ * Draws a draggable vertical scrollbar over the content of [state], aligned by [modifier] inside the surrounding box.
+ * Drawn on desktop only; Android, iOS and web draw nothing.
+ */
 @Composable
 expect fun BoxScope.HomebaseVerticalScrollbar(modifier: Modifier, state: LazyGridState)
 

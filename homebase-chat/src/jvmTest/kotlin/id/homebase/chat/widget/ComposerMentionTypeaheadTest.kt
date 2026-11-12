@@ -70,7 +70,7 @@ private val GroupMembers = listOf(
  * dies with "KoinApplication has not been started". This one fails every request, which puts every
  * row on the initials fallback: deterministic, and it dials nobody.
  */
-private class OfflineImageLoader : ImageLoader {
+internal class OfflineImageLoader : ImageLoader {
     override val defaults: ImageRequest.Defaults = ImageRequest.Defaults.DEFAULT
     override val components: ComponentRegistry = ComponentRegistry()
     override val memoryCache: MemoryCache? = null
@@ -92,7 +92,7 @@ private class OfflineImageLoader : ImageLoader {
         ErrorResult(null, request, UnsupportedOperationException("offline test loader"))
 }
 
-private val TestKoin = koinApplication {
+internal val OfflineAvatarKoin = koinApplication {
     modules(module { single { AvatarResolver(MutableStateFlow(emptyList())) }; single<ImageLoader> { OfflineImageLoader() } })
 }
 
@@ -106,7 +106,7 @@ class ComposerMentionTypeaheadTest {
         onSend: () -> Unit = {},
         capture: (RichTextState) -> Unit,
     ): @Composable () -> Unit = {
-        KoinIsolatedContext(TestKoin) {
+        KoinIsolatedContext(OfflineAvatarKoin) {
             MaterialTheme {
                 val state = rememberRichTextState()
                 val controller = rememberComposerAutocompleteController()
@@ -138,7 +138,7 @@ class ComposerMentionTypeaheadTest {
         topSpacer: androidx.compose.ui.unit.Dp?,
         capture: (RichTextState) -> Unit,
     ): @Composable () -> Unit = {
-        KoinIsolatedContext(TestKoin) {
+        KoinIsolatedContext(OfflineAvatarKoin) {
             MaterialTheme {
                 val state = rememberRichTextState()
                 val controller = rememberComposerAutocompleteController()

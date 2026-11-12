@@ -21,8 +21,8 @@ internal suspend fun finalImagePayload(
 ): AttachmentInput {
     val image = thumbs.finalImage ?: return attachment
     val sourceFits = thumbs.displayedSize?.let { it.pixelWidth == image.width && it.pixelHeight == image.height } == true
-    val savesEnough = image.bytes.size.toLong() * 4 <= thumbs.sourceBytes.size.toLong() * 3
-    val keepable = ImageFormatDetector.detectFormat(thumbs.sourceBytes) in ImageFormatDetector.TYPES_EVERY_CLIENT_CAN_DECODE
+    val savesEnough = thumbs.sourceByteCount?.let { image.bytes.size.toLong() * 4 <= it * 3 } ?: true
+    val keepable = thumbs.sourceFormat in ImageFormatDetector.TYPES_EVERY_CLIENT_CAN_DECODE
     if (sourceFits && !savesEnough && keepable) return attachment
 
     val path = try {
