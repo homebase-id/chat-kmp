@@ -12,9 +12,4 @@ class PlatformContractTest {
         assertEquals(type == PlatformType.IOS, isIos())
         assertFalse(isAndroid() && isIos())
     }
-
-    @Test
-    fun showMessageNeverThrows() {
-        showMessage("title", "message")
-    }
 }

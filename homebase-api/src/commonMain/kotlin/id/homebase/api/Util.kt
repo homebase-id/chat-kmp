@@ -26,7 +26,7 @@ expect fun isAndroid(): Boolean
 /** True only on iOS; iPhone and iPad both count. Equivalent to `getPlatform().name == PlatformType.IOS`. */
 expect fun isIos(): Boolean
 
-/** Intended to surface [message] to the user. Currently a no-op on every platform; callers must not rely on it showing anything. Never throws. */
+/** Intended to surface [message] to the user. Currently a no-op on every platform; callers must not rely on it showing anything. */
 expect fun showMessage(title: String, message: String)
 
 // URL encoder compatible with UTF-8 encoding

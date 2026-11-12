@@ -5,7 +5,8 @@ import androidx.compose.ui.Modifier
 
 /**
  * Plays the local video at [filePath] inline with the platform's controls, looping until it leaves composition.
- * [onFirstFrameRendered] fires once, on the main thread, when the first frame is painted. An unreadable file draws nothing.
+ * [onFirstFrameRendered] fires when the first frame is on screen. [hideWhenPaused] hides the video
+ * while [isPlaying] is false; only web honours it today, the other targets ignore it.
  */
 @Composable
 expect fun LocalVideoPlayerSurface(
@@ -21,6 +22,10 @@ expect fun LocalVideoPlayerSurface(
  * player seeks whenever this value changes; pass a fresh value or null).
  *
  * No on-screen playback controls — the trim screen draws its own.
+ *
+ * [onFirstFrameRendered] fires once per [filePath] when the first frame is on screen. When
+ * [hideWhenPaused] is true the surface draws nothing while [isPlaying] is false. A missing or
+ * unreadable [filePath] renders nothing and never throws.
  */
 @Composable
 expect fun TrimmableVideoPlayerSurface(
