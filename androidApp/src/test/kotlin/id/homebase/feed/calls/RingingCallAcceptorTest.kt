@@ -6,7 +6,7 @@ import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallSession
 import id.homebase.chat.services.calling.CallState
 import id.homebase.chat.services.calling.CallVideos
-import kotlin.test.Test
+import org.junit.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
