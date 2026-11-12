@@ -252,6 +252,7 @@ import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.feed.services.ReportingUrlProvider
+import id.homebase.core.ui.screens.feed.ArticleWebViewModel
 import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.core.ui.screens.feed.following.FollowGraph
@@ -1441,6 +1442,7 @@ val appModule = module {
         )
     }
     viewModelOf(::FollowingViewModel)
+    viewModelOf(::ArticleWebViewModel)
     viewModel { params ->
         PostDetailViewModel(
             postId = params.get(),
