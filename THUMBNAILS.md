@@ -582,7 +582,6 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 ### Not settled
 
 - **Whether vImage beats `stb_image_resize2` on iOS.** vImage ships now because it's a system library; swap only if the phone measurements say so.
-- **Reading from the file instead of a byte array** on phones (`ImageDecoder.createSource(File)`, `CGImageSourceCreateWithURL`), so the encoded file isn't held in memory as well. Measure whether it's worth it for Photobase.
 - **Does Photos offer HD?** Today it backs up only the untouched file, and an HD backup would need `BackupRequestBuilder.kt` changed, because it requires the uploaded bytes to match the device file's hash.
 - **Final qualities.** q60 and q70 are pending the real-photo test, especially on faces.
 - **Judgement calls to check on real photos:** the 10% band, the q60 floor and the shrink estimate follow common practice. Adjust them if real photos say otherwise.

@@ -49,6 +49,13 @@ suspend fun readImageMetadata(path: String, fileOps: FileOperationsProvider): Im
         file.use { it.metadata() }
     }
 
+/** The upright size of the image at [path], reading only its header where the platform can. */
+suspend fun readImageSize(path: String, fileOps: FileOperationsProvider): ImageSize =
+    withContext(Dispatchers.Default) {
+        openImageFile(path, fileOps)?.use { return@withContext it.displayedSize }
+        ImageUtils.getNaturalSize(fileOps.readFileBytes(path))
+    }
+
 /**
  * Parse an EXIF DateTimeOriginal string ("YYYY:MM:DD HH:MM:SS") into a
  * [LocalDateTime]. Returns null on malformed input.

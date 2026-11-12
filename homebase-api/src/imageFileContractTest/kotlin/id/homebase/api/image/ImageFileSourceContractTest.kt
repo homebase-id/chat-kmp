@@ -73,5 +73,9 @@ class ImageFileSourceContractTest {
         ops.wholeReads = 0
         assertEquals(6, readImageMetadata(path, ops)?.orientation)
         assertEquals(expectedReads, ops.wholeReads, "EXIF alone")
+
+        ops.wholeReads = 0
+        assertEquals(ImageSize(1200, 1600), readImageSize(path, ops))
+        assertEquals(expectedReads, ops.wholeReads, "size alone")
     }
 }
