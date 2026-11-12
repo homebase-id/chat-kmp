@@ -39,6 +39,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.ui.screens.feed.following.FollowingEvent
+import id.homebase.core.ui.screens.feed.following.FollowingUiState
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.resources.MR
 import id.homebase.resources.feed_following_follow
@@ -54,6 +55,15 @@ import org.koin.compose.viewmodel.koinViewModel
 internal data class SuggestedPerson(val odinId: String, val isFollowed: Boolean)
 
 internal const val SUGGESTED_PEOPLE_LIMIT = 5
+
+// followedHere only keeps a row in place; the toggle reads the follow list so an unfollow flips it back.
+internal fun FollowingUiState.suggestedPeople(): List<SuggestedPerson> {
+    val followed = following.mapTo(HashSet()) { it.lowercase() }
+    return (peopleYouMayKnowNotFollowed.map { it.odinId } + suggested)
+        .distinctBy { it.lowercase() }
+        .take(SUGGESTED_PEOPLE_LIMIT)
+        .map { SuggestedPerson(it, isFollowed = it.lowercase() in followed) }
+}
 
 // Right-hand column of the wide feed: people to follow and the channels you post to, as on the web feed.
 @Composable
@@ -236,11 +246,7 @@ internal fun FeedSuggestionsPane(
     val displayNames by viewModel.displayNames.collectAsStateWithLifecycle()
     val namesByDomain = remember(displayNames) { displayNames.mapKeys { it.key.domainName.lowercase() } }
     val people = remember(uiState.peopleYouMayKnow, uiState.following, uiState.connections, uiState.followedHere) {
-        val followedHere = uiState.followedHere
-        val ids = (uiState.peopleYouMayKnowNotFollowed.map { it.odinId } + uiState.suggested)
-            .distinctBy { it.lowercase() }
-            .take(SUGGESTED_PEOPLE_LIMIT)
-        ids.map { SuggestedPerson(it, isFollowed = it.lowercase() in followedHere) }
+        uiState.suggestedPeople()
     }
 
     LaunchedEffect(viewModel) {

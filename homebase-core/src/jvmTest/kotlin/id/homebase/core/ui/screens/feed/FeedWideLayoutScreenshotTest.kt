@@ -299,4 +299,16 @@ class FeedWideLayoutScreenshotTest {
         assertEquals(10, state.firstVisibleItemScrollOffset)
         onAllNodesWithTag(FEED_SUGGESTIONS_TAG).assertCountEquals(1)
     }
+
+    @Test
+    fun unfollowingASuggestionFlipsItsToggleBack() {
+        val followedHere = id.homebase.core.ui.screens.feed.following.FollowingUiState(
+            connections = listOf("sam.demo.rocks"),
+            following = listOf("sam.demo.rocks"),
+            followedHere = setOf("sam.demo.rocks"),
+        )
+        assertEquals(listOf(SuggestedPerson("sam.demo.rocks", isFollowed = true)), followedHere.suggestedPeople())
+        val unfollowed = followedHere.copy(following = emptyList())
+        assertEquals(listOf(SuggestedPerson("sam.demo.rocks", isFollowed = false)), unfollowed.suggestedPeople())
+    }
 }
