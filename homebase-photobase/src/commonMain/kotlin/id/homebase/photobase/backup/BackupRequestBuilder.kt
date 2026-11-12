@@ -6,15 +6,14 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.SecurityGroupType
-import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.createThumbnails
+import id.homebase.api.image.MediaImages
+import id.homebase.api.image.createMediaImages
 import id.homebase.api.image.readImageMetadata
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DeviceBackupAsset
@@ -47,9 +46,10 @@ class BackupRequestBuilder(
                 payloads[index] = payloads[index].copy(iv = hashed.iv, hash = hashed.hash)
             }
             val primaryKey = KeyHeader(payloads.first().iv!!, keyHeader.aesKey)
-            val imageBytes = fileOps.readFileBytes(exported.parts.first().path)
+            val imagePath = exported.parts.first().path
             val (prepared, exif) = timed(BackupStage.Thumbnails) {
-                prepareImage(imageBytes, payloads.first().key) to readExifSoftly(imageBytes)
+                val media = prepareImage(imagePath, payloads.first().key)
+                media to if (media != null) media.metadata else readExifSoftly(imagePath)
             }
             val metadata = photoMetadata(
                 uniqueId,
@@ -60,8 +60,8 @@ class BackupRequestBuilder(
                     latitude = exif?.latitude,
                     longitude = exif?.longitude,
                     altitude = exif?.altitudeMeters,
-                    width = prepared?.width,
-                    height = prepared?.height,
+                    width = prepared?.displayedSize?.pixelWidth,
+                    height = prepared?.displayedSize?.pixelHeight,
                 ).withTiny(prepared?.tiny),
             )
             val request = UploadFileRequest(
@@ -82,12 +82,9 @@ class BackupRequestBuilder(
     private fun keyFor(role: ExportedPartRole) =
         if (role == ExportedPartRole.PairedVideo) PhotobaseProtocol.LivePhotoVideoPayloadKey else PhotobaseProtocol.ImagePayloadKey
 
-    private class PreparedImage(val width: Int, val height: Int, val tiny: EmbeddedThumb?, val thumbnails: List<ThumbnailFile>)
-
     // A format the decoder can't read is still worth keeping: the bytes back up without previews.
-    private suspend fun prepareImage(imageBytes: ByteArray, payloadKey: String): PreparedImage? = try {
-        val (size, tiny, thumbnails) = createThumbnails(imageBytes, payloadKey)
-        PreparedImage(size.pixelWidth, size.pixelHeight, tiny, thumbnails)
+    private suspend fun prepareImage(path: String, payloadKey: String): MediaImages? = try {
+        createMediaImages(path, fileOps, payloadKey, readMetadata = true)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -95,8 +92,10 @@ class BackupRequestBuilder(
         null
     }
 
-    private fun readExifSoftly(imageBytes: ByteArray) = try {
-        readImageMetadata(imageBytes)
+    private suspend fun readExifSoftly(path: String) = try {
+        readImageMetadata(path, fileOps)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Logger.w(tag = TAG, throwable = e) { "no readable EXIF" }
         null

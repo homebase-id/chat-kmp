@@ -61,6 +61,7 @@ fun describeWebNotificationFailure(code: String): String = when (code) {
     else -> "The browser refused to show the notification: $code"
 }
 
+/** The browser's push bridge, or null where the page has none loaded. Always null on Android, iOS and desktop, which use their own push channels. */
 expect fun webPushBridge(): WebPushBridge?
 
 enum class WebPushHealth {

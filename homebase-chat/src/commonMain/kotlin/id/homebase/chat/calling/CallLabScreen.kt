@@ -330,7 +330,9 @@ private fun PreviewLayer(state: CallUiState, onChange: (CallUiState?) -> Unit) {
             endFromKeyboard = { onChange(null) },
         )
     }
-    CallScreen(ui = state, peerName = PeerName, avatar = { size -> LabAvatar(size) }, actions = actions, chromeHeld = verifying)
+    val chrome = remember { CallChromeState() }
+    HoldCallChrome(verifying, chrome)
+    CallScreen(ui = state, peerName = PeerName, avatar = { size -> LabAvatar(size) }, actions = actions, chrome = chrome)
     val code = state.verificationCode
     if (verifying && code != null) CallVerificationSheet(code) { verifying = false }
 }

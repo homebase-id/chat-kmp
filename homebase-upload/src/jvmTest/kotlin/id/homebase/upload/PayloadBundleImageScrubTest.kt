@@ -1,5 +1,8 @@
 package id.homebase.upload
 
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.eventbus.EventBus
@@ -11,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -100,6 +104,41 @@ class PayloadBundleImageScrubTest {
         }
     }
 
+    // Same fixture as homebase-api's HeicFixtures: ImageIO's HEIC with GPS, serial and XMP; hvc1 data at 3227.
+    @Test
+    fun encryptBundle_uploadsHeicWithMetadataStripped() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val svc = service(provider)
+        val key = KeyHeader.newRandom16()
+
+        val original = assertNotNull(javaClass.getResourceAsStream("/geotagged_rotated.heic")).readBytes()
+        val src = provider.writeBytesToTempFile(original, "scrub_src_", ".heic")
+        var staged: String? = null
+        try {
+            val payload = svc.encryptBundle(
+                Uuid.random(),
+                bundle(PayloadFile(key = "p0", filePath = src, contentType = "image/heic")),
+                key.aesKey,
+                this,
+            ).payloads.single()
+            staged = payload.filePath
+
+            val expected = ImageMetadataScrubber.scrub(original)
+            assertContentEquals(
+                KeyHeader(aesKey = key.aesKey, iv = assertNotNull(payload.iv)).encryptDataAes(expected),
+                File(staged).readBytes(),
+                "uploaded ciphertext must be of the SCRUBBED bytes",
+            )
+            assertTrue(indexOfSub(original, "SECRETSERIAL".encodeToByteArray()) >= 0, "fixture must carry metadata")
+            assertFalse(indexOfSub(expected, "SECRETSERIAL".encodeToByteArray()) >= 0, "EXIF must not reach the wire")
+            assertEquals(original.size, expected.size)
+            assertContentEquals(original.copyOfRange(3227, original.size), expected.copyOfRange(3227, expected.size))
+        } finally {
+            provider.deleteTempFile(src)
+            staged?.let { provider.deleteTempFile(it) }
+        }
+    }
+
     @Test
     fun encryptBundle_leavesNoScrubbedTempBehind() = runTest {
         val provider = JvmFileOperationsProvider()
@@ -152,6 +191,44 @@ class PayloadBundleImageScrubTest {
             provider.deleteTempFile(src)
             staged?.let { provider.deleteTempFile(it) }
         }
+    }
+
+    @Test
+    fun encryptBundle_unsupportedImageFormat_goesOutUnchangedWithAWarning() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val svc = service(provider)
+        val key = KeyHeader.newRandom16()
+        val gif = "GIF89a".encodeToByteArray() + ByteArray(32) { 4 }
+        val src = provider.writeBytesToTempFile(gif, "unsupported_", ".gif")
+        var staged: String? = null
+        val warnings = mutableListOf<String>()
+        val previousWriters = Logger.config.logWriterList
+        Logger.setLogWriters(
+            object : LogWriter() {
+                override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+                    if (severity >= Severity.Warn) warnings += message
+                }
+            }
+        )
+        try {
+            val payload = svc.encryptBundle(
+                Uuid.random(),
+                bundle(PayloadFile(key = "p0", filePath = src, contentType = "image/gif")),
+                key.aesKey,
+                this,
+            ).payloads.single()
+            staged = payload.filePath
+            assertContentEquals(
+                KeyHeader(aesKey = key.aesKey, iv = assertNotNull(payload.iv)).encryptDataAes(gif),
+                File(staged).readBytes(),
+            )
+        } finally {
+            Logger.setLogWriters(previousWriters)
+            provider.deleteTempFile(src)
+            staged?.let { provider.deleteTempFile(it) }
+        }
+        val warning = warnings.single()
+        assertTrue("image/gif" in warning && "intact" in warning, warning)
     }
 
     private fun indexOfSub(haystack: ByteArray, needle: ByteArray): Int {

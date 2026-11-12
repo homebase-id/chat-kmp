@@ -71,4 +71,29 @@ class CallLayoutMathTest {
         assertEquals(1280f / 720, remoteVideoLetterbox(1280 to 720, 390f, 844f))
         assertEquals(720f / 1280, remoteVideoLetterbox(720 to 1280, 844f, 390f))
     }
+
+    @Test
+    fun theSelfViewIsMeasuredAtStageSizeThroughoutTheShrinkAndAtTileSizeOnlyWhenSettled() {
+        val pip = Size(108f, 156f)
+        val stage = Size(1080f, 2400f)
+        assertEquals(pip, previewMeasureSize(0f, pip, stage))
+        val sizes = (1..99).map { previewMeasureSize(it / 100f, pip, stage) }.toSet()
+        assertEquals(setOf(stage), sizes)
+        assertEquals(stage, previewMeasureSize(1f, pip, stage))
+    }
+
+    @Test
+    fun theShrinkingSelfViewShowsTheCentreOfTheStageAndNeverLeavesAnEmptyBand() {
+        val stage = Size(390f, 844f)
+        val portraitTile = previewCropWindow(Size(108f, 156f), stage)
+        assertEquals(390f, portraitTile.width, 0.01f)
+        assertEquals(390f * 156f / 108f, portraitTile.height, 0.01f)
+        assertEquals(stage.height / 2, portraitTile.center.y, 0.01f)
+        val landscape = Size(844f, 390f)
+        val wideTile = previewCropWindow(Size(156f, 108f), landscape)
+        assertEquals(390f, wideTile.height, 0.01f)
+        assertEquals(landscape.width / 2, wideTile.center.x, 0.01f)
+        assertTrue(wideTile.left >= 0f && wideTile.right <= landscape.width)
+        assertEquals(Rect(Offset.Zero, stage), previewCropWindow(stage, stage))
+    }
 }

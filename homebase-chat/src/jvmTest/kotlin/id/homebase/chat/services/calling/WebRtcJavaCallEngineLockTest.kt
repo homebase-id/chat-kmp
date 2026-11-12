@@ -65,7 +65,7 @@ class WebRtcJavaCallEngineLockTest {
         } finally {
             release.countDown()
             holder.join()
-            engine.close()
+            engine.closeBlocking()
             offerer.close()
             source.dispose()
             factory.dispose()

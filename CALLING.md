@@ -208,7 +208,7 @@ stays as the safety net. Baseline measured before the pin: source 3840x2160 at 3
 ### Keep-awake and picture-in-picture
 
 While a call is `Connecting`, `Connected` or `Reconnecting` (`CallPhase.isInCall`) the phone screen stays on
-(`KeepScreenOn`), and `AuthConnectionCoordinator.setCallActive` keeps the notify WebSocket open even when the app is
+(`KeepScreenOn`), and `AuthConnectionCoordinator.holdWebSocket("call")` keeps the notify WebSocket open even when the app is
 backgrounded or in PiP, because answer, ICE and hangup ride it.
 
 A video call that is `Connected` or `Reconnecting` goes into a system PiP window when the user leaves the app
@@ -250,7 +250,7 @@ speaker, as a video call starts there. `WebRtcJavaVideoUpgradeTest` runs it on t
   notification may show over the lock screen only until the call ends. Outgoing calls are not Telecom-registered.
   "Accept" opens `MainActivity`, asks for the microphone if needed, waits for the call to be `Incoming` and accepts;
   "Decline" sends the decline hangup. A force-stopped app receives no FCM until the user opens it again (Android).
-- **iOS Simulator**: `CallKitBridge.hostsOutgoingCalls` is false there and `CallKitMirror` then does not register
+- **iOS Simulator**: `CallKitBridge.hostsOutgoingCalls()` is false there and `CallKitMirror` then does not register
   outgoing calls. Evidence (unified log of the simulator, 5 of 5 outgoing attempts): `callservicesd` fails to open
   `facetime://?showInCallUI=1`, logs "Disconnecting call because there wont be a UI to host the call" and sends
   `CXEndCallAction`, which the app maps to a user hangup, so the caller cancelled its own call 1-3 s after the offer.

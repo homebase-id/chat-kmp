@@ -171,7 +171,6 @@ class CardsSheetTest {
                     circles = circles,
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    importSources = emptyList(),
                     showCardsButton = showCardsButton,
                     onAudience = { _, _ -> },
                     onEdit = { _, _, _ -> },
@@ -179,7 +178,6 @@ class CardsSheetTest {
                     onAdd = { _, _ -> },
                     onChangePhoto = {},
                     onRemovePhoto = {},
-                    onImport = {},
                 )
             }
         }

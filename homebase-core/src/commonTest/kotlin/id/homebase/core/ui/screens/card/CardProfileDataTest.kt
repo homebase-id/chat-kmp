@@ -271,6 +271,33 @@ class CardProfileDataTest {
         assertEquals("frodo", socialUsername("tiktok", "frodo"))
         assertEquals("frodo", socialUsername("tiktok", "@frodo"))
         assertEquals("frodo", socialUsername("tiktok", "https://www.tiktok.com/@frodo?lang=en"))
+        assertEquals("@frodo", socialUsername("youtube", "https://www.youtube.com/@frodo"))
+        assertEquals("@frodo", socialUsername("youtube", "@frodo"))
+        assertEquals("channel/UC123", socialUsername("youtube", "https://youtube.com/channel/UC123?si=x"))
+        assertNull(socialUsername("youtube", "@"))
+        assertEquals("frodo", socialUsername("snapchat", "https://www.snapchat.com/add/frodo"))
+        assertEquals("frodo", socialUsername("snapchat", "frodo"))
+        assertNull(socialUsername("snapchat", "https://snapchat.com/discover/frodo"))
+        assertEquals("frodo", socialUsername("github", "https://github.com/frodo/ring"))
+    }
+
+    @Test
+    fun theCardLinksTheWebsLinkableSocialsAndDropsTheRest() {
+        assertEquals(
+            listOf(CardSocial("youtube", "@frodo"), CardSocial("snapchat", "frodo"), CardSocial("github", "frodo")),
+            socials(
+                ProfileField.YOUTUBE to "@frodo",
+                ProfileField.SNAPCHAT to "frodo",
+                ProfileField.GITHUB to "frodo",
+                ProfileField.DISCORD to "frodo",
+                ProfileField.STACKOVERFLOW to "frodo",
+                ProfileField.STEAM to "frodo",
+                ProfileField.MINECRAFT to "frodo",
+                ProfileField.EPIC to "frodo",
+                ProfileField.RIOT to "frodo",
+                ProfileField.HOMEBASE_ID to "frodo.dotyou.cloud",
+            ),
+        )
     }
 
     @Test
@@ -283,6 +310,40 @@ class CardProfileDataTest {
         assertNull(socialUsername("linkedin", "https://linkedin.com/company/the-fellowship"))
         assertNull(socialUsername("linkedin", "https://linkedin.com/in/"))
         assertEquals(emptyList(), socials(ProfileField.TWITTER to "https://example.com/frodo"))
+    }
+
+    @Test
+    fun aHiddenFeedSectionSendsNoPostsAndOtherHiddenFieldsKeepThem() {
+        val post = CardPost(id = "f1", href = "https://frodo.dotyou.cloud/posts/public-posts/p1", date = 1)
+        fun build(fields: CardFields?) = buildCardPayload(
+            odinId, emptyList(), CardDesign.POSTER, photoSrc = null, headerSrc = null, tagLine = null,
+            posts = listOf(post), overrides = CardOverrides(fields = fields),
+        )
+        assertEquals(listOf(post), build(null).data.posts)
+        assertEquals(listOf(post), build(CardFields(hidden = listOf("x"))).data.posts)
+        assertEquals(emptyList(), build(CardFields(hiddenSections = listOf(CARD_SECTION_POSTS))).data.posts)
+    }
+
+    @Test
+    fun sectionSwitchesKeepFieldChoicesAndClearToNull() {
+        val known = setOf("a", "b")
+        val ordered = CardFields(order = listOf("a", "b"), hidden = listOf("a"))
+        val off = ordered.withSectionHidden(CARD_SECTION_POSTS, true)
+        assertEquals(ordered.copy(hiddenSections = listOf(CARD_SECTION_POSTS)), off)
+        assertEquals(listOf("a"), off.withHidden("a", true, known)!!.hidden)
+        assertEquals(listOf(CARD_SECTION_POSTS), off.withOrder(listOf("b", "a"), known)!!.hiddenSections)
+        assertEquals(ordered, off.withSectionHidden(CARD_SECTION_POSTS, false))
+        assertNull(null.withSectionHidden(CARD_SECTION_POSTS, true).withSectionHidden(CARD_SECTION_POSTS, false))
+        assertEquals(setOf(CARD_SECTION_POSTS), off.hiddenSectionKinds())
+    }
+
+    @Test
+    fun hiddenSectionsRoundTripThroughTheStoredOverrides() {
+        val overrides = CardOverrides(fields = CardFields(hiddenSections = listOf(CARD_SECTION_POSTS)))
+        val read = CardOverrides.fromJson(overrides.toJson())
+        assertEquals(overrides, read)
+        assertEquals(overrides.fields, overrides.prunedFor(CardDesign.POSTER).fields)
+        assertEquals(overrides.fields, overrides.prunedFor("unknown-design").fields)
     }
 
     @Test

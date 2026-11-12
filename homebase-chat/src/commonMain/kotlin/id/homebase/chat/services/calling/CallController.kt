@@ -27,8 +27,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
 
 class CallController(
     selfOdinId: String,
@@ -39,7 +37,6 @@ class CallController(
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
     private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
-    private val engineCloseContext: CoroutineContext = EmptyCoroutineContext,
     private val deviceId: String = Uuid.random().toString(),
 ) : CallSession {
     private val log = Logger.withTag(TAG)
@@ -443,7 +440,7 @@ class CallController(
         _mediaDevices.value = null
         // Closing takes ~2 s on a Redmi (camera stop, peer close); the hangup that follows must not wait for it.
         engine?.let { released ->
-            closingEngine = scope.launch(engineCloseContext, start = CoroutineStart.ATOMIC) { released.close() }
+            closingEngine = scope.launch(start = CoroutineStart.ATOMIC) { released.close() }
         }
         engine = null
         remoteReady = false

@@ -1,6 +1,6 @@
 package id.homebase.chat.services.calling
 
-import id.homebase.core.notifications.CallKitBridge
+import id.homebase.core.calling.CallKitBridge
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
@@ -29,7 +29,7 @@ class CallKitMirror(
             .collect { (callId, phase, direction, video, answeredInApp, peer, localVideo) ->
                 val bridge = bridge() ?: return@collect
                 val id = callId ?: return@collect
-                if (direction == CallDirection.Outgoing && !bridge.hostsOutgoingCalls) return@collect
+                if (direction == CallDirection.Outgoing && !bridge.hostsOutgoingCalls()) return@collect
                 if (answeredInApp && answered != id) {
                     answered = id
                     bridge.requestAnswer(id)

@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.DenyReason
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
+import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.feed.services.authorOdinId
 import id.homebase.core.feed.services.isAuthoredBy
@@ -121,7 +123,9 @@ fun PostDetailScreen(
         (post.reactAccess == ReactAccess.All || post.reactAccess == ReactAccess.CommentOnly)
     // Permissive while the verdict resolves: showing the composer and hiding it a beat later reads worse than
     // a denied user seeing it briefly.
-    val canComment = postAllowsComment && uiState.canReact?.allowsComment != false
+    val isArticle = post?.type == PostType.Article
+    // An article's page carries its own comments.
+    val canComment = !isArticle && postAllowsComment && uiState.canReact?.allowsComment != false
     val commentDenial = commentDenial(post != null, postAllowsComment, uiState.canReact)
 
     val displayNameFor: (OdinId?) -> String = { odinId ->
@@ -239,6 +243,12 @@ fun PostDetailScreen(
                                     .padding(24.dp),
                             )
                         }
+
+                        isArticle -> ArticleWebContent(
+                            post = post,
+                            isSystemDark = isSystemInDarkTheme(),
+                            onClosed = onBack,
+                        )
 
                         else -> {
                             Column(
