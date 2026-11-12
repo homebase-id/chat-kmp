@@ -28,25 +28,19 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     // An OutOfMemoryError is an Error, so the send's fail-soft catch would miss it and the app would crash.
     override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = try {
         val eightBit = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else checkNotNull(bitmap.copy(Bitmap.Config.ARGB_8888, false))
+        val colorSpace = eightBit.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
+        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, eightBit.hasAlpha(), colorSpace)
         try {
-            AndroidPipelineBitmap(lanczos(eightBit, width, height))
+            NativeResize.lanczos(eightBit, out)
+            AndroidPipelineBitmap(out)
+        } catch (e: Throwable) {
+            out.recycle()
+            throw e
         } finally {
             if (eightBit !== bitmap) eightBit.recycle()
         }
     } catch (e: OutOfMemoryError) {
         throw IllegalStateException("Not enough memory to scale the image", e)
-    }
-
-    private fun lanczos(source: Bitmap, width: Int, height: Int): Bitmap {
-        val colorSpace = source.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
-        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, source.hasAlpha(), colorSpace)
-        try {
-            NativeResize.lanczos(source, out)
-        } catch (e: Throwable) {
-            out.recycle()
-            throw e
-        }
-        return out
     }
 
     // compress reports failure by writing nothing, and an empty result would pass any byte limit.

@@ -12,8 +12,7 @@ public final class NativeResize {
     }
 
     /**
-     * Fills {@code destination} from all of {@code source}. Both must be premultiplied ARGB_8888;
-     * the filter's reach grows with the reduction, so nothing aliases at any ratio.
+     * Fills {@code destination} from all of {@code source}, both premultiplied ARGB_8888.
      *
      * @throws IllegalStateException if either bitmap is the wrong kind or the resize fails
      */
