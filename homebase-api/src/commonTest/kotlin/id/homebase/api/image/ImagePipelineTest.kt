@@ -50,6 +50,8 @@ class ImagePipelineTest {
             return FakeBitmap(width, height, log)
         }
 
+        override fun metadata(): ImageMetadata? = null
+
         override fun close() = Unit
     }
 

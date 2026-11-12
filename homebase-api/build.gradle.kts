@@ -328,6 +328,9 @@ kotlin {
         // database; a shared directory, since androidDeviceTest can't depend on a common test set.
         listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/dbContractTest/kotlin") }
         getByName("androidDeviceTest").kotlin.srcDir("src/dbContractTest/kotlin")
+        // Image sources from a path, on the real decoders; a phone must never read the file whole.
+        listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/imageFileContractTest/kotlin") }
+        getByName("androidDeviceTest").kotlin.srcDir("src/imageFileContractTest/kotlin")
         androidMain.dependencies {
             implementation(project(":homebase-imageresize"))
             implementation(libs.androidx.appcompat)

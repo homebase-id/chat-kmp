@@ -34,6 +34,7 @@ import platform.CoreFoundation.CFDataRef
 import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFStringRef
+import platform.CoreFoundation.CFURLRef
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGColorSpaceCreateWithName
 import platform.CoreGraphics.CGColorSpaceIsWideGamutRGB
@@ -51,13 +52,20 @@ import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.kCGBitmapByteOrder32Big
 import platform.CoreGraphics.kCGColorSpaceDisplayP3
 import platform.CoreGraphics.kCGColorSpaceSRGB
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.accessSecurityScope
+import id.homebase.api.file.isPhotoLibraryPath
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSNumber
+import platform.Foundation.NSURL
 import platform.Foundation.dataWithBytes
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
 import platform.ImageIO.CGImageSourceCreateThumbnailAtIndex
 import platform.ImageIO.CGImageSourceCreateWithData
+import platform.ImageIO.CGImageSourceCreateWithURL
 import platform.ImageIO.CGImageSourceRef
 import platform.ImageIO.kCGImagePropertyOrientation
 import platform.ImageIO.kCGImagePropertyPixelHeight
@@ -70,12 +78,13 @@ import platform.ImageIO.kCGImageSourceThumbnailMaxPixelSize
 /**
  * ImageIO decodes HEIC and other camera formats directly and only as large as asked, with no JPEG
  * bridge. It hands over to Skia's bitmap for scaling and encoding, so those match the other targets.
- * [SkiaImageSource] takes over for anything ImageIO can't read.
+ * [fallback], a [SkiaImageSource], takes over for anything ImageIO can't read.
  */
 private class ImageIoSource(
     private val source: CGImageSourceRef,
-    private val bytes: ByteArray,
     override val displayedSize: ImageSize,
+    private val fallback: () -> ImageSource,
+    private val onClose: () -> Unit = {},
 ) : ImageSource {
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
@@ -95,7 +104,7 @@ private class ImageIoSource(
         } finally {
             CFRelease(maxSize)
             CFRelease(options)
-        } ?: return SkiaImageSource(bytes).use { it.decode(minLongEdge) }
+        } ?: return fallback().use { it.decode(minLongEdge) }
         try {
             return SkiaPipelineBitmap(cgImage.toSkiaImage())
         } finally {
@@ -103,7 +112,15 @@ private class ImageIoSource(
         }
     }
 
-    override fun close() = CFRelease(source)
+    override fun metadata(): ImageMetadata? = source.readMetadata()
+
+    override fun close() {
+        try {
+            CFRelease(source)
+        } finally {
+            onClose()
+        }
+    }
 }
 
 // Drawing into a context of the matching colour space keeps P3 pixels P3 for Skia to carry on.
@@ -166,7 +183,26 @@ private fun openWithImageIo(bytes: ByteArray): ImageSource? {
         CFRelease(source)
         return null
     }
-    return ImageIoSource(source, bytes, displayed)
+    return ImageIoSource(source, displayed, fallback = { SkiaImageSource(bytes) })
+}
+
+internal actual fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource? {
+    if (isPhotoLibraryPath(path)) return null
+    val closeScope = accessSecurityScope(path)
+    val cfUrl: CFURLRef? = CFBridgingRetain(NSURL.fileURLWithPath(path))?.reinterpret()
+    val source = try {
+        cfUrl?.let { CGImageSourceCreateWithURL(it, null) }
+    } finally {
+        cfUrl?.let(::CFRelease)
+    }
+    val displayed = source?.let(::displayedSizeOf)
+    if (source == null || displayed == null) {
+        source?.let(::CFRelease)
+        closeScope()
+        return null
+    }
+    val readWhole = { SkiaImageSource(FileSystem.SYSTEM.read(path.toPath()) { readByteArray() }) }
+    return ImageIoSource(source, displayed, fallback = readWhole, onClose = closeScope)
 }
 
 // CF lookups, not NSDictionary.objectForKey: a CFStringRef key doesn't bridge to NSString in K/N.
