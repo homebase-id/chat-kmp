@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import id.homebase.api.common.OdinId
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.RecipientGroupModel
 import id.homebase.chat.conversationlist.RecipientModel
@@ -18,6 +19,7 @@ import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.initials
 import kotlinx.collections.immutable.persistentListOf
+import io.github.vinceglb.filekit.PlatformFile
 import org.koin.compose.KoinIsolatedContext
 import java.io.File
 import javax.imageio.ImageIO
@@ -54,6 +56,10 @@ class SendToScreenScreenshotTest {
         selected = persistentListOf<RecipientModel>().addAll(selected),
     )
 
+    private val attachments = List(2) {
+        AttachmentPendingFile.FileImage(id = Uuid.random(), file = PlatformFile(File("capture-$it.jpg")))
+    }
+
     private fun ComposeUiTest.show(
         selected: List<RecipientModel>,
         dark: Boolean,
@@ -61,7 +67,12 @@ class SendToScreenScreenshotTest {
     ) = setContent {
         KoinIsolatedContext(OfflineAvatarKoin) {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
-                SendToScreen(picker = picker(selected), sending = false, onUiAction = { actions += it })
+                SendToScreen(
+                    picker = picker(selected),
+                    attachments = attachments,
+                    sending = false,
+                    onUiAction = { actions += it },
+                )
             }
         }
     }
@@ -87,7 +98,7 @@ class SendToScreenScreenshotTest {
     @Test
     fun rendersEveryWidthAndTheme() {
         runDesktopComposeUiTest(411, 860) { show(selected = emptyList(), dark = false); save("sendto-phone-empty-light") }
-        runDesktopComposeUiTest(411, 860) { show(selected = listOf(frodo, sam), dark = true); save("sendto-phone-dark") }
+        runDesktopComposeUiTest(411, 860) { show(selected = listOf(frodo, sam, merry), dark = true); save("sendto-phone-dark") }
         runDesktopComposeUiTest(1280, 800) { show(selected = listOf(frodo, merry), dark = false); save("sendto-wide-light") }
         runDesktopComposeUiTest(1280, 800) { show(selected = listOf(frodo, merry), dark = true); save("sendto-wide-dark") }
     }
