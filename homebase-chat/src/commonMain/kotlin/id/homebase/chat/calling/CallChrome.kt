@@ -24,7 +24,7 @@ internal fun chromeAutoHideEligible(ui: CallUiState, large: Boolean, held: Boole
 
 /** The dock, top bar and name pill of a phone video call: they fade after [ChromeIdleMs] without a touch, and a tap on the video toggles them. */
 @Stable
-internal class CallChromeState {
+class CallChromeState {
     var visible by mutableStateOf(true)
         private set
 

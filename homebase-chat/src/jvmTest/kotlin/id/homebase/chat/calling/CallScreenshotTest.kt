@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.click
@@ -157,7 +158,7 @@ class CallScreenshotTest {
                         }
                     },
                     actions = recorder.actions(),
-                    chromeHeld = chromeHeld,
+                    chrome = remember { CallChromeState().also { if (chromeHeld) it.holds = 1 } },
                 )
             }
             }
@@ -513,16 +514,17 @@ class CallScreenshotTest {
     }
 
     @Test
-    fun aPressOnTheEndedScreenThatOutlivesItsTimerNeverReachesTheAppUnderneath() = runDesktopComposeUiTest(390, 844) {
+    fun aPressOnTheEndedScreenIsReportedSoTheTimerCanWaitForTheFingerAndTheAppUnderneathNeverSeesIt() = runDesktopComposeUiTest(390, 844) {
         val recorder = Recorder()
         var under = 0
+        var held = false
         var state by mutableStateOf(shots.first { it.name == "ended" }.state(base(false, Size.Phone)))
         mainClock.autoAdvance = false
         setContent {
             HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().clickable { under++ })
-                    CallLayer(visible = state.visible, surface = CallSurface.Full) {
+                    CallLayer(visible = state.visible, surface = CallSurface.Full, onPressed = { held = it }) {
                         CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = {}, actions = recorder.actions())
                     }
                 }
@@ -533,13 +535,14 @@ class CallScreenshotTest {
         val at = Offset(((close.left + close.right) / 2).value, ((close.top + close.bottom) / 2).value)
         onRoot().performTouchInput { down(at) }
         mainClock.advanceTimeBy(100)
+        assertTrue(held, "the layer reports the finger so the linger can wait")
+        onRoot().performTouchInput { up() }
+        mainClock.advanceTimeBy(100)
+        assertTrue(!held)
+        assertEquals(0, under, "the press finished on the call screen, not the app")
         state = state.copy(dismissedCallId = state.callId)
         mainClock.advanceTimeBy(2_000)
-        assertTrue(onAllNodes(hasText("Close")).fetchSemanticsNodes().isNotEmpty(), "the screen waits for the finger")
-        onRoot().performTouchInput { up() }
-        mainClock.advanceTimeBy(2_000)
-        assertEquals(0, under, "the press finished on the call screen, not the app")
-        assertTrue(onAllNodes(hasText("Close")).fetchSemanticsNodes().isEmpty(), "and the screen leaves once the finger lifts")
+        assertTrue(onAllNodes(hasText("Close")).fetchSemanticsNodes().isEmpty(), "the screen leaves")
         onRoot().performTouchInput { click(at) }
         assertEquals(1, under, "a fresh tap reaches the app")
     }

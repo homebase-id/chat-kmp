@@ -58,7 +58,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -348,6 +351,9 @@ internal fun desktopTier(width: Dp, height: Dp): CallTier = when {
 
 
 /** Self-view snap corners: top-start, top-end, bottom-start, bottom-end. A short window clamps the bottom pair to the top. */
+/** The size the self-view's video is laid out at: stage size for the whole shrink, so the native surface is resized once at each end instead of every frame. */
+internal fun previewMeasureSize(fill: Float, pip: Size, stage: Size): Size = if (fill > 0f) stage else pip
+
 internal fun previewCorners(width: Float, height: Float, pipW: Float, pipH: Float, margin: Float, top: Float, bottomReserve: Float): List<Offset> =
     snapCorners(Rect(margin, top, width - margin, height - bottomReserve), Size(pipW, pipH))
 
@@ -372,7 +378,7 @@ fun CallScreen(
     topInset: Dp = 0.dp,
     deviceMenu: MutableState<MediaDeviceKind?> = remember { mutableStateOf(null) },
     hold: ChromeHold = remember { ChromeHold() },
-    chromeHeld: Boolean = false,
+    chrome: CallChromeState = remember { CallChromeState() },
 ) {
     val fillsWindow = LocalCallHost.current.ownsWindow
     val focus = remember { FocusRequester() }
@@ -396,7 +402,6 @@ fun CallScreen(
     // Taking focus on a ring would turn Esc typed into the composer into a decline.
     val ringing = ui.phase == CallPhase.Incoming
     LaunchedEffect(ringing) { if (!ringing) runCatching { focus.requestFocus() } }
-    val chrome = remember { CallChromeState() }
     val screenReader = rememberScreenReaderOn()
 
     CompositionLocalProvider(
@@ -439,7 +444,7 @@ fun CallScreen(
         val compact = isCompactHeight(maxWidth, maxHeight)
         val chromeInsets = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(top = topInset)
         val large = !compact && maxWidth >= LargeWidth
-        val autoHide = !fillsWindow && chromeAutoHideEligible(ui, large, held = chromeHeld || chrome.holds > 0, screenReader = screenReader)
+        val autoHide = !fillsWindow && chromeAutoHideEligible(ui, large, held = chrome.holds > 0, screenReader = screenReader)
         LaunchedEffect(autoHide) { chrome.run(autoHide) }
         // A dedicated call window is already the frame, so no card inside it.
         val tier = if (fillsWindow) desktopTier(maxWidth, maxHeight) else CallTier.Embedded
@@ -1117,7 +1122,8 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
             compact -> 156.dp to 108.dp
             else -> 108.dp to 156.dp
         }
-        val insets = if (large) WindowInsets(0) else WindowInsets.safeDrawing
+        // Without the keyboard: its animation would recompose the preview every frame.
+        val insets = if (large) WindowInsets(0) else WindowInsets.systemBars.union(WindowInsets.displayCutout)
         val pad = insets.asPaddingValues(density)
         val insetStart = with(density) { pad.calculateStartPadding(direction).toPx() }
         val insetTop = with(density) { pad.calculateTopPadding().toPx() }
@@ -1156,10 +1162,22 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
             modifier = Modifier
                 .offset { lerp(anchor.value + drag + Offset(insetStart, insetTop), Offset.Zero, fill.value).round() }
                 .layout { measurable, _ ->
-                    val w = (pipW + (stageW - pipW) * fill.value).roundToInt()
-                    val h = (pipH + (stageH - pipH) * fill.value).roundToInt()
-                    val placeable = measurable.measure(Constraints.fixed(w, h))
-                    layout(w, h) { placeable.place(0, 0) }
+                    val f = fill.value
+                    val measured = previewMeasureSize(f, Size(pipW, pipH), Size(stageW, stageH))
+                    val placeable = measurable.measure(Constraints.fixed(measured.width.roundToInt(), measured.height.roundToInt()))
+                    val shownW = pipW + (stageW - pipW) * f
+                    val shownH = pipH + (stageH - pipH) * f
+                    val shrink = shownW / measured.width
+                    layout(shownW.roundToInt(), shownH.roundToInt()) {
+                        if (shrink >= 1f) placeable.place(0, 0)
+                        else placeable.placeWithLayer(0, 0) {
+                            scaleX = shrink
+                            scaleY = shrink
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                            clip = true
+                            this.shape = TopLeftWindow(measured.width, shownH / shrink, PreviewCorner.toPx() / shrink)
+                        }
+                    }
                 }
                 .semantics {
                     contentDescription = previewDescription
@@ -1224,6 +1242,11 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
             }
         }
     }
+}
+
+private class TopLeftWindow(val width: Float, val height: Float, val radius: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: androidx.compose.ui.unit.Density) =
+        androidx.compose.ui.graphics.Outline.Rounded(androidx.compose.ui.geometry.RoundRect(0f, 0f, width, height, androidx.compose.ui.geometry.CornerRadius(radius)))
 }
 
 private const val PreviewShrinkMs = 400

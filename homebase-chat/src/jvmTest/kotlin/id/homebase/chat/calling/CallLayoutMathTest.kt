@@ -71,4 +71,14 @@ class CallLayoutMathTest {
         assertEquals(1280f / 720, remoteVideoLetterbox(1280 to 720, 390f, 844f))
         assertEquals(720f / 1280, remoteVideoLetterbox(720 to 1280, 844f, 390f))
     }
+
+    @Test
+    fun theSelfViewIsMeasuredAtStageSizeThroughoutTheShrinkAndAtTileSizeOnlyWhenSettled() {
+        val pip = Size(108f, 156f)
+        val stage = Size(1080f, 2400f)
+        assertEquals(pip, previewMeasureSize(0f, pip, stage))
+        val sizes = (1..99).map { previewMeasureSize(it / 100f, pip, stage) }.toSet()
+        assertEquals(setOf(stage), sizes)
+        assertEquals(stage, previewMeasureSize(1f, pip, stage))
+    }
 }
