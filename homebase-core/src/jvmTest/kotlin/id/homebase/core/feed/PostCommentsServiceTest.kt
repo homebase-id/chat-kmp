@@ -349,7 +349,7 @@ class PostCommentsServiceTest {
         }
 
     @Test
-    fun postComment_onFollowedPostAddressedByGlobalTransitId_targetsTheFeedDriveAndTheAuthor() =
+    fun postComment_onFollowedPostAddressedByGlobalTransitId_uploadsToTheCommentGrantedChannelDriveForTheAuthor() =
         runFeedTest {
             val author = OdinId("author.example.com")
             val gtid = Uuid.random()
@@ -361,10 +361,10 @@ class PostCommentsServiceTest {
             advanceUntilIdle()
 
             assertNull(
-                env.outboxRow(channelDrive, commentId),
-                "a comment on a followed post must not land on our own channel drive",
+                env.outboxRow(feedDrive, commentId),
+                "the feed drive grants no Comment permission, so the server answers 403",
             )
-            val request = readRequest(feedDrive, commentId)
+            val request = readRequest(channelDrive, commentId)
             assertEquals(
                 listOf(author), request.transitOptions?.recipients,
                 "the post author must be a recipient or the comment never reaches them",

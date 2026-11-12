@@ -331,7 +331,10 @@ class PostCommentsService(
         val isEncrypted = !isPublic
         // Own random key, like the web: odin-core takes a commented-file key (FileKey) only on a SelectiveShare drive.
         val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
-        val accessControlList = commentAcl(post, isPublic)
+        // The app holds Comment only on the channel drive; the feed drive grants Read+Write and is owner-only, so a
+        // followed post's comment is uploaded to the channel drive (403 on the feed drive otherwise).
+        val uploadDrive = if (drive == feedDrive) channelDrive else drive
+        val accessControlList = commentAcl(post, isPublic, inheritOwnerOnly = uploadDrive == drive)
         val referencedFile = commentReference(drive, post, replyToCommentId)
 
         val attachments = listOfNotNull(attachment)
@@ -384,7 +387,7 @@ class PostCommentsService(
         val payloadDescriptors = if (isEncrypted) {
             val outcome = uploadService.upload(
                 MediaUploadSpec(
-                    driveId = drive,
+                    driveId = uploadDrive,
                     uniqueId = commentUniqueId,
                     keyHeader = keyHeader,
                     bundle = bundle,
@@ -404,7 +407,7 @@ class PostCommentsService(
         } else {
             // Public comment → plaintext payloads, so the request is built directly with no encryptBundle.
             val request = UploadFileRequest(
-                driveId = drive,
+                driveId = uploadDrive,
                 keyHeader = keyHeader,
                 metadata = uploadMetadata,
                 payloads = bundle.payloads,
@@ -575,9 +578,9 @@ class PostCommentsService(
 
     // An owner-only drive rejects any file whose ACL is not Owner, whatever the post's encryption flag says.
     // Only a synced post (versionTag set) carries the server's ACL; an optimistic row defaults to Owner.
-    private fun commentAcl(post: HomebaseFile, isPublic: Boolean) = AccessControlList(
+    private fun commentAcl(post: HomebaseFile, isPublic: Boolean, inheritOwnerOnly: Boolean = true) = AccessControlList(
         requiredSecurityGroup = when {
-            post.fileMetadata.versionTag != null &&
+            inheritOwnerOnly && post.fileMetadata.versionTag != null &&
                 post.serverMetadata.accessControlList?.requiredSecurityGroup
                     .equals(SecurityGroupType.Owner.value, ignoreCase = true) -> SecurityGroupType.Owner.value
             isPublic -> SecurityGroupType.Anonymous.value
