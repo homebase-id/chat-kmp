@@ -12,6 +12,19 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
+/**
+ * The owner console's data-upgrade page for [domainName], sending the owner back to [returnUrl]
+ * when it is non-empty.  The one place this link is built: the pending-upgrade prompt and the
+ * connect dialog's "your identity needs an update" refusal both open it.
+ */
+fun dataUpgradeUrl(domainName: String, returnUrl: String): String = buildString {
+    append("https://$domainName/owner/data-upgrade")
+    if (returnUrl.isNotEmpty()) {
+        append("?returnUrl=")
+        append(returnUrl.encodeURLParameter())
+    }
+}
+
 sealed interface PendingUpgradeState {
     data object None : PendingUpgradeState
     data class ShowSnackbar(val upgradeUrl: String, val epoch: Long = 0) : PendingUpgradeState
@@ -28,7 +41,7 @@ class PendingUpgradeManager(
     private val _state = MutableStateFlow<PendingUpgradeState>(PendingUpgradeState.None)
     val state: StateFlow<PendingUpgradeState> = _state.asStateFlow()
 
-    private var dialogDismissedThisSession: Boolean = false
+    private var dialogLogged = false
     private var epoch = 0L
 
     suspend fun checkUpgrade() {
@@ -47,7 +60,6 @@ class PendingUpgradeManager(
         Logger.d(tag = TAG) { "onUpgradeCheckResult(status=$status)" }
         if (status == UpgradeStatus.NONE) {
             SharedPreferences.remove(KEY_FIRST_SEEN_MS)
-            dialogDismissedThisSession = false
             _state.value = PendingUpgradeState.None
             return
         }
@@ -65,12 +77,6 @@ class PendingUpgradeManager(
             Logger.d(tag = TAG) { "First upgrade detection recorded at $firstSeenMs" }
         }
 
-        if (dialogDismissedThisSession) {
-            Logger.d(tag = TAG) { "Dialog dismissed this session — suppressing" }
-            _state.value = PendingUpgradeState.None
-            return
-        }
-
         val domain = credentialsManager.getActiveDomain()
         if (domain == null) {
             Logger.w(tag = TAG) { "No active credentials — cannot build upgrade URL" }
@@ -78,20 +84,17 @@ class PendingUpgradeManager(
             return
         }
 
-        val returnUrl = dataUpgradeReturnUrl()
-        val upgradeUrl = buildString {
-            append("https://${domain.domainName}/owner/data-upgrade")
-            if (returnUrl.isNotEmpty()) {
-                append("?returnUrl=")
-                append(returnUrl.encodeURLParameter())
-            }
-        }
+        val upgradeUrl = dataUpgradeUrl(domain.domainName, dataUpgradeReturnUrl())
         val nowMs = clock.now().toEpochMilliseconds()
         val elapsedDays = (nowMs - firstSeenMs) / (1000 * 60 * 60 * 24)
 
         val nextEpoch = ++epoch
         _state.value = if (nowMs - firstSeenMs >= ESCALATION_THRESHOLD_MS) {
             Logger.i(tag = TAG) { "Upgrade pending for $elapsedDays days — escalating to dialog" }
+            if (!dialogLogged) {
+                dialogLogged = true
+                Logger.i(tag = TAG) { "upgrade dialog shown (not dismissable)" }
+            }
             PendingUpgradeState.ShowDialog(upgradeUrl, nextEpoch)
         } else {
             Logger.d(tag = TAG) { "Upgrade pending for $elapsedDays days — showing snackbar" }
@@ -99,15 +102,9 @@ class PendingUpgradeManager(
         }
     }
 
-    fun dismissDialog() {
-        dialogDismissedThisSession = true
-        _state.value = PendingUpgradeState.None
-    }
-
     fun reset() {
         Logger.d(tag = TAG) { "Resetting upgrade state (logout)" }
         SharedPreferences.remove(KEY_FIRST_SEEN_MS)
-        dialogDismissedThisSession = false
         _state.value = PendingUpgradeState.None
     }
 

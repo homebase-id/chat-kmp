@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.connections.ConnectionStatus
@@ -264,3 +265,10 @@ sealed interface ContactDetailEvent {
     /** Tapped another contact's row inside the circle-detail dialog — navigate to their detail. */
     data class OpenOtherContact(val uniqueId: String, val odinId: String?) : ContactDetailEvent
 }
+
+internal fun repairEventFor(outcome: ConversationService.OneOnOneRebuildOutcome): ContactDetailEvent =
+    when (outcome) {
+        ConversationService.OneOnOneRebuildOutcome.Rebuilt -> ContactDetailEvent.ConversationRebuilt
+        ConversationService.OneOnOneRebuildOutcome.AlreadyOnServer -> ContactDetailEvent.ConversationRebuildNotNeeded
+        ConversationService.OneOnOneRebuildOutcome.AlreadyQueued -> ContactDetailEvent.ConversationRebuildQueued
+    }

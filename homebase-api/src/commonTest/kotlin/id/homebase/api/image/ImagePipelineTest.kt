@@ -25,10 +25,6 @@ class ImagePipelineTest {
 
         override val isSrgb = true
 
-        override fun readPixels() = ByteArray(0)
-
-        override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
-
         override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
 
         override fun inSrgb(): PipelineBitmap = this
@@ -53,6 +49,8 @@ class ImagePipelineTest {
             log.decodedAt = minLongEdge
             return FakeBitmap(width, height, log)
         }
+
+        override fun metadata(): ImageMetadata? = null
 
         override fun close() = Unit
     }

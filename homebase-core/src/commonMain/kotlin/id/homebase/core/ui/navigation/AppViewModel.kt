@@ -193,10 +193,6 @@ class AppViewModel(
         }
     }
 
-    fun dismissUpgradeDialog() {
-        pendingUpgradeManager.dismissDialog()
-    }
-
     /** Routes an in-app banner tap through NotificationService's click handler. */
     fun onInAppBannerTapped(payloadData: Map<String, String>) {
         dismissInAppBanner()

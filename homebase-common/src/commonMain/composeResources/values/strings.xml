@@ -109,6 +109,7 @@
     <string name="auto_connect_recipient_rejected">%1$s isn't accepting connections right now.</string>
     <string name="auto_connect_recipient_not_configured">%1$s hasn't finished setting up their identity yet.</string>
     <string name="auto_connect_recipient_requires_upgrade">%1$s's server needs to be updated before you can connect.</string>
+    <string name="auto_connect_sender_requires_upgrade">Your identity needs an update before you can connect. Sign in to your owner console to run it, then try again.</string>
     <string name="auto_connect_invalid_request">Invalid request.</string>
     <string name="auto_connect_invalid_request_with_detail">Invalid request: %1$s.</string>
     <string name="auto_connect_failed_generic">Something went wrong. Try again.</string>
@@ -157,7 +158,7 @@
     <string name="pending_upgrade_snackbar_message">Your identity requires a data upgrade</string>
     <string name="pending_upgrade_snackbar_action">Upgrade</string>
     <string name="pending_upgrade_title">Data upgrade required</string>
-    <string name="pending_upgrade_message">Your identity has a pending upgrade. Please visit your owner console to run the automated upgrade process.</string>
+    <string name="pending_upgrade_message">Your identity needs a data upgrade. Until you run it, new contacts can't message you, and other features may stop working. It takes a minute in your owner console.</string>
     <string name="pending_upgrade_confirm">Upgrade Now</string>
     <string name="upgrade_running_message">Upgrading your identity…</string>
 
@@ -1025,6 +1026,13 @@
     <string name="chat_contact_card_more">+%1$d more</string>
     <string name="chat_contact_card_save">Save to contacts</string>
     <string name="chat_contact_card_update">Update contact</string>
+    <string name="chat_contact_card_save_homebase">Homebase contacts</string>
+    <string name="chat_contact_card_update_homebase">Update Homebase contact</string>
+    <string name="chat_contact_card_save_phone">Phone contacts</string>
+    <string name="chat_contact_card_save_phone_failed">No contacts app found</string>
+    <string name="chat_contact_card_save_homebase_supporting">Keep them in your Homebase</string>
+    <string name="chat_contact_card_update_homebase_supporting">Refresh the saved details</string>
+    <string name="chat_contact_card_save_phone_supporting">Opens your phone's Contacts app</string>
     <string name="chat_contact_card_title">Contact</string>
     <string name="chat_contact_card_call">Call</string>
     <string name="chat_contact_card_send_email">Send email</string>
@@ -1157,6 +1165,10 @@
     <string name="chat_message_discard_draft">Discard draft?</string>
 
     <string name="chat_message_forward_to">Forward to</string>
+    <string name="chat_send_to">Send to</string>
+    <string name="chat_send_to_sent">Sent</string>
+    <string name="chat_send_to_hint">Select who to send to</string>
+    <string name="chat_send_to_count">Send · %1$d</string>
 
     <!-- Pinned messages bar (#887) -->
     <string name="chat_pin_message">Pin</string>
@@ -1762,8 +1774,10 @@
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_profile_card">Profile card</string>
     <string name="dev_menu_profile_card_desc">Show your profile card in Settings and the profile editor.</string>
-    <string name="dev_menu_photobase">Photobase</string>
-    <string name="dev_menu_photobase_desc">Show Photobase and allow photo backup. Turning it off stops any backup that's running.</string>
+    <string name="dev_menu_photobase">Photos</string>
+    <string name="dev_menu_photobase_desc">Show Photos and allow photo backup. Turning it off stops any backup that's running.</string>
+    <string name="dev_menu_filesync_sync_shared">Sync shared files to computers</string>
+    <string name="dev_menu_filesync_sync_shared_desc">Show "Sync to my computers" for each person in Drive's Shared with me. Computers don't act on it yet.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_force_logout">Force Logout (local only)</string>
@@ -2275,11 +2289,12 @@
     <string name="contactbook_action_blocked_connection_removed">Connection removed. They're still blocked.</string>
     <string name="contactbook_action_not_blocked">They're no longer blocked, so there was nothing to remove.</string>
     <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
-    <string name="contactbook_detail_rebuild_conversation">Rebuild conversation</string>
-    <string name="contactbook_action_conversation_rebuilt">Conversation rebuilt and sent to them</string>
-    <string name="contactbook_action_conversation_rebuild_not_needed">Your server still has this conversation. Nothing to rebuild.</string>
+    <string name="contactbook_detail_rebuild_conversation">Repair conversation</string>
+    <string name="contactbook_detail_rebuild_conversation_hint">If this chat stopped syncing</string>
+    <string name="contactbook_action_conversation_rebuilt">Conversation repaired and sent to them</string>
+    <string name="contactbook_action_conversation_rebuild_not_needed">Your server still has this conversation. Nothing to repair.</string>
     <string name="contactbook_action_conversation_rebuild_queued">This conversation is still being sent. Try again once it's done.</string>
-    <string name="contactbook_error_conversation_rebuild">Couldn't rebuild the conversation</string>
+    <string name="contactbook_error_conversation_rebuild">Couldn't repair the conversation</string>
     <string name="contactbook_action_request_accepted">Connection request accepted.</string>
     <string name="contactbook_action_request_rejected">Connection request declined.</string>
     <string name="contactbook_action_request_cancelled">Connection request canceled.</string>
@@ -2358,6 +2373,8 @@
     <string name="feed_compose_caption_placeholder">What's up?</string>
     <string name="feed_compose_caption_placeholder_repost">Add a comment?</string>
     <string name="feed_compose_post">Post</string>
+    <string name="feed_compose_posting">Posting…</string>
+    <string name="feed_compose_post_failed">Couldn't share your post. Please try again.</string>
     <string name="feed_compose_add_media">Add photo or video</string>
     <string name="feed_compose_camera">Take photo</string>
     <string name="feed_compose_attachment_image">Attachment</string>
@@ -2366,6 +2383,12 @@
     <string name="feed_compose_audience_registered">Registered users</string>
     <string name="feed_compose_audience_connections">Connections</string>
     <string name="feed_compose_audience_owner">Only me</string>
+    <string name="feed_compose_audience_public">Public</string>
+    <string name="feed_compose_audience_circles">Circles</string>
+    <string name="feed_compose_audience_circles_count">Circles (%1$d)</string>
+    <string name="feed_compose_circles_title">Share with circles</string>
+    <string name="feed_compose_circles_empty">You have no circles yet. Create one in your contacts to share a post with it.</string>
+    <string name="feed_timeline_compose_action">New post</string>
     <string name="feed_compose_react_all">Reactions &amp; comments</string>
     <string name="feed_compose_react_emoji_only">Reactions only</string>
     <string name="feed_compose_react_comment_only">Comments only</string>
@@ -2460,6 +2483,16 @@
     <string name="profile_edit_instagram">Instagram</string>
     <string name="profile_edit_tiktok">TikTok</string>
     <string name="profile_edit_linkedin">LinkedIn</string>
+    <string name="profile_edit_youtube">YouTube</string>
+    <string name="profile_edit_snapchat">Snapchat</string>
+    <string name="profile_edit_github">GitHub</string>
+    <string name="profile_edit_discord">Discord</string>
+    <string name="profile_edit_stackoverflow">Stack Overflow</string>
+    <string name="profile_edit_steam">Steam</string>
+    <string name="profile_edit_minecraft">Minecraft</string>
+    <string name="profile_edit_epic">Epic Games</string>
+    <string name="profile_edit_riot">Riot Games</string>
+    <string name="profile_edit_homebase_id">Homebase ID</string>
 
     <string name="profile_edit_visibility_public">Public</string>
     <string name="profile_edit_visibility_circles">Circles</string>
@@ -2526,6 +2559,9 @@
     <string name="profile_card_content_sees_public">Anyone with your link sees this card</string>
     <string name="profile_card_content_sees_circle">Only this circle sees this card</string>
     <string name="profile_card_content_saving">Saving…</string>
+    <string name="profile_card_sections_title">Sections on this card</string>
+    <string name="profile_card_section_feed">Feed</string>
+    <string name="profile_card_section_feed_desc">Your latest public posts and photos.</string>
     <string name="profile_card_field_reorder">Reorder %1$s</string>
     <string name="profile_card_content_edit_this">Edit %1$s</string>
     <string name="profile_card_content_edit_title">Edit</string>
@@ -2536,13 +2572,7 @@
     <string name="profile_card_photo_label">Card photo</string>
     <string name="profile_card_photo_own_circle">Only on this card</string>
     <string name="profile_card_photo_circle_pending">A photo of its own for this card needs a Homebase server update that hasn't shipped yet. Until then it shows the photo it inherits.</string>
-    <string name="profile_card_import_action">Copy from…</string>
-    <string name="profile_card_import_title">Copy from another card</string>
-    <string name="profile_card_import_hint">Shows that card's details on this one too. You can undo it.</string>
-    <string name="profile_card_import_done">Copied from %1$s</string>
     <string name="profile_card_import_undo">Undo</string>
-    <string name="profile_card_import_public_title">Show these to everyone?</string>
-    <string name="profile_card_import_public_message">These items become visible to everyone who sees your public card.</string>
     <string name="profile_card_import_public_confirm">Show to everyone</string>
     <string name="profile_card_content_choose_cards">Choose which cards show %1$s</string>
     <string name="profile_card_cards_public">Public: everyone</string>
@@ -2553,6 +2583,7 @@
     <string name="profile_card_nameless_public_confirm">Continue</string>
     <string name="profile_card_content_now_public">%1$s is now public</string>
     <string name="profile_card_content_now_hidden">%1$s is no longer public</string>
+    <string name="profile_card_content_removed_from_card">Removed from this card</string>
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>
@@ -3057,15 +3088,15 @@
     <string name="call_duration_hours">%1$d h %2$d min</string>
     <string name="call_duration_minutes">%1$d min %2$d s</string>
     <string name="call_duration_seconds">%1$d s</string>
-    <string name="filesync_label">Filesync</string>
+    <string name="filesync_label">Drive</string>
     <string name="filesync_home_subtitle">Browse the files you sync from your computers</string>
     <string name="filesync_onboarding_title">Your files, on your own Homebase</string>
     <string name="filesync_onboarding_body_1">Replace Dropbox, OneDrive and Google Drive with something safe and fast: your folders, end-to-end encrypted on your own Homebase.</string>
-    <string name="filesync_onboarding_body_2">Upload files from this device, browse your folders, and open or save files here. If you use Filesync on a computer, its folders show up here too.</string>
+    <string name="filesync_onboarding_body_2">Upload files from this device, browse your folders, and open or save files here. If you use Homebase Drive on a computer, its folders show up here too.</string>
     <string name="filesync_onboarding_setup">Set it up</string>
     <string name="filesync_onboarding_dismiss">Not now</string>
     <string name="filesync_desktop_title">Get the desktop app</string>
-    <string name="filesync_desktop_body">Want folders from your computer here too? Filesync for Mac, Windows and Linux keeps them in sync with your Homebase.</string>
+    <string name="filesync_desktop_body">Want folders from your computer here too? Homebase Drive for Mac, Windows and Linux keeps them in sync with your Homebase.</string>
     <string name="filesync_day_time">%1$s, %2$s</string>
     <string name="filesync_executable">runs</string>
     <string name="filesync_not_on_computers">not on computers</string>
@@ -3152,7 +3183,7 @@
     <string name="filesync_install_linux">Install on Linux</string>
     <string name="filesync_install_computer">Install on a computer</string>
     <string name="filesync_install_app">Install the app</string>
-    <string name="filesync_get_title">Get Filesync</string>
+    <string name="filesync_get_title">Get Homebase Drive</string>
     <string name="filesync_on_your_phone">On your phone</string>
     <string name="filesync_app_store">App Store</string>
     <string name="filesync_google_play">Google Play</string>
@@ -3177,12 +3208,12 @@
     <string name="filesync_uploading">Uploading…</string>
     <string name="filesync_upload_failed_row">Upload failed</string>
     <string name="filesync_upload_failed">Couldn't upload the file.</string>
-    <string name="filesync_too_large">Filesync can't take files over 4 GB yet.</string>
+    <string name="filesync_too_large">Drive can't take files over 4 GB yet.</string>
     <string name="filesync_folder_failed">Couldn't create the folder.</string>
     <string name="filesync_dismiss">Dismiss</string>
     <string name="filesync_open_failed">No app on this device can open this file.</string>
     <string name="filesync_save_failed">Couldn't save the file.</string>
-    <string name="filesync_check_failed">Couldn't check whether Filesync is set up.</string>
+    <string name="filesync_check_failed">Couldn't check whether Drive is set up.</string>
     <string name="filesync_show_deleted">Show deleted files</string>
     <string name="filesync_trash">Trash</string>
     <string name="filesync_recent">Recent</string>
@@ -3227,10 +3258,10 @@
     <string name="filesync_share_not_told">Shared, but the chat message to %1$s didn't go out, so they won't find the files yet.</string>
     <string name="filesync_share_note">Message (optional)</string>
     <string name="filesync_recipient_not_added">Couldn't share with %1$s. Check that you're connected.</string>
-    <string name="filesync_share_waiting">Shared. %1$s hasn't set up Filesync yet: once they have, they can open the files the next time your Homebase app is online.</string>
+    <string name="filesync_share_waiting">Shared. %1$s hasn't set up Drive yet: once they have, they can open the files the next time your Homebase app is online.</string>
     <string name="filesync_not_sealed_yet">%1$s's app hasn't finished sharing with you yet. It will the next time their Homebase app is online.</string>
     <string name="filesync_sharing_title">Turn on sharing</string>
-    <string name="filesync_sharing_body">Sharing signs this device in to Filesync as well, so it can share your files. Your browser opens to confirm.</string>
+    <string name="filesync_sharing_body">Sharing signs this device in to Drive as well, so it can share your files. Your browser opens to confirm.</string>
     <string name="filesync_sharing_turn_on">Turn on sharing</string>
     <string name="filesync_shared_with">Shared with</string>
     <string name="filesync_shared_with_none">Not shared with anyone.</string>
@@ -3238,6 +3269,9 @@
     <string name="filesync_access_view">Can view and comment</string>
     <string name="filesync_access_edit">Can edit and comment</string>
     <string name="filesync_shared_with_me">Shared with me</string>
+    <string name="filesync_sync_sharer">Sync to my computers</string>
+    <string name="filesync_sync_sharer_hint">Files %1$s shares appear in Homebase/Shared/%1$s on your computers</string>
+    <string name="filesync_sync_sharer_failed">Couldn't change whether your computers sync these files. Try again.</string>
     <string name="filesync_shared_badge">Shared</string>
     <string name="filesync_inherit_failed">Uploaded, but it couldn't be shared like its folder. Share it again from its menu.</string>
     <string name="filesync_move_check_failed">Couldn't check who can see what you're moving, so nothing was moved.</string>
@@ -3278,10 +3312,10 @@
     <string name="filesync_folder_deleted">This folder was deleted.</string>
     <string name="filesync_make_private">Click to change your Filesync drive to true zero knowledge encryption</string>
     <string name="filesync_sign_in_again_title">Sign in again to open your files</string>
-    <string name="filesync_sign_in_again_body">Filesync is now private, and this device needs one more sign-in to get its key. Nothing on this device is deleted.</string>
+    <string name="filesync_sign_in_again_body">Drive is now private, and this device needs one more sign-in to get its key. Nothing on this device is deleted.</string>
     <string name="settings_calls_beta">Voice and video calls (beta)</string>
     <string name="settings_calls_beta_desc">Experimental and may crash. Restart the app to apply.</string>
-    <string name="settings_filesync_icon_desc">Show Filesync in the navigation bar</string>
+    <string name="settings_filesync_icon_desc">Show Drive in the navigation bar</string>
     <string name="vault_save_to">Save to Vault</string>
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
@@ -3354,7 +3388,7 @@
     <string name="photobase_backup_only_new_desc">Skip what's already on this phone.</string>
     <string name="photobase_backup_interval">Background check</string>
     <string name="photobase_backup_interval_desc">Asks your phones to back up every %1$s. A hint only: your phone decides when it can run.</string>
-    <string name="photobase_backup_interval_load_failed">Couldn't reach your Photos drive. Check your connection and that Photobase is set up, then tap to try again.</string>
+    <string name="photobase_backup_interval_load_failed">Couldn't reach your Photos drive. Check your connection and that Photos is set up, then tap to try again.</string>
     <string name="photobase_backup_interval_save_failed">Couldn't save that change. Tap to try again.</string>
     <string name="photobase_backup_dialog_cancel">Cancel</string>
     <string name="photobase_backup_dialog_done">Done</string>
@@ -3392,16 +3426,16 @@
     <string name="photobase_status_uploading">Uploading now</string>
     <string name="photobase_status_failures">Keep failing</string>
     <string name="photobase_status_retry">Retry</string>
-    <string name="photobase_label">Photobase</string>
+    <string name="photobase_label">Photos</string>
     <string name="photobase_onboarding_title">Your photos, on your own Homebase</string>
-    <string name="photobase_onboarding_body_1">Photobase keeps your phone's photos and videos backed up to your own drive, encrypted, in full quality.</string>
+    <string name="photobase_onboarding_body_1">Photos keeps your phone's photos and videos backed up to your own drive, encrypted, in full quality.</string>
     <string name="photobase_onboarding_body_2">It runs when your phone allows it. Nothing is deleted from your Homebase when you delete it from your phone.</string>
     <string name="photobase_onboarding_setup">Set it up</string>
     <string name="photobase_onboarding_dismiss">Not now</string>
-    <string name="photobase_check_failed">Couldn't check whether Photobase is set up. Check your connection and try again.</string>
+    <string name="photobase_check_failed">Couldn't check whether Photos is set up. Check your connection and try again.</string>
     <string name="photobase_check_retry">Try again</string>
     <string name="photobase_home_subtitle">Your backed-up photos and videos</string>
-    <string name="settings_photobase_icon_desc">Show Photobase in the navigation bar</string>
+    <string name="settings_photobase_icon_desc">Show Photos in the navigation bar</string>
     <string name="photobase_gallery_refresh">Refresh</string>
     <string name="photobase_gallery_sort_newest">Newest first. Change to oldest first</string>
     <string name="photobase_gallery_sort_oldest">Oldest first. Change to newest first</string>
@@ -3434,4 +3468,9 @@
     <string name="cd_media_quality_hd_badge">Sent in HD</string>
     <string name="cd_media_quality_original_badge">Sent as the original file</string>
     <string name="storage_cache_photo_thumbnails">Photo thumbnails</string>
+    <string name="feed_wide_people_title">People to follow</string>
+    <string name="feed_wide_channels_title">Channels</string>
+    <string name="feed_wide_see_all">See all</string>
+    <string name="feed_wide_suggestions_empty">No suggestions yet</string>
+    <string name="feed_wide_channels_empty">Channels you post to will show up here</string>
 </resources>

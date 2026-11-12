@@ -273,7 +273,8 @@ jobs:
           echo "keychain watcher started (log: $RUNNER_TEMP/keychain-watcher.log)"
 
       - name: Build iOS
-        timeout-minutes: 180
+        # 240: headroom while the release link grows (92 min after #2287); the job cap is 360.
+        timeout-minutes: 240
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj

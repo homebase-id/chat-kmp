@@ -151,10 +151,7 @@ class VaultService(
         replace: Boolean = false,
     ): Boolean {
         val content = OdinSystemSerializer.serialize(fileContent)
-        // Reuse the file's AES key with a fresh IV — the server rejects an update whose AES key differs.
-        val newKeyHeader = KeyHeader(
-            iv = ByteArrayUtil.getRndByteArray(16), aesKey = keyHeader.aesKey
-        )
+        val newKeyHeader = keyHeader.withNewIv()
         val unencryptedMetadata = UploadFileMetadata(
             allowDistribution = false,
             isEncrypted = true,

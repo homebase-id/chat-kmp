@@ -16,6 +16,11 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 
+/**
+ * Screen transitions for a forward navigation ([push]/[pushExit]) and a back navigation ([pop]/[popExit]),
+ * built from the caller's [MotionScheme]. Each call returns a fresh transition and has no side effects.
+ * Android uses a short shared-axis slide, iOS a full-width UIKit-style slide, desktop and web a fade-through.
+ */
 internal expect object PlatformNavMotion {
     fun push(scheme: MotionScheme): EnterTransition
     fun pushExit(scheme: MotionScheme): ExitTransition

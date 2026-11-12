@@ -354,6 +354,8 @@ class NotificationService(
         })
 
         notificationBackend.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
+        // KMPNotifier doesn't replay a token delivered before this listener attached (iOS before the first unlock).
+        scope.launch { getToken()?.let(::registerToken) }
     }
 
     @kotlin.concurrent.Volatile
@@ -441,7 +443,7 @@ class NotificationService(
                 val dataString = data["data"] as? String ?: return@launch
                 val notification = OdinSystemSerializer.deserialize<PushNotification>(dataString)
 
-                if (CallPushRouter.tryHandle(notification)) return@launch
+                if (PushInterceptors.tryHandle(notification)) return@launch
                 if (notification.options.silent) return@launch
 
                 // Suppress chat notifications when user is on the conversation list

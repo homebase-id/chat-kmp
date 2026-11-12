@@ -24,12 +24,20 @@
         <item quantity="one">Sender til %1$d samtale…</item>
         <item quantity="other">Sender til %1$d samtaler…</item>
     </plurals>
-    <plurals name="profile_card_import_count">
-        <item quantity="one">%1$d nyt element</item>
-        <item quantity="other">%1$d nye elementer</item>
-    </plurals>
     <plurals name="contactbook_requests_banner_more">
         <item quantity="one">Du har forbindelsesanmodninger fra %1$s og %2$d mere</item>
         <item quantity="other">Du har forbindelsesanmodninger fra %1$s og %2$d mere</item>
+    </plurals>
+    <plurals name="email_mailbox_junk">
+        <item quantity="one">%1$d e-mail i spam</item>
+        <item quantity="other">%1$d e-mails i spam</item>
+    </plurals>
+    <plurals name="email_mailbox_queued">
+        <item quantity="one">%1$d e-mail forsøger stadig at blive sendt</item>
+        <item quantity="other">%1$d e-mails forsøger stadig at blive sendt</item>
+    </plurals>
+    <plurals name="email_mailbox_unread">
+        <item quantity="one">%1$d ulæst e-mail</item>
+        <item quantity="other">%1$d ulæste e-mails</item>
     </plurals>
 </resources>

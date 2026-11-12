@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
+import id.homebase.core.util.isWeb
 import kotlin.math.max
 import kotlin.uuid.Uuid
 
@@ -189,6 +190,14 @@ fun shouldStepUpToPayload(requested: ImageSize, data: HomebaseImageData): Boolea
         payloadBytes <= STEP_UP_LIMIT_BYTES &&
         data.payloadContentType in ImageFormatDetector.TYPES_EVERY_CLIENT_CAN_DECODE
 }
+
+private val TYPES_WEB_CANNOT_DECODE = setOf("image/heic", "image/heif")
+
+fun HomebaseImageData.payloadDecodesHere(): Boolean = !(isWeb() && payloadContentType in TYPES_WEB_CANNOT_DECODE)
+
+/** The full payload where it decodes, otherwise the largest thumbnail stands in for it. */
+fun HomebaseImageData.forFullScreen(): HomebaseImageData =
+    if (loadFullPayload && !payloadDecodesHere() && availableThumbSizes.isNotEmpty()) copy(loadFullPayload = false) else this
 
 /** The native thumbnail for this display, never past [HomebaseImageData.thumbSizeLimit]. */
 fun thumbSizeToRequest(requested: ImageSize, data: HomebaseImageData): ImageSize {

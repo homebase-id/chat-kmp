@@ -254,7 +254,9 @@ import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.feed.services.ReportingUrlProvider
+import id.homebase.core.ui.screens.feed.ArticleWebViewModel
 import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
+import id.homebase.core.ui.screens.feed.PostComposeViewModel
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
@@ -487,7 +489,9 @@ val appModule = module {
             engineFactory = platformCallEngineFactory().takeIf { get<CallsPreferences>().enabled.value },
             stunUrls = get(),
             scope = get(),
-            onCallActiveChanged = { get<AuthConnectionCoordinator>().setCallActive(it) },
+            onCallActiveChanged = { active ->
+                get<AuthConnectionCoordinator>().run { if (active) holdWebSocket(CALL_WS_HOLD) else releaseWebSocket(CALL_WS_HOLD) }
+            },
             recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
         )
     }
@@ -1425,8 +1429,7 @@ val appModule = module {
     viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
 
-    // ponytail: PostComposeViewModel unregistered — the post composer is disabled for now. FeedPostSenderService
-    // stays registered (delete-post still uses it). Restore the composer VM + Route.PostCompose to re-enable.
+    viewModelOf(::PostComposeViewModel)
     // Explicit (not viewModelOf) for the FeedPermissionQualifier: the feed's drives are granted by the feed
     // extend-permissions flow, not the login one the unqualified ExtendPermissionViewModel checks.
     viewModel {
@@ -1444,6 +1447,7 @@ val appModule = module {
         )
     }
     viewModelOf(::FollowingViewModel)
+    viewModelOf(::ArticleWebViewModel)
     viewModel { params ->
         PostDetailViewModel(
             postId = params.get(),
@@ -1610,6 +1614,7 @@ val appModule = module {
             sharingSetup = get(),
             shareMessages = get(),
             peerSends = get(),
+            developerPreferences = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }
@@ -1675,7 +1680,11 @@ val appModule = module {
     }
 }
 
-// Common module that each platform will implement
+/**
+ * The Koin module with the bindings only this platform can provide (file operations, call and share
+ * plumbing). Calling it only builds the module; nothing is instantiated until Koin resolves a binding.
+ * Safe to call more than once; each call returns a new module.
+ */
 expect fun platformModule(): Module
 
 /** All Koin modules for the application. */
@@ -1760,3 +1769,4 @@ private fun Scope.photoBackupController(): PhotoBackupController {
 }
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds
+private const val CALL_WS_HOLD = "call"

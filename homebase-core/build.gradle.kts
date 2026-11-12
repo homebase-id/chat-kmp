@@ -68,11 +68,20 @@ kotlin {
             // code), and EscapeAnalysis — which for a framework already refuses to unfold
             // non-devirtualized call sites — degrades to pessimistic lifetimes.
             // Trade-off: a somewhat larger, slower binary; local/dev builds are unaffected.
+            // RemoveRedundantCallsToStaticInitializersPhase: without devirtualization its call graph
+            // grew to 11.8 GB live and 54 min (IOS_RELEASE_LINK_OOM.md); debug builds skip it too.
             if (buildType == org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE &&
                 providers.gradleProperty("homebase.native.disableDevirtualization").orNull == "true"
             ) {
-                freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis"
+                freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis,RemoveRedundantCallsToStaticInitializersPhase"
             }
+            // Only the Kotlin API Swift uses gets ObjC bridges: a Swift call to anything else fails to
+            // compile until it is added to the list. Every exported member is a DCE root, so the full
+            // export gave LLVM a 19% bigger framework to compile (IOS_RELEASE_LINK_OOM.md). Debug uses it
+            // too, so Xcode shows a missing entry at once. The input line relinks when only the list changes.
+            val objcEntryPoints = project.file("objc-entry-points.txt")
+            freeCompilerArgs += "-Xbinary=objcExportEntryPointsPath=${objcEntryPoints.absolutePath}"
+            linkTaskProvider.configure { inputs.file(objcEntryPoints).withPropertyName("objcExportEntryPoints") }
             // Export homebase-api to make FFmpegKitBridge accessible from Swift
             export(project(":homebase-api"))
             export(project(":homebase-common"))

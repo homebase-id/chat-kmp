@@ -1,6 +1,8 @@
 package id.homebase.api.image
 
+import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -54,11 +56,14 @@ class RenderedImages(val displayedSize: ImageSize, val images: List<RenderedImag
  * - [decode] decodes at most once per source, upright, with a long edge of at least
  *   `min(minLongEdge, displayedSize's long edge)`. Decoding less than the full image is encouraged.
  * - Both throw on bytes the platform can't read.
+ * - [metadata] reads the file's EXIF without decoding pixels, or is null where the platform can't.
  */
 internal interface ImageSource : AutoCloseable {
     val displayedSize: ImageSize
 
     fun decode(minLongEdge: Int): PipelineBitmap
+
+    fun metadata(): ImageMetadata?
 }
 
 /**
@@ -78,15 +83,12 @@ internal interface PipelineBitmap : AutoCloseable {
      */
     fun scaledTo(width: Int, height: Int): PipelineBitmap
 
-    /** Premultiplied 8-bit pixels in this bitmap's colour space, four bytes each, alpha last. */
-    fun readPixels(): ByteArray
-
-    /** A new bitmap of [readPixels]-shaped [pixels], in this bitmap's colour space, leaving this one open. */
-    fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap
-
-    /** A new bitmap at the given size, without aliasing at any ratio, leaving this one open. */
-    suspend fun resampledTo(width: Int, height: Int): PipelineBitmap =
-        withPixels(resampleLanczos(readPixels(), this.width, this.height, width, height), width, height)
+    /**
+     * A new bitmap at the given size, leaving this one open, through a Lanczos filter whose reach
+     * grows with the reduction so nothing aliases at any ratio. The result is 8-bit premultiplied in
+     * this bitmap's colour space, with no colour above its alpha.
+     */
+    suspend fun resampledTo(width: Int, height: Int): PipelineBitmap
 
     fun encode(format: ImageFormat, quality: Int): ByteArray
 
@@ -96,16 +98,21 @@ internal interface PipelineBitmap : AutoCloseable {
 
 internal expect fun openImageSource(bytes: ByteArray): ImageSource
 
+/** [path] for the decoder to read itself, like its bytes would; null where [fileOps] must read the bytes. */
+internal expect fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource?
+
 /**
  * Makes every planned image from one decode, largest to smallest, each scaled from the one above.
  * [plan] gets the displayed size, so nothing has to decode to find out what to ask for. The result
  * keeps the plan's order.
  */
 suspend fun renderImages(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput>): RenderedImages =
-    withContext(Dispatchers.Default) {
-        val context = coroutineContext
-        openImageSource(bytes).use { renderFrom(it, { context.ensureActive() }, plan) }
-    }
+    withContext(Dispatchers.Default) { openImageSource(bytes).use { renderImages(it, plan) } }
+
+internal suspend fun renderImages(source: ImageSource, plan: (ImageSize) -> List<ImageOutput>): RenderedImages {
+    val context = currentCoroutineContext()
+    return renderFrom(source, { context.ensureActive() }, plan)
+}
 
 internal suspend fun renderFrom(
     source: ImageSource,
@@ -247,21 +254,6 @@ private fun estimatedFit(bitmap: PipelineBitmap, size: Int, maxBytes: Int): Pair
 }
 
 private fun shrink(edge: Int) = max(1, edge * 3 / 4)
-
-// About 96 MB of pixels. A 12 MP photo stays a full, clean decode; a 48 MP one doesn't.
-internal const val FULL_DECODE_PIXEL_LIMIT = 24_000_000L
-
-/**
- * How far to shrink a decode that would otherwise pass [FULL_DECODE_PIXEL_LIMIT], or null to leave
- * it alone. A memory guard, not a quality step: it never goes below what the largest output needs.
- */
-internal fun memoryGuardScale(size: ImageSize, sampleSize: Int, minLongEdge: Int): Double? {
-    val pixels = size.pixelWidth.toDouble() * size.pixelHeight / (sampleSize * sampleSize)
-    val longEdge = max(size.pixelWidth, size.pixelHeight)
-    if (pixels <= FULL_DECODE_PIXEL_LIMIT || longEdge <= minLongEdge) return null
-    val smallest = minLongEdge.toDouble() / longEdge
-    return max(smallest, min(sqrt(FULL_DECODE_PIXEL_LIMIT / pixels) / sampleSize, smallest * 2))
-}
 
 private fun longEdge(output: ImageOutput) = max(output.width, output.height)
 

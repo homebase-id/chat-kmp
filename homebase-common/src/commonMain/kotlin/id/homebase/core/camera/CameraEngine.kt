@@ -44,7 +44,7 @@ interface CameraEngine {
 
 /**
  * Create only after camera permission is granted: binding without it fails rather than waiting.
- * A [warm] engine from [CameraWarmer] is adopted instead of opening a second camera, and released with the call.
+ * A [warm] engine from [CameraWarmer] is adopted instead of opening a second camera; its owner (the launcher) releases it, not this call.
  * With [recordsVideo] a granted mic is attached while the session is first configured: on iOS, adding it to a
  * running session blanks the preview.
  */

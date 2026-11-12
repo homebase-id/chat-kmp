@@ -32,4 +32,4 @@ internal actual fun createWatchdogDispatcher(): CoroutineDispatcher =
     Executors.newSingleThreadExecutor { Thread(it, "MainThreadWatchdog").apply { isDaemon = true } }
         .asCoroutineDispatcher()
 
-internal actual fun currentThreadName(): String = Thread.currentThread().name
+internal actual fun currentThreadName(): String = Thread.currentThread().name.ifBlank { "unnamed" }

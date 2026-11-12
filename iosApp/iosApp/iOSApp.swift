@@ -240,7 +240,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           hop: "received(ios)",
           detail: "appState=\(application.applicationState.rawValue) hasAps=\(aps != nil) dataKeys=\(data.count)")
       guard MainViewControllerKt.isDatabaseOpen() else {
-          completionHandler(.noData)
+          MainViewControllerKt.onPushArrivedBeforeDatabase(title: title, body: body, data: data)
+          completionHandler(.newData)
           return
       }
       let entry = NotificationEntry.companion.fromKoin()

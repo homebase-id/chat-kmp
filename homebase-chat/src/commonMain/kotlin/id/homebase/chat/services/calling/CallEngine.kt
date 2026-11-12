@@ -32,7 +32,8 @@ interface CallEngine {
     suspend fun addVideo(): Boolean = false
     fun switchCamera()
     fun setAudioRoute(route: AudioRoute)
-    fun close()
+    /** Releases camera, mic and connection; blocking native work runs off the caller's thread and survives its cancellation. */
+    suspend fun close()
 }
 
 fun interface CallEngineFactory {

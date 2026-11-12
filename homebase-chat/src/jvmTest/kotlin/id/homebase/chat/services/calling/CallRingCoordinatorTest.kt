@@ -7,6 +7,7 @@ import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.core.notifications.CallPushRouter
+import id.homebase.core.notifications.PushInterceptors
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -72,8 +73,8 @@ class CallRingCoordinatorTest {
         )
     }
 
-    private fun ring(callId: String) = CallPushRouter.tryHandle(payload(CallPushRouter.RING_TYPE_ID, callId, message = "Sam is calling"))
-    private fun hangup(callId: String) = CallPushRouter.tryHandle(payload(CallPushRouter.HANGUP_TYPE_ID, callId))
+    private fun ring(callId: String) = PushInterceptors.tryHandle(payload(CallPushRouter.RING_TYPE_ID, callId, message = "Sam is calling"))
+    private fun hangup(callId: String) = PushInterceptors.tryHandle(payload(CallPushRouter.HANGUP_TYPE_ID, callId))
 
     @Test
     fun ringPushPostsTheRingAndHangupPushRetractsIt() = runTest {
@@ -221,9 +222,9 @@ class CallRingCoordinatorTest {
 
     @Test
     fun nonCallPayloadsAreNotConsumed() {
-        assertFalse(CallPushRouter.tryHandle(payload("11111111-1111-1111-1111-111111111111", "c1")))
-        assertFalse(CallPushRouter.tryHandle(mapOf("data" to "not json")))
-        assertFalse(CallPushRouter.tryHandle(emptyMap()))
+        assertFalse(PushInterceptors.tryHandle(payload("11111111-1111-1111-1111-111111111111", "c1")))
+        assertFalse(PushInterceptors.tryHandle(mapOf("data" to "not json")))
+        assertFalse(PushInterceptors.tryHandle(emptyMap()))
     }
 
     @Test

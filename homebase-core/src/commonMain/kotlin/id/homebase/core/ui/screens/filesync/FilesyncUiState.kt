@@ -155,6 +155,10 @@ data class FilesyncSharingState(
     val sharedWith: FilesyncSharedWith? = null,
     /** The people who have files for this identity. */
     val sharers: List<OdinId> = emptyList(),
+    /** The sharers whose files this identity's computers sync. */
+    val syncedSharers: Set<OdinId> = emptySet(),
+    /** From the developer menu, until computers act on the choice. */
+    val syncOffered: Boolean = false,
     /** Whose shared files are shown. */
     val sharer: OdinId? = null,
     /** The folder of theirs shown, below what they share at the top. */
@@ -179,6 +183,9 @@ data class FilesyncSharingState(
     val losingAccess: List<OdinId>? = null,
 ) {
     val viewing: Boolean get() = sharer != null || recipient != null
+
+    /** Whose "Sync to my computers" is shown: the sharer's, at the top of what they share. */
+    val syncSwitchFor: OdinId? get() = sharer?.takeIf { syncOffered && sharerPath.isEmpty() }
 }
 
 @Immutable
@@ -273,6 +280,7 @@ sealed interface FilesyncUiAction {
     data class OpenFromChat(val sharer: OdinId?, val circleId: Uuid) : FilesyncUiAction
     data object DismissShareWith : FilesyncUiAction
     data class OpenSharer(val sharer: OdinId) : FilesyncUiAction
+    data class SetSharerSync(val sharer: OdinId, val sync: Boolean) : FilesyncUiAction
     data object CloseShareView : FilesyncUiAction
     data class OpenSharedFolder(val path: List<FilesyncCrumb>) : FilesyncUiAction
     data class OpenRecipient(val recipient: FilesyncAudience) : FilesyncUiAction
@@ -291,7 +299,7 @@ sealed interface FilesyncDiscussionAction : FilesyncUiAction
 enum class FilesyncError {
     MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
     SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, InheritFailed,
-    MoveCheckFailed, MoveSharingFailed,
+    MoveCheckFailed, MoveSharingFailed, SyncChoiceFailed,
 }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
