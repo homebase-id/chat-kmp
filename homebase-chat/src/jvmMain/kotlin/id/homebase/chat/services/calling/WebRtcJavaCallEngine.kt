@@ -146,38 +146,13 @@ class WebRtcJavaCallEngine(
             // Every URL as given by the device's own server; nothing is derived or added.
             if (stunUrls.isNotEmpty()) iceServers = listOf(RTCIceServer().apply { urls = stunUrls })
         },
-        object : PeerConnectionObserver {
-            override fun onIceCandidate(candidate: RTCIceCandidate) {
-                if (!closed) mapper.localIce(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)
-            }
-
-            override fun onConnectionChange(state: RTCPeerConnectionState) {
-                live = state == RTCPeerConnectionState.CONNECTED
-                if (!closed) mapper.linkState(state.toLinkState())
-            }
-
-            override fun onTrack(transceiver: RTCRtpTransceiver) {
-                val received = transceiver.receiver.track
-                if (received is AudioTrack) {
-                    val sink = remoteAudioSink ?: return
-                    synchronized(remoteLock) {
-                        if (closed) return
-                        received.addSink(sink)
-                        remoteAudio = received
-                    }
-                    return
-                }
-                if (!renderVideo) return
-                val track = received as? VideoTrack ?: return
-                synchronized(remoteLock) {
-                    if (closed) return
-                    val handle = JvmVideoHandle().also { remoteFrames = it }
-                    track.addSink(handle.sink)
-                    remoteTrack = track
-                    _remote.value = handle
-                }
-            }
-        },
+        GuardedPeerObserver(
+            mapper = mapper,
+            isClosed = { closed },
+            setLive = { live = it },
+            track = ::handleTrack,
+            onError = ::failCall,
+        ),
     ) ?: error("webrtc-java returned no peer connection")
 
     // Declared before statsTimer: the init below can outlast STATS_PERIOD_MS, and the first tick reads it.
@@ -334,13 +309,30 @@ class WebRtcJavaCallEngine(
         }
     }
 
-    private fun RTCPeerConnectionState.toLinkState() = when (this) {
-        RTCPeerConnectionState.NEW -> PeerLinkState.New
-        RTCPeerConnectionState.CONNECTING -> PeerLinkState.Connecting
-        RTCPeerConnectionState.CONNECTED -> PeerLinkState.Connected
-        RTCPeerConnectionState.DISCONNECTED -> PeerLinkState.Disconnected
-        RTCPeerConnectionState.FAILED -> PeerLinkState.Failed
-        RTCPeerConnectionState.CLOSED -> PeerLinkState.Closed
+    private fun failCall(t: Throwable) {
+        if (!closed) _events.trySend(MediaEvent.Failed(FailReason.Other))
+    }
+
+    private fun handleTrack(transceiver: RTCRtpTransceiver) {
+        val received = transceiver.receiver.track
+        if (received is AudioTrack) {
+            val sink = remoteAudioSink ?: return
+            synchronized(remoteLock) {
+                if (closed) return
+                received.addSink(sink)
+                remoteAudio = received
+            }
+            return
+        }
+        if (!renderVideo) return
+        val track = received as? VideoTrack ?: return
+        synchronized(remoteLock) {
+            if (closed) return
+            val handle = JvmVideoHandle().also { remoteFrames = it }
+            track.addSink(handle.sink)
+            remoteTrack = track
+            _remote.value = handle
+        }
     }
 
     internal fun isAudioEnabled(): Boolean = audioTrack?.isEnabled == true
@@ -502,10 +494,7 @@ class WebRtcJavaCallEngine(
     private suspend fun createLocal(create: (CreateSessionDescriptionObserver) -> Unit): String {
         checkOpen()
         val description = suspendCancellableCoroutine { cont ->
-            create(object : CreateSessionDescriptionObserver {
-                override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
-                override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
-            })
+            create(GuardedCreateObserver(cont, ::failCall))
         }
         setLocal(description)
         return description.sdp
@@ -521,10 +510,7 @@ class WebRtcJavaCallEngine(
         peer.setRemoteDescription(description, setObserver(cont))
     }
 
-    private fun setObserver(cont: kotlinx.coroutines.CancellableContinuation<Unit>) = object : SetSessionDescriptionObserver {
-        override fun onSuccess() = cont.resume(Unit)
-        override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
-    }
+    private fun setObserver(cont: kotlinx.coroutines.CancellableContinuation<Unit>) = GuardedSetObserver(cont, ::failCall)
 
     override fun setMuted(muted: Boolean) {
         micMuted = muted
