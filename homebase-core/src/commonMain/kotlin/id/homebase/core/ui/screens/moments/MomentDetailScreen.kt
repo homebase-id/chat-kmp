@@ -37,7 +37,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -148,11 +150,8 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
-import id.homebase.core.util.KeyboardPanelState
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.rememberImeOffsetState
-import id.homebase.core.util.rememberKeyboardPanelState
-import id.homebase.core.util.sheetComposerInset
 import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -2168,9 +2167,7 @@ private fun CommentsSheet(
                 if (available.y > 0f) Velocity(0f, available.y) else Velocity.Zero
         }
     }
-    // Read outside the sheet: inside it the sheet's own imePadding() consumes the inset.
     val imeOffset = rememberImeOffsetState()
-    val composerPanel = rememberKeyboardPanelState(imeOffset)
     val topInsets = BottomSheetDefaults.windowInsets.only(WindowInsetsSides.Top)
     val imeVisible by remember(imeOffset) { derivedStateOf { imeOffset.isImeVisible } }
     val targetFraction = heightFraction?.let { commentsSheetHeightFraction(it, imeVisible) }
@@ -2179,11 +2176,10 @@ private fun CommentsSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         scrimColor = scrimColor ?: BottomSheetDefaults.ScrimColor,
-        // Default insets pad inside the draggable surface; the composer owns the bottom inset instead.
+        // Bottom insets are zeroed so they don't pad the draggable surface; the composer owns them. The sheet does not lift itself above the keyboard on Android.
         contentWindowInsets = { topInsets },
     ) {
         CommentsPanelContent(
-            composerPanel = composerPanel,
             uiState = uiState,
             commentsEnabled = commentsEnabled,
             onAction = onAction,
@@ -2219,7 +2215,6 @@ private fun CommentsPanelContent(
     // pins to the bottom; false lets a content-sized sheet wrap to its content.
     fillHeight: Boolean,
     docked: Boolean = false,
-    composerPanel: KeyboardPanelState? = null,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -2364,7 +2359,7 @@ private fun CommentsPanelContent(
                     onSend = { onAction(MomentDetailUiAction.PostComment) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(if (composerPanel != null) Modifier.sheetComposerInset(composerPanel) else Modifier.imePadding())
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
