@@ -128,7 +128,7 @@ private fun FeedContent(
 }
 
 @Composable
-private fun FeedWebView(
+internal fun FeedWebView(
     url: String,
     injectionScript: String?,
     isLoading: Boolean,
@@ -232,7 +232,7 @@ private fun FeedWebView(
 }
 
 @Composable
-private fun FeedErrorView(
+internal fun FeedErrorView(
     errorMessage: String,
     onRetry: () -> Unit,
 ) {

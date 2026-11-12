@@ -133,6 +133,7 @@ import org.koin.compose.koinInject
 
 internal class ChatListCapture(
     val openCamera: () -> Unit,
+    val cameraResultShown: () -> Unit,
     val addImages: () -> Unit,
     val addFile: () -> Unit,
 )
@@ -157,7 +158,7 @@ internal fun rememberChatListCapture(onUiAction: (ConversationListUiAction) -> U
         }
     }
     return remember(gallery, file, camera) {
-        ChatListCapture(openCamera = { camera.launch() }, addImages = { gallery.launch() }, addFile = { file.launch() })
+        ChatListCapture(openCamera = { camera.launch() }, cameraResultShown = camera::resultShown, addImages = { gallery.launch() }, addFile = { file.launch() })
     }
 }
 
@@ -183,6 +184,7 @@ fun ChatListCaptureOverlay(
                 onAddFile = capture.addFile,
                 onAddImage = capture.addImages,
                 onCameraClick = capture.openCamera,
+                onContentShown = capture.cameraResultShown,
                 onUiAction = onUiAction,
                 onSend = { text, viewOnce -> onUiAction(ConversationListUiAction.OpenSendTo(text, viewOnce)) },
             )

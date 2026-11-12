@@ -155,7 +155,7 @@
     <string name="pending_upgrade_snackbar_message">Din identitet kræver en dataopgradering</string>
     <string name="pending_upgrade_snackbar_action">Opgradér</string>
     <string name="pending_upgrade_title">Dataopgradering påkrævet</string>
-    <string name="pending_upgrade_message">Din identitet har en afventende opgradering. Besøg din ejer konsol for at køre den automatiske opgraderingsproces.</string>
+    <string name="pending_upgrade_message">Din identitet skal have en dataopgradering. Indtil du kører den, kan nye kontakter ikke skrive til dig, og andre funktioner kan holde op med at virke. Det tager et minut i din ejerkonsol.</string>
     <string name="pending_upgrade_confirm">Opgradér nu</string>
     <string name="upgrade_running_message">Opgraderer din identitet…</string>
 
@@ -2427,4 +2427,11 @@
     <string name="profile_card_sections_title">Sektioner på dette kort</string>
     <string name="profile_card_section_feed">Feed</string>
     <string name="profile_card_section_feed_desc">Dine seneste offentlige opslag og billeder.</string>
+    <string name="chat_contact_card_save_homebase">Homebase-kontakter</string>
+    <string name="chat_contact_card_update_homebase">Opdater Homebase-kontakt</string>
+    <string name="chat_contact_card_save_phone">Telefonkontakter</string>
+    <string name="chat_contact_card_save_phone_failed">Ingen kontakt-app fundet</string>
+    <string name="chat_contact_card_save_homebase_supporting">Gem dem i din Homebase</string>
+    <string name="chat_contact_card_update_homebase_supporting">Opdater de gemte oplysninger</string>
+    <string name="chat_contact_card_save_phone_supporting">Åbner telefonens Kontakter-app</string>
 </resources>

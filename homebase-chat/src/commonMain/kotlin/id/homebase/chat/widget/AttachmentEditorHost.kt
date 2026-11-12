@@ -51,6 +51,7 @@ internal fun AttachmentEditorHost(
     onAddFile: () -> Unit,
     onAddImage: () -> Unit,
     onCameraClick: () -> Unit,
+    onContentShown: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
     onSend: (caption: String, viewOnce: Boolean) -> Unit,
 ) {
@@ -64,6 +65,7 @@ internal fun AttachmentEditorHost(
         attachments = data.attachments,
         currentPage = currentPage,
         revealed = revealed,
+        onContentShown = onContentShown,
         onPageChanged = onPageChanged,
         onSaveFile = { onUiAction(SaveFile(it)) },
         mediaQuality = mediaQuality,

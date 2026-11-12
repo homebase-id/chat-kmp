@@ -61,3 +61,5 @@ private object NoopFeedWebView : FeedWebView {
         override fun navigateBack() {}
     }
 }
+
+actual val FeedWebViewAvailable: Boolean = false

@@ -262,4 +262,19 @@ class ImageFormatDetectorTest {
             "UklGRoQAAABXRUJQVlA4WAoAAAACAAAAAQAAAAAAQU5JTQYAAAAAAAAAAABBTk1GKAAAAAAAAAAAAAEAAAAAAGQAAAJWUDhM" +
                 "DwAAAC8BAAAABxD9j/4HIqL/AQBBTk1GKAAAAAAAAAAAAAEAAAAAAGQAAABWUDhMDwAAAC8BAAAABxDR//4HIqL/AQA="
     }
+
+    @Test
+    fun aPngHeaderCutBeforeItsAnimationChunkCantAnswer() {
+        fun chunk(type: String, data: ByteArray) =
+            byteArrayOf(0, (data.size shr 16).toByte(), (data.size shr 8).toByte(), data.size.toByte()) + type.encodeToByteArray() + data + ByteArray(4)
+        val signature = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 13, 10, 26, 10)
+        val apng = signature + chunk("IHDR", ByteArray(13)) + chunk("iTXt", ByteArray(70_000)) + chunk("acTL", ByteArray(8)) + chunk("IDAT", ByteArray(4))
+        val header = apng.copyOf(64 * 1024)
+
+        assertTrue(ImageFormatDetector.isAnimated(apng))
+        assertFalse(ImageFormatDetector.answersIsAnimated(header))
+        assertTrue(ImageFormatDetector.answersIsAnimated(apng))
+        assertTrue(ImageFormatDetector.answersIsAnimated(signature + chunk("IHDR", ByteArray(13)) + chunk("IDAT", ByteArray(4))))
+        assertTrue(ImageFormatDetector.answersIsAnimated(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())))
+    }
 }

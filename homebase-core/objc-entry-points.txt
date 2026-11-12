@@ -37,7 +37,7 @@ callable id.homebase.core.share.OpenedFileBridge.*
 callable id.homebase.core.vault.VaultPrivacyBridge.*
 
 // homebase-common
-property id.homebase.core.notifications.CallKitBridge.hostsOutgoingCalls
+function id.homebase.core.notifications.CallKitBridge.hostsOutgoingCalls
 function id.homebase.core.notifications.CallKitBridge.reportOutgoing
 function id.homebase.core.notifications.CallKitBridge.reportConnected
 function id.homebase.core.notifications.CallKitBridge.reportVideo

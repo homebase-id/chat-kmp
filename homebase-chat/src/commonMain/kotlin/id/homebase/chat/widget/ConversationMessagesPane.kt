@@ -357,6 +357,7 @@ fun ConversationMessagesPane(
                                 onAddFile = { fileLauncher.launch() },
                                 onAddImage = { galleryLauncher.launch() },
                                 onCameraClick = { cameraLauncher.launch() },
+                                onContentShown = cameraLauncher::resultShown,
                                 onUiAction = onUiAction,
                                 onSend = { caption, viewOnce ->
                                     onUiAction(SendFile(data.conversationId, caption, data.attachments, viewOnce))

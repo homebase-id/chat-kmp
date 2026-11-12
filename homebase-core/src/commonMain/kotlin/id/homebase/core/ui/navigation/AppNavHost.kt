@@ -336,7 +336,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.TextButton
 import id.homebase.core.upgrade.PendingUpgradeState
-import id.homebase.resources.cancel
+import androidx.compose.ui.window.DialogProperties
 import id.homebase.resources.pending_upgrade_snackbar_message
 import id.homebase.resources.profile_card_nfc_shared
 import id.homebase.resources.pending_upgrade_snackbar_action
@@ -1080,17 +1080,16 @@ fun AppNavHost(
 
                         if (pendingUpgrade is PendingUpgradeState.ShowDialog) {
                             AlertDialog(
-                                onDismissRequest = { viewModel.dismissUpgradeDialog() },
+                                onDismissRequest = {},
+                                properties = DialogProperties(
+                                    dismissOnBackPress = false,
+                                    dismissOnClickOutside = false,
+                                ),
                                 title = { Text(stringResource(MR.string.pending_upgrade_title)) },
                                 text = { Text(stringResource(MR.string.pending_upgrade_message)) },
                                 confirmButton = {
                                     TextButton(onClick = { uriHandler.openUrl(pendingUpgrade.upgradeUrl) }) {
                                         Text(stringResource(MR.string.pending_upgrade_confirm))
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { viewModel.dismissUpgradeDialog() }) {
-                                        Text(stringResource(MR.string.cancel))
                                     }
                                 },
                             )
