@@ -325,7 +325,7 @@ class PostCommentsService(
 
         // Deliberate divergence from dotyoucore-js, which forces AutoConnected on every peer-written comment:
         // on a public post that would hide the comment from exactly the audience the post was written for.
-        val isPublic = !post.fileMetadata.isEncrypted
+        val isPublic = !post.serverFileIsEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
         val accessControlList = AccessControlList(
@@ -465,7 +465,7 @@ class PostCommentsService(
         val recipients = recipientsFromPost(post)
         val isLocalOnly = recipients.isEmpty()
 
-        val isPublic = !post.fileMetadata.isEncrypted
+        val isPublic = !post.serverFileIsEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) {
             KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
