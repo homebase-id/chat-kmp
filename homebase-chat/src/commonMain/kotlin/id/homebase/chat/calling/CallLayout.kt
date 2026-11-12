@@ -18,12 +18,9 @@ val LocalCallHost = staticCompositionLocalOf { CallHostCapabilities() }
 
 internal enum class CallTier { Embedded, Minimal, Compact, Medium, Expanded }
 
-/**
- * [compactHeight] is a phone on its side: too short for the stacked layout, and its width must not pass it off as a desktop.
- * [roomy] is a large desktop stage, where phone-sized chrome would float in empty gradient.
- */
+/** [compactHeight] is a phone on its side: too short for the stacked layout, and its width must not pass it off as a desktop. */
 @Immutable
-internal data class CallLayoutMetrics(val tier: CallTier = CallTier.Embedded, val compactHeight: Boolean = false, val roomy: Boolean = false) {
+internal data class CallLayoutMetrics(val tier: CallTier = CallTier.Embedded, val compactHeight: Boolean = false) {
     val windowed: Boolean get() = tier != CallTier.Embedded
 }
 

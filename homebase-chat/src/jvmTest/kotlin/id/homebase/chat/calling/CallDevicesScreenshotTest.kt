@@ -106,7 +106,7 @@ class CallDevicesScreenshotTest {
                     CompositionLocalProvider(LocalCallHost provides CallHostCapabilities(ownsWindow = true)) { CallScreen(
                         ui = ui,
                         peerName = "Samwise Gamgee",
-                        avatar = testPeerAvatar,
+                        avatar = { },
                         actions = CallScreenActions(
                             accept = {}, decline = {}, hangup = {}, toggleMute = {}, toggleVideo = {},
                             switchCamera = {}, setRoute = {}, onVerificationClick = {}, retry = {}, close = {}, minimize = {},

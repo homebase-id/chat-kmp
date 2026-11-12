@@ -111,7 +111,11 @@ class CallDesktopErgonomicsTest {
         ),
     )
 
-    private val avatar = testPeerAvatar
+    private val avatar: @androidx.compose.runtime.Composable (androidx.compose.ui.unit.Dp) -> Unit = { size ->
+        Box(Modifier.size(size).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+            Text("SG", color = MaterialTheme.colorScheme.onSecondaryContainer)
+        }
+    }
 
     private fun ComposeUiTest.showScreen(ui: CallUiState, recorder: Recorder, dark: Boolean = false, mac: Boolean = false, fontScale: Float = 1f, overlay: (@androidx.compose.runtime.Composable () -> Unit)? = null) {
         mainClock.autoAdvance = false

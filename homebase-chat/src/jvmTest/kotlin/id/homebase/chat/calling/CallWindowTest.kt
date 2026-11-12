@@ -339,7 +339,11 @@ class CallWindowTest {
                             viewModel = model.viewModel,
                             ui = ui,
                             peerName = "Samwise Gamgee",
-                            avatar = testPeerAvatar,
+                            avatar = { size ->
+                                Box(Modifier.size(size).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+                                    Text("SG", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
+                            },
                         )
                     }
                 }
@@ -446,13 +450,7 @@ class CallWindowTest {
                             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
                                 CallChrome(callWindow = model, topInset = 0.dp, callHost = { it() }) { _ ->
                                     LazyColumn(Modifier.fillMaxWidth()) {
-                                        items(12) { i ->
-                                            ListItem(
-                                                headlineContent = { Text("Conversation $i", style = MaterialTheme.typography.titleMedium) },
-                                                supportingContent = { Text("Last message preview") },
-                                                leadingContent = { Box(Modifier.size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape)) },
-                                            )
-                                        }
+                                        items(12) { i -> ListItem(headlineContent = { Text("Conversation $i") }, supportingContent = { Text("Last message preview") }) }
                                     }
                                 }
                             }
