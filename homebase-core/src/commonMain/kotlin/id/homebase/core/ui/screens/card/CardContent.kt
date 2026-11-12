@@ -14,6 +14,7 @@ import id.homebase.core.ui.screens.profile.profileNameValue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
+import id.homebase.core.ui.screens.profile.SOCIAL_ATTRIBUTE_TYPES
 import id.homebase.core.ui.screens.profile.formatBirthday
 import id.homebase.core.ui.screens.profile.profileAddressValue
 
@@ -49,33 +50,37 @@ internal fun <T> List<T>.inCardOrder(fields: CardFields?, id: (T) -> String): Li
 
 internal fun CardFields?.withHidden(id: String, hidden: Boolean, known: Set<String>): CardFields? {
     val next = (hiddenIds().let { if (hidden) it + id else it - id }).filter { it in known }
-    return CardFields(order = this?.order, hidden = next.takeIf { it.isNotEmpty() }).orNull()
+    return (this ?: CardFields()).copy(hidden = next.takeIf { it.isNotEmpty() }).orNull()
+}
+
+internal const val CARD_SECTION_POSTS = "posts"
+
+internal fun CardFields?.hiddenSectionKinds(): Set<String> = this?.hiddenSections.orEmpty().toSet()
+
+internal fun CardFields?.withSectionHidden(kind: String, hidden: Boolean): CardFields? {
+    val next = hiddenSectionKinds().let { if (hidden) it + kind else it - kind }
+    return (this ?: CardFields()).copy(hiddenSections = next.toList().takeIf { it.isNotEmpty() }).orNull()
 }
 
 // [ids] is one group's new order; the other groups keep their places after it.
 internal fun CardFields?.withOrder(ids: List<String>, known: Set<String>): CardFields? {
     val moved = ids.filter { it in known }.distinct()
     val next = moved + this?.order.orEmpty().filter { it in known && it !in moved }
-    return CardFields(order = next.takeIf { it.size > 1 }, hidden = this?.hidden).orNull()
+    return (this ?: CardFields()).copy(order = next.takeIf { it.size > 1 }).orNull()
 }
 
 // A new circle's card starts with only the photo and name on the front; the rest starts on the back.
 internal fun CardFields?.startingBlank(items: List<CardContentItem>): CardFields? {
     val off = items.filter { it.onCard && it.type != ProfileAttributeTypes.NAME }.map { it.id.toString() }
-    return CardFields(order = this?.order, hidden = (hiddenIds() + off).toList().takeIf { it.isNotEmpty() }).orNull()
+    return (this ?: CardFields()).copy(hidden = (hiddenIds() + off).toList().takeIf { it.isNotEmpty() }).orNull()
 }
 
-private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hidden == null }
+private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hidden == null && hiddenSections == null }
 
 internal fun isOrderableType(type: String): Boolean = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
 
-internal val CARD_SOCIAL_TYPES = listOf(
-    ProfileAttributeTypes.TWITTER,
-    ProfileAttributeTypes.FACEBOOK,
-    ProfileAttributeTypes.INSTAGRAM,
-    ProfileAttributeTypes.TIKTOK,
-    ProfileAttributeTypes.LINKEDIN,
-)
+// The socials the page links; the web's unlinkable ones and the Homebase id never reach the card.
+internal val CARD_SOCIAL_TYPES = cardSocialFields.values.map { it.attributeType }
 
 // The page draws these and nothing else; the card orders only links and socials, as one block each.
 internal val CARD_RENDERED_TYPES = setOf(
@@ -172,7 +177,7 @@ internal fun cardContentItems(
             loaded.links.mapNotNull { link ->
                 item(link, link.string(ProfileAttributeTypes.KEY_LINK_TEXT)?.ifBlank { null } ?: link.string(ProfileAttributeTypes.KEY_LINK_TARGET))
             } +
-            CARD_SOCIAL_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } }
+            SOCIAL_ATTRIBUTE_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } }
         ).inCardOrder(fields) { it.id.toString() }
 }
 
@@ -193,17 +198,4 @@ private fun contentText(attribute: ProfileAttribute): String? {
         ProfileAttributeTypes.BIRTHDAY -> values[ProfileField.BIRTHDAY]?.ifBlank { null }?.let { formatBirthday(it) ?: it }
         else -> PROFILE_TYPE_FIELDS[attribute.type]?.firstOrNull()?.first?.let { values[it] }
     }
-}
-
-internal class ImportStep(val attribute: ProfileAttribute, val previous: ProfileAudience, val next: ProfileAudience)
-
-// A card's photo is never copied: widening it onto another card would stop it being scoped to one circle.
-internal fun importPlan(attributes: List<ProfileAttribute>, circles: List<CardCircle>, from: CardAudience, into: CardAudience): List<ImportStep> {
-    val byId = attributes.associateBy { it.id }
-    return cardContentItems(attributes, circles, from)
-        .filter { it.shown && !into.shows(it.audience) }
-        .mapNotNull { item ->
-            val attribute = byId[item.id] ?: return@mapNotNull null
-            item.audience.shownOn(into, true, null)?.let { ImportStep(attribute, item.audience, it) }
-        }
 }

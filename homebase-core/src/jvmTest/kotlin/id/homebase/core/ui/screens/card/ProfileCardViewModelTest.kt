@@ -646,6 +646,30 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun pickingADesignIsADraftUntilSaveAndDiscardKeepsTheOldOne() = runTest(dispatcher) {
+        val source = FakeSource(profile)
+        val vm = viewModel(FakeHost(), source)
+
+        vm.onDesignSelected(CardDesign.DOSSIER)
+        advanceUntilIdle()
+
+        assertTrue(source.savedDesigns.isEmpty())
+        assertEquals(CardDesign.DOSSIER, vm.uiState.value.design)
+        assertTrue(vm.uiState.value.canSaveDesign)
+
+        vm.onPreviewDiscarded()
+
+        assertEquals(CardDesign.LINKS, vm.uiState.value.design)
+        assertTrue(source.savedDesigns.isEmpty())
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(listOf(CardDesign.POSTER), source.savedDesigns)
+    }
+
+    @Test
     fun savingTheUnchangedDesignDoesNothing() = runTest(dispatcher) {
         val source = FakeSource(profile)
         val vm = viewModel(FakeHost(), source)
@@ -794,6 +818,21 @@ class ProfileCardViewModelTest {
         assertEquals(1, source.imageRequests.count { it == "post_img" })
         assertEquals(CARD_POST_IMAGE_MAX_EDGE, source.imageEdges["post_img"])
         assertEquals(CARD_IMAGE_MAX_EDGE, source.imageEdges["pub_photo"])
+    }
+
+    @Test
+    fun switchingTheFeedSectionOffSendsNoPostsAndOnBringsThemBack() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile, posts = { listOf(cardPost("p1")) }))
+        assertEquals(listOf("p1"), host.rendered.last().data.posts.map { it.id })
+
+        vm.onSectionShown(CARD_SECTION_POSTS, false)
+        assertEquals(emptyList(), host.rendered.last().data.posts)
+        assertEquals(listOf(CARD_SECTION_POSTS), vm.uiState.value.selectedCard!!.overrides.fields?.hiddenSections)
+
+        vm.onSectionShown(CARD_SECTION_POSTS, true)
+        assertEquals(listOf("p1"), host.rendered.last().data.posts.map { it.id })
+        assertNull(vm.uiState.value.selectedCard!!.overrides.fields)
     }
 
     @Test

@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -94,6 +95,41 @@ class PayloadBundleImageScrubTest {
             // And the scrubbed plaintext keeps the picture while losing the coordinates.
             assertFalse(indexOfSub(expected, gpsMarker) >= 0, "GPS bytes must not reach the wire")
             assertTrue(indexOfSub(expected, scanData) >= 0, "pixel data must be untouched")
+        } finally {
+            provider.deleteTempFile(src)
+            staged?.let { provider.deleteTempFile(it) }
+        }
+    }
+
+    // Same fixture as homebase-api's HeicFixtures: ImageIO's HEIC with GPS, serial and XMP; hvc1 data at 3227.
+    @Test
+    fun encryptBundle_uploadsHeicWithMetadataStripped() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val svc = service(provider)
+        val key = KeyHeader.newRandom16()
+
+        val original = assertNotNull(javaClass.getResourceAsStream("/geotagged_rotated.heic")).readBytes()
+        val src = provider.writeBytesToTempFile(original, "scrub_src_", ".heic")
+        var staged: String? = null
+        try {
+            val payload = svc.encryptBundle(
+                Uuid.random(),
+                bundle(PayloadFile(key = "p0", filePath = src, contentType = "image/heic")),
+                key.aesKey,
+                this,
+            ).payloads.single()
+            staged = payload.filePath
+
+            val expected = ImageMetadataScrubber.scrub(original)
+            assertContentEquals(
+                KeyHeader(aesKey = key.aesKey, iv = assertNotNull(payload.iv)).encryptDataAes(expected),
+                File(staged).readBytes(),
+                "uploaded ciphertext must be of the SCRUBBED bytes",
+            )
+            assertTrue(indexOfSub(original, "SECRETSERIAL".encodeToByteArray()) >= 0, "fixture must carry metadata")
+            assertFalse(indexOfSub(expected, "SECRETSERIAL".encodeToByteArray()) >= 0, "EXIF must not reach the wire")
+            assertEquals(original.size, expected.size)
+            assertContentEquals(original.copyOfRange(3227, original.size), expected.copyOfRange(3227, expected.size))
         } finally {
             provider.deleteTempFile(src)
             staged?.let { provider.deleteTempFile(it) }

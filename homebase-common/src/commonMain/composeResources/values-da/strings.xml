@@ -1834,6 +1834,16 @@
     <string name="profile_edit_instagram">Instagram</string>
     <string name="profile_edit_tiktok">TikTok</string>
     <string name="profile_edit_linkedin">LinkedIn</string>
+    <string name="profile_edit_youtube">YouTube</string>
+    <string name="profile_edit_snapchat">Snapchat</string>
+    <string name="profile_edit_github">GitHub</string>
+    <string name="profile_edit_discord">Discord</string>
+    <string name="profile_edit_stackoverflow">Stack Overflow</string>
+    <string name="profile_edit_steam">Steam</string>
+    <string name="profile_edit_minecraft">Minecraft</string>
+    <string name="profile_edit_epic">Epic Games</string>
+    <string name="profile_edit_riot">Riot Games</string>
+    <string name="profile_edit_homebase_id">Homebase ID</string>
 
     <string name="profile_edit_audience_title">Hvem kan se dette</string>
     <string name="profile_edit_audience_only_me">Kun mig</string>
@@ -1878,13 +1888,7 @@
     <string name="profile_card_photo_label">Kortets billede</string>
     <string name="profile_card_photo_own_circle">Kun på dette kort</string>
     <string name="profile_card_photo_circle_pending">Et eget billede til dette kort kræver en opdatering af din Homebase-server, som endnu ikke er udgivet. Indtil da viser det det billede, det arver.</string>
-    <string name="profile_card_import_action">Kopiér fra…</string>
-    <string name="profile_card_import_title">Kopiér fra et andet kort</string>
-    <string name="profile_card_import_hint">Viser det andet korts oplysninger også på dette kort. Du kan fortryde det.</string>
-    <string name="profile_card_import_done">Kopieret fra %1$s</string>
     <string name="profile_card_import_undo">Fortryd</string>
-    <string name="profile_card_import_public_title">Vis disse for alle?</string>
-    <string name="profile_card_import_public_message">Disse elementer bliver synlige for alle, der ser dit offentlige kort.</string>
     <string name="profile_card_import_public_confirm">Vis for alle</string>
     <string name="profile_card_content_choose_cards">Vælg hvilke kort der viser %1$s</string>
     <string name="profile_card_cards_public">Offentlig: alle</string>
@@ -2416,4 +2420,7 @@
     <string name="cd_media_quality_hd_badge">Sendt i HD</string>
     <string name="cd_media_quality_original_badge">Sendt som den originale fil</string>
     <string name="storage_cache_photo_thumbnails">Miniaturer af billeder</string>
+    <string name="profile_card_sections_title">Sektioner på dette kort</string>
+    <string name="profile_card_section_feed">Feed</string>
+    <string name="profile_card_section_feed_desc">Dine seneste offentlige opslag og billeder.</string>
 </resources>
