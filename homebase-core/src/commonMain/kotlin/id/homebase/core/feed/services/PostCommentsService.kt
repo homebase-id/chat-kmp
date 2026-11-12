@@ -380,8 +380,8 @@ class PostCommentsService(
             remoteTargetDrive = if (isLocalOnly) null else referencedFile.targetDrive,
         )
 
-        if (isEncrypted) {
-            val optimisticFileId = Uuid.random()
+        val optimisticFileId = Uuid.random()
+        val payloadDescriptors = if (isEncrypted) {
             val outcome = uploadService.upload(
                 MediaUploadSpec(
                     driveId = drive,
@@ -400,21 +400,7 @@ class PostCommentsService(
             if (outcome !is UploadOutcome.Enqueued) {
                 error("Failed to enqueue comment for upload (outbox: $outcome)")
             }
-            try {
-                optimisticWriter.writeNewFile(
-                    driveId = drive,
-                    keyHeader = keyHeader,
-                    unecryptedMetadata = metadata,
-                    originalRecipientCount = recipients.size,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = outcome.payloadDescriptors,
-                    fileId = optimisticFileId,
-                )
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) {
-                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
-                }
-            }
+            outcome.payloadDescriptors
         } else {
             // Public comment → plaintext payloads, so the request is built directly with no encryptBundle.
             val request = UploadFileRequest(
@@ -429,7 +415,7 @@ class PostCommentsService(
             val enqueued = outboxSync.tryEnqueue(request)
             if (!enqueued.enqueued) error("Failed to enqueue comment for upload (outbox: $enqueued)")
 
-            val payloadDescriptors = bundle.payloads.map { payload ->
+            bundle.payloads.map { payload ->
                 PayloadDescriptor(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
@@ -445,20 +431,21 @@ class PostCommentsService(
                     },
                 )
             }.ifEmpty { null }
+        }
 
-            try {
-                optimisticWriter.writeNewFile(
-                    driveId = drive,
-                    keyHeader = keyHeader,
-                    unecryptedMetadata = metadata,
-                    originalRecipientCount = recipients.size,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = payloadDescriptors,
-                )
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) {
-                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
-                }
+        try {
+            optimisticWriter.writeNewFile(
+                driveId = drive,
+                keyHeader = keyHeader,
+                unecryptedMetadata = metadata,
+                originalRecipientCount = recipients.size,
+                fileSystemType = FileSystemType.Standard,
+                payloadDescriptors = payloadDescriptors,
+                fileId = optimisticFileId,
+            )
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) {
+                "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
             }
         }
 
