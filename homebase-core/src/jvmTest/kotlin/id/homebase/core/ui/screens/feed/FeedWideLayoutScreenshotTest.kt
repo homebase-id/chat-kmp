@@ -1,11 +1,10 @@
 package id.homebase.core.ui.screens.feed
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -13,7 +12,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,7 +33,27 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.intercept.Interceptor
 import coil3.request.ErrorResult
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.chat.services.LocalAttachmentContextStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import id.homebase.api.client.contacts.AvatarResolver
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionEntry
+import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.core.feed.services.FeedPostItem
+import id.homebase.core.feed.services.FeedProtocol
+import id.homebase.core.feed.services.PostType
+import id.homebase.core.feed.services.ReactAccess
+import java.awt.Color
+import java.awt.GradientPaint
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import kotlin.uuid.Uuid
 import id.homebase.core.ui.theme.HomebaseTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.core.context.startKoin
@@ -67,6 +85,7 @@ class FeedWideLayoutScreenshotTest {
             modules(
                 module {
                     single { AvatarResolver(MutableStateFlow(emptyList())) }
+                    single { LocalAttachmentContextStore(EventBus(), CoroutineScope(SupervisorJob())) }
                     // Avatars fall back to initials instead of reaching the demo identities over the network.
                     single<ImageLoader> {
                         ImageLoader.Builder(PlatformContext.INSTANCE)
@@ -93,11 +112,61 @@ class FeedWideLayoutScreenshotTest {
         "pippin.took.demo.rocks" to "Peregrin Took",
     )
 
+    private fun gradientPng(w: Int, h: Int): ByteArray {
+        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+        val g = img.createGraphics()
+        g.paint = GradientPaint(0f, 0f, Color(0x3E6B4A), w.toFloat(), h.toFloat(), Color(0xD9B26F))
+        g.fillRect(0, 0, w, h)
+        g.dispose()
+        return ByteArrayOutputStream().also { ImageIO.write(img, "png", it) }.toByteArray()
+    }
+
+    private fun post(author: String, caption: String, withPhoto: Boolean, comments: Int, hearts: Int): FeedPostItem {
+        val thumb = if (withPhoto) EmbeddedThumb(64, 40, "image/png", Base64Bytes(gradientPng(64, 40))) else null
+        return FeedPostItem(
+            id = Uuid.random(),
+            fileId = Uuid.random(),
+            globalTransitId = null,
+            driveId = Uuid.random(),
+            keyHeader = KeyHeader.empty(),
+            payloads = if (withPhoto) listOf(PayloadDescriptor(key = "${FeedProtocol.MediaPayloadKeyPrefix}0", contentType = "image/png")) else emptyList(),
+            caption = caption,
+            type = PostType.Tweet,
+            channelId = Uuid.random().toString(),
+            slug = "post",
+            reactAccess = ReactAccess.All,
+            embeddedPost = null,
+            userDateMs = 1_762_000_000_000,
+            createdMs = 1_762_000_000_000,
+            previewThumbnail = thumb,
+            reactionPreview = ReactionSummary(
+                reactions = if (hearts > 0) mapOf("h" to ReactionEntry("h", hearts, "\u2764\uFE0F")) else emptyMap(),
+                totalCommentCount = comments,
+            ),
+            senderOdinId = null,
+            originalAuthor = OdinId(author),
+            versionTag = null,
+            ownReactions = emptyList(),
+            commentCount = comments,
+            isEncrypted = false,
+            acl = null,
+        )
+    }
+
+    private val posts by lazy {
+        listOf(
+            post("samwise.gamgee.demo.rocks", "Potatoes are in. Boil 'em, mash 'em, stick 'em in a stew.", withPhoto = true, comments = 3, hearts = 5),
+            post("frodo.baggins.demo.rocks", "Back from the long walk. The Shire looks smaller than I remember, and greener.", withPhoto = false, comments = 1, hearts = 2),
+            post("pippin.took.demo.rocks", "Second breakfast at the Green Dragon, anyone?", withPhoto = true, comments = 0, hearts = 0),
+        )
+    }
+
+    @OptIn(ExperimentalSharedTransitionApi::class)
     @Composable
     private fun PolishedFeed(wide: Boolean, people: List<SuggestedPerson>, channels: List<String>) {
         FeedColumns(
             wide = wide,
-            modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            modifier = if (wide) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh) else Modifier,
             suggestions = {
                 FeedSuggestionsColumn(
                     people = people,
@@ -110,15 +179,32 @@ class FeedWideLayoutScreenshotTest {
                 )
             },
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items((0 until 6).toList()) {
-                    Surface(Modifier.fillMaxWidth().height(220.dp)) {
-                        Text("Post $it", Modifier.padding(16.dp), style = MaterialTheme.typography.titleSmall)
-                    }
+            SharedTransitionLayout {
+                AnimatedVisibility(visible = true) {
+                    FeedTimelineList(
+                        uiState = FeedTimelineUiState(posts = posts, endReached = true),
+                        wide = wide,
+                        listState = rememberLazyListState(),
+                        onRefresh = {},
+                        onLoadMore = {},
+                        onPostClick = {},
+                        onOpenComments = {},
+                        onOpenMedia = { _, _, _ -> },
+                        onShowReactors = {},
+                        onToggleReaction = { _, _ -> },
+                        onAuthorClick = {},
+                        onDeletePost = {},
+                        onReportPost = {},
+                        onBlockAuthor = {},
+                        selfOdinId = null,
+                        channels = emptyMap(),
+                        channelNameFor = { "Public posts" },
+                        isPublicChannel = { true },
+                        displayNames = names.mapKeys { OdinId(it.key) },
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        animatedVisibilityScope = this,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
@@ -147,6 +233,7 @@ class FeedWideLayoutScreenshotTest {
     @Test fun polishWideEmptyLight() = polishShot("feed-wide-empty-light", 1000, 700, wide = true, dark = false, empty = true)
     @Test fun polishPhoneLight() = polishShot("feed-phone-light", 412, 900, wide = false, dark = false)
     @Test fun polishPhoneDark() = polishShot("feed-phone-dark", 412, 900, wide = false, dark = true)
+    @Test fun polishNarrowLight() = polishShot("feed-narrow-700-light", 700, 900, wide = false, dark = false)
 
     @Composable
     private fun Harness(wide: Boolean, listState: androidx.compose.foundation.lazy.LazyListState) {
@@ -175,7 +262,6 @@ class FeedWideLayoutScreenshotTest {
         assertEquals(FeedContentMaxWidth.value * density, centre.width, 1f)
         assertEquals(FeedSuggestionsWidth.value * density, side.width, 1f)
         assertTrue(side.left >= centre.right, "suggestions sit right of the timeline")
-        save("wide-1400")
     }
 
     @Test
@@ -189,7 +275,6 @@ class FeedWideLayoutScreenshotTest {
         }
         onAllNodesWithTag(FEED_SUGGESTIONS_TAG).assertCountEquals(0)
         onAllNodesWithTag("list").assertCountEquals(1)
-        save("narrow-700")
     }
 
     @Test

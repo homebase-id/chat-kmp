@@ -2427,4 +2427,5 @@
     <string name="feed_wide_channels_title">Kanaler</string>
     <string name="feed_wide_see_all">Se alle</string>
     <string name="feed_wide_suggestions_empty">Ingen forslag endnu</string>
+    <string name="feed_wide_channels_empty">Kanaler, du poster i, vises her</string>
 </resources>

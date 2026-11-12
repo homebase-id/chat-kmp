@@ -5,28 +5,26 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Tag
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +43,7 @@ import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.resources.MR
 import id.homebase.resources.feed_following_follow
 import id.homebase.resources.feed_following_following
+import id.homebase.resources.feed_wide_channels_empty
 import id.homebase.resources.feed_wide_channels_title
 import id.homebase.resources.feed_wide_people_title
 import id.homebase.resources.feed_wide_see_all
@@ -70,26 +69,21 @@ internal fun FeedSuggestionsColumn(
 ) {
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
+        contentPadding = feedListPadding(wide = true),
         verticalArrangement = Arrangement.spacedBy(FeedColumnGap),
     ) {
         item(key = "people") {
             SuggestionCard {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 20.dp, end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SectionTitle(stringResource(MR.string.feed_wide_people_title), Modifier.weight(1f))
-                    TextButton(onClick = onSeeAll) { Text(stringResource(MR.string.feed_wide_see_all)) }
+                    if (people.isNotEmpty()) {
+                        TextButton(onClick = onSeeAll) { Text(stringResource(MR.string.feed_wide_see_all)) }
+                    }
                 }
-                if (people.isEmpty()) {
-                    Text(
-                        text = stringResource(MR.string.feed_wide_suggestions_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
-                    )
-                }
+                if (people.isEmpty()) EmptyLine(stringResource(MR.string.feed_wide_suggestions_empty))
                 people.forEach { person ->
                     SuggestedPersonRow(
                         person = person,
@@ -101,18 +95,27 @@ internal fun FeedSuggestionsColumn(
                 }
             }
         }
-        if (channelNames.isNotEmpty()) {
-            item(key = "channels") {
-                SuggestionCard {
-                    SectionTitle(
-                        stringResource(MR.string.feed_wide_channels_title),
-                        Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
-                    )
-                    channelNames.forEach { name -> ChannelRow(name) }
-                }
+        item(key = "channels") {
+            SuggestionCard {
+                SectionTitle(
+                    stringResource(MR.string.feed_wide_channels_title),
+                    Modifier.heightIn(min = 56.dp).padding(horizontal = 20.dp).wrapContentHeight(Alignment.CenterVertically),
+                )
+                if (channelNames.isEmpty()) EmptyLine(stringResource(MR.string.feed_wide_channels_empty))
+                channelNames.forEach { name -> ChannelRow(name) }
             }
         }
     }
+}
+
+@Composable
+private fun EmptyLine(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 4.dp),
+    )
 }
 
 @Composable
@@ -147,50 +150,45 @@ private fun SuggestedPersonRow(
 ) {
     // OdinId construction hashes, so it is kept out of the recomposition path.
     val odin = remember(person.odinId) { OdinId(person.odinId) }
+    // Without a profile name the first domain label stands in, so every row keeps the same two-line shape.
+    val title = displayName.takeUnless { it.equals(person.odinId, ignoreCase = true) } ?: person.odinId.substringBefore('.')
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 20.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         IdentityAvatar(odinId = odin, displayName = displayName, options = AvatarOptions(size = 40.dp, onClick = onClick))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = displayName,
+                text = title,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (!displayName.equals(person.odinId, ignoreCase = true)) {
-                Text(
-                    text = person.odinId,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Text(
+                text = person.odinId,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        val height = ButtonDefaults.ExtraSmallContainerHeight
-        ToggleButton(
+        val label = stringResource(if (person.isFollowed) MR.string.feed_following_following else MR.string.feed_following_follow)
+        FilledTonalIconToggleButton(
             checked = person.isFollowed,
             onCheckedChange = { follow -> if (follow) onFollow() else onUnfollow() },
-            shapes = ToggleButtonDefaults.shapesFor(height),
-            colors = ToggleButtonDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shapes = IconButtonDefaults.toggleableShapes(),
+            colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                checkedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                checkedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             ),
-            contentPadding = ButtonDefaults.contentPaddingFor(height),
-            modifier = Modifier.heightIn(min = height),
         ) {
-            if (person.isFollowed) {
-                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.ExtraSmallIconSize))
-                Spacer(Modifier.width(ButtonDefaults.ExtraSmallIconSpacing))
-                Text(stringResource(MR.string.feed_following_following))
-            } else {
-                Text(stringResource(MR.string.feed_following_follow))
-            }
+            Icon(
+                if (person.isFollowed) Icons.Filled.Check else Icons.Outlined.PersonAdd,
+                contentDescription = label,
+            )
         }
     }
 }

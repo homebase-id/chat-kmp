@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -356,7 +355,7 @@ private fun FeedWidthContainer(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FeedTimelineList(
+internal fun FeedTimelineList(
     uiState: FeedTimelineUiState,
     wide: Boolean,
     listState: LazyListState,
@@ -402,8 +401,8 @@ private fun FeedTimelineList(
         LazyColumn(
             state = listState,
             modifier = columnModifier,
-            contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = feedListPadding(wide),
+            verticalArrangement = Arrangement.spacedBy(feedPostGap(wide)),
         ) {
             items(uiState.posts, key = { it.id.toString() }) { post ->
                 // Read `channels` so the row recomposes when definitions arrive.
@@ -417,7 +416,7 @@ private fun FeedTimelineList(
                     ?.let { displayNames[it]?.takeIf { n -> n.isNotBlank() } ?: it.domainName }
                     .orEmpty()
                 PostCard(
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier.animateItem().feedPostCard(wide),
                     post = post,
                     displayName = displayName,
                     channelName = channelNameFor(post.channelId),
@@ -473,12 +472,12 @@ private fun FeedTimelineLoading(wide: Boolean, modifier: Modifier = Modifier) {
     FeedWidthContainer(wide, modifier) { columnModifier ->
         LazyColumn(
             modifier = columnModifier,
-            contentPadding = PaddingValues(vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = feedListPadding(wide),
+            verticalArrangement = Arrangement.spacedBy(feedPostGap(wide)),
             userScrollEnabled = false,
         ) {
             items(FEED_SKELETON_COUNT) {
-                PostSkeleton()
+                PostSkeleton(Modifier.feedPostCard(wide))
             }
         }
     }

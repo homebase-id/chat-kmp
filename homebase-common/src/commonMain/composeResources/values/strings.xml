@@ -3447,4 +3447,5 @@
     <string name="feed_wide_channels_title">Channels</string>
     <string name="feed_wide_see_all">See all</string>
     <string name="feed_wide_suggestions_empty">No suggestions yet</string>
+    <string name="feed_wide_channels_empty">Channels you post to will show up here</string>
 </resources>
