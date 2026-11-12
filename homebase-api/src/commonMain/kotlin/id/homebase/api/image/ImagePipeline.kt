@@ -245,21 +245,6 @@ private fun estimatedFit(bitmap: PipelineBitmap, size: Int, maxBytes: Int): Pair
 
 private fun shrink(edge: Int) = max(1, edge * 3 / 4)
 
-// About 96 MB of pixels. A 12 MP photo stays a full, clean decode; a 48 MP one doesn't.
-internal const val FULL_DECODE_PIXEL_LIMIT = 24_000_000L
-
-/**
- * How far to shrink a decode that would otherwise pass [FULL_DECODE_PIXEL_LIMIT], or null to leave
- * it alone. A memory guard, not a quality step: it never goes below what the largest output needs.
- */
-internal fun memoryGuardScale(size: ImageSize, sampleSize: Int, minLongEdge: Int): Double? {
-    val pixels = size.pixelWidth.toDouble() * size.pixelHeight / (sampleSize * sampleSize)
-    val longEdge = max(size.pixelWidth, size.pixelHeight)
-    if (pixels <= FULL_DECODE_PIXEL_LIMIT || longEdge <= minLongEdge) return null
-    val smallest = minLongEdge.toDouble() / longEdge
-    return max(smallest, min(sqrt(FULL_DECODE_PIXEL_LIMIT / pixels) / sampleSize, smallest * 2))
-}
-
 private fun longEdge(output: ImageOutput) = max(output.width, output.height)
 
 // Further over the limit means a bigger drop, because each attempt is a full encode.
