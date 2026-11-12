@@ -4,6 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import id.homebase.chat.conversationlist.FullScreenOverlay
 
+/**
+ * Plays [data] on a surface filling [modifier], with the platform's own player (ExoPlayer, AVPlayer, VLC, `<video>`).
+ * [onProgress] reports 0..1; [muted] silences it; a source that cannot be played calls [onError] with a message and draws nothing.
+ * Released when it leaves composition. All callbacks run on the main thread.
+ */
 @Composable
 expect fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,

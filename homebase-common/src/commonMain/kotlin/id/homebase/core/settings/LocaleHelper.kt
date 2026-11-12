@@ -6,8 +6,11 @@ package id.homebase.core.settings
 expect fun getSystemLocale(): String
 
 /**
+ * Sets the app's UI language to [languageCode], a [Language] code such as "da-DK", or "system" to follow the device.
+ * Android applies it live; iOS stores it and needs an app restart; desktop sets the JVM default locale; web stores it and reloads the page.
  * [Language.SYSTEM] drops any explicit app language so the OS language applies again: live on
  * Android and desktop, after a page reload on web, and on the next launch on iOS.
+ * Call from the main thread.
  */
 expect fun setPlatformSystemLocale(languageCode: String)
 

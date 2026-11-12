@@ -246,4 +246,8 @@ expect fun captureMainThreadStackTrace(maxFrames: Int = 60): String?
 /** A single thread nothing else shares, so the watchdog loop can't be starved by pool exhaustion. */
 internal expect fun createWatchdogDispatcher(): CoroutineDispatcher
 
+/**
+ * Name of the thread that calls it, for log lines. Never throws and never returns blank: an unnamed
+ * thread reports a placeholder. Web has one thread and always returns "main".
+ */
 internal expect fun currentThreadName(): String

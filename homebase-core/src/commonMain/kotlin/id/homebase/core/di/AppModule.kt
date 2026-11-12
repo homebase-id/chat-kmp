@@ -1675,7 +1675,11 @@ val appModule = module {
     }
 }
 
-// Common module that each platform will implement
+/**
+ * The Koin module with the bindings only this platform can provide (file operations, call and share
+ * plumbing). Calling it only builds the module; nothing is instantiated until Koin resolves a binding.
+ * Safe to call more than once; each call returns a new module.
+ */
 expect fun platformModule(): Module
 
 /** All Koin modules for the application. */

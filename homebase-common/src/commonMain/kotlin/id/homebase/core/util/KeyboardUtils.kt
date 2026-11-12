@@ -29,10 +29,17 @@ fun keyboardAsState(): State<Boolean> {
     }
 }
 
+/**
+ * The on-screen keyboard height in pixels, 0 while hidden. Updates as the keyboard animates.
+ * Always 0 on iOS (the host view controller handles avoidance), desktop and web.
+ */
 @Composable
 expect fun keyboardHeightAsState(): State<Int>
 
-// Only the browser reports composition per key; every other target returns a constant false.
+/**
+ * True while this key event is part of an IME composition (e.g. picking a candidate) and must not trigger send-on-Enter.
+ * Only the browser reports it per key; Android, iOS and desktop always return false.
+ */
 expect fun KeyEvent.isImeComposing(): Boolean
 
 fun Modifier.dismissKeyboardOnTap(): Modifier = composed {
