@@ -6,7 +6,7 @@ import id.homebase.core.camera.rememberInAppCameraManager
 import io.github.vinceglb.filekit.PlatformFile
 
 // Emits the camera dialog while open, so call it unconditionally, never inside an `if`.
-// With awaitResultShown a capture stays on screen until the receiver calls CaptureHandoff.contentShown.
+// With awaitResultShown a capture stays on screen until the receiver calls the launcher's resultShown.
 @Composable
 fun rememberCameraManager(
     modes: CameraModes = CameraModes.Photo,
@@ -26,6 +26,9 @@ fun rememberCameraManager(
 
 interface PlatformCameraManager {
     fun launch()
+
+    /** Tells a camera held over the app that the capture it handed off is on screen. */
+    fun resultShown() = Unit
 }
 
 private object NoCameraManager : PlatformCameraManager {

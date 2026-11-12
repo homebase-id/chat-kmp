@@ -14,6 +14,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private class TestClock(private val fixedInstant: Instant) : Clock {
@@ -86,7 +87,7 @@ class PendingUpgradeManagerTest {
     }
 
     @Test
-    fun dismissDialog_suppressesForSession() = runTest {
+    fun dialogAfter7Days_staysOnRepeatedChecks() = runTest {
         val eightDaysAgo = Clock.System.now() - 8.days
         val cm = createCredentialsManager()
 
@@ -95,17 +96,50 @@ class PendingUpgradeManagerTest {
 
         val manager = PendingUpgradeManager(cm, STUB_CHECK, clock = Clock.System)
         manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
-        assertIs<PendingUpgradeState.ShowDialog>(manager.state.value, "should be in dialog state before dismiss")
-
-        manager.dismissDialog()
-        assertIs<PendingUpgradeState.None>(manager.state.value)
+        assertIs<PendingUpgradeState.ShowDialog>(manager.state.value)
 
         manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
-        assertIs<PendingUpgradeState.None>(manager.state.value)
+        val state = assertIs<PendingUpgradeState.ShowDialog>(manager.state.value)
+        assertTrue(state.upgradeUrl.startsWith("https://test.homebase.id/owner/data-upgrade"))
     }
 
     @Test
-    fun upgradeNotRequired_resetsSessionDismiss() = runTest {
+    fun before7Days_isSnackbarNotDialog() = runTest {
+        val sixDaysAgo = Clock.System.now() - 6.days
+        val cm = createCredentialsManager()
+
+        val seedManager = PendingUpgradeManager(cm, STUB_CHECK, clock = TestClock(sixDaysAgo))
+        seedManager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
+
+        val manager = PendingUpgradeManager(cm, STUB_CHECK, clock = Clock.System)
+        manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
+        assertIs<PendingUpgradeState.ShowSnackbar>(manager.state.value)
+    }
+
+    @Test
+    fun dialogEscalatesWhenInjectedClockCrosses7Days() = runTest {
+        val start = Clock.System.now()
+        val cm = createCredentialsManager()
+        var now = start
+        val clock = object : Clock {
+            override fun now(): Instant = now
+        }
+        val manager = PendingUpgradeManager(cm, STUB_CHECK, clock = clock)
+
+        manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
+        assertIs<PendingUpgradeState.ShowSnackbar>(manager.state.value)
+
+        now = start + 7.days - 1.seconds
+        manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
+        assertIs<PendingUpgradeState.ShowSnackbar>(manager.state.value)
+
+        now = start + 7.days
+        manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
+        assertIs<PendingUpgradeState.ShowDialog>(manager.state.value)
+    }
+
+    @Test
+    fun upgradeNotRequired_afterDialog_clearsAndRestartsFirstSeen() = runTest {
         val eightDaysAgo = Clock.System.now() - 8.days
         val cm = createCredentialsManager()
 
@@ -114,7 +148,7 @@ class PendingUpgradeManagerTest {
 
         val manager = PendingUpgradeManager(cm, STUB_CHECK, clock = Clock.System)
         manager.onUpgradeCheckResult(UpgradeStatus.REQUIRED)
-        manager.dismissDialog()
+        assertIs<PendingUpgradeState.ShowDialog>(manager.state.value)
 
         manager.onUpgradeCheckResult(UpgradeStatus.NONE)
         assertIs<PendingUpgradeState.None>(manager.state.value)

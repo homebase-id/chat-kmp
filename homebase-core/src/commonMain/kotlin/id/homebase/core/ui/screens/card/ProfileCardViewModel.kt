@@ -478,6 +478,8 @@ class ProfileCardViewModel(
         editFields { it.withHidden(id.toString(), hidden = !shown, known = known) }
     }
 
+    fun onSectionShown(kind: String, shown: Boolean) = editFields { it.withSectionHidden(kind, hidden = !shown) }
+
     fun onFieldsReordered(ids: List<Uuid>) {
         val known = _uiState.value.attributes.filter { isOrderableType(it.type) }.mapTo(mutableSetOf()) { it.id.toString() }
         editFields { it.withOrder(ids.map(Uuid::toString), known) }

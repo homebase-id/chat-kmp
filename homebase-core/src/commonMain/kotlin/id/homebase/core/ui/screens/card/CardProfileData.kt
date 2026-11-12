@@ -82,7 +82,7 @@ fun buildCardPayload(
             socials = cardSocialFields.mapNotNull { (type, social) ->
                 text(social.field)?.let { socialUsername(type, it) }?.let { CardSocial(type = type, username = it) }
             }.inCardOrder(fields) { socialIds[it.type].orEmpty() },
-            posts = posts,
+            posts = if (CARD_SECTION_POSTS in fields.hiddenSectionKinds()) emptyList() else posts,
         ),
     )
 }

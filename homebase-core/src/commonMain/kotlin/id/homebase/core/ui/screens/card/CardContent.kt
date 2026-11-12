@@ -50,23 +50,32 @@ internal fun <T> List<T>.inCardOrder(fields: CardFields?, id: (T) -> String): Li
 
 internal fun CardFields?.withHidden(id: String, hidden: Boolean, known: Set<String>): CardFields? {
     val next = (hiddenIds().let { if (hidden) it + id else it - id }).filter { it in known }
-    return CardFields(order = this?.order, hidden = next.takeIf { it.isNotEmpty() }).orNull()
+    return (this ?: CardFields()).copy(hidden = next.takeIf { it.isNotEmpty() }).orNull()
+}
+
+internal const val CARD_SECTION_POSTS = "posts"
+
+internal fun CardFields?.hiddenSectionKinds(): Set<String> = this?.hiddenSections.orEmpty().toSet()
+
+internal fun CardFields?.withSectionHidden(kind: String, hidden: Boolean): CardFields? {
+    val next = hiddenSectionKinds().let { if (hidden) it + kind else it - kind }
+    return (this ?: CardFields()).copy(hiddenSections = next.toList().takeIf { it.isNotEmpty() }).orNull()
 }
 
 // [ids] is one group's new order; the other groups keep their places after it.
 internal fun CardFields?.withOrder(ids: List<String>, known: Set<String>): CardFields? {
     val moved = ids.filter { it in known }.distinct()
     val next = moved + this?.order.orEmpty().filter { it in known && it !in moved }
-    return CardFields(order = next.takeIf { it.size > 1 }, hidden = this?.hidden).orNull()
+    return (this ?: CardFields()).copy(order = next.takeIf { it.size > 1 }).orNull()
 }
 
 // A new circle's card starts with only the photo and name on the front; the rest starts on the back.
 internal fun CardFields?.startingBlank(items: List<CardContentItem>): CardFields? {
     val off = items.filter { it.onCard && it.type != ProfileAttributeTypes.NAME }.map { it.id.toString() }
-    return CardFields(order = this?.order, hidden = (hiddenIds() + off).toList().takeIf { it.isNotEmpty() }).orNull()
+    return (this ?: CardFields()).copy(hidden = (hiddenIds() + off).toList().takeIf { it.isNotEmpty() }).orNull()
 }
 
-private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hidden == null }
+private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hidden == null && hiddenSections == null }
 
 internal fun isOrderableType(type: String): Boolean = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
 

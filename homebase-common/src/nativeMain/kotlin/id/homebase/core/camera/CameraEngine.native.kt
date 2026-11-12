@@ -141,7 +141,7 @@ actual fun rememberCameraEngine(recordsVideo: Boolean, warm: CameraEngine?): Cam
     val engine = remember(warm) { warm as? IosCameraEngine ?: IosCameraEngine(fileOps.uploadTempDirectory(), recordsVideo) }
     DisposableEffect(engine) {
         engine.start()
-        onDispose { engine.release() }
+        onDispose { if (engine !== warm) engine.release() }
     }
     return engine
 }

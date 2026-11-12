@@ -12,6 +12,7 @@ import com.github.panpf.zoomimage.subsampling.fromByteArray
 import com.github.panpf.zoomimage.subsampling.toFactory
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.image.payloadDecodesHere
 
 class HomebaseSubsamplingImageGenerator(
     private val imageLoader: HomebaseImageLoader,
@@ -24,7 +25,7 @@ class HomebaseSubsamplingImageGenerator(
         painter: Painter,
     ): SubsamplingImageGenerateResult? {
         val model = result.request.data
-        if (model !is HomebaseImageData) {
+        if (model !is HomebaseImageData || !model.payloadDecodesHere()) {
             return null
         }
         // Returning null (not Error) on a transient load failure lets the base
