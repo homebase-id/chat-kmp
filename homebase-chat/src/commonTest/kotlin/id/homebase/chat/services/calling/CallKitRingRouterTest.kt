@@ -1,6 +1,6 @@
 package id.homebase.chat.services.calling
 
-import id.homebase.core.notifications.CallKitBridge
+import id.homebase.core.calling.CallKitBridge
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.TestScope
@@ -12,7 +12,7 @@ class CallKitRingRouterTest {
     private val sam = "samwise.gamgee.demo.rocks"
 
     private class Bridge : CallKitBridge {
-        override val hostsOutgoingCalls = true
+        override fun hostsOutgoingCalls() = true
         val ended = mutableListOf<String>()
         val callers = mutableListOf<String>()
         override fun reportOutgoing(callId: String, handle: String, video: Boolean) = Unit

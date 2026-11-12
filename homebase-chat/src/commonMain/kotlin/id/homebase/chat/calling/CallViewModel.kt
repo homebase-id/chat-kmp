@@ -172,12 +172,22 @@ class CallViewModel(
             return
         }
         if (ended.reason is CallEndReason.Failed || callId == null || lingeringFor == callId) return
-        lingerJob?.cancel()
         lingeringFor = callId
+        startLinger(callId)
+    }
+
+    private fun startLinger(callId: String) {
+        lingerJob?.cancel()
         lingerJob = viewModelScope.launch {
             delay(ENDED_LINGER_MS)
             _uiState.update { it.copy(dismissedCallId = callId) }
         }
+    }
+
+    /** A finger down on the ended screen suspends its timer, and lifting restarts it, so the screen never leaves under a press. */
+    fun holdDismissal(held: Boolean) {
+        val callId = lingeringFor ?: return
+        if (held) lingerJob?.cancel() else if (_uiState.value.dismissedCallId != callId) startLinger(callId)
     }
 
     /** A video call is answered with video; only a denied camera takes it as voice. */

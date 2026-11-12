@@ -108,7 +108,7 @@ class PeerDriveUploadProvider(
         // body is the same V1 transit bundle (TransitInstructionSet with remoteTargetDrive +
         // recipients, then metadata, then payload/thumbnail parts).
         val owner = recipients.first()
-        val url = apiUrl(creds.domain, "/peer/$owner/drives/${remoteTargetDrive.alias}/files/send")
+        val url = apiUrl(creds.domain, "/peer/$owner/drives/${remoteTargetDrive.alias}/files/send" + (request.fileSystemType?.let { "?xfst=$it" } ?: ""))
         Logger.i(tag = TAG) {
             "uploadFileOverPeer: POST $url recipients=${recipients.map { it.domainName }} " +
                 "remoteDrive=$remoteTargetDrive"

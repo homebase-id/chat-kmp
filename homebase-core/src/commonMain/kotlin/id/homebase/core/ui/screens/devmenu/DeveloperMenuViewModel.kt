@@ -73,6 +73,11 @@ class DeveloperMenuViewModel(
                 _uiState.update { it.copy(photobaseEnabled = enabled) }
             }
         }
+        viewModelScope.launch {
+            developerPreferences.filesyncSyncSharedEnabled.collect { enabled ->
+                _uiState.update { it.copy(filesyncSyncSharedEnabled = enabled) }
+            }
+        }
     }
 
     fun onUiAction(action: DeveloperMenuUiAction) {
@@ -92,6 +97,10 @@ class DeveloperMenuViewModel(
         }
         if (action is DeveloperMenuUiAction.SetProfileCardEnabled) {
             viewModelScope.launch { developerPreferences.setProfileCardEnabled(action.enabled) }
+            return
+        }
+        if (action is DeveloperMenuUiAction.SetFilesyncSyncSharedEnabled) {
+            viewModelScope.launch { developerPreferences.setFilesyncSyncSharedEnabled(action.enabled) }
             return
         }
         when (action) {
@@ -359,6 +368,7 @@ class DeveloperMenuViewModel(
 data class DeveloperMenuUiState(
     val profileCardEnabled: Boolean = false,
     val photobaseEnabled: Boolean = false,
+    val filesyncSyncSharedEnabled: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
     val lastKnownGoodIp: LastKnownServerIp? = null,
     val networkDiagnostics: NetworkDiagnostics? = null,
@@ -375,6 +385,7 @@ sealed interface DeveloperMenuUiAction {
     data object BackClicked : DeveloperMenuUiAction
     data class SetProfileCardEnabled(val enabled: Boolean) : DeveloperMenuUiAction
     data class SetPhotobaseEnabled(val enabled: Boolean) : DeveloperMenuUiAction
+    data class SetFilesyncSyncSharedEnabled(val enabled: Boolean) : DeveloperMenuUiAction
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction

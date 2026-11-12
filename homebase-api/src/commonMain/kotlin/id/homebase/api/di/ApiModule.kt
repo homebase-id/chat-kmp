@@ -102,7 +102,7 @@ val apiModule = module {
     // Composite outbox uploader: drive transit + the scheduled-push shim (offline-durable
     // schedule/cancel of reminder pushes, reconciled against the server via tagId; see
     // ScheduledPushOutboxUploader).
-    single { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
+    single { DriveOutboxUploader(get(), get(), get(), get(), get(), get(), get()) }
     single { ScheduledPushOutboxUploader(get()) }
     single<OutboxUploader> { CompositeOutboxUploader(get(), get()) }
     // Explicit `single` (not `singleOf`) because the ctor's background-assertion factory is

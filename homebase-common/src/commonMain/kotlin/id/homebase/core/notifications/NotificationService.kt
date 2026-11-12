@@ -270,7 +270,7 @@ class NotificationService(
         // Clear message counts when user opens a conversation
         scope.launch {
             ActiveConversation.conversation.collect { id ->
-                if (id != null) clearConversationNotifications(id.toString())
+                if (id != null) clearConversationNotifications(id.toString(), ClearReason.Opened)
             }
         }
         scope.launch {
@@ -293,21 +293,13 @@ class NotificationService(
         NotificationClickRouter.handler = { data -> NotificationEntry.fromKoin().onNotificationTappedAsync(data) }
     }
 
-    /** Clears the accumulated message count for a conversation (e.g. on mark-as-read). */
-    fun clearNotificationCount(conversationId: String) {
-        counts.clear(conversationId)
-    }
-
-    /**
-     * Clears a single conversation's notification state: forgets its summary
-     * count and cancels its posted notification + group summary from the tray.
-     * Called when the user taps the conversation's notification or opens the
-     * conversation in-app — scoped to one conversation so other senders'
-     * notifications are left intact.
-     */
-    private fun clearConversationNotifications(conversationId: String) {
+    /** Forgets one conversation's summary count and cancels its notification and group summary. */
+    fun clearConversationNotifications(conversationId: String, reason: ClearReason) {
         counts.clear(conversationId)
         BadgeManager.cancelConversationNotifications(conversationId)
+        Logger.i(tag = "NotificationService") {
+            "cleared notifications convo=$conversationId reason=${reason.name.replaceFirstChar { it.lowercase() }}"
+        }
     }
 
     /** Logout: clear all accumulated per-conversation counts and reset the chime cooldown. */
@@ -451,7 +443,7 @@ class NotificationService(
                 val dataString = data["data"] as? String ?: return@launch
                 val notification = OdinSystemSerializer.deserialize<PushNotification>(dataString)
 
-                if (CallPushRouter.tryHandle(notification)) return@launch
+                if (PushInterceptors.tryHandle(notification)) return@launch
                 if (notification.options.silent) return@launch
 
                 // Suppress chat notifications when user is on the conversation list
@@ -699,7 +691,7 @@ class NotificationService(
                     }
                     // Tapping clears only this conversation's notifications + count,
                     // leaving other senders' notifications in the tray.
-                    clearConversationNotifications(typeId)
+                    clearConversationNotifications(typeId, ClearReason.Tapped)
                     emitNavigationEvent(NotificationNavigationEvent.OpenConversation(typeId))
                 }
 
@@ -1048,3 +1040,5 @@ fun conversationNotificationIds(conversationId: String): Pair<Int, Int> {
     val summaryId = SUMMARY_ID_OFFSET + maskedHash
     return messageId to summaryId
 }
+
+enum class ClearReason { Opened, Tapped, Read, MarkRead }

@@ -155,7 +155,7 @@ class MainApplication : Application(), KoinComponent {
         })
     }
 
-    val appScope = supervisedScope("android-app")
+    private val appScope = supervisedScope("android-app")
 
     private fun initShareShortcuts() {
         val conversationStream = get<ConversationStream>()

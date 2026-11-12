@@ -92,6 +92,9 @@ actual class RichNotificationDisplayer actual constructor() {
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(data.notificationId, builder.build())
+        Logger.i(tag = "RichNotification") {
+            "posted notification convo=${data.conversationId} notificationId=${data.notificationId}"
+        }
 
         // Post summary notification for conversation grouping
         if (data.conversationId != null) {

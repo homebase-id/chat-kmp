@@ -29,6 +29,7 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -50,6 +51,7 @@ class DriveOutboxUploader(
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
+    private val peerUploadProvider: PeerDriveUploadProvider,
 ) : OutboxUploader {
 
     override suspend fun upload(
@@ -59,6 +61,7 @@ class DriveOutboxUploader(
         try {
             when (outboxRecord.uploadType) {
                 UploadNewFile -> uploadNewFile(outboxRecord, eventBus)
+                UploadNewFileOverPeer -> uploadNewFileOverPeer(outboxRecord, eventBus)
                 UpdateFile -> updateFile(outboxRecord, eventBus)
                 DeleteFile -> deleteFile(outboxRecord)
                 UpdateLocalMetadataTags -> updateLocalMetadataTags(outboxRecord)
@@ -84,6 +87,23 @@ class DriveOutboxUploader(
             )
             throw e
         }
+    }
+
+    // The file lands on the drive owner's host, so nothing is written or adopted on our own drive.
+    private suspend fun uploadNewFileOverPeer(outboxRecord: Outbox, eventBus: EventBus) {
+        val request = OutboxSerializer.decode<UploadFileRequest>(outboxRecord)
+        request.validateForUpload()
+        val gate = WholePercentProgressGate()
+        val result = peerUploadProvider.uploadFileOverPeer(request, onProgress = { sent, total ->
+            gate.admit(percentOf(sent, total))?.let { pct ->
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent))
+            }
+        })
+        Logger.i(
+            "$TAG uploadNewFileOverPeer: success uniqueId=${request.metadata.appData.uniqueId} " +
+                "remoteGtid=${result?.remoteGlobalTransitIdFileIdentifier?.globalTransitId} " +
+                "recipientStatus=${result?.recipientStatus?.entries?.joinToString { "${it.key}=${it.value}" }}"
+        )
     }
 
     private suspend fun uploadNewFile(outboxRecord: Outbox, eventBus: EventBus) {
@@ -264,6 +284,14 @@ class DriveOutboxUploader(
             return
         }
 
+        if (serverFileIsOurLandedHeaderOnlyCreate(original, serverFile)) {
+            Logger.i(
+                "$TAG retryAsUpdate: server already holds our create for uniqueId=$uniqueId " +
+                        "(same key header and content, header-only) — treating as Sent (lost-ack create)"
+            )
+            return
+        }
+
         // The server rejects an update whose AES key differs from the existing
         // file's ("AES key must match"). When the client's key has diverged
         // (local DB lost the key and minted a fresh one, or a replaceEnqueue
@@ -280,8 +308,8 @@ class DriveOutboxUploader(
         )
         if (rekeyed != null) {
             Logger.w(
-                "$TAG retryAsUpdate: local AES key diverged from the server file for uniqueId=$uniqueId — " +
-                        "re-encrypted the header with the server's key"
+                "$TAG retryAsUpdate: re-encrypted the header under a fresh IV with the server's key for uniqueId=$uniqueId " +
+                        "(local key diverged=${original.keyHeader.aesKey != serverFile.keyHeader.aesKey})"
             )
         }
 
@@ -573,6 +601,7 @@ class DriveOutboxUploader(
         // 10 and 11 belong to ScheduledPushOutboxUploader; CompositeOutboxUploader routes on these ids.
         const val SetReactions = 12L
         const val TransformKeyHeaders = 13L
+        const val UploadNewFileOverPeer = 14L
     }
 }
 
@@ -591,13 +620,13 @@ class KeyHeaderTransformRefused(cause: Throwable) : Exception("key header transf
  * OutboxFailureClassifier): when `retryAsUpdate` converts a failed
  * UploadNewFile into an update and the client's AES key has diverged from the
  * server file's, re-encrypt the request with the SERVER's key (fresh IV) so
- * the update is acceptable instead of deterministically rejected.
+ * the update is acceptable instead of deterministically rejected. The IV is
+ * always fresh, also when the keys match: the server refuses an update that
+ * reuses the file's IV.
  *
  * Returns null when re-keying doesn't apply and the standard versionTag-stamp
  * path is correct or the only option:
  *  - the request isn't encrypted, or the server header has no usable key;
- *  - the keys already match (the common case — e.g. chat's edit-coalesce
- *    reuses the pending create's key);
  *  - the request carries payloads or thumbnails: their bytes are
  *    pre-encrypted on disk with the client key, and re-encrypting
  *    arbitrarily large media in memory is not safe. Those requests take the
@@ -617,7 +646,6 @@ internal suspend fun rekeyedUpdateForExistingServerFile(
     if (!original.metadata.isEncrypted) return null
     if (serverKeyHeader == KeyHeader.empty()) return null
     if (original.payloads.isNotEmpty() || original.thumbnails.isNotEmpty()) return null
-    if (original.keyHeader.aesKey == serverKeyHeader.aesKey) return null
     val uniqueId = original.metadata.appData.uniqueId ?: return null
 
     val newKeyHeader = KeyHeader(
@@ -686,9 +714,8 @@ internal fun stampDescriptorsWithReceipts(
  * dropped right after the server created the file — the
  * `SocketException: Software caused connection abort` case). The signal:
  *
- *  - the request is payload-carrying (header-only divergence is handled by
- *    [rekeyedUpdateForExistingServerFile]; only payload requests hit the
- *    unrecoverable "must change the Iv" loop);
+ *  - the request is payload-carrying (header-only requests are
+ *    [serverFileIsOurLandedHeaderOnlyCreate]'s);
  *  - the server file's AES key equals ours — a random 256-bit key only matches
  *    if the server file is the one *we* created, not a stale/foreign file that
  *    happens to share the (also random) uniqueId;
@@ -711,6 +738,24 @@ internal fun serverFileIsOurLandedCreate(
     if (original.keyHeader.aesKey != serverKey.aesKey) return false
     val serverPayloadKeys = serverFile.fileMetadata.payloads?.mapTo(mutableSetOf()) { it.key } ?: emptySet()
     return original.payloads.all { it.key in serverPayloadKeys }
+}
+
+/**
+ * The header-only twin of [serverFileIsOurLandedCreate]: the server holds exactly our create
+ * (same key header, so same AES key and IV, and the same content), so only its reply was lost.
+ * An update would reuse the IV and be rejected with "you must change the Iv".
+ */
+@OptIn(ExperimentalEncodingApi::class)
+internal suspend fun serverFileIsOurLandedHeaderOnlyCreate(
+    original: UploadFileRequest,
+    serverFile: HomebaseFile,
+): Boolean {
+    if (original.payloads.isNotEmpty() || original.thumbnails.isNotEmpty()) return false
+    if (!original.metadata.isEncrypted) return false
+    val serverKey = serverFile.keyHeader
+    if (serverKey == KeyHeader.empty() || serverKey != original.keyHeader) return false
+    val ourContent = original.metadata.appData.content?.let { original.keyHeader.decrypt(Base64.decode(it)).decodeToString() }
+    return ourContent == serverFile.fileMetadata.appData.content
 }
 
 /** A payload-carrying retry whose AES key differs from the file it would update on a zero-knowledge drive. */

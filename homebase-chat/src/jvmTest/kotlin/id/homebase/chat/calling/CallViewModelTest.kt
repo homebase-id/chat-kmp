@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -200,6 +201,23 @@ class CallViewModelTest {
     }
 
     @Test
+    fun aPressOnTheEndedScreenSuspendsTheLingerAndReleaseRestartsIt() = rigTest { rig ->
+        rig.me.startCall(sam, video = false)
+        settle()
+        settle(RING_TIMEOUT_MS + 1)
+        assertEquals(CallPhase.Ended(CallEndReason.Missed), rig.ui.phase)
+        settle(ENDED_LINGER_MS - 500)
+        rig.vm.holdDismissal(true)
+        settle(ENDED_LINGER_MS * 3)
+        assertTrue(rig.ui.visible, "a finger on the ended screen keeps it up")
+        rig.vm.holdDismissal(false)
+        settle(ENDED_LINGER_MS - 100)
+        assertTrue(rig.ui.visible, "release restarts the full linger")
+        settle(200)
+        assertFalse(rig.ui.visible)
+    }
+
+    @Test
     fun failedCallStaysUpAndRetryRestartsTheCallToTheSamePeer() = rigTest(
         FakeCallScript(failConnect = true),
         FakeCallScript(),
@@ -346,5 +364,24 @@ class CallViewModelTest {
             vm.viewModelScope.cancel()
         }
     }
-}
 
+    @Test
+    fun audioRoutesAreReadOncePerCallNotOnEveryStateChange() = rigTest { rig ->
+        var subscriptions = 0
+        val routes = flowOf(listOf(AudioRoute.Earpiece, AudioRoute.Speaker)).onStart { subscriptions++ }
+        val vm = CallViewModel(rig.me, audioRoutes = routes)
+        try {
+            rig.me.startCall(sam, video = false)
+            settle()
+            rig.peer.accept()
+            settle(1_001)
+            vm.toggleMute()
+            settle()
+            vm.toggleMute()
+            settle()
+            assertEquals(1, subscriptions)
+        } finally {
+            vm.viewModelScope.cancel()
+        }
+    }
+}

@@ -84,6 +84,18 @@ fun AccessControlList?.toPostAudience(): PostAudience {
     }
 }
 
+fun postAcl(audience: PostAudience, circleIds: List<String> = emptyList()): AccessControlList = when (audience) {
+    PostAudience.Public -> AccessControlList(requiredSecurityGroup = SecurityGroupType.Anonymous.value)
+    PostAudience.Authenticated -> AccessControlList(requiredSecurityGroup = SecurityGroupType.Authenticated.value)
+    PostAudience.AutoConnected -> AccessControlList(requiredSecurityGroup = SecurityGroupType.AutoConnected.value)
+    PostAudience.Connections -> AccessControlList(requiredSecurityGroup = SecurityGroupType.Connected.value)
+    PostAudience.Circles -> {
+        require(circleIds.isNotEmpty()) { "a circles post needs at least one circle" }
+        AccessControlList(requiredSecurityGroup = SecurityGroupType.Connected.value, circleIdList = circleIds)
+    }
+    PostAudience.Owner -> AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value)
+}
+
 // Threading is strictly one level — a reply carries its parent comment id in [replyToId].
 data class PostCommentItem(
     val id: Uuid,

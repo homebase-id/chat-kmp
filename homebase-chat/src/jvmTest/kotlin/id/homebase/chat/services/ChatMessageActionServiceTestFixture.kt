@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
@@ -117,6 +118,7 @@ class ChatMessageActionServiceTestFixture(
         private set
     lateinit var participantLookup: FakeConversationParticipantLookup
         private set
+    val conversationLoader = RecordingConversationLoader()
 
     // Owned outbox scope. The uploader's post-`Completed` bookkeeping hops to
     // `Dispatchers.IO`; if we attached it to `runTest`'s `backgroundScope` the
@@ -197,6 +199,7 @@ class ChatMessageActionServiceTestFixture(
                 reactionProvider = reactionProvider,
                 databaseManager = dbm,
                 credentialsManager = credentialsManager,
+                peerUploadProvider = PeerDriveUploadProvider(httpClient, credentialsManager, NoopFileOperationsProvider()),
             )
         } else {
             ThrowingOutboxUploader
@@ -240,6 +243,7 @@ class ChatMessageActionServiceTestFixture(
         return ChatMessageActionService(
             conversationService = conversationService,
             participantLookup = participantLookup,
+            conversationLoader = conversationLoader,
             localLastReadUpdater = localLastReadUpdater,
             messageLookup = messageLookup,
             reactionProvider = reactionProvider,
@@ -716,4 +720,14 @@ class FakeConversationParticipantLookup :
         val convo = conversations[conversationId] ?: return
         conversations[conversationId] = convo.clearedDirtyIfUnchanged(pushed.milliseconds)
     }
+}
+
+class RecordingConversationLoader : id.homebase.chat.services.convo.ConversationLoader {
+    val loaded = mutableListOf<Uuid>()
+    var onLoad: (Uuid) -> Unit = {}
+    override suspend fun loadConversation(conversationId: Uuid) {
+        loaded += conversationId
+        onLoad(conversationId)
+    }
+    override suspend fun removeConversation(conversationId: Uuid) {}
 }

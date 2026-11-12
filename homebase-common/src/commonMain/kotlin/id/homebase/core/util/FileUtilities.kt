@@ -3,6 +3,10 @@ package id.homebase.core.util
 import androidx.compose.runtime.Composable
 import kotlinx.io.files.Path
 
+/**
+ * The [FileSystemHandler] for the current platform, remembered for the composition. Each method reports failure through
+ * its `onError` callback and never throws; a method a platform cannot do (see [FileSystemHandler]) does nothing.
+ */
 @Composable
 expect fun getUriHandler(): FileSystemHandler
 

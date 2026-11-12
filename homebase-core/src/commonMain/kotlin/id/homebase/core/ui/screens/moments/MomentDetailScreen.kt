@@ -37,7 +37,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -146,7 +148,10 @@ import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -665,6 +670,11 @@ private const val MOMENT_MEDIA_FRACTION_WITH_COMMENTS = 1f / 3f
  * slips behind the sheet.
  */
 private const val MOMENT_COMMENTS_SHEET_FRACTION = 0.6f
+
+internal const val COMMENTS_SHEET_KEYBOARD_FRACTION = 0.92f
+
+internal fun commentsSheetHeightFraction(base: Float, imeVisible: Boolean): Float =
+    if (imeVisible) maxOf(base, COMMENTS_SHEET_KEYBOARD_FRACTION) else base
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2157,10 +2167,17 @@ private fun CommentsSheet(
                 if (available.y > 0f) Velocity(0f, available.y) else Velocity.Zero
         }
     }
+    val imeOffset = rememberImeOffsetState()
+    val topInsets = BottomSheetDefaults.windowInsets.only(WindowInsetsSides.Top)
+    val imeVisible by remember(imeOffset) { derivedStateOf { imeOffset.isImeVisible } }
+    val targetFraction = heightFraction?.let { commentsSheetHeightFraction(it, imeVisible) }
+    val animatedFraction by animateFloatAsState(targetFraction ?: 0f)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         scrimColor = scrimColor ?: BottomSheetDefaults.ScrimColor,
+        // Bottom insets are zeroed so they don't pad the draggable surface; the composer owns them. The sheet does not lift itself above the keyboard on Android.
+        contentWindowInsets = { topInsets },
     ) {
         CommentsPanelContent(
             uiState = uiState,
@@ -2174,7 +2191,7 @@ private fun CommentsSheet(
                 .fillMaxWidth()
                 .nestedScroll(swallowDownwardDrag)
                 .then(
-                    if (heightFraction != null) Modifier.fillMaxHeight(heightFraction)
+                    if (heightFraction != null) Modifier.fillMaxHeight(animatedFraction)
                     else Modifier,
                 ),
         )
@@ -2342,7 +2359,7 @@ private fun CommentsPanelContent(
                     onSend = { onAction(MomentDetailUiAction.PostComment) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .imePadding()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }

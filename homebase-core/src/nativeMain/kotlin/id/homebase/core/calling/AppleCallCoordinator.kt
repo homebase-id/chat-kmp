@@ -11,9 +11,6 @@ import id.homebase.chat.services.calling.CallKitRingSink
 import id.homebase.chat.services.calling.CallRingCoordinator
 import id.homebase.chat.services.calling.RING_TIMEOUT_MS
 import id.homebase.core.notifications.NotificationEntry
-import id.homebase.core.notifications.VoipTokenRelay
-import id.homebase.core.notifications.CallKitBridgeHolder
-import id.homebase.core.notifications.CallPictureInPictureBridgeHolder
 import id.homebase.core.notifications.CallPushRouter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,24 +26,24 @@ private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
  * into the single CallService and mirrors outgoing/connected/ended state back to CallKit.
  */
 fun startAppleCallCoordinator() {
-    VoipTokenRelay.attach { NotificationEntry.fromKoin().onVoipToken(it) }
+    CallBridges.voipToken.attach { NotificationEntry.fromKoin().onVoipToken(it) }
     val koin = KoinPlatformTools.defaultContext().get()
     val service = koin.get<CallService>()
     if (!service.available) return
 
-    CallPushRouter.handler = CallKitRingRouter(service, { CallKitBridgeHolder.bridge }, scope)
+    CallPushRouter.handler = CallKitRingRouter(service, { CallBridges.callKit }, scope)
     val contacts = koin.get<ContactInfoGateway>()
     CallRingCoordinator(
         target = service,
         transitions = service.transitions,
-        sink = CallKitRingSink { CallKitBridgeHolder.bridge },
+        sink = CallKitRingSink { CallBridges.callKit },
         labelFor = { contacts.displayName(OdinId(it)) },
         scope = scope,
         // CallKit takes a new name at any point while it rings, and a cold PushKit wake resolves contacts slowly.
         labelTimeoutMs = RING_TIMEOUT_MS,
     ).start()
-    CallKitBridgeHolder.actions = CallKitActionsAdapter(service)
+    CallBridges.callKitActions = CallKitActionsAdapter(service)
 
-    scope.launch { CallKitMirror(service) { CallKitBridgeHolder.bridge }.run() }
-    scope.launch { CallPictureInPictureTeardown(service.state) { CallPictureInPictureBridgeHolder.bridge }.run() }
+    scope.launch { CallKitMirror(service) { CallBridges.callKit }.run() }
+    scope.launch { CallPictureInPictureTeardown(service.state) { CallBridges.pictureInPicture }.run() }
 }

@@ -19,6 +19,7 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.util.initials
 import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
@@ -375,6 +376,16 @@ class ConversationMapper(
             val domain = credentialsManager.requireActiveDomain()
             applyLastMessage(withAdmins, lastMsg, domain, sqlUserDateMs = lastMsg.sqlUserDateMs())
         } else withAdmins
+    }
+
+    /** One conversation loaded on its own, outside the list pipeline: the localAppData sort key can lag the newest message, so the message index corrects it. */
+    suspend fun mapLoadedConversation(conversationFile: HomebaseFile): ConversationUiModel {
+        val ui = mapToConversationUi(conversationFile, null)
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val newestMs = dbm.chatReadCount.selectLatestMessageUserDateMs(identityId, ui.id) ?: return ui
+        return if (newestMs > ui.latestMessageTimestamp.toEpochMilliseconds()) {
+            ui.copy(latestMessageTimestamp = Instant.fromEpochMilliseconds(newestMs))
+        } else ui
     }
 
     private fun mapDeletedConversation(

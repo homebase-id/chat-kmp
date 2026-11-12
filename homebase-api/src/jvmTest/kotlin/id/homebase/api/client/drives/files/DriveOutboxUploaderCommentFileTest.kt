@@ -9,7 +9,13 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.upload.CreateFileResult
+import id.homebase.api.client.drives.upload.RemoteGlobalTransitIdFileIdentifier
+import id.homebase.api.client.drives.upload.TransferUploadStatus
+import id.homebase.api.client.drives.upload.TransitOptions
+import id.homebase.api.client.drives.upload.TransitUploadResult
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
@@ -62,6 +68,13 @@ class DriveOutboxUploaderCommentFileTest {
     private val mockEngine = MockEngine { request ->
         requests.add(request.method to request.url)
         val body = when {
+            request.url.encodedPath.contains("/peer/") ->
+                OdinSystemSerializer.serialize(
+                    TransitUploadResult(
+                        recipientStatus = mapOf("author.example.com" to TransferUploadStatus.Enqueued),
+                        remoteGlobalTransitIdFileIdentifier = RemoteGlobalTransitIdFileIdentifier(serverGtid, peerDrive),
+                    )
+                )
             request.method == HttpMethod.Patch -> OdinSystemSerializer.serialize(
                 UpdateFileResult(fileId = serverFileId, driveId = driveId, newVersionTag = Uuid.random())
             )
@@ -78,6 +91,8 @@ class DriveOutboxUploaderCommentFileTest {
         }
         respond(body, HttpStatusCode.OK)
     }
+
+    private val peerDrive = TargetDrive(alias = Uuid.random(), type = Uuid.random())
 
     private val httpClient = HttpClient(mockEngine)
     private val credentialsManager = CredentialsManager()
@@ -128,6 +143,7 @@ class DriveOutboxUploaderCommentFileTest {
         reactionProvider = DriveFileGroupReactionProvider(httpClient, credentialsManager),
         databaseManager = dbm,
         credentialsManager = credentialsManager,
+        peerUploadProvider = PeerDriveUploadProvider(httpClient, credentialsManager, fileOps),
     )
 
     private suspend fun identityId() = credentialsManager.requireActiveCredentials().getIdentityId()
@@ -234,5 +250,31 @@ class DriveOutboxUploaderCommentFileTest {
         uploader().upload(outbox(DriveOutboxUploader.DeleteFile, delete), EventBus())
 
         assertEquals(listOf("Comment", "Comment"), requests.map { it.second.parameters["xfst"] })
+    }
+
+    @Test
+    fun `an over-peer Comment create is sent to the author's drive and writes nothing to our own`() = runTest {
+        insertOptimisticRow()
+        val author = OdinId("author.example.com")
+        val request = UploadFileRequest(
+            driveId = driveId,
+            keyHeader = KeyHeader.empty(),
+            metadata = UploadFileMetadata(
+                allowDistribution = true,
+                isEncrypted = false,
+                appData = UploadAppFileMetaData(uniqueId = uniqueId, fileType = 801, content = "{}"),
+            ),
+            transitOptions = TransitOptions(recipients = listOf(author), remoteTargetDrive = peerDrive),
+            fileSystemType = FileSystemType.Comment,
+        )
+
+        uploader().upload(outbox(DriveOutboxUploader.UploadNewFileOverPeer, request), EventBus())
+
+        val sent = requests.single()
+        assertEquals("/peer/author.example.com/drives/${peerDrive.alias}/files/send", sent.second.encodedPath.substringAfter("/v2"))
+        assertEquals("Comment", sent.second.parameters["xfst"])
+        val local = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId(), driveId, uniqueId)
+        assertEquals(optimisticFileId, local?.fileId, "the placeholder row is not adopted as a server file")
+        assertNull(local?.fileMetadata?.versionTag)
     }
 }

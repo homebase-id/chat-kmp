@@ -123,7 +123,9 @@ fun CallOverlay(
     val snackbar = events.snackbar
     val deviceMenu = events.deviceMenu
     val hold = remember { ChromeHold() }
+    val chrome = remember { CallChromeState() }
     CompositionLocalProvider(LocalChromeHold provides hold) { HoldChromeWhile(events.dialogOpen) }
+    HoldCallChrome(events.dialogOpen, chrome)
     val reportProblem = rememberCallProblemReporter { viewModel.uiState.value.callId }
     val actions = remember(viewModel, gate, onMinimize, onToggleMini, reportProblem) {
         CallScreenActions(
@@ -164,7 +166,7 @@ fun CallOverlay(
     }
     CompositionLocalProvider(LocalCallVideoRenderers provides renderers, LocalMicLevel provides viewModel.micLevel) {
         Box(modifier) {
-            CallLayer(visible = ui.visible && (!ui.minimized || surface != CallSurface.Full), surface = surface) { shown ->
+            CallLayer(visible = ui.visible && (!ui.minimized || surface != CallSurface.Full), surface = surface, onPressed = viewModel::holdDismissal) { shown ->
                 when (shown) {
                     CallSurface.Tile -> FloatingCallTile(
                         ui = ui,
@@ -175,7 +177,7 @@ fun CallOverlay(
                         onHangup = viewModel::hangup,
                     )
                     CallSurface.PictureInPicture -> CallPipLayout(ui, avatar)
-                    CallSurface.Full -> CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, topInset = topInset, deviceMenu = deviceMenu, hold = hold, chromeHeld = events.dialogOpen)
+                    CallSurface.Full -> CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, topInset = topInset, deviceMenu = deviceMenu, hold = hold, chrome = chrome)
                 }
             }
             if (ui.visible && !inPip) {
@@ -263,22 +265,21 @@ internal fun CallEventDialogs(events: CallEventState, viewModel: CallViewModel, 
 
 internal enum class CallSurface { Full, PictureInPicture, Tile }
 
-/** A full-screen surface swallows every touch and stays until a finger on it lifts, so a press that outlives the ended screen's timer never lands on the app. */
+/** A full-screen surface swallows every touch and reports presses through [onPressed], so a press never lands on the app under the ended screen. */
 @Composable
-internal fun CallLayer(visible: Boolean, surface: CallSurface, content: @Composable (CallSurface) -> Unit) {
-    var pressed by remember { mutableStateOf(false) }
+internal fun CallLayer(visible: Boolean, surface: CallSurface, onPressed: (Boolean) -> Unit = {}, content: @Composable (CallSurface) -> Unit) {
     val last = remember { arrayOf(surface) }
     if (visible) last[0] = surface
     val shown = last[0]
     AnimatedVisibility(
-        visible = visible || pressed,
+        visible = visible,
         enter = fadeIn() + slideInVertically { it / 8 },
         exit = fadeOut() + slideOutVertically { it / 8 },
     ) {
         if (shown == CallSurface.Tile) {
             content(shown)
         } else {
-            Box(Modifier.fillMaxSize().holdWhilePressed { pressed = it }.swallowTaps()) { content(shown) }
+            Box(Modifier.fillMaxSize().holdWhilePressed(onPressed).swallowTaps()) { content(shown) }
         }
     }
 }

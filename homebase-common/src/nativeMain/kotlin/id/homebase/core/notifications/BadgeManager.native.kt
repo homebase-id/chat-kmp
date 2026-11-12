@@ -1,5 +1,6 @@
 package id.homebase.core.notifications
 
+import co.touchlab.kermit.Logger
 import platform.UserNotifications.UNNotification
 import platform.UserNotifications.UNUserNotificationCenter
 
@@ -36,6 +37,9 @@ actual object BadgeManager {
             val ids = tray
                 .filter { it.request.content.threadIdentifier == conversationId }
                 .map { it.request.identifier }
+            Logger.i(tag = "BadgeManager") {
+                "removed ${ids.size} delivered notifications convo=$conversationId"
+            }
             if (ids.isEmpty()) return@getDeliveredNotificationsWithCompletionHandler
 
             center.removeDeliveredNotificationsWithIdentifiers(ids)

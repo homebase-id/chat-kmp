@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,7 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
@@ -67,6 +68,7 @@ import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.buildBlockUrl
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.ui.screens.feed.widget.CommentsModalSheet
@@ -79,6 +81,7 @@ import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_reactors_partial
+import id.homebase.resources.feed_timeline_compose_action
 import id.homebase.resources.feed_timeline_empty_body
 import id.homebase.resources.feed_timeline_empty_title
 import id.homebase.resources.feed_timeline_error_body
@@ -101,6 +104,7 @@ fun FeedTimelineScreen(
     viewModel: FeedTimelineViewModel = koinViewModel(),
     onNavigateToDetail: (Uuid) -> Unit,
     onNavigateToFollowing: () -> Unit,
+    onNavigateToComposer: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
     onFullScreenMediaChanged: (Boolean) -> Unit = {},
     scrollToTop: Boolean = false,
@@ -187,6 +191,13 @@ fun FeedTimelineScreen(
                     scrollBehavior = scrollBehavior,
                 )
             },
+            floatingActionButton = {
+                ExtendedFloatingActionButton(
+                    onClick = onNavigateToComposer,
+                    icon = { Icon(imageVector = Icons.Rounded.Edit, contentDescription = null) },
+                    text = { Text(stringResource(MR.string.feed_timeline_compose_action)) },
+                )
+            },
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { innerPadding ->
             val contentModifier = Modifier
@@ -202,6 +213,22 @@ fun FeedTimelineScreen(
                 else -> FeedBody.Posts
             }
             val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            val wide = isExpandedLayout()
+            val channelNames = remember(channels) { channels.values.map { it.name }.sorted() }
+            FeedColumns(
+                wide = wide,
+                modifier = contentModifier.then(
+                    if (wide) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh) else Modifier,
+                ),
+                suggestions = {
+                    FeedSuggestionsPane(
+                        channelNames = channelNames,
+                        onPersonClick = onAuthorClick,
+                        onSeeAll = onNavigateToFollowing,
+                        snackbarHostState = snackbarHostState,
+                    )
+                },
+            ) {
             AnimatedContent(
                 targetState = body,
                 transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
@@ -214,19 +241,17 @@ fun FeedTimelineScreen(
                         body = stringResource(MR.string.feed_timeline_error_body),
                         actionLabel = stringResource(MR.string.feed_timeline_error_retry),
                         onAction = viewModel::refresh,
-                        modifier = contentModifier,
+                        modifier = Modifier.fillMaxSize(),
                     )
 
-                    FeedBody.Loading -> FeedTimelineLoading(
-                        modifier = contentModifier,
-                    )
+                    FeedBody.Loading -> FeedTimelineLoading(wide = wide, modifier = Modifier.fillMaxSize())
 
                     FeedBody.Empty -> FeedMessageState(
                         icon = Icons.Outlined.DynamicFeed,
                         iconContentDescription = null,
                         title = stringResource(MR.string.feed_timeline_empty_title),
                         body = stringResource(MR.string.feed_timeline_empty_body),
-                        modifier = contentModifier,
+                        modifier = Modifier.fillMaxSize(),
                         // The Following screen opens on Suggested when you follow no one yet
                         actionLabel = stringResource(MR.string.feed_timeline_find_people),
                         onAction = onNavigateToFollowing,
@@ -234,6 +259,7 @@ fun FeedTimelineScreen(
 
                     FeedBody.Posts -> FeedTimelineList(
                         uiState = uiState,
+                        wide = wide,
                         listState = listState,
                         onRefresh = viewModel::refresh,
                         onLoadMore = viewModel::loadMore,
@@ -260,9 +286,10 @@ fun FeedTimelineScreen(
                         sharedTransitionScope = sharedScope,
                         animatedVisibilityScope = visibilityScope,
                         displayNames = displayNames,
-                        modifier = contentModifier,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
+            }
             }
         }
 
@@ -318,6 +345,7 @@ private const val FEED_WIDE_FRACTION = 0.8f
 // Shared by the real list and the loading skeletons so both track the same column width.
 @Composable
 private fun FeedWidthContainer(
+    wide: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable (Modifier) -> Unit,
 ) {
@@ -326,7 +354,7 @@ private fun FeedWidthContainer(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        val fraction = if (maxWidth >= FEED_WIDE_BREAKPOINT) FEED_WIDE_FRACTION else 1f
+        val fraction = if (!wide && maxWidth >= FEED_WIDE_BREAKPOINT) FEED_WIDE_FRACTION else 1f
         content(
             Modifier
                 .fillMaxHeight()
@@ -338,8 +366,9 @@ private fun FeedWidthContainer(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FeedTimelineList(
+internal fun FeedTimelineList(
     uiState: FeedTimelineUiState,
+    wide: Boolean,
     listState: LazyListState,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
@@ -379,12 +408,12 @@ private fun FeedTimelineList(
     ) {
       // The darker band fills the full width while the post column is centered and capped, so the gaps between
       // posts and the side margins read as the same separator colour.
-      FeedWidthContainer { columnModifier ->
+      FeedWidthContainer(wide) { columnModifier ->
         LazyColumn(
             state = listState,
             modifier = columnModifier,
-            contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = feedListPadding(wide),
+            verticalArrangement = Arrangement.spacedBy(feedPostGap(wide)),
         ) {
             items(uiState.posts, key = { it.id.toString() }) { post ->
                 // Read `channels` so the row recomposes when definitions arrive.
@@ -398,7 +427,7 @@ private fun FeedTimelineList(
                     ?.let { displayNames[it]?.takeIf { n -> n.isNotBlank() } ?: it.domainName }
                     .orEmpty()
                 PostCard(
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier.animateItem().feedPostCard(wide),
                     post = post,
                     displayName = displayName,
                     channelName = channelNameFor(post.channelId),
@@ -450,16 +479,16 @@ private fun snapshotFlowShouldLoadMore(
 }
 
 @Composable
-private fun FeedTimelineLoading(modifier: Modifier = Modifier) {
-    FeedWidthContainer(modifier) { columnModifier ->
+private fun FeedTimelineLoading(wide: Boolean, modifier: Modifier = Modifier) {
+    FeedWidthContainer(wide, modifier) { columnModifier ->
         LazyColumn(
             modifier = columnModifier,
-            contentPadding = PaddingValues(vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = feedListPadding(wide),
+            verticalArrangement = Arrangement.spacedBy(feedPostGap(wide)),
             userScrollEnabled = false,
         ) {
             items(FEED_SKELETON_COUNT) {
-                PostSkeleton()
+                PostSkeleton(Modifier.feedPostCard(wide))
             }
         }
     }

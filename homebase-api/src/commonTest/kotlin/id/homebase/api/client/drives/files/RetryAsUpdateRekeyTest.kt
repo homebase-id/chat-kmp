@@ -92,19 +92,20 @@ class RetryAsUpdateRekeyTest {
     }
 
     @Test
-    fun matchingKeysReturnNull_standardPathSuffices() = runTest {
+    fun matchingKeyHeaderOnlyRequestGetsAFreshIvUnderTheSameKey() = runTest {
         val clientKey = KeyHeader.newRandom16()
-        // Same AES key, different IV — the server only compares the key.
-        val serverKey = KeyHeader(
-            iv = ByteArray(16) { 7 },
-            aesKey = clientKey.aesKey,
-        )
+        val serverKey = KeyHeader(iv = clientKey.iv.copyOf(), aesKey = clientKey.aesKey)
         val original = encryptedHeaderOnlyRequest(clientKey)
 
-        assertNull(
+        val rekeyed = assertNotNull(
             rekeyedUpdateForExistingServerFile(original, serverKey, serverVersionTag),
-            "matching keys need no re-key — the standard versionTag stamp is correct",
+            "the server rejects an update that reuses the IV, so a matching key still needs a new IV",
         )
+        val newKeyHeader = assertNotNull(rekeyed.keyHeader)
+        assertEquals(serverKey.aesKey, newKeyHeader.aesKey)
+        assertFalse(newKeyHeader.iv.contentEquals(serverKey.iv), "IV must differ from the one on the server")
+        val decrypted = newKeyHeader.decrypt(Base64.decode(assertNotNull(rekeyed.metadata.appData.content))).decodeToString()
+        assertEquals("hello from the client", decrypted)
     }
 
     @Test

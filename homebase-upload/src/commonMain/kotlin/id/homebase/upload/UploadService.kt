@@ -70,7 +70,7 @@ class UploadService(
         val enqueue = if (spec.replace) {
             outboxSync.replaceEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
         } else {
-            outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
+            outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow, spec.overPeer)
         }
         when (enqueue) {
             is EnqueueResult.Enqueued -> Unit

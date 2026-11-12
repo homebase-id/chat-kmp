@@ -1,9 +1,9 @@
-package id.homebase.core.notifications
+package id.homebase.core.calling
 
 /** Implemented in Swift: reports calls to CallKit so iOS shows the system call UI and owns the audio session. */
 interface CallKitBridge {
     /** False where the OS cannot host a CallKit call: the iOS Simulator has no in-call UI, so callservicesd disconnects an outgoing call about a second after it starts. */
-    val hostsOutgoingCalls: Boolean
+    fun hostsOutgoingCalls(): Boolean
 
     fun reportOutgoing(callId: String, handle: String, video: Boolean)
     fun reportConnected(callId: String)
@@ -39,7 +39,7 @@ interface CallPictureInPictureBridge {
 }
 
 /** Holds the PushKit token until Koin is up (App.init runs before initializeApp, which a pending crash report skips). */
-object VoipTokenRelay {
+class VoipTokenRelay {
     @kotlin.concurrent.Volatile
     private var token: String? = null
 
@@ -57,11 +57,16 @@ object VoipTokenRelay {
     }
 }
 
-object CallKitBridgeHolder {
-    var bridge: CallKitBridge? = null
-    var actions: CallKitActions? = null
-}
+/** What Swift and the call stack share; lives in this module only because Swift sees just the ComposeApp exports. */
+object CallBridges {
+    @kotlin.concurrent.Volatile
+    var callKit: CallKitBridge? = null
 
-object CallPictureInPictureBridgeHolder {
-    var bridge: CallPictureInPictureBridge? = null
+    @kotlin.concurrent.Volatile
+    var callKitActions: CallKitActions? = null
+
+    @kotlin.concurrent.Volatile
+    var pictureInPicture: CallPictureInPictureBridge? = null
+
+    val voipToken = VoipTokenRelay()
 }

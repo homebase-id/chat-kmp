@@ -1,6 +1,5 @@
 package id.homebase.core.feed.services
 
-import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -16,9 +15,7 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.SecurityGroupType
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
@@ -333,7 +330,8 @@ class PostCommentsService(
         val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
         // The app holds Comment only on the channel drive; the feed drive grants Read+Write and is owner-only, so a
         // followed post's comment is uploaded to the channel drive (403 on the feed drive otherwise).
-        val uploadDrive = if (drive == feedDrive) channelDrive else drive
+        val overPeer = drive == feedDrive
+        val uploadDrive = if (overPeer) channelDrive else drive
         val accessControlList = commentAcl(post, isPublic, inheritOwnerOnly = uploadDrive == drive)
         val referencedFile = commentReference(post, replyToCommentId)
 
@@ -382,7 +380,7 @@ class PostCommentsService(
         )
 
         val optimisticFileId = Uuid.random()
-        val payloadDescriptors = if (isEncrypted) {
+        if (isEncrypted) {
             val outcome = uploadService.upload(
                 MediaUploadSpec(
                     driveId = uploadDrive,
@@ -395,59 +393,46 @@ class PostCommentsService(
                     requestFileSystemType = FileSystemType.Comment,
                     writeOptimistic = false,
                     optimisticFileId = optimisticFileId,
+                    overPeer = overPeer,
                 ),
                 scope = scope,
             )
             if (outcome !is UploadOutcome.Enqueued) {
                 error("Failed to enqueue comment for upload (outbox: $outcome)")
             }
-            outcome.payloadDescriptors
-        } else {
-            // Public comment → plaintext payloads, so the request is built directly with no encryptBundle.
-            val request = UploadFileRequest(
-                driveId = uploadDrive,
-                keyHeader = keyHeader,
-                metadata = uploadMetadata,
-                payloads = bundle.payloads,
-                thumbnails = bundle.thumbnails,
-                transitOptions = transit,
-                fileSystemType = FileSystemType.Comment,
-            )
-            val enqueued = outboxSync.tryEnqueue(request)
-            if (!enqueued.enqueued) error("Failed to enqueue comment for upload (outbox: $enqueued)")
-
-            bundle.payloads.map { payload ->
-                PayloadDescriptor(
-                    key = payload.key,
-                    contentType = payload.contentType.ifEmpty { null },
-                    iv = payload.iv?.let { Base64Bytes(it) },
-                    descriptorContent = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
+            try {
+                optimisticWriter.writeNewFile(
+                    driveId = uploadDrive,
+                    keyHeader = keyHeader,
+                    unecryptedMetadata = metadata,
+                    originalRecipientCount = recipients.size,
+                    fileSystemType = FileSystemType.Standard,
+                    payloadDescriptors = outcome.payloadDescriptors,
+                    fileId = optimisticFileId,
                 )
-            }.ifEmpty { null }
-        }
-
-        try {
-            optimisticWriter.writeNewFile(
-                driveId = uploadDrive,
-                keyHeader = keyHeader,
-                unecryptedMetadata = metadata,
-                originalRecipientCount = recipients.size,
-                fileSystemType = FileSystemType.Standard,
-                payloadDescriptors = payloadDescriptors,
-                fileId = optimisticFileId,
-            )
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) {
-                "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) {
+                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
+                }
             }
+        } else {
+            enqueuePlaintextUpload(
+                outboxSync = outboxSync,
+                optimisticWriter = optimisticWriter,
+                request = UploadFileRequest(
+                    driveId = uploadDrive,
+                    keyHeader = keyHeader,
+                    metadata = uploadMetadata,
+                    payloads = bundle.payloads,
+                    thumbnails = bundle.thumbnails,
+                    transitOptions = transit,
+                    fileSystemType = FileSystemType.Comment,
+                ),
+                tag = TAG,
+                optimisticFileId = optimisticFileId,
+                optimisticMetadata = metadata,
+                overPeer = overPeer,
+            )
         }
 
         Logger.d(tag = TAG) {
@@ -482,7 +467,7 @@ class PostCommentsService(
         val isPublic = !post.serverFileIsEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) {
-            KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
+            existing.keyHeader.withNewIv()
         } else {
             KeyHeader.empty()
         }

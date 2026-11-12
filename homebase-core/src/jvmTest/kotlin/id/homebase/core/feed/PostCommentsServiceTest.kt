@@ -365,6 +365,11 @@ class PostCommentsServiceTest {
                 env.outboxRow(feedDrive, commentId),
                 "the feed drive grants no Comment permission, so the server answers 403",
             )
+            assertEquals(
+                DriveOutboxUploader.UploadNewFileOverPeer,
+                env.outboxRow(channelDrive, commentId)?.uploadType,
+                "a comment on someone else's post is written to their drive over peer, not left on ours",
+            )
             val request = readRequest(channelDrive, commentId)
             assertEquals(
                 listOf(author), request.transitOptions?.recipients,
@@ -423,6 +428,11 @@ class PostCommentsServiceTest {
         service().postComment(postId = postId, body = "from samwise", commentUniqueId = commentId)
         advanceUntilIdle()
 
+        assertEquals(
+            DriveOutboxUploader.UploadNewFile,
+            env.outboxRow(channelDrive, commentId)?.uploadType,
+            "a comment on our own post is uploaded to our own drive",
+        )
         val request = readRequest(channelDrive, commentId)
         assertEquals(FileSystemType.Comment, request.fileSystemType)
         assertNull(request.metadata.appData.groupId, "the Comment writer rejects a groupId")
