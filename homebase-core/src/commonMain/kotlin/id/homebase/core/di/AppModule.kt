@@ -1609,6 +1609,7 @@ val appModule = module {
             sharingSetup = get(),
             shareMessages = get(),
             peerSends = get(),
+            developerPreferences = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }
