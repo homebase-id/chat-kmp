@@ -1011,6 +1011,8 @@
     <string name="chat_message_discard_draft">Kassér kladde?</string>
 
     <string name="chat_message_forward_to">Videresend til</string>
+    <string name="chat_send_to">Send til</string>
+    <string name="chat_send_to_sent">Sendt</string>
 
     <!-- Block / Report -->
     <string name="chat_message_block">Blokér</string>

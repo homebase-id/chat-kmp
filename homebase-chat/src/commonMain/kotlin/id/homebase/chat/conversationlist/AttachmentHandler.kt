@@ -21,6 +21,7 @@ import id.homebase.resources.chat_attach_file_failed
 import id.homebase.resources.chat_error_apply_crop
 import id.homebase.resources.chat_error_apply_drawing
 import id.homebase.resources.chat_error_cannot_crop
+import id.homebase.resources.chat_error_send_file_editor_open
 import id.homebase.resources.chat_error_cannot_draw
 import id.homebase.resources.chat_error_open_cropper
 import id.homebase.resources.chat_error_open_draw_editor
@@ -165,19 +166,24 @@ internal class AttachmentHandler(
                         )
                     }
                 }
+                val chatListCapture = action.conversationId == NO_CONVERSATION
                 val conversation = uiState.value.activeConversations.find {
                     it.conversation.id == action.conversationId
                 }
-                if (newFiles.isEmpty() || conversation == null) return@launch
+                if (newFiles.isEmpty() || (conversation == null && !chatListCapture)) return@launch
 
                 val overlay = messagesUiState.value.fullScreenOverlay
+                if (chatListCapture && overlay is FullScreenOverlay.AttachmentData && !overlay.isChatListCapture) {
+                    sendEvent(ShowErrorMessage(MR.string.chat_error_send_file_editor_open, overlay.conversationTitle))
+                    return@launch
+                }
                 val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
                     overlay.copy(
                         attachments = overlay.attachments + newFiles,
                     )
                 } else {
                     FullScreenOverlay.AttachmentData(
-                        conversationTitle = conversation.getDisplayName(),
+                        conversationTitle = conversation?.getDisplayName().orEmpty(),
                         conversationId = action.conversationId,
                         selected = newFiles.last().attachmentId,
                         attachments = newFiles,

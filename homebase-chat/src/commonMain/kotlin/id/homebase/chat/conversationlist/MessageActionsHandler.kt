@@ -71,6 +71,7 @@ import id.homebase.resources.chat_error_shared_content_unreadable
 import id.homebase.resources.chat_error_shared_file_unavailable
 import id.homebase.resources.chat_error_toggle_reaction
 import id.homebase.resources.chat_message_forwarded
+import id.homebase.resources.chat_send_to_sent
 import id.homebase.resources.chat_reactions_limit_reached
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
@@ -686,6 +687,63 @@ internal class MessageActionsHandler(
         }
     }
 
+    fun handleOpenSendTo(action: ConversationListUiAction.OpenSendTo) {
+        val recipients = recipientGroups(uiState.value.activeConversations, contactService.contacts.value)
+        messagesUiState.update {
+            it.copy(sendTo = SendToPicker(action.caption, action.viewOnce, recipients.toPersistentList()))
+        }
+    }
+
+    fun handleSendToSelectRecipient(action: ConversationListUiAction.SendToSelectRecipient) {
+        messagesUiState.update { it.copy(sendTo = it.sendTo?.toggle(action.recipient)) }
+    }
+
+    fun handleCloseSendTo() {
+        messagesUiState.update { it.copy(sendTo = null) }
+    }
+
+    fun handleConfirmSendTo(openConversation: (Uuid) -> Unit) {
+        val state = messagesUiState.value
+        val picker = state.sendTo ?: return
+        val editor = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData ?: return
+        if (picker.selected.isEmpty() || state.isSendingMessage) return
+        messagesUiState.update { it.copy(isSendingMessage = true) }
+        scope.launch {
+            try {
+                val files = editor.attachments.map { f ->
+                    if (f is AttachmentPendingFile.FileVideo) ensureThumbnail(f) else f
+                }
+                val attachments = toAttachmentInputs(files)
+                val targets = picker.selected.map { conversationIdFor(it) }.distinct()
+                val opened = conversationToOpenAfterSend(targets)
+                val sentAt = UnixTimeUtc.now()
+                val text = picker.caption.trimEnd()
+                messagesUiState.update { it.copy(fullScreenOverlay = null, sendTo = null) }
+                opened?.let(openConversation)
+                messagesUiState.sendSharedFilesToTargets(
+                    targets = targets,
+                    visibleConversationId = opened ?: NO_CONVERSATION,
+                    text = if (picker.viewOnce) "" else text,
+                    attachmentCount = attachments.size,
+                    sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
+                ) { messageId, targetId ->
+                    bundleAndSend(messageId, targetId, text, attachments, replyTo = null, sentAt = sentAt, viewOnce = picker.viewOnce)
+                }
+                if (opened == null) sendEvent(ShowInfoMessage(MR.string.chat_send_to_sent))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Logger.e(throwable = e, tag = TAG) { "send to chats failed" }
+                sendEvent(
+                    if (e is SourceUnavailableException) ShowErrorMessage(MR.string.chat_error_attachment_unavailable)
+                    else ShowErrorMessage(MR.string.chat_error_send_files, e.message ?: "")
+                )
+            } finally {
+                messagesUiState.update { it.copy(isSendingMessage = false) }
+            }
+        }
+    }
+
     /** The chat [recipient] stands for; a contact's 1:1 chat is created when it has none. */
     internal suspend fun conversationIdFor(recipient: RecipientModel): Uuid = when (recipient) {
         is RecipientModel.Contact -> conversationService.oneOnOneConversationId(recipient.contact.odinId)
@@ -703,6 +761,78 @@ internal class MessageActionsHandler(
 
     fun handleHideReactionDetails() {
         messagesUiState.update { it.copy(messageReactions = null, isReactionsLoading = false, reactionDetailsMessageId = null) }
+    }
+
+    private suspend fun toAttachmentInputs(resolvedFiles: List<AttachmentPendingFile>): List<AttachmentInput> {
+        val attachments = mutableListOf<AttachmentInput>()
+        resolvedFiles.forEach { attachment ->
+            when (attachment) {
+                is AttachmentPendingFile.File -> {
+                    attachments.add(
+                        AttachmentInput(
+                            filePath = attachment.file.toUploadPath(fileOperationsProvider),
+                            contentType = attachment.sourceContentType
+                                ?: attachment.file.contentType(),
+                            displayName = attachment.file.name,
+                        )
+                    )
+                }
+
+                is AttachmentPendingFile.FileImage -> {
+                    attachments.add(
+                        attachment.file
+                            .toImageAttachmentInput(fileOperationsProvider, attachment.sourceContentType)
+                            .copy(forceSticker = attachment.forceSticker),
+                    )
+                }
+
+                is AttachmentPendingFile.FileVideo -> {
+                    attachments.add(
+                        AttachmentInput(
+                            filePath = attachment.file.toUploadPath(fileOperationsProvider),
+                            contentType = attachment.sourceContentType ?: resolveContentType(
+                                fileName = attachment.sourceFileName ?: attachment.file.name,
+                                platformMimeType = attachment.file.mimeType()?.toString(),
+                            ),
+                            displayName = attachment.sourceFileName ?: attachment.file.name,
+                            trimStartMs = attachment.trimStartMs,
+                            trimEndMs = attachment.trimEndMs,
+                            // Web-only ffmpeg input (blob: object URL); native ffmpeg reads the
+                            // withResolvedFile path. Not revoked here — it also backs the sent
+                            // bubble's local preview; freed on logout/reload.
+                            inputBlobUrl = attachment.playablePath?.takeIf { it.isBlobUrl() },
+                        )
+                    )
+                }
+
+                is AttachmentPendingFile.Gallery -> {
+                    attachments.add(
+                        AttachmentInput(
+                            filePath = attachment.image.file.toUploadPath(fileOperationsProvider),
+                            contentType = resolveContentType(
+                                fileName = attachment.image.fileName,
+                                platformMimeType = attachment.image.file.mimeType()?.toString(),
+                            ),
+                            displayName = attachment.image.fileName,
+                            forceSticker = attachment.forceSticker,
+                        )
+                    )
+                }
+
+                is AttachmentPendingFile.Audio -> {
+                    attachments.add(
+                        AttachmentInput(
+                            filePath = attachment.audioFile.toUploadPath(fileOperationsProvider),
+                            contentType = attachment.audioFile.contentType(),
+                            displayName = attachment.audioFile.name,
+                            waveformFile = attachment.waveformFile?.toUploadPath(fileOperationsProvider),
+                            audioLengthSeconds = attachment.lengthSeconds,
+                        )
+                    )
+                }
+            }
+        }
+        return attachments
     }
 
     /**
@@ -729,74 +859,7 @@ internal class MessageActionsHandler(
             val resolvedFiles = files.map { f ->
                 if (f is AttachmentPendingFile.FileVideo) ensureThumbnail(f) else f
             }
-            val attachments = mutableListOf<AttachmentInput>()
-            resolvedFiles.forEach { attachment ->
-                when (attachment) {
-                    is AttachmentPendingFile.File -> {
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = attachment.file.toUploadPath(fileOperationsProvider),
-                                contentType = attachment.sourceContentType
-                                    ?: attachment.file.contentType(),
-                                displayName = attachment.file.name,
-                            )
-                        )
-                    }
-
-                    is AttachmentPendingFile.FileImage -> {
-                        attachments.add(
-                            attachment.file
-                                .toImageAttachmentInput(fileOperationsProvider, attachment.sourceContentType)
-                                .copy(forceSticker = attachment.forceSticker),
-                        )
-                    }
-
-                    is AttachmentPendingFile.FileVideo -> {
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = attachment.file.toUploadPath(fileOperationsProvider),
-                                contentType = attachment.sourceContentType ?: resolveContentType(
-                                    fileName = attachment.sourceFileName ?: attachment.file.name,
-                                    platformMimeType = attachment.file.mimeType()?.toString(),
-                                ),
-                                displayName = attachment.sourceFileName ?: attachment.file.name,
-                                trimStartMs = attachment.trimStartMs,
-                                trimEndMs = attachment.trimEndMs,
-                                // Web-only ffmpeg input (blob: object URL); native ffmpeg reads the
-                                // withResolvedFile path. Not revoked here — it also backs the sent
-                                // bubble's local preview; freed on logout/reload.
-                                inputBlobUrl = attachment.playablePath?.takeIf { it.isBlobUrl() },
-                            )
-                        )
-                    }
-
-                    is AttachmentPendingFile.Gallery -> {
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = attachment.image.file.toUploadPath(fileOperationsProvider),
-                                contentType = resolveContentType(
-                                    fileName = attachment.image.fileName,
-                                    platformMimeType = attachment.image.file.mimeType()?.toString(),
-                                ),
-                                displayName = attachment.image.fileName,
-                                forceSticker = attachment.forceSticker,
-                            )
-                        )
-                    }
-
-                    is AttachmentPendingFile.Audio -> {
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = attachment.audioFile.toUploadPath(fileOperationsProvider),
-                                contentType = attachment.audioFile.contentType(),
-                                displayName = attachment.audioFile.name,
-                                waveformFile = attachment.waveformFile?.toUploadPath(fileOperationsProvider),
-                                audioLengthSeconds = attachment.lengthSeconds,
-                            )
-                        )
-                    }
-                }
-            }
+            val attachments = toAttachmentInputs(resolvedFiles)
 
             val newMessageId = Uuid.random()
             Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
