@@ -48,6 +48,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.isChatListCapture
 import id.homebase.chat.conversationlist.resolveAnchorMessageId
 import id.homebase.chat.services.PaginatedConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
@@ -343,109 +344,25 @@ fun ConversationMessagesPane(
                     }
 
                     is FullScreenOverlay.AttachmentData -> {
-                        var captionEmojiPickerOpen by remember { mutableStateOf(false) }
-                        val viewOnceState = rememberViewOnceComposerState()
-                        val viewOnceEligible = isViewOnceEligible(data.attachments)
-                        LaunchedEffect(viewOnceEligible) { viewOnceState.onEligibilityChanged(viewOnceEligible) }
-                        val viewOnce = viewOnceState.requested && viewOnceEligible
-                        val viewOnceIsVideo = data.attachments.singleOrNull() is AttachmentPendingFile.FileVideo
-                        MediaAttachmentEditor(
-                            attachments = data.attachments,
-                            currentPage = currentGalleryPage,
-                            revealed = transition.currentState == EnterExitState.Visible,
-                            onContentShown = cameraLauncher::resultShown,
-                            onPageChanged = { currentGalleryPage = it },
-                            onSaveFile = { onUiAction(SaveFile(it)) },
-                            mediaQuality = uiState.mediaQuality,
-                            onSetMediaQuality = {
-                                onUiAction(
-                                    id.homebase.chat.conversationlist.ConversationListUiAction
-                                        .SetMediaQuality(it)
-                                )
-                            },
-                            centerImageInPage = true,
-                            addMoreEnabled = !viewOnce,
-                            onAddFile = { fileLauncher.launch() },
-                            onAddImage = { galleryLauncher.launch() },
-                            onCameraClick = { cameraLauncher.launch() },
-                            onRemoveFile = { attachmentId ->
-                                onUiAction(UnAttachFile(data.conversationId, attachmentId))
-                            },
-                            onDismiss = { onUiAction(CloseFullScreenOverlay) },
-                            onCropImage = { attachmentId ->
-                                onUiAction(
-                                    id.homebase.chat.conversationlist.ConversationListUiAction.RequestCropAttachment(
-                                        data.conversationId, attachmentId,
-                                    )
-                                )
-                            },
-                            onDrawImage = { attachmentId ->
-                                onUiAction(
-                                    id.homebase.chat.conversationlist.ConversationListUiAction.RequestDrawAttachment(
-                                        data.conversationId, attachmentId,
-                                    )
-                                )
-                            },
-                            onTrimChange = { attachmentId, startMs, endMs ->
-                                onUiAction(
-                                    id.homebase.chat.conversationlist.ConversationListUiAction.ApplyTrimResult(
-                                        data.conversationId, attachmentId, startMs, endMs,
-                                    )
-                                )
-                            },
-                            aboveStripOverlay = {
-                                ViewOnceToast(message = viewOnceState.toast, modifier = Modifier.align(Alignment.BottomCenter))
-                            },
-                            pagerTopEndSlot = {
-                                Row(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(16.dp)
-                                        .fillMaxWidth(0.6f)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowForward,
-                                        contentDescription = stringResource(MR.string.cd_send_to, data.conversationTitle),
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = data.conversationTitle,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    )
-                                }
-                            },
-                            collapseSecondaryChrome = captionEmojiPickerOpen,
-                            bottomBar = {
-                                MessageTextFieldForAttachment(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    state = textFieldState,
-                                    onSendMessage = {
-                                        onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments, viewOnce))
-                                    },
-                                    viewOnceToggle = remember(data.attachments, viewOnce, viewOnceState, viewOnceIsVideo, viewOnceEligible) {
-                                        viewOnceToggleFor(data.attachments, viewOnce) {
-                                            viewOnceState.toggle(viewOnceIsVideo, viewOnceEligible)
-                                        }
-                                    },
-                                    onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
-                                    onPasteImage = { imageBytes ->
-                                        onUiAction(
-                                            id.homebase.chat.conversationlist.ConversationListUiAction.AttachClipboardImage(
-                                                data.conversationId, imageBytes,
-                                            )
-                                        )
-                                    },
-                                )
-                            },
-                        )
-                        if (viewOnceState.showIntro) {
-                            ViewOnceIntroSheet(isVideo = viewOnceIsVideo, onDismiss = viewOnceState::dismissIntro)
+                        if (data.isChatListCapture) {
+                            Spacer(modifier = Modifier.fillMaxSize())
+                        } else {
+                            AttachmentEditorHost(
+                                data = data,
+                                mediaQuality = uiState.mediaQuality,
+                                textFieldState = textFieldState,
+                                revealed = transition.currentState == EnterExitState.Visible,
+                                currentPage = currentGalleryPage,
+                                onPageChanged = { currentGalleryPage = it },
+                                onAddFile = { fileLauncher.launch() },
+                                onAddImage = { galleryLauncher.launch() },
+                                onCameraClick = { cameraLauncher.launch() },
+                                onContentShown = cameraLauncher::resultShown,
+                                onUiAction = onUiAction,
+                                onSend = { caption, viewOnce ->
+                                    onUiAction(SendFile(data.conversationId, caption, data.attachments, viewOnce))
+                                },
+                            )
                         }
                     }
                 }
