@@ -6,7 +6,6 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
-import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.util.isBlobUrl
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.contactcard.SharedVCardDetector
@@ -772,27 +771,13 @@ internal class MessageActionsHandler(
                     }
 
                     is AttachmentPendingFile.Gallery -> {
-                        var filePath = attachment.image.file.toUploadPath(fileOperationsProvider)
-                        var contentType = resolveContentType(
-                            fileName = attachment.image.fileName,
-                            platformMimeType = attachment.image.file.mimeType()?.toString(),
-                        )
-                        if (contentType == "image/heic" || contentType == "image/heif") {
-                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
-                            val jpegBytes = convertHeicToJpeg(heicBytes)
-                            if (jpegBytes != null) {
-                                filePath = fileOperationsProvider.writeBytesToTempFile(
-                                    jpegBytes,
-                                    "heic_converted_",
-                                    ".jpg"
-                                )
-                                contentType = "image/jpeg"
-                            }
-                        }
                         attachments.add(
                             AttachmentInput(
-                                filePath = filePath,
-                                contentType = contentType,
+                                filePath = attachment.image.file.toUploadPath(fileOperationsProvider),
+                                contentType = resolveContentType(
+                                    fileName = attachment.image.fileName,
+                                    platformMimeType = attachment.image.file.mimeType()?.toString(),
+                                ),
                                 displayName = attachment.image.fileName,
                                 forceSticker = attachment.forceSticker,
                             )
