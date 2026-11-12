@@ -14,7 +14,7 @@ actual fun getSystemLocale(): String {
 
 actual fun setPlatformSystemLocale(languageCode: String) {
     val locale = when (languageCode) {
-        "system" -> startupLocale
+        Language.SYSTEM.code -> startupLocale
         else -> Locale.forLanguageTag(languageCode)
     }
     Locale.setDefault(locale)
