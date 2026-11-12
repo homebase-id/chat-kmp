@@ -1,6 +1,6 @@
 package id.homebase.chat.services.calling
 
-import id.homebase.core.notifications.CallKitBridge
+import id.homebase.core.calling.CallKitBridge
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 

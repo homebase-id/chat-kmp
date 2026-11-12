@@ -485,7 +485,9 @@ val appModule = module {
             engineFactory = platformCallEngineFactory().takeIf { get<CallsPreferences>().enabled.value },
             stunUrls = get(),
             scope = get(),
-            onCallActiveChanged = { get<AuthConnectionCoordinator>().setCallActive(it) },
+            onCallActiveChanged = { active ->
+                get<AuthConnectionCoordinator>().run { if (active) holdWebSocket(CALL_WS_HOLD) else releaseWebSocket(CALL_WS_HOLD) }
+            },
             recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
         )
     }
@@ -1757,3 +1759,4 @@ private fun Scope.photoBackupController(): PhotoBackupController {
 }
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds
+private const val CALL_WS_HOLD = "call"

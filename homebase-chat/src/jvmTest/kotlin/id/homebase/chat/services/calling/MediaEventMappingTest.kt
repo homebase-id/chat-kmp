@@ -45,7 +45,7 @@ private class PeerBackedEngine(private val peer: FakePeerConnection, private val
     override fun setVideo(on: Boolean) = Unit
     override fun switchCamera() = Unit
     override fun setAudioRoute(route: AudioRoute) = Unit
-    override fun close() { peer.closed = true }
+    override suspend fun close() { peer.closed = true }
 }
 
 class MediaEventMappingTest {
