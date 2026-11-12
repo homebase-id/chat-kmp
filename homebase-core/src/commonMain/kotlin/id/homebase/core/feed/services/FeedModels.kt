@@ -154,7 +154,7 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         versionTag = fileMetadata.versionTag,
         ownReactions = ownReactions,
         commentCount = fileMetadata.reactionPreview?.totalCommentCount ?: 0,
-        isEncrypted = fileMetadata.isEncrypted,
+        isEncrypted = serverFileIsEncrypted,
         acl = serverMetadata.accessControlList,
     )
 }
