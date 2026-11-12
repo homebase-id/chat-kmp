@@ -328,13 +328,7 @@ class PostCommentsService(
         val isPublic = !post.serverFileIsEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
-        val accessControlList = AccessControlList(
-            requiredSecurityGroup = if (isPublic) {
-                SecurityGroupType.Anonymous.value
-            } else {
-                SecurityGroupType.AutoConnected.value
-            },
-        )
+        val accessControlList = commentAcl(post, isPublic)
 
         val attachments = listOfNotNull(attachment)
         // Encryption preserves payload keys and passes preview thumbs through, so both paths derive them here.
@@ -472,13 +466,7 @@ class PostCommentsService(
         } else {
             KeyHeader.empty()
         }
-        val accessControlList = AccessControlList(
-            requiredSecurityGroup = if (isPublic) {
-                SecurityGroupType.Anonymous.value
-            } else {
-                SecurityGroupType.AutoConnected.value
-            },
-        )
+        val accessControlList = commentAcl(post, isPublic)
 
         val content = OdinSystemSerializer.serialize(
             PostCommentContent(
@@ -565,6 +553,18 @@ class PostCommentsService(
         }
         return null
     }
+
+    // An owner-only drive rejects any file whose ACL is not Owner, whatever the post's encryption flag says.
+    // Only a synced post (versionTag set) carries the server's ACL; an optimistic row defaults to Owner.
+    private fun commentAcl(post: HomebaseFile, isPublic: Boolean) = AccessControlList(
+        requiredSecurityGroup = when {
+            post.fileMetadata.versionTag != null &&
+                post.serverMetadata.accessControlList?.requiredSecurityGroup
+                    .equals(SecurityGroupType.Owner.value, ignoreCase = true) -> SecurityGroupType.Owner.value
+            isPublic -> SecurityGroupType.Anonymous.value
+            else -> SecurityGroupType.AutoConnected.value
+        },
+    )
 
     private suspend fun findPostLocally(postId: Uuid): Pair<Uuid, HomebaseFile>? {
         for (drive in sourceDrives) {

@@ -2,6 +2,7 @@ package id.homebase.core.feed
 
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
@@ -131,7 +132,11 @@ class PostCommentsMutationTest {
     }
 
     // Sync stores the decrypted header: fileMetadata.isEncrypted is false, only serverFileIsEncrypted keeps the truth.
-    private suspend fun seedSyncedPost(postId: Uuid, serverEncrypted: Boolean) {
+    private suspend fun seedSyncedPost(
+        postId: Uuid,
+        serverEncrypted: Boolean,
+        acl: AccessControlList? = null,
+    ) {
         val file = HomebaseFile(
             fileId = Uuid.random(),
             driveId = channelDrive,
@@ -151,7 +156,7 @@ class PostCommentsMutationTest {
                     content = postContent(postId),
                 ),
             ),
-            serverMetadata = ServerMetadata(),
+            serverMetadata = ServerMetadata(accessControlList = acl),
         )
         upsertSynced(file)
     }
@@ -239,6 +244,26 @@ class PostCommentsMutationTest {
             seen.add(row)
         }
         return seen
+    }
+
+    @Test
+    fun postComment_onOwnerOnlyPost_usesOwnerAcl() = runFeedTest {
+        val postId = Uuid.random()
+        seedSyncedPost(
+            postId,
+            serverEncrypted = false,
+            acl = AccessControlList(requiredSecurityGroup = "owner"),
+        )
+        advanceUntilIdle()
+
+        val commentId = Uuid.random()
+        service().postComment(postId = postId, body = "hi", commentUniqueId = commentId)
+        advanceUntilIdle()
+
+        val row = env.outboxRow(channelDrive, commentId) ?: error("no outbox row")
+        val acl = OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
+            .metadata.accessControlList
+        assertEquals(SecurityGroupType.Owner.value, acl?.requiredSecurityGroup)
     }
 
     @Test
