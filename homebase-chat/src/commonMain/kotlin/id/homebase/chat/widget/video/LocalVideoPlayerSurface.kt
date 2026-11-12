@@ -21,6 +21,10 @@ expect fun LocalVideoPlayerSurface(
  * player seeks whenever this value changes; pass a fresh value or null).
  *
  * No on-screen playback controls — the trim screen draws its own.
+ *
+ * [onFirstFrameRendered] fires once per [filePath] when the first frame is on screen. A missing or
+ * unreadable [filePath] renders nothing and never throws. [hideWhenPaused] hides the video while
+ * [isPlaying] is false; only web honours it today, the other targets ignore it.
  */
 @Composable
 expect fun TrimmableVideoPlayerSurface(
