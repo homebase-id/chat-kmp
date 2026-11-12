@@ -501,7 +501,7 @@ fun ConversationListPane(
                         if (!usesPointerUx()) {
                             var cameraFabBounds by remember { mutableStateOf<Rect?>(null) }
                             SquishFab(
-                                onClick = { cameraFabBounds?.let(capture.openCameraFrom) ?: capture.openCamera() },
+                                onClick = { cameraFabBounds?.let(capture.openCameraFrom) },
                                 small = true,
                                 modifier = Modifier
                                     .animateFloatingActionButton(visible = fabsVisible, alignment = Alignment.BottomEnd)

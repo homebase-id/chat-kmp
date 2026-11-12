@@ -119,6 +119,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.camera.CameraModes
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
@@ -230,20 +231,23 @@ private fun ChatListCaptureFlow(
                 alpha = 1f - 0.6f * r.coerceIn(0f, 1f)
             },
         ) {
-            AttachmentEditorHost(
-                data = editor,
-                mediaQuality = messagesUiState.mediaQuality,
-                textFieldState = caption,
-                revealed = true,
-                currentPage = page,
-                onPageChanged = { page = it },
-                onAddFile = capture.addFile,
-                onAddImage = capture.addImages,
-                onCameraClick = capture.openCamera,
-                onContentShown = capture.cameraResultShown,
-                onUiAction = onUiAction,
-                onSend = { text, viewOnce -> onUiAction(ConversationListUiAction.OpenSendTo(text, viewOnce)) },
-            )
+            // Dark like the camera it follows.
+            HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
+                AttachmentEditorHost(
+                    data = editor,
+                    mediaQuality = messagesUiState.mediaQuality,
+                    textFieldState = caption,
+                    revealed = true,
+                    currentPage = page,
+                    onPageChanged = { page = it },
+                    onAddFile = capture.addFile,
+                    onAddImage = capture.addImages,
+                    onCameraClick = capture.openCamera,
+                    onContentShown = capture.cameraResultShown,
+                    onUiAction = onUiAction,
+                    onSend = { text, viewOnce -> onUiAction(ConversationListUiAction.OpenSendTo(text, viewOnce)) },
+                )
+            }
         }
         AnimatedContent(
             targetState = messagesUiState.sendTo,
