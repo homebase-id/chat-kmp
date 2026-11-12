@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -95,6 +96,8 @@ import id.homebase.resources.dev_menu_crash_confirm_title
 import id.homebase.resources.dev_menu_force_sync
 import id.homebase.resources.dev_menu_photobase
 import id.homebase.resources.dev_menu_photobase_desc
+import id.homebase.resources.dev_menu_filesync_sync_shared
+import id.homebase.resources.dev_menu_filesync_sync_shared_desc
 import id.homebase.resources.dev_menu_profile_card
 import id.homebase.resources.dev_menu_profile_card_desc
 import id.homebase.resources.dev_menu_network_captive_portal
@@ -309,6 +312,18 @@ fun DeveloperMenuUi(
                     checked = uiState.photobaseEnabled,
                     onCheckedChange = {
                         onAction(DeveloperMenuUiAction.SetPhotobaseEnabled(it))
+                    },
+                ),
+            )
+
+            SettingsRow(
+                icon = Icons.Outlined.Computer,
+                title = stringResource(MR.string.dev_menu_filesync_sync_shared),
+                supportingText = stringResource(MR.string.dev_menu_filesync_sync_shared_desc),
+                action = SettingsRowAction.Toggle(
+                    checked = uiState.filesyncSyncSharedEnabled,
+                    onCheckedChange = {
+                        onAction(DeveloperMenuUiAction.SetFilesyncSyncSharedEnabled(it))
                     },
                 ),
             )

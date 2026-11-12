@@ -2,6 +2,7 @@ package id.homebase.core.feed
 
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
@@ -92,17 +93,27 @@ class PostCommentsMutationTest {
     private fun keyHeader(fill: Byte = 1) =
         KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16) { fill }))
 
-    private suspend fun seedPost(postId: Uuid, encrypted: Boolean = false) {
-        val content = OdinSystemSerializer.serialize(
-            PostContent(
-                version = FeedProtocol.PostVersion,
-                id = postId.toString(),
-                channelId = channelDrive.toString(),
-                type = PostType.Tweet,
-                caption = "host post",
-                slug = "host-post",
-            )
+    private fun postContent(postId: Uuid) = OdinSystemSerializer.serialize(
+        PostContent(
+            version = FeedProtocol.PostVersion,
+            id = postId.toString(),
+            channelId = channelDrive.toString(),
+            type = PostType.Tweet,
+            caption = "host post",
+            slug = "host-post",
         )
+    )
+
+    private suspend fun upsertSynced(file: HomebaseFile) {
+        MainIndexMetaHelpers.HomebaseFileProcessor(env.databaseManager).baseUpsertEntryZapZap(
+            identityId = env.credentialsManager.requireActiveCredentials().getIdentityId(),
+            driveId = channelDrive,
+            fileHeaders = listOf(file),
+            cursor = null,
+        )
+    }
+
+    private suspend fun seedPost(postId: Uuid, encrypted: Boolean = false) {
         env.optimisticWriter.writeNewFile(
             driveId = channelDrive,
             keyHeader = keyHeader(),
@@ -112,12 +123,42 @@ class PostCommentsMutationTest {
                 appData = UploadAppFileMetaData(
                     uniqueId = postId,
                     fileType = FeedProtocol.PostFileType,
-                    content = content,
+                    content = postContent(postId),
                 ),
             ),
             originalRecipientCount = 0,
             fileSystemType = FileSystemType.Standard,
         )
+    }
+
+    // Sync stores the decrypted header: fileMetadata.isEncrypted is false, only serverFileIsEncrypted keeps the truth.
+    private suspend fun seedSyncedPost(
+        postId: Uuid,
+        serverEncrypted: Boolean,
+        acl: AccessControlList? = null,
+    ) {
+        val file = HomebaseFile(
+            fileId = Uuid.random(),
+            driveId = channelDrive,
+            serverFileIsEncrypted = serverEncrypted,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            keyHeader = keyHeader(),
+            fileMetadata = FileMetadata(
+                created = UnixTimeUtc(1_000),
+                updated = UnixTimeUtc(1_000),
+                isEncrypted = false,
+                versionTag = Uuid.random(),
+                appData = AppFileMetaData(
+                    uniqueId = postId,
+                    fileType = FeedProtocol.PostFileType,
+                    userDate = 1_000,
+                    content = postContent(postId),
+                ),
+            ),
+            serverMetadata = ServerMetadata(accessControlList = acl),
+        )
+        upsertSynced(file)
     }
 
     // updateComment requires a server-assigned versionTag, which an optimistic local write never
@@ -153,12 +194,7 @@ class PostCommentsMutationTest {
             ),
             serverMetadata = ServerMetadata(),
         )
-        MainIndexMetaHelpers.HomebaseFileProcessor(env.databaseManager).baseUpsertEntryZapZap(
-            identityId = env.credentialsManager.requireActiveCredentials().getIdentityId(),
-            driveId = channelDrive,
-            fileHeaders = listOf(file),
-            cursor = null,
-        )
+        upsertSynced(file)
         return file
     }
 
@@ -208,6 +244,26 @@ class PostCommentsMutationTest {
             seen.add(row)
         }
         return seen
+    }
+
+    @Test
+    fun postComment_onOwnerOnlyPost_usesOwnerAcl() = runFeedTest {
+        val postId = Uuid.random()
+        seedSyncedPost(
+            postId,
+            serverEncrypted = false,
+            acl = AccessControlList(requiredSecurityGroup = "owner"),
+        )
+        advanceUntilIdle()
+
+        val commentId = Uuid.random()
+        service().postComment(postId = postId, body = "hi", commentUniqueId = commentId)
+        advanceUntilIdle()
+
+        val row = env.outboxRow(channelDrive, commentId) ?: error("no outbox row")
+        val acl = OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
+            .metadata.accessControlList
+        assertEquals(SecurityGroupType.Owner.value, acl?.requiredSecurityGroup)
     }
 
     @Test
@@ -264,6 +320,46 @@ class PostCommentsMutationTest {
             request.metadata.appData.content.orEmpty().contains("after"),
             "the edited body must be ciphertext on the wire",
         )
+    }
+
+    @Test
+    fun postComment_onSyncedEncryptedPost_isEncryptedWithAutoConnectedAcl() = runFeedTest {
+        val postId = Uuid.random()
+        val commentId = Uuid.random()
+        seedSyncedPost(postId, serverEncrypted = true)
+        advanceUntilIdle()
+
+        service().postComment(postId = postId, body = "secret", commentUniqueId = commentId)
+        advanceUntilIdle()
+
+        val row = env.outboxRow(channelDrive, commentId) ?: error("no outbox row")
+        val request = OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
+        assertTrue(request.metadata.isEncrypted, "a comment on an encrypted post must be encrypted")
+        assertEquals(
+            SecurityGroupType.AutoConnected.value,
+            request.metadata.accessControlList?.requiredSecurityGroup,
+        )
+        assertFalse(request.metadata.appData.content.orEmpty().contains("secret"))
+    }
+
+    @Test
+    fun updateComment_onSyncedEncryptedPost_staysEncrypted() = runFeedTest {
+        val postId = Uuid.random()
+        val commentId = Uuid.random()
+        val versionTag = Uuid.random()
+        seedSyncedPost(postId, serverEncrypted = true)
+        seedSyncedComment(
+            commentId, groupId = postId, body = "before", versionTag = versionTag,
+            isEncrypted = true,
+        )
+        advanceUntilIdle()
+
+        service().updateComment(commentId, versionTag, "after")
+        advanceUntilIdle()
+
+        val request = updateRequest(commentId)
+        assertTrue(request.metadata.isEncrypted)
+        assertFalse(request.metadata.appData.content.orEmpty().contains("after"))
     }
 
     @Test

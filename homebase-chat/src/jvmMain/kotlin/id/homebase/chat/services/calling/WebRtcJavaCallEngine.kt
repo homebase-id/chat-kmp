@@ -6,7 +6,6 @@ import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver
 import dev.onvoid.webrtc.PeerConnectionFactory
-import dev.onvoid.webrtc.PeerConnectionObserver
 import dev.onvoid.webrtc.RTCAnswerOptions
 import dev.onvoid.webrtc.RTCConfiguration
 import dev.onvoid.webrtc.RTCDataChannel
@@ -18,14 +17,12 @@ import dev.onvoid.webrtc.RTCIceCandidate
 import dev.onvoid.webrtc.RTCIceServer
 import dev.onvoid.webrtc.RTCOfferOptions
 import dev.onvoid.webrtc.RTCPeerConnection
-import dev.onvoid.webrtc.RTCPeerConnectionState
 import dev.onvoid.webrtc.RTCRtpSender
 import dev.onvoid.webrtc.RTCRtpTransceiver
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection
 import dev.onvoid.webrtc.RTCRtpTransceiverInit
 import dev.onvoid.webrtc.RTCSdpType
 import dev.onvoid.webrtc.RTCSessionDescription
-import dev.onvoid.webrtc.SetSessionDescriptionObserver
 import dev.onvoid.webrtc.logging.LogSink
 import dev.onvoid.webrtc.logging.Logging
 import dev.onvoid.webrtc.media.Device
@@ -51,8 +48,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.concurrent.timerTask
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -131,8 +126,8 @@ class WebRtcJavaCallEngine(
     internal var unregisterDeviceListener: (DeviceChangeListener) -> Unit = MediaDevices::removeDeviceChangeListener
     private val refreshQueued = AtomicBoolean(false)
     private val deviceListener = object : DeviceChangeListener {
-        override fun deviceConnected(device: Device) = refreshDevices()
-        override fun deviceDisconnected(device: Device) = refreshDevices()
+        override fun deviceConnected(device: Device) = guardNative("deviceConnected", {}) { refreshDevices() }
+        override fun deviceDisconnected(device: Device) = guardNative("deviceDisconnected", {}) { refreshDevices() }
     }
 
     private val devices = ManagedCallMediaDevices(
@@ -149,38 +144,13 @@ class WebRtcJavaCallEngine(
             // Every URL as given by the device's own server; nothing is derived or added.
             if (stunUrls.isNotEmpty()) iceServers = listOf(RTCIceServer().apply { urls = stunUrls })
         },
-        object : PeerConnectionObserver {
-            override fun onIceCandidate(candidate: RTCIceCandidate) {
-                if (!closed) mapper.localIce(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)
-            }
-
-            override fun onConnectionChange(state: RTCPeerConnectionState) {
-                live = state == RTCPeerConnectionState.CONNECTED
-                if (!closed) mapper.linkState(state.toLinkState())
-            }
-
-            override fun onTrack(transceiver: RTCRtpTransceiver) {
-                val received = transceiver.receiver.track
-                if (received is AudioTrack) {
-                    val sink = remoteAudioSink ?: return
-                    synchronized(remoteLock) {
-                        if (closed) return
-                        received.addSink(sink)
-                        remoteAudio = received
-                    }
-                    return
-                }
-                if (!renderVideo) return
-                val track = received as? VideoTrack ?: return
-                synchronized(remoteLock) {
-                    if (closed) return
-                    val handle = JvmVideoHandle().also { remoteFrames = it }
-                    track.addSink(handle.sink)
-                    remoteTrack = track
-                    _remote.value = handle
-                }
-            }
-        },
+        GuardedPeerObserver(
+            mapper = mapper,
+            isClosed = { closed },
+            setLive = { live = it },
+            track = ::handleTrack,
+            onError = ::failCall,
+        ),
     ) ?: error("webrtc-java returned no peer connection")
 
     // Declared before statsTimer: the init below can outlast STATS_PERIOD_MS, and the first tick reads it.
@@ -337,13 +307,30 @@ class WebRtcJavaCallEngine(
         }
     }
 
-    private fun RTCPeerConnectionState.toLinkState() = when (this) {
-        RTCPeerConnectionState.NEW -> PeerLinkState.New
-        RTCPeerConnectionState.CONNECTING -> PeerLinkState.Connecting
-        RTCPeerConnectionState.CONNECTED -> PeerLinkState.Connected
-        RTCPeerConnectionState.DISCONNECTED -> PeerLinkState.Disconnected
-        RTCPeerConnectionState.FAILED -> PeerLinkState.Failed
-        RTCPeerConnectionState.CLOSED -> PeerLinkState.Closed
+    private fun failCall(t: Throwable) {
+        if (!closed) _events.trySend(MediaEvent.Failed(FailReason.Other))
+    }
+
+    private fun handleTrack(transceiver: RTCRtpTransceiver) {
+        val received = transceiver.receiver.track
+        if (received is AudioTrack) {
+            val sink = remoteAudioSink ?: return
+            synchronized(remoteLock) {
+                if (closed) return
+                received.addSink(sink)
+                remoteAudio = received
+            }
+            return
+        }
+        if (!renderVideo) return
+        val track = received as? VideoTrack ?: return
+        synchronized(remoteLock) {
+            if (closed) return
+            val handle = JvmVideoHandle().also { remoteFrames = it }
+            track.addSink(handle.sink)
+            remoteTrack = track
+            _remote.value = handle
+        }
     }
 
     internal fun isAudioEnabled(): Boolean = audioTrack?.isEnabled == true
@@ -380,7 +367,7 @@ class WebRtcJavaCallEngine(
         channel.registerObserver(object : RTCDataChannelObserver {
             override fun onBufferedAmountChange(previousAmount: Long) = Unit
 
-            override fun onStateChange() {
+            override fun onStateChange() = guardNative("onStateChange", {}) {
                 when (channel.state) {
                     RTCDataChannelState.OPEN -> mediaStateTimer.schedule(timerTask { mediaState.opened(::sendState) }, 0)
                     RTCDataChannelState.CLOSING, RTCDataChannelState.CLOSED -> mediaState.closed()
@@ -388,7 +375,7 @@ class WebRtcJavaCallEngine(
                 }
             }
 
-            override fun onMessage(buffer: RTCDataChannelBuffer) {
+            override fun onMessage(buffer: RTCDataChannelBuffer) = guardNative("onMessage", {}) {
                 val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
                 mediaState.received(bytes)
             }
@@ -505,10 +492,7 @@ class WebRtcJavaCallEngine(
     private suspend fun createLocal(create: (CreateSessionDescriptionObserver) -> Unit): String {
         checkOpen()
         val description = suspendCancellableCoroutine { cont ->
-            create(object : CreateSessionDescriptionObserver {
-                override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
-                override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
-            })
+            create(GuardedCreateObserver(cont, ::failCall))
         }
         setLocal(description)
         return description.sdp
@@ -516,17 +500,12 @@ class WebRtcJavaCallEngine(
 
     private suspend fun setLocal(description: RTCSessionDescription) = suspendCancellableCoroutine { cont ->
         checkOpen()
-        peer.setLocalDescription(description, setObserver(cont))
+        peer.setLocalDescription(description, GuardedSetObserver(cont, ::failCall))
     }
 
     private suspend fun setRemote(description: RTCSessionDescription) = suspendCancellableCoroutine { cont ->
         checkOpen()
-        peer.setRemoteDescription(description, setObserver(cont))
-    }
-
-    private fun setObserver(cont: kotlinx.coroutines.CancellableContinuation<Unit>) = object : SetSessionDescriptionObserver {
-        override fun onSuccess() = cont.resume(Unit)
-        override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
+        peer.setRemoteDescription(description, GuardedSetObserver(cont, ::failCall))
     }
 
     override fun setMuted(muted: Boolean) {

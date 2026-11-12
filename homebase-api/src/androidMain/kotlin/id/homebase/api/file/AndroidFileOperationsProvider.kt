@@ -16,9 +16,9 @@ class AndroidFileOperationsProvider(
     val context: Context,
 ) : OkioFileOperationsProvider(FileSystem.SYSTEM, context.cacheDir.absolutePath) {
 
-    private fun isContentUri(path: String) = path.startsWith("content:")
+    internal fun isContentUri(path: String) = path.startsWith("content:")
 
-    private fun openContentStream(path: String) =
+    internal fun openContentStream(path: String) =
         context.contentResolver.openInputStream(path.toUri())
             ?: throw IllegalArgumentException("Unable to open content URI: $path")
 

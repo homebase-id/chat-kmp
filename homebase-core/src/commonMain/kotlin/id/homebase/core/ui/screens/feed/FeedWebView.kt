@@ -75,3 +75,6 @@ expect fun PlatformFeedWebView(
     webView: FeedWebView,
     modifier: Modifier,
 )
+
+/** False where [PlatformFeedWebView] cannot render a page (wasmJs); callers open the browser instead. */
+expect val FeedWebViewAvailable: Boolean

@@ -41,7 +41,7 @@ class PendingUpgradeManager(
     private val _state = MutableStateFlow<PendingUpgradeState>(PendingUpgradeState.None)
     val state: StateFlow<PendingUpgradeState> = _state.asStateFlow()
 
-    private var dialogDismissedThisSession: Boolean = false
+    private var dialogLogged = false
     private var epoch = 0L
 
     suspend fun checkUpgrade() {
@@ -60,7 +60,6 @@ class PendingUpgradeManager(
         Logger.d(tag = TAG) { "onUpgradeCheckResult(status=$status)" }
         if (status == UpgradeStatus.NONE) {
             SharedPreferences.remove(KEY_FIRST_SEEN_MS)
-            dialogDismissedThisSession = false
             _state.value = PendingUpgradeState.None
             return
         }
@@ -78,12 +77,6 @@ class PendingUpgradeManager(
             Logger.d(tag = TAG) { "First upgrade detection recorded at $firstSeenMs" }
         }
 
-        if (dialogDismissedThisSession) {
-            Logger.d(tag = TAG) { "Dialog dismissed this session — suppressing" }
-            _state.value = PendingUpgradeState.None
-            return
-        }
-
         val domain = credentialsManager.getActiveDomain()
         if (domain == null) {
             Logger.w(tag = TAG) { "No active credentials — cannot build upgrade URL" }
@@ -98,6 +91,10 @@ class PendingUpgradeManager(
         val nextEpoch = ++epoch
         _state.value = if (nowMs - firstSeenMs >= ESCALATION_THRESHOLD_MS) {
             Logger.i(tag = TAG) { "Upgrade pending for $elapsedDays days — escalating to dialog" }
+            if (!dialogLogged) {
+                dialogLogged = true
+                Logger.i(tag = TAG) { "upgrade dialog shown (not dismissable)" }
+            }
             PendingUpgradeState.ShowDialog(upgradeUrl, nextEpoch)
         } else {
             Logger.d(tag = TAG) { "Upgrade pending for $elapsedDays days — showing snackbar" }
@@ -105,15 +102,9 @@ class PendingUpgradeManager(
         }
     }
 
-    fun dismissDialog() {
-        dialogDismissedThisSession = true
-        _state.value = PendingUpgradeState.None
-    }
-
     fun reset() {
         Logger.d(tag = TAG) { "Resetting upgrade state (logout)" }
         SharedPreferences.remove(KEY_FIRST_SEEN_MS)
-        dialogDismissedThisSession = false
         _state.value = PendingUpgradeState.None
     }
 

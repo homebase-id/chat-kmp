@@ -62,7 +62,11 @@ sealed interface FileDropPreview {
     data object Rejected : FileDropPreview
 }
 
-// Desktop and web; Android and iOS have no external file-drag source and return Modifier unchanged.
+/**
+ * Makes the node accept files dragged in from outside the app while [enabled]. [onDragPreviewChanged] gets a preview
+ * while a drag hovers and null when it leaves or ends; [onFilesDropped] gets the dropped files once, folders excluded.
+ * Desktop and web only; Android and iOS have no external file-drag source and return the modifier unchanged.
+ */
 @Composable
 expect fun Modifier.fileDropTarget(
     enabled: Boolean,

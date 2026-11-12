@@ -53,4 +53,4 @@ private fun timeval.toMillis(): Long = tv_sec * 1_000L + tv_usec / 1_000L
 @OptIn(DelicateCoroutinesApi::class)
 internal actual fun createWatchdogDispatcher(): CoroutineDispatcher = newSingleThreadContext("MainThreadWatchdog")
 
-internal actual fun currentThreadName(): String = NSThread.currentThread.name ?: "unnamed"
+internal actual fun currentThreadName(): String = NSThread.currentThread.name?.ifBlank { null } ?: "unnamed"

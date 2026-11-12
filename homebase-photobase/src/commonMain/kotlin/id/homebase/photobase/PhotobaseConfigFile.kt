@@ -90,7 +90,7 @@ class PhotobaseConfigFile(
     }
 
     private suspend fun update(existing: HomebaseFile, content: String) {
-        val keyHeader = KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
+        val keyHeader = existing.keyHeader.withNewIv()
         updateFileByUniqueId(
             UpdateFileByUniqueIdRequest(
                 driveId = PhotobaseProtocol.DriveAlias,

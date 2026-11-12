@@ -4,6 +4,11 @@ import androidx.compose.runtime.Composable
 import kotlinx.io.Source
 import kotlinx.io.readByteArray
 
+/**
+ * Wraps [content] so images committed from the soft keyboard (GIFs, stickers) reach [onImageReceived] as bytes,
+ * capped at 20 MB (larger images are dropped, never truncated). A null [onImageReceived] turns it off.
+ * Only Android has such a keyboard feature; iOS, desktop and web just render [content].
+ */
 @Composable
 expect fun KeyboardImageReceiver(
     onImageReceived: ((ByteArray) -> Unit)?,
