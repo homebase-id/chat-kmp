@@ -155,7 +155,7 @@
     <string name="pending_upgrade_snackbar_message">Din identitet kræver en dataopgradering</string>
     <string name="pending_upgrade_snackbar_action">Opgradér</string>
     <string name="pending_upgrade_title">Dataopgradering påkrævet</string>
-    <string name="pending_upgrade_message">Din identitet har en afventende opgradering. Besøg din ejer konsol for at køre den automatiske opgraderingsproces.</string>
+    <string name="pending_upgrade_message">Din identitet skal have en dataopgradering. Indtil du kører den, kan nye kontakter ikke skrive til dig, og andre funktioner kan holde op med at virke. Det tager et minut i din ejerkonsol.</string>
     <string name="pending_upgrade_confirm">Opgradér nu</string>
     <string name="upgrade_running_message">Opgraderer din identitet…</string>
 

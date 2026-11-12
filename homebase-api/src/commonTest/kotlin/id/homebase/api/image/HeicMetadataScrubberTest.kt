@@ -58,6 +58,13 @@ class HeicMetadataScrubberTest {
     }
 
     @Test
+    fun aHeicCutOffBeforeItsMetadataEnds_isUnparseable() {
+        for (cut in listOf(300, 700)) {
+            assertEquals(ImageMetadataScrubber.Outcome.Unparseable, ImageMetadataScrubber.scrubWithOutcome(source.copyOfRange(0, cut)), "cut at $cut")
+        }
+    }
+
+    @Test
     fun aTruncatedHeicDoesNotThrow() {
         for (cut in listOf(12, 40, 140, 300, 520, 560, 700, 3000)) {
             ImageMetadataScrubber.scrub(source.copyOfRange(0, cut))
