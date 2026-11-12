@@ -80,11 +80,7 @@ class CallRingAndTrayTest {
                     CallRingContent(
                         video = video,
                         name = "Samwise Gamgee",
-                        avatar = { size ->
-                            Box(Modifier.size(size).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape), contentAlignment = Alignment.Center) {
-                                Text("SG", color = MaterialTheme.colorScheme.onSecondaryContainer)
-                            }
-                        },
+                        avatar = testPeerAvatar,
                         onAccept = onAccept,
                         onDecline = onDecline,
                         shape = shape,

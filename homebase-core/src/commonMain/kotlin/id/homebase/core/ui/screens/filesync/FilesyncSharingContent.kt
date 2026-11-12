@@ -703,7 +703,7 @@ internal fun FilesyncSharedFilesSheet(
     val writes = rememberSharedWrites(onAction)
     AdaptiveSheet(onDismiss = { onAction(FilesyncUiAction.CloseShareView) }, maxWidth = 520.dp) {
         Column(modifier = Modifier.padding(bottom = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = if (isDialog) 0.dp else 12.dp, bottom = 12.dp)) {
                 val path = sharing.sharerPath
                 if (path.isNotEmpty()) {
                     IconButton(onClick = { onAction(FilesyncUiAction.OpenSharedFolder(path.dropLast(1))) }) {

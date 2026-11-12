@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.BottomSheetDefaults
@@ -53,6 +54,9 @@ class AdaptiveSheetScope internal constructor(
     private val dismissing: MutableState<Boolean>,
     private val beginExit: (((() -> Unit)) -> Unit)? = null,
 ) {
+    /** True on the wide branch, whose dialog already insets the content's top, where the sheet's drag handle would sit. */
+    val isDialog: Boolean get() = sheetState == null
+
     fun dismiss(then: () -> Unit = onDismiss.value) {
         if (dismissing.value) return
         if (sheetState == null) {
@@ -98,6 +102,7 @@ fun AdaptiveSheet(
     contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.windowInsets },
     content: @Composable AdaptiveSheetScope.() -> Unit,
 ) {
+    ReportOverlay()
     val currentOnDismiss = rememberUpdatedState(onDismiss)
     val scope = rememberCoroutineScope()
     val dismissing = remember { mutableStateOf(false) }
@@ -142,7 +147,8 @@ fun AdaptiveSheet(
                         .widthIn(max = maxWidth)
                         .heightIn(max = 680.dp),
                 ) {
-                    wideScope.content()
+                    // Stands in for the drag handle's height: sheet content pads start/end/bottom only.
+                    Box(Modifier.padding(top = 24.dp)) { wideScope.content() }
                 }
             }
         }

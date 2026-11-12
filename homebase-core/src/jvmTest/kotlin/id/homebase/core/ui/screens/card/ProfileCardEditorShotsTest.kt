@@ -844,6 +844,63 @@ class ProfileCardEditorShotsTest {
         }
     }
 
+    // The card pages' slot on desktop: the settings pane's detail column at a 1440x900 and 1024x768 window, and a narrow window.
+    private val desktopSlots = listOf("w1440" to (736 to 744), "w1024" to (698 to 635), "w600" to (600 to 800))
+
+    @Test
+    fun desktopSlotsRender() {
+        for (dark in listOf(false, true)) {
+            for ((slot, size) in desktopSlots) {
+                val (w, h) = size
+                for (shot in listOf(
+                    Shot("d-$slot-design", fixedFriends, widthDp = w, heightDp = h),
+                    Shot("d-$slot-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = w, heightDp = h),
+                    editor("d-$slot-content", polishBase, w = w, h = h, newCircle = true),
+                    editor("d-$slot-content-photo", polishBase, w = w, h = h, photo = CardPhotoUi(null, true, true, false)),
+                    editor("d-$slot-content-design", editorBase, w = w, h = h, act = {
+                        onNodeWithContentDescription("Design").performClick()
+                        mainClock.advanceTimeBy(SETTLE_MS)
+                    }),
+                    editor("d-$slot-content-add", k15Friends, w = w, h = h, act = {
+                        onNodeWithTag("content_add").performSemanticsAction(SemanticsActions.OnClick)
+                        mainClock.advanceTimeBy(SETTLE_MS)
+                    }),
+                )) render(shot, dark)
+                runDesktopComposeUiTest(width = (w * SCALE).toInt(), height = (h * SCALE).toInt()) {
+                    mainClock.autoAdvance = false
+                    setContent {
+                        themed(dark) {
+                            CardIntro(polishBase, emptyMap(), null, 0, {}, {}, {}, {}, {}, onNewCircle = {})
+                        }
+                    }
+                    mainClock.advanceTimeBy(SETTLE_MS)
+                    save("d-$slot-intro", dark)
+                }
+                renderViewer(ViewerShot("d-$slot-viewer", fixedFriends, widthDp = w, heightDp = h), dark)
+                renderPopup("d-$slot-reset-dialog", dark, w, h) { ResetCardDialog(audience = friends, onReset = {}, onDismiss = {}) }
+                renderPopup("d-$slot-create-circle", dark, w, h, backdrop = { EditorShot(editor("b", polishBase, w = w, h = h, newCircle = true)) }) {
+                    CreateCircleSheet(CreateCircleUiState(open = true), {}, {}, {}, {}, {}, {})
+                }
+            }
+        }
+    }
+
+    // CARD_EXPORT_DIR holds real exportPng() PNGs, one per design: tile-sized from a narrow page, or the 390x844 compact card.
+    @Test
+    fun introTilesShowTheExportedCard() {
+        val exports = System.getenv("CARD_EXPORT_DIR")?.let(::File)?.listFiles { f -> f.extension == "png" }.orEmpty().sorted()
+        for (file in exports) {
+            val still = ImageIO.read(file).toComposeImageBitmap()
+            val tiles = polishBase.cards.associate { audienceKey(it.audience) to still }
+            runDesktopComposeUiTest(width = (736 * SCALE).toInt(), height = (744 * SCALE).toInt()) {
+                mainClock.autoAdvance = false
+                setContent { themed(false) { CardIntro(polishBase, tiles, null, 0, {}, {}, {}, {}, {}, onNewCircle = {}) } }
+                mainClock.advanceTimeBy(SETTLE_MS)
+                save("intro-export-${file.nameWithoutExtension}", false)
+            }
+        }
+    }
+
     private companion object {
         const val SCALE = 2f
         const val PHONE_W = 412
