@@ -27,7 +27,7 @@ fun fullScreenImageRequest(
     size: Size,
 ): ImageRequest =
     ImageRequest.Builder(context)
-        .data(data)
+        .data(data.forFullScreen())
         .size(size)
         .build()
 
