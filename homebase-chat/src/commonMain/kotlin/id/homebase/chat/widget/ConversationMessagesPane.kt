@@ -353,6 +353,7 @@ fun ConversationMessagesPane(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
                             revealed = transition.currentState == EnterExitState.Visible,
+                            onContentShown = cameraLauncher::resultShown,
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = { onUiAction(SaveFile(it)) },
                             mediaQuality = uiState.mediaQuality,
