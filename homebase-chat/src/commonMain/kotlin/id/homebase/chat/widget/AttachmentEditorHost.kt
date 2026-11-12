@@ -144,6 +144,7 @@ internal fun AttachmentEditorHost(
                         viewOnceState.toggle(viewOnceIsVideo, viewOnceEligible)
                     }
                 },
+                nextInsteadOfSend = data.isChatListCapture,
                 onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                 onPasteImage = { imageBytes ->
                     onUiAction(

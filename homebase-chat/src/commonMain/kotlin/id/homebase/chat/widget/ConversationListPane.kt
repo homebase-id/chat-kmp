@@ -41,6 +41,10 @@ import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.animateFloatingActionButton
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -168,6 +172,15 @@ fun ConversationListPane(
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     var showMenu by remember { mutableStateOf(false) }
+    var fabsVisible by remember { mutableStateOf(true) }
+    val fabScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < 0f) fabsVisible = false else if (available.y > 0f) fabsVisible = true
+                return Offset.Zero
+            }
+        }
+    }
     val capture = rememberChatListCapture(onUiAction)
 
     // Null while the LazyColumn is showing something other than the conversation list — the
@@ -216,6 +229,7 @@ fun ConversationListPane(
         Scaffold(
             modifier = Modifier
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .nestedScroll(fabScrollConnection)
                 .paneTrailingEdge(),
             topBar = {
                 if (uiState.showArchived) {
@@ -359,17 +373,6 @@ fun ConversationListPane(
                                             onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                                         },
                                     )
-                                    if (!usesPointerUx()) {
-                                        IconButton(
-                                            onClick = capture.openCamera,
-                                            modifier = Modifier.testTag("chat_list_camera_button"),
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.PhotoCamera,
-                                                contentDescription = stringResource(MR.string.chat_message_camera),
-                                            )
-                                        }
-                                    }
                                     if (!persistentSearch) {
                                         IconButton(
                                             onClick = {
@@ -475,14 +478,37 @@ fun ConversationListPane(
             },
             floatingActionButton = {
                 if (!iconOnlyMode && !twoPaneWindow && !uiState.showArchived) {
-                    FloatingActionButton(
-                        onClick = {
-                            onUiAction(ConversationListUiAction.NewConversationClicked)
-                        }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Edit,
-                            contentDescription = stringResource(MR.string.chat_new_conversation)
-                        )
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        if (!usesPointerUx()) {
+                            SmallFloatingActionButton(
+                                onClick = capture.openCamera,
+                                modifier = Modifier
+                                    .animateFloatingActionButton(visible = fabsVisible, alignment = Alignment.BottomEnd)
+                                    .testTag("chat_list_camera_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoCamera,
+                                    contentDescription = stringResource(MR.string.chat_message_camera)
+                                )
+                            }
+                        }
+                        FloatingActionButton(
+                            onClick = {
+                                onUiAction(ConversationListUiAction.NewConversationClicked)
+                            },
+                            modifier = Modifier.animateFloatingActionButton(
+                                visible = fabsVisible,
+                                alignment = Alignment.BottomEnd,
+                            ),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Edit,
+                                contentDescription = stringResource(MR.string.chat_new_conversation)
+                            )
+                        }
                     }
                 }
             },
