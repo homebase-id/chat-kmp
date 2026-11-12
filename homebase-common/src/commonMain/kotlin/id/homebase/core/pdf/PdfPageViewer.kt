@@ -48,6 +48,11 @@ import org.jetbrains.compose.resources.stringResource
 /** False where [PdfPageViewer] can only say PDFs aren't supported: the web has no renderer yet. */
 val pdfPageViewerAvailable: Boolean get() = !isWeb()
 
+/**
+ * Shows the PDF at [filePath] page by page, scrolling vertically; [onTap] fires on a tap that is not a scroll.
+ * Rendering runs off the main thread. A missing, corrupt or password-protected file calls [onFailed] once and draws nothing.
+ * Where [pdfPageViewerAvailable] is false (web) it draws a "not supported" message and never calls [onFailed] or [onTap].
+ */
 @Composable
 expect fun PdfPageViewer(
     filePath: String,

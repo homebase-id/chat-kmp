@@ -23,6 +23,15 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
     private val _photobaseEnabled = MutableStateFlow(readBoolean(PHOTOBASE_KEY, default = false))
     val photobaseEnabled: StateFlow<Boolean> = _photobaseEnabled.asStateFlow()
 
+    private val _filesyncSyncSharedEnabled = MutableStateFlow(readBoolean(FILESYNC_SYNC_SHARED_KEY, default = false))
+    val filesyncSyncSharedEnabled: StateFlow<Boolean> = _filesyncSyncSharedEnabled.asStateFlow()
+
+    suspend fun setFilesyncSyncSharedEnabled(value: Boolean) {
+        if (_filesyncSyncSharedEnabled.value == value) return
+        keyValue.upsertValue(FILESYNC_SYNC_SHARED_KEY, encode(value))
+        _filesyncSyncSharedEnabled.value = value
+    }
+
     suspend fun setPhotobaseEnabled(value: Boolean) {
         if (_photobaseEnabled.value == value) return
         keyValue.upsertValue(PHOTOBASE_KEY, encode(value))
@@ -38,6 +47,7 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
     fun reload() {
         _profileCardEnabled.value = readBoolean(PROFILE_CARD_KEY, default = false)
         _photobaseEnabled.value = readBoolean(PHOTOBASE_KEY, default = false)
+        _filesyncSyncSharedEnabled.value = readBoolean(FILESYNC_SYNC_SHARED_KEY, default = false)
     }
 
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
@@ -56,5 +66,6 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         // 0a04xx and 0a07xx are taken, and DiceRollPreferences writes 0a0801-0a0803.
         val PROFILE_CARD_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0901")
         val PHOTOBASE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0902")
+        val FILESYNC_SYNC_SHARED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0903")
     }
 }

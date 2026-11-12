@@ -61,7 +61,11 @@ class FeedPostSenderDeletePathsTest {
 
     private fun sender() = FeedPostSenderService(
         outboxSync = env.outboxSync,
+        uploadService = env.uploadService,
         optimisticWriter = env.optimisticWriter,
+        fileOps = env.fileOps,
+        userPreferences = env.userPreferences,
+        scope = env.scope,
     )
 
     private suspend fun seedPost(postId: Uuid) {

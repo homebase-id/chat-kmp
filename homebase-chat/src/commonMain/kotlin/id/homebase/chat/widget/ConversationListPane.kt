@@ -63,6 +63,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.platform.testTag
+import id.homebase.resources.chat_message_camera
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.drawWithContent
@@ -165,6 +168,7 @@ fun ConversationListPane(
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     var showMenu by remember { mutableStateOf(false) }
+    val capture = rememberChatListCapture(onUiAction)
 
     // Null while the LazyColumn is showing something other than the conversation list — the
     // archived thread list or search results, whose #1 row is not comparable to the list's.
@@ -355,6 +359,17 @@ fun ConversationListPane(
                                             onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                                         },
                                     )
+                                    if (!usesPointerUx()) {
+                                        IconButton(
+                                            onClick = capture.openCamera,
+                                            modifier = Modifier.testTag("chat_list_camera_button"),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PhotoCamera,
+                                                contentDescription = stringResource(MR.string.chat_message_camera),
+                                            )
+                                        }
+                                    }
                                     if (!persistentSearch) {
                                         IconButton(
                                             onClick = {

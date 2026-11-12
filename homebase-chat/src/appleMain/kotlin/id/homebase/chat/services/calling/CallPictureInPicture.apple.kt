@@ -7,7 +7,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import co.touchlab.kermit.Logger
-import id.homebase.core.notifications.CallPictureInPictureBridgeHolder
+import id.homebase.core.calling.CallBridges
 import kotlinx.cinterop.ExperimentalForeignApi
 
 @Composable
@@ -33,7 +33,7 @@ actual fun CallPictureInPictureEffect(
     val self = local as? KmpVideoHandle
     val restore by rememberUpdatedState(onRestore)
     DisposableEffect(eligible, track, self) {
-        val bridge = CallPictureInPictureBridgeHolder.bridge
+        val bridge = CallBridges.pictureInPicture
         if (!eligible || track == null || bridge == null) {
             Logger.i(tag = "CallPiP") { "pip not armed eligible=$eligible track=${track != null} bridge=${bridge != null}" }
             return@DisposableEffect onDispose { }

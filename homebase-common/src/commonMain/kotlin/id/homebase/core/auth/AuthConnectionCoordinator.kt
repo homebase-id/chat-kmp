@@ -99,9 +99,7 @@ class AuthConnectionCoordinator(
     )
     private var wsClient: OdinWebSocketClient? = null
 
-    // Call signalling (answer, ICE, hangup) rides the notify WS, so it must outlive a backgrounded or PiP activity.
-    @Volatile
-    private var callActive = false
+    private val wsHolds = WebSocketHolds()
 
     // #1349 dead-token detection. The server rejects the notify-WS upgrade with 401 once this
     // device's app registration is revoked, but the reconnect loop treats that like any other
@@ -355,7 +353,7 @@ class AuthConnectionCoordinator(
                 // push-capable platform — FCM + WorkManager HTTP cover background sync. setForeground(true)
                 // reconnects on the next foreground. (Both this and applyWsHold branch on the same live
                 // currentForeground, so they stay consistent without sharing a lock here.)
-                if (shouldKeepWebSocketConnected(currentForeground, backgroundSyncViaPush, callActive)) {
+                if (shouldKeepWebSocketConnected(currentForeground, backgroundSyncViaPush, wsHolds.held)) {
                     connect(extraDrives = initialDrives)
                 } else {
                     Logger.i(tag = "AuthLifecycle") {
@@ -674,10 +672,13 @@ class AuthConnectionCoordinator(
         scope.launch { applyWsHold() }
     }
 
-    fun setCallActive(active: Boolean) {
-        if (callActive == active) return
-        callActive = active
-        scope.launch { applyWsHold() }
+    /** Keeps the notify WS up while backgrounded on a push-capable platform; held until every reason is released. */
+    fun holdWebSocket(reason: String) {
+        if (wsHolds.hold(reason)) scope.launch { applyWsHold() }
+    }
+
+    fun releaseWebSocket(reason: String) {
+        if (wsHolds.release(reason)) scope.launch { applyWsHold() }
     }
 
     /**
@@ -690,7 +691,7 @@ class AuthConnectionCoordinator(
     private suspend fun applyWsHold() {
         wsLifecycleMutex.withLock {
             val authResolved = lastAuthenticatedDrives != null && !headless
-            when (wsHoldDecision(currentForeground, backgroundSyncViaPush, wsClient != null, authResolved, callActive)) {
+            when (wsHoldDecision(currentForeground, backgroundSyncViaPush, wsClient != null, authResolved, wsHolds.held)) {
                 // Rebuild a WS we tore down for background. connect()'s own wsClient != null guard
                 // makes a redundant call a no-op.
                 WsHoldAction.CONNECT -> {
@@ -1058,8 +1059,8 @@ internal fun drivesToPrune(active: Set<Uuid>, mandatory: Set<Uuid>, granted: Set
  * regardless. Suppress it only when backgrounded on a push-capable platform (Android/iOS), where FCM
  * push + WorkManager HTTP sync cover background work. Pure so the policy is unit-tested directly.
  */
-internal fun shouldKeepWebSocketConnected(foreground: Boolean, backgroundSyncViaPush: Boolean, callActive: Boolean = false): Boolean =
-    foreground || !backgroundSyncViaPush || callActive
+internal fun shouldKeepWebSocketConnected(foreground: Boolean, backgroundSyncViaPush: Boolean, held: Boolean = false): Boolean =
+    foreground || !backgroundSyncViaPush || held
 
 internal enum class WsHoldAction { CONNECT, PARK, NONE }
 
@@ -1076,9 +1077,9 @@ internal fun wsHoldDecision(
     backgroundSyncViaPush: Boolean,
     wsPresent: Boolean,
     authResolved: Boolean,
-    callActive: Boolean = false,
+    held: Boolean = false,
 ): WsHoldAction = when {
-    shouldKeepWebSocketConnected(foreground, backgroundSyncViaPush, callActive) ->
+    shouldKeepWebSocketConnected(foreground, backgroundSyncViaPush, held) ->
         if (!wsPresent && authResolved) WsHoldAction.CONNECT else WsHoldAction.NONE
     wsPresent -> WsHoldAction.PARK
     else -> WsHoldAction.NONE
@@ -1107,4 +1108,26 @@ fun AuthConnectionState.toConnectionStatus(): AppConnectionStatus = when {
     isConnected  -> AppConnectionStatus.Connected
     isConnecting -> AppConnectionStatus.Connecting
     else         -> AppConnectionStatus.Disconnected
+}
+
+/** The named reasons features have given for keeping the notify WS up in the background; the coordinator never learns what they are. */
+class WebSocketHolds {
+    private val current = MutableStateFlow<Set<String>>(emptySet())
+
+    val held: Boolean get() = current.value.isNotEmpty()
+
+    /** True when [reason] was not already holding. */
+    fun hold(reason: String): Boolean = change { it + reason }
+
+    /** True when [reason] was holding. */
+    fun release(reason: String): Boolean = change { it - reason }
+
+    private inline fun change(next: (Set<String>) -> Set<String>): Boolean {
+        while (true) {
+            val before = current.value
+            val after = next(before)
+            if (after == before) return false
+            if (current.compareAndSet(before, after)) return true
+        }
+    }
 }

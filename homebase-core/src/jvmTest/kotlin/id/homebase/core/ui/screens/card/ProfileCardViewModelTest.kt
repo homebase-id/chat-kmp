@@ -821,6 +821,21 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun switchingTheFeedSectionOffSendsNoPostsAndOnBringsThemBack() = runTest(dispatcher) {
+        val host = FakeHost()
+        val vm = viewModel(host, FakeSource(profile, posts = { listOf(cardPost("p1")) }))
+        assertEquals(listOf("p1"), host.rendered.last().data.posts.map { it.id })
+
+        vm.onSectionShown(CARD_SECTION_POSTS, false)
+        assertEquals(emptyList(), host.rendered.last().data.posts)
+        assertEquals(listOf(CARD_SECTION_POSTS), vm.uiState.value.selectedCard!!.overrides.fields?.hiddenSections)
+
+        vm.onSectionShown(CARD_SECTION_POSTS, true)
+        assertEquals(listOf("p1"), host.rendered.last().data.posts.map { it.id })
+        assertNull(vm.uiState.value.selectedCard!!.overrides.fields)
+    }
+
+    @Test
     fun thePreWarmPostsServeTheFirstShowingAndALaterOneRefetches() = runTest(dispatcher) {
         val source = FakeSource(profile, posts = { listOf(cardPost("p1")) })
         val vm = viewModel(FakeHost(), source)
