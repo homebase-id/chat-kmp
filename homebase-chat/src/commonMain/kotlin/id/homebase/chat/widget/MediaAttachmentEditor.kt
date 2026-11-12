@@ -255,9 +255,10 @@ fun MediaAttachmentEditor(
     val activeAttachment = attachments.getOrNull(pagerState.currentPage)
     val activeVideo = activeAttachment as? AttachmentPendingFile.FileVideo
 
-    // Pages whose media has drawn: a camera held over the editor leaves once the page on screen is one of them.
+    // Pages whose media is on screen: a camera held over the editor leaves once the page on screen is one of them.
     val drawnAttachments = remember { mutableStateSetOf<Uuid>() }
     val markDrawn = { id: Uuid -> drawnAttachments += id }
+    val firstFrames = remember { mutableStateSetOf<Uuid>() }
     val markDrawnOnceLoaded = { id: Uuid ->
         { state: AsyncImagePainter.State ->
             if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) markDrawn(id)
@@ -365,6 +366,8 @@ fun MediaAttachmentEditor(
                                 if (size.width > 0f && size.height > 0f) aspect = size.width / size.height
                             }
                         }
+                        // The poster takes ~2 s to decode on a mid-range phone, so the page counts as drawn without it.
+                        LaunchedEffect(attId) { markDrawn(attId) }
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Box(
                             modifier = Modifier
@@ -373,8 +376,9 @@ fun MediaAttachmentEditor(
                                 .background(Color.Black),
                             contentAlignment = Alignment.Center,
                         ) {
-                            val firstFrameShown = attId in drawnAttachments
-                            if (durationMs != null && durationMs > 0L) {
+                            val firstFrameShown = attId in firstFrames
+                            // Mounting the player stalls the main thread for over a second on a mid-range phone, which holds the enter transition (and the camera over it) until it ends.
+                            if (durationMs != null && durationMs > 0L && revealed) {
                                 TrimmableVideoPlayerSurface(
                                     filePath = attachment.playablePath ?: attachment.file.toString(),
                                     clipStartMs = clipStart,
@@ -390,7 +394,7 @@ fun MediaAttachmentEditor(
                                         }
                                     },
                                     modifier = Modifier.fillMaxSize(),
-                                    onFirstFrameRendered = { markDrawn(attId) },
+                                    onFirstFrameRendered = { firstFrames += attId },
                                 )
                                 // The surface is black (or see-through on Android) until its first decoded frame.
                                 val poster = attachment.thumbnailBytes
