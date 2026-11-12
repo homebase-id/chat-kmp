@@ -10,6 +10,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.upload.CreateFileResult
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -28,9 +29,11 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
 import kotlinx.coroutines.sync.Mutex
@@ -48,6 +51,7 @@ class DriveOutboxUploader(
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
+    private val peerUploadProvider: PeerDriveUploadProvider,
 ) : OutboxUploader {
 
     override suspend fun upload(
@@ -57,6 +61,7 @@ class DriveOutboxUploader(
         try {
             when (outboxRecord.uploadType) {
                 UploadNewFile -> uploadNewFile(outboxRecord, eventBus)
+                UploadNewFileOverPeer -> uploadNewFileOverPeer(outboxRecord, eventBus)
                 UpdateFile -> updateFile(outboxRecord, eventBus)
                 DeleteFile -> deleteFile(outboxRecord)
                 UpdateLocalMetadataTags -> updateLocalMetadataTags(outboxRecord)
@@ -82,6 +87,23 @@ class DriveOutboxUploader(
             )
             throw e
         }
+    }
+
+    // The file lands on the drive owner's host, so nothing is written or adopted on our own drive.
+    private suspend fun uploadNewFileOverPeer(outboxRecord: Outbox, eventBus: EventBus) {
+        val request = OutboxSerializer.decode<UploadFileRequest>(outboxRecord)
+        request.validateForUpload()
+        val gate = WholePercentProgressGate()
+        val result = peerUploadProvider.uploadFileOverPeer(request, onProgress = { sent, total ->
+            gate.admit(percentOf(sent, total))?.let { pct ->
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent))
+            }
+        })
+        Logger.i(
+            "$TAG uploadNewFileOverPeer: success uniqueId=${request.metadata.appData.uniqueId} " +
+                "remoteGtid=${result?.remoteGlobalTransitIdFileIdentifier?.globalTransitId} " +
+                "recipientStatus=${result?.recipientStatus?.entries?.joinToString { "${it.key}=${it.value}" }}"
+        )
     }
 
     private suspend fun uploadNewFile(outboxRecord: Outbox, eventBus: EventBus) {
@@ -124,6 +146,11 @@ class DriveOutboxUploader(
             if (result != null) {
                 runCatching { rekeyCacheAfterCreate(request, result) }.onFailure {
                     Logger.w("$TAG uploadNewFile: cache rekey failed (non-fatal) uniqueId=${request.metadata.appData.uniqueId}", it)
+                }
+                if (request.fileSystemType == FileSystemType.Comment) {
+                    runCatching { adoptServerIdentity(request, result, eventBus) }.onFailure {
+                        Logger.w("$TAG uploadNewFile: server identity adopt failed (non-fatal) uniqueId=${request.metadata.appData.uniqueId}", it)
+                    }
                 }
             }
         // region Recovery: missing conversation file
@@ -182,6 +209,27 @@ class DriveOutboxUploader(
             "$TAG rekeyCacheAfterCreate: moved cache entries uniqueId=$uniqueId " +
                     "old=${local.fileId} new=${result.fileId} receipts=${result.payloads.size}"
         )
+    }
+
+    // Sync never reads the Comment file system, so this is the only way the local copy learns the fileId and
+    // versionTag its edit and delete are addressed by. Runs after the rekey, which keys off the optimistic fileId.
+    private suspend fun adoptServerIdentity(request: UploadFileRequest, result: CreateFileResult, eventBus: EventBus) {
+        val uniqueId = request.metadata.appData.uniqueId ?: return
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val local = databaseManager.driveMainIndex
+            .selectHomebaseFileByUnique(identityId, request.driveId, uniqueId) ?: return
+        if (local.fileMetadata.versionTag != null) return
+        val adopted = local.copy(
+            fileId = result.fileId,
+            fileMetadata = local.fileMetadata.copy(
+                versionTag = result.newVersionTag,
+                globalTransitId = result.globalTransitId ?: local.fileMetadata.globalTransitId,
+                updated = local.fileMetadata.updated.addMilliseconds(1),
+            ),
+        )
+        val written = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
+            .baseUpsertEntryZapZap(identityId, request.driveId, listOf(adopted), cursor = null)
+        if (written.isNotEmpty()) eventBus.emit(BackendEvent.DataEvent.BatchReceived(request.driveId, written))
     }
 
     // region Recovery: missing conversation file — retry UploadNewFile as update
@@ -354,7 +402,7 @@ class DriveOutboxUploader(
                 fileProvider.hardDeleteFile(request.driveId, fileId, request.recipients)
             }
         } else {
-            fileProvider.deleteFiles(request.driveId, request.fileIds, request.recipients)
+            fileProvider.deleteFiles(request.driveId, request.fileIds, request.recipients, request.fileSystemType)
         }
     }
 
@@ -553,6 +601,7 @@ class DriveOutboxUploader(
         // 10 and 11 belong to ScheduledPushOutboxUploader; CompositeOutboxUploader routes on these ids.
         const val SetReactions = 12L
         const val TransformKeyHeaders = 13L
+        const val UploadNewFileOverPeer = 14L
     }
 }
 

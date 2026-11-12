@@ -121,12 +121,15 @@ fun CallRingContent(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if (video) Icons.Default.Videocam else Icons.Default.Call, null, Modifier.size(16.dp), tint = scheme.primary)
+                        // Big text needs the icon's width for the words: the call type must read in full.
+                        if (LocalDensity.current.fontScale < 1.5f) {
+                            Icon(if (video) Icons.Default.Videocam else Icons.Default.Call, null, Modifier.size(16.dp), tint = scheme.primary)
+                        }
                         Text(
                             stringResource(if (video) MR.string.call_incoming_video else MR.string.call_incoming_voice),
                             style = MaterialTheme.typography.labelLarge,
                             color = scheme.primary,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                         )

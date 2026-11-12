@@ -103,6 +103,7 @@ internal sealed interface CardCommand {
     data object ExportPng : CardCommand
     data object ProbeEdges : CardCommand
     data object RequestPaint : CardCommand
+    data class HostStyle(val bottomPx: Int) : CardCommand
 }
 
 // Optional fields are omitted rather than sent as null; empty lists are always sent.
@@ -146,12 +147,22 @@ internal fun CardCommand.script(): String = when (this) {
     CardCommand.ExportPng -> "window.homebaseCard.exportPng()"
     CardCommand.ProbeEdges -> PROBE_EDGES_SCRIPT
     CardCommand.RequestPaint -> REQUEST_PAINT_SCRIPT
+    is CardCommand.HostStyle -> hostStyleScript(bottomPx)
 }
+
+// The host's chrome floats over the page: no scrollbar beside it, and room to scroll the page's end above the toolbar.
+private fun hostStyleScript(bottomPx: Int) =
+    "(function(){var s=document.getElementById('hb-chrome')||document.head.appendChild(document.createElement('style'));" +
+        "s.id='hb-chrome';s.textContent='html,body{scrollbar-width:none}::-webkit-scrollbar{display:none}" +
+        "body::after{content:\"\";display:block;height:${bottomPx}px}'})()"
+
+// Marks an element whose background the host painted (a frame's backdrop), which is not the page's colour.
+internal const val HOST_BACKDROP_ATTR = "data-hb-backdrop"
 
 // Host-side only: reads the colour of the full-width surface at the page's top and bottom edges (not a card that happens to sit there), so native chrome can continue it.
 private const val PROBE_EDGES_SCRIPT =
     "(function(){function c(y){var e=document.elementsFromPoint(innerWidth/2,y);" +
-        "for(var i=0;i<e.length;i++){var b=getComputedStyle(e[i]).backgroundColor;" +
+        "for(var i=0;i<e.length;i++){if(e[i].hasAttribute('$HOST_BACKDROP_ATTR'))continue;var b=getComputedStyle(e[i]).backgroundColor;" +
         "if(e[i].getBoundingClientRect().width<innerWidth-1)continue;" +
         "if(b&&b!=='transparent'&&!/^rgba\\(.*,\\s*0\\)${'$'}/.test(b))return b}return null}" +
         "window.homebaseCardHost.post(JSON.stringify({type:'hostEdges',top:c(1),bottom:c(innerHeight-1)}))})()"
@@ -173,7 +184,20 @@ internal fun parseCssColor(css: String): Int? {
 
 // Installed before any page script runs, so the page's boot-time `loaded` isn't lost.
 internal fun bridgeShim(postMessageFunction: String): String =
-    "window.homebaseCardHost=window.homebaseCardHost||{post:function(m){$postMessageFunction(m)}};"
+    "window.homebaseCardHost=window.homebaseCardHost||{post:function(m){$postMessageFunction(m)}};$UNSCALED_SNAPSHOT_SCRIPT"
+
+// WebKit misdraws box-shadows (unblurred, unrounded, cut off) in an SVG foreignObject drawn scaled, which exportPng does at
+// max(2, 1080/width); this lays the snapshot SVG out at that output size with CSS zoom instead, so it is drawn 1:1.
+private const val UNSCALED_SNAPSHOT_SCRIPT =
+    "(function(){var p=HTMLImageElement.prototype,d=Object.getOwnPropertyDescriptor(p,'src');" +
+        "function f(u){var i=u.indexOf(','),h=u.slice(0,i+1);if(h.indexOf('base64')>=0)return u;" +
+        "var s=new DOMParser().parseFromString(decodeURIComponent(u.slice(i+1)),'image/svg+xml').documentElement," +
+        "o=s.firstElementChild,r=o&&o.firstElementChild,w=+s.getAttribute('width'),t=+s.getAttribute('height');" +
+        "if(s.localName!=='svg'||!r||o.localName!=='foreignObject'||!(w>0&&t>0))return u;" +
+        "var k=Math.max(2,1080/w);s.setAttribute('width',w*k);s.setAttribute('height',t*k);s.removeAttribute('viewBox');" +
+        "r.style.zoom=k;return h+encodeURIComponent(new XMLSerializer().serializeToString(s))}" +
+        "Object.defineProperty(p,'src',{configurable:true,enumerable:d.enumerable,get:d.get,set:function(v){" +
+        "d.set.call(this,typeof v==='string'&&v.lastIndexOf('data:image/svg+xml',0)===0?f(v):v)}})})();"
 
 // performance.now() deltas arrive fractional.
 private fun JsonObject.long(key: String): Long? = strictLong(key) ?: strictDouble(key)?.roundToLong()

@@ -17,8 +17,14 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
@@ -42,6 +48,15 @@ import androidx.navigation.compose.dialog
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import kotlinx.coroutines.flow.first
+
+/** False while a floating pane's enter animation runs: a pane is a dialog entry, RESUMED before its own animation ends. */
+internal val LocalPaneEntered = compositionLocalOf<State<Boolean>> { mutableStateOf(true) }
+
+/** Set true by a floating pane's content to grow the pane to the whole window; null where the pane isn't floating. */
+internal val LocalPaneFullWindow = compositionLocalOf<MutableState<Boolean>?> { null }
+
+/** Height of the window's title-bar strip the app draws under (macOS traffic lights); 0 where the OS keeps its own title bar. */
+internal val LocalWindowTopInset = compositionLocalOf { 0.dp }
 
 private val PaneMaxWidth = 980.dp
 private val PaneMaxHeight = 800.dp
@@ -88,7 +103,9 @@ internal fun FloatingPaneContainer(
     paneContent: @Composable () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    val floating = isExpandedLayout()
+    val windowExpanded = isExpandedLayout()
+    val fullWindow = remember { mutableStateOf(false) }
+    val floating = windowExpanded && !fullWindow.value
     val focusRequester = remember { FocusRequester() }
     var dismissRequested by remember { mutableStateOf(false) }
     val currentOnDismiss by rememberUpdatedState(onDismiss)
@@ -110,6 +127,7 @@ internal fun FloatingPaneContainer(
     }
 
     val appear = remember { MutableTransitionState(false).apply { targetState = true } }
+    val entered = remember { derivedStateOf { appear.isIdle && appear.currentState } }
     LaunchedEffect(dismissRequested) {
         if (!dismissRequested) return@LaunchedEffect
         appear.targetState = false
@@ -119,12 +137,12 @@ internal fun FloatingPaneContainer(
     val motion = MaterialTheme.motionScheme
     AnimatedVisibility(
         visibleState = appear,
-        enter = if (floating) {
+        enter = if (windowExpanded) {
             scaleIn(motion.fastSpatialSpec(), initialScale = 0.9f) + fadeIn(motion.defaultEffectsSpec())
         } else {
             EnterTransition.None
         },
-        exit = if (floating) {
+        exit = if (windowExpanded) {
             scaleOut(motion.fastSpatialSpec(), targetScale = 0.9f) + fadeOut(motion.defaultEffectsSpec())
         } else {
             ExitTransition.None
@@ -148,10 +166,16 @@ internal fun FloatingPaneContainer(
             } else {
                 MaterialTheme.colorScheme.background
             },
-            tonalElevation = if (floating) 6.dp else 0.dp,
+            // No tonal elevation: it tints only the pane's surface-coloured Surfaces (Scaffolds), not rows that paint the colour.
             shadowElevation = if (floating) 6.dp else 0.dp,
         ) {
-            if (floating) paneContent() else content()
+            CompositionLocalProvider(LocalPaneEntered provides entered, LocalPaneFullWindow provides fullWindow.takeIf { windowExpanded }) {
+                if (windowExpanded) {
+                    Box(Modifier.padding(top = if (floating) 0.dp else LocalWindowTopInset.current)) { paneContent() }
+                } else {
+                    content()
+                }
+            }
         }
     }
 }

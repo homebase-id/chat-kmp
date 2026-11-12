@@ -9,6 +9,7 @@ import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -29,6 +30,7 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.TestScope
+import kotlin.test.assertEquals
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -653,6 +655,11 @@ fun Outbox.asHardDeleteRequestOrNull(): DeleteLocalFilesByFileIdRequest? {
     } catch (_: Throwable) {
         null
     }
+}
+
+fun Outbox.asUploadFileRequest(): UploadFileRequest {
+    assertEquals(DriveOutboxUploader.UploadNewFile, uploadType)
+    return OdinSystemSerializer.deserialize<UploadFileRequest>(json.decodeToString())
 }
 
 fun Outbox.isHardDeleteRequest(): Boolean = asHardDeleteRequestOrNull() != null
