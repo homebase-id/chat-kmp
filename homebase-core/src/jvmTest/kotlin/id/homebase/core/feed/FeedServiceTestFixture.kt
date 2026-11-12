@@ -35,6 +35,8 @@ import id.homebase.core.settings.UserPreferences
 // A real in-memory OdinDatabase, so a real OutboxSync persists durable rows we can read back.
 class FeedTestEnv(
     testScope: TestScope,
+    val fileOps: FileOperationsProvider = InMemoryFileOps(),
+    val payloadBundleEncryptor: PayloadBundleEncryptor = PassthroughEncryptor(),
     // Lets a test wrap the driver to inject a failure, e.g. a refused `INSERT INTO Outbox`.
     wrapDriver: (SqlDriver) -> SqlDriver = { it },
 ) {
@@ -50,8 +52,6 @@ class FeedTestEnv(
 
     val eventBus = EventBus()
     val credentialsManager = CredentialsManager()
-    val fileOps: FileOperationsProvider = InMemoryFileOps()
-
     val scope: CoroutineScope = testScope.backgroundScope
 
     // homebase-common's InMemorySettings is internal to that module, so tests here carry their own.
@@ -77,23 +77,23 @@ class FeedTestEnv(
         outboxSync = outboxSync,
     )
 
-    val payloadBundleEncryptor: PayloadBundleEncryptor = PassthroughEncryptor()
-
-    // The cache seeder is wired over a MockEngine that 500s — only reached by a payload-bearing send.
-    val uploadService: UploadService = run {
+    // Over a MockEngine that 500s — only reached by a payload-bearing send's cache seed.
+    val driveFileProvider: DriveFileProvider = run {
         val http = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
-        val driveFileProvider = DriveFileProvider(
+        DriveFileProvider(
             httpClient = http,
             credentialsManager = credentialsManager,
             driveCache = DriveFileProviderCached(http, credentialsManager, fileOps),
         )
+    }
+
+    val uploadService: UploadService =
         UploadService(
             encryptor = payloadBundleEncryptor,
             outboxSync = outboxSync,
             optimisticWriter = OptimisticWriterPort(optimisticWriter),
             payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps),
         )
-    }
 
     // A MockEngine that 500s: the comment tests only cold-load own posts, so the over-peer query
     // is never reached.

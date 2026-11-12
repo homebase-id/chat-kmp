@@ -164,6 +164,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import org.koin.compose.getKoin
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.feed.FeedTimelineScreen
+import id.homebase.core.ui.screens.feed.PostComposeScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.feed.following.FollowingScreen
 import id.homebase.core.ui.screens.home.HomeScreen
@@ -336,7 +337,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.TextButton
 import id.homebase.core.upgrade.PendingUpgradeState
-import id.homebase.resources.cancel
+import androidx.compose.ui.window.DialogProperties
 import id.homebase.resources.pending_upgrade_snackbar_message
 import id.homebase.resources.profile_card_nfc_shared
 import id.homebase.resources.pending_upgrade_snackbar_action
@@ -1080,17 +1081,16 @@ fun AppNavHost(
 
                         if (pendingUpgrade is PendingUpgradeState.ShowDialog) {
                             AlertDialog(
-                                onDismissRequest = { viewModel.dismissUpgradeDialog() },
+                                onDismissRequest = {},
+                                properties = DialogProperties(
+                                    dismissOnBackPress = false,
+                                    dismissOnClickOutside = false,
+                                ),
                                 title = { Text(stringResource(MR.string.pending_upgrade_title)) },
                                 text = { Text(stringResource(MR.string.pending_upgrade_message)) },
                                 confirmButton = {
                                     TextButton(onClick = { uriHandler.openUrl(pendingUpgrade.upgradeUrl) }) {
                                         Text(stringResource(MR.string.pending_upgrade_confirm))
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { viewModel.dismissUpgradeDialog() }) {
-                                        Text(stringResource(MR.string.cancel))
                                     }
                                 },
                             )
@@ -1187,8 +1187,6 @@ fun AppNavHost(
                                         val scrollFeedToTop by entry.savedStateHandle
                                             .getStateFlow(SCROLL_TO_TOP_KEY, false)
                                             .collectAsStateWithLifecycle()
-                                        // ponytail: post composer disabled for now — the feed is read-only
-                                        // for posts. Restore the composer nav + Route.PostCompose below.
                                         FeedTimelineScreen(
                                             viewModel = koinViewModel(),
                                             onNavigateToDetail = {
@@ -1196,6 +1194,9 @@ fun AppNavHost(
                                             },
                                             onNavigateToFollowing = {
                                                 navController.navigate(Route.Following)
+                                            },
+                                            onNavigateToComposer = {
+                                                navController.navigate(Route.PostCompose)
                                             },
                                             onAuthorClick = {
                                                 navController.navigateToIdentity(it.domainName)
@@ -1210,6 +1211,18 @@ fun AppNavHost(
                                         // Legacy WebView feed — user opted out of the native feed.
                                         FeedScreen(viewModel = koinViewModel())
                                     }
+                                }
+                            }
+
+                            composable<Route.PostCompose>(
+                                enterTransition = { slideInVertically(initialOffsetY = { it }) },
+                                popExitTransition = { slideOutVertically(targetOffsetY = { it }) },
+                            ) {
+                                if (isAuthenticated) {
+                                    PostComposeScreen(
+                                        viewModel = koinViewModel(),
+                                        onClose = { navController.popBackStack() },
+                                    )
                                 }
                             }
 

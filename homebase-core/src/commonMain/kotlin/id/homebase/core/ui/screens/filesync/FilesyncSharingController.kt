@@ -18,6 +18,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Turning sharing on: signing in to Filesync too ([FilesyncSession]), and the permission its registration may lack. */
 class FilesyncSharingSetup(
@@ -73,9 +75,13 @@ internal class FilesyncSharingController(
     private var sharedNodes = emptyList<FilesyncNode>()
     private var shownFolder: Uuid? = null
     private var sharedInJob: Job? = null
+    private var sharersJob: Job? = null
     private var recipientFilesJob: Job? = null
     private val recipientHandles = mutableMapOf<Uuid, FilesyncHandle>()
     private var pendingMove: (suspend () -> Unit)? = null
+    // In the order asked: a quick on-then-off must reach the marker in that order.
+    private val syncWrites = Mutex()
+    private var syncAsked = 0
 
     fun start() {
         scope.launch {
@@ -203,10 +209,30 @@ internal class FilesyncSharingController(
     }
 
     private fun loadSharers() {
-        scope.launch {
-            guarded { sharing.sharers() }?.let { sharers -> update { it.copy(sharers = sharers) } }
+        sharersJob?.cancel()
+        sharersJob = scope.launch {
+            guarded { sharing.sharers() }?.let { sharers ->
+                update { s -> s.copy(sharers = sharers.map { it.odinId }, syncedSharers = sharers.filter { it.sync }.mapTo(HashSet()) { it.odinId }) }
+            }
         }
     }
+
+    /** Shown at once and undone if it fails; the newest choice is read back once it lands, earlier ones are passed over. */
+    fun setSync(sharer: OdinId, sync: Boolean) {
+        showSync(sharer, sync)
+        val asked = ++syncAsked
+        scope.launch {
+            val written = syncWrites.withLock {
+                attempt("changing whether computers sync $sharer's files", FilesyncError.SyncChoiceFailed) { sharing.setSync(sharer, sync) }
+            }
+            if (asked != syncAsked) return@launch
+            if (written == null) showSync(sharer, !sync)
+            loadSharers()
+        }
+    }
+
+    private fun showSync(sharer: OdinId, sync: Boolean) =
+        update { it.copy(syncedSharers = if (sync) it.syncedSharers + sharer else it.syncedSharers - sharer) }
 
     /** Marks which of [folderId]'s nodes are shared; with sharing off, remembers it for when it's on. */
     fun loadSharedIn(folderId: Uuid? = shownFolder) {

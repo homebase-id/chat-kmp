@@ -2,7 +2,6 @@ package id.homebase.api.image
 
 import kotlinx.coroutines.test.runTest
 import kotlin.math.abs
-import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -139,18 +138,6 @@ class ImagePipelineContractTest {
 
     private fun stripes(width: Int, half: Int) = png(width, STRIPES_HEIGHT) { x, _ -> if ((x / half) % 2 == 0) BLACK else WHITE }
 
-    // Skips the edges, where the filter's window runs off the image.
-    private fun middleGreens(bytes: ByteArray): List<Int> {
-        val image = decoded(bytes)
-        val row = image.height / 2
-        return (image.width / 8 until image.width * 7 / 8).map { (image.pixels[row * image.width + it] shr 8) and 0xFF }
-    }
-
-    private fun deviation(values: List<Int>): Double {
-        val mean = values.average()
-        return sqrt(values.sumOf { (it - mean) * (it - mean) } / values.size)
-    }
-
     private suspend fun stripesAfter(source: ByteArray, sourceWidth: Int, target: Int, viaDecoder: Boolean): ByteArray {
         val outputs = buildList {
             // A full-size output first forces a full decode, so the pipeline's own scaler does the work.
@@ -161,12 +148,13 @@ class ImagePipelineContractTest {
     }
 
     private suspend fun assertStripesTurnGrey(viaDecoder: Boolean) {
-        val limits = listOf(4000 to 400 to 5.0, 4032 to 2048 to 5.0, 2048 to 1080 to 5.0, 1080 to 640 to 5.0, 4000 to 2667 to 5.0, 3000 to 2048 to 5.0, 2560 to 2048 to 30.0)
-        for ((sizes, limit) in limits) {
+        val limits = listOf(4000 to 400 to 5.0, 8064 to 2048 to 5.0, 6000 to 2048 to 5.0, 4032 to 2048 to 5.0, 2048 to 1080 to 5.0, 1080 to 640 to 5.0, 4000 to 2667 to 5.0, 3000 to 2048 to 5.0, 2560 to 2048 to 30.0)
+        val failures = limits.mapNotNull { (sizes, limit) ->
             val (from, to) = sizes
             val spread = deviation(middleGreens(stripesAfter(stripes(from, 1), from, to, viaDecoder)))
-            assertTrue(spread <= limit, "$from -> $to deviated by $spread")
+            "$from -> $to deviated by $spread".takeIf { spread > limit }
         }
+        assertTrue(failures.isEmpty(), failures.joinToString())
     }
 
     @Test

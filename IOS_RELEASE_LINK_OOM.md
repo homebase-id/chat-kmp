@@ -200,3 +200,80 @@ dev runs that were killed at 121 min are the same build that prod finishes in
    escalation already named above), or cut the link's live set. To find what
    holds it, MAT a heap dump from a deliberately capped run (e.g. `-Xmx9g`
    on a branch, `upload_to_testflight` off). Start with the webrtc-kmp jump.
+
+## 2026-11-10: the static-initializer phase owned the live set
+
+Prod and dev release builds hit the 180-min timeout (live set ≥11.5 GB on 12g; 31–39 Full GCs
+of ~200 s each in swap). Two runs on branches, TestFlight and Play upload off:
+
+**Profile** (run 42845381943, `macos-15-intel` 14 GB, `-Xprofile-phases`, a `jcmd
+GC.class_histogram` + main-thread stack every 10 min): green, link 129 min.
+
+| Phase | Time | Live during it |
+|---|---|---|
+| `RemoveRedundantCallsToStaticInitializersPhase` | **54 min** | **11.7–11.8 GB** |
+| `ObjectFiles` (external clang) | 36 min | ~2.9 GB (JVM idle) |
+| `ModuleBitcodeOptimization` + `LTOBitcodeOptimization` | 15 + 9.5 min | 3–5 GB |
+| Everything else | ~15 min | 3–5.7 GB |
+
+- The histogram during that phase: 176 M `CallGraphNode$CallSite` (5.6 GB) plus 2.9 GB of
+  `Object[]` holding them. The stacks are in `CallGraphBuilder.build` /
+  `StaticInitializersOptimization$InterproceduralAnalysis`.
+- Why it exploded: the phase builds its call graph with unfold factors `Int.MAX_VALUE`
+  (`LTO.kt`), and with devirtualization off every virtual call site gets an edge to every
+  override. Turning off devirtualization in July moved the call-graph cost here, and it has
+  grown with the app since.
+- Why skipping it is safe (2.4.21 `TopLevelPhases.runCodegen` bytecode): the phase runs only
+  when `shouldOptimize()`, so every debug build already runs without it. It only deletes
+  calls to file initializers that are already guarded; without it each call stays and checks
+  a flag.
+
+**Fix** (run 42874363855, `macos-15` 7 GB arm64, Xmx12g, otherwise main's settings):
+`-Xdisable-phases=DevirtualizationAnalysis,RemoveRedundantCallsToStaticInitializersPhase`.
+Green: `Build iOS` 92 min (was timing out at 180), link 76 min, **zero Full GCs**, peak
+heap after GC 6.6 GB. IPA 95 MB, the same as the profile run of the same commit.
+
+To profile phases again, add `-Xprofile-phases` to the release framework's `freeCompilerArgs` on
+a branch: the per-phase `Name: N msec` lines land in the gym log in `ios-jvm-oom-diagnostics`.
+
+The exported ObjC surface is large: `ComposeApp.h` is 7.9 MB with 3960 classes, and the
+framework binary is 375 MB. Exported declarations are DCE roots, so trimming the export
+shrinks the binary and the LLVM phases: see the next section.
+
+## 2026-11-11: an ObjC export list shrinks the LLVM phases
+
+K/N 2.4.21 can limit ObjC export to a list of entry points
+(`-Xbinary=objcExportEntryPointsPath=homebase-core/objc-entry-points.txt`). Only the listed
+functions and properties get ObjC bridges, and the rest are no longer DCE roots; classes stay
+in the header. Swift used 169 of the 35,746 exported members.
+
+Runs on branch `ios-link-experiments` (dev workflow, TestFlight off, `-Xprofile-phases` on
+both sides). Each pair started together on `macos-15` with #2287's settings:
+
+| | Link | LTO / Module / ObjectFiles | Peak heap (Remark) | Framework | IPA |
+|---|---|---|---|---|---|
+| Without the list, run 43007215840 | 98 min | 30.5 / 24.7 / 16.0 min | 6.5 GB | 377 MB | 102.3 MB |
+| With the list, run 43007197113 | **50 min** | 12.1 / 10.1 / 11.7 min | 5.7 GB | 316 MB | 92.8 MB |
+| Without the list, run 42988668452 | 98 min | 28.6 / 25.4 / 17.8 min | 6.3 GB | 377 MB | 102.3 MB |
+| With the list, run 42988672351 (Swift failed, below) | 71 min | 20.4 / 16.7 / 12.8 min | 5.6 GB | 316 MB | |
+| With the list, PR #2300's TestFlight build, run 43038548740 | 87 min | not profiled | 6.3 GB | | 91.7 MB artifact |
+| Without the list, nightly run 42988940008 | 45 min | not profiled | 6.4 GB | | 100.6 MB artifact |
+
+`ComposeApp.h` went from 7.9 MB to 1.8 MB. What the list saves in time is not settled: on the same
+`macos-15` label the link took 45-98 min without the list and 50-87 min with it, and even the runs
+that started together ran in different GitHub data centers (`.diag` file names: sat12, sjc20,
+sjc22, iad20). The smaller binary is less work for LLVM; to measure the time it saves, link
+both ways in one job on the same machine.
+
+The first run failed at the Swift compile: `callable <Interface>.*` on a Kotlin interface that
+Swift implements also matches the `equals`/`hashCode`/`toString` every interface inherits,
+which then became required protocol methods. Those interfaces list their members by name, and
+`scripts/check-objc-entry-points.py` (Lint workflow) fails when one is missing, because a
+missing member is dropped from the protocol without a compile error and fails at runtime.
+
+Measured in the same batch, and not worth it for time:
+
+- `-Xbinary=smallBinary=true` (run 42988676346): link 101 min. It sets the LLVM size level to
+  aggressive, which moves work between the LLVM phases. IPA 102.3 → 89.5 MB, if size ever matters.
+- `-Xoverride-konan-properties=clangOptFlags.ios_arm64=-O1` (run 42988680049): link 106 min,
+  `ObjectFiles` unchanged, framework 361 MB.

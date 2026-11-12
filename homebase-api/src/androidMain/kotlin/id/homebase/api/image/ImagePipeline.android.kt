@@ -5,10 +5,15 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorSpace
 import android.graphics.ImageDecoder
+import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import co.touchlab.kermit.Logger
-import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.file.AndroidFileOperationsProvider
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.imageresize.NativeResize
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.InputStream
 import java.nio.ByteBuffer
 import kotlin.math.max
 
@@ -20,37 +25,22 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     override fun scaledTo(width: Int, height: Int): PipelineBitmap =
         AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true))
 
-    // Not getPixels, which unpremultiplies and converts to sRGB, and would turn a P3 photo into sRGB.
-    override fun readPixels(): ByteArray {
-        val eightBit = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        val pixels = ByteArray(eightBit.width * eightBit.height * 4)
-        eightBit.copyPixelsToBuffer(ByteBuffer.wrap(pixels))
-        if (eightBit !== bitmap) eightBit.recycle()
-        return pixels
-    }
-
-    override fun withPixels(pixels: ByteArray, width: Int, height: Int): PipelineBitmap {
-        val colorSpace = bitmap.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
-        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, bitmap.hasAlpha(), colorSpace)
-        out.copyPixelsFromBuffer(ByteBuffer.wrap(pixels))
-        return AndroidPipelineBitmap(out)
-    }
-
-    // Lanczos works on Java heap copies while the bitmap lives in native memory, so the decode
-    // guard doesn't bound it; short of heap, the platform's filter is a softer result, not a failed send.
-    override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap {
-        val runtime = Runtime.getRuntime()
-        val freeHeap = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
-        if (lanczosPeakBytes(this.width, this.height, width, height) > freeHeap * HEAP_SHARE_FOR_SCALING) {
-            Logger.w(tag = TAG) { "Not enough heap for Lanczos at ${this.width}x${this.height} -> ${width}x$height; using the platform filter" }
-            return scaledTo(width, height)
+    // An OutOfMemoryError is an Error, so the send's fail-soft catch would miss it and the app would crash.
+    override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = try {
+        val eightBit = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else checkNotNull(bitmap.copy(Bitmap.Config.ARGB_8888, false))
+        val colorSpace = eightBit.colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB)
+        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, eightBit.hasAlpha(), colorSpace)
+        try {
+            NativeResize.lanczos(eightBit, out)
+            AndroidPipelineBitmap(out)
+        } catch (e: Throwable) {
+            out.recycle()
+            throw e
+        } finally {
+            if (eightBit !== bitmap) eightBit.recycle()
         }
-        // An Error, so the send's fail-soft catch would miss it and the app would crash.
-        return try {
-            super.resampledTo(width, height)
-        } catch (e: OutOfMemoryError) {
-            throw IllegalStateException("Not enough memory to scale the image", e)
-        }
+    } catch (e: OutOfMemoryError) {
+        throw IllegalStateException("Not enough memory to scale the image", e)
     }
 
     // compress reports failure by writing nothing, and an empty result would pass any byte limit.
@@ -69,76 +59,105 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
 }
 
 private const val TAG = "ImagePipeline"
-private const val HEAP_SHARE_FOR_SCALING = 0.75
 
 private class HeaderRead : RuntimeException(null, null, false, false)
+
+private sealed interface AndroidImageInput {
+    fun decoderSource(): ImageDecoder.Source
+    fun openStream(): InputStream
+    fun allBytes(): ByteArray = openStream().use { it.readBytes() }
+    fun exif(): ExifInterface = openStream().use { ExifInterface(it) }
+
+    class Bytes(val bytes: ByteArray) : AndroidImageInput {
+        override fun decoderSource(): ImageDecoder.Source = ImageDecoder.createSource(ByteBuffer.wrap(bytes))
+        override fun openStream(): InputStream = ByteArrayInputStream(bytes)
+        override fun allBytes() = bytes
+    }
+
+    class Path(val file: File) : AndroidImageInput {
+        override fun decoderSource(): ImageDecoder.Source = ImageDecoder.createSource(file)
+        override fun openStream(): InputStream = file.inputStream()
+        override fun exif() = ExifInterface(file)
+    }
+
+    class Content(val files: AndroidFileOperationsProvider, val path: String) : AndroidImageInput {
+        override fun decoderSource(): ImageDecoder.Source = ImageDecoder.createSource(files.context.contentResolver, path.toUri())
+        override fun openStream(): InputStream = files.openContentStream(path)
+    }
+}
+
+private class Header(val size: ImageSize, val mimeType: String?)
 
 /**
  * ImageDecoder applies EXIF rotation and HEIF `irot` itself, and reads HEIC without a JPEG bridge.
  * BitmapFactory stays as the fallback for whatever it refuses.
  */
-private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
-    override val displayedSize: ImageSize = readWithDecoder() ?: readWithBitmapFactory()
+private class AndroidImageSource(private val input: AndroidImageInput) : ImageSource {
+    private val header: Header by lazy { readWithDecoder() ?: readWithBitmapFactory() }
+    private val exif: ExifInterface by lazy { input.exif() }
 
-    private fun readWithDecoder(): ImageSize? {
-        var size: ImageSize? = null
+    override val displayedSize get() = header.size
+
+    private fun readWithDecoder(): Header? {
+        var header: Header? = null
         try {
-            ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { _, info, _ ->
-                size = ImageSize(info.size.width, info.size.height)
+            ImageDecoder.decodeBitmap(input.decoderSource()) { _, info, _ ->
+                header = Header(ImageSize(info.size.width, info.size.height), info.mimeType)
                 throw HeaderRead() // Stops before any pixels are allocated.
             }
         } catch (_: HeaderRead) {
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "ImageDecoder couldn't read the header" }
         }
-        return size
+        return header
     }
 
-    private fun readWithBitmapFactory(): ImageSize {
+    private fun readWithBitmapFactory(): Header {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        input.openStream().use { BitmapFactory.decodeStream(it, null, options) }
         require(options.outWidth > 0 && options.outHeight > 0) { "Failed to read image size" }
-        val rotation = ExifInterface(ByteArrayInputStream(bytes)).rotationDegrees
-        return if (rotation == 90 || rotation == 270) {
+        val rotation = exif.rotationDegrees
+        val size = if (rotation == 90 || rotation == 270) {
             ImageSize(options.outHeight, options.outWidth)
         } else {
             ImageSize(options.outWidth, options.outHeight)
         }
+        return Header(size, options.outMimeType)
     }
 
     override fun decode(minLongEdge: Int): PipelineBitmap {
         // Only a JPEG decoder averages when it samples (DCT scaling). Every other format here picks
         // every Nth pixel, which is the aliasing this pipeline exists to remove.
-        val isJpeg = ImageFormatDetector.detectFormat(bytes) == "image/jpeg"
+        val isJpeg = header.mimeType == "image/jpeg"
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
         val sampleSize = if (isJpeg) sampleSizeFor(longEdge, minLongEdge) else 1
-        val guardScale = memoryGuardScale(displayedSize, sampleSize, minLongEdge)
         val bitmap = try {
-            decodeGuarded(guardScale, sampleSize)
+            decodeSampled(sampleSize)
         } catch (e: OutOfMemoryError) {
             throw IllegalStateException("Not enough memory to decode the image", e)
         }
         return AndroidPipelineBitmap(bitmap)
     }
 
-    private fun decodeGuarded(guardScale: Double?, sampleSize: Int): Bitmap =
+    // Not setTargetSize: it decodes full size, then scales bilinearly, so it aliases and peaks higher.
+    private fun decodeSampled(sampleSize: Int): Bitmap =
         try {
-            ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, _, _ ->
-                if (guardScale != null) {
-                    decoder.setTargetSize(
-                        (displayedSize.pixelWidth * guardScale).toInt().coerceAtLeast(1),
-                        (displayedSize.pixelHeight * guardScale).toInt().coerceAtLeast(1),
-                    )
-                } else {
-                    decoder.setTargetSampleSize(sampleSize)
-                }
+            ImageDecoder.decodeBitmap(input.decoderSource()) { decoder, _, _ ->
+                decoder.setTargetSampleSize(sampleSize)
                 // A HARDWARE bitmap has no readable pixels, so compress would fail on it.
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "ImageDecoder refused the image; trying BitmapFactory" }
-            ImageUtils.decodeBitmap(bytes, sampleSize)
+            ImageUtils.decodeBitmap(input.allBytes(), sampleSize)
         }
+
+    override fun metadata(): ImageMetadata? = try {
+        exif.toImageMetadata()
+    } catch (e: Throwable) {
+        Logger.w(tag = TAG, throwable = e) { "Android EXIF read failed" }
+        null
+    }
 
     override fun close() = Unit
 }
@@ -150,4 +169,13 @@ private fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {
     return sample
 }
 
-internal actual fun openImageSource(bytes: ByteArray): ImageSource = AndroidImageSource(bytes)
+internal actual fun openImageSource(bytes: ByteArray): ImageSource = AndroidImageSource(AndroidImageInput.Bytes(bytes))
+
+internal actual fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource? {
+    val files = fileOps as? AndroidFileOperationsProvider
+    val input = when {
+        files != null && files.isContentUri(path) -> AndroidImageInput.Content(files, path)
+        else -> AndroidImageInput.Path(File(path).takeIf { it.isFile } ?: return null)
+    }
+    return AndroidImageSource(input)
+}

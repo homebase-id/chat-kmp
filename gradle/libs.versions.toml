@@ -4,6 +4,7 @@ android-compileSdk = "37"
 # CMP 1.13 needs compileSdk 37.1; its platform carries SDK extension 23, so no compileSdkExtension.
 android-compileSdkMinor = "1"
 android-minSdk = "28"
+android-ndk = "27.1.12297006"
 android-targetSdk = "36"
 androidx-activity = "1.13.0"
 androidx-appcompat = "1.8.0"
@@ -12,6 +13,7 @@ androidx-camera = "1.6.2"
 androidx-core = "1.19.1"
 androidx-espresso = "3.7.0"
 androidx-exifinterface = "1.4.2"
+androidx-heifwriter = "1.1.0"
 androidx-lifecycle = "2.11.0"
 androidx-media3 = "1.11.1"
 androidx-navigationevent = "1.1.1"
@@ -132,6 +134,7 @@ androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", versi
 androidx-camera-video = { module = "androidx.camera:camera-video", version.ref = "androidx-camera" }
 androidx-camera-compose = { module = "androidx.camera:camera-compose", version.ref = "androidx-camera" }
 androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "androidx-exifinterface" }
+androidx-heifwriter = { module = "androidx.heifwriter:heifwriter", version.ref = "androidx-heifwriter" }
 androidx-sharetarget = { module = "androidx.sharetarget:sharetarget", version.ref = "sharetarget" }
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
 androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "androidx-work" }
@@ -252,6 +255,7 @@ nucleus-notification-linux = { module = "io.github.kdroidfilter:nucleus.notifica
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+androidNativeLibrary = { id = "com.android.library", version.ref = "agp" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }

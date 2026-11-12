@@ -34,6 +34,7 @@ import id.homebase.resources.filesync_replace
 import id.homebase.resources.filesync_upload
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Schedule
@@ -65,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -79,6 +81,8 @@ import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.filesync_access_edit
@@ -114,6 +118,8 @@ import id.homebase.resources.filesync_shared_by_none
 import id.homebase.resources.filesync_shared_files_failed
 import id.homebase.resources.filesync_shared_with
 import id.homebase.resources.filesync_shared_with_me
+import id.homebase.resources.filesync_sync_sharer
+import id.homebase.resources.filesync_sync_sharer_hint
 import id.homebase.resources.filesync_shared_with_none
 import id.homebase.resources.filesync_sharing_body
 import id.homebase.resources.filesync_sharing_title
@@ -389,6 +395,18 @@ internal fun LazyListScope.sharerRows(sharers: List<OdinId>, onAction: (Filesync
 }
 
 @Composable
+private fun SharerSyncSwitch(sharer: OdinId, synced: Boolean, onAction: (FilesyncUiAction) -> Unit, modifier: Modifier = Modifier) {
+    SettingsRow(
+        icon = Icons.Outlined.Computer,
+        title = stringResource(MR.string.filesync_sync_sharer),
+        supportingText = stringResource(MR.string.filesync_sync_sharer_hint, sharer.domainName),
+        action = SettingsRowAction.Toggle(synced) { onAction(FilesyncUiAction.SetSharerSync(sharer, it)) },
+        containerColor = Color.Transparent,
+        modifier = modifier,
+    )
+}
+
+@Composable
 private fun PickerHeading(text: StringResource) {
     Text(
         stringResource(text),
@@ -474,6 +492,8 @@ internal fun FilesyncShareView(
                 TextButton(onClick = { onAction(FilesyncUiAction.CloseShareView) }) { Text(stringResource(MR.string.filesync_view_close)) }
             }
         }
+        // Below the card, not on it: the row's surface roles don't sit on secondaryContainer.
+        sharing.syncSwitchFor?.let { SharerSyncSwitch(it, it in sharing.syncedSharers, onAction, modifier = Modifier.padding(horizontal = 8.dp)) }
         if (incoming) {
             IncomingFiles(sharing, transfer, uploads, writes, onAction, gutter = 16.dp, listModifier = Modifier.fillMaxSize().padding(horizontal = 8.dp))
         } else SharedFilesBody(sharing.recipientFilesFailed, sharing.recipientFiles?.size, MR.string.filesync_view_to_none) {
@@ -694,6 +714,7 @@ internal fun FilesyncSharedFilesSheet(
                 Text(path.lastOrNull()?.name ?: sharer.domainName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (sharing.canAddHere) FilesyncUploadButton(writes.pickToAdd)
             }
+            sharing.syncSwitchFor?.let { SharerSyncSwitch(it, it in sharing.syncedSharers, onAction, modifier = Modifier.padding(horizontal = 8.dp)) }
             IncomingFiles(sharing, transfer, uploads, writes, onAction, gutter = 24.dp, listModifier = Modifier.heightIn(max = 480.dp))
         }
     }

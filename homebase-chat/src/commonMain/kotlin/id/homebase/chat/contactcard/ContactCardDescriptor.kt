@@ -2,6 +2,7 @@ package id.homebase.chat.contactcard
 
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.codePointCount
+import id.homebase.core.contacts.DeviceContact
 import kotlinx.serialization.Serializable
 
 /**
@@ -88,3 +89,13 @@ fun String.scrubbed(): String = filterNot { c ->
     c < ' ' || c == '\u007F' || c == '\uFEFF' ||
         c in '\u200B'..'\u200F' || c in '\u202A'..'\u202E' || c in '\u2066'..'\u2069'
 }
+
+fun ContactCardDescriptor.toDeviceContact(): DeviceContact = DeviceContact(
+    displayName = summaryLine(),
+    givenName = givenName.scrubbed(),
+    surname = surname.scrubbed(),
+    organization = organization.scrubbed(),
+    phones = phones,
+    emails = emails,
+    website = identity()?.let { "https://${it.domainName}" }.orEmpty(),
+)

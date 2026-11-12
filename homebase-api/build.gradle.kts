@@ -238,6 +238,8 @@ kotlin {
     val runHasherBench = providers.environmentVariable("HASHER_BENCH").orNull == "1"
     tasks.withType(AbstractTestTask::class.java).configureEach {
         if (!runHasherBench) filter.excludeTestsMatching("id.homebase.api.crypto.HasherThroughputBench.*")
+        // Kotlin/Native's runner otherwise drops assertion messages from the CI log.
+        testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 
     compilerOptions {
@@ -253,6 +255,10 @@ kotlin {
         jvmMain.get().dependsOn(skiaMain)
         nativeMain.get().dependsOn(skiaMain)
         wasmJsMain.get().dependsOn(skiaMain)
+        // Desktop and web have no native resampler, so they share the Kotlin Lanczos.
+        val kotlinResamplerMain = create("kotlinResamplerMain") { dependsOn(skiaMain) }
+        jvmMain.get().dependsOn(kotlinResamplerMain)
+        wasmJsMain.get().dependsOn(kotlinResamplerMain)
 
         val javaMain = create("javaMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(javaMain)
@@ -322,7 +328,11 @@ kotlin {
         // database; a shared directory, since androidDeviceTest can't depend on a common test set.
         listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/dbContractTest/kotlin") }
         getByName("androidDeviceTest").kotlin.srcDir("src/dbContractTest/kotlin")
+        // Image sources from a path, on the real decoders; a phone must never read the file whole.
+        listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/imageFileContractTest/kotlin") }
+        getByName("androidDeviceTest").kotlin.srcDir("src/imageFileContractTest/kotlin")
         androidMain.dependencies {
+            implementation(project(":homebase-imageresize"))
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)
@@ -413,6 +423,7 @@ kotlin {
             implementation(libs.androidx.test.runner)
             implementation(libs.androidx.test.core)
             implementation(libs.androidx.junit)
+            implementation(libs.androidx.heifwriter)
         }
     }
 

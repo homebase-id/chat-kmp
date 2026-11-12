@@ -1,9 +1,11 @@
 package id.homebase.api.image
 
+import id.homebase.api.lib.image.ImageFormatDetector
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -286,5 +288,45 @@ class ImageMetadataScrubberTest {
         assertSame(gif, ImageMetadataScrubber.scrub(gif))
         val empty = ByteArray(0)
         assertContentEquals(empty, ImageMetadataScrubber.scrub(empty))
+    }
+
+    // The send path warns on both, so neither a new format nor a broken file leaks silently.
+    @Test
+    fun outcome_tellsUnsupportedAndUnparseableApartFromClean() {
+        listOf(jpeg(), png(), webp(), HeicFixtures.geotaggedRotated).forEach {
+            assertIs<ImageMetadataScrubber.Outcome.Scrubbed>(ImageMetadataScrubber.scrubWithOutcome(it), ImageFormatDetector.detectFormat(it))
+        }
+        assertEquals(ImageMetadataScrubber.Outcome.NothingToStrip, ImageMetadataScrubber.scrubWithOutcome(jpeg(withExif = false, withComment = false)))
+        val avif = HeicFixtures.geotaggedRotated.copyOf().also { "avif".encodeToByteArray().copyInto(it, 8) }
+        val bmp = "BM".encodeToByteArray() + ByteArray(30)
+        val gif = "GIF89a".encodeToByteArray() + ByteArray(20) { 4 }
+        listOf(gif, bmp, avif, ByteArray(0)).forEach {
+            assertEquals(ImageMetadataScrubber.Outcome.UnsupportedFormat, ImageMetadataScrubber.scrubWithOutcome(it), it.decodeToString(0, minOf(12, it.size)))
+        }
+    }
+
+    @Test
+    fun malformedFiles_areUnparseable() {
+        val hugeChunk = byteArrayOf(0x80.toByte(), 0, 0, 0)
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte()) + ByteArray(40) { 0x11 }
+        val png = png().copyOfRange(0, 8) + hugeChunk + "tEXt".encodeToByteArray() + ByteArray(8)
+        val webp = "RIFF".encodeToByteArray() + le32(20) + "WEBP".encodeToByteArray() +
+            "EXIF".encodeToByteArray() + hugeChunk.reversedArray() + ByteArray(8)
+        listOf(jpeg, png, webp).forEach {
+            assertEquals(ImageMetadataScrubber.Outcome.Unparseable, ImageMetadataScrubber.scrubWithOutcome(it), ImageFormatDetector.detectFormat(it))
+            assertSame(it, ImageMetadataScrubber.scrub(it))
+        }
+    }
+
+    @Test
+    fun aFileCutOffInsideItsMetadata_dropsTheRest() {
+        val jpegCutInExif = jpeg().copyOfRange(0, 30)
+        val jpegOut = assertIs<ImageMetadataScrubber.Outcome.Scrubbed>(ImageMetadataScrubber.scrubWithOutcome(jpegCutInExif)).bytes
+        assertFalse(jpegOut.containsSub(byteArrayOf(0xFF.toByte(), 0xE1.toByte())), "truncated EXIF survived")
+
+        val fullWebp = webp()
+        val webpCutInXmp = fullWebp.copyOfRange(0, fullWebp.size - 3)
+        val webpOut = assertIs<ImageMetadataScrubber.Outcome.Scrubbed>(ImageMetadataScrubber.scrubWithOutcome(webpCutInXmp)).bytes
+        assertFalse(webpOut.containsSub("secret-author".encodeToByteArray()), "truncated XMP survived")
     }
 }

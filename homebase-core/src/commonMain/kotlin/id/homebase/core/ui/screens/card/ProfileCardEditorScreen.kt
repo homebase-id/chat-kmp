@@ -71,6 +71,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -86,7 +87,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -151,6 +151,7 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.close
+import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_preview
 import id.homebase.resources.profile_card_preview_desktop
 import id.homebase.resources.profile_card_preview_mobile
@@ -172,8 +173,6 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import id.homebase.resources.profile_card_import_undo
-import id.homebase.resources.profile_card_import_public_title
-import id.homebase.resources.profile_card_import_public_message
 import id.homebase.resources.profile_card_import_public_confirm
 import id.homebase.resources.profile_card_make_public_message
 import id.homebase.resources.profile_card_make_public_title
@@ -182,12 +181,11 @@ import id.homebase.resources.profile_card_nameless_public_message
 import id.homebase.resources.profile_card_nameless_public_title
 import id.homebase.resources.profile_card_content_now_hidden
 import id.homebase.resources.profile_card_content_now_public
-import id.homebase.resources.profile_card_import_done
+import id.homebase.resources.profile_card_content_removed_from_card
 import id.homebase.resources.profile_avatar_edit_error_upload
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.cancel
-import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
@@ -265,7 +263,6 @@ private fun ProfileCardEditor(
     val errStorageFull = stringResource(MR.string.storage_full_upload_failed)
     val errAvatarDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
     val importUndo = stringResource(MR.string.profile_card_import_undo)
-    val publicLabel = stringResource(MR.string.profile_card_audience_public)
     val errCard = stringResource(MR.string.profile_card_error)
     val errSave = stringResource(MR.string.profile_card_design_save_failed)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
@@ -327,15 +324,6 @@ private fun ProfileCardEditor(
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
                 ProfileCardEvent.ContentSaveFailed -> launch { snackbarHostState.showSnackbar(errContent) }
-                is ProfileCardEvent.ContentImported -> launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = TranslationUtil.getString(MR.string.profile_card_import_done, (event.from as? CardAudience.Circle)?.label?.ifBlank { null } ?: publicLabel),
-                        actionLabel = importUndo,
-                        withDismissAction = true,
-                        duration = SnackbarDuration.Indefinite,
-                    )
-                    if (result == SnackbarResult.ActionPerformed) viewModel.onImportUndone()
-                }
                 ProfileCardEvent.ImportUndoExpired -> snackbarHostState.currentSnackbarData?.dismiss()
                 is ProfileCardEvent.AudienceChanged -> launch {
                     val result = snackbarHostState.showSnackbar(
@@ -343,6 +331,14 @@ private fun ProfileCardEditor(
                             if (event.nowPublic) MR.string.profile_card_content_now_public else MR.string.profile_card_content_now_hidden,
                             event.itemLabel,
                         ),
+                        actionLabel = importUndo,
+                        withDismissAction = true,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) viewModel.onAudienceUndone()
+                }
+                ProfileCardEvent.ContentRemovedFromCard -> launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = TranslationUtil.getString(MR.string.profile_card_content_removed_from_card),
                         actionLabel = importUndo,
                         withDismissAction = true,
                     )
@@ -398,7 +394,7 @@ private fun ProfileCardEditor(
             step = step,
             onStep = { step = it },
             onBack = requestBack,
-            onSelect = viewModel::onDesignPicked,
+            onSelect = viewModel::onDesignSelected,
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
             onStyle = viewModel::onStyleSelected,
@@ -417,10 +413,10 @@ private fun ProfileCardEditor(
             onRemovePhoto = {
                 avatarViewModel.onAction(ProfileAvatarEditAction.RemoveRequested(card.photoVisibility, circle?.id))
             },
-            onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,
             onContentAudience = viewModel::onContentAudienceChosen,
             onFieldShown = viewModel::onFieldShown,
+            onSectionShown = viewModel::onSectionShown,
             onFieldsReordered = viewModel::onFieldsReordered,
             onContentEdit = viewModel::onContentEdited,
             onContentDelete = viewModel::onContentDeleted,
@@ -446,9 +442,6 @@ private fun ProfileCardEditor(
         }
         if (avatarState.removalToConfirm != null) ReportOverlay()
         PhotoRemovalConfirmDialog(avatarState.removalToConfirm, avatarViewModel::onAction)
-        if (uiState.pendingImport != null) {
-            ImportPublicDialog(onConfirm = viewModel::onImportConfirmed, onDismiss = viewModel::onImportCancelled)
-        }
         uiState.pendingPublic?.let { pending ->
             MakePublicDialog(itemLabel = pending.itemLabel, onConfirm = viewModel::onPublicConfirmed, onDismiss = viewModel::onPublicCancelled)
         }
@@ -456,23 +449,6 @@ private fun ProfileCardEditor(
             NamelessPublicDialog(onConfirm = viewModel::onNamelessConfirmed, onDismiss = viewModel::onNamelessCancelled)
         }
     }
-}
-
-@Composable
-private fun ImportPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    ReportOverlay()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
-        title = { Text(stringResource(MR.string.profile_card_import_public_title), textAlign = TextAlign.Center) },
-        text = { Text(stringResource(MR.string.profile_card_import_public_message)) },
-        confirmButton = {
-            Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_import_public_confirm)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
-        },
-    )
 }
 
 @Composable
@@ -532,9 +508,9 @@ internal fun ProfileCardEditorContent(
     onRetryLoad: () -> Unit = {},
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: () -> Unit = {},
-    onImport: (CardAudience) -> Unit = {},
     onContentAudience: (Uuid, ProfileAudience) -> Unit = { _, _ -> },
     onFieldShown: (Uuid, Boolean) -> Unit = { _, _ -> },
+    onSectionShown: (String, Boolean) -> Unit = { _, _ -> },
     onFieldsReordered: (List<Uuid>) -> Unit = {},
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit = { _, _, _ -> },
     onContentDelete: (Uuid) -> Unit = {},
@@ -589,6 +565,7 @@ internal fun ProfileCardEditorContent(
                     showCardsButton = showCard,
                     onContentAudience = onContentAudience,
                     onFieldShown = onFieldShown,
+                    onSectionShown = onSectionShown,
                     onFieldsReordered = onFieldsReordered,
                     onContentEdit = onContentEdit,
                     onContentDelete = onContentDelete,
@@ -598,8 +575,6 @@ internal fun ProfileCardEditorContent(
                     photo = photo,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
-                    onImport = onImport,
-                    onDesign = onDesign,
                     metrics = metrics,
                     shape = shape,
                     modifier = modifier,
@@ -649,7 +624,8 @@ internal fun ProfileCardEditorContent(
                     onBack = onBack,
                     title = if (contentOpen) stringResource(MR.string.profile_edit_title) else null,
                     onPreview = { previewOpen = true }.takeIf { contentOpen && showCard },
-                    onSave = onSave.takeIf { !contentOpen && step == EditorStep.Customise && !uiState.isCircleReadOnly },
+                    onDesign = onDesign.takeIf { contentOpen && contentLayout == ContentLayout.PanelOnly },
+                    onSave = onSave.takeIf { !contentOpen && !uiState.isCircleReadOnly },
                     canSave = uiState.canSaveDesign,
                     isSaving = uiState.isSavingDesign,
                 )
@@ -689,18 +665,24 @@ internal fun ProfileCardEditorContent(
                                 if (selectedCard != null) {
                                     val shape = RoundedCornerShape(COMPACT_TILE_CORNER)
                                     val previewLabel = stringResource(MR.string.profile_card_preview)
-                                    CardStill(
-                                        card = selectedCard,
-                                        still = tiles[audienceKey(selectedCard.audience)],
-                                        modifier = Modifier
-                                            .padding(bottom = metrics.gap)
-                                            .width(COMPACT_TILE_WIDTH)
-                                            .aspectRatio(CARD_THUMB_ASPECT)
-                                            .clip(shape)
-                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                                            .clickable(role = Role.Button) { previewOpen = true }
-                                            .semantics { contentDescription = previewLabel },
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(bottom = metrics.gap),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        CardStill(
+                                            card = selectedCard,
+                                            still = tiles[audienceKey(selectedCard.audience)],
+                                            modifier = Modifier
+                                                .width(COMPACT_TILE_WIDTH)
+                                                .aspectRatio(CARD_THUMB_ASPECT)
+                                                .clip(shape)
+                                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                                                .clickable(role = Role.Button) { previewOpen = true }
+                                                .semantics { contentDescription = previewLabel },
+                                        )
+                                        if (onDesign != null) DesignButton(onDesign)
+                                    }
                                 }
                             },
                         ) {
@@ -740,6 +722,7 @@ internal fun ProfileCardEditorContent(
                                         .clearAndSetSemantics { contentDescription = chipDescription },
                                 )
                                 PreviewWidthToggle(selected = previewWidth, onSelect = { previewWidth = it })
+                                if (contentOpen && onDesign != null) DesignButton(onDesign)
                             }
                             CardPreviewFrame(
                                 keepProportions = !desktopPreview,
@@ -895,6 +878,13 @@ private fun PreviewWidthToggle(selected: PreviewWidth, onSelect: (PreviewWidth) 
 }
 
 @Composable
+private fun DesignButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onClick, shapes = IconButtonDefaults.shapes(), modifier = modifier) {
+        Icon(Icons.Outlined.Palette, contentDescription = stringResource(MR.string.profile_card_design_action))
+    }
+}
+
+@Composable
 private fun EditorTopBar(
     audience: CardAudience,
     showsChip: Boolean,
@@ -903,6 +893,7 @@ private fun EditorTopBar(
     onBack: () -> Unit,
     title: String? = null,
     onPreview: (() -> Unit)? = null,
+    onDesign: (() -> Unit)? = null,
     onSave: (() -> Unit)? = null,
     canSave: Boolean = false,
     isSaving: Boolean = false,
@@ -948,6 +939,7 @@ private fun EditorTopBar(
                     if (showsChip) AudienceChip(audience = audience, locked = readOnly, unsaved = unsaved, elevated = false)
                 }
             }
+            if (onDesign != null) DesignButton(onDesign)
             if (onPreview != null) {
                 val previewLabel = stringResource(MR.string.profile_card_preview)
                 WithTooltip(previewLabel, below = true) {
@@ -984,6 +976,7 @@ private fun EditorPanel(
     showCardsButton: Boolean,
     onContentAudience: (Uuid, ProfileAudience) -> Unit,
     onFieldShown: (Uuid, Boolean) -> Unit,
+    onSectionShown: (String, Boolean) -> Unit,
     onFieldsReordered: (List<Uuid>) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
     onContentDelete: (Uuid) -> Unit,
@@ -993,8 +986,6 @@ private fun EditorPanel(
     photo: CardPhotoUi,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
-    onImport: (CardAudience) -> Unit,
-    onDesign: (() -> Unit)?,
     metrics: PanelMetrics,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -1011,7 +1002,6 @@ private fun EditorPanel(
     val optionsNeeded = CAPTION_LINE * fontScale + control + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience, uiState.cards) { uiState.contentItems }
-    val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
@@ -1032,18 +1022,17 @@ private fun EditorPanel(
                 photo = photo,
                 enabled = !uiState.isContentBusy && !uiState.loadFailed,
                 busy = uiState.isContentBusy,
-                importSources = importSources,
                 showCardsButton = showCardsButton,
                 onAudience = onContentAudience,
                 onFieldShown = onFieldShown,
+                hiddenSections = uiState.selectedCard?.overrides?.fields.hiddenSectionKinds(),
+                onSectionShown = onSectionShown,
                 onFieldsReordered = onFieldsReordered,
                 onEdit = onContentEdit,
                 onDelete = onContentDelete,
                 onAdd = onContentAdd,
                 onChangePhoto = onChangePhoto,
                 onRemovePhoto = onRemovePhoto,
-                onImport = onImport,
-                onDesign = onDesign,
                 edge = metrics.edge,
             )
             return@Surface

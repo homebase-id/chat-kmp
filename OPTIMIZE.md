@@ -90,6 +90,24 @@ HASHER_BENCH=1 ./gradlew :homebase-api:wasmJsBrowserTest --tests '*HasherThrough
   for a read slot, `sql` is SQLite, `mapper` is row mapping and JSON.
 - `SlowMessageFetch` when a conversation's fetch plus mapping takes over 200 ms.
 
+### Image pipeline on an Android phone
+
+`ImagePipelinePerfBench` (androidDeviceTest) generates 12 MP and 48 MP JPEG and HEIC fixtures on the
+phone and times `createMediaImages` at Standard and HD, plus the bare Lanczos step, with peak native
+and Java-heap growth. It's skipped unless asked for. Run it with `am instrument` rather than through
+Gradle, so a Gradle stop elsewhere or a dropped USB link doesn't kill it, and read the results from the phone:
+
+```bash
+./gradlew :homebase-api:assembleAndroidDeviceTest
+adb install -r -t homebase-api/build/outputs/apk/androidTest/homebase-api-androidTest.apk
+adb shell am instrument -r -e class id.homebase.api.image.ImagePipelinePerfBench -e imageBench true \
+  id.homebase.api.test/androidx.test.runner.AndroidJUnitRunner
+# about 2-4 minutes; the last line is "done"
+adb shell cat /sdcard/Android/data/id.homebase.api.test/cache/image-bench.txt
+```
+
+For a before/after comparison, copy the bench into a worktree of the base commit and run both APKs back to back, letting the phone cool in between.
+
 ## Baselines
 
 ### 2026-10-23, d0bbc2e18, desktop JVM (Linux), synthetic fixture v1
@@ -189,6 +207,47 @@ Small on Original was 14-20 KB across these fixtures, so a 1 GiB cache holds abo
 fixtures are small and already compressed, so real photos will probably cost more and hold fewer.
 Measure on a real library before trusting this.
 
+### 2026-11-11, native resizing on Android (#2301), Galaxy S23+ (SM-S916U, Android 17), synthetic fixtures
+
+`ImagePipelinePerfBench`, median of 3 after one warm-up. Before is main at 209aaad45 (shared Kotlin
+Lanczos on Java heap copies); after is `stb_image_resize2` on the bitmaps' native pixels. Run back to
+back, battery at 25 °C and 29 °C at the start of each. App heap limit 256 MB.
+
+| Case | Before | After | Java heap before | Java heap after |
+|---|---|---|---|---|
+| 12 MP JPEG, Standard | 4072 ms | 592 ms | +100 MB | +0 MB |
+| 12 MP JPEG, HD | 5324 ms | 1965 ms | +99 MB | +4 MB |
+| 12 MP HEIC, Standard | 4276 ms | 975 ms | +99 MB | +0 MB |
+| 12 MP HEIC, HD | 5576 ms | 2388 ms | +99 MB | +7 MB |
+| 48 MP JPEG, Standard | 4146 ms | 719 ms | +111 MB | +1 MB |
+| 48 MP JPEG, HD | 3141 ms (bilinear) | 2397 ms | +32 MB | +3 MB |
+| 48 MP HEIC, Standard | 2528 ms | 1695 ms | +30 MB | +1 MB |
+| 48 MP HEIC, HD | 3898 ms (bilinear) | 3180 ms | +31 MB | +2 MB |
+| Lanczos 4000×3000 → 2048×1536 | 2569 ms | 99 ms | +81 MB | +0 MB |
+| Lanczos 2048×1536 → 1080×810 | 693 ms | 37 ms | +21 MB | +0 MB |
+
+Before, every 48 MP HD run logged "Not enough heap for Lanczos at 5656x4242 -> 4096x3072; using the
+platform filter": those photos got the aliasing bilinear filter, which is why they look fast. Peak
+native memory is the same before and after (60–477 MB), because the decoded bitmaps dominate it. No
+iPhone numbers yet.
+
+### 2026-11-11, Android decode over 24 MP (#2302), Galaxy S23 (SM-S916U), Android 17
+
+`LargeDecodeAndroidTest`, peak native heap during the decode alone, read with `adb logcat -s LargeDecode`.
+"Before" is the `setTargetSize` memory guard; "after" decodes HEIC, PNG and WebP at full size and
+JPEG by sample size only. A plain full decode peaks at the "after" figure in every row.
+
+| Source | For | Before: decoded at, peak | After: decoded at, peak |
+|---|---|---|---|
+| 48 MP HEIC, 8064×6048 | 2048 | 4096×3072, 358 MB | 8064×6048, 304 MB |
+| 48 MP HEIC | 4096 | 5656×4242, 408 MB | 8064×6048, 301 MB |
+| 50 MP JPEG, 8160×6120 | 4096 | 5656×4242, 302 MB | 8160×6120, 201 MB |
+| 28 MP PNG, 7000×4000 | 2048 | 4096×2340, 159 MB | 7000×4000, 117 MB |
+| 28 MP PNG | 4096 | 6480×3703, 218 MB | 7000×4000, 117 MB |
+
+1-pixel stripes from the 28 MP PNG straight out of the guard's decode had a spread of about 74,
+full contrast, so the aliasing happened before any resampler ran.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
@@ -260,6 +319,7 @@ Measure on a real library before trusting this.
 | 2026-10-23 | One connection contract (`DatabaseDriverFactory.createDriver`): one writer plus `SQLITE_READER_CONNECTIONS` (4) readers under WAL, every connection carrying `SQLITE_CONNECTION_PRAGMAS`. Android had a single connection: `SupportOpenHelperFactory(password)` leaves `enableWriteAheadLogging` off, so SQLCipher caps the pool at 1 whatever the file's journal mode, and every read, opening a conversation included, waited for the open sync write transaction. Now the WAL flag is on, the pool is 5, a per-connection hook sets the pragmas on readers and `onConfigure` re-applies them on the writer (SQLCipher overwrites `journal_size_limit` to 10 KB after the hook). iOS gets the pragmas it lacked (`temp_store`, `journal_size_limit`) through sqliter's per-connection callback | `DatabaseConnectionContractAndroidTest` on an API 36 emulator: before, "reads waited for the open write transaction" (15 s timeout); after, passes in 1.6 s. Without the hook readers had `busy_timeout` 2500; without `onConfigure` the writer had `journal_size_limit` 10000. Not yet measured on a phone | Yes |
 | 2026-10-24 | Android raw-key mode: the shared `SqlCipherKeyMode` (`javaMain`, desktop and Android) hands SQLCipher a cached raw key. The first launch after the update opens with the passphrase and derives the raw key on a background thread, because Android's PBKDF2 runs in Java: 3,261 ms on the main thread when tried inline, 1,705 ms in the background on an API 36 emulator. The database opens once; the old separate key probe also checkpointed the WAL on the main thread. The file isn't rewritten | Per fresh driver, passphrase → raw key: open plus first read 220–307 → 2–6 ms; 4 first reads during a write 766–988 → 5–9 ms (the pool opened 3 readers one after another, each deriving the key). Upgrade from the previous build on the emulator: migrated, salt unchanged, next launch silent | Yes |
 | 2026-10-24 | Sync batch: save the drive cursor once per batch, not once per file (`performBaseUpsert`) | `background-wake.txt` 12 → 10 writes for 3 files. Linux, Python's sqlite3 (no SQLCipher): 1,000 redundant upserts cost 6.8 ms per batch, plus serializing the cursor each time | Yes |
+| 2026-11-11 | Android memory guard over 24 MP: `ImageDecoder.setTargetSize` to shrink the decode | Decodes at full size, then scales bilinearly: aliased (stripe spread 74 straight out of the decoder) and peaked 18–86% above a full decode. Replaced by a full decode, with JPEG still shrunk by sample size | No |
 | 2026-10-24 | Skip the two tag `DELETE`s (`DriveTagIndex`, `DriveLocalTagIndex`) for new rows | Same setup: 2,000 no-match deletes over 57K tag rows cost 4.0 ms per 1,000-file batch. Skipping needs proof that no tag rows exist for the fileId; if that is wrong, the tag `INSERT` breaks UNIQUE and the batch fails | No: risk outweighs 4 ms |
 | 2026-10-26 | iOS encrypts its database: SQLCipher 4.19.0 (Zetetic's `SQLCipher.swift` package in iosApp; the same xcframework, fetched by checksum, for the simulator test binary) replaces the system `libsqlite3`, which ignored `PRAGMA key`. Raw-key mode from the start: a random 32-byte key under the same SecureStorage name as Android and desktop, set first in sqliter's `onCreateConnection` on every connection. An existing plaintext file is checkpointed, copied with `sqlcipher_export` into an encrypted file (plus `user_version`), checked, and renamed over the original; if that fails the plaintext file opens unencrypted and the next launch tries again | Phone cost: next row. `IosDatabaseEncryptionTest` on the iOS simulator: header encrypted, no-key open fails, migrated rows and `user_version` kept | Yes |
 | 2026-10-26 | iOS SQLCipher on the phone (iPhone 15, `iosApp Dev`, debug K/N framework, demo frodo: 8.4 MB, 1,947 `DriveMainIndex` rows, 310 messages, 70 conversations). Before: 004c805e5 plaintext, plus an uncommitted change that moves `QueryBatch`'s JSON decode off the read lane, so `SlowDbRead` counts don't compare; after: this branch installed over it. Medians of 3 cold starts, ms after `APP STARTUP` from `homebase.log` | One-time export on the first launch: DB init 6–7 → 99, `initializeApp` 30–35 → 167. Later launches, before → after: DB init 6–7 → 6–9; `initializeApp` 30–35 → 32–35; `ComposeView` built 374 → 379; `App()` first composition 389 → 394; list data ready (70 items) 429 → 420; `loadBasicConversations` 46–61 → 37–53; WebSocket `drainOnce` 5.5 → 6.1 (8 drains); unread counts 5–6 → 6. Process start → `APP STARTUP` 112–114 after (device syslog; no like-for-like before). The file starts with a random salt, no plaintext strings in the file or WAL, no `-encrypting` left over, the export ran once | Yes |
