@@ -92,17 +92,27 @@ class PostCommentsMutationTest {
     private fun keyHeader(fill: Byte = 1) =
         KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16) { fill }))
 
-    private suspend fun seedPost(postId: Uuid, encrypted: Boolean = false) {
-        val content = OdinSystemSerializer.serialize(
-            PostContent(
-                version = FeedProtocol.PostVersion,
-                id = postId.toString(),
-                channelId = channelDrive.toString(),
-                type = PostType.Tweet,
-                caption = "host post",
-                slug = "host-post",
-            )
+    private fun postContent(postId: Uuid) = OdinSystemSerializer.serialize(
+        PostContent(
+            version = FeedProtocol.PostVersion,
+            id = postId.toString(),
+            channelId = channelDrive.toString(),
+            type = PostType.Tweet,
+            caption = "host post",
+            slug = "host-post",
         )
+    )
+
+    private suspend fun upsertSynced(file: HomebaseFile) {
+        MainIndexMetaHelpers.HomebaseFileProcessor(env.databaseManager).baseUpsertEntryZapZap(
+            identityId = env.credentialsManager.requireActiveCredentials().getIdentityId(),
+            driveId = channelDrive,
+            fileHeaders = listOf(file),
+            cursor = null,
+        )
+    }
+
+    private suspend fun seedPost(postId: Uuid, encrypted: Boolean = false) {
         env.optimisticWriter.writeNewFile(
             driveId = channelDrive,
             keyHeader = keyHeader(),
@@ -112,7 +122,7 @@ class PostCommentsMutationTest {
                 appData = UploadAppFileMetaData(
                     uniqueId = postId,
                     fileType = FeedProtocol.PostFileType,
-                    content = content,
+                    content = postContent(postId),
                 ),
             ),
             originalRecipientCount = 0,
@@ -138,26 +148,12 @@ class PostCommentsMutationTest {
                     uniqueId = postId,
                     fileType = FeedProtocol.PostFileType,
                     userDate = 1_000,
-                    content = OdinSystemSerializer.serialize(
-                        PostContent(
-                            version = FeedProtocol.PostVersion,
-                            id = postId.toString(),
-                            channelId = channelDrive.toString(),
-                            type = PostType.Tweet,
-                            caption = "synced post",
-                            slug = "synced-post",
-                        )
-                    ),
+                    content = postContent(postId),
                 ),
             ),
             serverMetadata = ServerMetadata(),
         )
-        MainIndexMetaHelpers.HomebaseFileProcessor(env.databaseManager).baseUpsertEntryZapZap(
-            identityId = env.credentialsManager.requireActiveCredentials().getIdentityId(),
-            driveId = channelDrive,
-            fileHeaders = listOf(file),
-            cursor = null,
-        )
+        upsertSynced(file)
     }
 
     // updateComment requires a server-assigned versionTag, which an optimistic local write never
@@ -193,12 +189,7 @@ class PostCommentsMutationTest {
             ),
             serverMetadata = ServerMetadata(),
         )
-        MainIndexMetaHelpers.HomebaseFileProcessor(env.databaseManager).baseUpsertEntryZapZap(
-            identityId = env.credentialsManager.requireActiveCredentials().getIdentityId(),
-            driveId = channelDrive,
-            fileHeaders = listOf(file),
-            cursor = null,
-        )
+        upsertSynced(file)
         return file
     }
 
