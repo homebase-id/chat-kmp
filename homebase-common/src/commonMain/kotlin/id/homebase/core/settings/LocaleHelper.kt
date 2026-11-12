@@ -5,6 +5,10 @@ package id.homebase.core.settings
  */
 expect fun getSystemLocale(): String
 
+/**
+ * [Language.SYSTEM] drops any explicit app language so the OS language applies again: live on
+ * Android and desktop, after a page reload on web, and on the next launch on iOS.
+ */
 expect fun setPlatformSystemLocale(languageCode: String)
 
 fun applyStoredLocale(userPreferences: UserPreferences) {
