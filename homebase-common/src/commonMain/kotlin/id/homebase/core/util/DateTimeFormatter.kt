@@ -2,7 +2,10 @@ package id.homebase.core.util
 
 import kotlin.time.Instant
 
+/** [instant] as the locale's short numeric date in the device time zone, e.g. "5/8/26" or "08.05.2026". Never blank. */
 expect fun formatShortDate(instant: Instant): String
+
+/** [instant] as the locale's short time in the device time zone, e.g. "3:07 PM" or "15.07". Never blank. */
 expect fun formatTime(instant: Instant): String
 
 /**

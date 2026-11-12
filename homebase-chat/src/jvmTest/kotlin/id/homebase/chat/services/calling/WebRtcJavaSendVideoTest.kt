@@ -53,7 +53,7 @@ class WebRtcJavaSendVideoTest {
             assertEquals(SendVideoCap.MAX_BITRATE_BPS, encoding.maxBitrate)
             assertEquals(SendVideoCap.MIN_BITRATE_BPS, encoding.minBitrate)
         } finally {
-            engine.close()
+            engine.closeBlocking()
             peer.close()
             source.dispose()
             factory.dispose()

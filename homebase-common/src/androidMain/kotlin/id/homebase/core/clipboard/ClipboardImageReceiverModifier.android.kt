@@ -6,16 +6,24 @@ import androidx.compose.foundation.content.contentReceiver
 import androidx.compose.foundation.content.hasMediaType
 import androidx.compose.foundation.content.consume
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import android.content.ContentResolver
+import android.net.Uri
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.Dispatchers
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 actual fun clipboardImageReceiverModifier(onImagePasted: (ByteArray) -> Unit): Modifier {
     val context = LocalContext.current
-    val callback = remember(onImagePasted) {
+    val scope = rememberCoroutineScope()
+    val currentOnImagePasted by rememberUpdatedState(onImagePasted)
+    val callback = remember(context, scope) {
         { transferableContent: androidx.compose.foundation.content.TransferableContent ->
             if (!transferableContent.hasMediaType(MediaType.Image)) {
                 transferableContent
@@ -23,23 +31,12 @@ actual fun clipboardImageReceiverModifier(onImagePasted: (ByteArray) -> Unit): M
                 transferableContent.consume { item ->
                     val uri = item.uri
                     if (uri != null) {
-                        try {
-                            // TODO(perf): copy the URI to a temp file here (and in KeyboardImageReceiver) instead of
-                            // round-tripping a ByteArray; the URI may be invalid once this receiver scope ends.
-                            val bytes = context.contentResolver
-                                .openInputStream(uri)
-                                ?.use { it.readBytes() }
-                            if (bytes != null) {
-                                onImagePasted(bytes)
-                                true
-                            } else {
-                                Logger.w(tag = "ClipboardImageReceiver") { "Failed to read bytes from URI: $uri" }
-                                false
-                            }
-                        } catch (e: Exception) {
-                            Logger.e(throwable = e, tag = "ClipboardImageReceiver") { "Error reading pasted image" }
-                            false
-                        }
+                        scope.launchPastedImageRead(
+                            readDispatcher = Dispatchers.IO,
+                            read = { context.contentResolver.readPastedImage(uri) },
+                            onImagePasted = { currentOnImagePasted(it) },
+                        )
+                        true
                     } else {
                         false
                     }
@@ -48,4 +45,11 @@ actual fun clipboardImageReceiverModifier(onImagePasted: (ByteArray) -> Unit): M
         }
     }
     return Modifier.contentReceiver(callback)
+}
+
+private fun ContentResolver.readPastedImage(uri: Uri): ByteArray? = try {
+    openInputStream(uri)?.use { it.readBytes() }
+} catch (e: Exception) {
+    Logger.e(throwable = e, tag = "ClipboardImageReceiver") { "Error reading pasted image: $uri" }
+    null
 }

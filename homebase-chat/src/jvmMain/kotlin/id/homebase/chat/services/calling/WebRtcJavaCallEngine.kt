@@ -51,7 +51,10 @@ import kotlin.concurrent.timerTask
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import id.homebase.api.coroutines.ioDispatcher
 
 /**
  * Desktop engine over webrtc-java. Pass [audioDevice] (e.g. a headless module) and [cameraSource] to avoid touching
@@ -565,7 +568,9 @@ class WebRtcJavaCallEngine(
         }
     }
 
-    override fun close() {
+    override suspend fun close() = withContext(ioDispatcher + NonCancellable) { closeBlocking() }
+
+    internal fun closeBlocking() {
         // Before [lock]: the listener's native thread can be inside a refresh that waits for [lock].
         // The native unregister can spin indefinitely, so it gets a bounded wait instead of holding up the release path.
         if (listenerRegistered.compareAndSet(true, false)) {

@@ -100,23 +100,23 @@ class WebSocketHoldPolicyTest {
     }
 
     @Test
-    fun activeCallKeepsTheWsWhileBackgroundedOnPushPlatform() {
-        assertTrue(shouldKeepWebSocketConnected(foreground = false, backgroundSyncViaPush = true, callActive = true))
+    fun aHoldKeepsTheWsWhileBackgroundedOnPushPlatform() {
+        assertTrue(shouldKeepWebSocketConnected(foreground = false, backgroundSyncViaPush = true, held = true))
         assertEquals(
             WsHoldAction.NONE,
-            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = true, authResolved = true, callActive = true),
+            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = true, authResolved = true, held = true),
         )
         assertEquals(
             WsHoldAction.CONNECT,
-            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = false, authResolved = true, callActive = true),
+            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = false, authResolved = true, held = true),
         )
     }
 
     @Test
-    fun callEndingWhileBackgroundedParksTheWs() {
+    fun releasingTheLastHoldWhileBackgroundedParksTheWs() {
         assertEquals(
             WsHoldAction.PARK,
-            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = true, authResolved = true, callActive = false),
+            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = true, authResolved = true, held = false),
         )
     }
 }

@@ -1,6 +1,6 @@
 package id.homebase.chat.services.calling
 
-import id.homebase.core.notifications.CallKitBridge
+import id.homebase.core.calling.CallKitBridge
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

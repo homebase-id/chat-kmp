@@ -34,8 +34,8 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
     }
 
     func start() {
-        CallKitBridgeHolder.shared.bridge = self
-        CallPictureInPictureBridgeHolder.shared.bridge = PictureInPictureManager.shared
+        CallBridges.shared.callKit = self
+        CallBridges.shared.pictureInPicture = PictureInPictureManager.shared
         let registry = PKPushRegistry(queue: .main)
         registry.delegate = self
         registry.desiredPushTypes = [.voIP]
@@ -74,7 +74,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
         let token = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
-        VoipTokenRelay.shared.onToken(token: token)
+        CallBridges.shared.voipToken.onToken(token: token)
     }
 
     func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
@@ -101,7 +101,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
             if error != nil && !alreadyKnown { self.forget(callId) }
             completion()
         }
-        let routed = CallPushRouter.shared.handler != nil && CallPushRouter.shared.tryHandle(data: data)
+        let routed = PushInterceptors.shared.tryHandle(data: data)
         if !routed && !alreadyKnown { endUnrouted(callId) }
     }
 
@@ -231,7 +231,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         if let callId = callForUuid[action.callUUID] {
             let askedByApp = answeredCalls.contains(callId)
             answeredCalls.insert(callId)
-            if !askedByApp { CallKitBridgeHolder.shared.actions?.accept(callId: callId) }
+            if !askedByApp { CallBridges.shared.callKitActions?.accept(callId: callId) }
         }
         action.fulfill()
     }
@@ -239,14 +239,14 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         NSLog("[Call] CXEndCallAction call=%@ known=%d", action.callUUID.uuidString, callForUuid[action.callUUID] != nil ? 1 : 0)
         if let callId = callForUuid[action.callUUID] {
-            CallKitBridgeHolder.shared.actions?.endOrDecline(callId: callId)
+            CallBridges.shared.callKitActions?.endOrDecline(callId: callId)
             forget(callId)
         }
         action.fulfill()
     }
 
     func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
-        CallKitBridgeHolder.shared.actions?.setMuted(muted: action.isMuted)
+        CallBridges.shared.callKitActions?.setMuted(muted: action.isMuted)
         action.fulfill()
     }
 

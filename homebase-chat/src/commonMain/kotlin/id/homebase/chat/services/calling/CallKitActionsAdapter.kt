@@ -1,6 +1,6 @@
 package id.homebase.chat.services.calling
 
-import id.homebase.core.notifications.CallKitActions
+import id.homebase.core.calling.CallKitActions
 
 class CallKitActionsAdapter(private val session: CallSession) : CallKitActions {
     override fun accept(callId: String) {
