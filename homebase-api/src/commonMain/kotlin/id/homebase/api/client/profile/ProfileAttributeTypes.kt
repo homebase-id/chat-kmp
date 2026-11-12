@@ -27,6 +27,16 @@ object ProfileAttributeTypes {
     const val INSTAGRAM = "345fef7bada5b100001e4c78111c86de"
     const val TIKTOK = "d58890b2f156a0b9413b388773b1b0a7"
     const val LINKEDIN = "a050c5ee4b5139b730cd7eb44e7db69a"
+    const val YOUTUBE = "90de1008ca7da7a6272b2a3235c66989"
+    const val SNAPCHAT = "6d65f3ba48fc06ffedcef170133577f0"
+    const val GITHUB = "9f1ea770fb88720c48861df0f277fcea"
+    const val DISCORD = "967c88ca98b350eb126c199dd28f49cb"
+    const val STACKOVERFLOW = "6b8011877a10443d0d412dcfad398d06"
+    const val STEAM = "e4f27af4a80dff11caac432e4c97d79a"
+    const val MINECRAFT = "f37a742d738eea923a7c793dc72f8064"
+    const val EPIC = "138ce2df9047e6f04080a0c870de5bac"
+    const val RIOT = "5c603ef7e053d06910f8c74618e7ab43"
+    const val HOMEBASE_ID = "0eb220c0926857bd3e314a0b9374e1ff"
     /** The owner's profile photo — written via the dedicated `/profile/attributes/photo` endpoint,
      *  not [ProfileProvider.saveAttribute]. Multiple photo attributes can coexist (one per
      *  [ProfileVisibility] tier); see [ProfileRepository.uploadPhoto]. */
@@ -70,6 +80,17 @@ object ProfileAttributeTypes {
     const val KEY_INSTAGRAM = "instagram"
     const val KEY_TIKTOK = "tiktok"
     const val KEY_LINKEDIN = "linkedin"
+    const val KEY_YOUTUBE = "youtube"
+    const val KEY_SNAPCHAT = "snapchat"
+    const val KEY_GITHUB = "github"
+    const val KEY_DISCORD = "discord"
+    const val KEY_STACKOVERFLOW = "stackoverflow"
+    const val KEY_STEAM = "steam"
+    const val KEY_MINECRAFT = "minecraft"
+    // The web console keys a social by its lowercased display name, spaces included.
+    const val KEY_EPIC = "epic games"
+    const val KEY_RIOT = "riot games"
+    const val KEY_HOMEBASE_ID = "dotyouid"
 
     /** Data key on a [PHOTO] attribute holding the payload key to fetch the image bytes from —
      *  server-set, never sent on write (see the `/profile/attributes/photo` endpoint docs). */
@@ -90,7 +111,8 @@ object ProfileAttributeTypes {
      * Only used when CREATING; editing an existing attribute always preserves its stored visibility.
      */
     fun defaultVisibilityFor(type: String): ProfileVisibility = when (type) {
-        NAME, NICKNAME, STATUS, TWITTER, FACEBOOK, INSTAGRAM, TIKTOK, LINKEDIN ->
+        NAME, NICKNAME, STATUS, TWITTER, FACEBOOK, INSTAGRAM, TIKTOK, LINKEDIN,
+        YOUTUBE, SNAPCHAT, GITHUB, DISCORD, STACKOVERFLOW, STEAM, MINECRAFT, EPIC, RIOT, HOMEBASE_ID ->
             ProfileVisibility.ANONYMOUS
 
         else -> ProfileVisibility.OWNER

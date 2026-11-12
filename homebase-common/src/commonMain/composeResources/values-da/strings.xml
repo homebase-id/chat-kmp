@@ -155,7 +155,7 @@
     <string name="pending_upgrade_snackbar_message">Din identitet kræver en dataopgradering</string>
     <string name="pending_upgrade_snackbar_action">Opgradér</string>
     <string name="pending_upgrade_title">Dataopgradering påkrævet</string>
-    <string name="pending_upgrade_message">Din identitet har en afventende opgradering. Besøg din ejer konsol for at køre den automatiske opgraderingsproces.</string>
+    <string name="pending_upgrade_message">Din identitet skal have en dataopgradering. Indtil du kører den, kan nye kontakter ikke skrive til dig, og andre funktioner kan holde op med at virke. Det tager et minut i din ejerkonsol.</string>
     <string name="pending_upgrade_confirm">Opgradér nu</string>
     <string name="upgrade_running_message">Opgraderer din identitet…</string>
 
@@ -1265,12 +1265,12 @@
     <string name="settings_vault_desc">Krypteret dokumentopbevaring</string>
     <string name="settings_feed_desc">Opslag fra dem, du følger</string>
     <string name="settings_native_feed">Indbygget feed (eksperimentel)</string>
-    <string name="settings_filesync_icon_desc">Vis Filesync i navigationslinjen</string>
+    <string name="settings_filesync_icon_desc">Vis Drive i navigationslinjen</string>
     <string name="settings_calls_beta">Tale- og videoopkald (beta)</string>
     <string name="settings_calls_beta_desc">Eksperimentel og kan gå ned. Genstart appen for at anvende.</string>
     <string name="nav_calls">Opkald</string>
     <string name="calls_home_subtitle">Din historik over tale- og videoopkald</string>
-    <string name="filesync_label">Filesync</string>
+    <string name="filesync_label">Drive</string>
     <string name="filesync_home_subtitle">Gennemse de filer, du synkroniserer fra dine computere</string>
     <string name="settings_location_desc">Privat placeringshistorik</string>
     <string name="settings_contactbook_desc">Din adressebog og cirkler</string>
@@ -1834,6 +1834,16 @@
     <string name="profile_edit_instagram">Instagram</string>
     <string name="profile_edit_tiktok">TikTok</string>
     <string name="profile_edit_linkedin">LinkedIn</string>
+    <string name="profile_edit_youtube">YouTube</string>
+    <string name="profile_edit_snapchat">Snapchat</string>
+    <string name="profile_edit_github">GitHub</string>
+    <string name="profile_edit_discord">Discord</string>
+    <string name="profile_edit_stackoverflow">Stack Overflow</string>
+    <string name="profile_edit_steam">Steam</string>
+    <string name="profile_edit_minecraft">Minecraft</string>
+    <string name="profile_edit_epic">Epic Games</string>
+    <string name="profile_edit_riot">Riot Games</string>
+    <string name="profile_edit_homebase_id">Homebase ID</string>
 
     <string name="profile_edit_audience_title">Hvem kan se dette</string>
     <string name="profile_edit_audience_only_me">Kun mig</string>
@@ -1878,13 +1888,7 @@
     <string name="profile_card_photo_label">Kortets billede</string>
     <string name="profile_card_photo_own_circle">Kun på dette kort</string>
     <string name="profile_card_photo_circle_pending">Et eget billede til dette kort kræver en opdatering af din Homebase-server, som endnu ikke er udgivet. Indtil da viser det det billede, det arver.</string>
-    <string name="profile_card_import_action">Kopiér fra…</string>
-    <string name="profile_card_import_title">Kopiér fra et andet kort</string>
-    <string name="profile_card_import_hint">Viser det andet korts oplysninger også på dette kort. Du kan fortryde det.</string>
-    <string name="profile_card_import_done">Kopieret fra %1$s</string>
     <string name="profile_card_import_undo">Fortryd</string>
-    <string name="profile_card_import_public_title">Vis disse for alle?</string>
-    <string name="profile_card_import_public_message">Disse elementer bliver synlige for alle, der ser dit offentlige kort.</string>
     <string name="profile_card_import_public_confirm">Vis for alle</string>
     <string name="profile_card_content_choose_cards">Vælg hvilke kort der viser %1$s</string>
     <string name="profile_card_cards_public">Offentlig: alle</string>
@@ -1895,6 +1899,7 @@
     <string name="profile_card_nameless_public_confirm">Fortsæt</string>
     <string name="profile_card_content_now_public">%1$s er nu offentlig</string>
     <string name="profile_card_content_now_hidden">%1$s er ikke længere offentlig</string>
+    <string name="profile_card_content_removed_from_card">Fjernet fra dette kort</string>
     <string name="profile_card_editor_title">Kortdesign</string>
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>
@@ -2415,4 +2420,7 @@
     <string name="cd_media_quality_hd_badge">Sendt i HD</string>
     <string name="cd_media_quality_original_badge">Sendt som den originale fil</string>
     <string name="storage_cache_photo_thumbnails">Miniaturer af billeder</string>
+    <string name="profile_card_sections_title">Sektioner på dette kort</string>
+    <string name="profile_card_section_feed">Feed</string>
+    <string name="profile_card_section_feed_desc">Dine seneste offentlige opslag og billeder.</string>
 </resources>

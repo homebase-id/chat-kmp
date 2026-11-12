@@ -88,7 +88,6 @@ data class ProfileCard(
             putAll(extra)
             put(KEY_DESIGN, JsonPrimitive(design))
             if (!overrides.isEmpty()) put(KEY_OVERRIDES, overrides.toJson())
-            if (audience is CardAudience.Circle) put(ProfileAttributeTypes.KEY_LABEL, JsonPrimitive(audience.label))
         },
     )
 
@@ -98,12 +97,13 @@ data class ProfileCard(
             val design = attribute.string(KEY_DESIGN) ?: return null
             val circles = attribute.acl.circleIdList.orEmpty()
             val audience = if (attribute.visibility == ProfileVisibility.CONNECTED && circles.size == 1) {
-                CardAudience.Circle(circles.single(), attribute.string(ProfileAttributeTypes.KEY_LABEL).orEmpty())
+                CardAudience.Circle(circles.single(), "")
             } else if (attribute.visibility == ProfileVisibility.ANONYMOUS) {
                 CardAudience.Public
             } else {
                 return null
             }
+            // A label older builds stored is private to the owner; dropping it here strips it on the next save.
             val known = setOf(KEY_DESIGN, KEY_OVERRIDES, ProfileAttributeTypes.KEY_LABEL)
             return ProfileCard(
                 id = attribute.id,

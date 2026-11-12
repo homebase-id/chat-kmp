@@ -53,7 +53,7 @@ class CardOverridesTest {
         val payload = CardPayload(
             design = "board",
             data = CardData(odinId = "frodo.dotyou.cloud"),
-            audience = CardAudiencePayload("circle", "Friends"),
+            audience = CardAudiencePayload("circle"),
             overrides = CardOverrides(socials = "bar"),
         )
         val json = cardJson.parseToJsonElement(payload.toJson()).jsonObject
