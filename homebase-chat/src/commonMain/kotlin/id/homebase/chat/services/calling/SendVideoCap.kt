@@ -70,7 +70,8 @@ internal class SendResolutionLadder(
     private var appliedFps = SendVideoCap.FPS
     private val load = SendLoadRung()
     private var lastLoadHeight = SendVideoCap.HEIGHT
-    private var lastBytesSent: Pair<Double, TimeMark>? = null
+    private var previous: Map<String, Any?> = emptyMap()
+    private var previousMark: TimeMark? = null
     private var minRtt = Double.MAX_VALUE
     private var climbTicksNeeded = CLIMB_TICKS
     private var encoderLimitedTicks = 0
@@ -91,7 +92,9 @@ internal class SendResolutionLadder(
             appliedFps = cap.fps
             applyFps(cap.fps)
         }
-        val sent = sentBps(outbound["bytesSent"].asDouble())
+        val before = previous
+        val sent = sentBps(outbound["bytesSent"].asDouble(), before["bytesSent"].asDouble())
+        previous = outbound
         val clean = linkIsClean(stats)
         val source = stats.video("media-source")
         val sides = listOfNotNull(source?.get("width").asDouble(), source?.get("height").asDouble()).filter { it > 0 }.sorted()
@@ -100,7 +103,7 @@ internal class SendResolutionLadder(
         val inputShortSide = minOf(sourceShort, SendVideoCap.HEIGHT.toDouble())
         val inputLongSide = (sourceLong * inputShortSide / sourceShort).roundToInt()
         val loadBefore = lastLoadHeight
-        val loadHeight = minOf(load.onStats(outbound), cap.height)
+        val loadHeight = minOf(load.onStats(outbound, before), cap.height)
         val next = nextHeight(target, sent, clean, outbound, minOf(height, loadHeight))
         val nextScale = maxOf(1.0, inputShortSide / evenShortSide(minOf(next, loadHeight), inputShortSide.roundToInt(), inputLongSide))
         if (next == height && nextScale == scale && loadHeight == loadBefore) return null
@@ -155,12 +158,12 @@ internal class SendResolutionLadder(
         return loss <= CLEAN_LOSS && rtt <= minRtt * 2 + CLEAN_RTT_SLACK_S
     }
 
-    private fun sentBps(bytesSent: Double?): Double? {
-        val previous = lastBytesSent
-        lastBytesSent = bytesSent?.let { it to clock.markNow() }
-        if (bytesSent == null || previous == null) return null
-        val seconds = previous.second.elapsedNow().inWholeMilliseconds / 1000.0
-        return if (seconds > 0) (bytesSent - previous.first) * 8 / seconds else null
+    private fun sentBps(bytesSent: Double?, before: Double?): Double? {
+        val mark = previousMark
+        previousMark = clock.markNow()
+        if (bytesSent == null || before == null || mark == null) return null
+        val seconds = mark.elapsedNow().inWholeMilliseconds / 1000.0
+        return if (seconds > 0) (bytesSent - before) * 8 / seconds else null
     }
 }
 
@@ -180,13 +183,11 @@ private const val FAST_TICKS_TO_STEP_UP = 6
 internal class SendLoadRung {
     var height = SendVideoCap.HEIGHT
         private set
-    private var previous: Map<String, Any?> = emptyMap()
     private var slowTicks = 0
     private var fastTicks = 0
 
-    fun onStats(outbound: Map<String, Any?>): Int {
+    fun onStats(outbound: Map<String, Any?>, previous: Map<String, Any?>): Int {
         val encodeMs = perFrame(outbound, previous, "totalEncodeTime", "framesEncoded", 1000.0)
-        previous = outbound
         val fps = outbound["framesPerSecond"].asDouble()
         val sentShortSide = outbound.sentShortSide()
         if (fps == null || encodeMs == null || sentShortSide == null || sentShortSide <= 0) {
