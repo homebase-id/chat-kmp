@@ -74,7 +74,7 @@ internal enum class SettingsCategory(
     Help(MR.string.settings_help, Icons.AutoMirrored.Outlined.HelpOutline),
 }
 
-internal data class SettingsPaneTarget(val category: SettingsCategory, val appsPage: AppsPage? = null)
+internal data class SettingsPaneTarget(val category: SettingsCategory, val appsPage: AppsPage? = null, val profileCard: Boolean = false)
 
 /**
  * Where the settings pane opens next, for a link from outside Settings (the storage-full banner's
@@ -85,6 +85,10 @@ internal object SettingsPaneRequest {
 
     fun open(category: SettingsCategory, appsPage: AppsPage? = null) {
         pending = SettingsPaneTarget(category, appsPage)
+    }
+
+    fun openProfileCard() {
+        pending = SettingsPaneTarget(SettingsCategory.General, profileCard = true)
     }
 
     fun take(): SettingsPaneTarget? = pending.also { pending = null }

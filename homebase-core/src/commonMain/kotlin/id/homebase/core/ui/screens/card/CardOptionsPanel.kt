@@ -90,6 +90,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -642,11 +645,15 @@ private fun Swatch(
     val ring = MaterialTheme.colorScheme.primary
     val outline = MaterialTheme.colorScheme.outline
     val shape = MorphShape(morph, progress)
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
     Box(
         modifier = Modifier
             .size(SWATCH_TARGET)
             .revealWhenSelected(selected)
-            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .selectable(selected, interactions, LocalIndication.current, enabled, Role.RadioButton, onClick)
+            .handCursor(enabled)
+            .focusRing(focused, CircleShape, MaterialTheme.colorScheme.secondary, outset = 1.dp)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
@@ -690,7 +697,7 @@ private fun BlockOrderRow(order: List<String>, enabled: Boolean, tileHeight: Dp,
         ReorderableRow(
             list = order,
             onSettle = { from, to -> if (from != to) onChange(order.toMutableList().apply { add(to, removeAt(from)) }) },
-            modifier = Modifier.fillMaxWidth().fadingEdges(scroll).horizontalScroll(scroll).padding(horizontal = OPTION_SIDE_INSET),
+            modifier = Modifier.fillMaxWidth().fadingEdges(scroll).wheelScrollsRow(scroll).horizontalScroll(scroll).padding(horizontal = OPTION_SIDE_INSET),
             horizontalArrangement = Arrangement.spacedBy(BLOCK_TILE_SPACING, Alignment.CenterHorizontally),
         ) { index, kind, dragging ->
             key(kind) {
@@ -778,6 +785,7 @@ internal fun ScrollableChoiceRow(
     Row(
         modifier = modifier
             .fadingEdges(scroll)
+            .wheelScrollsRow(scroll)
             .horizontalScroll(scroll)
             .padding(horizontal = contentPadding)
             .selectableGroup(),

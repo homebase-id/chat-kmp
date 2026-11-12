@@ -6,9 +6,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.layout.layout
@@ -1178,6 +1175,10 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         LaunchedEffect(corners[corner]) { anchor.animateTo(corners[corner], springSpec) }
         val shape = RoundedCornerShape(PreviewCorner)
         // Insets are read here, in the placement phase, so an inset animation re-places the preview without recomposing it.
+        val minX = corners.minOf { it.x }
+        val minY = corners.minOf { it.y }
+        val spanX = corners.maxOf { it.x } - minX
+        val spanY = corners.maxOf { it.y } - minY
         val insetShift = { at: Offset ->
             val left = insets.getLeft(density, direction).toFloat()
             val right = insets.getRight(density, direction).toFloat()
@@ -1185,10 +1186,6 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
             val end = if (rtl) left else right
             val top = insets.getTop(density).toFloat()
             val bottom = insets.getBottom(density).toFloat()
-            val minX = corners.minOf { it.x }
-            val minY = corners.minOf { it.y }
-            val spanX = corners.maxOf { it.x } - minX
-            val spanY = corners.maxOf { it.y } - minY
             val tx = if (spanX > 0f) ((at.x - minX) / spanX).coerceIn(0f, 1f) else 0f
             val ty = if (spanY > 0f) ((at.y - minY) / spanY).coerceIn(0f, 1f) else 0f
             Offset(start + (-end - start) * tx, top + (-bottom - top) * ty)

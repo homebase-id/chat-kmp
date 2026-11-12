@@ -23,6 +23,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,11 +45,16 @@ import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.widget.ProvideSettingsChrome
+import id.homebase.core.ui.navigation.LocalPaneFullWindow
 import id.homebase.core.widget.rememberTabSlideFade
 import id.homebase.resources.MR
 import id.homebase.resources.close
 import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import org.koin.compose.viewmodel.koinViewModel
 import id.homebase.api.client.mail.MailboxMode
 import kotlin.uuid.ExperimentalUuidApi
@@ -77,7 +84,7 @@ internal fun SettingsPaneHost(
     val requested = remember { SettingsPaneRequest.take() }
     var category by remember { mutableStateOf(requested?.category ?: SettingsCategory.General) }
     var appsPage by remember { mutableStateOf(requested?.appsPage) }
-    var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
+    var profilePage by remember { mutableStateOf(if (requested?.profileCard == true) ProfilePage.Card else null) }
     var editorOpenedFromCard by remember { mutableStateOf(false) }
     var editorOpensDesign by remember { mutableStateOf(false) }
     val openEditor = { fromCard: Boolean, design: Boolean ->
@@ -88,20 +95,38 @@ internal fun SettingsPaneHost(
     // Pre-warms the card page; its host lives as long as the Settings entry.
     val cardViewModel = if (profileCardEnabled) koinViewModel<ProfileCardViewModel>() else null
     cardViewModel?.let { StartCardHostWhenSettled(it) }
+    val cardViewing by remember(cardViewModel) {
+        cardViewModel?.uiState?.map { it.viewing }?.distinctUntilChanged() ?: flowOf(false)
+    }.collectAsStateWithLifecycle(false)
 
+    // A viewed card takes the whole dialog and its expand button the window; the editors always take the window.
+    val viewerOpen = profilePage == ProfilePage.Card && cardViewing
+    var cardExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(viewerOpen) { if (!viewerOpen) cardExpanded = false }
+    val paneFullWindow = LocalPaneFullWindow.current
+    val editorOpen = profilePage == ProfilePage.CardEditor || profilePage == ProfilePage.Avatar
+    val fullWindow = paneFullWindow != null && (editorOpen || (viewerOpen && cardExpanded))
+    DisposableEffect(paneFullWindow, fullWindow) {
+        paneFullWindow?.value = fullWindow
+        onDispose { paneFullWindow?.value = false }
+    }
+
+    val cardOpen = profilePage != null
     Column(modifier = Modifier.fillMaxSize()) {
-        SettingsPaneHeader(onDismiss)
+        if (!cardOpen) SettingsPaneHeader(onDismiss)
 
         Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            SettingsSidebar(
-                selected = category,
-                onSelect = {
-                    category = it
-                    profilePage = null
-                    appsPage = null
-                },
-            )
-            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (!cardOpen) {
+                SettingsSidebar(
+                    selected = category,
+                    onSelect = {
+                        category = it
+                        profilePage = null
+                        appsPage = null
+                    },
+                )
+                VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
             val enterFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
             val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
             val tabSlideFade = rememberTabSlideFade()
@@ -154,6 +179,8 @@ internal fun SettingsPaneHost(
                                     onBack = { profilePage = null },
                                     onEdit = { openEditor(true, false) },
                                     onChangeDesign = { openEditor(true, true) },
+                                    fullWindow = cardExpanded,
+                                    onToggleFullWindow = { cardExpanded = !cardExpanded }.takeIf { paneFullWindow != null },
                                 )
                             }
 

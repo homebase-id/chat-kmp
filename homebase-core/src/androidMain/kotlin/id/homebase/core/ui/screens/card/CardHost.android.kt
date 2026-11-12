@@ -19,6 +19,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.Dp
@@ -30,7 +31,7 @@ actual fun createCardHost(odinId: String): CardHost =
     AndroidCardHost(KoinPlatformTools.defaultContext().get().get<Context>(), cardPageUrl(odinId))
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?, shape: Shape) {
     val cardHost = host as AndroidCardHost
     key(cardHost.webView) {
         AndroidView(
@@ -98,6 +99,7 @@ internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase
         // Without MATCH_PARENT every vh/dvh unit resolves to 0.
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         setBackgroundColor(Color.TRANSPARENT)
+        isVerticalScrollBarEnabled = false
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.allowFileAccess = false
@@ -150,3 +152,7 @@ internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase
     }
 }
 
+@Composable
+actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) = InlineAboveCard(modifier, content)
+
+internal actual val chromeFloatsOverCard: Boolean = true
