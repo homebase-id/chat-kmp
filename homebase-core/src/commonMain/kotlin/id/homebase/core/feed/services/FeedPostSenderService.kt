@@ -4,12 +4,9 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
-import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.SecurityGroupType
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
@@ -18,10 +15,8 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.Md5
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.MutationOutcome
@@ -123,8 +118,10 @@ class FeedPostSenderService(
             )
             if (outcome !is UploadOutcome.Enqueued) error("Failed to enqueue post for upload (outbox: $outcome)")
         } else {
-            val enqueued = outboxSync.tryEnqueue(
-                UploadFileRequest(
+            enqueuePlaintextUpload(
+                outboxSync = outboxSync,
+                optimisticWriter = optimisticWriter,
+                request = UploadFileRequest(
                     driveId = channelId,
                     keyHeader = keyHeader,
                     metadata = metadata,
@@ -132,37 +129,8 @@ class FeedPostSenderService(
                     thumbnails = bundle.thumbnails,
                     transitOptions = transit,
                 ),
+                tag = TAG,
             )
-            if (!enqueued.enqueued) error("Failed to enqueue post for upload (outbox: $enqueued)")
-
-            val payloadDescriptors = bundle.payloads.map { payload ->
-                PayloadDescriptor(
-                    key = payload.key,
-                    contentType = payload.contentType.ifEmpty { null },
-                    iv = payload.iv?.let { Base64Bytes(it) },
-                    descriptorContent = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
-                )
-            }.ifEmpty { null }
-            try {
-                optimisticWriter.writeNewFile(
-                    driveId = channelId,
-                    keyHeader = keyHeader,
-                    unecryptedMetadata = metadata,
-                    originalRecipientCount = 0,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = payloadDescriptors,
-                )
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "createPost: optimistic write failed (non-fatal) post=$postUniqueId" }
-            }
         }
 
         return CreatePostResult(uniqueId = postUniqueId, slug = slug)
