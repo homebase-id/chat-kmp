@@ -464,7 +464,7 @@ fun CallScreen(
         LaunchedEffect(autoHide) { chrome.run(autoHide) }
         // A dedicated call window is already the frame, so no card inside it.
         val tier = if (fillsWindow) desktopTier(maxWidth, maxHeight) else CallTier.Embedded
-        CompositionLocalProvider(LocalCallLayout provides CallLayoutMetrics(tier, compact, roomy = !compact && maxWidth >= RoomyWidth && maxHeight >= RoomyHeight), LocalCallChrome provides chrome.takeIf { !fillsWindow }) {
+        CompositionLocalProvider(LocalCallLayout provides CallLayoutMetrics(tier, compact, roomy = fillsWindow && !compact && maxWidth >= RoomyWidth && maxHeight >= RoomyHeight), LocalCallChrome provides chrome.takeIf { !fillsWindow }) {
             CallStage(ui, large = fillsWindow || large, peerName, avatar, actions, chromeInsets)
         }
     }
