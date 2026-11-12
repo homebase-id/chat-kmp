@@ -8,13 +8,13 @@ import kotlinx.coroutines.flow.updateAndGet
 /**
  * The camera stays over the app after a capture until the screen that receives it has drawn it, so the chat under
  * the camera never shows between the shutter and the editor. Epochs make a signal that lands before the camera
- * starts waiting still count.
+ * starts waiting still count. One instance per launcher, so a screen can't release another screen's camera.
  */
-object CaptureHandoff {
+internal class CaptureHandoff {
     private val requested = MutableStateFlow(0)
     private val shown = MutableStateFlow(0)
 
-    internal fun begin(): Int = requested.updateAndGet { it + 1 }
+    fun begin(): Int = requested.updateAndGet { it + 1 }
 
     /** Call once the capture's content (or the editor it joins) is on screen; a no-op when no camera is waiting. */
     fun contentShown() {
@@ -22,7 +22,7 @@ object CaptureHandoff {
         shown.update { maxOf(it, epoch) }
     }
 
-    internal suspend fun awaitShown(epoch: Int) {
+    suspend fun awaitShown(epoch: Int) {
         shown.first { it >= epoch }
     }
 }

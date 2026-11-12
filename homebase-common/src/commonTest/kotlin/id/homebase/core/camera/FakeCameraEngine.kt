@@ -77,5 +77,10 @@ internal class FakeCameraEngine(initial: CameraUiState = DefaultFakeState) : Cam
         return recordingResult
     }
 
-    override fun release() = Unit
+    var releaseCount = 0
+        private set
+
+    override fun release() {
+        releaseCount++
+    }
 }

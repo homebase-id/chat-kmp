@@ -16,6 +16,9 @@ class KeyHeader(
     var iv: ByteArray,
     var aesKey: SecureByteArray
 ) {
+    /** The same key under a fresh IV: what updating a file in place sends, as the server refuses a different key. */
+    fun withNewIv(): KeyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), aesKey)
+
     /**
      * Combines IV and AES key into a single byte array
      */

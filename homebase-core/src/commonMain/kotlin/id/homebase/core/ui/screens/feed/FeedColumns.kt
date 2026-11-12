@@ -27,7 +27,7 @@ internal val FeedContentMaxWidth = 632.dp
 internal val FeedSuggestionsWidth = 336.dp
 
 // Wide mode floats the posts as rounded cards on the page with the column gap around them, like the side cards.
-internal fun feedListPadding(wide: Boolean) = PaddingValues(top = if (wide) FeedColumnGap else 10.dp, bottom = 16.dp)
+internal fun feedListPadding(wide: Boolean) = PaddingValues(top = if (wide) FeedColumnGap else 10.dp, bottom = 88.dp)
 internal fun feedPostGap(wide: Boolean) = if (wide) FeedColumnGap else 10.dp
 
 @Composable

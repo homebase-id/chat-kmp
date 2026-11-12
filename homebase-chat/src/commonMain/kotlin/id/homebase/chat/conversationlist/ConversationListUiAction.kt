@@ -132,6 +132,11 @@ sealed interface ConversationListUiAction {
 
     data object CloseFullScreenOverlay : ConversationListUiAction
 
+    data class OpenSendTo(val caption: String, val viewOnce: Boolean) : ConversationListUiAction
+    data class SendToSelectRecipient(val recipient: RecipientModel) : ConversationListUiAction
+    data object CloseSendTo : ConversationListUiAction
+    data object ConfirmSendTo : ConversationListUiAction
+
     /** The view-once viewer went away, by any route; consumes the item. */
     data class ViewOnceViewerClosed(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
 

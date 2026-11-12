@@ -1011,6 +1011,10 @@
     <string name="chat_message_discard_draft">Kassér kladde?</string>
 
     <string name="chat_message_forward_to">Videresend til</string>
+    <string name="chat_send_to">Send til</string>
+    <string name="chat_send_to_sent">Sendt</string>
+    <string name="chat_send_to_hint">Vælg, hvem du vil sende til</string>
+    <string name="chat_send_to_count">Send · %1$d</string>
 
     <!-- Block / Report -->
     <string name="chat_message_block">Blokér</string>
@@ -2428,4 +2432,29 @@
     <string name="feed_wide_see_all">Se alle</string>
     <string name="feed_wide_suggestions_empty">Ingen forslag endnu</string>
     <string name="feed_wide_channels_empty">Kanaler, du poster i, vises her</string>
+    <string name="feed_compose_title">Nyt opslag</string>
+    <string name="feed_compose_caption_placeholder">Hvad har du på hjertet?</string>
+    <string name="feed_compose_post">Opslå</string>
+    <string name="feed_compose_posting">Slår op…</string>
+    <string name="feed_compose_post_failed">Dit opslag kunne ikke deles. Prøv igen.</string>
+    <string name="feed_compose_add_media">Tilføj billede</string>
+    <string name="feed_compose_camera">Tag billede</string>
+    <string name="feed_compose_attachment_image">Vedhæftning</string>
+    <string name="feed_compose_remove_attachment">Fjern vedhæftning</string>
+    <string name="feed_compose_channel">Kanal</string>
+    <string name="feed_compose_channel_public">Offentlig</string>
+    <string name="feed_compose_audience">Målgruppe</string>
+    <string name="feed_compose_audience_public">Offentlig</string>
+    <string name="feed_compose_audience_circles">Cirkler</string>
+    <string name="feed_compose_audience_circles_count">Cirkler (%1$d)</string>
+    <string name="feed_compose_circles_title">Del med cirkler</string>
+    <string name="feed_compose_circles_empty">Du har ingen cirkler endnu. Opret en under kontakter for at dele et opslag med den.</string>
+    <string name="feed_timeline_compose_action">Nyt opslag</string>
+    <string name="chat_contact_card_save_homebase">Homebase-kontakter</string>
+    <string name="chat_contact_card_update_homebase">Opdater Homebase-kontakt</string>
+    <string name="chat_contact_card_save_phone">Telefonkontakter</string>
+    <string name="chat_contact_card_save_phone_failed">Ingen kontakt-app fundet</string>
+    <string name="chat_contact_card_save_homebase_supporting">Gem dem i din Homebase</string>
+    <string name="chat_contact_card_update_homebase_supporting">Opdater de gemte oplysninger</string>
+    <string name="chat_contact_card_save_phone_supporting">Åbner telefonens Kontakter-app</string>
 </resources>

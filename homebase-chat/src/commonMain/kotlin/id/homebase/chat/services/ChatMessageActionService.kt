@@ -27,7 +27,6 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.convo.ConversationParticipantLookup
@@ -372,7 +371,7 @@ class ChatMessageActionService(
         if (file.isSoftDeleted() || payloadKeys.isEmpty()) return
 
         val appData = metadata.appData
-        val keyHeader = KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey)
+        val keyHeader = file.keyHeader.withNewIv()
         val unencryptedMetadata = UploadFileMetadata(
             allowDistribution = false,
             isEncrypted = file.serverFileIsEncrypted,

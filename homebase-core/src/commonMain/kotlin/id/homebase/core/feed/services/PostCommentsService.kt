@@ -1,6 +1,5 @@
 package id.homebase.core.feed.services
 
-import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -14,9 +13,7 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.SecurityGroupType
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
@@ -391,49 +388,19 @@ class PostCommentsService(
                 error("Failed to enqueue comment for upload (outbox: $outcome)")
             }
         } else {
-            // Public comment → plaintext payloads, so the request is built directly with no encryptBundle.
-            val request = UploadFileRequest(
-                driveId = drive,
-                keyHeader = keyHeader,
-                metadata = metadata,
-                payloads = bundle.payloads,
-                thumbnails = bundle.thumbnails,
-                transitOptions = transit,
-            )
-            val enqueued = outboxSync.tryEnqueue(request)
-            if (!enqueued.enqueued) error("Failed to enqueue comment for upload (outbox: $enqueued)")
-
-            val payloadDescriptors = bundle.payloads.map { payload ->
-                PayloadDescriptor(
-                    key = payload.key,
-                    contentType = payload.contentType.ifEmpty { null },
-                    iv = payload.iv?.let { Base64Bytes(it) },
-                    descriptorContent = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
-                )
-            }.ifEmpty { null }
-
-            try {
-                optimisticWriter.writeNewFile(
+            enqueuePlaintextUpload(
+                outboxSync = outboxSync,
+                optimisticWriter = optimisticWriter,
+                request = UploadFileRequest(
                     driveId = drive,
                     keyHeader = keyHeader,
-                    unecryptedMetadata = metadata,
-                    originalRecipientCount = recipients.size,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = payloadDescriptors,
-                )
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) {
-                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
-                }
-            }
+                    metadata = metadata,
+                    payloads = bundle.payloads,
+                    thumbnails = bundle.thumbnails,
+                    transitOptions = transit,
+                ),
+                tag = TAG,
+            )
         }
 
         Logger.d(tag = TAG) {
@@ -468,7 +435,7 @@ class PostCommentsService(
         val isPublic = !post.fileMetadata.isEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) {
-            KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
+            existing.keyHeader.withNewIv()
         } else {
             KeyHeader.empty()
         }
