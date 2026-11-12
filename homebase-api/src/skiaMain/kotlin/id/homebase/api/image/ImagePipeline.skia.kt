@@ -76,7 +76,7 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
 internal expect fun resampleNatively(image: Image, width: Int, height: Int): Image?
 
 /** Skia reads EXIF rotation itself and decodes lazily, so the size costs no pixels. */
-internal class SkiaImageSource(bytes: ByteArray) : ImageSource {
+internal class SkiaImageSource(private val bytes: ByteArray) : ImageSource {
     private val image: Image = ImageUtils.decodeImage(bytes)
 
     override val displayedSize get() = ImageSize(image.width, image.height)
@@ -93,6 +93,8 @@ internal class SkiaImageSource(bytes: ByteArray) : ImageSource {
             pixels.close()
         }
     }
+
+    override fun metadata(): ImageMetadata? = readImageMetadata(bytes)
 
     override fun close() = image.close()
 }
