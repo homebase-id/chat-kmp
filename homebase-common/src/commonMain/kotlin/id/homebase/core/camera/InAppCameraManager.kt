@@ -83,7 +83,9 @@ fun rememberInAppCameraManager(
         val reveal = remember { Animatable(if (origin == null || stillMotion) 1f else 0f) }
         val expandSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
         val collapseSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
-        LaunchedEffect(Unit) { reveal.animateTo(1f, expandSpec) }
+        var windowDrawn by remember { mutableStateOf(false) }
+        // The dialog window takes a few frames to appear; expanding before then plays the motion off screen.
+        LaunchedEffect(windowDrawn) { if (windowDrawn) reveal.animateTo(1f, expandSpec) }
         if (launcher.collapsing) {
             LaunchedEffect(Unit) {
                 reveal.animateTo(0f, collapseSpec)
@@ -117,6 +119,7 @@ fun rememberInAppCameraManager(
             fade = { fade.value },
             origin = origin,
             reveal = { reveal.value },
+            onWindowDrawn = { windowDrawn = true },
             onOpenGallery = if (onOpenGallery == null) null else {
                 {
                     launcher.close()

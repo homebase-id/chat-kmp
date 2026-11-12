@@ -1,21 +1,16 @@
 package id.homebase.chat.widget
 
-import kotlinx.coroutines.delay
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
@@ -43,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.ButtonDefaults
@@ -50,14 +47,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material3.animateFloatingActionButton
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonColors
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButtonShapes
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -77,20 +71,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.platform.testTag
-import id.homebase.resources.chat_message_camera
-import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -98,20 +96,20 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import id.homebase.api.client.auth.initials
+import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
-import id.homebase.chat.conversationlist.resolveTopConversationId
-import id.homebase.chat.conversationlist.shouldScrollToTop
-import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiState
+import id.homebase.chat.conversationlist.resolveTopConversationId
+import id.homebase.chat.conversationlist.shouldScrollToTop
 import id.homebase.chat.data.ConversationState
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.Dimens
-import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.rememberTabSlideFade
@@ -123,6 +121,7 @@ import id.homebase.resources.chat_archived_chats_empty
 import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
 import id.homebase.resources.chat_initial_sync_failed
+import id.homebase.resources.chat_message_camera
 import id.homebase.resources.chat_new_conversation
 import id.homebase.resources.chat_options
 import id.homebase.resources.chat_search_empty_description
@@ -132,8 +131,8 @@ import id.homebase.resources.loading
 import id.homebase.resources.menu_back
 import id.homebase.resources.remove
 import id.homebase.resources.search
-import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 internal fun Modifier.paneTrailingEdge(): Modifier {
@@ -182,15 +181,6 @@ fun ConversationListPane(
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     var showMenu by remember { mutableStateOf(false) }
-    var fabsVisible by remember { mutableStateOf(true) }
-    val fabScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < 0f) fabsVisible = false else if (available.y > 0f) fabsVisible = true
-                return Offset.Zero
-            }
-        }
-    }
     val capture = rememberChatListCapture(onUiAction)
 
     // Null while the LazyColumn is showing something other than the conversation list — the
@@ -239,7 +229,6 @@ fun ConversationListPane(
         Scaffold(
             modifier = Modifier
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .nestedScroll(fabScrollConnection)
                 .paneTrailingEdge(),
             topBar = {
                 if (uiState.showArchived) {
@@ -487,49 +476,12 @@ fun ConversationListPane(
                 }
             },
             floatingActionButton = {
-                if (!iconOnlyMode && !twoPaneWindow && !uiState.showArchived) {
-                    // The small FAB leads: it leaves first on scroll and comes back first.
-                    var newChatFabVisible by remember { mutableStateOf(fabsVisible) }
-                    LaunchedEffect(fabsVisible) {
-                        delay(FAB_STAGGER_MS)
-                        newChatFabVisible = fabsVisible
-                    }
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        if (!usesPointerUx()) {
-                            var cameraFabBounds by remember { mutableStateOf<Rect?>(null) }
-                            SquishFab(
-                                onClick = { cameraFabBounds?.let(capture.openCameraFrom) },
-                                small = true,
-                                modifier = Modifier
-                                    .animateFloatingActionButton(visible = fabsVisible, alignment = Alignment.BottomEnd)
-                                    .onGloballyPositioned { cameraFabBounds = it.boundsInWindow() }
-                                    .testTag("chat_list_camera_button"),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PhotoCamera,
-                                    contentDescription = stringResource(MR.string.chat_message_camera)
-                                )
-                            }
-                        }
-                        SquishFab(
-                            onClick = {
-                                onUiAction(ConversationListUiAction.NewConversationClicked)
-                            },
-                            small = false,
-                            modifier = Modifier.animateFloatingActionButton(
-                                visible = newChatFabVisible,
-                                alignment = Alignment.BottomEnd,
-                            ),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Edit,
-                                contentDescription = stringResource(MR.string.chat_new_conversation)
-                            )
-                        }
-                    }
+                if (!iconOnlyMode && !twoPaneWindow && !uiState.showArchived && !searchActive) {
+                    ChatListActionButtons(
+                        showCamera = !usesPointerUx(),
+                        onCameraClick = capture.openCameraFrom,
+                        onNewChatClick = { onUiAction(ConversationListUiAction.NewConversationClicked) },
+                    )
                 }
             },
             containerColor = paneContainerColor,
@@ -903,29 +855,59 @@ fun ConversationLisContentItem(
     }
 }
 
-private const val FAB_STAGGER_MS = 60L
+private val ActionButtonSize = 56.dp
+private val ActionButtonSpacing = 16.dp
+private val ActionButtonShapes = IconButtonShapes(shape = RoundedCornerShape(18.dp), pressedShape = RoundedCornerShape(12.dp))
+
+// Signal's MainFloatingActionButtons: two equal tonal buttons on one centre line, the camera sliding out of the compose button.
+@Composable
+private fun ChatListActionButtons(showCamera: Boolean, onCameraClick: (Rect) -> Unit, onNewChatClick: () -> Unit) {
+    val stackHeight = ActionButtonSize * 2 + ActionButtonSpacing
+    val stackHeightPx = with(LocalDensity.current) { stackHeight.roundToPx() }
+    val fromPrimary = { height: Int -> stackHeightPx - height }
+    Box(Modifier.height(stackHeight)) {
+        val cameraShown = remember { MutableTransitionState(false) }.apply { targetState = showCamera }
+        AnimatedVisibility(
+            visibleState = cameraShown,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec(), fromPrimary),
+            exit = slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec(), fromPrimary),
+        ) {
+            val elevation by transition.animateDp { if (it == EnterExitState.Visible) 4.dp else 0.dp }
+            var bounds by remember { mutableStateOf<Rect?>(null) }
+            ActionButton(
+                onClick = { bounds?.let(onCameraClick) },
+                elevation = elevation,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                modifier = Modifier
+                    .onGloballyPositioned { bounds = it.boundsInWindow() }
+                    .testTag("chat_list_camera_button"),
+            ) {
+                Icon(Icons.Default.PhotoCamera, contentDescription = stringResource(MR.string.chat_message_camera))
+            }
+        }
+        ActionButton(onClick = onNewChatClick, elevation = 4.dp, modifier = Modifier.align(Alignment.BottomCenter)) {
+            Icon(Icons.Outlined.Edit, contentDescription = stringResource(MR.string.chat_new_conversation))
+        }
+    }
+}
 
 @Composable
-private fun SquishFab(
+private fun ActionButton(
     onClick: () -> Unit,
-    small: Boolean,
+    elevation: Dp,
     modifier: Modifier = Modifier,
+    colors: IconButtonColors = IconButtonDefaults.filledTonalIconButtonColors(),
     content: @Composable () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val size = if (small) 40.dp else 56.dp
-    val restCorner = if (small) 12.dp else 16.dp
-    val corner by animateDpAsState(if (pressed) size / 2 else restCorner, MaterialTheme.motionScheme.fastSpatialSpec())
-    val scale by animateFloatAsState(if (pressed) 0.9f else 1f, MaterialTheme.motionScheme.fastSpatialSpec())
-    val squished = modifier.graphicsLayer {
-        scaleX = scale
-        scaleY = scale
-    }
-    val shape = RoundedCornerShape(corner.coerceAtLeast(0.dp))
-    if (small) {
-        SmallFloatingActionButton(onClick = onClick, modifier = squished, shape = shape, interactionSource = interaction, content = content)
-    } else {
-        FloatingActionButton(onClick = onClick, modifier = squished, shape = shape, interactionSource = interaction, content = content)
-    }
+    FilledTonalIconButton(
+        onClick = onClick,
+        shapes = ActionButtonShapes,
+        colors = colors,
+        modifier = modifier.size(ActionButtonSize).shadow(elevation, ActionButtonShapes.shape),
+        content = content,
+    )
 }

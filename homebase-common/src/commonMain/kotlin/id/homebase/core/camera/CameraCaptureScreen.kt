@@ -23,6 +23,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
@@ -86,6 +88,7 @@ fun CameraCaptureDialog(
     fade: () -> Float = { 1f },
     origin: Rect? = null,
     reveal: () -> Float = { 1f },
+    onWindowDrawn: () -> Unit = {},
     onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
@@ -94,6 +97,10 @@ fun CameraCaptureDialog(
     val galleryThumbnail = if (onOpenGallery != null) rememberNewestGalleryThumbnailUri() else null
     Dialog(onDismissRequest = onDismiss, properties = cameraDialogProperties()) {
         CameraWindowEffect()
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            onWindowDrawn()
+        }
         val shaped = origin != null && previewFollowsComposeTransforms
         val windowAlpha = { fade() * (reveal() * 3f).coerceIn(0f, 1f) }
         CompositionLocalProvider(LocalCameraFade provides windowAlpha) {

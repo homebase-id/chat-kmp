@@ -72,12 +72,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.mutableStateOf
@@ -228,8 +225,8 @@ fun MediaAttachmentEditor(
     aboveStripOverlay: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     addMoreEnabled: Boolean = true,
-    // The tools, strip and caption rise in one after another once the media is drawn.
-    staggerChromeIn: Boolean = false,
+    // The tools, strip and caption fade in once the media is drawn, as Signal's media editor controls do.
+    fadeInChrome: Boolean = false,
 ) {
     val isFileMode = attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -275,7 +272,11 @@ fun MediaAttachmentEditor(
     LaunchedEffect(activeDrawn, revealed, attachments.size) {
         if (activeDrawn && revealed) onContentShown?.invoke()
     }
-    val chromeShown = if (staggerChromeIn) activeDrawn && revealed else null
+    val chromeAlpha by animateFloatAsState(
+        if (!fadeInChrome || (activeDrawn && revealed)) 1f else 0f,
+        MaterialTheme.motionScheme.defaultEffectsSpec(),
+    )
+    val chromeFade = Modifier.graphicsLayer { alpha = chromeAlpha }
 
     // Extract the thumbnail strip for the currently-visible video. Persist across
     // swipes by stashing in framesByAtt; cancellation happens automatically when
@@ -565,7 +566,7 @@ fun MediaAttachmentEditor(
             visible = !collapseSecondaryChrome,
             enter = secondaryChromeEnter(),
             exit = secondaryChromeExit(),
-            modifier = Modifier.riseIn(chromeShown, order = 1),
+            modifier = chromeFade,
         ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -757,7 +758,7 @@ fun MediaAttachmentEditor(
             visible = !collapseSecondaryChrome,
             enter = secondaryChromeEnter(),
             exit = secondaryChromeExit(),
-            modifier = Modifier.riseIn(chromeShown, order = 0),
+            modifier = chromeFade,
         ) {
         // Reserve the toolbar's height whenever tools can appear, so paging onto an attachment
         // without tools fades the toolbar instead of growing the pager.
@@ -824,36 +825,10 @@ fun MediaAttachmentEditor(
         Box(
             modifier = Modifier.windowInsetsPadding(
                 WindowInsets.ime.union(WindowInsets.navigationBars)
-            ).riseIn(chromeShown, order = 2)
+            ).then(chromeFade)
         ) {
-            CompositionLocalProvider(LocalChromeShown provides chromeShown, content = bottomBar)
+            bottomBar()
         }
-    }
-}
-
-/** Null outside a staggered editor; otherwise whether its chrome has started rising in. */
-internal val LocalChromeShown = staticCompositionLocalOf<Boolean?> { null }
-
-private const val RISE_STAGGER_MS = 50L
-
-/** Rises and fades in, [order] steps after [shown] turns true; a no-op while [shown] is null. */
-@Composable
-internal fun Modifier.riseIn(shown: Boolean?, order: Int, fromScale: Float = 1f): Modifier {
-    if (shown == null) return this
-    val progress = remember { Animatable(0f) }
-    val spec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
-    LaunchedEffect(shown) {
-        if (shown) {
-            delay(order * RISE_STAGGER_MS)
-            progress.animateTo(1f, spec)
-        }
-    }
-    return graphicsLayer {
-        val p = progress.value
-        alpha = p.coerceIn(0f, 1f)
-        translationY = (1f - p) * 24.dp.toPx()
-        scaleX = fromScale + (1f - fromScale) * p
-        scaleY = scaleX
     }
 }
 

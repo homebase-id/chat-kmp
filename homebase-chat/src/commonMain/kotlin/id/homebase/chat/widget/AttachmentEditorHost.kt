@@ -132,7 +132,7 @@ internal fun AttachmentEditorHost(
             }
         },
         collapseSecondaryChrome = captionEmojiPickerOpen,
-        staggerChromeIn = data.isChatListCapture,
+        fadeInChrome = data.isChatListCapture,
         bottomBar = {
             MessageTextFieldForAttachment(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),

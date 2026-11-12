@@ -10,9 +10,6 @@ import androidx.compose.ui.backhandler.PredictiveBackHandler
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.SizeTransform
@@ -20,7 +17,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
@@ -199,7 +195,7 @@ fun ChatListCaptureOverlay(
         targetState = current,
         contentKey = { it != null },
         transitionSpec = {
-            (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.94f)) togetherWith
+            fadeIn(motion.defaultEffectsSpec()) togetherWith
                 (fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec(), targetScale = 0.6f, transformOrigin = towardFab))
         },
     ) { editor ->
@@ -216,47 +212,33 @@ private fun ChatListCaptureFlow(
     val capture = rememberChatListCapture(onUiAction)
     var page by remember { mutableIntStateOf(0) }
     val caption = remember { RichTextState().applyDefaultStyling() }
-    val motion = MaterialTheme.motionScheme
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     val sendToOpen = messagesUiState.sendTo != null
     val backProgress = remember { Animatable(0f) }
     LaunchedEffect(sendToOpen) { if (sendToOpen) backProgress.snapTo(0f) }
-    val recede by animateFloatAsState(if (sendToOpen) 1f else 0f, motion.defaultSpatialSpec())
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-        Box(
-            Modifier.graphicsLayer {
-                val r = recede * (1f - backProgress.value)
-                scaleX = 1f - 0.08f * r
-                scaleY = 1f - 0.08f * r
-                alpha = 1f - 0.6f * r.coerceIn(0f, 1f)
-            },
-        ) {
-            // Dark like the camera it follows.
-            HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
-                AttachmentEditorHost(
-                    data = editor,
-                    mediaQuality = messagesUiState.mediaQuality,
-                    textFieldState = caption,
-                    revealed = true,
-                    currentPage = page,
-                    onPageChanged = { page = it },
-                    onAddFile = capture.addFile,
-                    onAddImage = capture.addImages,
-                    onCameraClick = capture.openCamera,
-                    onContentShown = capture.cameraResultShown,
-                    onUiAction = onUiAction,
-                    onSend = { text, viewOnce -> onUiAction(ConversationListUiAction.OpenSendTo(text, viewOnce)) },
-                )
-            }
+        // Dark like the camera it follows.
+        HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
+            AttachmentEditorHost(
+                data = editor,
+                mediaQuality = messagesUiState.mediaQuality,
+                textFieldState = caption,
+                revealed = true,
+                currentPage = page,
+                onPageChanged = { page = it },
+                onAddFile = capture.addFile,
+                onAddImage = capture.addImages,
+                onCameraClick = capture.openCamera,
+                onContentShown = capture.cameraResultShown,
+                onUiAction = onUiAction,
+                onSend = { text, viewOnce -> onUiAction(ConversationListUiAction.OpenSendTo(text, viewOnce)) },
+            )
         }
         AnimatedContent(
             targetState = messagesUiState.sendTo,
             contentKey = { it != null },
-            transitionSpec = {
-                val fromEnd = { width: Int -> if (rtl) -width else width }
-                (slideInHorizontally(motion.defaultSpatialSpec()) { fromEnd(it) } + fadeIn(motion.defaultEffectsSpec())) togetherWith
-                    (slideOutHorizontally(motion.fastSpatialSpec()) { fromEnd(it) } + fadeOut(motion.fastEffectsSpec()))
-            },
+            // Signal's media-send NavDisplay fades between its screens, back and predictive back included.
+            transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
         ) { picker ->
             if (picker != null) {
                 SendToScreen(
@@ -266,11 +248,7 @@ private fun ChatListCaptureFlow(
                     sending = messagesUiState.isSendingMessage,
                     onUiAction = onUiAction,
                     backProgress = backProgress,
-                    modifier = Modifier.graphicsLayer {
-                        val p = backProgress.value
-                        translationX = (if (rtl) -1f else 1f) * size.width * 0.25f * p
-                        alpha = 1f - 0.3f * p
-                    },
+                    modifier = Modifier.graphicsLayer { alpha = 1f - backProgress.value },
                 )
             }
         }
