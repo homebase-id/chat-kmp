@@ -31,7 +31,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -332,7 +331,7 @@ private fun PreviewLayer(state: CallUiState, onChange: (CallUiState?) -> Unit) {
         )
     }
     val chrome = remember { CallChromeState() }
-    CompositionLocalProvider(LocalCallChrome provides chrome) { HoldCallChrome(verifying) }
+    HoldCallChrome(verifying, chrome)
     CallScreen(ui = state, peerName = PeerName, avatar = { size -> LabAvatar(size) }, actions = actions, chrome = chrome)
     val code = state.verificationCode
     if (verifying && code != null) CallVerificationSheet(code) { verifying = false }

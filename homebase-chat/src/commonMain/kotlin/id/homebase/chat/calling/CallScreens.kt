@@ -180,6 +180,10 @@ import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -196,6 +200,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -1199,7 +1204,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
                             scaleY = shrink
                             translationX = -window.left * shrink
                             translationY = -window.top * shrink
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                            transformOrigin = TransformOrigin(0f, 0f)
                             clip = true
                             this.shape = CropWindow(window, PreviewCorner.toPx() / shrink)
                         }
@@ -1271,8 +1276,8 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
 }
 
 private class CropWindow(val window: Rect, val radius: Float) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: androidx.compose.ui.unit.Density) =
-        androidx.compose.ui.graphics.Outline.Rounded(androidx.compose.ui.geometry.RoundRect(window, androidx.compose.ui.geometry.CornerRadius(radius)))
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
+        Outline.Rounded(RoundRect(window, CornerRadius(radius)))
 }
 
 private const val PreviewShrinkMs = 400
@@ -1361,7 +1366,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
                         interaction = interaction,
                         modifier = grow(interaction),
                         // A voice call starts with the camera off, so off is its resting state there, not a warning.
-                        emphasis = if (ui.isVideoCall) ToggleEmphasis.Warn else ToggleEmphasis.None,
+                        emphasis = if (ui.isVideoCall) ToggleEmphasis.Warn else ToggleEmphasis.Neutral,
                     )
                 },
             )
@@ -1507,7 +1512,7 @@ private fun MinimalDock(ui: CallUiState, actions: CallScreenActions, modifier: M
                     shapes = single,
                     interaction = remember { MutableInteractionSource() },
                     modifier = Modifier,
-                    emphasis = if (ui.isVideoCall) ToggleEmphasis.Warn else ToggleEmphasis.None,
+                    emphasis = if (ui.isVideoCall) ToggleEmphasis.Warn else ToggleEmphasis.Neutral,
                 )
             }
             if (ui.devices.isNotEmpty()) {
@@ -1556,7 +1561,8 @@ private fun segmentShapes(index: Int, count: Int): IconToggleButtonShapes {
 
 private val SegmentInnerCorner = 16.dp
 
-internal enum class ToggleEmphasis { None, Warn }
+/** How a checked toggle reads: [Selected] for an on state, [Warn] for an off the user should notice, [Neutral] for an off that is the resting state. */
+internal enum class ToggleEmphasis { Selected, Warn, Neutral }
 
 @Composable
 private fun CallToggle(
@@ -1571,7 +1577,7 @@ private fun CallToggle(
     interaction: MutableInteractionSource,
     modifier: Modifier,
     level: StateFlow<Float>? = null,
-    emphasis: ToggleEmphasis? = null,
+    emphasis: ToggleEmphasis = ToggleEmphasis.Selected,
 ) {
     val scheme = MaterialTheme.colorScheme
     ToggleColumn(label, modifier) {
@@ -1585,13 +1591,13 @@ private fun CallToggle(
                     contentColor = scheme.onSurface,
                     checkedContainerColor = when (emphasis) {
                         ToggleEmphasis.Warn -> scheme.errorContainer
-                        ToggleEmphasis.None -> scheme.surfaceContainerHighest
-                        null -> scheme.secondaryContainer
+                        ToggleEmphasis.Neutral -> scheme.surfaceContainerHighest
+                        ToggleEmphasis.Selected -> scheme.secondaryContainer
                     },
                     checkedContentColor = when (emphasis) {
                         ToggleEmphasis.Warn -> scheme.onErrorContainer
-                        ToggleEmphasis.None -> scheme.onSurfaceVariant
-                        null -> scheme.onSecondaryContainer
+                        ToggleEmphasis.Neutral -> scheme.onSurfaceVariant
+                        ToggleEmphasis.Selected -> scheme.onSecondaryContainer
                     },
                 ),
                 interactionSource = interaction,

@@ -124,10 +124,8 @@ fun CallOverlay(
     val deviceMenu = events.deviceMenu
     val hold = remember { ChromeHold() }
     val chrome = remember { CallChromeState() }
-    CompositionLocalProvider(LocalChromeHold provides hold, LocalCallChrome provides chrome) {
-        HoldChromeWhile(events.dialogOpen)
-        HoldCallChrome(events.dialogOpen)
-    }
+    CompositionLocalProvider(LocalChromeHold provides hold) { HoldChromeWhile(events.dialogOpen) }
+    HoldCallChrome(events.dialogOpen, chrome)
     val reportProblem = rememberCallProblemReporter { viewModel.uiState.value.callId }
     val actions = remember(viewModel, gate, onMinimize, onToggleMini, reportProblem) {
         CallScreenActions(

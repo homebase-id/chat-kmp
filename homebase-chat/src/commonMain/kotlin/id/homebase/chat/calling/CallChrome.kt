@@ -56,8 +56,8 @@ class CallChromeState {
 internal val LocalCallChrome = staticCompositionLocalOf<CallChromeState?> { null }
 
 @Composable
-internal fun HoldCallChrome(active: Boolean) {
-    val chrome = LocalCallChrome.current ?: return
+internal fun HoldCallChrome(active: Boolean, chrome: CallChromeState? = LocalCallChrome.current) {
+    if (chrome == null) return
     DisposableEffect(chrome, active) {
         if (active) chrome.holds++
         onDispose { if (active) chrome.holds-- }
