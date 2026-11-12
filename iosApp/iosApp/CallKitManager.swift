@@ -114,7 +114,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
     // MARK: CallKitBridge (Kotlin -> CallKit)
 
-    var hostsOutgoingCalls: Bool {
+    func hostsOutgoingCalls() -> Bool {
         #if targetEnvironment(simulator)
         return false
         #else
