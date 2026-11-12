@@ -62,6 +62,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.resources.MR
@@ -73,6 +75,7 @@ import id.homebase.resources.profile_card_intro_title
 import org.jetbrains.compose.resources.stringResource
 
 private val INTRO_MIN_TILE_WIDTH = 150.dp
+private val INTRO_MAX_TILE_WIDTH = 240.dp
 private val INTRO_MAX_WIDTH = 960.dp
 private val INTRO_TILE_CORNER = 20.dp
 internal val CAPTURE_HOST_WIDTH = 240.dp
@@ -103,8 +106,7 @@ internal fun CardIntro(
         lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
         attached = true
     }
-    // Desktop and web hand back no snapshot, and their native view cannot sit under Compose content.
-    val capturing = host != null && attached && !uiState.viewing && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+    val capturing = host != null && attached && !uiState.viewing && uiState.cards.isNotEmpty()
     LaunchedEffect(capturing, host, revision, uiState.cards) {
         if (capturing) onCapture()
     }
@@ -113,7 +115,8 @@ internal fun CardIntro(
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainer) {
             Box {
                 // Occluded by the opaque content below: it only has to be attached and laid out for the snapshot.
-                if (capturing) {
+                // Desktop and web export the still from the page instead; their native view paints over Compose.
+                if (capturing && !isDesktopOrWeb()) {
                     CardHostView(
                         host = host,
                         modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
@@ -155,7 +158,11 @@ internal fun CardIntro(
                         }
                         else -> LazyVerticalGrid(
                             // Large type needs a wider tile, or a circle name breaks mid-word.
-                            columns = GridCells.Adaptive(INTRO_MIN_TILE_WIDTH * max(1f, fontScale)),
+                            columns = IntroCells(
+                                minSize = INTRO_MIN_TILE_WIDTH * max(1f, fontScale),
+                                maxSize = INTRO_MAX_TILE_WIDTH * max(1f, fontScale),
+                                count = uiState.cards.size + if (onNewCircle != null && uiState.circleCardsSupported) 1 else 0,
+                            ),
                             contentPadding = PaddingValues(16.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                             verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -181,6 +188,21 @@ internal fun CardIntro(
             }
         }
     }
+}
+
+// Adaptive, but never more columns than tiles and never wider than a tile should be, so a wide pane centres one row.
+private class IntroCells(private val minSize: Dp, private val maxSize: Dp, private val count: Int) : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val fits = ((availableSize + spacing) / (minSize.roundToPx() + spacing)).coerceAtLeast(1)
+        val columns = fits.coerceAtMost(count.coerceAtLeast(1))
+        val size = ((availableSize - spacing * (columns - 1)) / columns).coerceAtMost(maxSize.roundToPx())
+        return List(columns) { size }
+    }
+
+    override fun equals(other: Any?) =
+        other is IntroCells && other.minSize == minSize && other.maxSize == maxSize && other.count == count
+
+    override fun hashCode() = (minSize.hashCode() * 31 + maxSize.hashCode()) * 31 + count
 }
 
 internal fun audienceKey(audience: CardAudience): String = when (audience) {
@@ -209,6 +231,7 @@ private fun IntroTile(card: ProfileCard, emoji: String?, still: ImageBitmap?, on
         modifier = Modifier
             .clip(shape)
             .clickable(role = Role.Button, onClick = onClick)
+            .handCursor()
             .semantics(mergeDescendants = true) { contentDescription = open }
             .padding(4.dp),
     ) {
@@ -238,6 +261,7 @@ private fun NewCircleTile(onClick: () -> Unit) {
         modifier = Modifier
             .clip(shape)
             .clickable(role = Role.Button, onClick = onClick)
+            .handCursor()
             .semantics(mergeDescendants = true) { contentDescription = title }
             .padding(4.dp),
     ) {
@@ -277,7 +301,14 @@ private fun NewCircleTile(onClick: () -> Unit) {
 @Composable
 internal fun CardStill(card: ProfileCard, still: ImageBitmap?, modifier: Modifier) {
     if (still != null) {
-        Image(bitmap = still, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
+        // Stills are laid out at the tile's shape; a taller one (a page export at 390x844) shows its top, like the live view.
+        Image(
+            bitmap = still,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.TopCenter,
+            modifier = modifier,
+        )
     } else {
         val palette = card.overrides.palette
         CardDesignThumbnail(

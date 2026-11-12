@@ -110,7 +110,8 @@ private fun StyleTile(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .width(width)
-            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .handCursor(enabled),
     ) {
         Box(
             Modifier

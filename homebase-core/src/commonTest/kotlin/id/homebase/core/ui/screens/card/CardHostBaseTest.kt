@@ -1,5 +1,11 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -22,6 +28,16 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 
 class CardHostBaseTest {
+
+    @Test
+    fun cornerRadiiAreCssPxOfTheScaledPage() {
+        val shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+        val density = Density(2f)
+        assertEquals("32.0px 32.0px 0.0px 0.0px", cssCornerRadii(shape, Size(800f, 1200f), density, LayoutDirection.Ltr))
+        assertEquals("64.0px 64.0px 0.0px 0.0px", cssCornerRadii(shape, Size(800f, 1200f), density, LayoutDirection.Ltr, scale = 0.5f))
+        assertEquals(null, cssCornerRadii(RectangleShape, Size(800f, 1200f), density, LayoutDirection.Ltr))
+    }
+
     private val host = FakeCardHost()
 
     @BeforeTest
