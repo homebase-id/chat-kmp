@@ -5,8 +5,11 @@ import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
+import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.SecurityGroupType
@@ -39,6 +42,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -108,7 +112,11 @@ class PostCommentsServiceTest {
         acl = null,
     )
 
+    private val postGtids = mutableMapOf<Uuid, Uuid>()
+
+    // A Comment-file-system comment is addressed by its post's globalTransitId, which only a synced post has.
     private suspend fun seedPost(postId: Uuid, encrypted: Boolean = false) {
+        val gtid = Uuid.random().also { postGtids[postId] = it }
         val content = OdinSystemSerializer.serialize(
             PostContent(
                 version = FeedProtocol.PostVersion,
@@ -119,20 +127,33 @@ class PostCommentsServiceTest {
                 slug = "host-post",
             )
         )
-        env.optimisticWriter.writeNewFile(
+        val file = HomebaseFile(
+            fileId = Uuid.random(),
             driveId = channelDrive,
-            keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
-            unecryptedMetadata = UploadFileMetadata(
-                allowDistribution = true,
-                isEncrypted = encrypted,
-                appData = UploadAppFileMetaData(
+            serverFileIsEncrypted = encrypted,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16) { 3 })),
+            fileMetadata = FileMetadata(
+                globalTransitId = gtid,
+                created = UnixTimeUtc(1_000),
+                updated = UnixTimeUtc(1_000),
+                isEncrypted = false,
+                versionTag = Uuid.random(),
+                appData = AppFileMetaData(
                     uniqueId = postId,
                     fileType = FeedProtocol.PostFileType,
+                    userDate = 1_000,
                     content = content,
                 ),
             ),
-            originalRecipientCount = 0,
-            fileSystemType = FileSystemType.Standard,
+            serverMetadata = ServerMetadata(),
+        )
+        MainIndexMetaHelpers.HomebaseFileProcessor(env.databaseManager).baseUpsertEntryZapZap(
+            identityId = env.credentialsManager.requireActiveCredentials().getIdentityId(),
+            driveId = channelDrive,
+            fileHeaders = listOf(file),
+            cursor = null,
         )
     }
 
@@ -199,7 +220,7 @@ class PostCommentsServiceTest {
     }
 
     @Test
-    fun postComment_enqueuesCommentFileType801WithGroupIdEqualToPostId() = runFeedTest {
+    fun postComment_enqueuesCommentFileType801() = runFeedTest {
         val postId = Uuid.random()
         seedPost(postId)
         advanceUntilIdle()
@@ -220,11 +241,11 @@ class PostCommentsServiceTest {
 
         val request = OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
         assertEquals(FeedProtocol.CommentFileType, request.metadata.appData.fileType)
-        assertEquals(postId, request.metadata.appData.groupId, "a top-level comment's groupId is the post id")
+        assertNull(request.metadata.appData.groupId)
     }
 
     @Test
-    fun reply_carriesGroupIdEqualToParentCommentId() = runFeedTest {
+    fun reply_keepsItsParentLocallyAndReferencesThePostWhenTheParentHasNoGlobalTransitId() = runFeedTest {
         val postId = Uuid.random()
         seedPost(postId)
         advanceUntilIdle()
@@ -242,10 +263,12 @@ class PostCommentsServiceTest {
 
         val request = readRequest(channelDrive, replyId)
         assertEquals(FeedProtocol.CommentFileType, request.metadata.appData.fileType)
-        assertEquals(
-            parentCommentId, request.metadata.appData.groupId,
-            "a reply's groupId is its parent comment id (one-level threading)",
+        assertNull(request.metadata.appData.groupId)
+        assertEquals(postGtids.getValue(postId), request.metadata.referencedFile?.globalTransitId)
+        val local = env.databaseManager.driveMainIndex.selectHomebaseFileByUnique(
+            env.credentialsManager.requireActiveCredentials().getIdentityId(), channelDrive, replyId,
         )
+        assertEquals(parentCommentId, local?.fileMetadata?.appData?.groupId, "local one-level threading")
     }
 
     @Test
@@ -327,7 +350,7 @@ class PostCommentsServiceTest {
         }
 
     @Test
-    fun postComment_onFollowedPostAddressedByGlobalTransitId_targetsTheFeedDriveAndTheAuthor() =
+    fun postComment_onFollowedPostAddressedByGlobalTransitId_uploadsToTheCommentGrantedChannelDriveForTheAuthor() =
         runFeedTest {
             val author = OdinId("author.example.com")
             val gtid = Uuid.random()
@@ -339,15 +362,26 @@ class PostCommentsServiceTest {
             advanceUntilIdle()
 
             assertNull(
-                env.outboxRow(channelDrive, commentId),
-                "a comment on a followed post must not land on our own channel drive",
+                env.outboxRow(feedDrive, commentId),
+                "the feed drive grants no Comment permission, so the server answers 403",
             )
-            val request = readRequest(feedDrive, commentId)
+            assertEquals(
+                DriveOutboxUploader.UploadNewFileOverPeer,
+                env.outboxRow(channelDrive, commentId)?.uploadType,
+                "a comment on someone else's post is written to their drive over peer, not left on ours",
+            )
+            val request = readRequest(channelDrive, commentId)
             assertEquals(
                 listOf(author), request.transitOptions?.recipients,
                 "the post author must be a recipient or the comment never reaches them",
             )
             assertTrue(request.metadata.allowDistribution)
+            assertEquals(FileSystemType.Comment, request.fileSystemType)
+            assertEquals(channelTarget, request.transitOptions?.remoteTargetDrive)
+            assertEquals(
+                GlobalTransitIdFileIdentifier(gtid, channelTarget),
+                request.metadata.referencedFile,
+            )
             assertFalse(
                 request.metadata.isEncrypted,
                 "a comment on a public followed post must stay unencrypted",
@@ -357,6 +391,112 @@ class PostCommentsServiceTest {
                 request.metadata.accessControlList?.requiredSecurityGroup,
             )
         }
+
+    private val channelTarget = TargetDrive(channelDrive, FeedProtocol.ChannelDriveType)
+
+    @Test
+    fun removeComment_onAFollowedPostComment_deletesFromTheCommentFileSystemOnTheDriveItWasUploadedTo() =
+        runFeedTest {
+            val author = OdinId("author.example.com")
+            val gtid = Uuid.random()
+            seedFollowedPost(gtid, author)
+            advanceUntilIdle()
+            val commentId = Uuid.random()
+            val service = service()
+            service.postComment(postId = gtid, body = "oops", commentUniqueId = commentId)
+            advanceUntilIdle()
+
+            service.removeComment(commentId)
+            advanceUntilIdle()
+
+            val rows = buildList { while (true) add(env.databaseManager.outbox.checkout() ?: break) }
+            val delete = OdinSystemSerializer.deserialize<DeleteLocalFilesByFileIdRequest>(
+                rows.single { it.uploadType == DriveOutboxUploader.DeleteFile }.json.decodeToString()
+            )
+            assertEquals(channelDrive, delete.driveId, "the comment was uploaded to the channel drive")
+            assertEquals(FileSystemType.Comment, delete.fileSystemType)
+            assertEquals(listOf(author), delete.recipients)
+        }
+
+    @Test
+    fun postComment_onOwnPost_isUploadedToTheCommentFileSystemReferencingThePost() = runFeedTest {
+        val postId = Uuid.random()
+        seedPost(postId)
+        advanceUntilIdle()
+
+        val commentId = Uuid.random()
+        service().postComment(postId = postId, body = "from samwise", commentUniqueId = commentId)
+        advanceUntilIdle()
+
+        assertEquals(
+            DriveOutboxUploader.UploadNewFile,
+            env.outboxRow(channelDrive, commentId)?.uploadType,
+            "a comment on our own post is uploaded to our own drive",
+        )
+        val request = readRequest(channelDrive, commentId)
+        assertEquals(FileSystemType.Comment, request.fileSystemType)
+        assertNull(request.metadata.appData.groupId, "the Comment writer rejects a groupId")
+        assertEquals(
+            GlobalTransitIdFileIdentifier(postGtids.getValue(postId), channelTarget),
+            request.metadata.referencedFile,
+        )
+    }
+
+    @Test
+    fun postComment_onOwnPost_keepsTheLocalRowStandardAndGroupedSoTheThreadRenders() = runFeedTest {
+        val postId = Uuid.random()
+        seedPost(postId)
+        advanceUntilIdle()
+
+        val commentId = Uuid.random()
+        service().postComment(postId = postId, body = "local", commentUniqueId = commentId)
+        advanceUntilIdle()
+
+        val local = env.databaseManager.driveMainIndex.selectHomebaseFileByUnique(
+            env.credentialsManager.requireActiveCredentials().getIdentityId(), channelDrive, commentId,
+        )
+        assertEquals(postId, local?.fileMetadata?.appData?.groupId)
+    }
+
+    @Test
+    fun postComment_onEncryptedOwnPost_usesItsOwnKeyAndTheCommentFileSystem() = runFeedTest {
+        val postId = Uuid.random()
+        seedPost(postId, encrypted = true)
+        advanceUntilIdle()
+
+        val commentId = Uuid.random()
+        service().postComment(postId = postId, body = "secret", commentUniqueId = commentId)
+        advanceUntilIdle()
+
+        val request = readRequest(channelDrive, commentId)
+        assertEquals(FileSystemType.Comment, request.fileSystemType)
+        assertFalse(request.withCommentedFileKey, "odin-core refuses a FileKey header outside a SelectiveShare drive")
+        assertNull(request.metadata.appData.groupId)
+        assertNotNull(request.metadata.referencedFile)
+    }
+
+    @Test
+    fun postComment_withoutAGlobalTransitId_refusesInsteadOfWritingAnInvisibleComment() = runFeedTest {
+        val postId = Uuid.random()
+        env.optimisticWriter.writeNewFile(
+            driveId = channelDrive,
+            keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
+            unecryptedMetadata = UploadFileMetadata(
+                allowDistribution = true,
+                isEncrypted = false,
+                appData = UploadAppFileMetaData(uniqueId = postId, fileType = FeedProtocol.PostFileType),
+            ),
+            originalRecipientCount = 0,
+            fileSystemType = FileSystemType.Standard,
+        )
+        advanceUntilIdle()
+
+        val commentId = Uuid.random()
+        assertFailsWith<IllegalStateException> {
+            service().postComment(postId = postId, body = "too early", commentUniqueId = commentId)
+        }
+        assertNull(env.outboxRow(channelDrive, commentId))
+    }
 
     private suspend fun readRequest(driveId: Uuid, uniqueId: Uuid): UploadFileRequest {
         val row: Outbox = env.outboxRow(driveId, uniqueId) ?: error("no outbox row for $uniqueId")
