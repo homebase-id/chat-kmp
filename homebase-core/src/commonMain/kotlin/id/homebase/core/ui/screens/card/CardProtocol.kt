@@ -184,8 +184,20 @@ internal fun parseCssColor(css: String): Int? {
 
 // Installed before any page script runs, so the page's boot-time `loaded` isn't lost.
 internal fun bridgeShim(postMessageFunction: String): String =
-    "window.homebaseCardHost=window.homebaseCardHost||{post:function(m){$postMessageFunction(m)}};"
+    "window.homebaseCardHost=window.homebaseCardHost||{post:function(m){$postMessageFunction(m)}};$UNSCALED_SNAPSHOT_SCRIPT"
 
+// WebKit misdraws box-shadows (unblurred, unrounded, cut off) in an SVG foreignObject drawn scaled, which exportPng does at
+// max(2, 1080/width); this lays the snapshot SVG out at that output size with CSS zoom instead, so it is drawn 1:1.
+private const val UNSCALED_SNAPSHOT_SCRIPT =
+    "(function(){var p=HTMLImageElement.prototype,d=Object.getOwnPropertyDescriptor(p,'src');" +
+        "function f(u){var i=u.indexOf(','),h=u.slice(0,i+1);if(h.indexOf('base64')>=0)return u;" +
+        "var s=new DOMParser().parseFromString(decodeURIComponent(u.slice(i+1)),'image/svg+xml').documentElement," +
+        "o=s.firstElementChild,r=o&&o.firstElementChild,w=+s.getAttribute('width'),t=+s.getAttribute('height');" +
+        "if(s.localName!=='svg'||!r||o.localName!=='foreignObject'||!(w>0&&t>0))return u;" +
+        "var k=Math.max(2,1080/w);s.setAttribute('width',w*k);s.setAttribute('height',t*k);s.removeAttribute('viewBox');" +
+        "r.style.zoom=k;return h+encodeURIComponent(new XMLSerializer().serializeToString(s))}" +
+        "Object.defineProperty(p,'src',{configurable:true,enumerable:d.enumerable,get:d.get,set:function(v){" +
+        "d.set.call(this,typeof v==='string'&&v.lastIndexOf('data:image/svg+xml',0)===0?f(v):v)}})})();"
 
 // performance.now() deltas arrive fractional.
 private fun JsonObject.long(key: String): Long? = strictLong(key) ?: strictDouble(key)?.roundToLong()
