@@ -1501,6 +1501,7 @@ fun MessageTextFieldForAttachment(
                             onClick = { hasSent = !nextInsteadOfSend; onSendMessage() },
                             enabled = !hasSent,
                             colors = sendButtonColors,
+                            modifier = Modifier.riseIn(LocalChromeShown.current, order = 3, fromScale = 0.5f),
                         ) {
                             Icon(
                                 imageVector = if (nextInsteadOfSend) Icons.AutoMirrored.Filled.ArrowForward

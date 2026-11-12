@@ -24,7 +24,17 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.lerp
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -74,6 +84,8 @@ fun CameraCaptureDialog(
     warmEngine: CameraEngine? = null,
     handingOff: Boolean = false,
     fade: () -> Float = { 1f },
+    origin: Rect? = null,
+    reveal: () -> Float = { 1f },
     onOpenGallery: (() -> Unit)? = null,
     onResult: (PlatformFile) -> Unit,
     onDismiss: () -> Unit,
@@ -82,8 +94,21 @@ fun CameraCaptureDialog(
     val galleryThumbnail = if (onOpenGallery != null) rememberNewestGalleryThumbnailUri() else null
     Dialog(onDismissRequest = onDismiss, properties = cameraDialogProperties()) {
         CameraWindowEffect()
-        CompositionLocalProvider(LocalCameraFade provides fade) {
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = fade() }) {
+        val shaped = origin != null && previewFollowsComposeTransforms
+        val windowAlpha = { fade() * (reveal() * 3f).coerceIn(0f, 1f) }
+        CompositionLocalProvider(LocalCameraFade provides windowAlpha) {
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    alpha = windowAlpha()
+                    if (shaped) {
+                        val handoffScale = 0.94f + 0.06f * fade()
+                        scaleX = handoffScale
+                        scaleY = handoffScale
+                        shape = RevealShape(origin, reveal())
+                        clip = true
+                    }
+                },
+            ) {
                 CameraCaptureScreen(
                     allowedModes = allowedModes,
                     mirrorFront = mirrorFront,
@@ -108,6 +133,16 @@ fun CameraCaptureDialog(
                 }
             }
         }
+    }
+}
+
+/** A rounded rect that grows from [origin] (in window coordinates) at [progress] 0 to the whole window at 1. */
+private class RevealShape(private val origin: Rect, private val progress: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val p = progress.coerceAtLeast(0f)
+        val bounds = lerp(origin, Rect(Offset.Zero, size), p)
+        val corner = (origin.minDimension * 0.3f * (1f - p)).coerceAtLeast(0f)
+        return Outline.Rounded(RoundRect(bounds, CornerRadius(corner)))
     }
 }
 

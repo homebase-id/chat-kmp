@@ -1,6 +1,21 @@
 package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterExitState
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.backhandler.PredictiveBackHandler
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
@@ -70,9 +85,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -133,6 +148,7 @@ import org.koin.compose.koinInject
 
 internal class ChatListCapture(
     val openCamera: () -> Unit,
+    val openCameraFrom: (Rect) -> Unit,
     val cameraResultShown: () -> Unit,
     val addImages: () -> Unit,
     val addFile: () -> Unit,
@@ -158,7 +174,13 @@ internal fun rememberChatListCapture(onUiAction: (ConversationListUiAction) -> U
         }
     }
     return remember(gallery, file, camera) {
-        ChatListCapture(openCamera = { camera.launch() }, cameraResultShown = camera::resultShown, addImages = { gallery.launch() }, addFile = { file.launch() })
+        ChatListCapture(
+            openCamera = { camera.launch() },
+            openCameraFrom = camera::launchFrom,
+            cameraResultShown = camera::resultShown,
+            addImages = { gallery.launch() },
+            addFile = { file.launch() },
+        )
     }
 }
 
@@ -167,13 +189,47 @@ fun ChatListCaptureOverlay(
     messagesUiState: MessageListUiState,
     onUiAction: (ConversationListUiAction) -> Unit,
 ) {
-    val editor = (messagesUiState.fullScreenOverlay as? FullScreenOverlay.AttachmentData)
-        ?.takeIf { it.isChatListCapture } ?: return
+    val current = (messagesUiState.fullScreenOverlay as? FullScreenOverlay.AttachmentData)?.takeIf { it.isChatListCapture }
+    val motion = MaterialTheme.motionScheme
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // The camera FAB sits at the bottom end, so the flow folds back toward it.
+    val towardFab = TransformOrigin(if (rtl) 0.1f else 0.9f, 0.9f)
+    AnimatedContent(
+        targetState = current,
+        contentKey = { it != null },
+        transitionSpec = {
+            (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.94f)) togetherWith
+                (fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec(), targetScale = 0.6f, transformOrigin = towardFab))
+        },
+    ) { editor ->
+        if (editor != null) ChatListCaptureFlow(editor, messagesUiState, onUiAction)
+    }
+}
+
+@Composable
+private fun ChatListCaptureFlow(
+    editor: FullScreenOverlay.AttachmentData,
+    messagesUiState: MessageListUiState,
+    onUiAction: (ConversationListUiAction) -> Unit,
+) {
     val capture = rememberChatListCapture(onUiAction)
     var page by remember { mutableIntStateOf(0) }
     val caption = remember { RichTextState().applyDefaultStyling() }
+    val motion = MaterialTheme.motionScheme
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val sendToOpen = messagesUiState.sendTo != null
+    val backProgress = remember { Animatable(0f) }
+    LaunchedEffect(sendToOpen) { if (sendToOpen) backProgress.snapTo(0f) }
+    val recede by animateFloatAsState(if (sendToOpen) 1f else 0f, motion.defaultSpatialSpec())
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-        Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.graphicsLayer {
+                val r = recede * (1f - backProgress.value)
+                scaleX = 1f - 0.08f * r
+                scaleY = 1f - 0.08f * r
+                alpha = 1f - 0.6f * r.coerceIn(0f, 1f)
+            },
+        ) {
             AttachmentEditorHost(
                 data = editor,
                 mediaQuality = messagesUiState.mediaQuality,
@@ -188,12 +244,29 @@ fun ChatListCaptureOverlay(
                 onUiAction = onUiAction,
                 onSend = { text, viewOnce -> onUiAction(ConversationListUiAction.OpenSendTo(text, viewOnce)) },
             )
-            messagesUiState.sendTo?.let { picker ->
+        }
+        AnimatedContent(
+            targetState = messagesUiState.sendTo,
+            contentKey = { it != null },
+            transitionSpec = {
+                val fromEnd = { width: Int -> if (rtl) -width else width }
+                (slideInHorizontally(motion.defaultSpatialSpec()) { fromEnd(it) } + fadeIn(motion.defaultEffectsSpec())) togetherWith
+                    (slideOutHorizontally(motion.fastSpatialSpec()) { fromEnd(it) } + fadeOut(motion.fastEffectsSpec()))
+            },
+        ) { picker ->
+            if (picker != null) {
                 SendToScreen(
+                    backEnabled = transition.targetState == EnterExitState.Visible,
                     picker = picker,
                     attachments = editor.attachments,
                     sending = messagesUiState.isSendingMessage,
                     onUiAction = onUiAction,
+                    backProgress = backProgress,
+                    modifier = Modifier.graphicsLayer {
+                        val p = backProgress.value
+                        translationX = (if (rtl) -1f else 1f) * size.width * 0.25f * p
+                        alpha = 1f - 0.3f * p
+                    },
                 )
             }
         }
@@ -210,14 +283,25 @@ internal fun SendToScreen(
     attachments: List<AttachmentPendingFile>,
     sending: Boolean,
     onUiAction: (ConversationListUiAction) -> Unit,
+    modifier: Modifier = Modifier,
+    backEnabled: Boolean = true,
+    backProgress: Animatable<Float, AnimationVector1D> = remember { Animatable(0f) },
 ) {
     @Suppress("DEPRECATION")
-    BackHandler(enabled = true) { onUiAction(ConversationListUiAction.CloseSendTo) }
+    PredictiveBackHandler(enabled = backEnabled) { progress ->
+        try {
+            progress.collect { backProgress.snapTo(it.progress) }
+            onUiAction(ConversationListUiAction.CloseSendTo)
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) { backProgress.animateTo(0f) }
+            throw e
+        }
+    }
     val youLabel = stringResource(MR.string.you)
     val query = picker.search.text.toString()
     val visible = remember(picker.recipients, query, youLabel) { picker.recipients.matching(query, youLabel) }
     Box(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).imePadding(),
+        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).imePadding(),
         contentAlignment = Alignment.TopCenter,
     ) {
         Column(Modifier.widthIn(max = SendToMaxWidth).fillMaxSize()) {
@@ -325,7 +409,12 @@ private fun RecipientAvatar(recipient: RecipientModel, options: AvatarOptions) {
 @Composable
 private fun SendToRecipientRow(recipient: RecipientModel, youLabel: String, selected: Boolean, onToggle: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val container by animateColorAsState(if (selected) colors.secondaryContainer else Color.Transparent)
+    val container by animateColorAsState(
+        if (selected) colors.secondaryContainer else Color.Transparent,
+        MaterialTheme.motionScheme.defaultEffectsSpec(),
+    )
+    val markIn = signalToggleIn()
+    val markOut = signalToggleOut()
     val supporting = when (recipient) {
         is RecipientModel.Contact -> recipient.contact.odinId.domainName
         is RecipientModel.Conversation -> recipient.conversation.conversation.avatarModel.odinId?.domainName
@@ -344,10 +433,12 @@ private fun SendToRecipientRow(recipient: RecipientModel, youLabel: String, sele
         headlineContent = { Text(recipient.label(youLabel), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = supporting?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         trailingContent = {
-            if (selected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(MR.string.cd_selected), tint = colors.primary)
-            } else {
-                Icon(Icons.Outlined.Circle, contentDescription = stringResource(MR.string.cd_not_selected), tint = colors.outline)
+            AnimatedContent(targetState = selected, transitionSpec = { markIn togetherWith markOut }) { checked ->
+                if (checked) {
+                    Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(MR.string.cd_selected), tint = colors.primary)
+                } else {
+                    Icon(Icons.Outlined.Circle, contentDescription = stringResource(MR.string.cd_not_selected), tint = colors.outline)
+                }
             }
         },
     )
@@ -372,10 +463,16 @@ private fun SendToBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AttachmentPreview(attachments)
+            val motion = MaterialTheme.motionScheme
+            val popIn = signalToggleIn()
+            val popOut = signalToggleOut()
             AnimatedContent(
                 targetState = selected.isEmpty(),
                 modifier = Modifier.weight(1f),
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                transitionSpec = {
+                    (slideInVertically(motion.fastSpatialSpec()) { it / 2 } + fadeIn(motion.fastEffectsSpec())) togetherWith
+                        (slideOutVertically(motion.fastSpatialSpec()) { -it / 2 } + fadeOut(motion.fastEffectsSpec()))
+                },
                 contentAlignment = Alignment.CenterStart,
             ) { empty ->
                 if (empty) {
@@ -391,7 +488,11 @@ private fun SendToBar(
                     RecipientChips(selected, youLabel, onUiAction)
                 }
             }
-            AnimatedVisibility(visible = selected.isNotEmpty(), enter = scaleIn() + fadeIn(), exit = scaleOut() + fadeOut()) {
+            AnimatedVisibility(
+                visible = selected.isNotEmpty(),
+                enter = popIn + slideInVertically(motion.fastSpatialSpec()) { it / 2 },
+                exit = popOut,
+            ) {
                 ExtendedFloatingActionButton(
                     onClick = { if (!sending) onUiAction(ConversationListUiAction.ConfirmSendTo) },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -399,20 +500,32 @@ private fun SendToBar(
                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
                     modifier = Modifier.padding(start = 8.dp),
                 ) {
-                    if (sending) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.5.dp,
-                        )
-                    } else {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Send,
-                            contentDescription = stringResource(MR.string.chat_send_message_button),
-                        )
+                    AnimatedContent(targetState = sending, transitionSpec = { popIn togetherWith popOut }) { busy ->
+                        if (busy) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.5.dp,
+                            )
+                        } else {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = stringResource(MR.string.chat_send_message_button),
+                            )
+                        }
                     }
                     Spacer(Modifier.width(12.dp))
-                    Text(stringResource(MR.string.chat_send_to_count, selected.size))
+                    AnimatedContent(
+                        targetState = selected.size,
+                        transitionSpec = {
+                            val up = if (targetState > initialState) 1 else -1
+                            (slideInVertically(motion.fastSpatialSpec()) { it * up } + fadeIn(motion.fastEffectsSpec())) togetherWith
+                                (slideOutVertically(motion.fastSpatialSpec()) { -it * up } + fadeOut(motion.fastEffectsSpec())) using
+                                SizeTransform(clip = false)
+                        },
+                    ) { count ->
+                        Text(stringResource(MR.string.chat_send_to_count, count))
+                    }
                 }
             }
         }
@@ -429,10 +542,17 @@ private fun RecipientChips(selected: List<RecipientModel>, youLabel: String, onU
         contentPadding = PaddingValues(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(selected) { recipient ->
-            RecipientChip(recipient, youLabel) { onUiAction(ConversationListUiAction.SendToSelectRecipient(recipient)) }
+        items(selected, key = { it.key() }) { recipient ->
+            RecipientChip(recipient, youLabel, Modifier.animateItem()) {
+                onUiAction(ConversationListUiAction.SendToSelectRecipient(recipient))
+            }
         }
     }
+}
+
+private fun RecipientModel.key(): String = when (this) {
+    is RecipientModel.Contact -> "contact:${contact.odinId.domainName}"
+    is RecipientModel.Conversation -> "conversation:${conversation.conversation.id}"
 }
 
 private fun Modifier.fadeEdges(start: Boolean, end: Boolean, rtl: Boolean): Modifier =
@@ -485,10 +605,11 @@ private fun AttachmentPreview(attachments: List<AttachmentPendingFile>) {
 }
 
 @Composable
-private fun RecipientChip(recipient: RecipientModel, youLabel: String, onRemove: () -> Unit) {
+private fun RecipientChip(recipient: RecipientModel, youLabel: String, modifier: Modifier, onRemove: () -> Unit) {
     InputChip(
         selected = true,
         onClick = onRemove,
+        modifier = modifier,
         label = {
             Text(
                 text = recipient.label(youLabel),

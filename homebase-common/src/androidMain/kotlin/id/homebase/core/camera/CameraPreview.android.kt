@@ -63,3 +63,5 @@ actual fun CameraPreview(
             },
     )
 }
+
+internal actual val previewFollowsComposeTransforms: Boolean = true

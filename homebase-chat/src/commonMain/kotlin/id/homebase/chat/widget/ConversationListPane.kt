@@ -1,5 +1,15 @@
 package id.homebase.chat.widget
 
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
@@ -478,15 +488,24 @@ fun ConversationListPane(
             },
             floatingActionButton = {
                 if (!iconOnlyMode && !twoPaneWindow && !uiState.showArchived) {
+                    // The small FAB leads: it leaves first on scroll and comes back first.
+                    var newChatFabVisible by remember { mutableStateOf(fabsVisible) }
+                    LaunchedEffect(fabsVisible) {
+                        delay(FAB_STAGGER_MS)
+                        newChatFabVisible = fabsVisible
+                    }
                     Column(
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         if (!usesPointerUx()) {
-                            SmallFloatingActionButton(
-                                onClick = capture.openCamera,
+                            var cameraFabBounds by remember { mutableStateOf<Rect?>(null) }
+                            SquishFab(
+                                onClick = { cameraFabBounds?.let(capture.openCameraFrom) ?: capture.openCamera() },
+                                small = true,
                                 modifier = Modifier
                                     .animateFloatingActionButton(visible = fabsVisible, alignment = Alignment.BottomEnd)
+                                    .onGloballyPositioned { cameraFabBounds = it.boundsInWindow() }
                                     .testTag("chat_list_camera_button"),
                             ) {
                                 Icon(
@@ -495,12 +514,13 @@ fun ConversationListPane(
                                 )
                             }
                         }
-                        FloatingActionButton(
+                        SquishFab(
                             onClick = {
                                 onUiAction(ConversationListUiAction.NewConversationClicked)
                             },
+                            small = false,
                             modifier = Modifier.animateFloatingActionButton(
-                                visible = fabsVisible,
+                                visible = newChatFabVisible,
                                 alignment = Alignment.BottomEnd,
                             ),
                         ) {
@@ -880,5 +900,32 @@ fun ConversationLisContentItem(
                 },
             )
         }
+    }
+}
+
+private const val FAB_STAGGER_MS = 60L
+
+@Composable
+private fun SquishFab(
+    onClick: () -> Unit,
+    small: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val size = if (small) 40.dp else 56.dp
+    val restCorner = if (small) 12.dp else 16.dp
+    val corner by animateDpAsState(if (pressed) size / 2 else restCorner, MaterialTheme.motionScheme.fastSpatialSpec())
+    val scale by animateFloatAsState(if (pressed) 0.9f else 1f, MaterialTheme.motionScheme.fastSpatialSpec())
+    val squished = modifier.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
+    val shape = RoundedCornerShape(corner.coerceAtLeast(0.dp))
+    if (small) {
+        SmallFloatingActionButton(onClick = onClick, modifier = squished, shape = shape, interactionSource = interaction, content = content)
+    } else {
+        FloatingActionButton(onClick = onClick, modifier = squished, shape = shape, interactionSource = interaction, content = content)
     }
 }
