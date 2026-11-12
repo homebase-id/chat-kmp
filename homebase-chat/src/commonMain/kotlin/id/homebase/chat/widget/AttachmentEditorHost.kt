@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.image.MediaQuality
@@ -68,8 +69,7 @@ internal fun AttachmentEditorHost(
         mediaQuality = mediaQuality,
         onSetMediaQuality = {
             onUiAction(
-                id.homebase.chat.conversationlist.ConversationListUiAction
-                    .SetMediaQuality(it)
+                ConversationListUiAction.SetMediaQuality(it)
             )
         },
         centerImageInPage = true,
@@ -83,21 +83,21 @@ internal fun AttachmentEditorHost(
         onDismiss = { onUiAction(CloseFullScreenOverlay) },
         onCropImage = { attachmentId ->
             onUiAction(
-                id.homebase.chat.conversationlist.ConversationListUiAction.RequestCropAttachment(
+                ConversationListUiAction.RequestCropAttachment(
                     data.conversationId, attachmentId,
                 )
             )
         },
         onDrawImage = { attachmentId ->
             onUiAction(
-                id.homebase.chat.conversationlist.ConversationListUiAction.RequestDrawAttachment(
+                ConversationListUiAction.RequestDrawAttachment(
                     data.conversationId, attachmentId,
                 )
             )
         },
         onTrimChange = { attachmentId, startMs, endMs ->
             onUiAction(
-                id.homebase.chat.conversationlist.ConversationListUiAction.ApplyTrimResult(
+                ConversationListUiAction.ApplyTrimResult(
                     data.conversationId, attachmentId, startMs, endMs,
                 )
             )
@@ -125,7 +125,7 @@ internal fun AttachmentEditorHost(
                     text = data.conversationTitle,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         },
@@ -145,7 +145,7 @@ internal fun AttachmentEditorHost(
                 onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                 onPasteImage = { imageBytes ->
                     onUiAction(
-                        id.homebase.chat.conversationlist.ConversationListUiAction.AttachClipboardImage(
+                        ConversationListUiAction.AttachClipboardImage(
                             data.conversationId, imageBytes,
                         )
                     )
