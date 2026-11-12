@@ -318,7 +318,7 @@ One entry point, `renderImages(source, plan)` in `homebase-api`:
 **The recipe.** This is best practice, used by Pillow, libvips and image CDNs:
 
 1. **Plan all sizes first,** with integer math on the upright (orientation-applied) size. Never resize to discover a size.
-2. **Decode once.** Let the decoder do a coarse reduction only when it averages properly: ImageIO on iOS, but only by 2× or more, because it aliases below that (1.43× leaves a stripe spread of 20, 1.34× of 30, 2× about 3); and JPEG decoding on Android, which can shrink by 2, 4 or 8. Never use decoding that skips pixels or scales bilinearly, which is Android's HEIC, PNG and WebP sampling and its `ImageDecoder.setTargetSize`. Over 24 MP, iOS decodes smaller as a memory guard, but never below what the largest output needs. Android has no guard: measured on a phone, `setTargetSize` decodes at full size and then scales bilinearly, so it aliased (stripe spread 74) and peaked higher than a full decode (48 MP HEIC: 358–408 MB against 304 MB). So Android decodes HEIC, PNG and WebP at full size, and JPEG only by its own 2, 4 or 8. On iOS the guard is the one thing that can force ImageIO under 2×: HD on a 48 MP photo needs 4096 from 8064, so ImageIO shrinks 1.43× and aliases until native resizing (#2301) lands.
+2. **Decode once.** Let the decoder do a coarse reduction only when it averages properly: ImageIO on iOS, but only by 2× or more, because it aliases below that (1.43× leaves a stripe spread of 20, 1.34× of 30, 2× about 3); and JPEG decoding on Android, which can shrink by 2, 4 or 8. Never use decoding that skips pixels or scales bilinearly, which is Android's HEIC, PNG and WebP sampling and its `ImageDecoder.setTargetSize`. Over 24 MP, iOS decodes smaller as a memory guard, but never below what the largest output needs, and never by an ImageIO step under 2×: when the guard can't get a 2× step, ImageIO decodes at full size and vImage does the rest. So the guard only shrinks sources over 96 MP; HD on a 48 MP photo, or on an iPhone's default 24 MP one (5712×4284, just over the limit), decodes in full. Android has no guard: measured on a phone, `setTargetSize` decodes at full size and then scales bilinearly, so it aliased (stripe spread 74) and peaked higher than a full decode (48 MP HEIC: 358–408 MB against 304 MB). So Android decodes HEIC, PNG and WebP at full size, and JPEG only by its own 2, 4 or 8.
 3. **Filter with premultiplied alpha.** Blending transparent and opaque pixels without premultiplying gives dark or coloured fringes around cut-outs and stickers.
 4. **While the image is at least 2× too big, halve it** by averaging each 2×2 block. That's exact, cheap and blends every pixel.
 5. **Do the last step, under 2×, with a Lanczos-3 filter whose width grows with the reduction.** It blends the whole patch and keeps edges crisp. It runs the pass that shrinks more first, so the in-between copy is the smaller one, and pauses every 8 ms so the web page, where it shares the UI thread, keeps drawing. The phones run it natively on the bitmap's own pixels (Accelerate on iOS, `stb_image_resize2` on Android), so there's no heap copy and no softer fallback; desktop and web run the shared Kotlin Lanczos. Mitchell is an acceptable alternative if it passes the same tests: slightly softer, with less ringing around hard edges like text. Fixed-size filters (bilinear, or Skia's cubic) and a plain box average fail the test; see the table below.
@@ -492,7 +492,7 @@ What must stay proven, and where.
 
 The pipeline contract tests are in `homebase-api/src/imageContractTest/kotlin/`. That folder is compiled into the JVM, iOS simulator and web tests, which CI runs, and into Android device tests, which CI doesn't run. **Run them on a real iPhone and Android phone before calling phone work done.**
 
-- **Aliasing:** 1-pixel stripes turn grey at 10×, 3.94× (8064 → 2048), 2.93× (6000 → 2048), 1.97×, 1.90×, 1.69×, 1.50× and 1.46× (standard deviation ≤ 5), and at 1.25× (≤ 30). There are two variants: one where the pipeline's scaler does the work, which forces a full-size decode first, and one where the decoder scales, which on iOS means ImageIO. On iOS, a 48 MP source also goes through the memory guard: ≤ 5 at 2048, and ≤ 30 at HD's 4096, where the guard forces ImageIO's 1.43× step. On Android, a 28 MP PNG is ≤ 5 at 2048 and 4096, and no decode over 24 MP peaks above a plain full decode (`LargeDecodeAndroidTest`).
+- **Aliasing:** 1-pixel stripes turn grey at 10×, 3.94× (8064 → 2048), 2.93× (6000 → 2048), 1.97×, 1.90×, 1.69×, 1.50× and 1.46× (standard deviation ≤ 5), and at 1.25× (≤ 30). There are two variants: one where the pipeline's scaler does the work, which forces a full-size decode first, and one where the decoder scales, which on iOS means ImageIO. On iOS, 48 MP and 24.5 MP sources also go through the memory guard: ≤ 5 at 2048 and at HD's 4096. On Android, a 28 MP PNG is ≤ 5 at 2048 and 4096, and no decode over 24 MP peaks above a plain full decode (`LargeDecodeAndroidTest`).
 - **Sharpness:** 8-pixel stripes keep their contrast (min ≤ 20, max ≥ 235). A slight blur scores about 82–173, so blurring everything can't pass.
 - **No resampling at source size:** a PNG source rendered at its own size is pixel-identical to the source.
 - **Rendered sizes equal planned sizes,** so no platform's decoder shifts a size by a pixel.
@@ -570,12 +570,12 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 | What | Issue |
 |---|---|
-| Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` | #2301 |
+| iPhone measurements of the native resampler against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` (Android's are done) | #2364 |
 | iOS: hand pixels from ImageIO over without extra copies | #2236 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
 | Original video untouched, with chat's copy stripped by a remux | #2235 |
-| Time, memory and battery measured on a real iPhone and Android phone | #2221, #2236 |
+| Time, memory and battery measured on a real iPhone and Android phone | #2221, #2364 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |
 | RAW: verify on real phones which formats decode (ProRAW and DNG on iOS; DNG on Android) | – |
 
