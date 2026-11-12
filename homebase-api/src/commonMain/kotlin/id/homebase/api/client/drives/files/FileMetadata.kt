@@ -21,6 +21,7 @@ data class FileMetadata(
     val updated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val transitCreated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val transitUpdated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
+    /** False once the header is decrypted or on synced copies; read HomebaseFile.serverFileIsEncrypted for what the server stores. */
     val isEncrypted: Boolean = false,
     @Serializable(with = OdinIdSerializerNullable::class) val senderOdinId: OdinId? = null,
     @Serializable(with = OdinIdSerializerNullable::class) val originalAuthor: OdinId? = null,

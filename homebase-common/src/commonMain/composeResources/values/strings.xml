@@ -2372,6 +2372,8 @@
     <string name="feed_compose_caption_placeholder">What's up?</string>
     <string name="feed_compose_caption_placeholder_repost">Add a comment?</string>
     <string name="feed_compose_post">Post</string>
+    <string name="feed_compose_posting">Posting…</string>
+    <string name="feed_compose_post_failed">Couldn't share your post. Please try again.</string>
     <string name="feed_compose_add_media">Add photo or video</string>
     <string name="feed_compose_camera">Take photo</string>
     <string name="feed_compose_attachment_image">Attachment</string>
@@ -2380,6 +2382,12 @@
     <string name="feed_compose_audience_registered">Registered users</string>
     <string name="feed_compose_audience_connections">Connections</string>
     <string name="feed_compose_audience_owner">Only me</string>
+    <string name="feed_compose_audience_public">Public</string>
+    <string name="feed_compose_audience_circles">Circles</string>
+    <string name="feed_compose_audience_circles_count">Circles (%1$d)</string>
+    <string name="feed_compose_circles_title">Share with circles</string>
+    <string name="feed_compose_circles_empty">You have no circles yet. Create one in your contacts to share a post with it.</string>
+    <string name="feed_timeline_compose_action">New post</string>
     <string name="feed_compose_react_all">Reactions &amp; comments</string>
     <string name="feed_compose_react_emoji_only">Reactions only</string>
     <string name="feed_compose_react_comment_only">Comments only</string>
