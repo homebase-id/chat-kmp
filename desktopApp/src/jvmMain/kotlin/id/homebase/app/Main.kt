@@ -109,7 +109,7 @@ internal val windowRestoreRequests = MutableStateFlow(0)
 internal fun claimSingleInstance(onRestoreRequest: () -> Unit): Boolean {
     SingleInstanceManager.configuration = SingleInstanceManager.Configuration(
         lockFilesDir = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir")),
-        lockIdentifier = "id.homebase.chat",
+        lockIdentifier = if (JvmFileSystemUtil.isProductionVersion()) "id.homebase.chat" else "id.homebase.chat.dev",
     )
     return SingleInstanceManager.isSingleInstance(onRestoreRequest = { onRestoreRequest() })
 }
