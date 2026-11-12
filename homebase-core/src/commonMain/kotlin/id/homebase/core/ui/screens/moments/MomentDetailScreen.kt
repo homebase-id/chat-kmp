@@ -672,6 +672,11 @@ private const val MOMENT_MEDIA_FRACTION_WITH_COMMENTS = 1f / 3f
  */
 private const val MOMENT_COMMENTS_SHEET_FRACTION = 0.6f
 
+internal const val COMMENTS_SHEET_KEYBOARD_FRACTION = 0.92f
+
+internal fun commentsSheetHeightFraction(base: Float, imeVisible: Boolean): Float =
+    if (imeVisible) maxOf(base, COMMENTS_SHEET_KEYBOARD_FRACTION) else base
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DetailContent(
@@ -2167,6 +2172,9 @@ private fun CommentsSheet(
     val imeOffset = rememberImeOffsetState()
     val composerPanel = rememberKeyboardPanelState(imeOffset)
     val topInsets = BottomSheetDefaults.windowInsets.only(WindowInsetsSides.Top)
+    val imeVisible by remember(imeOffset) { derivedStateOf { imeOffset.isImeVisible } }
+    val targetFraction = heightFraction?.let { commentsSheetHeightFraction(it, imeVisible) }
+    val animatedFraction by animateFloatAsState(targetFraction ?: 0f)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -2187,7 +2195,7 @@ private fun CommentsSheet(
                 .fillMaxWidth()
                 .nestedScroll(swallowDownwardDrag)
                 .then(
-                    if (heightFraction != null) Modifier.fillMaxHeight(heightFraction)
+                    if (heightFraction != null) Modifier.fillMaxHeight(animatedFraction)
                     else Modifier,
                 ),
         )
