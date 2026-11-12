@@ -72,6 +72,16 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.outlined.WorkOutline
+import androidx.compose.material.icons.outlined.CameraFront
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Gamepad
+import androidx.compose.material.icons.outlined.QuestionAnswer
+import androidx.compose.material.icons.outlined.SmartDisplay
+import androidx.compose.material.icons.outlined.SportsEsports
+import androidx.compose.material.icons.outlined.VideogameAsset
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.text.style.TextDirection
@@ -146,6 +156,16 @@ import id.homebase.resources.profile_edit_status
 import id.homebase.resources.profile_edit_surname
 import id.homebase.resources.profile_edit_tiktok
 import id.homebase.resources.profile_edit_twitter
+import id.homebase.resources.profile_edit_youtube
+import id.homebase.resources.profile_edit_snapchat
+import id.homebase.resources.profile_edit_github
+import id.homebase.resources.profile_edit_discord
+import id.homebase.resources.profile_edit_stackoverflow
+import id.homebase.resources.profile_edit_steam
+import id.homebase.resources.profile_edit_minecraft
+import id.homebase.resources.profile_edit_epic
+import id.homebase.resources.profile_edit_riot
+import id.homebase.resources.profile_edit_homebase_id
 import id.homebase.resources.remove
 import id.homebase.resources.save
 import kotlinx.coroutines.flow.first
@@ -245,6 +265,7 @@ internal data class AttributeSpec(
     val type: String,
     val icon: ImageVector,
     val labelRes: StringResource,
+    val social: Boolean = false,
 )
 
 internal val ATTRIBUTE_SPECS = listOf(
@@ -256,12 +277,25 @@ internal val ATTRIBUTE_SPECS = listOf(
     AttributeSpec(ProfileAttributeTypes.EMAIL, Icons.Outlined.Email, MR.string.profile_edit_email),
     AttributeSpec(ProfileAttributeTypes.PHONE, Icons.Outlined.Call, MR.string.profile_edit_phone),
     AttributeSpec(ProfileAttributeTypes.ADDRESS, Icons.Outlined.LocationOn, MR.string.contactbook_detail_location),
-    AttributeSpec(ProfileAttributeTypes.TWITTER, Icons.Outlined.Tag, MR.string.profile_edit_twitter),
-    AttributeSpec(ProfileAttributeTypes.FACEBOOK, Icons.Outlined.ThumbUp, MR.string.profile_edit_facebook),
-    AttributeSpec(ProfileAttributeTypes.INSTAGRAM, Icons.Outlined.PhotoCamera, MR.string.profile_edit_instagram),
-    AttributeSpec(ProfileAttributeTypes.TIKTOK, Icons.Outlined.MusicNote, MR.string.profile_edit_tiktok),
-    AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.WorkOutline, MR.string.profile_edit_linkedin),
+    AttributeSpec(ProfileAttributeTypes.TWITTER, Icons.Outlined.Tag, MR.string.profile_edit_twitter, social = true),
+    AttributeSpec(ProfileAttributeTypes.FACEBOOK, Icons.Outlined.ThumbUp, MR.string.profile_edit_facebook, social = true),
+    AttributeSpec(ProfileAttributeTypes.INSTAGRAM, Icons.Outlined.PhotoCamera, MR.string.profile_edit_instagram, social = true),
+    AttributeSpec(ProfileAttributeTypes.TIKTOK, Icons.Outlined.MusicNote, MR.string.profile_edit_tiktok, social = true),
+    AttributeSpec(ProfileAttributeTypes.LINKEDIN, Icons.Outlined.WorkOutline, MR.string.profile_edit_linkedin, social = true),
+    AttributeSpec(ProfileAttributeTypes.YOUTUBE, Icons.Outlined.SmartDisplay, MR.string.profile_edit_youtube, social = true),
+    AttributeSpec(ProfileAttributeTypes.SNAPCHAT, Icons.Outlined.CameraFront, MR.string.profile_edit_snapchat, social = true),
+    AttributeSpec(ProfileAttributeTypes.GITHUB, Icons.Outlined.Code, MR.string.profile_edit_github, social = true),
+    AttributeSpec(ProfileAttributeTypes.DISCORD, Icons.Outlined.Forum, MR.string.profile_edit_discord, social = true),
+    AttributeSpec(ProfileAttributeTypes.STACKOVERFLOW, Icons.Outlined.QuestionAnswer, MR.string.profile_edit_stackoverflow, social = true),
+    AttributeSpec(ProfileAttributeTypes.STEAM, Icons.Outlined.SportsEsports, MR.string.profile_edit_steam, social = true),
+    AttributeSpec(ProfileAttributeTypes.MINECRAFT, Icons.Outlined.ViewInAr, MR.string.profile_edit_minecraft, social = true),
+    AttributeSpec(ProfileAttributeTypes.EPIC, Icons.Outlined.VideogameAsset, MR.string.profile_edit_epic, social = true),
+    AttributeSpec(ProfileAttributeTypes.RIOT, Icons.Outlined.Gamepad, MR.string.profile_edit_riot, social = true),
+    AttributeSpec(ProfileAttributeTypes.HOMEBASE_ID, Icons.Outlined.Fingerprint, MR.string.profile_edit_homebase_id, social = true),
 )
+
+/** Handle-only attributes: one unlabelled field holding the username. */
+internal val SOCIAL_ATTRIBUTE_TYPES = ATTRIBUTE_SPECS.filter { it.social }.map { it.type }
 
 
 @Composable
@@ -442,45 +476,14 @@ internal fun AttributeFields(
             ) { onChange(ProfileField.COUNTRY, it) }
         }
 
-        ProfileAttributeTypes.TWITTER -> {
+        in SOCIAL_ATTRIBUTE_TYPES -> {
+            val field = PROFILE_TYPE_FIELDS.getValue(type).single().first
             ProfileField(
-                value(ProfileField.TWITTER),
-                stringResource(MR.string.profile_edit_twitter),
+                value(field),
+                stringResource(ATTRIBUTE_SPECS.first { it.type == type }.labelRes),
                 showLabel = false,
                 modifier = Modifier.fillMaxWidth(),
-            ) { onChange(ProfileField.TWITTER, it) }
-        }
-        ProfileAttributeTypes.FACEBOOK -> {
-            ProfileField(
-                value(ProfileField.FACEBOOK),
-                stringResource(MR.string.profile_edit_facebook),
-                showLabel = false,
-                modifier = Modifier.fillMaxWidth(),
-            ) { onChange(ProfileField.FACEBOOK, it) }
-        }
-        ProfileAttributeTypes.INSTAGRAM -> {
-            ProfileField(
-                value(ProfileField.INSTAGRAM),
-                stringResource(MR.string.profile_edit_instagram),
-                showLabel = false,
-                modifier = Modifier.fillMaxWidth(),
-            ) { onChange(ProfileField.INSTAGRAM, it) }
-        }
-        ProfileAttributeTypes.TIKTOK -> {
-            ProfileField(
-                value(ProfileField.TIKTOK),
-                stringResource(MR.string.profile_edit_tiktok),
-                showLabel = false,
-                modifier = Modifier.fillMaxWidth(),
-            ) { onChange(ProfileField.TIKTOK, it) }
-        }
-        ProfileAttributeTypes.LINKEDIN -> {
-            ProfileField(
-                value(ProfileField.LINKEDIN),
-                stringResource(MR.string.profile_edit_linkedin),
-                showLabel = false,
-                modifier = Modifier.fillMaxWidth(),
-            ) { onChange(ProfileField.LINKEDIN, it) }
+            ) { onChange(field, it) }
         }
     }
 }

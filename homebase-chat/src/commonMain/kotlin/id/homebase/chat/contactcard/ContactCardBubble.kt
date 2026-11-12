@@ -22,12 +22,10 @@ import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +46,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.contacts.DeviceContactSaver
+import id.homebase.core.contacts.rememberDeviceContactSaver
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.avatars.IdentityAvatar
@@ -86,6 +86,7 @@ fun ContactCardBubble(
     authorOdinId: String? = null,
     photo: HomebaseImageData? = null,
     footer: (@Composable () -> Unit)? = null,
+    deviceSaver: DeviceContactSaver? = rememberDeviceContactSaver(),
 ) {
     if (descriptor == null || !descriptor.isValid()) {
         UnparseableTypedChip(
@@ -212,24 +213,13 @@ fun ContactCardBubble(
                     if (onSaveToContacts != null) {
                         // Unweighted, the label measures first at large font scale and leaves the
                         // timestamp and delivery tick nothing.
-                        TextButton(
-                            onClick = { onSaveToContacts(descriptor, alreadySaved) },
+                        SaveContactMenuButton(
+                            descriptor = descriptor,
+                            alreadySaved = alreadySaved,
+                            onSaveToContacts = onSaveToContacts,
                             modifier = Modifier.weight(1f, fill = false),
-                            contentPadding = ButtonDefaults.TextButtonWithIconContentPadding,
-                        ) {
-                            Icon(
-                                imageVector = saveActionIcon(alreadySaved),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(saveActionLabel(alreadySaved)),
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                            deviceSaver = deviceSaver,
+                        )
                     }
                     footer?.invoke()
                 }
@@ -251,6 +241,7 @@ fun ContactCardBubble(
                 }
             },
             alreadySaved = alreadySaved,
+            deviceSaver = deviceSaver,
             // Same: the conversation this swaps to would otherwise open behind the dialog.
             onMessageIdentity = onMessageIdentity?.let { message ->
                 { identity ->

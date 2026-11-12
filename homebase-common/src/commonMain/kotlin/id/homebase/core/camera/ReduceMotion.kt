@@ -5,6 +5,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 
 internal val LocalReduceMotion = staticCompositionLocalOf { false }
 
+/**
+ * True while the user has asked the OS to cut animation: Android animator scale 0, iOS Reduce Motion.
+ * Re-read when the app resumes (Android) or the setting changes (iOS). Always false on desktop and web, which have no such signal here.
+ */
 @Composable
 internal expect fun rememberReduceMotion(): Boolean
 

@@ -115,7 +115,7 @@ class FakeCallEngine(
 
     override fun setAudioRoute(route: AudioRoute) { this.route = route }
 
-    override fun close() {
+    override suspend fun close() {
         closed = true
         mediaState.closed()
         scriptJob?.cancel()

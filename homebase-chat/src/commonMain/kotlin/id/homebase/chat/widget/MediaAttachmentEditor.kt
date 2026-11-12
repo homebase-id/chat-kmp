@@ -94,7 +94,6 @@ import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
-import id.homebase.core.camera.CaptureHandoff
 import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
@@ -217,6 +216,7 @@ fun MediaAttachmentEditor(
     centerImageInPage: Boolean = false,
     // False while the editor's own enter transition runs; a camera held over it waits for both.
     revealed: Boolean = true,
+    onContentShown: (() -> Unit)? = null,
     imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit = {},
     pagerTopEndSlot: @Composable BoxScope.() -> Unit = {},
     // Floats over the media just above the attachment strip and takes no room, so the media never moves.
@@ -265,7 +265,7 @@ fun MediaAttachmentEditor(
     }
     val activeDrawn = activeAttachment != null && activeAttachment.attachmentId in drawnAttachments
     LaunchedEffect(activeDrawn, revealed, attachments.size) {
-        if (activeDrawn && revealed) CaptureHandoff.contentShown()
+        if (activeDrawn && revealed) onContentShown?.invoke()
     }
 
     // Extract the thumbnail strip for the currently-visible video. Persist across

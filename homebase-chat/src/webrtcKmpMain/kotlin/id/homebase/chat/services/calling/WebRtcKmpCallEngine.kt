@@ -29,6 +29,9 @@ import com.shepeliev.webrtckmp.onTrack
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import id.homebase.api.coroutines.ioDispatcher
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.Dispatchers
@@ -371,7 +374,9 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         if (!closed.load()) router.setRoute(route)
     }
 
-    override fun close() {
+    override suspend fun close() = withContext(ioDispatcher + NonCancellable) { closeBlocking() }
+
+    private fun closeBlocking() {
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         stopPipelineWatch()

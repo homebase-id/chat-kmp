@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.websockets.StunUrlStore
-import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import kotlinx.coroutines.CancellationException
@@ -112,7 +111,6 @@ class CallService(
             engineFactory = engineFactory,
             scope = CoroutineScope(scope.coroutineContext + job),
             stunUrls = { stunUrls.urls.awaitStunUrls() },
-            engineCloseContext = ioDispatcher,
         )
     }
 

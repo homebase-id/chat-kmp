@@ -5,6 +5,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.createMediaImages
 import id.homebase.api.image.createThumbnails
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -28,19 +29,19 @@ object MessageThumbnailGenerator {
         mediaQuality: MediaQuality = MediaQuality.ORIGINAL,
         forceSticker: Boolean = false,
     ): ThumbnailResult {
-        val bytes = fileOperationsProvider.readFileBytes(filePath)
         val media = try {
-            createMediaImages(bytes, payloadKey, mediaQuality, allowFinalImage = !forceSticker)
+            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "MessageThumbnailGenerator", throwable = e) { "No thumbnails for $payloadKey; sending the file as it is" }
-            return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceBytes = bytes)
+            return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceFormat = null, sourceByteCount = null)
         }
         return ThumbnailResult(
             preview = media.tiny,
             thumbnails = media.thumbnails,
-            sourceBytes = bytes,
+            sourceFormat = media.sourceFormat,
+            sourceByteCount = media.sourceByteCount,
             finalImage = media.finalImage,
             displayedSize = media.displayedSize,
         )
@@ -67,7 +68,8 @@ object MessageThumbnailGenerator {
         return ThumbnailResult(
             preview = tinyThumb,
             thumbnails = thumbnails,
-            sourceBytes = pageJpeg
+            sourceFormat = ImageFormatDetector.detectFormat(pageJpeg),
+            sourceByteCount = pageJpeg.size.toLong(),
         )
     }
 }
