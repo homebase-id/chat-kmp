@@ -3,7 +3,7 @@ package id.homebase.core.calling
 /** Implemented in Swift: reports calls to CallKit so iOS shows the system call UI and owns the audio session. */
 interface CallKitBridge {
     /** False where the OS cannot host a CallKit call: the iOS Simulator has no in-call UI, so callservicesd disconnects an outgoing call about a second after it starts. */
-    val hostsOutgoingCalls: Boolean
+    fun hostsOutgoingCalls(): Boolean
 
     fun reportOutgoing(callId: String, handle: String, video: Boolean)
     fun reportConnected(callId: String)

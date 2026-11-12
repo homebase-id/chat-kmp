@@ -12,7 +12,7 @@ class CallKitRingRouterTest {
     private val sam = "samwise.gamgee.demo.rocks"
 
     private class Bridge : CallKitBridge {
-        override val hostsOutgoingCalls = true
+        override fun hostsOutgoingCalls() = true
         val ended = mutableListOf<String>()
         val callers = mutableListOf<String>()
         override fun reportOutgoing(callId: String, handle: String, video: Boolean) = Unit

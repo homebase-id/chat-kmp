@@ -22,12 +22,14 @@ class CallKitMirrorTest {
      * CXStartCallAction. The real device keeps the call.
      */
     private class CallKitHost(
-        override val hostsOutgoingCalls: Boolean,
+        private val hostsOutgoing: Boolean,
         private val disconnectsUnhostedCalls: Boolean,
         private val scope: TestScope,
         private val actions: CallKitActionsAdapter,
     ) : CallKitBridge {
         val log = mutableListOf<String>()
+
+        override fun hostsOutgoingCalls() = hostsOutgoing
 
         override fun reportOutgoing(callId: String, handle: String, video: Boolean) {
             log += "outgoing:$callId"
