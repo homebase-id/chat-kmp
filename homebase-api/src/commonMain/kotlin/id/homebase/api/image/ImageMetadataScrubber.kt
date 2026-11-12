@@ -1,5 +1,7 @@
 package id.homebase.api.image
 
+import id.homebase.api.lib.image.ImageFormatDetector
+
 /**
  * Removes identity-bearing metadata from encoded image bytes without touching pixel data.
  *
@@ -16,7 +18,7 @@ package id.homebase.api.image
  * ICC colour profiles (APP2) and the Adobe colour-transform marker (APP14).
  *
  * Unknown or malformed input is returned unchanged — this must never be able to corrupt a
- * send. JPEG, PNG and WebP are handled; every other format passes through untouched.
+ * send. JPEG, PNG, WebP and HEIF/HEIC are handled; every other format passes through untouched.
  */
 object ImageMetadataScrubber {
 
@@ -29,6 +31,7 @@ object ImageMetadataScrubber {
         isJpeg(bytes) -> scrubJpeg(bytes)
         isPng(bytes) -> scrubPng(bytes)
         isWebp(bytes) -> scrubWebp(bytes)
+        ImageFormatDetector.isHeic(bytes) -> scrubHeif(bytes)
         else -> bytes
     }
 
@@ -351,6 +354,195 @@ object ImageMetadataScrubber {
             }
             i = chunkEnd
         }
+        return null
+    }
+
+    /* ---------------- HEIF ---------------- */
+
+    // Overwriting the Exif and XMP items at the same length keeps every iloc offset valid. Orientation
+    // is in the untouched irot/imir properties; the EXIF copy stays for readers that look there.
+    private const val XMP_CONTENT_TYPE = "application/rdf+xml"
+
+    private class HeifItem(val type: String, val contentType: String?)
+
+    private class Extent(val offset: Long, val length: Long, val inIdat: Boolean)
+
+    private fun scrubHeif(src: ByteArray): ByteArray {
+        val meta = topLevelBox(src, "meta") ?: return src
+        val metaBody = meta.first + 4 // full box
+        val items = HashMap<Long, HeifItem>()
+        val locations = HashMap<Long, List<Extent>>()
+        var idatData: Long = -1
+        var i = metaBody
+        while (i + 8 <= meta.second) {
+            val box = boxAt(src, i, meta.second) ?: return src
+            when (box.type) {
+                "iinf" -> if (!readIinf(src, box.dataStart, box.end, items)) return src
+                "iloc" -> if (!readIloc(src, box.dataStart, box.end, locations)) return src
+                "idat" -> idatData = box.dataStart.toLong()
+            }
+            i = box.end
+        }
+
+        val out = src.copyOf()
+        for ((id, item) in items) {
+            val isExif = item.type == "Exif"
+            val isXmp = item.type == "mime" && item.contentType?.substringBefore(';')?.trim() == XMP_CONTENT_TYPE
+            if (!isExif && !isXmp) continue
+            val extents = locations[id] ?: continue
+            val physical = extents.map { extent ->
+                if (extent.inIdat && idatData < 0) return src
+                val start = extent.offset + if (extent.inIdat) idatData else 0
+                if (start < 0 || extent.length <= 0 || start + extent.length > src.size) return src
+                start.toInt() until (start + extent.length).toInt()
+            }
+            val exif = if (isExif) heifExifPayload(readHeifExifOrientation(src, physical)) else ByteArray(0)
+            val replacement = if (exif.size <= physical.sumOf { it.last - it.first + 1 }) exif else ByteArray(0)
+            var k = 0
+            for (range in physical) for (at in range) {
+                out[at] = if (k < replacement.size) replacement[k] else if (isXmp) 0x20 else 0
+                k++
+            }
+        }
+        return if (out.contentEquals(src)) src else out
+    }
+
+    private class Box(val type: String, val dataStart: Int, val end: Int)
+
+    private fun boxAt(b: ByteArray, at: Int, limit: Int): Box? {
+        if (at + 8 > limit) return null
+        val size32 = u32(b, at, little = false).toLong() and 0xFFFFFFFFL
+        val type = fourCc(b, at + 4)
+        val (size, header) = when (size32) {
+            0L -> (limit - at).toLong() to 8
+            1L -> {
+                if (at + 16 > limit) return null
+                u64(b, at + 8) to 16
+            }
+            else -> size32 to 8
+        }
+        if (size < header || at + size > limit) return null
+        return Box(type, at + header, (at + size).toInt())
+    }
+
+    private fun topLevelBox(b: ByteArray, type: String): Pair<Int, Int>? {
+        var i = 0
+        while (i + 8 <= b.size) {
+            val box = boxAt(b, i, b.size) ?: return null
+            if (box.type == type) return box.dataStart to box.end
+            i = box.end
+        }
+        return null
+    }
+
+    private fun readIinf(b: ByteArray, from: Int, until: Int, into: MutableMap<Long, HeifItem>): Boolean {
+        if (from + 4 > until) return false
+        val version = b[from].toInt() and 0xFF
+        var i = from + 4 + if (version == 0) 2 else 4
+        while (i + 8 <= until) {
+            val box = boxAt(b, i, until) ?: return false
+            if (box.type == "infe") readInfe(b, box.dataStart, box.end)?.let { (id, item) -> into[id] = item }
+            i = box.end
+        }
+        return true
+    }
+
+    // Versions 0 and 1 predate item types, so they can't declare Exif or XMP items.
+    private fun readInfe(b: ByteArray, from: Int, until: Int): Pair<Long, HeifItem>? {
+        if (from + 4 > until) return null
+        val version = b[from].toInt() and 0xFF
+        if (version < 2) return null
+        var i = from + 4
+        val idSize = if (version == 2) 2 else 4
+        if (i + idSize + 6 > until) return null
+        val id = readUnsigned(b, i, idSize)
+        i += idSize + 2 // item_protection_index
+        val type = fourCc(b, i)
+        i += 4
+        val nameEnd = indexOfZero(b, i, until) ?: return id to HeifItem(type, null)
+        if (type != "mime") return id to HeifItem(type, null)
+        val contentEnd = indexOfZero(b, nameEnd + 1, until) ?: until
+        return id to HeifItem(type, b.decodeToString(nameEnd + 1, contentEnd))
+    }
+
+    private fun readIloc(b: ByteArray, from: Int, until: Int, into: MutableMap<Long, List<Extent>>): Boolean {
+        if (from + 6 > until) return false
+        val version = b[from].toInt() and 0xFF
+        if (version > 2) return false
+        var i = from + 4
+        val offsetSize = (b[i].toInt() and 0xF0) shr 4
+        val lengthSize = b[i].toInt() and 0x0F
+        val baseOffsetSize = (b[i + 1].toInt() and 0xF0) shr 4
+        val indexSize = if (version == 0) 0 else b[i + 1].toInt() and 0x0F
+        if (listOf(offsetSize, lengthSize, baseOffsetSize, indexSize).any { it !in setOf(0, 4, 8) }) return false
+        i += 2
+        val countSize = if (version < 2) 2 else 4
+        if (i + countSize > until) return false
+        val count = readUnsigned(b, i, countSize)
+        i += countSize
+        repeat(count.toInt()) {
+            val idSize = if (version < 2) 2 else 4
+            if (i + idSize > until) return false
+            val id = readUnsigned(b, i, idSize)
+            i += idSize
+            var method = 0
+            if (version >= 1) {
+                if (i + 2 > until) return false
+                method = u16(b, i, little = false) and 0x0F
+                i += 2
+            }
+            if (i + 2 + baseOffsetSize + 2 > until) return false
+            i += 2 // data_reference_index
+            val base = readUnsigned(b, i, baseOffsetSize)
+            i += baseOffsetSize
+            val extentCount = u16(b, i, little = false)
+            i += 2
+            val extents = ArrayList<Extent>(extentCount)
+            repeat(extentCount) {
+                if (i + indexSize + offsetSize + lengthSize > until) return false
+                i += indexSize
+                val offset = base + readUnsigned(b, i, offsetSize)
+                i += offsetSize
+                val length = readUnsigned(b, i, lengthSize)
+                i += lengthSize
+                extents += Extent(offset, length, inIdat = method == 1)
+            }
+            // Item-offset construction points into another item; leave those alone.
+            if (method <= 1) into[id] = extents
+        }
+        return true
+    }
+
+    private fun readHeifExifOrientation(b: ByteArray, ranges: List<IntRange>): Int? {
+        val data = ByteArray(ranges.sumOf { it.last - it.first + 1 })
+        var at = 0
+        for (r in ranges) { b.copyInto(data, at, r.first, r.last + 1); at += r.last - r.first + 1 }
+        if (data.size < 4) return null
+        val tiffOffset = u32(data, 0, little = false)
+        if (tiffOffset < 0) return null
+        val tiff = 4 + tiffOffset
+        if (tiff > data.size) return null
+        return readTiffOrientation(data, tiff, data.size)
+    }
+
+    /** HEIF's Exif item: a 4-byte offset to the TIFF header, then the TIFF block. */
+    private fun heifExifPayload(orientation: Int?): ByteArray =
+        byteArrayOf(0, 0, 0, 0) + minimalExifTiff(orientation ?: 1)
+
+    private fun readUnsigned(b: ByteArray, at: Int, size: Int): Long = when (size) {
+        0 -> 0L
+        2 -> u16(b, at, little = false).toLong()
+        4 -> u32(b, at, little = false).toLong() and 0xFFFFFFFFL
+        8 -> u64(b, at)
+        else -> 0L
+    }
+
+    private fun u64(b: ByteArray, at: Int): Long =
+        ((u32(b, at, little = false).toLong() and 0xFFFFFFFFL) shl 32) or
+            (u32(b, at + 4, little = false).toLong() and 0xFFFFFFFFL)
+
+    private fun indexOfZero(b: ByteArray, from: Int, until: Int): Int? {
+        for (k in from until until) if (b[k] == 0.toByte()) return k
         return null
     }
 
