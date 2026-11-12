@@ -1,6 +1,8 @@
 package id.homebase.chat.services.convo
 
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.StatusMessage
 import kotlin.test.Test
@@ -260,6 +262,35 @@ class ConversationServiceOutboxOrderingTest {
                 convoUpdateRow.dependencyUniqueId,
                 "conversation update must wait for the trailing removed-status message"
             )
+        }
+    }
+
+    @Test
+    fun createConversation_group_conversationAndAdminRowsCarryEveryPeerAsTransitRecipient() = runTest {
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val alice = "alice.test"
+            val bob = "bob.test"
+
+            val result = service.createConversation(
+                recipients = listOf(OdinId(alice), OdinId(bob)),
+                title = "the fellowship",
+                payloadBundle = null,
+            )
+
+            val adminUniqueId = ChatProtocol.getAdminFileUniqueId(result.conversationId)
+            val rows = fixture.drainOutboxInDependencyOrder()
+
+            listOf(result.conversationId, adminUniqueId).forEach { uid ->
+                val request = OdinSystemSerializer.deserialize<UploadFileRequest>(
+                    rows.single { it.uniqueId == uid }.json.decodeToString()
+                )
+                assertEquals(
+                    setOf(alice, bob),
+                    request.transitOptions?.recipients?.map { it.domainName }?.toSet(),
+                    "outbox row $uid must enqueue every peer, and not self, as a transit recipient",
+                )
+            }
         }
     }
 }
