@@ -2423,4 +2423,8 @@
     <string name="profile_card_sections_title">Sektioner på dette kort</string>
     <string name="profile_card_section_feed">Feed</string>
     <string name="profile_card_section_feed_desc">Dine seneste offentlige opslag og billeder.</string>
+    <string name="feed_wide_people_title">Personer at følge</string>
+    <string name="feed_wide_channels_title">Kanaler</string>
+    <string name="feed_wide_see_all">Se alle</string>
+    <string name="feed_wide_suggestions_empty">Ingen forslag endnu</string>
 </resources>

@@ -67,6 +67,7 @@ import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.buildBlockUrl
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.ui.screens.feed.widget.CommentsModalSheet
@@ -202,6 +203,22 @@ fun FeedTimelineScreen(
                 else -> FeedBody.Posts
             }
             val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            val wide = isExpandedLayout()
+            val channelNames = remember(channels) { channels.values.map { it.name }.sorted() }
+            FeedColumns(
+                wide = wide,
+                modifier = contentModifier.then(
+                    if (wide) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh) else Modifier,
+                ),
+                suggestions = {
+                    FeedSuggestionsPane(
+                        channelNames = channelNames,
+                        onPersonClick = onAuthorClick,
+                        onSeeAll = onNavigateToFollowing,
+                        snackbarHostState = snackbarHostState,
+                    )
+                },
+            ) {
             AnimatedContent(
                 targetState = body,
                 transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
@@ -214,19 +231,17 @@ fun FeedTimelineScreen(
                         body = stringResource(MR.string.feed_timeline_error_body),
                         actionLabel = stringResource(MR.string.feed_timeline_error_retry),
                         onAction = viewModel::refresh,
-                        modifier = contentModifier,
+                        modifier = Modifier.fillMaxSize(),
                     )
 
-                    FeedBody.Loading -> FeedTimelineLoading(
-                        modifier = contentModifier,
-                    )
+                    FeedBody.Loading -> FeedTimelineLoading(wide = wide, modifier = Modifier.fillMaxSize())
 
                     FeedBody.Empty -> FeedMessageState(
                         icon = Icons.Outlined.DynamicFeed,
                         iconContentDescription = null,
                         title = stringResource(MR.string.feed_timeline_empty_title),
                         body = stringResource(MR.string.feed_timeline_empty_body),
-                        modifier = contentModifier,
+                        modifier = Modifier.fillMaxSize(),
                         // The Following screen opens on Suggested when you follow no one yet
                         actionLabel = stringResource(MR.string.feed_timeline_find_people),
                         onAction = onNavigateToFollowing,
@@ -234,6 +249,7 @@ fun FeedTimelineScreen(
 
                     FeedBody.Posts -> FeedTimelineList(
                         uiState = uiState,
+                        wide = wide,
                         listState = listState,
                         onRefresh = viewModel::refresh,
                         onLoadMore = viewModel::loadMore,
@@ -260,9 +276,10 @@ fun FeedTimelineScreen(
                         sharedTransitionScope = sharedScope,
                         animatedVisibilityScope = visibilityScope,
                         displayNames = displayNames,
-                        modifier = contentModifier,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
+            }
             }
         }
 
@@ -318,6 +335,7 @@ private const val FEED_WIDE_FRACTION = 0.8f
 // Shared by the real list and the loading skeletons so both track the same column width.
 @Composable
 private fun FeedWidthContainer(
+    wide: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable (Modifier) -> Unit,
 ) {
@@ -326,7 +344,7 @@ private fun FeedWidthContainer(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        val fraction = if (maxWidth >= FEED_WIDE_BREAKPOINT) FEED_WIDE_FRACTION else 1f
+        val fraction = if (!wide && maxWidth >= FEED_WIDE_BREAKPOINT) FEED_WIDE_FRACTION else 1f
         content(
             Modifier
                 .fillMaxHeight()
@@ -340,6 +358,7 @@ private fun FeedWidthContainer(
 @Composable
 private fun FeedTimelineList(
     uiState: FeedTimelineUiState,
+    wide: Boolean,
     listState: LazyListState,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
@@ -379,7 +398,7 @@ private fun FeedTimelineList(
     ) {
       // The darker band fills the full width while the post column is centered and capped, so the gaps between
       // posts and the side margins read as the same separator colour.
-      FeedWidthContainer { columnModifier ->
+      FeedWidthContainer(wide) { columnModifier ->
         LazyColumn(
             state = listState,
             modifier = columnModifier,
@@ -450,8 +469,8 @@ private fun snapshotFlowShouldLoadMore(
 }
 
 @Composable
-private fun FeedTimelineLoading(modifier: Modifier = Modifier) {
-    FeedWidthContainer(modifier) { columnModifier ->
+private fun FeedTimelineLoading(wide: Boolean, modifier: Modifier = Modifier) {
+    FeedWidthContainer(wide, modifier) { columnModifier ->
         LazyColumn(
             modifier = columnModifier,
             contentPadding = PaddingValues(vertical = 10.dp),
