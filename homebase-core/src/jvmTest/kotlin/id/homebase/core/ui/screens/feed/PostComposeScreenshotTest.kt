@@ -33,6 +33,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.chat.image.PlatformFileFetcher
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
@@ -98,7 +99,10 @@ class PostComposeScreenshotTest {
                     single { AvatarResolver(MutableStateFlow(emptyList())) }
                     single {
                         ImageLoader.Builder(PlatformContext.INSTANCE)
-                            .components { add(offline) }
+                            .components {
+                                add(offline)
+                                add(PlatformFileFetcher.Factory())
+                            }
                             .build()
                     }
                 },

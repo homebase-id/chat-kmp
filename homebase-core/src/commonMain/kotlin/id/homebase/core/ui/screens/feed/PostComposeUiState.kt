@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed
 
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostAudience
@@ -17,10 +18,9 @@ data class PostComposeUiState(
     val selectedCircleIds: Set<String> = emptySet(),
     val channels: List<ChannelOption> = emptyList(),
     val selectedChannelId: Uuid = FeedProtocol.PublicChannelDriveAlias,
-    val selfOdinId: id.homebase.api.common.OdinId? = null,
+    val selfOdinId: OdinId? = null,
     val selfName: String? = null,
     val isPosting: Boolean = false,
-    val errorMessage: String? = null,
 ) {
     val canPost: Boolean
         get() = (caption.isNotBlank() || attachments.isNotEmpty()) &&

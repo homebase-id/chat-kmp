@@ -16,6 +16,8 @@ import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.screens.moments.toAttachmentInput
 import id.homebase.resources.MR
 import id.homebase.resources.feed_compose_channel_public
+import id.homebase.resources.feed_compose_post_failed
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -107,7 +109,7 @@ class PostComposeViewModel(
     fun submit() {
         val state = _uiState.value
         if (!state.canPost) return
-        _uiState.update { it.copy(isPosting = true, errorMessage = null) }
+        _uiState.update { it.copy(isPosting = true) }
 
         viewModelScope.launch {
             try {
@@ -118,10 +120,11 @@ class PostComposeViewModel(
                     acl = postAcl(state.audience, state.selectedCircleIds.toList()),
                 )
                 _events.tryEmit(PostComposeEvent.Dismiss)
-            } catch (t: Throwable) {
-                Logger.e(throwable = t, tag = TAG) { "createPost failed: ${t.message}" }
-                _uiState.update { it.copy(errorMessage = t.message) }
-                _events.tryEmit(PostComposeEvent.ShowSnackbar(t.message))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "createPost failed" }
+                _events.tryEmit(PostComposeEvent.ShowSnackbar(TranslationUtil.getString(MR.string.feed_compose_post_failed)))
             } finally {
                 _uiState.update { it.copy(isPosting = false) }
             }
@@ -131,5 +134,5 @@ class PostComposeViewModel(
 
 sealed interface PostComposeEvent {
     data object Dismiss : PostComposeEvent
-    data class ShowSnackbar(val message: String?) : PostComposeEvent
+    data class ShowSnackbar(val message: String) : PostComposeEvent
 }

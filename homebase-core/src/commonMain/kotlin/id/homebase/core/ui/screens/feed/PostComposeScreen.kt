@@ -81,6 +81,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.avatars.AvatarOptions
@@ -112,6 +113,7 @@ import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.uuid.Uuid
 
@@ -129,7 +131,7 @@ fun PostComposeScreen(
         viewModel.events.collect { event ->
             when (event) {
                 PostComposeEvent.Dismiss -> onClose()
-                is PostComposeEvent.ShowSnackbar -> event.message?.let { snackbarHostState.showSnackbar(it) }
+                is PostComposeEvent.ShowSnackbar -> snackbarHostState.showSnackbar(event.message)
             }
         }
     }
@@ -401,6 +403,7 @@ private fun AttachmentThumbnailRow(
     enabled: Boolean,
     onRemove: (Uuid) -> Unit,
 ) {
+    val imageLoader: ImageLoader = koinInject()
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -414,7 +417,8 @@ private fun AttachmentThumbnailRow(
                     modifier = Modifier.align(Alignment.BottomStart).size(120.dp),
                 ) {
                     AsyncImage(
-                        model = attachment.previewModel(),
+                        imageLoader = imageLoader,
+                        model = (attachment as? AttachmentPendingFile.FileImage)?.file,
                         contentDescription = stringResource(MR.string.feed_compose_attachment_image),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
@@ -655,11 +659,3 @@ private fun CirclesDialog(
 
 private fun PlatformFile.toPendingImage(): AttachmentPendingFile =
     AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = contentType())
-
-private fun AttachmentPendingFile.previewModel(): Any? = when (this) {
-    is AttachmentPendingFile.FileImage -> file.toString()
-    is AttachmentPendingFile.FileVideo -> thumbnailBytes ?: file.toString()
-    is AttachmentPendingFile.Gallery -> image.file.toString()
-    is AttachmentPendingFile.File -> file.toString()
-    is AttachmentPendingFile.Audio -> null
-}
