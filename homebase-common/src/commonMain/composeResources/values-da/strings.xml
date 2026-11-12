@@ -2426,6 +2426,7 @@
     <string name="feed_compose_title">Nyt opslag</string>
     <string name="feed_compose_caption_placeholder">Hvad har du på hjertet?</string>
     <string name="feed_compose_post">Opslå</string>
+    <string name="feed_compose_posting">Slår op…</string>
     <string name="feed_compose_add_media">Tilføj billede</string>
     <string name="feed_compose_camera">Tag billede</string>
     <string name="feed_compose_attachment_image">Vedhæftning</string>

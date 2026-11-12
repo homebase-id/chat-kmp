@@ -14,6 +14,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import coil3.ImageLoader
 import coil3.PlatformContext
+import coil3.intercept.Interceptor
+import coil3.request.ErrorResult
 import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AttachmentPendingFile
@@ -79,13 +81,26 @@ class PostComposeScreenshotTest {
         )
     }
 
+    // The author's public avatar is a network fetch; failing it keeps every shot on the same initials.
+    private val offline = Interceptor { chain ->
+        if (chain.request.data.toString().startsWith("http")) {
+            ErrorResult(null, chain.request, UnsupportedOperationException("offline"))
+        } else {
+            chain.proceed()
+        }
+    }
+
     @BeforeTest
     fun startDi() {
         startKoin {
             modules(
                 module {
                     single { AvatarResolver(MutableStateFlow(emptyList())) }
-                    single { ImageLoader.Builder(PlatformContext.INSTANCE).build() }
+                    single {
+                        ImageLoader.Builder(PlatformContext.INSTANCE)
+                            .components { add(offline) }
+                            .build()
+                    }
                 },
             )
         }

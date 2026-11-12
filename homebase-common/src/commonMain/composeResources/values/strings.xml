@@ -2359,6 +2359,7 @@
     <string name="feed_compose_caption_placeholder">What's up?</string>
     <string name="feed_compose_caption_placeholder_repost">Add a comment?</string>
     <string name="feed_compose_post">Post</string>
+    <string name="feed_compose_posting">Posting…</string>
     <string name="feed_compose_add_media">Add photo or video</string>
     <string name="feed_compose_camera">Take photo</string>
     <string name="feed_compose_attachment_image">Attachment</string>

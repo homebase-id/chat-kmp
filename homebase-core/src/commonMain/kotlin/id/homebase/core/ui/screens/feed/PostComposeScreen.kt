@@ -18,7 +18,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -49,6 +53,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -98,6 +103,7 @@ import id.homebase.resources.feed_compose_channel
 import id.homebase.resources.feed_compose_circles_empty
 import id.homebase.resources.feed_compose_circles_title
 import id.homebase.resources.feed_compose_post
+import id.homebase.resources.feed_compose_posting
 import id.homebase.resources.feed_compose_remove_attachment
 import id.homebase.resources.feed_compose_title
 import id.homebase.resources.menu_back
@@ -174,36 +180,29 @@ internal fun PostComposeContent(
     Scaffold(
         modifier = Modifier.imePadding(),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.feed_compose_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onClose, shapes = IconButtonDefaults.shapes()) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
-                actions = {
-                    Button(
-                        onClick = onPost,
-                        enabled = state.canPost,
-                        shapes = ButtonDefaults.shapes(),
-                        modifier = Modifier.padding(end = 12.dp),
-                    ) {
-                        // Both stay laid out so the button keeps its width while posting.
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = stringResource(MR.string.feed_compose_post),
-                                modifier = Modifier.alpha(if (state.isPosting) 0f else 1f),
+            Box(
+                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                TopAppBar(
+                    modifier = Modifier.widthIn(max = ComposerMaxWidth),
+                    title = { Text(stringResource(MR.string.feed_compose_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onClose, shapes = IconButtonDefaults.shapes()) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back),
                             )
-                            if (state.isPosting) {
-                                LoadingIndicator(modifier = Modifier.size(24.dp), color = LocalContentColor.current)
-                            }
                         }
-                    }
-                },
-            )
+                    },
+                    actions = { PostButton(state = state, onPost = onPost) },
+                )
+                if (state.isPosting) {
+                    LinearWavyProgressIndicator(
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    )
+                }
+            }
         },
         bottomBar = {
             ComposerActionBar(
@@ -228,7 +227,8 @@ internal fun PostComposeContent(
                 modifier = Modifier
                     .widthIn(max = ComposerMaxWidth)
                     .fillMaxSize()
-                    .padding(top = 12.dp),
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 12.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 state.selfOdinId?.let { self ->
@@ -268,7 +268,7 @@ internal fun PostComposeContent(
                     value = state.caption,
                     onValueChange = onCaptionChange,
                     enabled = !state.isPosting,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.heightIn(min = if (state.attachments.isEmpty()) 160.dp else 72.dp),
                 )
 
                 if (state.attachments.isNotEmpty()) {
@@ -327,7 +327,7 @@ private fun CaptionField(
     )
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ComposerActionBar(
     state: PostComposeUiState,
@@ -371,12 +371,10 @@ private fun ComposerActionBar(
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
+                FlowRow(
+                    modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    verticalAlignment = Alignment.CenterVertically,
+                    itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     ChannelChip(
                         channels = state.channels,
@@ -404,43 +402,66 @@ private fun AttachmentThumbnailRow(
     onRemove: (Uuid) -> Unit,
 ) {
     LazyRow(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         items(attachments, key = { it.attachmentId }) { attachment ->
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                modifier = Modifier.size(120.dp),
-            ) {
-                Box {
+            Box(modifier = Modifier.size(132.dp)) {
+                Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier.align(Alignment.BottomStart).size(120.dp),
+                ) {
                     AsyncImage(
                         model = attachment.previewModel(),
                         contentDescription = stringResource(MR.string.feed_compose_attachment_image),
-                        modifier = Modifier.fillMaxSize().clip(MaterialTheme.shapes.large),
+                        modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
                     )
+                }
+                if (enabled) {
                     IconButton(
                         onClick = { onRemove(attachment.attachmentId) },
-                        enabled = enabled,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(28.dp),
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.72f),
-                            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                        ),
+                        modifier = Modifier.align(Alignment.TopEnd).size(32.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(MR.string.feed_compose_remove_attachment),
-                            modifier = Modifier.size(18.dp),
-                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.size(26.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = stringResource(MR.string.feed_compose_remove_attachment),
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PostButton(state: PostComposeUiState, onPost: () -> Unit) {
+    Button(
+        onClick = { if (!state.isPosting) onPost() },
+        enabled = state.canPost || state.isPosting,
+        shapes = ButtonDefaults.shapes(),
+        modifier = Modifier.padding(end = 12.dp),
+    ) {
+        if (state.isPosting) {
+            LoadingIndicator(modifier = Modifier.size(20.dp), color = LocalContentColor.current)
+            Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+            Text(stringResource(MR.string.feed_compose_posting))
+        } else {
+            Text(stringResource(MR.string.feed_compose_post))
         }
     }
 }
@@ -451,8 +472,19 @@ private fun DropdownChip(
     leadingIcon: ImageVector,
     leadingIconDescription: String,
     enabled: Boolean,
+    emphasized: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = if (emphasized) {
+        AssistChipDefaults.assistChipColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            trailingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    } else {
+        AssistChipDefaults.assistChipColors(leadingIconContentColor = MaterialTheme.colorScheme.primary)
+    }
     AssistChip(
         onClick = onClick,
         enabled = enabled,
@@ -469,12 +501,11 @@ private fun DropdownChip(
             Icon(
                 imageVector = Icons.Filled.ArrowDropDown,
                 contentDescription = null,
-                modifier = Modifier.size(AssistChipDefaults.IconSize),
+                modifier = Modifier.size(24.dp),
             )
         },
-        colors = AssistChipDefaults.assistChipColors(
-            leadingIconContentColor = MaterialTheme.colorScheme.primary,
-        ),
+        colors = colors,
+        border = if (emphasized) null else AssistChipDefaults.assistChipBorder(enabled),
     )
 }
 
@@ -494,6 +525,7 @@ private fun ChannelChip(
             leadingIcon = Icons.Outlined.Tag,
             leadingIconDescription = stringResource(MR.string.feed_compose_channel),
             enabled = enabled,
+            emphasized = false,
             onClick = { expanded = true },
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -531,6 +563,7 @@ private fun AudienceChip(
             leadingIcon = if (circles) Icons.Outlined.Groups else Icons.Outlined.Public,
             leadingIconDescription = stringResource(MR.string.feed_compose_audience),
             enabled = enabled,
+            emphasized = true,
             onClick = { expanded = true },
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
