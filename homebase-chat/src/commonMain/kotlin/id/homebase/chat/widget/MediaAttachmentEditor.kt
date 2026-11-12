@@ -255,9 +255,10 @@ fun MediaAttachmentEditor(
     val activeAttachment = attachments.getOrNull(pagerState.currentPage)
     val activeVideo = activeAttachment as? AttachmentPendingFile.FileVideo
 
-    // Pages whose media has drawn: a camera held over the editor leaves once the page on screen is one of them.
+    // Pages with media on screen (a video's poster counts): a camera held over the editor leaves once the page on screen is one of them.
     val drawnAttachments = remember { mutableStateSetOf<Uuid>() }
     val markDrawn = { id: Uuid -> drawnAttachments += id }
+    val firstFrames = remember { mutableStateSetOf<Uuid>() }
     val markDrawnOnceLoaded = { id: Uuid ->
         { state: AsyncImagePainter.State ->
             if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) markDrawn(id)
@@ -364,6 +365,7 @@ fun MediaAttachmentEditor(
                                 val size = state.painter.intrinsicSize
                                 if (size.width > 0f && size.height > 0f) aspect = size.width / size.height
                             }
+                            if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) markDrawn(attId)
                         }
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Box(
@@ -373,7 +375,7 @@ fun MediaAttachmentEditor(
                                 .background(Color.Black),
                             contentAlignment = Alignment.Center,
                         ) {
-                            val firstFrameShown = attId in drawnAttachments
+                            val firstFrameShown = attId in firstFrames
                             if (durationMs != null && durationMs > 0L) {
                                 TrimmableVideoPlayerSurface(
                                     filePath = attachment.playablePath ?: attachment.file.toString(),
@@ -390,7 +392,7 @@ fun MediaAttachmentEditor(
                                         }
                                     },
                                     modifier = Modifier.fillMaxSize(),
-                                    onFirstFrameRendered = { markDrawn(attId) },
+                                    onFirstFrameRendered = { firstFrames += attId; markDrawn(attId) },
                                 )
                                 // The surface is black (or see-through on Android) until its first decoded frame.
                                 val poster = attachment.thumbnailBytes
