@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +62,7 @@ internal fun AttachmentEditorHost(
     LaunchedEffect(viewOnceEligible) { viewOnceState.onEligibilityChanged(viewOnceEligible) }
     val viewOnce = viewOnceState.requested && viewOnceEligible
     val viewOnceIsVideo = data.attachments.singleOrNull() is AttachmentPendingFile.FileVideo
+    MaterialTheme(colorScheme = if (data.isChatListCapture) darkColorScheme() else MaterialTheme.colorScheme) {
     MediaAttachmentEditor(
         attachments = data.attachments,
         currentPage = currentPage,
@@ -156,6 +158,7 @@ internal fun AttachmentEditorHost(
             )
         },
     )
+    }
     if (viewOnceState.showIntro) {
         ViewOnceIntroSheet(isVideo = viewOnceIsVideo, onDismiss = viewOnceState::dismissIntro)
     }
