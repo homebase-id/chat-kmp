@@ -128,8 +128,8 @@ class WebRtcJavaCallEngine(
     internal var unregisterDeviceListener: (DeviceChangeListener) -> Unit = MediaDevices::removeDeviceChangeListener
     private val refreshQueued = AtomicBoolean(false)
     private val deviceListener = object : DeviceChangeListener {
-        override fun deviceConnected(device: Device) = refreshDevices()
-        override fun deviceDisconnected(device: Device) = refreshDevices()
+        override fun deviceConnected(device: Device) = guardNative("deviceConnected", {}) { refreshDevices() }
+        override fun deviceDisconnected(device: Device) = guardNative("deviceDisconnected", {}) { refreshDevices() }
     }
 
     private val devices = ManagedCallMediaDevices(
@@ -369,7 +369,7 @@ class WebRtcJavaCallEngine(
         channel.registerObserver(object : RTCDataChannelObserver {
             override fun onBufferedAmountChange(previousAmount: Long) = Unit
 
-            override fun onStateChange() {
+            override fun onStateChange() = guardNative("onStateChange", {}) {
                 when (channel.state) {
                     RTCDataChannelState.OPEN -> mediaStateTimer.schedule(timerTask { mediaState.opened(::sendState) }, 0)
                     RTCDataChannelState.CLOSING, RTCDataChannelState.CLOSED -> mediaState.closed()
@@ -377,7 +377,7 @@ class WebRtcJavaCallEngine(
                 }
             }
 
-            override fun onMessage(buffer: RTCDataChannelBuffer) {
+            override fun onMessage(buffer: RTCDataChannelBuffer) = guardNative("onMessage", {}) {
                 val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
                 mediaState.received(bytes)
             }
