@@ -262,8 +262,10 @@ class ConversationServiceTestFixture : AutoCloseable {
         author: String,
         fileId: Uuid = Uuid.random(),
         archivalStatus: Int = 0,
+        userDateMs: Long? = null,
     ) {
         val now = Clock.System.now().epochSeconds
+        val userDate = userDateMs ?: (now * 1000)
         insertFile(
             """{
               "fileId": "$fileId",
@@ -290,7 +292,7 @@ class ConversationServiceTestFixture : AutoCloseable {
                   "fileType": ${ChatProtocol.MessageFileType},
                   "dataType": 0,
                   "groupId": "$groupId",
-                  "userDate": ${now}000,
+                  "userDate": $userDate,
                   "content": null,
                   "previewThumbnail": null,
                   "archivalStatus": $archivalStatus
