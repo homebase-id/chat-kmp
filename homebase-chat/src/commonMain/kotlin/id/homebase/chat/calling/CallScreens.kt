@@ -1159,8 +1159,6 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val insetBottom = with(density) { pad.calculateBottomPadding().toPx() }
         val stageW = with(density) { maxWidth.toPx() }
         val stageH = with(density) { maxHeight.toPx() }
-        val width = stageW - insetStart - insetEnd
-        val height = stageH - insetTop - insetBottom
         val pipW = with(density) { pipWidth.toPx() }
         val pipH = with(density) { pipHeight.toPx() }
         val margin = with(density) { PreviewMargin.toPx() }
@@ -1168,27 +1166,43 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val bottom = with(density) { (if (!chromeVisible) PreviewMargin else if (tier == CallTier.Minimal) 72.dp else if (large) DesktopDockReserve else if (compact) CompactDockReserve else PhoneDockReserve).toPx() }
         val previewDescription = stringResource(MR.string.call_local_preview)
         val swapLabel = stringResource(MR.string.call_swap_views)
-        val corners = previewCorners(width, height, pipW, pipH, margin, top, bottom)
+        val corners = previewCorners(stageW, stageH, pipW, pipH, margin, top, bottom)
         // A narrow window has no top corner clear of the centred name pill.
         val home = if (tier == CallTier.Compact || tier == CallTier.Minimal) 3 else 1
         var corner by remember(compact, home) { mutableIntStateOf(home) }
-        val anchor = remember(width, height, compact) { Animatable(corners[corner], Offset.VectorConverter) }
-        var drag by remember(width, height, compact) { mutableStateOf(Offset.Zero) }
+        val anchor = remember(stageW, stageH, compact) { Animatable(corners[corner], Offset.VectorConverter) }
+        var drag by remember(stageW, stageH, compact) { mutableStateOf(Offset.Zero) }
         var hidden by rememberSaveable { mutableStateOf(false) }
         val hover = remember { MutableInteractionSource() }
         val hovered by hover.collectIsHoveredAsState()
         LaunchedEffect(corners[corner]) { anchor.animateTo(corners[corner], springSpec) }
         val shape = RoundedCornerShape(PreviewCorner)
+        // Insets are read here, in the placement phase, so an inset animation re-places the preview without recomposing it.
+        val insetShift = { at: Offset ->
+            val left = insets.getLeft(density, direction).toFloat()
+            val right = insets.getRight(density, direction).toFloat()
+            val start = if (rtl) right else left
+            val end = if (rtl) left else right
+            val top = insets.getTop(density).toFloat()
+            val bottom = insets.getBottom(density).toFloat()
+            val minX = corners.minOf { it.x }
+            val minY = corners.minOf { it.y }
+            val spanX = corners.maxOf { it.x } - minX
+            val spanY = corners.maxOf { it.y } - minY
+            val tx = if (spanX > 0f) ((at.x - minX) / spanX).coerceIn(0f, 1f) else 0f
+            val ty = if (spanY > 0f) ((at.y - minY) / spanY).coerceIn(0f, 1f) else 0f
+            Offset(start + (-end - start) * tx, top + (-bottom - top) * ty)
+        }
         if (hidden) {
             val restore = stringResource(MR.string.call_show_self_view)
-            Box(Modifier.offset { (anchor.value + Offset(pipW, pipH) - with(density) { Offset(48.dp.toPx(), 48.dp.toPx()) }).round() }) {
+            Box(Modifier.offset { (anchor.value + insetShift(anchor.value) + Offset(pipW, pipH) - with(density) { Offset(48.dp.toPx(), 48.dp.toPx()) }).round() }) {
                 ChromeIconButton(Icons.Default.Visibility, restore, { hidden = false })
             }
             return@BoxWithConstraints
         }
         Surface(
             modifier = Modifier
-                .offset { lerp(anchor.value + drag + Offset(insetStart, insetTop), Offset.Zero, fill.value).round() }
+                .offset { (anchor.value + drag).let { lerp(it + insetShift(it), Offset.Zero, fill.value) }.round() }
                 .layout { measurable, _ ->
                     val f = fill.value
                     val measured = previewMeasureSize(f, Size(pipW, pipH), Size(stageW, stageH))
@@ -1219,7 +1233,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
                         .hoverable(hover)
                         .pointerHoverIcon(PointerIcon.Hand)
                         .pointerInput(onSwap) { detectTapGestures { onSwap() } }
-                        .pointerInput(width, height, rtl, compact) {
+                        .pointerInput(stageW, stageH, rtl, compact) {
                             detectDragGestures(
                                 onDrag = { change, amount ->
                                     change.consume()

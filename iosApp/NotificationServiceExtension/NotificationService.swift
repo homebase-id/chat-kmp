@@ -174,6 +174,7 @@ class NotificationService: UNNotificationServiceExtension {
         // Reply-only category — no Mark as Read when there's nothing to read (#983).
         if isChatNotification(appId: appId) {
             content.threadIdentifier = typeId
+            os_log("NSE posted notification convo=%{public}@", typeId)
             content.categoryIdentifier = showsContent && hasRealContent(unEncryptedMessage)
                 ? "MESSAGE_CATEGORY"
                 : "MESSAGE_NO_CONTENT_CATEGORY"

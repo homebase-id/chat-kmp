@@ -133,7 +133,7 @@ internal suspend fun resampleLanczos(pixels: ByteArray, width: Int, height: Int,
     if (outWidth == width && outHeight == height) return pixels
     val pacer = Pacer()
     // Whichever pass shrinks more goes first, so the intermediate is the smaller of the two.
-    val result = if (lanczosIntermediateBytes(width, height, outWidth, outHeight) == outWidth.toLong() * height * CHANNELS) {
+    val result = if (outWidth.toLong() * height <= width.toLong() * outHeight) {
         val across = if (outWidth == width) pixels else horizontal(pixels, width, height, outWidth, weightsFor(width, outWidth), pacer)
         if (outHeight == height) across else vertical(across, outWidth, outHeight, weightsFor(height, outHeight), pacer)
     } else {
@@ -143,6 +143,3 @@ internal suspend fun resampleLanczos(pixels: ByteArray, width: Int, height: Int,
     clampColoursToAlpha(result)
     return result
 }
-
-private fun lanczosIntermediateBytes(width: Int, height: Int, outWidth: Int, outHeight: Int): Long =
-    min(outWidth.toLong() * height, width.toLong() * outHeight) * CHANNELS

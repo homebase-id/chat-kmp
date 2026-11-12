@@ -61,6 +61,15 @@ WHERE d.identityId = ?
   AND d.fileType = 8888
 ORDER BY msgUserDate DESC;
 
+-- Newest non-status message's userDate for one conversation; same row selectAllConversationPlusLastMessage picks.
+selectLatestMessageUserDate:
+SELECT MAX(userDate) AS latestUserDate
+FROM DriveMainIndex
+WHERE identityId = ?
+  AND groupId = ?
+  AND fileType = 7878
+  AND dataType != 202;
+
 -- Return unread message count for a specific groupId
 -- probably shouldn't be needed - with good design we should only need to call selectAllReadCount
 selectUnreadCountForConversation:

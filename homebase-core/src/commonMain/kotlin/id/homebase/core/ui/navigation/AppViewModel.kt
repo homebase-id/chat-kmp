@@ -12,7 +12,9 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.BadgeManager
+import id.homebase.core.notifications.ClearReason
 import id.homebase.core.notifications.NotificationNavigationEvent
+import id.homebase.core.notifications.ReadNotificationClearer
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.updater.AppUpdates
@@ -74,6 +76,7 @@ class AppViewModel(
         collectNotificationEvents()
         collectUpdateAvailability()
         syncIconBadge()
+        clearNotificationsOfReadChats()
         viewModelScope.launch {
             pendingUpgradeManager.state.collect { upgradeState ->
                 _uiState.update { it.copy(pendingUpgrade = upgradeState) }
@@ -132,6 +135,13 @@ class AppViewModel(
         }
     }
 
+    private fun clearNotificationsOfReadChats() {
+        val clearer = ReadNotificationClearer(conversationStream.conversations) {
+            notificationService.clearConversationNotifications(it, ClearReason.Read)
+        }
+        viewModelScope.launch { clearer.run() }
+    }
+
     /** Collects notification events from NotificationService and forwards to UI. */
     private fun collectNotificationEvents() {
         viewModelScope.launch {
@@ -181,10 +191,6 @@ class AppViewModel(
         upgradeCheckJob = viewModelScope.launch {
             pendingUpgradeManager.checkUpgrade()
         }
-    }
-
-    fun dismissUpgradeDialog() {
-        pendingUpgradeManager.dismissDialog()
     }
 
     /** Routes an in-app banner tap through NotificationService's click handler. */

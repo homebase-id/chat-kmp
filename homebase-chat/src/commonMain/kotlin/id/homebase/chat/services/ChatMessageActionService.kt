@@ -27,9 +27,9 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.outbox.MutationOutcome
+import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
@@ -46,6 +46,7 @@ const val MAX_REACTIONS_PER_USER_PER_MESSAGE = 5
 class ChatMessageActionService(
     private val conversationService: ConversationService,
     private val participantLookup: ConversationParticipantLookup,
+    private val conversationLoader: ConversationLoader,
     private val localLastReadUpdater: LocalLastReadUpdater,
     private val messageLookup: MessageLookup,
     private val reactionProvider: DriveFileGroupReactionProvider,
@@ -201,11 +202,17 @@ class ChatMessageActionService(
      * `localLastReadUpdater.updateLocalLastReadTime` (which writes the
      * conversation file's localAppData and the outbox syncs that).
      *
-     * No-op if the conversation isn't in the in-memory list, or if its
+     * No-op if the conversation isn't in memory or the database, or if its
      * lastRead is already at or past the latest message.
      */
     suspend fun markAllAsRead(conversationId: Uuid) {
-        val convo = participantLookup.getConversationById(conversationId) ?: return
+        val convo = participantLookup.getConversationById(conversationId)
+            ?: run {
+                // Cold process (notification action): nothing is in memory yet.
+                conversationLoader.loadConversation(conversationId)
+                participantLookup.getConversationById(conversationId)
+            }
+            ?: return
         val newReadTime = convo.resolveLastReadAdvance(convo.latestMessageTimestamp) ?: return
 
         Logger.d(tag = TAG) {
@@ -372,7 +379,7 @@ class ChatMessageActionService(
         if (file.isSoftDeleted() || payloadKeys.isEmpty()) return
 
         val appData = metadata.appData
-        val keyHeader = KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey)
+        val keyHeader = file.keyHeader.withNewIv()
         val unencryptedMetadata = UploadFileMetadata(
             allowDistribution = false,
             isEncrypted = file.serverFileIsEncrypted,

@@ -1,8 +1,12 @@
 package id.homebase.api.image
 
+import id.homebase.api.file.IOSFileOperationsProvider
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /**
  * [SkiaImageSource] takes over silently when ImageIO can't read an image, and the contract tests
@@ -14,6 +18,21 @@ class ImageIoSourceTest {
     @Test
     fun aReadableImageGoesThroughImageIo() {
         openImageSource(png).use { assertFalse(it is SkiaImageSource, "ImageIO should have read this PNG") }
+    }
+
+    @Test
+    fun aFileOpensThroughImageIoWithoutReadingIt() = runTest {
+        val ops = IOSFileOperationsProvider()
+        val path = ops.writeBytesToTempFile(png, "imageio_file_", ".png")
+        try {
+            assertNotNull(openImageFile(path, ops), "ImageIO should have opened the file").use { source ->
+                assertFalse(source is SkiaImageSource)
+                assertEquals(ImageSize(300, 200), source.displayedSize)
+            }
+            assertNull(openImageFile("ph://not-a-file", ops))
+        } finally {
+            ops.deleteTempFile(path)
+        }
     }
 
     @Test

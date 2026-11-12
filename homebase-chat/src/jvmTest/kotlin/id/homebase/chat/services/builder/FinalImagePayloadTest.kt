@@ -4,6 +4,8 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.ArgbImage
 import id.homebase.api.image.ImageFormat
+import id.homebase.api.image.ImageSize
+import id.homebase.api.image.RenderedImage
 import id.homebase.api.image.MediaQuality
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
@@ -168,6 +170,15 @@ class FinalImagePayloadTest {
         const val STATIC_WEBP_1700x100 =
             "UklGRiwAAABXRUJQVlA4TB8AAAAvo8YYAAcQ/Y/+BwykbTP/9rc/Ef3P8J///Oc//3sDAA=="
     }
+
+    @Test
+    fun anUnknownSourceSizeNeverKeepsTheFileOverItsFinalImage() = runTest {
+        val attachment = input("image/png")
+        val finalImage = RenderedImage(ByteArray(10), 600, 400, 70, ImageFormat.WEBP)
+        val thumbs = ThumbnailResult(null, emptyList(), "image/png", sourceByteCount = null, finalImage, ImageSize(600, 400))
+
+        assertEquals("image/webp", finalImagePayload(attachment, thumbs, Serving(ByteArray(0))).contentType)
+    }
 }
 
 private open class ExplodingFileOps : FileOperationsProvider {
@@ -190,4 +201,5 @@ private open class TempWritingFileOps : ExplodingFileOps() {
         file.writeBytes(bytes)
         return file.absolutePath
     }
+
 }

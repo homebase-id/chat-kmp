@@ -85,6 +85,7 @@ data class MessageListUiState(
     val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
+    val sendTo: SendToPicker? = null,
     val replyToMessage: MessageUiModel? = null,
     val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val battleTargetMessage: MessageUiModel? = null,

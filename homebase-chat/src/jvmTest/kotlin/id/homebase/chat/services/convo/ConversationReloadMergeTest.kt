@@ -215,4 +215,37 @@ class ConversationReloadMergeTest {
 
         assertEquals(" ", result.merged.lastMessage)
     }
+
+    // The reload reads the list when it writes, so a notification's cold Mark as read that
+    // inserts and advances a row while the conversation query runs is not dropped.
+    @Test
+    fun readAdvancedDuringTheQuerySurvivesTheReload() {
+        val disk = listOf(diskBasic(latestMs = 5_000L, lastRead = 1_000L))
+        val listAtWrite = listOf(
+            diskBasic(latestMs = 5_000L, lastRead = 1_000L).advancedLastRead(Instant.fromEpochMilliseconds(5_000L)),
+        )
+
+        val row = reloadedRows(listAtWrite, disk).items.single()
+
+        assertEquals(5_000L, row.lastRead.toEpochMilliseconds())
+        assertTrue(row.dirty)
+    }
+
+    @Test
+    fun reloadKeepsLeftSticky() {
+        val row = reloadedRows(
+            current = listOf(enrichedInMemory(state = ConversationState.Left)),
+            disk = listOf(diskBasic(state = ConversationState.Active)),
+        ).items.single()
+
+        assertEquals(ConversationState.Left, row.conversationState)
+    }
+
+    @Test
+    fun insertingAListedIdKeepsOneRow() {
+        val data = ConversationsData(items = listOf(enrichedInMemory()))
+
+        assertEquals(1, data.withInserted(diskBasic()).items.size)
+        assertEquals(data, data.withInserted(diskBasic()))
+    }
 }

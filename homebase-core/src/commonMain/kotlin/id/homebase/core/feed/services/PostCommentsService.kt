@@ -1,6 +1,5 @@
 package id.homebase.core.feed.services
 
-import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -14,9 +13,7 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.SecurityGroupType
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
@@ -325,16 +322,10 @@ class PostCommentsService(
 
         // Deliberate divergence from dotyoucore-js, which forces AutoConnected on every peer-written comment:
         // on a public post that would hide the comment from exactly the audience the post was written for.
-        val isPublic = !post.fileMetadata.isEncrypted
+        val isPublic = !post.serverFileIsEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
-        val accessControlList = AccessControlList(
-            requiredSecurityGroup = if (isPublic) {
-                SecurityGroupType.Anonymous.value
-            } else {
-                SecurityGroupType.AutoConnected.value
-            },
-        )
+        val accessControlList = commentAcl(post, isPublic)
 
         val attachments = listOfNotNull(attachment)
         // Encryption preserves payload keys and passes preview thumbs through, so both paths derive them here.
@@ -391,49 +382,19 @@ class PostCommentsService(
                 error("Failed to enqueue comment for upload (outbox: $outcome)")
             }
         } else {
-            // Public comment → plaintext payloads, so the request is built directly with no encryptBundle.
-            val request = UploadFileRequest(
-                driveId = drive,
-                keyHeader = keyHeader,
-                metadata = metadata,
-                payloads = bundle.payloads,
-                thumbnails = bundle.thumbnails,
-                transitOptions = transit,
-            )
-            val enqueued = outboxSync.tryEnqueue(request)
-            if (!enqueued.enqueued) error("Failed to enqueue comment for upload (outbox: $enqueued)")
-
-            val payloadDescriptors = bundle.payloads.map { payload ->
-                PayloadDescriptor(
-                    key = payload.key,
-                    contentType = payload.contentType.ifEmpty { null },
-                    iv = payload.iv?.let { Base64Bytes(it) },
-                    descriptorContent = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
-                )
-            }.ifEmpty { null }
-
-            try {
-                optimisticWriter.writeNewFile(
+            enqueuePlaintextUpload(
+                outboxSync = outboxSync,
+                optimisticWriter = optimisticWriter,
+                request = UploadFileRequest(
                     driveId = drive,
                     keyHeader = keyHeader,
-                    unecryptedMetadata = metadata,
-                    originalRecipientCount = recipients.size,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = payloadDescriptors,
-                )
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) {
-                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
-                }
-            }
+                    metadata = metadata,
+                    payloads = bundle.payloads,
+                    thumbnails = bundle.thumbnails,
+                    transitOptions = transit,
+                ),
+                tag = TAG,
+            )
         }
 
         Logger.d(tag = TAG) {
@@ -465,20 +426,14 @@ class PostCommentsService(
         val recipients = recipientsFromPost(post)
         val isLocalOnly = recipients.isEmpty()
 
-        val isPublic = !post.fileMetadata.isEncrypted
+        val isPublic = !post.serverFileIsEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) {
-            KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
+            existing.keyHeader.withNewIv()
         } else {
             KeyHeader.empty()
         }
-        val accessControlList = AccessControlList(
-            requiredSecurityGroup = if (isPublic) {
-                SecurityGroupType.Anonymous.value
-            } else {
-                SecurityGroupType.AutoConnected.value
-            },
-        )
+        val accessControlList = commentAcl(post, isPublic)
 
         val content = OdinSystemSerializer.serialize(
             PostCommentContent(
@@ -565,6 +520,18 @@ class PostCommentsService(
         }
         return null
     }
+
+    // An owner-only drive rejects any file whose ACL is not Owner, whatever the post's encryption flag says.
+    // Only a synced post (versionTag set) carries the server's ACL; an optimistic row defaults to Owner.
+    private fun commentAcl(post: HomebaseFile, isPublic: Boolean) = AccessControlList(
+        requiredSecurityGroup = when {
+            post.fileMetadata.versionTag != null &&
+                post.serverMetadata.accessControlList?.requiredSecurityGroup
+                    .equals(SecurityGroupType.Owner.value, ignoreCase = true) -> SecurityGroupType.Owner.value
+            isPublic -> SecurityGroupType.Anonymous.value
+            else -> SecurityGroupType.AutoConnected.value
+        },
+    )
 
     private suspend fun findPostLocally(postId: Uuid): Pair<Uuid, HomebaseFile>? {
         for (drive in sourceDrives) {

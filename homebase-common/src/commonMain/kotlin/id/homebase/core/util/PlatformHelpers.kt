@@ -1,11 +1,15 @@
 package id.homebase.core.util
 
+/** The JVM desktop app, on Windows (including the installed MSIX), macOS and Linux. Exactly one of [isDesktop], [isMobile] and [isWeb] is true on any build. */
 expect fun isDesktop(): Boolean
 
+/** The Android and iOS apps, phone or tablet: an iPad is mobile. */
 expect fun isMobile(): Boolean
 
+/** The browser build, on any device: a phone browser is web, not mobile. */
 expect fun isWeb(): Boolean
 
+/** `isDesktop() || isWeb()`. */
 expect fun isDesktopOrWeb(): Boolean
 
 /** True on iOS (native) targets where ComposeUIViewController handles keyboard avoidance. */

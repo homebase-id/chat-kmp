@@ -79,6 +79,7 @@ import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.widget.SendFileSheet
+import id.homebase.chat.widget.ChatListCaptureOverlay
 import id.homebase.chat.widget.ChatMediaViewer
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.paneTrailingEdge
@@ -573,6 +574,8 @@ fun ConversationListScreen(
             onNewConversationPaneDismissed = { newConversationInPane = false },
             onComposerVisibilityChanged = onComposerVisibilityChanged,
         )
+
+        ChatListCaptureOverlay(messagesUiState = messagesUiState, onUiAction = viewModel::onAction)
 
         conversationsUiState.inFlightOperationLabel?.let { label ->
             InFlightOperationOverlay(label)
