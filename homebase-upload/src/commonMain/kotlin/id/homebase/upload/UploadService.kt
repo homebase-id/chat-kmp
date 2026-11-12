@@ -64,7 +64,6 @@ class UploadService(
             thumbnails = encryptedBundle.thumbnails,
             existingFileIsSuccess = spec.existingFileIsSuccess,
             fileSystemType = spec.requestFileSystemType,
-            withCommentedFileKey = spec.withCommentedFileKey,
         )
 
         // 3. Outbox enqueue — the durable success gate. Once accepted, delivery is guaranteed.

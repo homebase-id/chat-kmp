@@ -45,8 +45,6 @@ data class MediaUploadSpec(
     val fileSystemType: FileSystemType = FileSystemType.Standard,
     /** The file system the server stores the upload in, when it differs from the optimistic row's [fileSystemType]. */
     val requestFileSystemType: FileSystemType? = null,
-    /** See [UploadFileRequest.withCommentedFileKey]. */
-    val withCommentedFileKey: Boolean = false,
     /** Pre-minted so the caller (and the cache seed) can reference the optimistic fileId. */
     val optimisticFileId: Uuid = Uuid.random(),
     val writeOptimistic: Boolean = true,

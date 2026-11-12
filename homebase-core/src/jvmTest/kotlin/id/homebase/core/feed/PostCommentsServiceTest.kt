@@ -424,7 +424,7 @@ class PostCommentsServiceTest {
     }
 
     @Test
-    fun postComment_onEncryptedOwnPost_usesThePostsKeyAndTheCommentFileSystem() = runFeedTest {
+    fun postComment_onEncryptedOwnPost_usesItsOwnKeyAndTheCommentFileSystem() = runFeedTest {
         val postId = Uuid.random()
         seedPost(postId, encrypted = true)
         advanceUntilIdle()
@@ -435,7 +435,7 @@ class PostCommentsServiceTest {
 
         val request = readRequest(channelDrive, commentId)
         assertEquals(FileSystemType.Comment, request.fileSystemType)
-        assertTrue(request.withCommentedFileKey, "the server encrypts a comment with the commented post's key")
+        assertFalse(request.withCommentedFileKey, "odin-core refuses a FileKey header outside a SelectiveShare drive")
         assertNull(request.metadata.appData.groupId)
         assertNotNull(request.metadata.referencedFile)
     }

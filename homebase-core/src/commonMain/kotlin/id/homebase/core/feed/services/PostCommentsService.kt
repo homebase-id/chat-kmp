@@ -32,7 +32,6 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.common.toSecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -330,15 +329,8 @@ class PostCommentsService(
         // on a public post that would hide the comment from exactly the audience the post was written for.
         val isPublic = !post.serverFileIsEncrypted
         val isEncrypted = !isPublic
-        // The server encrypts a Comment-file-system comment with the commented post's key.
-        val keyHeader = if (isEncrypted) {
-            KeyHeader(
-                ByteArrayUtil.getRndByteArray(16),
-                post.keyHeader.aesKey.toByteArray().toSecureByteArray(),
-            )
-        } else {
-            KeyHeader.empty()
-        }
+        // Own random key, like the web: odin-core takes a commented-file key (FileKey) only on a SelectiveShare drive.
+        val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
         val accessControlList = commentAcl(post, isPublic)
         val referencedFile = commentReference(drive, post, replyToCommentId)
 
@@ -400,7 +392,6 @@ class PostCommentsService(
                     transit = transit,
                     originalRecipientCount = recipients.size,
                     requestFileSystemType = FileSystemType.Comment,
-                    withCommentedFileKey = true,
                     writeOptimistic = false,
                     optimisticFileId = optimisticFileId,
                 ),
