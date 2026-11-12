@@ -1,5 +1,7 @@
 package id.homebase.api.image
 
+import id.homebase.api.lib.image.ImageFormatDetector
+
 /**
  * Removes identity-bearing metadata from encoded image bytes without touching pixel data.
  *
@@ -16,20 +18,32 @@ package id.homebase.api.image
  * ICC colour profiles (APP2) and the Adobe colour-transform marker (APP14).
  *
  * Unknown or malformed input is returned unchanged — this must never be able to corrupt a
- * send. JPEG, PNG and WebP are handled; every other format passes through untouched.
+ * send. JPEG, PNG, WebP and HEIF/HEIC are handled; every other format passes through untouched.
+ * [scrubWithOutcome] says which of those happened, so a caller can warn when metadata may remain.
  */
 object ImageMetadataScrubber {
+
+    sealed interface Outcome {
+        class Scrubbed(val bytes: ByteArray) : Outcome
+        data object NothingToStrip : Outcome
+        data object UnsupportedFormat : Outcome
+        /** A handled format the scrubber couldn't follow, so its metadata may still be there. */
+        data object Unparseable : Outcome
+    }
 
     /**
      * Returns [bytes] with metadata removed, or the identical instance when there was
      * nothing to remove or the format isn't handled. Callers can use referential equality
      * (`result === bytes`) to skip re-writing the file.
      */
-    fun scrub(bytes: ByteArray): ByteArray = when {
+    fun scrub(bytes: ByteArray): ByteArray = (scrubWithOutcome(bytes) as? Outcome.Scrubbed)?.bytes ?: bytes
+
+    fun scrubWithOutcome(bytes: ByteArray): Outcome = when {
         isJpeg(bytes) -> scrubJpeg(bytes)
         isPng(bytes) -> scrubPng(bytes)
         isWebp(bytes) -> scrubWebp(bytes)
-        else -> bytes
+        ImageFormatDetector.isHeic(bytes) -> scrubHeif(bytes)
+        else -> Outcome.UnsupportedFormat
     }
 
     private fun isJpeg(b: ByteArray) =
@@ -94,7 +108,7 @@ object ImageMetadataScrubber {
         else -> false
     }
 
-    private fun scrubJpeg(src: ByteArray): ByteArray {
+    private fun scrubJpeg(src: ByteArray): Outcome {
         val orientation = readJpegOrientation(src)
         val pieces = mutableListOf<Piece>()
         pieces += Piece.Span(0, 2) // SOI
@@ -111,7 +125,7 @@ object ImageMetadataScrubber {
         var droppedAnything = false
         while (true) {
             if (i >= src.size) break
-            if (src[i] != 0xFF.toByte()) return src // not a marker boundary — refuse to touch it
+            if (src[i] != 0xFF.toByte()) return Outcome.Unparseable // not a marker boundary — refuse to touch it
             val segmentStart = i
             var j = i
             while (j < src.size && src[j] == 0xFF.toByte()) j++ // fill bytes
@@ -136,9 +150,12 @@ object ImageMetadataScrubber {
             }
             if (i + 1 >= src.size) { pieces += Piece.Span(segmentStart, src.size); break }
             val length = ((src[i].toInt() and 0xFF) shl 8) or (src[i + 1].toInt() and 0xFF)
-            if (length < 2) return src // malformed
+            if (length < 2) return Outcome.Unparseable
             val segmentEnd = i + length
-            if (segmentEnd > src.size) { pieces += Piece.Span(segmentStart, src.size); break }
+            if (segmentEnd > src.size) {
+                if (shouldDropSegment(marker)) droppedAnything = true else pieces += Piece.Span(segmentStart, src.size)
+                break
+            }
 
             if (shouldDropSegment(marker)) {
                 droppedAnything = true
@@ -150,8 +167,8 @@ object ImageMetadataScrubber {
             i = segmentEnd
         }
 
-        if (!droppedAnything) return src
-        return assemble(pieces, src)
+        if (!droppedAnything) return Outcome.NothingToStrip
+        return Outcome.Scrubbed(assemble(pieces, src))
     }
 
     /** EXIF `Orientation` (1..8), or null when absent/unparseable. */
@@ -254,7 +271,7 @@ object ImageMetadataScrubber {
     private const val WEBP_FLAG_EXIF = 0x08
     private const val WEBP_FLAG_XMP = 0x04
 
-    private fun scrubWebp(src: ByteArray): ByteArray {
+    private fun scrubWebp(src: ByteArray): Outcome {
         val orientation = readWebpOrientation(src)
         val keepOrientation = orientation != null && orientation != 1
 
@@ -267,10 +284,13 @@ object ImageMetadataScrubber {
         while (i + 8 <= src.size) {
             val type = fourCc(src, i)
             val size = u32(src, i + 4, little = true)
-            if (size < 0) return src // >2 GiB chunk, or malformed
+            if (size < 0) return Outcome.Unparseable // >2 GiB chunk, or malformed
             val padded = size + (size and 1)
             val chunkEnd = i + 8 + padded
-            if (chunkEnd > src.size || chunkEnd < i) { pieces += Piece.Span(i, src.size); break }
+            if (chunkEnd > src.size || chunkEnd < i) {
+                if (type == "EXIF" || type == "XMP ") droppedAnything = true else pieces += Piece.Span(i, src.size)
+                break
+            }
 
             when (type) {
                 "EXIF", "XMP " -> droppedAnything = true
@@ -300,7 +320,7 @@ object ImageMetadataScrubber {
         // Metadata chunks belong at the end of the stream, after the image data.
         if (keepOrientation && sawVp8x) pieces += Piece.Literal(webpExifChunk(orientation))
 
-        if (!droppedAnything) return src
+        if (!droppedAnything) return Outcome.NothingToStrip
         val out = assemble(pieces, src)
         // RIFF size counts everything after the first 8 bytes and must match the new length.
         val riffSize = out.size - 8
@@ -308,7 +328,7 @@ object ImageMetadataScrubber {
         out[5] = ((riffSize shr 8) and 0xFF).toByte()
         out[6] = ((riffSize shr 16) and 0xFF).toByte()
         out[7] = ((riffSize shr 24) and 0xFF).toByte()
-        return out
+        return Outcome.Scrubbed(out)
     }
 
     private fun fourCc(b: ByteArray, at: Int): String = buildString {
@@ -354,25 +374,219 @@ object ImageMetadataScrubber {
         return null
     }
 
+    /* ---------------- HEIF ---------------- */
+
+    // Overwriting the Exif and XMP items at the same length keeps every iloc offset valid. Orientation
+    // is in the untouched irot/imir properties; the EXIF copy stays for readers that look there.
+    private const val XMP_CONTENT_TYPE = "application/rdf+xml"
+
+    private class HeifItem(val type: String, val contentType: String?)
+
+    private class Extent(val offset: Long, val length: Long, val inIdat: Boolean)
+
+    private fun scrubHeif(src: ByteArray): Outcome {
+        val meta = topLevelBox(src, "meta") ?: return Outcome.Unparseable
+        val metaBody = meta.first + 4 // full box
+        val items = HashMap<Long, HeifItem>()
+        val locations = HashMap<Long, List<Extent>>()
+        var idatData: Long = -1
+        var i = metaBody
+        while (i + 8 <= meta.second) {
+            val box = boxAt(src, i, meta.second) ?: return Outcome.Unparseable
+            when (box.type) {
+                "iinf" -> if (!readIinf(src, box.dataStart, box.end, items)) return Outcome.Unparseable
+                "iloc" -> if (!readIloc(src, box.dataStart, box.end, locations)) return Outcome.Unparseable
+                "idat" -> idatData = box.dataStart.toLong()
+            }
+            i = box.end
+        }
+
+        val out = src.copyOf()
+        for ((id, item) in items) {
+            val isExif = item.type == "Exif"
+            val isXmp = item.type == "mime" && item.contentType?.substringBefore(';')?.trim() == XMP_CONTENT_TYPE
+            if (!isExif && !isXmp) continue
+            val extents = locations[id] ?: return Outcome.Unparseable
+            val physical = extents.map { extent ->
+                if (extent.inIdat && idatData < 0) return Outcome.Unparseable
+                val start = extent.offset + if (extent.inIdat) idatData else 0
+                if (start < 0 || extent.length <= 0 || start + extent.length > src.size) return Outcome.Unparseable
+                start.toInt() until (start + extent.length).toInt()
+            }
+            val exif = if (isExif) heifExifPayload(readHeifExifOrientation(src, physical)) else ByteArray(0)
+            val replacement = if (exif.size <= physical.sumOf { it.last - it.first + 1 }) exif else ByteArray(0)
+            var k = 0
+            for (range in physical) for (at in range) {
+                out[at] = if (k < replacement.size) replacement[k] else if (isXmp) 0x20 else 0
+                k++
+            }
+        }
+        return if (out.contentEquals(src)) Outcome.NothingToStrip else Outcome.Scrubbed(out)
+    }
+
+    private class Box(val type: String, val dataStart: Int, val end: Int)
+
+    private fun boxAt(b: ByteArray, at: Int, limit: Int): Box? {
+        if (at + 8 > limit) return null
+        val size32 = u32(b, at, little = false).toLong() and 0xFFFFFFFFL
+        val type = fourCc(b, at + 4)
+        val (size, header) = when (size32) {
+            0L -> (limit - at).toLong() to 8
+            1L -> {
+                if (at + 16 > limit) return null
+                u64(b, at + 8) to 16
+            }
+            else -> size32 to 8
+        }
+        if (size < header || at + size > limit) return null
+        return Box(type, at + header, (at + size).toInt())
+    }
+
+    private fun topLevelBox(b: ByteArray, type: String): Pair<Int, Int>? {
+        var i = 0
+        while (i + 8 <= b.size) {
+            val box = boxAt(b, i, b.size) ?: return null
+            if (box.type == type) return box.dataStart to box.end
+            i = box.end
+        }
+        return null
+    }
+
+    private fun readIinf(b: ByteArray, from: Int, until: Int, into: MutableMap<Long, HeifItem>): Boolean {
+        if (from + 4 > until) return false
+        val version = b[from].toInt() and 0xFF
+        var i = from + 4 + if (version == 0) 2 else 4
+        while (i + 8 <= until) {
+            val box = boxAt(b, i, until) ?: return false
+            // Versions 0 and 1 predate item types, so they can't declare Exif or XMP items.
+            if (box.type == "infe" && box.dataStart < until && b[box.dataStart].toInt() and 0xFF >= 2) {
+                val (id, item) = readInfe(b, box.dataStart, box.end) ?: return false
+                into[id] = item
+            }
+            i = box.end
+        }
+        return true
+    }
+
+    private fun readInfe(b: ByteArray, from: Int, until: Int): Pair<Long, HeifItem>? {
+        if (from + 4 > until) return null
+        val version = b[from].toInt() and 0xFF
+        var i = from + 4
+        val idSize = if (version == 2) 2 else 4
+        if (i + idSize + 6 > until) return null
+        val id = readUnsigned(b, i, idSize)
+        i += idSize + 2 // item_protection_index
+        val type = fourCc(b, i)
+        i += 4
+        val nameEnd = indexOfZero(b, i, until) ?: return id to HeifItem(type, null)
+        if (type != "mime") return id to HeifItem(type, null)
+        val contentEnd = indexOfZero(b, nameEnd + 1, until) ?: until
+        return id to HeifItem(type, b.decodeToString(nameEnd + 1, contentEnd))
+    }
+
+    private fun readIloc(b: ByteArray, from: Int, until: Int, into: MutableMap<Long, List<Extent>>): Boolean {
+        if (from + 6 > until) return false
+        val version = b[from].toInt() and 0xFF
+        if (version > 2) return false
+        var i = from + 4
+        val offsetSize = (b[i].toInt() and 0xF0) shr 4
+        val lengthSize = b[i].toInt() and 0x0F
+        val baseOffsetSize = (b[i + 1].toInt() and 0xF0) shr 4
+        val indexSize = if (version == 0) 0 else b[i + 1].toInt() and 0x0F
+        if (listOf(offsetSize, lengthSize, baseOffsetSize, indexSize).any { it !in setOf(0, 4, 8) }) return false
+        i += 2
+        val countSize = if (version < 2) 2 else 4
+        if (i + countSize > until) return false
+        val count = readUnsigned(b, i, countSize)
+        i += countSize
+        repeat(count.toInt()) {
+            val idSize = if (version < 2) 2 else 4
+            if (i + idSize > until) return false
+            val id = readUnsigned(b, i, idSize)
+            i += idSize
+            var method = 0
+            if (version >= 1) {
+                if (i + 2 > until) return false
+                method = u16(b, i, little = false) and 0x0F
+                i += 2
+            }
+            if (i + 2 + baseOffsetSize + 2 > until) return false
+            i += 2 // data_reference_index
+            val base = readUnsigned(b, i, baseOffsetSize)
+            i += baseOffsetSize
+            val extentCount = u16(b, i, little = false)
+            i += 2
+            val extents = ArrayList<Extent>(extentCount)
+            repeat(extentCount) {
+                if (i + indexSize + offsetSize + lengthSize > until) return false
+                i += indexSize
+                val offset = base + readUnsigned(b, i, offsetSize)
+                i += offsetSize
+                val length = readUnsigned(b, i, lengthSize)
+                i += lengthSize
+                extents += Extent(offset, length, inIdat = method == 1)
+            }
+            // Item-offset construction points into another item; leave those alone.
+            if (method <= 1) into[id] = extents
+        }
+        return true
+    }
+
+    private fun readHeifExifOrientation(b: ByteArray, ranges: List<IntRange>): Int? {
+        val data = ByteArray(ranges.sumOf { it.last - it.first + 1 })
+        var at = 0
+        for (r in ranges) { b.copyInto(data, at, r.first, r.last + 1); at += r.last - r.first + 1 }
+        if (data.size < 4) return null
+        val tiffOffset = u32(data, 0, little = false)
+        if (tiffOffset < 0) return null
+        val tiff = 4 + tiffOffset
+        if (tiff > data.size) return null
+        return readTiffOrientation(data, tiff, data.size)
+    }
+
+    /** HEIF's Exif item: a 4-byte offset to the TIFF header, then the TIFF block. */
+    private fun heifExifPayload(orientation: Int?): ByteArray =
+        byteArrayOf(0, 0, 0, 0) + minimalExifTiff(orientation ?: 1)
+
+    private fun readUnsigned(b: ByteArray, at: Int, size: Int): Long = when (size) {
+        0 -> 0L
+        2 -> u16(b, at, little = false).toLong()
+        4 -> u32(b, at, little = false).toLong() and 0xFFFFFFFFL
+        8 -> u64(b, at)
+        else -> 0L
+    }
+
+    private fun u64(b: ByteArray, at: Int): Long =
+        ((u32(b, at, little = false).toLong() and 0xFFFFFFFFL) shl 32) or
+            (u32(b, at + 4, little = false).toLong() and 0xFFFFFFFFL)
+
+    private fun indexOfZero(b: ByteArray, from: Int, until: Int): Int? {
+        for (k in from until until) if (b[k] == 0.toByte()) return k
+        return null
+    }
+
     /* ---------------- PNG ---------------- */
 
     // eXIf carries the same EXIF block as JPEG; the text chunks routinely carry camera and
     // editing-software strings; tIME is a modification timestamp.
     private val PNG_DROP = setOf("eXIf", "tEXt", "iTXt", "zTXt", "tIME")
 
-    private fun scrubPng(src: ByteArray): ByteArray {
+    private fun scrubPng(src: ByteArray): Outcome {
         val pieces = mutableListOf<Piece>()
         pieces += Piece.Span(0, 8) // signature
         var i = 8
         var droppedAnything = false
         while (i + 8 <= src.size) {
             val length = u32(src, i, little = false)
-            if (length < 0) return src // > 2 GiB chunk, or malformed
+            if (length < 0) return Outcome.Unparseable // > 2 GiB chunk, or malformed
             val type = buildString {
                 for (k in 0 until 4) append((src[i + 4 + k].toInt() and 0xFF).toChar())
             }
             val chunkEnd = i + 12 + length // length + type + data + crc
-            if (chunkEnd > src.size || chunkEnd < i) { pieces += Piece.Span(i, src.size); break }
+            if (chunkEnd > src.size || chunkEnd < i) {
+                if (type in PNG_DROP) droppedAnything = true else pieces += Piece.Span(i, src.size)
+                break
+            }
             if (type in PNG_DROP) {
                 droppedAnything = true
             } else {
@@ -381,7 +595,7 @@ object ImageMetadataScrubber {
             i = chunkEnd
             if (type == "IEND") break
         }
-        if (!droppedAnything) return src
-        return assemble(pieces, src)
+        if (!droppedAnything) return Outcome.NothingToStrip
+        return Outcome.Scrubbed(assemble(pieces, src))
     }
 }

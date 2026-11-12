@@ -44,8 +44,9 @@ static void throw_state(JNIEnv *env, const char *message) {
     if (type != NULL) (*env)->ThrowNew(env, type, message);
 }
 
-static int is_rgba_8888(const AndroidBitmapInfo *info) {
-    return info->format == ANDROID_BITMAP_FORMAT_RGBA_8888;
+static int is_premultiplied_rgba_8888(const AndroidBitmapInfo *info) {
+    return info->format == ANDROID_BITMAP_FORMAT_RGBA_8888 &&
+           (info->flags & ANDROID_BITMAP_FLAGS_ALPHA_MASK) != ANDROID_BITMAP_FLAGS_ALPHA_UNPREMUL;
 }
 
 JNIEXPORT void JNICALL
@@ -56,13 +57,8 @@ Java_id_homebase_imageresize_NativeResize_lanczos(JNIEnv *env, jclass type, jobj
         throw_state(env, "Couldn't read the bitmaps");
         return;
     }
-    if (!is_rgba_8888(&from) || !is_rgba_8888(&to)) {
-        throw_state(env, "Both bitmaps must be ARGB_8888");
-        return;
-    }
-    if ((from.flags & ANDROID_BITMAP_FLAGS_ALPHA_MASK) == ANDROID_BITMAP_FLAGS_ALPHA_UNPREMUL ||
-        (to.flags & ANDROID_BITMAP_FLAGS_ALPHA_MASK) == ANDROID_BITMAP_FLAGS_ALPHA_UNPREMUL) {
-        throw_state(env, "Both bitmaps must be premultiplied");
+    if (!is_premultiplied_rgba_8888(&from) || !is_premultiplied_rgba_8888(&to)) {
+        throw_state(env, "Both bitmaps must be premultiplied ARGB_8888");
         return;
     }
 

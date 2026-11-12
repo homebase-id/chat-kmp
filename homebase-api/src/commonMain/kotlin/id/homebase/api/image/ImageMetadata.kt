@@ -1,5 +1,8 @@
 package id.homebase.api.image
 
+import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.UtcOffset
 
@@ -38,6 +41,13 @@ data class ImageMetadata(
  * no metadata, an [ImageMetadata] with all-null fields is returned.
  */
 expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
+
+/** [readImageMetadata] for the file at [path], reading only its header where the platform can. */
+suspend fun readImageMetadata(path: String, fileOps: FileOperationsProvider): ImageMetadata? =
+    withContext(Dispatchers.Default) {
+        val file = openImageFile(path, fileOps) ?: return@withContext readImageMetadata(fileOps.readFileBytes(path))
+        file.use { it.metadata() }
+    }
 
 /**
  * Parse an EXIF DateTimeOriginal string ("YYYY:MM:DD HH:MM:SS") into a

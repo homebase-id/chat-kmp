@@ -1,1 +1,0 @@
--keep class id.homebase.imageresize.NativeResize { native <methods>; }

@@ -58,7 +58,7 @@ data class CardOverrides(
                     o?.strictString("kind")?.let { CardBlock(it, o.strictString("presentation")) }
                 },
                 socials = json.strictString("socials"),
-                fields = json.field("fields") { o -> CardFields(order = o.texts("order"), hidden = o.texts("hidden")) },
+                fields = json.field("fields") { o -> CardFields(order = o.texts("order"), hidden = o.texts("hidden"), hiddenSections = o.texts("hiddenSections")) },
             )
 
         private fun <T> JsonObject.field(key: String, read: (JsonObject) -> T): T? =
@@ -113,4 +113,4 @@ data class CardPortrait(
 data class CardBlock(val kind: String, val presentation: String? = null)
 
 @Serializable
-data class CardFields(val order: List<String>? = null, val hidden: List<String>? = null)
+data class CardFields(val order: List<String>? = null, val hidden: List<String>? = null, val hiddenSections: List<String>? = null)

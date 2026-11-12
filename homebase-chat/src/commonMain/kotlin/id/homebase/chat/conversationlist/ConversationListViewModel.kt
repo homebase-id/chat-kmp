@@ -1534,6 +1534,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.ForwardMessageSelectRecipient -> messageActionsHandler.handleForwardMessageSelectRecipient(action)
 
             is ConversationListUiAction.ForwardMessageSend -> messageActionsHandler.handleForwardMessageSend(action)
+            is ConversationListUiAction.OpenSendTo -> messageActionsHandler.handleOpenSendTo(action)
+            is ConversationListUiAction.SendToSelectRecipient -> messageActionsHandler.handleSendToSelectRecipient(action)
+            is ConversationListUiAction.CloseSendTo -> messageActionsHandler.handleCloseSendTo()
+            is ConversationListUiAction.ConfirmSendTo -> messageActionsHandler.handleConfirmSendTo { selectConversation(it) }
             is ConversationListUiAction.ChooseChatForFile -> {
                 val earlier = _uiState.getAndUpdate {
                     val recipients = recipientGroups(it.activeConversations, contactService.contacts.value)
