@@ -71,6 +71,9 @@ class CaptureHandoffTest {
 
         launcher.close()
         launcher.close()
+        assertEquals(0, engine.releaseCount)
+
+        launcher.releaseWarmEngine()
         launcher.releaseWarmEngine()
         assertEquals(1, engine.releaseCount)
         assertNull(launcher.warmEngine)

@@ -47,7 +47,6 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     internal fun close() {
         isOpen = false
         handoffEpoch = null
-        releaseWarmEngine()
     }
 
     internal fun releaseWarmEngine() {
@@ -84,6 +83,7 @@ fun rememberInAppCameraManager(
                 launcher.close()
             }
         }
+        // Released only after the dialog leaves composition: CameraX clears the preview a frame early otherwise.
         DisposableEffect(launcher) {
             onDispose { launcher.releaseWarmEngine() }
         }

@@ -312,38 +312,12 @@ Rules:
 
 When you open a PR, before handing it over:
 
-- **Simplify.** Remind me to run `/simplify` (see below).
 - **Platforms.** If the diff touches platform code, the description says which of the four
   platforms were verified and how. CI alone covers JVM, plus iOS/WASM for `homebase-api` only.
 - **Evidence.** A bug fix's description states what proved the root cause (log, trace, failing
   test), and for a platform-specific bug, whether the platform principles held.
 - **Watch CI to green**, and read the silent-revert check's summary: it never fails the build,
   so its warnings are only seen if someone looks.
-
-## Before you merge: remind me to run a simplify pass
-
-Before a PR is opened or merged, **remind me to run `/simplify` on the branch**.
-Ask — don't run it unprompted, and don't assume it already happened.
-
-Only an explicit "no" declines it. If I don't answer, presume I didn't see the
-reminder and say it again rather than deciding for me.
-
-Why it's worth the nag: review reads a diff for correctness, and rarely notices
-that the diff re-implements a helper the codebase already has, that a block was
-copy-pasted inside this same PR, that a field is derivable from another, or
-that work landed on a path which re-runs on every keystroke. Those cost nothing
-to fix on the branch and get expensive once a second caller copies them — and a
-copy that outlives review is how two surfaces end up answering the same
-question differently.
-
-If a finding is a design change rather than a cleanup, file it instead of
-widening the PR.
-
-**Always prefix the commit title with `SIMPLIFY: `** when the commit comes from
-a `/simplify` pass — e.g. `SIMPLIFY: fold the duplicate accept paths together`.
-It keeps a cleanup pass legible in `git log` next to the feature work it
-follows, and tells a reviewer the diff is meant to preserve behaviour, so any
-behaviour change in it is either a bug or something the body must call out.
 
 ## Comments
 
