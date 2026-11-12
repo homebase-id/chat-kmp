@@ -145,6 +145,7 @@ class PostCommentsMutationTest {
             fileSystemType = FileSystemType.Standard,
             keyHeader = keyHeader(),
             fileMetadata = FileMetadata(
+                globalTransitId = Uuid.random(),
                 created = UnixTimeUtc(1_000),
                 updated = UnixTimeUtc(1_000),
                 isEncrypted = false,

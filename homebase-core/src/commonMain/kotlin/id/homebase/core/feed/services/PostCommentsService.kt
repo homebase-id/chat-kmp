@@ -6,12 +6,14 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -30,6 +32,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.common.toSecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -327,8 +330,17 @@ class PostCommentsService(
         // on a public post that would hide the comment from exactly the audience the post was written for.
         val isPublic = !post.serverFileIsEncrypted
         val isEncrypted = !isPublic
-        val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
+        // The server encrypts a Comment-file-system comment with the commented post's key.
+        val keyHeader = if (isEncrypted) {
+            KeyHeader(
+                ByteArrayUtil.getRndByteArray(16),
+                post.keyHeader.aesKey.toByteArray().toSecureByteArray(),
+            )
+        } else {
+            KeyHeader.empty()
+        }
         val accessControlList = commentAcl(post, isPublic)
+        val referencedFile = commentReference(drive, post, replyToCommentId)
 
         val attachments = listOfNotNull(attachment)
         // Encryption preserves payload keys and passes preview thumbs through, so both paths derive them here.
@@ -362,37 +374,66 @@ class PostCommentsService(
             ),
         )
 
+        // The Comment writer refuses a groupId and addresses by ReferencedFile. [metadata] keeps the groupId
+        // for the optimistic row, which stays Standard so the local thread (indexed by groupId) renders.
+        val uploadMetadata = metadata.copy(
+            appData = metadata.appData.copy(groupId = null),
+            referencedFile = referencedFile,
+        )
+
         val transit = TransitOptions(
             recipients = recipients,
             sendContents = SendContents.All,
             useAppNotification = false,
+            remoteTargetDrive = if (isLocalOnly) null else referencedFile.targetDrive,
         )
 
         if (isEncrypted) {
+            val optimisticFileId = Uuid.random()
             val outcome = uploadService.upload(
                 MediaUploadSpec(
                     driveId = drive,
                     uniqueId = commentUniqueId,
                     keyHeader = keyHeader,
                     bundle = bundle,
-                    metadata = metadata,
+                    metadata = uploadMetadata,
                     transit = transit,
                     originalRecipientCount = recipients.size,
+                    requestFileSystemType = FileSystemType.Comment,
+                    withCommentedFileKey = true,
+                    writeOptimistic = false,
+                    optimisticFileId = optimisticFileId,
                 ),
                 scope = scope,
             )
             if (outcome !is UploadOutcome.Enqueued) {
                 error("Failed to enqueue comment for upload (outbox: $outcome)")
             }
+            try {
+                optimisticWriter.writeNewFile(
+                    driveId = drive,
+                    keyHeader = keyHeader,
+                    unecryptedMetadata = metadata,
+                    originalRecipientCount = recipients.size,
+                    fileSystemType = FileSystemType.Standard,
+                    payloadDescriptors = outcome.payloadDescriptors,
+                    fileId = optimisticFileId,
+                )
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) {
+                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
+                }
+            }
         } else {
             // Public comment → plaintext payloads, so the request is built directly with no encryptBundle.
             val request = UploadFileRequest(
                 driveId = drive,
                 keyHeader = keyHeader,
-                metadata = metadata,
+                metadata = uploadMetadata,
                 payloads = bundle.payloads,
                 thumbnails = bundle.thumbnails,
                 transitOptions = transit,
+                fileSystemType = FileSystemType.Comment,
             )
             val enqueued = outboxSync.tryEnqueue(request)
             if (!enqueued.enqueued) error("Failed to enqueue comment for upload (outbox: $enqueued)")
@@ -565,6 +606,28 @@ class PostCommentsService(
             else -> SecurityGroupType.AutoConnected.value
         },
     )
+
+    // A comment is addressed by the globalTransitId of the file it answers: the parent comment for a reply once it
+    // has synced, else the post. The channel drive is read from the post's own content, since a followed post
+    // sits on our feed drive.
+    private suspend fun commentReference(
+        drive: Uuid,
+        post: HomebaseFile,
+        replyToCommentId: Uuid?,
+    ): GlobalTransitIdFileIdentifier {
+        val postGlobalTransitId = post.fileMetadata.globalTransitId
+            ?: error("Post has no globalTransitId yet; refusing to write a comment the web cannot see")
+        val channel = post.fileMetadata.appData.content
+            ?.let { runCatching { OdinSystemSerializer.deserialize<PostContent>(it).channelId }.getOrNull() }
+            ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+            ?: post.driveId
+        val parentGlobalTransitId = replyToCommentId
+            ?.let { readPostHeader(drive, it)?.fileMetadata?.globalTransitId }
+        return GlobalTransitIdFileIdentifier(
+            globalTransitId = parentGlobalTransitId ?: postGlobalTransitId,
+            targetDrive = TargetDrive(alias = channel, type = FeedProtocol.ChannelDriveType),
+        )
+    }
 
     private suspend fun findPostLocally(postId: Uuid): Pair<Uuid, HomebaseFile>? {
         for (drive in sourceDrives) {
