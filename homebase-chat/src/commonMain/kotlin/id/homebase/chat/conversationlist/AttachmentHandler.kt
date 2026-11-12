@@ -166,29 +166,8 @@ internal class AttachmentHandler(
                         )
                     }
                 }
-                val chatListCapture = action.conversationId == NO_CONVERSATION
-                val conversation = uiState.value.activeConversations.find {
-                    it.conversation.id == action.conversationId
-                }
-                if (newFiles.isEmpty() || (conversation == null && !chatListCapture)) return@launch
-
-                val overlay = messagesUiState.value.fullScreenOverlay
-                if (chatListCapture && overlay is FullScreenOverlay.AttachmentData && !overlay.isChatListCapture) {
-                    sendEvent(ShowErrorMessage(MR.string.chat_error_send_file_editor_open, overlay.conversationTitle))
-                    return@launch
-                }
-                val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
-                    overlay.copy(
-                        attachments = overlay.attachments + newFiles,
-                    )
-                } else {
-                    FullScreenOverlay.AttachmentData(
-                        conversationTitle = conversation?.getDisplayName().orEmpty(),
-                        conversationId = action.conversationId,
-                        selected = newFiles.last().attachmentId,
-                        attachments = newFiles,
-                    )
-                }
+                if (newFiles.isEmpty()) return@launch
+                val newOverlay = editorWith(action.conversationId, newFiles) ?: return@launch
 
                 messagesUiState.update {
                     it.copy(
@@ -330,9 +309,31 @@ internal class AttachmentHandler(
         }
     }
 
+    private fun editorWith(
+        conversationId: Uuid,
+        newFiles: List<AttachmentPendingFile>,
+    ): FullScreenOverlay.AttachmentData? {
+        val chatListCapture = conversationId == NO_CONVERSATION
+        val conversation = uiState.value.activeConversations.find { it.conversation.id == conversationId }
+        if (conversation == null && !chatListCapture) return null
+        val overlay = messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+        if (overlay != null && overlay.isChatListCapture != chatListCapture) {
+            if (chatListCapture) sendEvent(ShowErrorMessage(MR.string.chat_error_send_file_editor_open, overlay.conversationTitle))
+            return null
+        }
+        return overlay?.copy(attachments = overlay.attachments + newFiles)
+            ?: FullScreenOverlay.AttachmentData(
+                conversationTitle = conversation?.getDisplayName().orEmpty(),
+                conversationId = conversationId,
+                selected = newFiles.last().attachmentId,
+                attachments = newFiles,
+            )
+    }
+
     fun handleAttachClipboardImage(action: ConversationListUiAction.AttachClipboardImage) {
         val bytes = action.imageBytes
-        if (ImageFormatDetector.isAnimatedGif(bytes)) {
+        // The sticker-or-GIF prompt lives in the open chat; a chat-list capture has none, so it stays a GIF.
+        if (action.conversationId != NO_CONVERSATION && ImageFormatDetector.isAnimatedGif(bytes)) {
             messagesUiState.update { it.copy(pendingGifPaste = PendingGifPaste(action.conversationId, bytes)) }
             return
         }
@@ -379,24 +380,7 @@ internal class AttachmentHandler(
                     Uuid.generateV7(),
                     platformFile
                 )
-                val conversation = uiState.value.activeConversations.find {
-                    it.conversation.id == conversationId
-                }
-                if (conversation == null) return@launch
-
-                val overlay = messagesUiState.value.fullScreenOverlay
-                val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
-                    overlay.copy(
-                        attachments = overlay.attachments + newFile,
-                    )
-                } else {
-                    FullScreenOverlay.AttachmentData(
-                        conversationTitle = conversation.getDisplayName(),
-                        conversationId = conversationId,
-                        selected = newFile.attachmentId,
-                        attachments = listOf(newFile),
-                    )
-                }
+                val newOverlay = editorWith(conversationId, listOf(newFile)) ?: return@launch
 
                 messagesUiState.update {
                     it.copy(fullScreenOverlay = newOverlay)

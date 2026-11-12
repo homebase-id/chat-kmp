@@ -1,6 +1,7 @@
 package id.homebase.chat.conversationlist
 
 import id.homebase.api.common.OdinId
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
@@ -45,37 +46,58 @@ class ChatListCameraSendTest {
         assertNull(conversationToOpenAfterSend(emptyList()))
     }
 
-    @Test
-    fun capturedMediaOpensTheEditorBeforeAnyChatIsChosen() = runTest {
-        val messages = MutableStateFlow(MessageListUiState())
-        val events = mutableListOf<ConversationListUiEvent>()
-        val handler = AttachmentHandler(
-            scope = CoroutineScope(Dispatchers.Unconfined),
-            uiState = MutableStateFlow(ConversationListUiState()),
-            messagesUiState = messages,
-            fileOperationsProvider = NoopFileOps(),
-            cropResultBus = CropResultBus(),
-            drawResultBus = DrawResultBus(),
-            audioRecorder = NoopAudioRecorder(),
-            audioWaveFormGenerator = NoopWaveformGenerator(),
-            sendEvent = { events += it },
-            dispatch = {},
-            addMessageWithFiles = { _, _, _ -> },
-            sendSticker = { _, _, _ -> },
-        )
+    private val messages = MutableStateFlow(MessageListUiState())
+    private val events = mutableListOf<ConversationListUiEvent>()
 
-        val captured = kotlin.io.path.createTempFile("capture", ".jpg").toFile().apply { writeBytes(byteArrayOf(1, 2, 3)); deleteOnExit() }
+    private fun handler(fileOps: FileOperationsProvider = NoopFileOps()) = AttachmentHandler(
+        scope = CoroutineScope(Dispatchers.Unconfined),
+        uiState = MutableStateFlow(ConversationListUiState()),
+        messagesUiState = messages,
+        fileOperationsProvider = fileOps,
+        cropResultBus = CropResultBus(),
+        drawResultBus = DrawResultBus(),
+        audioRecorder = NoopAudioRecorder(),
+        audioWaveFormGenerator = NoopWaveformGenerator(),
+        sendEvent = { events += it },
+        dispatch = {},
+        addMessageWithFiles = { _, _, _ -> },
+        sendSticker = { _, _, _ -> },
+    )
 
-        handler.handleAttachPlatformFile(
-            ConversationListUiAction.AttachPlatformFile(NO_CONVERSATION, listOf(PlatformFile(captured)), isImage = true)
-        )
-
+    private suspend fun awaitChatListEditor(): FullScreenOverlay.AttachmentData {
         withContext(Dispatchers.Default) {
             withTimeoutOrNull(10_000) { messages.first { it.fullScreenOverlay != null } }
         }
-
         val editor = messages.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
         assertTrue(editor != null && editor.isChatListCapture, "editor opens with no chat behind it: $events")
-        assertEquals(1, editor.attachments.size)
+        return editor
+    }
+
+    @Test
+    fun capturedMediaOpensTheEditorBeforeAnyChatIsChosen() = runTest {
+        val captured = kotlin.io.path.createTempFile("capture", ".jpg").toFile().apply { writeBytes(byteArrayOf(1, 2, 3)); deleteOnExit() }
+
+        handler().handleAttachPlatformFile(
+            ConversationListUiAction.AttachPlatformFile(NO_CONVERSATION, listOf(PlatformFile(captured)), isImage = true)
+        )
+
+        assertEquals(1, awaitChatListEditor().attachments.size)
+    }
+
+    @Test
+    fun aGifPastedIntoTheCaptionJoinsTheEditorWithoutTheStickerPrompt() = runTest {
+        val tempFileOps = object : FileOperationsProvider by NoopFileOps() {
+            override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String =
+                kotlin.io.path.createTempFile(prefix, suffix).toFile().apply { writeBytes(bytes); deleteOnExit() }.absolutePath
+        }
+        val gif = java.util.Base64.getDecoder().decode(
+            "R0lGODlhAgABAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAgABAAAIBQABAAgIACH5" +
+                "BAAKAAAALAAAAAACAAEAgQAA/wAAAAAAAAAAAAgFAAEACAgAOw=="
+        )
+
+        handler(tempFileOps).handleAttachClipboardImage(ConversationListUiAction.AttachClipboardImage(NO_CONVERSATION, gif))
+
+        assertNull(messages.value.pendingGifPaste)
+        assertEquals(1, awaitChatListEditor().attachments.size)
     }
 }
