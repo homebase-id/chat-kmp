@@ -97,26 +97,19 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
         val isJpeg = ImageFormatDetector.detectFormat(bytes) == "image/jpeg"
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
         val sampleSize = if (isJpeg) sampleSizeFor(longEdge, minLongEdge) else 1
-        val guardScale = memoryGuardScale(displayedSize, sampleSize, minLongEdge)
         val bitmap = try {
-            decodeGuarded(guardScale, sampleSize)
+            decodeSampled(sampleSize)
         } catch (e: OutOfMemoryError) {
             throw IllegalStateException("Not enough memory to decode the image", e)
         }
         return AndroidPipelineBitmap(bitmap)
     }
 
-    private fun decodeGuarded(guardScale: Double?, sampleSize: Int): Bitmap =
+    // Not setTargetSize: it decodes full size, then scales bilinearly, so it aliases and peaks higher.
+    private fun decodeSampled(sampleSize: Int): Bitmap =
         try {
             ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, _, _ ->
-                if (guardScale != null) {
-                    decoder.setTargetSize(
-                        (displayedSize.pixelWidth * guardScale).toInt().coerceAtLeast(1),
-                        (displayedSize.pixelHeight * guardScale).toInt().coerceAtLeast(1),
-                    )
-                } else {
-                    decoder.setTargetSampleSize(sampleSize)
-                }
+                decoder.setTargetSampleSize(sampleSize)
                 // A HARDWARE bitmap has no readable pixels, so compress would fail on it.
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }
