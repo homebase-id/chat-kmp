@@ -104,6 +104,7 @@ import id.homebase.resources.filesync_inherit_failed
 import id.homebase.resources.filesync_move_check_failed
 import id.homebase.resources.filesync_move_failed
 import id.homebase.resources.filesync_move_sharing_failed
+import id.homebase.resources.filesync_sync_sharer_failed
 import id.homebase.resources.filesync_moved
 import id.homebase.resources.filesync_peer_added
 import id.homebase.resources.filesync_peer_added_many
@@ -191,6 +192,7 @@ internal fun FilesyncError.message(): StringResource = when (this) {
     FilesyncError.InheritFailed -> MR.string.filesync_inherit_failed
     FilesyncError.MoveCheckFailed -> MR.string.filesync_move_check_failed
     FilesyncError.MoveSharingFailed -> MR.string.filesync_move_sharing_failed
+    FilesyncError.SyncChoiceFailed -> MR.string.filesync_sync_sharer_failed
 }
 
 internal val FilesyncRowInset = 8.dp

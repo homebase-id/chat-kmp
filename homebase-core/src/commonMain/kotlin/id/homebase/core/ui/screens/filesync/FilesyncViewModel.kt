@@ -11,6 +11,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.privatedrive.FilesyncPrivateDrive
 import id.homebase.core.privatedrive.PrivateDriveOptIn
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -58,6 +59,7 @@ class FilesyncViewModel(
     sharingSetup: FilesyncSharingSetup,
     shareMessages: FilesyncShareMessages,
     peerSends: FilesyncPeerSends,
+    developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -113,6 +115,9 @@ class FilesyncViewModel(
 
     init {
         addCloseable(extendPermissionViewModel)
+        viewModelScope.launch {
+            developerPreferences.filesyncSyncSharedEnabled.collect { on -> _uiState.update { it.copy(sharing = it.sharing.copy(syncOffered = on)) } }
+        }
         sharing.start()
         viewModelScope.launch {
             snapshotFlow { search.text.toString() }.collect { text -> arrange { it.copy(query = text) } }
@@ -349,6 +354,7 @@ class FilesyncViewModel(
 
 
             is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
+            is FilesyncUiAction.SetSharerSync -> sharing.setSync(action.sharer, action.sync)
             FilesyncUiAction.CloseShareView -> sharing.closeShareView()
 
             is FilesyncUiAction.OpenSharedFolder -> sharing.openSharedFolder(action.path)

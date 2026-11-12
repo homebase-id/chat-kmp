@@ -351,7 +351,7 @@ None of Skia's sampling modes is good enough, and neither is a simple area avera
 | | iOS | Android |
 |---|---|---|
 | **Decode** | ImageIO, `CGImageSourceCreateThumbnailAtIndex`: reads HEIC and RAW directly, applies orientation, and decodes only as large as asked | `ImageDecoder`, which applies orientation and reads HEIC directly, with BitmapFactory as the fallback. JPEG shrinks properly while decoding (by 2, 4 or 8); HEIC, PNG and WebP shrinking skips pixels or scales bilinearly, so they decode at full size (#2302) |
-| **Scale** | Accelerate's `vImageScale_ARGB8888` with `kvImageHighQualityResampling` (Lanczos), between the Skia images' own raster pixels (`ImageResample.native.kt`) | No system high-quality resampler, so `stb_image_resize2` with a Lanczos-3 kernel through the NDK, on `AndroidBitmap_lockPixels` (`homebase-imageresize`, its own Android library because the KMP Android plugin can't build native code) |
+| **Scale** | Accelerate's `vImageScale_ARGB8888` with its default Lanczos-3, between the Skia images' own raster pixels (`ImageResample.native.kt`). `kvImageHighQualityResampling` would pick Lanczos-5, which costs more and differs from the other platforms | No system high-quality resampler, so `stb_image_resize2` with a Lanczos-3 kernel through the NDK, on `AndroidBitmap_lockPixels` (`homebase-imageresize`, its own Android library because the KMP Android plugin can't build native code) |
 | **Encode** | WebP through Skia's bundled libwebp, since iOS has no system WebP encoder | `Bitmap.compress`, unless a bundled libwebp measures better |
 | **Pixel hand-off** | Draw straight into the destination's native memory, never into a Kotlin `ByteArray`, which is up to 50 MB on the Kotlin/Native heap (#2236) | Bitmaps already live in native memory |
 
@@ -377,7 +377,9 @@ Every platform has one interface, `ImageSource` plus `PipelineBitmap`, whose KDo
 |---|---|---|
 | **Photos (Photobase)** | **Keeps everything,** in every setting: GPS, EXIF and XMP. It's the user's own zero-knowledge encrypted library. | None |
 | **Chat** | **Always stripped** (`PayloadBundleEncryptionService.scrubImageMetadata`, #1297), so recipients don't get the sender's location or camera serial | None |
-| **Moments** | Unchanged: the per-image location selector decides whether GPS travels, in the `MediaInfo` sidecar | None |
+| **Moments** | **Stripped** by the same upload scrub as chat, HEIC on Original included. The per-image location selector decides whether GPS travels, in the `MediaInfo` sidecar | None |
+
+The scrubber handles JPEG, PNG, WebP and HEIC. Any other image format (GIF, BMP, an AVIF branded `avif`), or a file in one of those four that the scrubber can't parse, goes out with its metadata intact, and the upload logs a warning naming the format. A file cut off inside a metadata segment has the rest of that segment dropped.
 
 **One API, one required parameter.** The same pipeline serves chat and Photos, so the caller says what happens to the final image's metadata. The parameter is something like `metadata = Keep` or `Strip`.
 

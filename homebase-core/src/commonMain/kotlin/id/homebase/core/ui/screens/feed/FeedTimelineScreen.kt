@@ -24,7 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
@@ -79,6 +81,7 @@ import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_reactors_partial
+import id.homebase.resources.feed_timeline_compose_action
 import id.homebase.resources.feed_timeline_empty_body
 import id.homebase.resources.feed_timeline_empty_title
 import id.homebase.resources.feed_timeline_error_body
@@ -101,6 +104,7 @@ fun FeedTimelineScreen(
     viewModel: FeedTimelineViewModel = koinViewModel(),
     onNavigateToDetail: (Uuid) -> Unit,
     onNavigateToFollowing: () -> Unit,
+    onNavigateToComposer: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
     onFullScreenMediaChanged: (Boolean) -> Unit = {},
     scrollToTop: Boolean = false,
@@ -185,6 +189,13 @@ fun FeedTimelineScreen(
                         }
                     },
                     scrollBehavior = scrollBehavior,
+                )
+            },
+            floatingActionButton = {
+                ExtendedFloatingActionButton(
+                    onClick = onNavigateToComposer,
+                    icon = { Icon(imageVector = Icons.Rounded.Edit, contentDescription = null) },
+                    text = { Text(stringResource(MR.string.feed_timeline_compose_action)) },
                 )
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -383,7 +394,7 @@ private fun FeedTimelineList(
         LazyColumn(
             state = listState,
             modifier = columnModifier,
-            contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
+            contentPadding = PaddingValues(top = 10.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(uiState.posts, key = { it.id.toString() }) { post ->

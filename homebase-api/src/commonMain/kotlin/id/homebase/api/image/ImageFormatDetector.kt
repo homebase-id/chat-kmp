@@ -77,7 +77,14 @@ object ImageFormatDetector {
         isAnimatedGif(bytes) || isAnimatedWebp(bytes) || isAnimatedPng(bytes) || isImageSequence(bytes)
 
     // An APNG announces itself with an acTL chunk before the first image data.
-    private fun isAnimatedPng(b: ByteArray): Boolean {
+    private fun isAnimatedPng(b: ByteArray): Boolean = pngAnimation(b) == true
+
+    /** False when [header] is a PNG cut off before its acTL or IDAT, so [isAnimated] can't tell from it. */
+    fun answersIsAnimated(header: ByteArray): Boolean =
+        header.size < 8 || header[0] != 0x89.toByte() || header.decodeToString(1, 4) != "PNG" || pngAnimation(header) != null
+
+    // Null when the chunks run off the end of [b] before acTL or IDAT.
+    private fun pngAnimation(b: ByteArray): Boolean? {
         if (b.size < 8 || b[0] != 0x89.toByte() || b.decodeToString(1, 4) != "PNG") return false
         var at = 8
         while (at + 8 <= b.size) {
@@ -85,10 +92,11 @@ object ImageFormatDetector {
             if (type == "acTL") return true
             if (type == "IDAT") return false
             val length = u32be(b, at)
-            if (length < 0 || length > b.size - at - 12) return false
+            if (length < 0) return false
+            if (length > b.size - at - 12) return null
             at += 12 + length
         }
-        return false
+        return null
     }
 
     // Animated HEIC and AVIF are ISO image sequences, declared as the major brand or a compatible one.

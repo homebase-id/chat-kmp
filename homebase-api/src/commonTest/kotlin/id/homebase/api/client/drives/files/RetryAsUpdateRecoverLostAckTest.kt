@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.test.runTest
 
 /**
  * Reproduction + fix for the stuck image-to-Leela upload (homebase.log
@@ -126,14 +127,79 @@ class RetryAsUpdateRecoverLostAckTest {
     }
 
     @Test
-    fun headerOnlyRequestDoesNotRecoverHere() {
-        // No payloads → the header-only divergence path
-        // (rekeyedUpdateForExistingServerFile) owns this case, not us.
+    fun headerOnlyRequestIsNotThePayloadRule() {
+        // No payloads: the payload rule never applies; the header-only rule
+        // (serverFileIsOurLandedHeaderOnlyCreate) owns this case.
         val clientKey = KeyHeader.newRandom16()
         assertFalse(
             serverFileIsOurLandedCreate(
                 clientRequest(clientKey, payloadKeys = emptyList()),
                 serverFile(sameKeyAs(clientKey)),
+            ),
+        )
+    }
+
+    private suspend fun headerOnlyRequest(clientKey: KeyHeader, plaintext: String?): UploadFileRequest {
+        val request = clientRequest(clientKey, payloadKeys = emptyList())
+        return request.copy(metadata = request.metadata.copy(appData = request.metadata.appData.copy(content = plaintext)).encryptContent(clientKey))
+    }
+
+    private fun headerOnlyServerFile(keyHeader: KeyHeader, plaintext: String?): HomebaseFile {
+        val file = serverFile(keyHeader, payloadKeys = emptyList())
+        return file.copy(fileMetadata = file.fileMetadata.copy(appData = file.fileMetadata.appData.copy(content = plaintext)))
+    }
+
+    @Test
+    fun headerOnlyCreateWithSameKeyIvAndContentIsRecovered() = runTest {
+        val clientKey = KeyHeader.newRandom16()
+        assertTrue(
+            serverFileIsOurLandedHeaderOnlyCreate(
+                headerOnlyRequest(clientKey, "hello"),
+                headerOnlyServerFile(clientKey, "hello"),
+            ),
+        )
+    }
+
+    @Test
+    fun headerOnlyCreateWithDifferentContentIsNotRecovered() = runTest {
+        val clientKey = KeyHeader.newRandom16()
+        assertFalse(
+            serverFileIsOurLandedHeaderOnlyCreate(
+                headerOnlyRequest(clientKey, "hello"),
+                headerOnlyServerFile(clientKey, "replaced"),
+            ),
+        )
+    }
+
+    @Test
+    fun headerOnlyCreateWithDifferentIvIsNotRecovered() = runTest {
+        val clientKey = KeyHeader.newRandom16()
+        assertFalse(
+            serverFileIsOurLandedHeaderOnlyCreate(
+                headerOnlyRequest(clientKey, "hello"),
+                headerOnlyServerFile(sameKeyAs(clientKey), "hello"),
+            ),
+        )
+    }
+
+    @Test
+    fun headerOnlyCreateWithDifferentKeyIsNotRecovered() = runTest {
+        val clientKey = KeyHeader.newRandom16()
+        assertFalse(
+            serverFileIsOurLandedHeaderOnlyCreate(
+                headerOnlyRequest(clientKey, "hello"),
+                headerOnlyServerFile(KeyHeader.newRandom16(), "hello"),
+            ),
+        )
+    }
+
+    @Test
+    fun payloadRequestIsNotTheHeaderOnlyRule() = runTest {
+        val clientKey = KeyHeader.newRandom16()
+        assertFalse(
+            serverFileIsOurLandedHeaderOnlyCreate(
+                clientRequest(clientKey),
+                serverFile(clientKey),
             ),
         )
     }
