@@ -10,6 +10,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.upload.CreateFileResult
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -31,6 +32,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
 import kotlinx.coroutines.sync.Mutex
@@ -125,6 +127,11 @@ class DriveOutboxUploader(
                 runCatching { rekeyCacheAfterCreate(request, result) }.onFailure {
                     Logger.w("$TAG uploadNewFile: cache rekey failed (non-fatal) uniqueId=${request.metadata.appData.uniqueId}", it)
                 }
+                if (request.fileSystemType == FileSystemType.Comment) {
+                    runCatching { adoptServerIdentity(request, result, eventBus) }.onFailure {
+                        Logger.w("$TAG uploadNewFile: server identity adopt failed (non-fatal) uniqueId=${request.metadata.appData.uniqueId}", it)
+                    }
+                }
             }
         // region Recovery: missing conversation file
         // If the server already has a file with this uniqueId (e.g. stale/archived
@@ -182,6 +189,27 @@ class DriveOutboxUploader(
             "$TAG rekeyCacheAfterCreate: moved cache entries uniqueId=$uniqueId " +
                     "old=${local.fileId} new=${result.fileId} receipts=${result.payloads.size}"
         )
+    }
+
+    // Sync never reads the Comment file system, so this is the only way the local copy learns the fileId and
+    // versionTag its edit and delete are addressed by. Runs after the rekey, which keys off the optimistic fileId.
+    private suspend fun adoptServerIdentity(request: UploadFileRequest, result: CreateFileResult, eventBus: EventBus) {
+        val uniqueId = request.metadata.appData.uniqueId ?: return
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val local = databaseManager.driveMainIndex
+            .selectHomebaseFileByUnique(identityId, request.driveId, uniqueId) ?: return
+        if (local.fileMetadata.versionTag != null) return
+        val adopted = local.copy(
+            fileId = result.fileId,
+            fileMetadata = local.fileMetadata.copy(
+                versionTag = result.newVersionTag,
+                globalTransitId = result.globalTransitId ?: local.fileMetadata.globalTransitId,
+                updated = local.fileMetadata.updated.addMilliseconds(1),
+            ),
+        )
+        val written = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
+            .baseUpsertEntryZapZap(identityId, request.driveId, listOf(adopted), cursor = null)
+        if (written.isNotEmpty()) eventBus.emit(BackendEvent.DataEvent.BatchReceived(request.driveId, written))
     }
 
     // region Recovery: missing conversation file — retry UploadNewFile as update
@@ -346,7 +374,7 @@ class DriveOutboxUploader(
                 fileProvider.hardDeleteFile(request.driveId, fileId, request.recipients)
             }
         } else {
-            fileProvider.deleteFiles(request.driveId, request.fileIds, request.recipients)
+            fileProvider.deleteFiles(request.driveId, request.fileIds, request.recipients, request.fileSystemType)
         }
     }
 

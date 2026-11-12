@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.SecurityGroupType
@@ -387,6 +388,30 @@ class PostCommentsServiceTest {
         }
 
     private val channelTarget = TargetDrive(channelDrive, FeedProtocol.ChannelDriveType)
+
+    @Test
+    fun removeComment_onAFollowedPostComment_deletesFromTheCommentFileSystemOnTheDriveItWasUploadedTo() =
+        runFeedTest {
+            val author = OdinId("author.example.com")
+            val gtid = Uuid.random()
+            seedFollowedPost(gtid, author)
+            advanceUntilIdle()
+            val commentId = Uuid.random()
+            val service = service()
+            service.postComment(postId = gtid, body = "oops", commentUniqueId = commentId)
+            advanceUntilIdle()
+
+            service.removeComment(commentId)
+            advanceUntilIdle()
+
+            val rows = buildList { while (true) add(env.databaseManager.outbox.checkout() ?: break) }
+            val delete = OdinSystemSerializer.deserialize<DeleteLocalFilesByFileIdRequest>(
+                rows.single { it.uploadType == DriveOutboxUploader.DeleteFile }.json.decodeToString()
+            )
+            assertEquals(channelDrive, delete.driveId, "the comment was uploaded to the channel drive")
+            assertEquals(FileSystemType.Comment, delete.fileSystemType)
+            assertEquals(listOf(author), delete.recipients)
+        }
 
     @Test
     fun postComment_onOwnPost_isUploadedToTheCommentFileSystemReferencingThePost() = runFeedTest {

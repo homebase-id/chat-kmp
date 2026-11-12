@@ -5,9 +5,11 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.FileMetadata
@@ -39,6 +41,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -170,6 +173,7 @@ class PostCommentsMutationTest {
         body: String,
         versionTag: Uuid,
         isEncrypted: Boolean = false,
+        referencedFile: GlobalTransitIdFileIdentifier? = null,
     ): HomebaseFile {
         val file = HomebaseFile(
             fileId = Uuid.random(),
@@ -183,6 +187,7 @@ class PostCommentsMutationTest {
                 updated = UnixTimeUtc(1_000),
                 isEncrypted = isEncrypted,
                 versionTag = versionTag,
+                referencedFile = referencedFile,
                 appData = AppFileMetaData(
                     uniqueId = commentId,
                     groupId = groupId,
@@ -284,6 +289,7 @@ class PostCommentsMutationTest {
             assertEquals(FeedProtocol.CommentFileType, request.metadata.appData.fileType)
             assertEquals(postId, request.metadata.appData.groupId)
             assertEquals(versionTag, request.metadata.versionTag)
+            assertNull(request.fileSystemType, "a comment written before the Comment file system stays Standard")
             assertFalse(
                 request.metadata.isEncrypted,
                 "an edit of a comment on a public post must stay unencrypted",
@@ -296,6 +302,31 @@ class PostCommentsMutationTest {
                 OdinSystemSerializer.deserialize(request.metadata.appData.content!!)
             assertEquals("after", content.body)
         }
+
+    @Test
+    fun updateComment_onACommentFileSystemComment_patchesTheCommentFileSystemByItsReference() = runFeedTest {
+        val postId = Uuid.random()
+        val commentId = Uuid.random()
+        val versionTag = Uuid.random()
+        val reference = GlobalTransitIdFileIdentifier(
+            Uuid.random(), TargetDrive(channelDrive, FeedProtocol.ChannelDriveType),
+        )
+        seedPost(postId)
+        seedSyncedComment(
+            commentId, groupId = postId, body = "before", versionTag = versionTag, referencedFile = reference,
+        )
+        advanceUntilIdle()
+
+        service().updateComment(commentId, versionTag, "after")
+        advanceUntilIdle()
+
+        val request = updateRequest(commentId)
+        assertEquals(FileSystemType.Comment, request.fileSystemType)
+        assertNull(request.metadata.appData.groupId, "the Comment update writer rejects a groupId")
+        assertEquals(reference, request.metadata.referencedFile)
+        assertEquals(versionTag, request.metadata.versionTag)
+        assertEquals(postId, localFile(commentId)?.fileMetadata?.appData?.groupId, "the local thread keeps its groupId")
+    }
 
     @Test
     fun updateComment_onEncryptedPost_enqueuesEncryptedUpdateWithCiphertextContent() = runFeedTest {

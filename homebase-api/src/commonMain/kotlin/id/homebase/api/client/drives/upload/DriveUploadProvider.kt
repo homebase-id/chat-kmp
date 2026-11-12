@@ -101,7 +101,7 @@ data class UpdateFileByUniqueIdRequest(
     val instructions: FileUpdateInstructionSet,
     val metadata: UploadFileMetadata,
     val payloads: List<PayloadFile>? = null,
-    val thumbnails: List<ThumbnailFile>? = null,
+    val thumbnails: List<ThumbnailFile>? = null,    val fileSystemType: FileSystemType? = null,
 )
 
 
@@ -346,7 +346,8 @@ class DriveUploadProvider(
                 fileOperationsProvider = fileOperationsProvider,
             )
 
-        val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}"
+        val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}" +
+            (request.fileSystemType?.let { "?xfst=$it" } ?: "")
 
         val result = pureUpdate(data, path, onProgress, onVersionConflict)
 

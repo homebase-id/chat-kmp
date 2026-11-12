@@ -335,7 +335,7 @@ class PostCommentsService(
         // followed post's comment is uploaded to the channel drive (403 on the feed drive otherwise).
         val uploadDrive = if (drive == feedDrive) channelDrive else drive
         val accessControlList = commentAcl(post, isPublic, inheritOwnerOnly = uploadDrive == drive)
-        val referencedFile = commentReference(drive, post, replyToCommentId)
+        val referencedFile = commentReference(post, replyToCommentId)
 
         val attachments = listOfNotNull(attachment)
         // Encryption preserves payload keys and passes preview thumbs through, so both paths derive them here.
@@ -367,14 +367,12 @@ class PostCommentsService(
                 content = content,
                 previewThumbnail = bundle.previewThumbs.minByOrNull { it.pixelWidth },
             ),
-        )
-
-        // The Comment writer refuses a groupId and addresses by ReferencedFile. [metadata] keeps the groupId
-        // for the optimistic row, which stays Standard so the local thread (indexed by groupId) renders.
-        val uploadMetadata = metadata.copy(
-            appData = metadata.appData.copy(groupId = null),
             referencedFile = referencedFile,
         )
+
+        // The Comment writer refuses a groupId. [metadata] keeps it for the optimistic row, which stays Standard
+        // so the local thread (indexed by groupId) renders; its referencedFile marks it as a Comment file.
+        val uploadMetadata = metadata.copy(appData = metadata.appData.copy(groupId = null))
 
         val transit = TransitOptions(
             recipients = recipients,
@@ -438,7 +436,7 @@ class PostCommentsService(
 
         try {
             optimisticWriter.writeNewFile(
-                driveId = drive,
+                driveId = uploadDrive,
                 keyHeader = keyHeader,
                 unecryptedMetadata = metadata,
                 originalRecipientCount = recipients.size,
@@ -466,6 +464,7 @@ class PostCommentsService(
     ): PostCommentResult {
         val (drive, existing) = findCommentLocally(commentUniqueId)
             ?: throw IllegalArgumentException("comment not found locally: $commentUniqueId")
+        val referencedFile = existing.fileMetadata.referencedFile
         if (existing.fileMetadata.versionTag != versionTag) error("VersionTag mismatch")
 
         val groupId = existing.fileMetadata.appData.groupId
@@ -476,7 +475,7 @@ class PostCommentsService(
 
         // Resolve against the OWNING POST (hop a reply's groupId), never the parent commenter, so an edit to
         // a public comment stays unencrypted/Anonymous.
-        val post = resolveOwningPost(drive, groupId)
+        val (postDrive, post) = resolveOwningPost(groupId)
             ?: error("Owning post for comment $commentUniqueId not found locally; refusing to edit")
         val recipients = recipientsFromPost(post)
         val isLocalOnly = recipients.isEmpty()
@@ -488,7 +487,7 @@ class PostCommentsService(
         } else {
             KeyHeader.empty()
         }
-        val accessControlList = commentAcl(post, isPublic)
+        val accessControlList = commentAcl(post, isPublic, inheritOwnerOnly = drive == postDrive)
 
         val content = OdinSystemSerializer.serialize(
             PostCommentContent(
@@ -511,7 +510,9 @@ class PostCommentsService(
                 content = content,
                 previewThumbnail = existing.fileMetadata.appData.previewThumbnail,
             ),
+            referencedFile = referencedFile,
         )
+        val uploadMetadata = if (referencedFile != null) metadata.copy(appData = metadata.appData.copy(groupId = null)) else metadata
 
         val request = UpdateFileByUniqueIdRequest(
             driveId = drive,
@@ -530,9 +531,10 @@ class PostCommentsService(
                 useAppNotification = false,
                 appNotificationOptions = null,
             ),
-            metadata = if (isEncrypted) metadata.encryptContent(keyHeader) else metadata,
+            metadata = if (isEncrypted) uploadMetadata.encryptContent(keyHeader) else uploadMetadata,
             payloads = emptyList(),
             thumbnails = emptyList(),
+            fileSystemType = if (referencedFile != null) FileSystemType.Comment else null,
         )
 
         val enqueued = outboxSync.replaceEnqueue(request)
@@ -558,10 +560,11 @@ class PostCommentsService(
             Logger.w(tag = TAG) { "removeComment: comment $commentUniqueId not found locally" }
             return
         }
-        val groupId = existing.fileMetadata.appData.groupId
-        val recipients = groupId?.let { resolveCommentRecipients(drive, it) }.orEmpty()
+        val recipients = existing.fileMetadata.appData.groupId
+            ?.let { recipientsFromPost(resolveOwningPost(it)?.second) }.orEmpty()
+        val fileSystemType = if (existing.fileMetadata.referencedFile != null) FileSystemType.Comment else null
 
-        optimisticWriter.deleteFile(drive, commentUniqueId, recipients.ifEmpty { null })
+        optimisticWriter.deleteFile(drive, commentUniqueId, recipients.ifEmpty { null }, fileSystemType = fileSystemType)
     }
 
 
@@ -592,7 +595,6 @@ class PostCommentsService(
     // has synced, else the post. The channel drive is read from the post's own content, since a followed post
     // sits on our feed drive.
     private suspend fun commentReference(
-        drive: Uuid,
         post: HomebaseFile,
         replyToCommentId: Uuid?,
     ): GlobalTransitIdFileIdentifier {
@@ -603,7 +605,7 @@ class PostCommentsService(
             ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
             ?: post.driveId
         val parentGlobalTransitId = replyToCommentId
-            ?.let { readPostHeader(drive, it)?.fileMetadata?.globalTransitId }
+            ?.let { findPostLocally(it)?.second?.fileMetadata?.globalTransitId }
         return GlobalTransitIdFileIdentifier(
             globalTransitId = parentGlobalTransitId ?: postGlobalTransitId,
             targetDrive = TargetDrive(alias = channel, type = FeedProtocol.ChannelDriveType),
@@ -629,11 +631,12 @@ class PostCommentsService(
 
     // groupId is either the post id (top-level) or a parent COMMENT id (a reply); hop the reply to the post so
     // recipients/encryption always resolve against the post.
-    private suspend fun resolveOwningPost(drive: Uuid, groupId: Uuid): HomebaseFile? {
-        val direct = readPostHeader(drive, groupId) ?: return null
-        if (direct.fileMetadata.appData.fileType == FeedProtocol.CommentFileType) {
-            val parentGroupId = direct.fileMetadata.appData.groupId ?: return null
-            return readPostHeader(drive, parentGroupId)
+    // A comment sits on the drive it was uploaded to, which for a followed post is not the post's drive.
+    private suspend fun resolveOwningPost(groupId: Uuid): Pair<Uuid, HomebaseFile>? {
+        val direct = findPostLocally(groupId) ?: return null
+        if (direct.second.fileMetadata.appData.fileType == FeedProtocol.CommentFileType) {
+            val parentGroupId = direct.second.fileMetadata.appData.groupId ?: return null
+            return findPostLocally(parentGroupId)
         }
         return direct
     }
@@ -646,10 +649,6 @@ class PostCommentsService(
         val author = post.fileMetadata.originalAuthor ?: post.fileMetadata.senderOdinId
         return listOfNotNull(author).filterNot { it == self }
     }
-
-    // Follows a reply's groupId to the post, reading the header locally — never a server round-trip.
-    private suspend fun resolveCommentRecipients(drive: Uuid, postOrCommentId: Uuid): List<OdinId> =
-        recipientsFromPost(resolveOwningPost(drive, postOrCommentId))
 }
 
 data class PostCommentResult(val uniqueId: Uuid)
