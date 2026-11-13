@@ -303,7 +303,7 @@ Old files are never rewritten.
 
 **One switch, at once** (decision D): readers and writers for every app and kind, in chat-kmp and odin-js, in the same release. An app that hasn't updated shows a new upload's descriptor as text until it does.
 
-odin-js reads descriptors in `community-app` (chat, Community), `common-app` (feed), `web-drop-app` and `ui-lib` (video), and writes them in `community-app` and `js-lib` (`PayloadAndThumbnailGenerator`, `PostUploadHelpers`).
+**The web apps (Michael):** the only web apps in real use are Community and the feed. **Community is standalone** (its own drives and its own descriptor content) and is unaffected. **The feed** (`common-app` in odin-js) reads feed posts' descriptor content, so it's updated in the same release. (odin-js also touches descriptor content in `web-drop-app`, `ui-lib`'s video player and `js-lib`'s upload helpers; they move with the feed where they serve it.)
 
 ## 8. Testing
 
@@ -329,7 +329,7 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 | **E** | Descriptor content uses short JSON keys (section 1); the server's own keys stay as they are. |
 | **F** | An HLS playlist is always its own payload (`pls_`), so descriptor content always fits. |
 | **G** | Stripping an AVIF or TIFF re-encodes it to WebP; GIFs aren't stripped. |
-| **H** | The odin-js half (readers and writers in the web apps) is done by the web side, not in this change. |
+| **H** | The odin-js half is done by the web side, not in this change: the feed is updated in the same release; Community is standalone and unaffected. |
 
 ## 10. Today, for reference
 
