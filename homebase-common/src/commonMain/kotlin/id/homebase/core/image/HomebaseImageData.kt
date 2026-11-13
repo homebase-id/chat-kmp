@@ -25,8 +25,6 @@ data class HomebaseImageData(
     val payloadKey: String,
     /** Embedded tiny preview thumbnail (base64) for instant display */
     val previewThumbnail: EmbeddedThumb? = null,
-    /** Not read when loading: the measured view size picks the thumbnail. */
-    val requestedSize: ImageSize? = null,
     /** The server's thumbnails for this payload; empty without a descriptor (link previews, avatars). */
     val availableThumbSizes: List<ImageSize> = emptyList(),
     /** If true, load full resolution payload instead of thumbnail */
@@ -84,7 +82,6 @@ data class HomebaseImageData(
             descriptor: PayloadDescriptor,
             keyHeader: KeyHeader,
             previewThumbnail: EmbeddedThumb? = descriptor.previewThumbnail?.toEmbeddedThumb(),
-            requestedSize: ImageSize? = null,
             availableThumbSizes: List<ImageSize> = thumbSizesFrom(descriptor.thumbnails),
             loadFullPayload: Boolean = false,
             isEncrypted: Boolean = true,
@@ -101,7 +98,6 @@ data class HomebaseImageData(
                 fileId = fileId,
                 payloadKey = descriptor.key,
                 previewThumbnail = previewThumbnail,
-                requestedSize = requestedSize,
                 availableThumbSizes = availableThumbSizes,
                 loadFullPayload = loadFullPayload,
                 isEncrypted = isEncrypted,

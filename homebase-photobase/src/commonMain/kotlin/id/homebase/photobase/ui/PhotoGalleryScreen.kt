@@ -75,7 +75,6 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.forGridTile
-import id.homebase.core.image.ImageSize
 import id.homebase.core.media.subsample.fullScreenImageSharedBounds
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -248,7 +247,6 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
         fileId = fileId,
         descriptor = payload,
         previewThumbnail = tinyPreview ?: payload.previewThumbnail?.toEmbeddedThumb(),
-        requestedSize = ImageSize.THUMB_SMALL,
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }

@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.onSecondaryPress
 import kotlin.uuid.Uuid
@@ -108,7 +107,6 @@ fun MediaGallery(
                         previewThumbnail = previewThumbnail
                             ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
                         modifier = Modifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight),
-                        imageSize = ImageSize.THUMB_LARGE,
                         onClick = { onMediaClick?.invoke(payloads[0]) },
                         onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
                         sharedTransitionScope = sharedTransitionScope,
@@ -208,7 +206,6 @@ private fun TwoImageLayout(
                 keyHeader = keyHeader,
                 previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                 modifier = Modifier.weight(1f).fillMaxSize().onCellSecondaryPress(payload, onMediaSecondaryPress),
-                imageSize = ImageSize.THUMB_SMALL,
                 shape = RectangleShape,
                 onClick = { onMediaClick?.invoke(payload) },
                 onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
@@ -258,7 +255,6 @@ private fun ThreeImageLayout(
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                     keyHeader = keyHeader,
                     modifier = Modifier.weight(1f).fillMaxSize().onCellSecondaryPress(payload, onMediaSecondaryPress),
-                    imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = { onMediaClick?.invoke(payload) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
@@ -279,7 +275,6 @@ private fun ThreeImageLayout(
             keyHeader = keyHeader,
             previewThumbnail = payloads[2].previewThumbnail?.toEmbeddedThumb(),
             modifier = Modifier.fillMaxWidth().height(rowHeight).onCellSecondaryPress(payloads[2], onMediaSecondaryPress),
-            imageSize = ImageSize.THUMB_MEDIUM,
             shape = RectangleShape,
             onClick = { onMediaClick?.invoke(payloads[2]) },
             onLongPress = { offset -> onMediaLongPress?.invoke(payloads[2], offset) },
@@ -329,7 +324,6 @@ private fun FourPlusImageLayout(
                     keyHeader = keyHeader,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                     modifier = Modifier.weight(1f).fillMaxSize().onCellSecondaryPress(payload, onMediaSecondaryPress),
-                    imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = { onMediaClick?.invoke(payload) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
@@ -355,7 +349,6 @@ private fun FourPlusImageLayout(
                 keyHeader = keyHeader,
                 previewThumbnail = payloads[2].previewThumbnail?.toEmbeddedThumb(),
                 modifier = Modifier.weight(1f).fillMaxSize().onCellSecondaryPress(payloads[2], onMediaSecondaryPress),
-                imageSize = ImageSize.THUMB_SMALL,
                 shape = RectangleShape,
                 onClick = { onMediaClick?.invoke(payloads[2]) },
                 onLongPress = { offset -> onMediaLongPress?.invoke(payloads[2], offset) },
@@ -375,7 +368,6 @@ private fun FourPlusImageLayout(
                     keyHeader = keyHeader,
                     previewThumbnail = payloads[3].previewThumbnail?.toEmbeddedThumb(),
                     modifier = Modifier.fillMaxSize().onCellSecondaryPress(payloads[3], onMediaSecondaryPress),
-                    imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = { onMediaClick?.invoke(payloads[3]) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[3], offset) },

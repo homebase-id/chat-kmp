@@ -62,7 +62,6 @@ import id.homebase.chat.widget.LocationPreviewCard
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.ui.theme.Dimens
@@ -86,7 +85,6 @@ fun MomentMediaItem(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     modifier: Modifier = Modifier,
     keyHeader: KeyHeader,
-    imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
     // Set when the host gives an explicit size (comments-shrink band, detail/reels pager page): without it the
     // intrinsic `.aspectRatio()` below sizes the image to its own ratio and overflows that box.
@@ -234,7 +232,6 @@ fun MomentMediaItem(
                         descriptor = payload,
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
-                        requestedSize = imageSize,
                         isEncrypted = payloadIv != null,
                         keyHeader = payloadIv
                             ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
@@ -301,7 +298,7 @@ fun MomentMediaItem(
                 )
             } else {
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
+                    remember(driveId, fileId, payload.key, payload.lastModified) {
                         // Public feed posts are unencrypted: a plaintext payload carries
                         // no IV. Build a plaintext request (isEncrypted=false, empty
                         // keyHeader) rather than bailing to an empty Box — the server's
@@ -315,7 +312,6 @@ fun MomentMediaItem(
                             descriptor = payload,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
-                            requestedSize = imageSize,
                             isEncrypted = payloadIv != null,
                             keyHeader = payloadIv
                                 ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
@@ -381,7 +377,6 @@ fun MomentMediaItem(
                     descriptor = payload,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
-                    requestedSize = ImageSize.THUMB_MEDIUM,
                     isEncrypted = payloadIv != null,
                     keyHeader = perPayloadKeyHeader,
                     remoteOdinId = remoteOdinId,

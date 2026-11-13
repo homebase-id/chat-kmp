@@ -63,7 +63,6 @@ import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
@@ -94,7 +93,6 @@ import kotlin.uuid.Uuid
  * @param driveId The drive ID where the file is stored
  * @param previewThumbnail Optional embedded preview thumbnail for instant display
  * @param modifier Modifier for the container
- * @param imageSize Desired image size for loading
  * @param preserveAspectRatio If true, use ContentScale.Fit to maintain aspect ratio; if false, use
  * Crop
  * @param onClick Callback when media is tapped
@@ -109,7 +107,6 @@ fun MediaItem(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     modifier: Modifier = Modifier,
     keyHeader: KeyHeader,
-    imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
     isSticker: Boolean = false,
     onClick: (() -> Unit)? = null,
@@ -294,7 +291,7 @@ fun MediaItem(
                 // Remember the image data to avoid creating a new instance on every recomposition,
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize, contentType) {
+                    remember(driveId, fileId, payload.key, payload.lastModified, contentType) {
                         val payloadIv = payload.iv?.bytes ?: return@remember null
                         HomebaseImageData.from(
                             driveId = driveId,
@@ -302,7 +299,6 @@ fun MediaItem(
                             descriptor = payload,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
-                            requestedSize = imageSize,
                             keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
                         )
                     }
@@ -374,7 +370,6 @@ fun MediaItem(
                         descriptor = payload,
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
                         // Video payloads never carry server thumbnails; request the measured size.
                         availableThumbSizes = emptyList(),
                         keyHeader = perPayloadKeyHeader,
@@ -567,7 +562,6 @@ fun MediaItem(
                         fileId = fileId,
                         descriptor = payload,
                         previewThumbnail = previewThumb,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
                         keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey),
                     )
                 }

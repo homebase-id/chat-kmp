@@ -52,7 +52,6 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.forGridTile
-import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.MomentsAlbumZoom
 import coil3.compose.AsyncImage
 import id.homebase.core.moments.services.MomentFeedItem
@@ -281,7 +280,6 @@ private fun AlbumMomentCell(
                         // while it waits for the server-generated thumbnail.
                         previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
                             ?: moment.previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
                         keyHeader = id.homebase.api.client.KeyHeader(
                             iv = payloadIv,
                             aesKey = moment.keyHeader.aesKey,

@@ -48,7 +48,6 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
@@ -121,7 +120,6 @@ fun AgentUiBubble(
                 fileId = message.fileId,
                 descriptor = p,
                 keyHeader = KeyHeader(p.iv!!.bytes, aesKey),
-                requestedSize = ImageSize.THUMB_MEDIUM,
             )
         }
     }

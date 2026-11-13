@@ -47,7 +47,6 @@ import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.chat.widget.video.nativeVideoControlsOwnTopCorners
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_play_video
 import id.homebase.resources.cd_pause_video
@@ -154,7 +153,6 @@ fun FullScreenVideoPlayer(
                                         driveId = data.driveId,
                                         fileId = data.fileId,
                                         descriptor = data.payload,
-                                        requestedSize = ImageSize.THUMB_MEDIUM,
                                         availableThumbSizes = emptyList(),
                                         isEncrypted = payloadIv != null,
                                         keyHeader = payloadIv
