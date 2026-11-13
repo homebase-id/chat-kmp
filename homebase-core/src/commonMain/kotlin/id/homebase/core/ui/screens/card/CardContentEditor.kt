@@ -37,9 +37,6 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.unit.Dp
 import id.homebase.core.widget.connectedButtonShapes
-import id.homebase.resources.profile_card_content_hidden_circle
-import id.homebase.resources.profile_card_content_hidden_desc
-import id.homebase.resources.profile_card_content_hidden_public
 import id.homebase.resources.profile_card_content_not_on_card_desc_public
 import id.homebase.resources.profile_card_content_on_card_desc_reorder
 import id.homebase.resources.profile_card_content_saving
@@ -169,6 +166,7 @@ import id.homebase.resources.profile_card_content_front_empty
 import id.homebase.resources.profile_card_content_back
 import id.homebase.resources.profile_card_content_back_desc
 import id.homebase.resources.profile_card_content_unavailable
+import id.homebase.resources.profile_card_content_unavailable_count
 import id.homebase.resources.profile_card_content_unavailable_desc
 import id.homebase.resources.profile_card_content_unavailable_names_more
 import id.homebase.resources.profile_card_content_unavailable_only
@@ -461,11 +459,8 @@ internal fun CardContentEditor(
         if (couldAdd.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             CollapsedGroup(
-                title = stringResource(
-                    if (card is CardAudience.Circle) MR.string.profile_card_content_hidden_circle else MR.string.profile_card_content_hidden_public,
-                    couldAdd.size,
-                ),
-                description = stringResource(MR.string.profile_card_content_hidden_desc),
+                title = stringResource(MR.string.profile_card_content_unavailable_count, couldAdd.size),
+                description = stringResource(MR.string.profile_card_content_unavailable_desc),
                 icon = Icons.Outlined.VisibilityOff,
                 tag = "not_visible",
             ) {

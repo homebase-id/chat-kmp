@@ -2546,6 +2546,7 @@
     <string name="profile_card_content_unavailable_only_me">Only you</string>
     <string name="profile_card_content_unavailable_only">Only %1$s</string>
     <string name="profile_card_content_unavailable_names_more">%1$s and %2$d more</string>
+    <string name="profile_card_content_unavailable_count">Not shared (%1$d)</string>
     <string name="profile_card_content_unavailable_desc">People with this card can't see these</string>
     <string name="profile_card_field_to_back">Move %1$s to Shared, not shown</string>
     <string name="profile_card_field_to_front">Show %1$s on the card</string>
@@ -2553,9 +2554,6 @@
     <string name="profile_card_field_add_title">Add %1$s to this card</string>
     <string name="profile_card_sheet_available_on">Available on:</string>
     <string name="profile_card_content_not_on_card_desc_public">Still public on your profile.</string>
-    <string name="profile_card_content_hidden_public">Not visible to everyone (%1$d)</string>
-    <string name="profile_card_content_hidden_circle">Not visible to this circle (%1$d)</string>
-    <string name="profile_card_content_hidden_desc">Change who can see one to put it on this card.</string>
     <string name="profile_card_content_sees_public">Anyone with your link sees this card</string>
     <string name="profile_card_content_sees_circle">Only this circle sees this card</string>
     <string name="profile_card_content_saving">Saving…</string>
