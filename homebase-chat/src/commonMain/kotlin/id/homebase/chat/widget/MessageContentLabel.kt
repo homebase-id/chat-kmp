@@ -174,7 +174,7 @@ fun payloadPreviewKind(firstPayload: PayloadDescriptor?, hasMultiplePayloads: Bo
     // hasMultiplePayloads is already false here, so this is the single-payload case the
     // sticker bubble (MediaMessage) recognises — surface "Sticker" instead of "Image".
     firstPayload.isImage() &&
-        (firstPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true -> PayloadPreviewKind.Sticker
+        firstPayload.imageFile()?.isSticker == true -> PayloadPreviewKind.Sticker
     firstPayload.contentType == "image/gif" -> PayloadPreviewKind.Gif
     firstPayload.isImage() -> PayloadPreviewKind.Image
     firstPayload.isVideo() -> PayloadPreviewKind.Video

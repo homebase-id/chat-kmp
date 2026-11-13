@@ -8,7 +8,6 @@ import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import kotlin.uuid.Uuid
 
@@ -47,7 +46,6 @@ fun PayloadDescriptor.replyQuoteImageData(
         fileId = fileId,
         descriptor = this,
         previewThumbnail = previewThumbnail?.toEmbeddedThumb() ?: fallbackPreview,
-        requestedSize = ImageSize.THUMB_SMALL,
         availableThumbSizes = emptyList(),
         keyHeader = KeyHeader(iv = payloadIv, aesKey = aesKey),
     )

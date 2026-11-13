@@ -81,8 +81,8 @@ private suspend fun mediaImagesFrom(
     val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
     val media = renderPlanned(source, payloadKey, displayedSize = null) { size ->
-        val plan = planMediaImages(size, setting)
-        plan.copy(thumbnails = if (gif) emptyList() else plan.thumbnails, finalImage = if (keepsItsFile) null else plan.finalImage)
+        val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)
+        if (gif) plan.copy(thumbnails = emptyList()) else plan
     }
     // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
     val natural = media.displayedSize
@@ -98,7 +98,7 @@ private suspend fun createSvgImages(bytes: ByteArray, payloadKey: String, settin
     return try {
         val raster = ImageUtils.rasterizeSvg(bytes, largestThumbnailLongEdge(setting), ImageFormat.PNG, 100)
         openImageSource(raster.bytes).use { source ->
-            renderPlanned(source, payloadKey, natural) { planMediaImages(it, setting).copy(finalImage = null) }
+            renderPlanned(source, payloadKey, natural) { planMediaImages(it, setting, makesFinalImage = false) }
         }
     } catch (e: Exception) {
         if (e is CancellationException) throw e

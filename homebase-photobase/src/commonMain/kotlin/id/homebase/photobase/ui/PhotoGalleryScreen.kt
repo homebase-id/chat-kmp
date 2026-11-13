@@ -74,7 +74,7 @@ import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
+import id.homebase.core.image.forGridTile
 import id.homebase.core.media.subsample.fullScreenImageSharedBounds
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -223,7 +223,7 @@ private fun GalleryViewer(
 @Composable
 private fun VideoStill(item: PhotoGalleryItem) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
-        item.tileImageData()?.let { imageData ->
+        remember(item.fileId, item.payload.key) { item.tileImageData() }?.let { imageData ->
             HomebaseImage(
                 imageData = imageData,
                 contentDescription = stringResource(MR.string.photobase_gallery_video),
@@ -247,8 +247,6 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
         fileId = fileId,
         descriptor = payload,
         previewThumbnail = tinyPreview ?: payload.previewThumbnail?.toEmbeddedThumb(),
-        requestedSize = ImageSize.THUMB_SMALL,
-        thumbSizeLimit = ImageSize.THUMB_SMALL,
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }
@@ -441,7 +439,7 @@ private fun PhotoCell(
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .clickable(onClick = onClick),
     ) {
-        val imageData = remember(item.fileId, item.payload.key) { item.tileImageData() }
+        val imageData = remember(item.fileId, item.payload.key) { item.tileImageData()?.forGridTile() }
         if (imageData != null) {
             HomebaseImage(
                 imageData = imageData,

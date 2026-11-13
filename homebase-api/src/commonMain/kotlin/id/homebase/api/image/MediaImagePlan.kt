@@ -53,11 +53,11 @@ internal fun largestThumbnailLongEdge(setting: MediaQuality): Int {
     return (if (setting == MediaQuality.ORIGINAL) rows else rows.dropLast(1)).last().longEdge
 }
 
-/** Pure integer math on the displayed size: nothing here decodes, scales or encodes. */
-fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
+/** Pure integer math on the displayed size. [makesFinalImage] is false where the file stays the payload. */
+fun planMediaImages(source: ImageSize, setting: MediaQuality, makesFinalImage: Boolean = true): MediaImagePlan {
     val rows = ROWS.mapNotNull { row -> row.quality(setting)?.let { row to it } }
-    val finalRow = if (setting == MediaQuality.ORIGINAL) null else rows.last()
-    val thumbnailRows = if (finalRow == null) rows else rows.dropLast(1)
+    val thumbnailRows = if (setting == MediaQuality.ORIGINAL) rows else rows.dropLast(1)
+    val finalRow = if (setting == MediaQuality.ORIGINAL || !makesFinalImage) null else rows.last()
 
     val thumbnails = mergeNearSizes(
         thumbnailRows.map { (row, quality) -> sized(source, row.longEdge, row.minShortEdge, row.longestEdgeAllowed, quality) },
@@ -65,7 +65,7 @@ fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
     val finalImage = finalRow?.let { (row, quality) ->
         val image = sized(source, row.longEdge, row.minShortEdge, row.longestEdgeAllowed, quality).copy(rowSize = null)
         val largest = thumbnails.lastOrNull()
-        // Otherwise the sharpest thing a viewer can load would look worse than the thumbnail before it.
+        // A small source's final image is encoded no harsher than the row it stands in for.
         if (largest != null && isNearSize(largest.longEdge, image.longEdge)) {
             image.copy(quality = max(image.quality, largest.quality))
         } else {
@@ -74,10 +74,17 @@ fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
     }
     return MediaImagePlan(
         tiny = sized(source, tinyThumbSize.maxPixelDimension, 0, tinyThumbSize.maxPixelDimension, tinyThumbSize.quality, keepSourceWhenNear = false),
-        thumbnails = thumbnails,
+        thumbnails = withoutCloseSteps(thumbnails, finalImage),
         finalImage = finalImage,
     )
 }
+
+// An untouched file's bytes don't follow its pixels, so without a final image the largest thumbnail stays.
+private fun withoutCloseSteps(smallestFirst: List<PlannedImage>, finalImage: PlannedImage?) =
+    smallestFirst.foldRightIndexed(emptyList<PlannedImage>()) { index, image, kept ->
+        val above = kept.firstOrNull() ?: finalImage
+        if (index == 0 || above == null || isAStepBelow(image.longEdge, above.longEdge)) listOf(image) + kept else kept
+    }
 
 private fun sized(
     source: ImageSize,
@@ -118,3 +125,6 @@ private fun mergeNearSizes(smallestFirst: List<PlannedImage>): List<PlannedImage
 }
 
 private fun isNearSize(smaller: Int, larger: Int) = smaller.toLong() * 10 >= larger.toLong() * 9
+
+// 1.5× on the edge: below that, a thumbnail costs about as much to send as it saves a viewer.
+private fun isAStepBelow(smaller: Int, larger: Int) = larger.toLong() * 2 >= smaller.toLong() * 3

@@ -90,7 +90,8 @@ fun HomebaseImage(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     colorFilter: ColorFilter? = null,  // ← Add this par
     onLoaded: (() -> Unit)? = null,
-    stepUpToPayload: Boolean = false,
+    /** False only for a page a pager keeps composed off screen. */
+    stepUpToPayload: Boolean = true,
     /** Shows only the embedded preview and fetches nothing, unless the thumbnail is already in memory. */
     deferLoad: Boolean = false,
 ) {
@@ -126,6 +127,7 @@ fun HomebaseImage(
     var steppedUp by remember(imageData) { mutableStateOf(false) }
     var stepUpFailed by remember(imageData) { mutableStateOf(false) }
     var displaySize by remember(imageData) { mutableStateOf<ImageSize?>(null) }
+    val mayStepUp = stepUpToPayload && imageData.mayStepUp
     var lastSharpPainter by remember(imageData) { mutableStateOf<Painter?>(null) }
     val thumbnailKey = remember(imageData) { HomebaseImageKeyer.thumbnailCacheKey(imageData) }
     val model: Any = remember(imageData, platformContext, steppedUp) {
@@ -200,7 +202,7 @@ fun HomebaseImage(
         model = model,
         imageLoader = imageLoader,
         contentDescription = contentDescription,
-        modifier = if (stepUpToPayload) customModified.onSizeChanged { displaySize = ImageSize(it.width, it.height) } else customModified,
+        modifier = if (mayStepUp) customModified.onSizeChanged { displaySize = ImageSize(it.width, it.height) } else customModified,
         contentScale = contentScale,
         colorFilter = colorFilter
     ) {
@@ -208,10 +210,9 @@ fun HomebaseImage(
         if (onLoaded != null && state is AsyncImagePainter.State.Success) LaunchedEffect(Unit) { onLoaded() }
 
         val measured = displaySize
-        if (stepUpToPayload) (state as? AsyncImagePainter.State.Success)?.let { lastSharpPainter = it.painter }
-        val canStepUp = stepUpToPayload && state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
-            !imageData.loadFullPayload && !imageData.isPending &&
-            measured != null && shouldStepUpToPayload(measured, imageData)
+        if (mayStepUp) (state as? AsyncImagePainter.State.Success)?.let { lastSharpPainter = it.painter }
+        val canStepUp = mayStepUp && state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
+            measured != null && shouldStepUpToPayload(measured, imageData, crop = contentScale.crops())
         if (canStepUp) {
             // The wait is what keeps a fling from downloading every payload it passes:
             // scrolling away cancels this before it fires.
@@ -329,3 +330,6 @@ private fun Modifier.animatedBlur(radiusDp: State<Float>): Modifier = graphicsLa
 
 private const val STEP_UP_SETTLE_MILLIS = 600L
 private const val PREVIEW_BLUR_DP = 10f
+
+// Coil's own mapping: everything but Fit and Inside fills the view, so the fetcher sees it as a crop too.
+internal fun ContentScale.crops(): Boolean = this != ContentScale.Fit && this != ContentScale.Inside

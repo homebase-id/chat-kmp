@@ -127,7 +127,6 @@ import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.image.ImageSize
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.MomentsViewMode
@@ -1771,7 +1770,7 @@ private fun MomentDetailContent(
                             previewThumbnail = moment.previewThumbnail,
                             keyHeader = moment.keyHeader,
                             modifier = Modifier.fillMaxSize(),
-                            imageSize = ImageSize.THUMB_XLARGE,
+                            stepUpToPayload = isActivePage && pagerState.settledPage == page,
                             // Fit (not crop) — the whole post is visible,
                             // including landscape media in a portrait viewport
                             // (and vice versa). Letterbox bars take the Box's

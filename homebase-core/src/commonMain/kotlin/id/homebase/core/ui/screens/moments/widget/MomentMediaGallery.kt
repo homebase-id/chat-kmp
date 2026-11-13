@@ -22,7 +22,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
-import id.homebase.core.image.ImageSize
 import kotlin.uuid.Uuid
 
 // Sizing is aspect-ratio driven so the gallery fills the parent's width, unlike the chat version which clamps
@@ -179,7 +178,6 @@ private fun SingleImageLayout(
             keyHeader = keyHeader,
             previewThumbnail = previewThumbnail,
             modifier = cellModifier,
-            imageSize = ImageSize.THUMB_LARGE,
             // fitBounds routes MomentMediaItem to ContentScale.Fit and makes it honour [cellModifier] instead of
             // re-imposing the image's intrinsic aspect ratio.
             preserveAspectRatio = fitToContent,

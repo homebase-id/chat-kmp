@@ -50,7 +50,6 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.vault_pdf_badge
 import id.homebase.resources.vault_upload_failed
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.resources.MR
 import org.jetbrains.compose.resources.stringResource
@@ -299,7 +298,6 @@ private fun VaultCardThumbnail(
                 it,
                 loadFullPayload = false,
                 previewThumbnail = file.previewThumbnail,
-                requestedSize = ImageSize.THUMB_MEDIUM,
             )
         }
     }

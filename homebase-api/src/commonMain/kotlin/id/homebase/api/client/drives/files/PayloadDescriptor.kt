@@ -124,6 +124,8 @@ data class PayloadDescriptor(
 
     fun isAudio(): Boolean = contentType?.startsWith("audio/") == true
 
+    fun imageFile(): DescriptorContent.ImageFile? = descriptorInfo() as? DescriptorContent.ImageFile
+
     fun audioLengthSeconds(): Int? =
         (descriptorInfo() as? DescriptorContent.AudioFile)?.lengthSeconds?.takeIf { it > 0 }
 

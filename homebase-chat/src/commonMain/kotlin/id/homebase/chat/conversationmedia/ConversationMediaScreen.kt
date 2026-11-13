@@ -58,7 +58,6 @@ import id.homebase.chat.widget.LocationListRow
 import id.homebase.chat.widget.MediaItem
 import id.homebase.chat.widget.rememberSharedMediaSaver
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.widget.AudioPlayerWidget
@@ -202,7 +201,6 @@ private fun MediaGridTab(
                     driveId = chatTargetDrive.alias,
                     previewThumbnail = item.previewThumbnail,
                     keyHeader = item.keyHeader,
-                    imageSize = ImageSize.THUMB_MEDIUM,
                     isSticker = item.isSticker,
                     modifier = Modifier.fillMaxSize(),
                     shape = RoundedCornerShape(8.dp),

@@ -11,7 +11,6 @@ import id.homebase.chat.services.sticker.SavedSticker
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_sticker_remove_failed
 import id.homebase.resources.chat_sticker_removed
@@ -180,7 +179,6 @@ internal class StickerHandler(
                 fileId = message.fileId,
                 descriptor = it,
                 previewThumbnail = it.previewThumbnail?.toEmbeddedThumb() ?: message.previewThumbnail,
-                requestedSize = ImageSize.THUMB_MEDIUM,
                 keyHeader = stickerKeyHeader,
             )
         } ?: HomebaseImageData(
@@ -188,7 +186,6 @@ internal class StickerHandler(
             fileId = message.fileId,
             payloadKey = action.payloadKey,
             previewThumbnail = message.previewThumbnail,
-            requestedSize = ImageSize.THUMB_MEDIUM,
             keyHeader = stickerKeyHeader,
         )
         messagesUiState.update {

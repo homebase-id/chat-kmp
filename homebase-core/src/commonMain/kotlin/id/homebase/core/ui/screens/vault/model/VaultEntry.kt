@@ -12,7 +12,6 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -133,7 +132,6 @@ fun VaultEntry.imageDataFor(
     descriptor: PayloadDescriptor,
     loadFullPayload: Boolean,
     previewThumbnail: EmbeddedThumb? = null,
-    requestedSize: ImageSize? = null,
 ): HomebaseImageData? {
     val ivBytes = descriptor.iv?.bytes ?: return null
     return HomebaseImageData.from(
@@ -141,7 +139,6 @@ fun VaultEntry.imageDataFor(
         fileId = fileId,
         descriptor = descriptor,
         previewThumbnail = previewThumbnail,
-        requestedSize = requestedSize,
         loadFullPayload = loadFullPayload,
         isEncrypted = isEncrypted,
         keyHeader = KeyHeader(iv = ivBytes, aesKey = keyHeader.aesKey),
