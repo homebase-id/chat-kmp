@@ -33,7 +33,8 @@ class CardAddGroupTest {
         acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.ANONYMOUS.wireValue),
     )
 
-    private fun ComposeUiTest.editor(vararg attributes: ProfileAttribute, card: CardAudience = CardAudience.Public) {
+    // The add chips belong to the profile editor; a card's editor puts them behind one Add button.
+    private fun ComposeUiTest.editor(vararg attributes: ProfileAttribute, card: CardAudience = CardAudience.Public, cards: Boolean = false) {
         val items = cardContentItems(attributes.toList(), emptyList(), card)
         setContent {
             MaterialTheme {
@@ -43,7 +44,7 @@ class CardAddGroupTest {
                     circles = emptyList(),
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    showCardsButton = true,
+                    showCardsButton = cards,
                     onAudience = { _, _ -> },
                     onEdit = { _, _, _ -> },
                     onDelete = {},
@@ -113,7 +114,7 @@ class CardAddGroupTest {
 
     @Test
     fun anEmptyCardSaysSoInOneLineOfText() = runComposeUiTest {
-        editor(card = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends"))
+        editor(card = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends"), cards = true)
         onNodeWithText("Nothing else on this card yet. Add something below.").assertExists()
     }
 }

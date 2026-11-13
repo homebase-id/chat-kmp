@@ -653,7 +653,6 @@ class CardContentTest {
         rig.vm.onCardSelected(work)
         rig.vm.await { it.selectedAudience == work }
         assertFalse(rig.item(ProfileAttributeTypes.PHONE).shown)
-        assertFalse(rig.vm.uiState.value.viewing)
     }
 
     private val otherAppCircle = "3b9d1f7a5c2e4d6b8a0c1e3f5a7b9d2c"

@@ -69,7 +69,7 @@ internal class WebCardHost(odinId: String) : CardHostBase(cardPageUrl(odinId, Ca
         is CardCommand.Render -> postCardCommand(frame, "render", command.payload.toJson(), origin)
         CardCommand.ExportPng -> postCardCommand(frame, "exportPng", null, origin)
         // A cross-origin frame runs none of our script: its colours stay the fallback ones and it paints as the browser composites it.
-        CardCommand.ProbeEdges, is CardCommand.HostStyle -> Unit
+        CardCommand.ProbeEdges, is CardCommand.HostStyle, CardCommand.ScrollToTop -> Unit
         CardCommand.RequestPaint -> onBridgeMessage("""{"type":"hostPainted"}""")
     }
 

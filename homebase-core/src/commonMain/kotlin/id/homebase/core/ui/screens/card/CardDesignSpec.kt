@@ -4,13 +4,15 @@ import id.homebase.api.util.compareStringUuId
 
 enum class CardOption {
     COLOURS,
+    BACKGROUND,
     ACCENT,
-    DISPLAY_FONT,
-    TEXT_FONT,
     PORTRAIT_SHAPE,
     SOCIALS_STYLE,
-    BLOCK_ORDER,
     BLOCK_STYLE,
+    // Entry order is the design panel's tab order.
+    BLOCK_ORDER,
+    DISPLAY_FONT,
+    TEXT_FONT,
 }
 
 /** [portraitSlots] is how many portraits the layout's preset draws; the web replaces the preset's list, so a shape override must fill every slot. */
@@ -64,7 +66,7 @@ object CardDesignSpecs {
     private val specs = listOf(
         CardDesignSpec(
             CardDesign.POSTER,
-            setOf(CardOption.COLOURS, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER, CardOption.BLOCK_STYLE),
+            setOf(CardOption.COLOURS, CardOption.BACKGROUND, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER, CardOption.BLOCK_STYLE),
             presetOrder = listOf("chat", "moments", "links"),
             schemes = listOf(
                 CardColourScheme("midnight", "#0F1626", "#EEF2FA", "#B4BCCB", "#4A505E", "#EEF2FA", listOf("#7FD4E8", "#8B7CF6", "#4FD1C5", "#F2B84B")),
@@ -186,6 +188,7 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
             ?.map { if (has(CardOption.BLOCK_STYLE)) it else it.copy(presentation = null) },
         socials = socials?.takeIf { has(CardOption.SOCIALS_STYLE) },
         fields = fields,
+        background = background?.takeIf { has(CardOption.BACKGROUND) && it in CardBackgrounds.variantsFor(design) },
     )
 }
 
@@ -209,8 +212,6 @@ internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audi
     CardAudience.Public -> PUBLIC_CARD_TEMPLATE
     is CardAudience.Circle -> FIXED_CIRCLE_TEMPLATES.firstOrNull { compareStringUuId(it.first, audience.id) }?.second
 }
-
-internal fun ProfileCard.withTemplate(template: CardTemplate): ProfileCard = copy(design = template.design, overrides = template.overrides)
 
 /** A design switch: like [prunedFor], but an accent left on a preset ground must be one that preset offers. */
 fun CardOverrides.switchedTo(design: String): CardOverrides {

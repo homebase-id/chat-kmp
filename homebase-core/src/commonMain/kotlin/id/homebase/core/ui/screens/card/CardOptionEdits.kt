@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.card
 /** The value [option] currently holds; null means the design's preset applies. */
 fun CardOverrides.valueOf(option: CardOption): String? = when (option) {
     CardOption.COLOURS -> palette?.ground
+    CardOption.BACKGROUND -> background
     CardOption.ACCENT -> palette?.accent
     CardOption.DISPLAY_FONT -> type?.display
     CardOption.TEXT_FONT -> type?.text
@@ -35,6 +36,7 @@ fun CardOverrides.with(
         }
         copy(palette = (scheme?.applyTo(palette)?.copy(accent = accent) ?: CardPalette(accent = accent)).takeUnless { it == CardPalette() })
     }
+    CardOption.BACKGROUND -> copy(background = CardBackgrounds.known(value))
     CardOption.ACCENT -> copy(palette = (palette ?: CardPalette()).copy(accent = value).takeUnless { it == CardPalette() })
     CardOption.DISPLAY_FONT -> copy(type = (type ?: CardTypeface()).copy(display = value).takeUnless { it == CardTypeface() })
     CardOption.TEXT_FONT -> copy(type = (type ?: CardTypeface()).copy(text = value).takeUnless { it == CardTypeface() })
