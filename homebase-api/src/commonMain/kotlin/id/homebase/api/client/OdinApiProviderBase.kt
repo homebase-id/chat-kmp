@@ -545,13 +545,6 @@ abstract class OdinApiProviderBase(
         return response.body
     }
 
-    protected suspend fun postChecked(endpoint: String, jsonBody: String): String {
-        val creds = requireCreds()
-        val response = encryptedPostJson(url = apiUrl(creds.domain, endpoint), token = creds.accessToken, jsonBody = jsonBody, secret = creds.secret)
-        throwForFailure(response)
-        return response.body
-    }
-
     protected suspend fun putChecked(endpoint: String, jsonBody: String) {
         val creds = requireCreds()
         throwForFailure(encryptedPutJson(url = apiUrl(creds.domain, endpoint), token = creds.accessToken, jsonBody = jsonBody, secret = creds.secret))

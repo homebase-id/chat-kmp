@@ -83,8 +83,12 @@ class FakeCallEngine(
         private set
     val iceServerUpdates = mutableListOf<List<CallIceServer>>()
 
-    override fun setIceServers(iceServers: List<CallIceServer>) {
+    var refuseIceServers = false
+
+    override fun setIceServers(iceServers: List<CallIceServer>): Boolean {
+        if (refuseIceServers) return false
         iceServerUpdates += iceServers
+        return true
     }
 
     override suspend fun restartIce(): String {

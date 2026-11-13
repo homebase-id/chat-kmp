@@ -324,12 +324,8 @@ class WebRtcKmpCallEngine(iceServers: List<CallIceServer>) : CallEngine {
         Logger.i(tag = "WebRtcKmp") { "video sender ${describeVideoSender(sender)}" }
     }
 
-    override fun setIceServers(iceServers: List<CallIceServer>) {
-        if (closed.load()) return
-        if (!peer.setConfiguration(RtcConfiguration(iceServers = iceServers.map { it.toKmp() }))) {
-            Logger.w(tag = "WebRtcKmp") { "new ICE servers refused; the next gathering keeps the old ones" }
-        }
-    }
+    override fun setIceServers(iceServers: List<CallIceServer>): Boolean =
+        !closed.load() && peer.setConfiguration(RtcConfiguration(iceServers = iceServers.map { it.toKmp() }))
 
     override suspend fun restartIce(): String = offer(OfferAnswerOptions(iceRestart = true))
 

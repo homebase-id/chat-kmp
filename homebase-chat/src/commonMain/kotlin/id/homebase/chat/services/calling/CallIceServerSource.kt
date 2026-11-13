@@ -1,61 +1,73 @@
 package id.homebase.chat.services.calling
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.calling.CallIceServer
-import id.homebase.api.client.calling.IceServersResponse
-import kotlin.time.Clock
+import id.homebase.api.client.calling.IceServerAnswer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.SerializationException
 
-/** The servers one call gathers with. [expiresAtMs] is when its TURN login stops opening relays; null without one. */
-class CallIceServers(
-    val servers: List<CallIceServer>,
-    val expiresAtMs: Long? = null,
-    val fromServer: Boolean = true,
-    val fetchedAtMs: Long = 0,
-) {
-    /** A fallback is only as good as the network was when it was made, so it is asked for again unless it is brand new. */
-    fun reusableAt(nowMs: Long) =
-        if (fromServer) expiresAtMs == null || expiresAtMs - nowMs > LOGIN_MARGIN_MS else nowMs - fetchedAtMs < FALLBACK_REUSE_MS
+/** The servers one call gathers with, and for how long after they arrived they may be used without asking again. */
+class CallIceServers(val servers: List<CallIceServer>, val reuseForMs: Long, val fromServer: Boolean = true) {
+    val hasLogin get() = servers.any { it.credential != null }
 
-    override fun toString() = "turn=${expiresAtMs != null} servers=${servers.size}" + if (fromServer) "" else " (fallback)"
+    override fun toString() = "turn=$hasLogin servers=${servers.size} reuseFor=${reuseForMs / 1000}s" + if (fromServer) "" else " (fallback)"
 
     companion object {
-        val None = CallIceServers(emptyList(), fromServer = false)
+        val None = CallIceServers(emptyList(), reuseForMs = 0, fromServer = false)
     }
 }
 
 /**
  * Asks the device's own server for a call's STUN and TURN login. When that fails or is slow (an older server, no network
- * yet), the call gathers with the STUN URLs from the socket handshake, as it did before TURN.
+ * yet), the call gathers with the STUN URLs from the socket handshake.
  */
 class CallIceServerSource(
-    private val fetch: suspend (peer: String) -> IceServersResponse,
+    private val fetch: suspend (peer: String) -> IceServerAnswer,
     private val handshakeStunUrls: StateFlow<List<String>>,
     private val timeoutMs: Long = WAIT_MS,
-    private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     suspend fun forCall(peer: String): CallIceServers = coroutineScope {
         // Both wait on the same thing (the network after a wake), so they share one wait.
         val stun = async { handshakeStunUrls.awaitStunUrls(timeoutMs) }
+        var olderServer = false
         val fetched = try {
             withTimeoutOrNull(timeoutMs) { fetch(peer) }.also { if (it == null) log.w { "no ICE servers within ${timeoutMs}ms" } }
         } catch (e: CancellationException) {
-            throw e
+            currentCoroutineContext().ensureActive()
+            log.w { "ICE servers request cancelled under us" }
+            null
+        } catch (e: NotFoundException) {
+            log.w { "this server hands out no ICE servers" }
+            olderServer = true
+            null
+        } catch (e: SerializationException) {
+            // Its message quotes the body, and the body holds the TURN login.
+            log.w { "ICE servers answer unreadable: ${e::class.simpleName}" }
+            null
         } catch (e: Exception) {
             log.w(e) { "ICE servers request failed" }
             null
         }
         if (fetched != null && fetched.iceServers.isNotEmpty()) {
             stun.cancel()
-            return@coroutineScope CallIceServers(fetched.iceServers, fetched.expiresAt?.milliseconds, fetchedAtMs = clock())
+            val validFor = fetched.loginValidForMs
+            // Without a login the server may only be over its per-minute limit, so it is asked again once that has passed.
+            return@coroutineScope CallIceServers(fetched.iceServers, if (validFor != null) validFor - LOGIN_MARGIN_MS else NO_LOGIN_REUSE_MS)
         }
         val urls = stun.await()
-        CallIceServers(if (urls.isEmpty()) emptyList() else listOf(CallIceServer(urls)), fromServer = false, fetchedAtMs = clock())
+        CallIceServers(
+            if (urls.isEmpty()) emptyList() else listOf(CallIceServer(urls)),
+            reuseForMs = if (olderServer) Long.MAX_VALUE else FAILED_REUSE_MS,
+            fromServer = false,
+        )
     }
 
     private companion object {
@@ -71,4 +83,5 @@ private const val WAIT_MS = 3_000L
 
 // A relay is opened as gathering starts, so a login this close to expiry is asked for again.
 private const val LOGIN_MARGIN_MS = 30_000L
-private const val FALLBACK_REUSE_MS = 5_000L
+private const val NO_LOGIN_REUSE_MS = 60_000L
+private const val FAILED_REUSE_MS = 5_000L

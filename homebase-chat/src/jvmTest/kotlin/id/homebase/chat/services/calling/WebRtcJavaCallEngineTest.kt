@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import id.homebase.api.client.calling.CallIceServer
 import dev.onvoid.webrtc.media.MediaDevices
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule
 import java.util.concurrent.CountDownLatch
@@ -7,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +113,16 @@ class WebRtcJavaCallEngineTest {
             a.addIce("candidate:1 1 udp 2122260223 127.0.0.1 50000 typ host", "0", 0)
             a.closeBlocking()
         }
+    }
+
+    @Test
+    fun newIceServersAreTakenRefusedWithoutALoginAndIgnoredOnceClosed() = nativeTest {
+        val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
+        val turn = listOf("turn:turn.invalid:3479?transport=udp")
+        assertTrue(engine.setIceServers(listOf(CallIceServer(listOf("stun:stun.invalid:3478")), CallIceServer(turn, "user", "secret"))))
+        assertFalse(engine.setIceServers(listOf(CallIceServer(turn))))
+        engine.closeBlocking()
+        assertFalse(engine.setIceServers(listOf(CallIceServer(turn, "user", "secret"))))
     }
 
     @Test

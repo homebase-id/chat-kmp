@@ -44,6 +44,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallChannel
+import id.homebase.chat.services.calling.CallIceServers
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.CallSignalCodec
 import id.homebase.chat.services.calling.CallController
@@ -158,6 +159,7 @@ class CallWindowTest {
                 true
             },
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
+            iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
         )
         val peer = CallController(

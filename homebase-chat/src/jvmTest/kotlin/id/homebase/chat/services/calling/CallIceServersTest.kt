@@ -1,8 +1,8 @@
 package id.homebase.chat.services.calling
 
 import id.homebase.api.client.calling.CallIceServer
-import id.homebase.api.client.calling.IceServersResponse
-import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.client.NotFoundException
+import id.homebase.api.client.calling.IceServerAnswer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -55,7 +55,7 @@ class CallIceServersTest {
             asked += peer
             delay(latencyMs)
             val now = scope.testScheduler.currentTime
-            return answer?.invoke(now) ?: CallIceServers(listOf(stun, turn(asked.size)), expiresAtMs = now + lifetimeMs, fetchedAtMs = now)
+            return answer?.invoke(now) ?: CallIceServers(listOf(stun, turn(asked.size)), reuseForMs = lifetimeMs - 30_000)
         }
     }
 
@@ -81,7 +81,7 @@ class CallIceServersTest {
         return a to b
     }
 
-    private fun stunOnly(now: Long, fromServer: Boolean) = CallIceServers(listOf(stun), fromServer = fromServer, fetchedAtMs = now)
+    private fun stunOnly(fromServer: Boolean, reuseForMs: Long = 5_000) = CallIceServers(listOf(stun), reuseForMs, fromServer)
 
     @Test
     fun eachSideGathersWithTheLoginItsOwnServerHandsOutForThatPeer() = runTest {
@@ -124,7 +124,7 @@ class CallIceServersTest {
     @Test
     fun aRingWhoseRequestFailedAsksAgainOnAccept() = runTest {
         val callee = logins()
-        callee.answer = { now -> stunOnly(now, fromServer = false) }
+        callee.answer = { stunOnly(fromServer = false) }
         val (_, b) = ringing(logins(), callee)
         callee.answer = null
         advanceTimeBy(10_000)
@@ -138,7 +138,7 @@ class CallIceServersTest {
     @Test
     fun aPlacedCallWhoseRequestFailedUsesTheFallbackWithoutAskingTwice() = runTest {
         val caller = logins()
-        caller.answer = { now -> stunOnly(now, fromServer = false) }
+        caller.answer = { stunOnly(fromServer = false) }
         val (a, _) = ringing(caller, logins())
 
         assertEquals(1, caller.asked.size)
@@ -146,17 +146,51 @@ class CallIceServersTest {
     }
 
     @Test
-    fun aReconnectAfterTheLoginsExpiredGathersWithFreshOnesOnBothSides() = runTest {
-        val (a, b) = connected(logins(), logins())
+    fun aLongCallRenewsItsLoginAheadOfExpirySoAReconnectWaitsOnNothing() = runTest {
+        val caller = logins()
+        val callee = logins()
+        val (a, b) = connected(caller, callee)
+
+        advanceTimeBy(10 * 60_000)
+        assertEquals(listOf(listOf(stun, turn(2)), listOf(stun, turn(3))), a.engine.iceServerUpdates)
+        assertEquals(listOf(listOf(stun, turn(2)), listOf(stun, turn(3))), b.engine.iceServerUpdates)
+
+        a.engine.simulateDrop()
+        runCurrent()
+        assertEquals(1, a.engine.restarts)
+        assertEquals(1, b.engine.restarts)
+        assertEquals(3, caller.asked.size)
+        assertEquals(3, callee.asked.size)
+    }
+
+    @Test
+    fun aRenewalThatFailsKeepsTheServersAndTheRestartAsksAgain() = runTest {
+        val caller = logins()
+        val (a, _) = connected(caller, logins())
+        caller.answer = { stunOnly(fromServer = false) }
 
         advanceTimeBy(10 * 60_000)
         a.engine.simulateDrop()
         runCurrent()
 
-        assertEquals(listOf(listOf(stun, turn(2))), a.engine.iceServerUpdates)
-        assertEquals(listOf(listOf(stun, turn(2))), b.engine.iceServerUpdates)
+        assertEquals(3, caller.asked.size)
+        assertTrue(a.engine.iceServerUpdates.isEmpty())
         assertEquals(1, a.engine.restarts)
-        assertEquals(1, b.engine.restarts)
+    }
+
+    @Test
+    fun serversTheEngineRefusesAreNotTakenAsTheCallsOwn() = runTest {
+        val caller = logins()
+        val (a, _) = connected(caller, logins())
+        a.engine.refuseIceServers = true
+
+        advanceTimeBy(5 * 60_000)
+        assertEquals(2, caller.asked.size)
+        a.engine.simulateDrop()
+        runCurrent()
+
+        assertEquals(3, caller.asked.size)
+        assertEquals(1, a.engine.restarts)
     }
 
     @Test
@@ -176,9 +210,24 @@ class CallIceServersTest {
     }
 
     @Test
-    fun aServerWithoutTurnIsNotAskedAgainOnReconnect() = runTest {
+    fun aServerAnswerWithoutALoginIsAskedAgainOnceItsLimitWindowHasPassed() = runTest {
         val caller = logins()
-        caller.answer = { now -> stunOnly(now, fromServer = true) }
+        caller.answer = { stunOnly(fromServer = true, reuseForMs = 60_000) }
+        val (a, _) = connected(caller, logins())
+
+        advanceTimeBy(2 * 60_000)
+        caller.answer = null
+        a.engine.simulateDrop()
+        runCurrent()
+
+        assertEquals(2, caller.asked.size)
+        assertEquals(listOf(listOf(stun, turn(2))), a.engine.iceServerUpdates)
+    }
+
+    @Test
+    fun anOlderServerIsNotAskedAgainForTheRestOfTheCall() = runTest {
+        val caller = logins()
+        caller.answer = { stunOnly(fromServer = false, reuseForMs = Long.MAX_VALUE) }
         val (a, _) = connected(caller, logins())
 
         advanceTimeBy(10 * 60_000)
@@ -186,29 +235,60 @@ class CallIceServersTest {
         runCurrent()
 
         assertEquals(1, caller.asked.size)
-        assertTrue(a.engine.iceServerUpdates.isEmpty())
+        assertEquals(1, a.engine.restarts)
+    }
+
+    @Test
+    fun aRequestThatThrowsFailsThatCallOnlyAndTheNextOneWorks() = runTest {
+        val caller = logins()
+        caller.answer = { error("boom") }
+        val a = Side(frodo, this, LoopbackSignaling(now = { testScheduler.currentTime }), caller::get)
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        assertEquals(CallPhase.Ended(CallEndReason.Failed(FailReason.Other)), a.phase)
+
+        caller.answer = null
+        advanceTimeBy(1_000)
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        assertEquals(CallPhase.Outgoing, a.phase)
+        assertEquals(listOf(stun, turn(2)), a.createdWith.single())
     }
 
     @Test
     fun theServersAnswerIsUsedAsGiven() = runTest {
-        val source = CallIceServerSource({ IceServersResponse(listOf(stun, turn(1)), UnixTimeUtc(1_000_000)) }, MutableStateFlow(emptyList()))
-        val ice = source.forCall(sam)
+        val ice = CallIceServerSource({ IceServerAnswer(listOf(stun, turn(1)), loginValidForMs = 300_000) }, MutableStateFlow(emptyList())).forCall(sam)
         assertEquals(listOf(stun, turn(1)), ice.servers)
-        assertEquals(1_000_000L, ice.expiresAtMs)
+        assertEquals(270_000L, ice.reuseForMs)
         assertTrue(ice.fromServer)
     }
 
     @Test
     fun aServerWithoutTurnGivesStunOnlyWithNoExpiry() = runTest {
-        val ice = CallIceServerSource({ IceServersResponse(listOf(stun)) }, MutableStateFlow(emptyList())).forCall(sam)
+        val ice = CallIceServerSource({ IceServerAnswer(listOf(stun), loginValidForMs = null) }, MutableStateFlow(emptyList())).forCall(sam)
         assertEquals(listOf(stun), ice.servers)
-        assertEquals(null, ice.expiresAtMs)
+        assertEquals(60_000L, ice.reuseForMs)
         assertTrue(ice.fromServer)
     }
 
     @Test
     fun aFailedRequestFallsBackToTheHandshakeStun() = runTest {
-        val ice = CallIceServerSource({ throw IllegalStateException("404") }, MutableStateFlow(stun.urls)).forCall(sam)
+        val ice = CallIceServerSource({ throw IllegalStateException("offline") }, MutableStateFlow(stun.urls)).forCall(sam)
+        assertEquals(listOf(stun), ice.servers)
+        assertEquals(5_000L, ice.reuseForMs)
+        assertFalse(ice.fromServer)
+    }
+
+    @Test
+    fun anOlderServersNotFoundIsKeptForTheWholeCall() = runTest {
+        val ice = CallIceServerSource({ throw NotFoundException() }, MutableStateFlow(stun.urls)).forCall(sam)
+        assertEquals(listOf(stun), ice.servers)
+        assertEquals(Long.MAX_VALUE, ice.reuseForMs)
+    }
+
+    @Test
+    fun aCancellationFromTheRequestItselfIsAFailedRequest() = runTest {
+        val ice = CallIceServerSource({ throw kotlinx.coroutines.CancellationException("client closed") }, MutableStateFlow(stun.urls)).forCall(sam)
         assertEquals(listOf(stun), ice.servers)
         assertFalse(ice.fromServer)
     }
@@ -234,7 +314,7 @@ class CallIceServersTest {
 
     @Test
     fun aLoginNeverShowsInTheLog() {
-        val text = CallIceServers(listOf(turn(7)), expiresAtMs = 1).toString() + turn(7).toString()
+        val text = CallIceServers(listOf(turn(7)), reuseForMs = 1).toString() + turn(7).toString()
         assertFalse("secret-7" in text)
         assertFalse("login-7" in text)
     }

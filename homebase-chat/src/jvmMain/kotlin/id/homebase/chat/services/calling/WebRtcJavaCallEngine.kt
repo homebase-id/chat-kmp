@@ -469,9 +469,16 @@ class WebRtcJavaCallEngine(
 
     override suspend fun applyRemote(answerSdp: String) = setRemote(RTCSessionDescription(RTCSdpType.ANSWER, answerSdp))
 
-    override fun setIceServers(iceServers: List<CallIceServer>) = synchronized(lock) {
-        if (closed) return
-        peer.setConfiguration(peer.configuration.apply { this.iceServers = iceServers.map { it.toRtc() } })
+    // webrtc-java throws where webrtc-kmp returns false.
+    override fun setIceServers(iceServers: List<CallIceServer>): Boolean = synchronized(lock) {
+        if (closed) return false
+        try {
+            peer.setConfiguration(peer.configuration.apply { this.iceServers = iceServers.map { it.toRtc() } })
+            true
+        } catch (e: RuntimeException) {
+            Logger.w(tag = "WebRtcJava") { "ICE servers refused: ${e.message}" }
+            false
+        }
     }
 
     override suspend fun restartIce(): String = offer(RTCOfferOptions().apply { iceRestart = true })

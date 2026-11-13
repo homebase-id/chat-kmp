@@ -143,6 +143,7 @@ class CallRingCoordinatorTest {
             eventBus = EventBus(),
             relay = { _, _, blob, _ -> relayed += blob; true },
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
+            iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
         )
         val coordinator = CallRingCoordinator(service, service.transitions, sink, { null }, scope.backgroundScope)

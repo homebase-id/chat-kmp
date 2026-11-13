@@ -36,7 +36,7 @@ class CallService(
     private val eventBus: EventBus,
     private val relay: LiveRelaySend,
     private val engineFactory: CallEngineFactory?,
-    private val iceServers: suspend (peer: String) -> CallIceServers = { CallIceServers.None },
+    private val iceServers: suspend (peer: String) -> CallIceServers,
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val onCallActiveChanged: (Boolean) -> Unit = {},
