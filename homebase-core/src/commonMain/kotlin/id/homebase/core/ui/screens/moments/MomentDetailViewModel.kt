@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.core.util.extensionForContentType
+import id.homebase.api.util.safeFileName
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -15,7 +17,6 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.VideoMetadata
-import id.homebase.core.util.extensionForMimeType
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.ConversationStream
@@ -35,6 +36,7 @@ import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import id.homebase.core.settings.UserPreferences
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.core.util.saveFileName
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -713,9 +715,7 @@ class MomentDetailViewModel(
                     }
                     remuxed.first
                 } else {
-                    val extension = payload.contentType?.let { extensionForMimeType(it) }
-                        ?: payload.contentType?.substringAfter("/")
-                        ?: "bin"
+                    val extension = extensionForContentType(payload.contentType)
                     val exported = payloadDownloadService.exportToTemp(
                         driveId = moment.driveId,
                         fileId = moment.fileId,
@@ -791,7 +791,7 @@ class MomentDetailViewModel(
                         MomentDetailUiEvent.MediaSaveReady(remuxed.first, remuxed.second),
                     )
                 } else {
-                    val fullName = resolveDownloadFileName(
+                    val fullName = saveFileName(
                         payload.filename(), payloadKey, payload.contentType,
                     )
                     val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
@@ -917,34 +917,7 @@ class MomentDetailViewModel(
 
         if (!ok) return null
 
-        val base = suggestedBaseName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "video"
-        val safeBase = base.replace('/', '_').replace('\\', '_').replace(' ', '_')
-        return mp4Path to "$safeBase.mp4"
-    }
-
-    /**
-     * Safe filename for a saved payload. Trusts the descriptor's original
-     * filename when it carries an extension; otherwise derives one from the
-     * content type. Mirrors `MediaDownloadHandler.resolveDownloadFileName`.
-     */
-    private fun resolveDownloadFileName(
-        originalName: String?,
-        fallbackKey: String,
-        contentType: String?,
-    ): String {
-        val safeName = originalName
-            ?.replace('/', '_')
-            ?.replace('\\', '_')
-            ?.replace(' ', '_')
-
-        if (safeName != null && safeName.contains('.')) return safeName
-
-        val name = safeName ?: fallbackKey
-        val ext = contentType?.let { extensionForMimeType(it) }
-            ?: contentType?.substringAfter("/")
-                ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
-            ?: "bin"
-        return "$name.$ext"
+        return mp4Path to safeFileName(suggestedBaseName?.substringBeforeLast('.'), "video", "mp4")
     }
 
     /**

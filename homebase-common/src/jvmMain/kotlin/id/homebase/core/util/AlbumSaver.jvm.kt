@@ -1,5 +1,7 @@
 package id.homebase.core.util
 
+import id.homebase.api.util.freeFileName
+import id.homebase.api.util.safeFileName
 import kotlinx.io.files.Path
 import java.io.File
 
@@ -13,18 +15,15 @@ class JvmAlbumSaver : AlbumSaver {
         onError: (Throwable) -> Unit,
     ) {
         try {
-            val mimeType = detectContentTypeFromExtensionOrHint(suggestedName)
+            val safeName = safeFileName(suggestedName)
+            val mimeType = detectContentTypeFromExtensionOrHint(safeName)
             val folder = if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) {
                 "Pictures"
             } else {
                 "Downloads"
             }
             val destDir = File(System.getProperty("user.home"), folder).apply { mkdirs() }
-            val safeName = suggestedName
-                .replace('/', '_')
-                .replace('\\', '_')
-                .replace(' ', '_')
-            File(file.toString()).copyTo(File(destDir, safeName), overwrite = true)
+            File(file.toString()).copyTo(File(destDir, freeFileName(safeName) { File(destDir, it).exists() }))
             onSuccess(folder)
         } catch (e: Exception) {
             onError(e)

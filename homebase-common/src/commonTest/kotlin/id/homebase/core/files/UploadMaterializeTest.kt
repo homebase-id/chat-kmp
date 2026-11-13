@@ -70,6 +70,13 @@ class UploadMaterializeTest {
     }
 
     @Test
+    fun aPickedNameIsMadeSafeBeforeItBecomesAPathOrTheSentName() {
+        assertEquals("hyperfile.sys", sandboxCopyName("../../whatever/hyperfile.sys", "application/octet-stream"))
+        assertEquals("Q3_ Budget_.xlsx", sandboxCopyName("Q3: Budget?.xlsx", null))
+        assertEquals("notes.txt", sandboxCopyName("..\\notes", "text/plain"))
+    }
+
+    @Test
     fun sandboxCopyNameKeepsAnExistingExtensionAndSurvivesAnUnmappedMime() {
         assertEquals("IMG_2026.jpeg", sandboxCopyName("IMG_2026.jpeg", "image/jpeg"))
         assertEquals("raw-shot", sandboxCopyName("raw-shot", "image/x-not-a-real-mime"))

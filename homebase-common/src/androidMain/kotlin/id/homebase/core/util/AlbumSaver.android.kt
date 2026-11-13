@@ -9,6 +9,8 @@ import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
+import id.homebase.api.util.freeFileName
+import id.homebase.api.util.safeFileName
 import kotlinx.io.files.Path
 import java.io.File
 
@@ -23,10 +25,7 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
     ) {
-        val safeName = suggestedName
-            .replace('/', '_')
-            .replace('\\', '_')
-            .replace('\u0000', '_')
+        val safeName = safeFileName(suggestedName)
 
         // kotlinx.io.files.Path collapses `content://` to `content:/`; restore it.
         val rawPath = file.toString()
@@ -115,7 +114,7 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                     val publicDir = Environment.getExternalStoragePublicDirectory(directory)
                     val destDir = File(publicDir, ALBUM_FOLDER)
                     destDir.mkdirs()
-                    val destFile = File(destDir, safeName)
+                    val destFile = File(destDir, freeFileName(safeName) { File(destDir, it).exists() })
                     destFile.outputStream().use { out ->
                         openSource().use { it.copyTo(out) }
                     }

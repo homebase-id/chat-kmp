@@ -1,4 +1,4 @@
-package id.homebase.core.util
+package id.homebase.api.util
 
 import kotlin.test.Test
 import kotlin.test.assertContentEquals

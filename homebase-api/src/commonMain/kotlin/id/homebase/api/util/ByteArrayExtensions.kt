@@ -1,4 +1,4 @@
-package id.homebase.core.util
+package id.homebase.api.util
 
 fun ByteArray.trimToUtf8Boundary(): ByteArray {
     if (isEmpty()) return this

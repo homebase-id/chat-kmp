@@ -1,6 +1,9 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.core.util.extensionForContentType
+import id.homebase.api.util.safeFileName
 import id.homebase.api.file.FileTooLargeForMemoryException
+import id.homebase.core.util.saveFileName
 import kotlinx.coroutines.CancellationException
 import id.homebase.chat.widget.preview.chatChipPreviewKind
 import id.homebase.chat.widget.preview.decryptedCopyName
@@ -14,7 +17,6 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
-import id.homebase.core.util.extensionForMimeType
 import id.homebase.core.util.formatMediumDate
 import id.homebase.resources.chat_error_copy_image
 import id.homebase.resources.chat_image_copied
@@ -40,7 +42,6 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.chat.agentui.agentUiImagePayloads
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.util.extensionForMimeType
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_convert_video
 import id.homebase.resources.chat_error_download_file
@@ -95,9 +96,7 @@ internal class MediaDownloadHandler(
                 val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
                     )).bytes
-                val extension = payload.contentType?.let { extensionForMimeType(it) }
-                    ?: payload.contentType?.substringAfter("/")
-                    ?: "bin"
+                val extension = extensionForContentType(payload.contentType)
                 // Cleartext copy of an end-to-end-encrypted Homebase payload —
                 // STREAM-decrypted straight into the share_outbound subdir (#845:
                 // bounded RAM for any payload size, LRU untouched; the old
@@ -143,7 +142,7 @@ internal class MediaDownloadHandler(
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
                 val contentType = payload.contentType ?: return@launch
                 val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
-                val extension = extensionForMimeType(contentType) ?: contentType.substringAfter("/")
+                val extension = extensionForContentType(contentType)
                 val tempPath = chatMessageActionService.streamPayloadToUploadTemp(
                     message.fileId,
                     action.payloadKey,
@@ -221,7 +220,7 @@ internal class MediaDownloadHandler(
                         "encrypted payload requires key header"
                     )).bytes
 
-                val fullName = resolveDownloadFileName(
+                val fullName = saveFileName(
                     payload.filename(), payload.key, payload.contentType
                 )
                 val filePath =
@@ -285,7 +284,7 @@ internal class MediaDownloadHandler(
                     }
                     sendEvent(SaveFileToDevice(mp4Path, mp4Name))
                 } else {
-                    val fullName = resolveDownloadFileName(
+                    val fullName = saveFileName(
                         action.payload.filename(), action.payloadKey, action.payload.contentType
                     )
                     val filePath =
@@ -715,36 +714,7 @@ internal class MediaDownloadHandler(
             return null
         }
 
-        val base = suggestedBaseName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "video"
-        val safeBase = base.replace('/', '_').replace('\\', '_').replace('\u0000', '_')
-        return mp4Path to "$safeBase.mp4"
-    }
-
-    /**
-     * Returns a safe filename for saving a downloaded file.
-     * If the original filename (from descriptorContent) has an extension, uses it as-is.
-     * Only derives an extension from contentType when there's no original filename or no extension.
-     */
-    private fun resolveDownloadFileName(
-        originalName: String?,
-        fallbackKey: String,
-        contentType: String?,
-    ): String {
-        val safeName = originalName
-            ?.replace('/', '_')
-            ?.replace('\\', '_')
-            ?.replace('\u0000', '_')
-
-        // If the original filename has an extension, trust it completely
-        if (safeName != null && safeName.contains('.')) return safeName
-
-        // No extension in name — derive one from contentType
-        val name = safeName ?: fallbackKey
-        val ext = contentType?.let { extensionForMimeType(it) }
-            ?: contentType?.substringAfter("/")
-                ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
-            ?: "bin"
-        return "$name.$ext"
+        return mp4Path to safeFileName(suggestedBaseName?.substringBeforeLast('.'), "video", "mp4")
     }
 }
 

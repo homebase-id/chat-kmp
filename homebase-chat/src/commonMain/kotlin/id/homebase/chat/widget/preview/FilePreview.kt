@@ -55,7 +55,7 @@ import id.homebase.core.pdf.PdfPageViewer
 import id.homebase.core.pdf.pdfPageViewerAvailable
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.core.util.isWeb
-import id.homebase.core.util.trimToUtf8Boundary
+import id.homebase.api.util.trimToUtf8Boundary
 import id.homebase.resources.MR
 import id.homebase.resources.close
 import id.homebase.resources.file_preview_docx_simplified

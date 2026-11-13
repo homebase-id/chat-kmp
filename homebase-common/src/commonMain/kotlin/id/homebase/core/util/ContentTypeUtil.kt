@@ -14,6 +14,15 @@ fun detectContentTypeFromExtensionOrHint(nameOrPath: String?): String {
 
 fun extensionForMimeType(mimeType: String): String? = commonMimeToExt[mimeType]
 
+/** A sender's content type can be anything, so only a plain subtype is used as an extension; "bin" otherwise. */
+fun extensionForContentType(contentType: String?): String {
+    val type = contentType?.substringBefore(';')?.trim()?.lowercase()
+    return type?.let { extensionForMimeType(it) }
+        ?: type?.substringAfter('/', "")
+            ?.takeIf { it.length in 1..16 && it != "octet-stream" && it.all { c -> c.isLetterOrDigit() || c == '-' } }
+        ?: "bin"
+}
+
 /**
  * Resolves the best content type for a file:
  * 1. Platform-provided MIME type (if specific, i.e. not octet-stream)

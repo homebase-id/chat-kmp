@@ -2,6 +2,7 @@ package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
 import co.touchlab.kermit.Logger
+import id.homebase.api.util.safeFileName
 import kotlinx.io.files.Path
 import java.awt.Desktop
 
@@ -91,7 +92,7 @@ internal class JvmFileSystemHandler(
         javax.swing.SwingUtilities.invokeLater {
             val dest: java.io.File
             try {
-                dest = chooseSaveTarget(suggestedName) ?: return@invokeLater
+                dest = chooseSaveTarget(safeFileName(suggestedName)) ?: return@invokeLater
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "Failed to show save dialog: ${e.message}" }
                 onError(e)
