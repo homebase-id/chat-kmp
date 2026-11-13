@@ -212,8 +212,6 @@ internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audi
     is CardAudience.Circle -> FIXED_CIRCLE_TEMPLATES.firstOrNull { compareStringUuId(it.first, audience.id) }?.second
 }
 
-internal fun ProfileCard.withTemplate(template: CardTemplate): ProfileCard = copy(design = template.design, overrides = template.overrides)
-
 /** A design switch: like [prunedFor], but an accent left on a preset ground must be one that preset offers. */
 fun CardOverrides.switchedTo(design: String): CardOverrides {
     val pruned = prunedFor(design)
