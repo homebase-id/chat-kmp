@@ -5,25 +5,26 @@ package id.homebase.chat.services.sticker
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.upload.MediaUploadSpec
-import id.homebase.upload.PayloadBundle
-import id.homebase.upload.UploadImages
+import id.homebase.upload.MetadataPolicy
+import id.homebase.upload.UploadOptions
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
 import id.homebase.core.config.stickerLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.upload.UploadSource
+import id.homebase.upload.UserUploadBuilder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -111,32 +112,12 @@ class StickerService(
             val keyHeader = KeyHeader.newRandom16()
             val key = StickerProtocol.STICKER_PAYLOAD_KEY
 
-            val thumbs = try {
-                UploadImages.generate(tempPath, key, fileOperationsProvider)
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "Sticker thumbnail generation failed" }
-                null
-            }
-
-            val payload = PayloadFile(
-                key = key,
-                filePath = tempPath,
-                contentType = uploadType,
-                previewThumbnail = thumbs?.preview,
-                // PR #664 wire format: marks the payload as a transparent cut-out so
-                // receivers render it bare (no opaque bubble backdrop). The format lets a
-                // receiver pick the right decoder and a downloaded file get the right extension.
-                descriptorContent = DescriptorContent.descriptorContentFromImage(
-                    isSticker = true,
-                    format = ImageFormatDetector.detectFormat(uploadBytes),
-                ),
-            )
-
-            val bundle = PayloadBundle(
-                payloads = listOf(payload),
-                thumbnails = thumbs?.thumbnails ?: emptyList(),
-                previewThumbs = listOfNotNull(thumbs?.preview),
-            )
+            // A saved sticker is the user's cut-out, kept as it is; its metadata goes (UPLOADS.md section 5).
+            val bundle = UserUploadBuilder.build(
+                sources = listOf(UploadSource(tempPath, uploadType, sticker = true)),
+                options = UploadOptions(quality = MediaQuality.ORIGINAL, metadata = MetadataPolicy.STRIP),
+                fileOps = fileOperationsProvider,
+            ) { key }
 
             val content = OdinSystemSerializer.serialize(
                 StickerFileContent(name = name, sourceFileId = sourceFileId)

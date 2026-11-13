@@ -31,6 +31,8 @@ data class UploadSource(
     val trimEndMs: Long? = null,
     /** Web, video: the picked file's `blob:` URL, so ffmpeg reads it in JS. */
     val inputBlobUrl: String? = null,
+    /** What the app keeps on the payload for itself, such as a note's preview (`x`). */
+    val appContent: String? = null,
 )
 
 data class UploadOptions(
@@ -96,14 +98,20 @@ object UserUploadBuilder {
                 source.waveformPath?.let { UploadImages.generate(it, key, fileOps) },
             )
             else -> {
-                val video = contentType.startsWith("video/")
-                val kind = if (video) DescriptorContentV1.Kind.VIDEO else DescriptorContentV1.Kind.FILE
+                val kind = when {
+                    source.appContent != null -> DescriptorContentV1.Kind.APP
+                    contentType.startsWith("video/") -> DescriptorContentV1.Kind.VIDEO
+                    else -> DescriptorContentV1.Kind.FILE
+                }
                 Built(
                     PayloadFile(
                         key = key,
                         filePath = source.path,
                         contentType = contentType,
-                        descriptorContent = descriptor({ DescriptorContentV1(kind = kind, name = name) }, { oldName }),
+                        descriptorContent = descriptor(
+                            { DescriptorContentV1(kind = kind, name = name, appContent = source.appContent) },
+                            { source.appContent ?: oldName },
+                        ),
                         trimStartMs = source.trimStartMs,
                         trimEndMs = source.trimEndMs,
                         inputBlobUrl = source.inputBlobUrl,

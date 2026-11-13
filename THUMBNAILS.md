@@ -622,7 +622,7 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 ### Not built yet
 
-- **Every upload records its final image's size and whether it's the user's original** (#911). A view steps up only to a final image whose size is recorded, so today only chat and Moments photos do: both go through `MessageAttachmentBuilder`. Photos, Vault and stickers stop at their largest thumbnail until the shared upload factory records this for every app.
+- **Every upload records its final image's size and whether it's the user's original** (#911). Chat, Moments, the feed, Vault and saved stickers build through the shared builder and record it. Photos stops at its largest thumbnail until it moves onto the builder too.
 - **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
 
 | What | Issue |
@@ -646,7 +646,6 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 - **RAW+JPEG pairs on iOS.** Back up the RAW too, as part of the same photo? Today it's skipped. Android backs up both as separate photos; should they be linked?
 - **GIFs in Photos' grid.** Give GIFs still thumbnails from the first frame, so the grid doesn't download whole GIFs, while bubbles keep playing the file? Older clients would ignore the thumbnails and still play the file, so it's safe.
 - **Animated WebP in bubbles.** It shows still today. Animating it needs a descriptor flag, because its type is the same `image/webp` as a still image.
-- **Should Vault keep metadata?** It's the user's own encrypted storage, like Photos, but today it strips through the shared upload scrub.
 - **A source no bigger than the smallest thumbnail** (a 320×240 photo, a small sticker or screenshot). Every row clamps to the source, so the plan keeps one 320×240 thumbnail and, at Standard and HD, a 320×240 final image, which is usually dropped for the source because re-encoding saves less than a quarter. The payload and its thumbnail are then the same picture at the same size: one extra encode, and a few tens of KB stored and sent twice. Dropping the thumbnail needs the display rule changed with it: views never load an untouched file in place of a thumbnail, so with no thumbnail they would stop at the tiny. Options: make no thumbnail when the payload is no larger than the smallest row, and let views load such a payload directly; or keep the duplicate. `ThumbnailLadderTest` pins whichever we pick.
 - **Linear-light resampling.** Not used; see [How to resize well](#how-to-resize-well). Revisit only if a real-photo test shows a visible gain.
 
