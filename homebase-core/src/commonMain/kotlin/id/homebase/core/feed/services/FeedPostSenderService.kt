@@ -121,7 +121,8 @@ class FeedPostSenderService(
             enqueuePlaintextUpload(
                 outboxSync = outboxSync,
                 optimisticWriter = optimisticWriter,
-                request = UploadFileRequest(
+                fileOps = fileOps,
+                unstrippedRequest = UploadFileRequest(
                     driveId = channelId,
                     keyHeader = keyHeader,
                     metadata = metadata,

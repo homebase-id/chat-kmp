@@ -1,6 +1,7 @@
 package id.homebase.upload
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
@@ -110,30 +111,45 @@ object UploadImages {
 }
 
 /**
- * A path to the image at [path] with its EXIF/XMP removed, or [path] itself when there was nothing to
- * strip. The pixel data stays bit-identical, unlike a re-encode.
+ * [payload] with its image's EXIF/XMP removed when its app strips, for a public upload, which the outbox
+ * sends from its path: the copy is staged durably. Encrypted uploads strip in the encryption step with the
+ * same function (UPLOADS.md 3.4).
+ */
+suspend fun withMetadataStripped(payload: PayloadFile, fileOps: FileOperationsProvider): PayloadFile {
+    if (!payload.stripMetadata) return payload
+    val stripped = imageWithoutMetadata(payload.filePath, payload.contentType, fileOps) ?: return payload
+    return payload.copy(filePath = fileOps.writeBytesToOutboxTempFile(stripped, "scrubbed_", ".img"))
+}
+
+/** A path to the image without its EXIF/XMP, in upload-temp, or [path] itself when there was nothing to strip. */
+internal suspend fun withoutImageMetadata(path: String, contentType: String, fileOps: FileOperationsProvider): String =
+    imageWithoutMetadata(path, contentType, fileOps)?.let { fileOps.writeBytesToTempFile(it, "scrubbed_", ".img") } ?: path
+
+/**
+ * The image at [path] with its EXIF/XMP removed, or null when there was nothing to strip. The pixel data
+ * stays bit-identical, unlike a re-encode.
  *
  * Fail-soft: a file that can't be read, isn't a format the scrubber handles, or can't be parsed goes out
  * as it is rather than failing the send. That costs a leak, not a crash, so it is logged loudly.
  */
-internal suspend fun withoutImageMetadata(path: String, contentType: String, fileOps: FileOperationsProvider): String {
-    if (!contentType.startsWith("image/")) return path
+private suspend fun imageWithoutMetadata(path: String, contentType: String, fileOps: FileOperationsProvider): ByteArray? {
+    if (!contentType.startsWith("image/")) return null
     val original = try {
         fileOps.readFileBytes(path)
     } catch (e: CancellationException) {
         throw e
     } catch (t: Throwable) {
         Logger.w(throwable = t, tag = TAG) { "metadata scrub skipped — could not read $path" }
-        return path
+        return null
     }
     val why = when (val outcome = ImageMetadataScrubber.scrubWithOutcome(original)) {
-        is ImageMetadataScrubber.Outcome.Scrubbed -> return fileOps.writeBytesToTempFile(outcome.bytes, "scrubbed_", ".img")
-        ImageMetadataScrubber.Outcome.NothingToStrip -> return path
+        is ImageMetadataScrubber.Outcome.Scrubbed -> return outcome.bytes
+        ImageMetadataScrubber.Outcome.NothingToStrip -> return null
         ImageMetadataScrubber.Outcome.UnsupportedFormat -> "isn't a format the scrubber handles"
         ImageMetadataScrubber.Outcome.Unparseable -> "couldn't be parsed"
     }
     Logger.w(tag = TAG) {
         "metadata scrub skipped — $contentType (sniffed ${ImageFormatDetector.detectFormat(original)}) $why; any EXIF/XMP goes out intact"
     }
-    return path
+    return null
 }

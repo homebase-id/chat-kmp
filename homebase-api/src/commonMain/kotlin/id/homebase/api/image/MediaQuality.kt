@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * How an outgoing photo or video is prepared before upload.
  *
  * [ORIGINAL] is a byte-for-byte contract for photos: the picked file's bytes reach the wire
- * unmodified (bar the EXIF scrub every image already gets). Videos are still compressed.
+ * unmodified, bar the metadata strip in apps that strip (UPLOADS.md 3.4). Videos are still compressed.
  */
 @Serializable
 enum class MediaQuality(val code: String) {

@@ -104,6 +104,38 @@ class PayloadBundleImageScrubTest {
         }
     }
 
+    @Test
+    fun aPublicUploadIsStrippedExactlyLikeAnEncryptedOne() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val original = geotaggedJpeg()
+        val src = provider.writeBytesToTempFile(original, "public_src_", ".jpg")
+        val public = withMetadataStripped(PayloadFile(key = "pst_mdi0", filePath = src, contentType = "image/jpeg"), provider)
+        try {
+            val sent = File(public.filePath).readBytes()
+            assertContentEquals(ImageMetadataScrubber.scrub(original), sent, "the same function as the encryption step")
+            assertFalse(indexOfSub(sent, gpsMarker) >= 0, "GPS bytes must not be published")
+            assertTrue(public.filePath.startsWith(provider.getOutboxStagingDirectory()), "the outbox sends it later, so it is staged durably")
+            assertContentEquals(original, File(src).readBytes(), "the user's file is left alone")
+        } finally {
+            provider.deleteTempFile(src)
+            provider.deleteTempFile(public.filePath)
+        }
+    }
+
+    @Test
+    fun aPublicUploadKeepsWhatItsAppKeepsAndLeavesOtherFilesAlone() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val src = provider.writeBytesToTempFile(geotaggedJpeg(), "public_keep_", ".jpg")
+        try {
+            val kept = PayloadFile(key = "p0", filePath = src, contentType = "image/jpeg", stripMetadata = false)
+            assertEquals(kept, withMetadataStripped(kept, provider))
+            val pdf = PayloadFile(key = "p1", filePath = src, contentType = "application/pdf")
+            assertEquals(pdf, withMetadataStripped(pdf, provider))
+        } finally {
+            provider.deleteTempFile(src)
+        }
+    }
+
     // Same fixture as homebase-api's HeicFixtures: ImageIO's HEIC with GPS, serial and XMP; hvc1 data at 3227.
     @Test
     fun encryptBundle_uploadsHeicWithMetadataStripped() = runTest {
