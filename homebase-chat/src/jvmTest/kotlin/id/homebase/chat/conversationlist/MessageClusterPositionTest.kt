@@ -9,6 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
+import kotlinx.datetime.LocalDate
 
 class MessageClusterPositionTest {
 
@@ -245,8 +247,8 @@ class MessageClusterPositionTest {
     )
 
     private fun pending(offsetMinutes: Int) = PendingOutgoingMessage(
-        id = kotlin.uuid.Uuid.random(),
-        conversationId = kotlin.uuid.Uuid.random(),
+        id = Uuid.random(),
+        conversationId = Uuid.random(),
         text = "",
         attachmentCount = 1,
         sentAt = baseTime + offsetMinutes.minutes,
@@ -292,7 +294,7 @@ class MessageClusterPositionTest {
 
     @Test
     fun aDateSectionEndsThePlaceholdersGroup() {
-        val section = MessageListContentModel.Section(kotlinx.datetime.LocalDate(2026, 11, 13))
+        val section = MessageListContentModel.Section(LocalDate(2026, 11, 13))
         val items = clusterPendingInto(computeClusterPositions(listOf(msg(alice, 0))) + section + pending(1), alice)
 
         assertEquals(listOf(MessageClusterPosition.ALONE, null, MessageClusterPosition.ALONE), positions(items))
