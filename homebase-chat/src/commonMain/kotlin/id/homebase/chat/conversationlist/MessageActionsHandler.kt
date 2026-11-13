@@ -4,8 +4,8 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
-import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
+import id.homebase.api.image.readImageSize
 import id.homebase.api.util.isBlobUrl
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.contactcard.SharedVCardDetector
@@ -88,6 +88,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+import id.homebase.core.files.materializeForUpload
 import id.homebase.core.files.toUploadPath
 
 private const val TAG = "ConversationListViewModel"
@@ -857,7 +858,20 @@ internal class MessageActionsHandler(
             // user hit Send before the background poster task finished), wait on it once
             // so the message envelope ships with a poster frame.
             val resolvedFiles = files.map { f ->
-                if (f is AttachmentPendingFile.FileVideo) ensureThumbnail(f) else f
+                when (f) {
+                    is AttachmentPendingFile.FileVideo -> ensureThumbnail(f)
+                    // The size, thumbnails, scrub and encrypt then read one copy instead of each refetching the asset.
+                    // An asset that's gone keeps its path, so the send fails soft at sourceExists as before.
+                    is AttachmentPendingFile.Gallery -> try {
+                        f.copy(image = f.image.materializeForUpload(fileOperationsProvider))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.w(tag = TAG, throwable = e) { "Couldn't copy gallery asset ${f.image.id}" }
+                        f
+                    }
+                    else -> f
+                }
             }
             val attachments = toAttachmentInputs(resolvedFiles)
 
@@ -915,16 +929,11 @@ internal class MessageActionsHandler(
                 }
             }
 
-            // Refine image aspect ratios off the main path. Try a header-only parser
-            // first so we don't allocate the full image bytes just to read width/height;
-            // fall back to the full-bytes decoder for formats we can't sniff (e.g. HEIC).
             if (imagePathsToRefine.isNotEmpty()) {
                 scope.launch {
                     imagePathsToRefine.forEach { (payloadKey, path) ->
                         val aspect = runCatching {
-                            val header = fileOperationsProvider.readFileHeaderBytes(path)
-                            val size = ImageHeaderParser.parse(header)
-                                ?: ImageUtils.getNaturalSize(fileOperationsProvider.readFileBytes(path))
+                            val size = readImageSize(path, fileOperationsProvider)
                             if (size.pixelWidth > 0 && size.pixelHeight > 0)
                                 size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
                             else null

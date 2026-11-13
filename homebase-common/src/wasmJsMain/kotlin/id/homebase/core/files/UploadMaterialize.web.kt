@@ -1,6 +1,7 @@
 package id.homebase.core.files
 
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.gallery.GalleryImage
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.WebFile
 import io.github.vinceglb.filekit.name
@@ -20,3 +21,5 @@ actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProv
 
 actual fun PlatformFile.modifiedAtMs(): Long? =
     (webFile as? WebFile.FileWrapper)?.lastModified?.toEpochMilliseconds()?.takeIf { it > 0 }
+
+actual suspend fun GalleryImage.materializeForUpload(fileOps: FileOperationsProvider): GalleryImage = this

@@ -7,6 +7,8 @@ import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 private const val PAYLOAD_HASH_LENGTH = 32
 private val CONTENT_HASH_IV_MASK = ByteArray(16) { 0xAA.toByte() }
@@ -61,12 +63,31 @@ suspend fun FileOperationsProvider.encryptFileStreaming(
     keyHeader: KeyHeader,
     plaintextHasher: IncrementalHasher? = null,
     ciphertextHasher: IncrementalHasher? = null,
+) = encryptToFile(readFileAsFlow(inputPath), outputPath, keyHeader, plaintextHasher, ciphertextHasher)
+
+/** [encryptFileStreaming] for plaintext already in memory, so it isn't written out and read back first. */
+suspend fun FileOperationsProvider.encryptBytesToFile(
+    plaintext: ByteArray,
+    outputPath: String,
+    keyHeader: KeyHeader,
+) = encryptToFile(plaintext.chunks(FileOperationsProvider.DEFAULT_HEADER_BYTES), outputPath, keyHeader, null, null)
+
+private fun ByteArray.chunks(size: Int): Flow<ByteArray> = flow {
+    for (start in indices step size) emit(copyOfRange(start, minOf(start + size, this@chunks.size)))
+}
+
+private suspend fun FileOperationsProvider.encryptToFile(
+    plaintext: Flow<ByteArray>,
+    outputPath: String,
+    keyHeader: KeyHeader,
+    plaintextHasher: IncrementalHasher?,
+    ciphertextHasher: IncrementalHasher?,
 ) {
     try {
         writeStream(
             path = outputPath,
             data = AesCbc.streamEncryptWithCbc(
-                dataStream = readFileAsFlow(inputPath).hashedBy(plaintextHasher),
+                dataStream = plaintext.hashedBy(plaintextHasher),
                 key = keyHeader.aesKey,
                 iv = keyHeader.iv,
             ).hashedBy(ciphertextHasher),
