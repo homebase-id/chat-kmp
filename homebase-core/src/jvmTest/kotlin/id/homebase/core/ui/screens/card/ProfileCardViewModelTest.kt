@@ -910,6 +910,104 @@ class ProfileCardViewModelTest {
 
 
     @Test
+    fun tilesAreStillsOfEachRealCardAndTheHostGoesBackToTheViewedCard() = runTest(dispatcher) {
+        val host = FakeHost()
+        host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        host.onPaintRequest = { host.send(CardEvent.Painted) }
+        val vm = viewModel(
+            host,
+            FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0, CardOverrides.EMPTY)),
+        )
+        val before = host.rendered.size
+
+        vm.captureEditorTiles()
+
+        val labels = host.rendered.drop(before).map { it.audience?.kind ?: "none" }
+        assertEquals(listOf("public", "circle", "circle", "public"), labels)
+        assertEquals(setOf("public", FAMILY_CIRCLE_ID.lowercase(), FRIENDS_CIRCLE_ID.lowercase()), vm.introTiles.value.keys)
+        assertEquals(CardDesign.DOSSIER, host.rendered.drop(before)[2].design)
+
+        val rendersAfterFirstPass = host.rendered.size
+        vm.captureEditorTiles()
+        assertEquals(rendersAfterFirstPass, host.rendered.size)
+    }
+
+    @Test
+    fun noSnapshotLeavesTheTilesAsPlaceholders() = runTest(dispatcher) {
+        val fake = FakeHost()
+        fake.onRender = { fake.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        fake.onPaintRequest = { fake.send(CardEvent.Painted) }
+        val host = object : CardHost by fake {
+            override suspend fun snapshot(): ImageBitmap? = null
+        }
+        val vm = viewModel(host, FakeSource(profile))
+
+        vm.captureEditorTiles()
+
+        assertTrue(vm.introTiles.value.isEmpty())
+    }
+
+    @Test
+    fun noSnapshotTakesTheTileFromThePagesExport() = runTest(dispatcher) {
+        val fake = FakeHost()
+        fake.onRender = { fake.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        fake.onPaintRequest = { fake.send(CardEvent.Painted) }
+        fake.onExport = { fake.send(CardEvent.Png(base64 = ONE_PIXEL_PNG, width = 1, height = 1)) }
+        val host = object : CardHost by fake {
+            override suspend fun snapshot(): ImageBitmap? = null
+        }
+        val vm = viewModel(host, FakeSource(profile))
+
+        vm.captureEditorTiles()
+
+        assertEquals(1, vm.introTiles.value["public"]?.width)
+    }
+
+    @Test
+    fun aServerWithoutTheCardTypeMakesTheCircleCardsReadOnlyOnceTheTemplateWriteIsRefused() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)).apply {
+            failWith = ClientException(status = 400, message = unknownCardType, correlationId = null, problem = ProblemDetails(status = 400, title = unknownCardType))
+        }
+        val (vm, _, _) = circleVm(store)
+
+        vm.onCardOpened(friends)
+        advanceUntilIdle()
+        assertTrue(store.writes.isEmpty())
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.circleCardsSupported)
+        assertTrue(vm.uiState.value.isCircleReadOnly)
+        assertFalse(vm.uiState.value.canSaveDesign)
+        assertEquals(1, store.saveCalls)
+    }
+
+    @Test
+    fun openingAnUnsavedFixedCircleCardWritesNothingAndRendersItsTemplate() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val (vm, _, host) = circleVm(store)
+        vm.onCardOpened(friends)
+        advanceUntilIdle()
+
+        assertTrue(store.writes.isEmpty())
+        assertEquals(Uuid.NIL, vm.uiState.value.selectedCard?.id)
+        assertEquals(CardDesign.COLLAGE, vm.uiState.value.design)
+        assertEquals(CardDesign.COLLAGE, host.rendered.last().design)
+    }
+
+    @Test
+    fun theSheetComesBackOpenOnlyOnceAfterLeavingForTheEditor() = runTest(dispatcher) {
+        val vm = viewModel(FakeHost(), FakeSource(profile))
+        assertFalse(vm.takeSheetOpenOnReturn())
+
+        vm.onLeftForEditor()
+
+        assertTrue(vm.takeSheetOpenOnReturn())
+        assertFalse(vm.takeSheetOpenOnReturn())
+    }
+
+    @Test
     fun theEditorCapturesTilesEvenThoughTheViewerIsStillOpen() = runTest(dispatcher) {
         val host = FakeHost()
         host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }

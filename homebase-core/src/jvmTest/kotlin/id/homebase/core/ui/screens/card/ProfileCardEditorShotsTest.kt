@@ -397,10 +397,7 @@ class ProfileCardEditorShotsTest {
             }
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
-        editor("k15-public-hidden-open", k15Public, h = TALL, act = {
-            onNodeWithTag("not_visible").onChildren().onFirst().performSemanticsAction(SemanticsActions.OnClick)
-            mainClock.advanceTimeBy(SETTLE_MS)
-        }),
+        editor("k15-public-not-on-card", k15Public, h = TALL),
         editor("k15-add-sheet", k15Friends, act = {
             onNodeWithTag("content_add").performSemanticsAction(SemanticsActions.OnClick)
             mainClock.advanceTimeBy(SETTLE_MS)

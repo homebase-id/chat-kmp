@@ -395,15 +395,11 @@ fun AppNavHost(
     val railAvatarState by koinInject<OwnerAvatarStatus>().state.collectAsStateWithLifecycle()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
-    // bar must keep tracking that screen or they vanish (and reflow it) the moment a pane opens.
+    // A settings pane or the card sheet floats over the screen beneath it, which stays drawn. The rail and
+    // bottom bar must keep tracking that screen or they vanish (and reflow it) the moment one opens.
     val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
-    val chromeEntry = if (isDesktopOrWeb()) {
-        backStack.lastOrNull {
-            it.destination !is FloatingWindow && it.destination !is NavGraph
-        }
-    } else {
-        navBackStackEntry
+    val chromeEntry = backStack.lastOrNull {
+        it.destination !is FloatingWindow && it.destination !is NavGraph
     }
     val chromeDestination = chromeEntry?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()

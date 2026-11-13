@@ -369,6 +369,14 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(isSwitchingDesign = true) }
     }
 
+    private var sheetOpenOnReturn = false
+
+    fun onLeftForEditor() {
+        sheetOpenOnReturn = true
+    }
+
+    fun takeSheetOpenOnReturn(): Boolean = sheetOpenOnReturn.also { sheetOpenOnReturn = false }
+
     fun onCardOpened(audience: CardAudience) {
         val state = _uiState.value
         val card = state.cards.firstOrNull { it.audience.isSameAs(audience) }

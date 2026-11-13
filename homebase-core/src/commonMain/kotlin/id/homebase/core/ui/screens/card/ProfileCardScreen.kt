@@ -350,9 +350,10 @@ private fun ProfileCardPager(
 
     // A pane (desktop, web) shows the card in place; a phone's route shows it as a modal sheet.
     val sheeted = onToggleFullWindow == null && !isDesktopOrWeb()
-    // Saved, so coming back from the editor finds the sheet open instead of sliding it up again.
-    var opened by rememberSaveable { mutableStateOf(false) }
+    // Opening the editor pops this dialog entry, so the view model carries "was open" across that round trip.
+    var opened by rememberSaveable { mutableStateOf(viewModel.takeSheetOpenOnReturn()) }
     val sheet = remember { AnchoredDraggableState(if (opened) SheetValue.Open else SheetValue.Dismissed) }
+    var dismissing by remember { mutableStateOf(false) }
     val sheetHeightPx = LocalWindowInfo.current.containerSize.height * SHEET_HEIGHT_FRACTION
     val scope = rememberCoroutineScope()
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { scope.launch { viewModel.captureCover() } }
@@ -360,6 +361,7 @@ private fun ProfileCardPager(
     val leave: () -> Unit = {
         if (!leaving) {
             if (sheeted) {
+                dismissing = true
                 scope.launch { sheet.animateTo(SheetValue.Dismissed) }
             } else {
                 leaving = true
@@ -378,9 +380,10 @@ private fun ProfileCardPager(
         }
         LaunchedEffect(sheet) {
             snapshotFlow { sheet.anchors.size }.first { it > 0 }
-            if (!opened) sheet.animateTo(SheetValue.Open)
+            // Launched: a header drag or leave() cancels the opening animation, and the dismissal watch must outlive it.
+            if (!opened) launch { sheet.animateTo(SheetValue.Open) }
             opened = true
-            snapshotFlow { sheet.settledValue }.first { it == SheetValue.Dismissed }
+            sheet.awaitDismissed(SheetValue.Dismissed) { dismissing }
             leaving = true
             onBack()
         }
@@ -526,8 +529,8 @@ private fun ProfileCardPager(
                         onClose = leave.takeIf { !sheeted },
                         onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
                         onNewCard = onNewCard.takeIf { uiState.circleCardsSupported },
-                        onEdit = onEdit,
-                        onChangeDesign = onChangeDesign,
+                        onEdit = { if (sheeted) viewModel.onLeftForEditor(); onEdit() },
+                        onChangeDesign = { if (sheeted) viewModel.onLeftForEditor(); onChangeDesign() },
                         onExplainReadOnly = { explainReadOnly = true },
                         pencilContainer = cards.getOrNull(pagerState.currentPage)?.let(::pencilContainer),
                         extraActions = { nfc?.let { CardChromePill { CardNfcAction(it) } } },
@@ -619,7 +622,13 @@ private fun readableOn(background: Color): Color {
     return if ((l + 0.05f) / 0.05f >= 1.05f / (l + 0.05f)) Color.Black else Color.White
 }
 
-private enum class SheetValue { Open, Dismissed }
+internal enum class SheetValue { Open, Dismissed }
+
+/** Returns once the sheet has come up (or a dismissal was asked for before it moved) and is back at [dismissed]. */
+internal suspend fun <T> AnchoredDraggableState<T>.awaitDismissed(dismissed: T, dismissing: () -> Boolean) {
+    snapshotFlow { dismissing() || offset < anchors.positionOf(dismissed) }.first { it }
+    snapshotFlow { offset >= anchors.positionOf(dismissed) }.first { it }
+}
 
 // Web paints the card's frame over any Compose chrome, so only there does the chrome need bands of its own.
 private val cardBands = !chromeFloatsOverCard
