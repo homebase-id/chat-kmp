@@ -144,6 +144,7 @@ fun VaultEntry.imageDataFor(
         requestedSize = requestedSize,
         loadFullPayload = loadFullPayload,
         isEncrypted = isEncrypted,
+        payloadIsUntouchedFile = true,
         keyHeader = KeyHeader(iv = ivBytes, aesKey = keyHeader.aesKey),
     )
 }

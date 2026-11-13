@@ -97,8 +97,8 @@ fun MomentMediaItem(
     onRequestDecryptedFile: (() -> Unit)? = null,
     // Routes photos through [ZoomableSubSamplingImage] for inline pinch-zoom; only affects image payloads.
     enableZoom: Boolean = false,
-    // Only the page on screen: pagers keep neighbours composed, and those would pull their payloads too.
-    stepUpToPayload: Boolean = false,
+    // False for a page a pager keeps composed off screen, which would otherwise pull its payload too.
+    stepUpToPayload: Boolean = true,
     // True while the zoomed photo is panned past fit; the carousel pager uses it to suspend page-swiping.
     onZoomedChanged: ((Boolean) -> Unit)? = null,
     shape: Shape =

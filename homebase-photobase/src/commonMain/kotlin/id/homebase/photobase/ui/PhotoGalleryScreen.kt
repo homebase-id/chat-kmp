@@ -73,6 +73,7 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.GRID_SHORTFALL_PERCENT
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.media.subsample.fullScreenImageSharedBounds
@@ -248,7 +249,8 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
         descriptor = payload,
         previewThumbnail = tinyPreview ?: payload.previewThumbnail?.toEmbeddedThumb(),
         requestedSize = ImageSize.THUMB_SMALL,
-        thumbSizeLimit = ImageSize.THUMB_SMALL,
+        payloadIsUntouchedFile = true,
+        shortfallPercent = GRID_SHORTFALL_PERCENT,
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }

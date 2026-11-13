@@ -90,7 +90,8 @@ fun HomebaseImage(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     colorFilter: ColorFilter? = null,  // ← Add this par
     onLoaded: (() -> Unit)? = null,
-    stepUpToPayload: Boolean = false,
+    /** False only for a page a pager keeps composed off screen. */
+    stepUpToPayload: Boolean = true,
     /** Shows only the embedded preview and fetches nothing, unless the thumbnail is already in memory. */
     deferLoad: Boolean = false,
 ) {
@@ -211,7 +212,7 @@ fun HomebaseImage(
         if (stepUpToPayload) (state as? AsyncImagePainter.State.Success)?.let { lastSharpPainter = it.painter }
         val canStepUp = stepUpToPayload && state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
             !imageData.loadFullPayload && !imageData.isPending &&
-            measured != null && shouldStepUpToPayload(measured, imageData)
+            measured != null && shouldStepUpToPayload(measured, imageData, crop = contentScale == ContentScale.Crop || contentScale == ContentScale.FillBounds)
         if (canStepUp) {
             // The wait is what keeps a fling from downloading every payload it passes:
             // scrolling away cancels this before it fires.

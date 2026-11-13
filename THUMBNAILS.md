@@ -84,7 +84,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 - **Pixels:** decode once, scale from largest to smallest, halve while the image is at least 2× too big, then a Lanczos-class resampler for the last step.
 - **Colour:** keep wide-gamut colour, and put no colour profile on sRGB images or the tiny.
 - **Metadata:** the calling app decides whether a final image or video keeps its location and other metadata, through a required keep-or-strip parameter. The library never decides. Thumbnails never carry metadata.
-- **Display:** step up from the largest thumbnail to the final image only when that gains pixels. Photobase's grid always uses Small.
+- **Display:** every view shows the smallest image that covers the area it's drawn in, allowing 10% of stretch (40% for grid tiles), and never loads an untouched file in place of a thumbnail. See [Showing the images](#showing-the-images).
 - **Wire codes:** Standard records nothing, HD records `"hd"`, and Original records `"high"`.
 
 ## The three settings
@@ -130,7 +130,7 @@ Each row has a job. A change to a row should show that the row still does its jo
 | Row | Its job | Why this size |
 |---|---|---|
 | **Tiny, 20 px** | A blurred placeholder on the first frame, before anything downloads | Enough for the right colours and shape, and small enough to embed in every file's metadata within 768 bytes. Never contains a color map |
-| **Small, 320 px** | Grid cells and small previews | A grid cell on a phone is about 380 px. Photobase's grid always uses this row, so a small rise here costs bytes on every photo in the library. |
+| **Small, 320 px** | Grid cells and small previews | A phone grid's tiles are 270–330 px, and grids allow 40% of stretch, so phone grids use this row. A small rise here costs bytes on every photo in the library. |
 | **Medium, 640 px** | Chat bubbles on phones | A phone bubble is about 600–900 physical pixels wide. |
 | **Large, 1080 px** | Full phone width, and bubbles on desktop | Matches the width of most phone screens. |
 | **Extra large, 2048 px** | Standard's photo, and a big thumbnail in HD and Original | **Screenshots need pixels.** At the old 1600 px, a phone screenshot was 738 px wide, and small text blurred; at 2048 it's 1080 px wide and readable. In HD and Original, it's the thumbnail desktop bubbles and full-screen views use first. |
@@ -183,7 +183,7 @@ That was about 507 kB on the wire for a 231 kB photo. Without the Large thumbnai
 
 **What it doesn't touch.** The tiny is never skipped, and GIFs make no thumbnails anyway; see [GIFs and animated images](#gifs-and-animated-images). In a Photobase library, every 9:16 photo stores one thumbnail less, about 150–200 kB each.
 
-**What it costs a viewer.** A view that wants a size between two kept images now loads the bigger one. For example, a 1000 px view of a 9:16 Standard photo loads the 231 kB final image instead of the 165 kB thumbnail. Chat bubbles and Moments step up to the final image, and full-screen views load it anyway. At Original, the same view loads the 2048 thumbnail instead of the 1440 one.
+**What it costs a viewer.** A view that wants a size between two kept images now loads the bigger one. For example, a 1000 px view of a 9:16 Standard photo loads the 231 kB final image instead of the 165 kB thumbnail. Every view steps up to the final image when no thumbnail covers it (see [Showing the images](#showing-the-images)), and full screen loads it anyway. At Original, the same view loads the 2048 thumbnail instead of the 1440 one.
 
 **Changing the threshold.** The [appendix](#appendix-the-15-rule-on-real-cameras) shows what the rule does to typical cameras, and `ThumbnailLadderTest` pins the same table, so a change shows up there first. Update both, and the [worked examples](#worked-examples).
 
@@ -329,7 +329,7 @@ Each cell lists the thumbnails, then the final image after the arrow. They come 
 | 600×450 | 320×240 → 600×450 | 320×240 → 600×450 | 320×240, 600×450 → file |
 | 200×150 | 200×150 → 200×150 | 200×150 → 200×150 | 200×150 → file |
 
-A thumbnail less than 1.5× below the next image is [skipped](#skipping-a-thumbnail-too-close-to-the-next-image), so a thumbnail that would duplicate the final image always is. That's why Standard and HD can list fewer thumbnails than Original, where the largest thumbnail always stays. Qualities are omitted where they follow the table directly. The 1100×825 final image keeps q70 because the thumbnail it would have duplicated had it. The 321×241 in the 2275×1706 row isn't a typo: 1706 × 320 / 2275 is just under 240, so the minimum short edge pushes the row up one pixel.
+A thumbnail less than 1.5× below the next image is [skipped](#skipping-a-thumbnail-too-close-to-the-next-image), so one that would duplicate the final image is too, unless it's the only thumbnail. That's why Standard and HD can list fewer thumbnails than Original, where the largest thumbnail always stays. Qualities are omitted where they follow the table directly. The 1100×825 final image keeps q70 because the thumbnail it would have duplicated had it. The 321×241 in the 2275×1706 row isn't a typo: 1706 × 320 / 2275 is just under 240, so the minimum short edge pushes the row up one pixel.
 
 ## Byte limits
 
@@ -462,18 +462,31 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 ## Showing the images
 
-- **Picking a thumbnail.** `selectThumbSize` (`HomebaseImageData.kt`) picks the smallest thumbnail whose long edge covers the displayed size, or the largest one if none does. It compares long edges, the same as generation.
-- **Stepping up to the photo.** Once the thumbnail is showing, a bubble can load the final image when the display is more than 10% larger than the largest thumbnail. Without this, a 2× monitor stretches a 1080 px thumbnail. The step-up:
-  - waits about 600 ms after scrolling stops, so a fling doesn't download everything it passes;
-  - only loads JPEG, PNG or WebP payloads under a size limit, never a large Original;
-  - only steps up when the final image is actually larger than the largest thumbnail. The final image's size is recorded in the descriptor for this;
-  - is remembered, so scrolling back doesn't download again, and a failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good;
-  - is opted into per surface (chat bubbles and Moments), not applied everywhere;
-  - on failure, keeps the thumbnail on screen without flashing an error.
-- **Photobase's album grid always uses Small,** and never steps up. The album in chat-kmp is meant to stay simple; a separate app handles fast album viewing.
+**One rule for every view:** bubbles, Moments, the feed, Vault cards and the Photos grid all show **the smallest image that covers the area it's drawn in**, measured in physical pixels. `selectThumbSize` and `shouldStepUpToPayload` in `HomebaseImageData.kt` make the choice for all of them.
+
+- **Covers** means the image is stretched by no more than an allowance:
+  - **10%** for bubbles, posts and viewers (`DETAIL_SHORTFALL_PERCENT`);
+  - **40%** for grid tiles (`GRID_SHORTFALL_PERCENT`).
+- **Fit or crop.** A photo fitted inside the view only has to fill one edge. A photo cropped to fill the view, such as a square tile, has to fill both.
+- **The candidates** are the thumbnails, then the final image when we made it (Standard or HD). When no thumbnail covers the view, it loads the final image instead, if that adds pixels, is under 12 MB and every client can decode it.
+- **Never an untouched file.** When the payload is the sender's file (Original, Photos, Vault), the largest thumbnail is as far as a view goes. Only full screen loads the file.
+- **Loading order.** First the tiny, on the first frame. Then any copy of the photo already in memory, of any size, such as the tile just tapped. Then the chosen thumbnail. Then, only if it's needed, the final image, about 600 ms after scrolling stops. The step-up is remembered, so scrolling back doesn't download again. A failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good, and the thumbnail stays on screen without an error.
+- **Pagers** keep neighbouring pages composed off screen, so only the settled page steps up.
+- **Full screen** loads the full payload, whatever the setting.
 - **The album grid loads what you stop on first.** While the grid moves, a tile that isn't already in memory shows only its tiny and starts no download (`HomebaseImage`'s `deferLoad`). About 150 ms after it stops, the tiles in view start. The background prefetch of the newest 500 waits out each scroll.
 - **On the Photos drive, a thumbnail download nobody waits for is cancelled.** `DriveFileProviderCached` shares one download per thumbnail between everyone asking for it. Photos' `DedicatedThumbCache` sets `cancelWhenUnwatched`, so the download stops when the last of them leaves, and a tile scrolled off the screen stops queueing ahead of the ones on it. Every other drive keeps the download going, so a contact row's avatar still lands in the cache after it scrolls away.
 - **The tiny** is decoded off the main thread and kept in memory, so the placeholder is there on the first frame.
+
+**Why these choices.** Change one only with this reasoning in hand:
+
+- **Measured, not a fixed size per screen.** Screens differ about 3× in pixel density, and the same bubble is 400 px wide on one phone and 1,200 on a tablet. A fixed request is too big on one and too soft on the other.
+- **10% for bubbles and viewers.** A 10% stretch isn't visible at normal viewing distance, while text in a screenshot starts to soften beyond about 15%. It's also the planner's own band: a row within 10% of the source is made at the source size.
+- **40% for grid tiles.** A tile is glanced at among hundreds, and the grid's cost multiplies by the whole library. Phone tiles are 270 px (Pixel 8) to 330 px (iPhone Pro Max), just past Small's 240 px short edge. At 10%, every phone grid would load Medium, about 3× the data per tile and per prefetch. At 40%, phones stay on Small, as Immich does with its fixed 250 px grid thumbnail, and larger tiles still move up: a 600 px tablet tile gets Medium, and a 1,000 px desktop tile the 2048 thumbnail. Google Photos instead makes each tile's exact size on its server, which an end-to-end encrypted server can't.
+- **Crop needs both edges.** A cropped tile spreads the photo's short edge across the whole tile, so comparing long edges would pick a thumbnail too small for it.
+- **Never the untouched file in a view.** An original can be 5–12 MB, HEIC or RAW, and 4,000+ px. Pulling it to draw a 1,000 px bubble wastes most of it. Full screen is where its pixels are seen.
+- **Straight to the chosen size, not up every step.** Walking up through every thumbnail downloads more and gives no earlier sharp frame. The one step in between is the thumbnail while the final image waits for scrolling to stop, so a fling never downloads final images.
+
+`ThumbSizeSelectionTest` pins each of these: the allowances, fit against crop, phone and larger grid tiles, the untouched-file ceiling, and the step-up conditions.
 
 ## Wire format and older clients
 
@@ -526,7 +539,7 @@ What must stay proven, and where.
 - Portrait and landscape give the same sizes, transposed.
 - The random-size test also checks the [1.5 rule](#skipping-a-thumbnail-too-close-to-the-next-image) in every setting.
 - `ThumbnailLadderTest` pins the [appendix](#appendix-the-15-rule-on-real-cameras): real camera sizes at Standard, HD and Original, with the thumbnails each keeps, and that a file kept as the payload keeps its largest thumbnail.
-- `ThumbSizeSelectionTest` checks that a view above a tall photo's kept thumbnails steps up to the final image.
+- `ThumbSizeSelectionTest` pins [how a view picks its image](#showing-the-images): the 10% and 40% allowances, fit against crop, phone and larger grid tiles, the untouched-file ceiling, and when a view steps up to the final image.
 
 ### Pipeline contract: real decoders, scalers and encoders on every platform
 
@@ -608,6 +621,8 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 ### Not built yet
 
+- **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
+
 | What | Issue |
 |---|---|
 | Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` | #2301 |
@@ -681,5 +696,5 @@ What it shows:
 
 - **9:16 and 16:9 photos and screenshots lose one thumbnail** in every setting.
 - **Ordinary 4:3 photos from every phone keep every thumbnail.** Their steps are 2.0, 1.69 and 1.90.
-- **A thumbnail the same size as the final image (1.00) is always dropped.** Before the rule, a small photo or a phone screenshot at HD encoded and uploaded the same pixels twice.
+- **A thumbnail the same size as the final image (1.00) is dropped,** unless it's the only one: a 200×150 photo still sends its one thumbnail. Before the rule, a small photo or a phone screenshot at HD encoded and uploaded the same pixels twice.
 - **The closest calls are 1.48:** a small photo's 1080×810 at Standard and a square photo's 2048×2048 at HD. Both are dropped, which fits the cost argument, but they show where 1.5 sits.

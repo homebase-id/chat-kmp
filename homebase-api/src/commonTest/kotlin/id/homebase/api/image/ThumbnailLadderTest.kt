@@ -30,7 +30,7 @@ class ThumbnailLadderTest {
         ImageSize(3024, 3024) to listOf("320x320", "640x640", "1080x1080"), // 2048x2048 is 1.48x below 3024
         ImageSize(6000, 4000) to listOf("360x240", "720x480", "1215x810", "2048x1365"),
         ImageSize(9546, 1619) to listOf("640x109", "1280x217", "2160x366"), // 6368x1080 is 1.29x below 8192
-        ImageSize(1080, 2400) to listOf("240x534", "480x1067"), // 1080x2400 duplicated the final image
+        ImageSize(1080, 2400) to listOf("240x534", "480x1067"), // 1080x2400 is the final image's size
         ImageSize(2560, 1440) to listOf("427x240", "854x480", "1440x810"),
         ImageSize(1600, 1200) to listOf("320x240", "640x480"),
     )

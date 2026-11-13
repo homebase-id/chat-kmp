@@ -42,7 +42,7 @@ class HomebaseImageFetcher(
             if (data.loadFullPayload) {
                 homebaseImageLoader.loadFullPayload(data)
             } else {
-                homebaseImageLoader.loadThumbnail(data, targetSize)
+                homebaseImageLoader.loadThumbnail(data, targetSize, crop = options.scale == coil3.size.Scale.FILL)
             }
 
         return result?.toFetchResult()

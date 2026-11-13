@@ -55,11 +55,21 @@ class ThumbSizeSelectionTest {
     }
 
     @Test
-    fun `selection compares on the longest edge for portrait requests`() {
-        // Portrait request 240x320 -> longest edge 320 -> smallest native (320).
+    fun `a photo fitted into a taller view only has to fill its width`() {
         assertEquals(ImageSize(320, 240), selectThumbSize(ImageSize(240, 320), landscapeNatives))
-        // Portrait request 240x500 -> longest edge 500 -> 640.
-        assertEquals(ImageSize(640, 480), selectThumbSize(ImageSize(240, 500), landscapeNatives))
+        assertEquals(ImageSize(320, 240), selectThumbSize(ImageSize(240, 500), landscapeNatives))
+    }
+
+    @Test
+    fun `a thumbnail up to 10 percent smaller than the view is used`() {
+        assertEquals(ImageSize(640, 480), selectThumbSize(ImageSize(700, 525), landscapeNatives))
+        assertEquals(ImageSize(1080, 810), selectThumbSize(ImageSize(720, 540), landscapeNatives))
+    }
+
+    @Test
+    fun `a cropped view needs the photo to fill both edges`() {
+        assertEquals(ImageSize(320, 240), selectThumbSize(ImageSize(300, 300), landscapeNatives, crop = false))
+        assertEquals(ImageSize(640, 480), selectThumbSize(ImageSize(300, 300), landscapeNatives, crop = true))
     }
 
     @Test
@@ -94,8 +104,9 @@ class ThumbSizeSelectionTest {
         thumbs: List<ImageSize> = listOf(ImageSize(320, 240), ImageSize(640, 480)),
         contentType: String? = "image/webp",
         bytes: Long? = 400_000,
-        limit: ImageSize? = null,
+        shortfall: Int = DETAIL_SHORTFALL_PERCENT,
         finalSize: ImageSize? = null,
+        untouched: Boolean = false,
     ) = HomebaseImageData(
         driveId = Uuid.NIL,
         fileId = Uuid.NIL,
@@ -103,8 +114,9 @@ class ThumbSizeSelectionTest {
         availableThumbSizes = thumbs,
         payloadContentType = contentType,
         payloadBytes = bytes,
-        thumbSizeLimit = limit,
+        shortfallPercent = shortfall,
         finalImageSize = finalSize,
+        payloadIsUntouchedFile = untouched,
         keyHeader = KeyHeader.newRandom16(),
     )
 
@@ -125,7 +137,6 @@ class ThumbSizeSelectionTest {
         assertTrue(shouldStepUpToPayload(ImageSize(3000, 2250), stepUpData(thumbs = thumbs, finalSize = ImageSize(4000, 3000))))
     }
 
-    // A 9:16 Standard photo has no 810x1440 thumbnail any more, so a feed or bubble view loads the final image.
     @Test
     fun aViewAboveATallPhotosKeptThumbnailsStepsUpToTheFinalImage() {
         val tall = stepUpData(thumbs = listOf(ImageSize(240, 427), ImageSize(480, 854)), bytes = 231_112, finalSize = ImageSize(1152, 2048))
@@ -162,22 +173,38 @@ class ThumbSizeSelectionTest {
         assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(thumbs = emptyList())))
     }
 
+    private val tallPhotoInPhotos = listOf(ImageSize(240, 427), ImageSize(480, 854), ImageSize(1152, 2048))
+
     @Test
-    fun aGridTileOfAnyScreenSizeStaysOnSmall() {
-        val thumbs = listOf(ImageSize(427, 240), ImageSize(854, 480), ImageSize(1440, 810), ImageSize(2048, 1152))
-        val grid = stepUpData(thumbs = thumbs, limit = ImageSize.THUMB_SMALL)
-        assertEquals(ImageSize(427, 240), thumbSizeToRequest(ImageSize(381, 381), grid))
-        assertEquals(ImageSize(427, 240), thumbSizeToRequest(ImageSize(1000, 1000), grid))
+    fun phoneGridTilesKeepSmall() {
+        val grid = stepUpData(thumbs = tallPhotoInPhotos, shortfall = GRID_SHORTFALL_PERCENT, untouched = true)
+        assertEquals(ImageSize(240, 427), thumbSizeToRequest(ImageSize(270, 270), grid, crop = true)) // Pixel 8
+        assertEquals(ImageSize(240, 427), thumbSizeToRequest(ImageSize(330, 330), grid, crop = true)) // iPhone Pro Max
     }
 
     @Test
-    fun withoutALimitTheDisplayPicksTheSize() {
-        val thumbs = listOf(ImageSize(427, 240), ImageSize(854, 480))
-        assertEquals(ImageSize(854, 480), thumbSizeToRequest(ImageSize(600, 600), stepUpData(thumbs = thumbs)))
+    fun theStrictAllowanceWouldPutAPhoneGridOnMedium() {
+        val strict = stepUpData(thumbs = tallPhotoInPhotos, untouched = true)
+        assertEquals(ImageSize(480, 854), thumbSizeToRequest(ImageSize(270, 270), strict, crop = true))
     }
 
     @Test
-    fun aLimitedViewNeverStepsUp() {
-        assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(limit = ImageSize.THUMB_SMALL)))
+    fun largerGridTilesLoadLargerThumbnails() {
+        val grid = stepUpData(thumbs = tallPhotoInPhotos, shortfall = GRID_SHORTFALL_PERCENT, untouched = true)
+        assertEquals(ImageSize(480, 854), thumbSizeToRequest(ImageSize(600, 600), grid, crop = true))
+        assertEquals(ImageSize(1152, 2048), thumbSizeToRequest(ImageSize(1000, 1000), grid, crop = true))
+    }
+
+    @Test
+    fun anUntouchedFileIsNeverPulledInPlaceOfAThumbnail() {
+        val original = stepUpData(thumbs = tallPhotoInPhotos, bytes = 3_000_000, finalSize = ImageSize(2268, 4032), untouched = true)
+        assertFalse(shouldStepUpToPayload(ImageSize(1350, 2400), original))
+    }
+
+    @Test
+    fun aCroppedViewStepsUpWhenNoThumbnailFillsIt() {
+        val tall = stepUpData(thumbs = listOf(ImageSize(240, 427), ImageSize(480, 854)), bytes = 231_112, finalSize = ImageSize(1152, 2048))
+        assertFalse(shouldStepUpToPayload(ImageSize(480, 480), tall, crop = false))
+        assertTrue(shouldStepUpToPayload(ImageSize(600, 600), tall, crop = true))
     }
 }

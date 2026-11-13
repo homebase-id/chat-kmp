@@ -114,7 +114,8 @@ class HomebaseImageLoader(
     suspend fun loadThumbnail(
         data: HomebaseImageData,
         targetSize: ImageSize,
-        retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
+        retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG,
+        crop: Boolean = false,
     ): CachedImage? {
         // Check pending file first - no retry needed for local files
         if (data.isPending) {
@@ -134,7 +135,7 @@ class HomebaseImageLoader(
         // actually stores. Keying the request (and thus the disk cache) by the
         // native size deduplicates entries across measured sizes/devices and lets
         // the read hit what the sender seeded under the optimistic fileId.
-        val nativeSize = thumbSizeToRequest(targetSize, data)
+        val nativeSize = thumbSizeToRequest(targetSize, data, crop)
 
         return withRetry(retryConfig, TAG) {
             val response = try {
