@@ -2527,7 +2527,6 @@
     <string name="profile_card_share_failed">Couldn't create the card image.</string>
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
     <string name="profile_card_design_action">Design</string>
-    <string name="profile_card_edit_content">Edit content</string>
     <string name="profile_card_add_card">Add new card</string>
     <string name="profile_card_content_on_card">On this card</string>
     <string name="profile_card_content_on_card_desc">Switch one off to leave it off this card.</string>
