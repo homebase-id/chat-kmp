@@ -34,7 +34,16 @@ data class PayloadDescriptor(
         return key.equals(otherKey, ignoreCase = true)
     }
 
-    fun descriptorInfo(): DescriptorContent {
+    // Parsed once per payload: bubbles and list rows ask on every recomposition.
+    private val info: DescriptorContent by lazy(LazyThreadSafetyMode.PUBLICATION) { parseDescriptorContent() }
+
+    fun descriptorInfo(): DescriptorContent = info
+
+    private fun parseDescriptorContent(): DescriptorContent {
+        // Current format this client can't read: Empty, so the JSON never shows up as a name.
+        descriptorContent?.takeIf(DescriptorContentV1::isCurrentFormat)?.let {
+            return DescriptorContentV1.parseOrNull(it)?.toDescriptorContent() ?: DescriptorContent.Empty
+        }
         return when {
             descriptorContent == null -> {
                 DescriptorContent.Empty
@@ -63,19 +72,7 @@ data class PayloadDescriptor(
 
             contentType?.startsWith("video/") == true -> {
                 try {
-                    val meta = OdinSystemSerializer.deserialize<VideoMetadata>(descriptorContent)
-                    DescriptorContent.VideoFile(
-                        durationMs = meta.duration.toLong().takeIf { it > 0 },
-                        isSegmented = meta.isSegmented,
-                        codec = meta.codec.takeIf { it.isNotBlank() },
-                        widthPx = meta.widthPx,
-                        heightPx = meta.heightPx,
-                        bitDepth = meta.bitDepth,
-                        isHdr = meta.isHdr,
-                        videoBitrateBps = meta.videoBitrateBps,
-                        fileSizeBytes = meta.fileSize,
-                        mimeType = meta.mimeType,
-                    )
+                    OdinSystemSerializer.deserialize<VideoMetadata>(descriptorContent).toVideoFile(name = null)
                 } catch (e: Exception) {
                     Logger.w("PayloadFile.descriptorInfo", e)
                     DescriptorContent.Empty
@@ -115,6 +112,33 @@ data class PayloadDescriptor(
         }
     }
 
+    private fun DescriptorContentV1.toDescriptorContent(): DescriptorContent = when (kind) {
+        DescriptorContentV1.Kind.IMAGE, DescriptorContentV1.Kind.STICKER -> DescriptorContent.ImageFile(
+            isSticker = kind == DescriptorContentV1.Kind.STICKER,
+            format = contentType,
+            quality = quality?.mediaQuality,
+            pixelWidth = pixelWidth,
+            pixelHeight = pixelHeight,
+            name = name,
+            original = original?.let { it == 1 },
+        )
+        DescriptorContentV1.Kind.VIDEO ->
+            toVideoMetadata(key, contentType, playlist = null)?.toVideoFile(name, original?.let { it == 1 }) ?: DescriptorContent.Empty
+        DescriptorContentV1.Kind.AUDIO -> DescriptorContent.AudioFile(name = name, lengthSeconds = lengthSeconds ?: 0)
+        DescriptorContentV1.Kind.FILE -> DescriptorContent.File(name = name.orEmpty())
+        // Link and location previews carry an image content type and render as images, as before.
+        DescriptorContentV1.Kind.APP -> when {
+            contentType == "text/markdown" -> DescriptorContent.NoteFile(preview = appContent)
+            isImage() -> DescriptorContent.ImageFile()
+            else -> DescriptorContent.Empty
+        }
+    }
+
+    // Link, location and note previews: `x` in the current format, the whole string in older ones.
+    fun appContent(): String? = descriptorContent?.let { content ->
+        if (DescriptorContentV1.isCurrentFormat(content)) DescriptorContentV1.parseOrNull(content)?.appContent else content
+    }
+
     fun isImage(): Boolean = contentType?.startsWith("image/") == true
 
     fun isVideo(): Boolean =
@@ -134,17 +158,31 @@ data class PayloadDescriptor(
             is DescriptorContent.AudioFile -> info.name
             DescriptorContent.Empty -> null
             is DescriptorContent.File -> info.name
-            // Stickers get a neutral name so a saved/downloaded sticker is "StickerFile.png"
-            // (etc.) instead of leaking the sender's camera-roll name (e.g. IMG_1234.png).
-            // Ordinary images carry no ImageFile descriptor (blank "" → ImageFile(false)) and
-            // keep returning null so download falls back to the payload key, as before.
+            // Stickers get a neutral name so a saved sticker doesn't leak the sender's camera-roll name.
+            // A re-encoded photo or video saves under its payload key until saving swaps the extension:
+            // its picked name would put WebP bytes under .HEIC.
             is DescriptorContent.ImageFile ->
-                if (info.isSticker) "StickerFile.${info.fileExtension()}" else null
+                if (info.isSticker) "StickerFile.${info.fileExtension()}" else info.name?.takeIf { info.original == true }
             is DescriptorContent.NoteFile -> null
-            is DescriptorContent.VideoFile -> null
+            is DescriptorContent.VideoFile -> info.name?.takeIf { info.original == true }
         }
     }
 }
+
+private fun VideoMetadata.toVideoFile(name: String?, original: Boolean? = null) = DescriptorContent.VideoFile(
+    durationMs = duration.toLong().takeIf { it > 0 },
+    isSegmented = isSegmented,
+    codec = codec.takeIf { it.isNotBlank() },
+    widthPx = widthPx,
+    heightPx = heightPx,
+    bitDepth = bitDepth,
+    isHdr = isHdr,
+    videoBitrateBps = videoBitrateBps,
+    fileSizeBytes = fileSize,
+    mimeType = mimeType,
+    name = name,
+    original = original,
+)
 
 fun List<PayloadDescriptor>.withoutInternalDescriptors(): List<PayloadDescriptor> =
     filterNot { it.isInternalDescriptor() }
@@ -178,6 +216,9 @@ sealed interface DescriptorContent {
         /** The payload's pixel size; null on anything sent before this field shipped. */
         val pixelWidth: Int? = null,
         val pixelHeight: Int? = null,
+        val name: String? = null,
+        /** The payload data is the sender's file, byte for byte; null when not recorded. */
+        val original: Boolean? = null,
     ) : DescriptorContent {
         /**
          * Filename extension for a downloaded sticker, derived from [format]. Defaults to
@@ -205,6 +246,8 @@ sealed interface DescriptorContent {
         val videoBitrateBps: Long = 0L,
         val fileSizeBytes: Long = 0L,
         val mimeType: String? = null,
+        val name: String? = null,
+        val original: Boolean? = null,
     ) : DescriptorContent
 
     companion object {

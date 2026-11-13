@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives
 
+import id.homebase.api.client.drives.files.DescriptorContentSeal
 import kotlin.coroutines.cancellation.CancellationException
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.FileMetadata
@@ -73,6 +74,8 @@ data class ServerFile(
 
             // ---- localAppData (optional) ----
             resolvedMetadata = resolvedMetadata.decryptLocalAppData(resolvedKeyHeader)
+
+            resolvedMetadata = resolvedMetadata.openDescriptorContents(resolvedKeyHeader)
         } else {
             resolvedKeyHeader = KeyHeader.empty()
             resolvedMetadata = fileMetadata
@@ -191,6 +194,16 @@ fun FileMetadata.withDecryptedContent(bytes: ByteArray): FileMetadata =
             content = bytes.decodeToString()
         ),
         isEncrypted = false
+    )
+
+// Opened once, like appData (UPLOADS.md section 2).
+private suspend fun FileMetadata.openDescriptorContents(keyHeader: KeyHeader): FileMetadata =
+    copy(
+        payloads = payloads?.map { p ->
+            val content = p.descriptorContent ?: return@map p
+            val opened = DescriptorContentSeal.open(content, keyHeader.aesKey)
+            if (opened == content) p else p.copy(descriptorContent = opened)
+        },
     )
 
 private suspend fun FileMetadata.decryptAppData(

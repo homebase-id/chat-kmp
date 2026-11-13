@@ -94,6 +94,7 @@ actual fun VideoPlayerSurface(
                     data.payloadKey,
                     data.keyHeader,
                     data.payload.descriptorContent,
+                    contentType = data.payload.contentType,
                 ),
                 driveFileProvider,
                 // Web builds a Blob object URL, so it needs bytes (the wasm FS

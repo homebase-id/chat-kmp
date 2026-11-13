@@ -11,6 +11,7 @@ import id.homebase.resources.chat_error_file_too_large_here
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
@@ -26,6 +27,7 @@ import id.homebase.resources.vault_chat_image_name
 import id.homebase.resources.vault_save_failed
 import id.homebase.resources.vault_saved
 import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
@@ -264,7 +266,7 @@ internal class MediaDownloadHandler(
         scope.launch {
             try {
                 val hlsMetadata = resolveHlsVideoMetadata(
-                    descriptorContent = action.payload.descriptorContent,
+                    payload = action.payload,
                     fileId = action.fileId,
                     keyHeader = action.keyHeader,
                 )
@@ -625,36 +627,19 @@ internal class MediaDownloadHandler(
     }
 
     private suspend fun resolveHlsVideoMetadata(
-        descriptorContent: String?,
+        payload: PayloadDescriptor,
         fileId: Uuid,
         keyHeader: KeyHeader,
     ): VideoMetadata? {
-        val stub = descriptorContent?.let {
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(it)
-            } catch (_: Exception) {
-                null
-            }
-        } ?: return null
-
-        if (!stub.isSegmented) return null
-
-        val full = if (stub.isDescriptorContentComplete) {
-            stub
-        } else {
-            val json = driveFileProvider.getPayloadBytesDecrypted(
+        if ((payload.descriptorInfo() as? DescriptorContent.VideoFile)?.isSegmented != true) return null
+        val full = videoMetadataFrom(payload.descriptorContent ?: return null, payload.key, payload.contentType) { key ->
+            driveFileProvider.getPayloadBytesDecrypted(
                 driveId = chatTargetDrive.alias,
                 fileId = fileId,
-                key = stub.key,
+                key = key,
                 keyHeader = keyHeader,
-            )?.bytes?.decodeToString() ?: return null
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(json)
-            } catch (_: Exception) {
-                return null
-            }
-        }
-
+            )?.bytes?.decodeToString()
+        } ?: return null
         return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
     }
 

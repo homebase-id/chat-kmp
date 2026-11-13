@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.util.extensionForContentType
 import id.homebase.api.util.safeFileName
 import androidx.lifecycle.ViewModel
@@ -17,6 +19,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.ConversationStream
@@ -693,7 +696,7 @@ class MomentDetailViewModel(
         viewModelScope.launch {
             try {
                 val hlsMetadata = resolveHlsVideoMetadata(
-                    descriptorContent = payload.descriptorContent,
+                    payload = payload,
                     driveId = moment.driveId,
                     fileId = moment.fileId,
                     keyHeader = keyHeader,
@@ -767,7 +770,7 @@ class MomentDetailViewModel(
         viewModelScope.launch {
             try {
                 val hlsMetadata = resolveHlsVideoMetadata(
-                    descriptorContent = payload.descriptorContent,
+                    payload = payload,
                     driveId = moment.driveId,
                     fileId = moment.fileId,
                     keyHeader = keyHeader,
@@ -820,45 +823,17 @@ class MomentDetailViewModel(
         }
     }
 
-    /**
-     * Resolve a segmented-video payload's full [VideoMetadata] (with the HLS
-     * playlist) from its descriptor, fetching the out-of-line descriptor blob
-     * when the header copy is a stub. Returns null for non-HLS payloads (images,
-     * progressive MP4) — those take the plain decrypt-to-file path above.
-     * Mirrors `MediaDownloadHandler.resolveHlsVideoMetadata`.
-     */
+    /** The segmented video's metadata with its playlist; null for anything else, which saves by plain decrypt. */
     private suspend fun resolveHlsVideoMetadata(
-        descriptorContent: String?,
+        payload: PayloadDescriptor,
         driveId: Uuid,
         fileId: Uuid,
         keyHeader: KeyHeader,
     ): VideoMetadata? {
-        val stub = descriptorContent?.let {
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(it)
-            } catch (_: Exception) {
-                null
-            }
+        if ((payload.descriptorInfo() as? DescriptorContent.VideoFile)?.isSegmented != true) return null
+        val full = videoMetadataFrom(payload.descriptorContent ?: return null, payload.key, payload.contentType) { key ->
+            payloadDownloadService.renderBytes(driveId = driveId, fileId = fileId, key = key, keyHeader = keyHeader)?.decodeToString()
         } ?: return null
-
-        if (!stub.isSegmented) return null
-
-        val full = if (stub.isDescriptorContentComplete) {
-            stub
-        } else {
-            val json = payloadDownloadService.renderBytes(
-                driveId = driveId,
-                fileId = fileId,
-                key = stub.key,
-                keyHeader = keyHeader,
-            )?.decodeToString() ?: return null
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(json)
-            } catch (_: Exception) {
-                return null
-            }
-        }
-
         return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
     }
 

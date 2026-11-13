@@ -195,6 +195,7 @@ fun MomentInlineVideoTile(
             payloadKey = payload.key,
             keyHeader = perPayloadKeyHeader,
             descriptorContent = payload.descriptorContent,
+            contentType = payload.contentType,
         )
     }
     val videoDescriptor = remember(payload.descriptorContent) {

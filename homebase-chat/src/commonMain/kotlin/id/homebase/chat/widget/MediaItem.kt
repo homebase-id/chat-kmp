@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import id.homebase.chat.services.builder.locationPreviews
+import id.homebase.chat.services.builder.linkPreviews
 import id.homebase.chat.widget.preview.FilePreviewKind
 import id.homebase.chat.widget.preview.chatChipPreviewKind
 import id.homebase.core.util.formatHms
@@ -48,7 +50,6 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
@@ -56,7 +57,6 @@ import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
 import id.homebase.common.widget.VideoInfoOverlay
@@ -164,15 +164,7 @@ fun MediaItem(
         payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
             // Render link preview
             val linkDescriptors = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
-                    try {
-                        OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
-                            content
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.linkPreviews()
             }
 
             val payloadIv = payload.iv?.bytes
@@ -204,15 +196,7 @@ fun MediaItem(
             // NEW messages carry the descriptor in the header (locationHeaderDescriptor); OLD ones
             // parse it from the payload's descriptorContent. Header wins when present.
             val payloadDescriptor = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
-                    try {
-                        OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
-                            content
-                        ).firstOrNull()
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.locationPreviews()?.firstOrNull()
             }
             val descriptor = locationHeaderDescriptor ?: payloadDescriptor
 
@@ -344,6 +328,7 @@ fun MediaItem(
                         payloadKey = payload.key,
                         keyHeader = perPayloadKeyHeader,
                         descriptorContent = payload.descriptorContent,
+                        contentType = payload.contentType,
                     )
                 }
                 val videoDescriptor = remember(payload.descriptorContent) {

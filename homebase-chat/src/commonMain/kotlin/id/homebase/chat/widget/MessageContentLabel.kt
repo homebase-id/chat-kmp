@@ -141,7 +141,7 @@ fun messageContentLabel(
             }
         }
         PayloadPreviewKind.File -> ContentLabel(
-            text = firstPayload?.descriptorContent?.takeIf { it.isNotBlank() }
+            text = (firstPayload?.filename() ?: firstPayload?.appContent())?.takeIf { it.isNotBlank() }
                 ?: stringResource(kind.labelRes()),
             icon = Icons.Default.Description
         )
