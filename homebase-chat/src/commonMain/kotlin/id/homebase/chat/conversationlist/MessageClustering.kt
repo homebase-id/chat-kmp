@@ -1,6 +1,10 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.common.OdinId
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 private val CLUSTER_TIME_WINDOW = 3.minutes
 
@@ -20,15 +24,8 @@ internal fun computeClusterPositions(
     return messages.mapIndexed { index, item ->
         val prev = messages.getOrNull(index - 1)
         val next = messages.getOrNull(index + 1)
-
-        val sameAsPrev = prev != null &&
-            item.message.sender == prev.message.sender &&
-            (item.message.userDate - prev.message.userDate) < CLUSTER_TIME_WINDOW
-
-        val sameAsNext = next != null &&
-            item.message.sender == next.message.sender &&
-            (next.message.userDate - item.message.userDate) < CLUSTER_TIME_WINDOW
-
+        val sameAsPrev = prev != null && inCluster(prev.message.sender, prev.message.userDate, item.message.sender, item.message.userDate)
+        val sameAsNext = next != null && inCluster(item.message.sender, item.message.userDate, next.message.sender, next.message.userDate)
         item.copy(clusterPosition = clusterPosition(sameAsPrev, sameAsNext))
     }
 }
@@ -38,4 +35,43 @@ internal fun clusterPosition(sameAsPrev: Boolean, sameAsNext: Boolean): MessageC
     sameAsPrev -> MessageClusterPosition.END
     sameAsNext -> MessageClusterPosition.START
     else -> MessageClusterPosition.ALONE
+}
+
+private fun inCluster(earlierSender: OdinId?, earlierTime: Instant, laterSender: OdinId?, laterTime: Instant) =
+    earlierSender == laterSender && (laterTime - earlierTime) < CLUSTER_TIME_WINDOW
+
+// Placeholders cluster as their real message will, so the hand-off doesn't re-space the rows around them.
+internal fun clusterPendingInto(items: List<Any>, ownerOdinId: OdinId?, timeZone: TimeZone = TimeZone.currentSystemDefault()): List<Any> {
+    if (ownerOdinId == null) return items
+    // Clustering skips system and separator rows; a date section or a not-yet-loaded page ends a group.
+    fun neighbour(from: Int, step: Int): Int? {
+        var i = from + step
+        while (i in items.indices) {
+            when (items[i]) {
+                is MessageListContentModel.Message, is PendingOutgoingMessage -> return i
+                is MessageListContentModel.Section, MessageListContentModel.LoadingOlder, MessageListContentModel.LoadingNewer -> return null
+            }
+            i += step
+        }
+        return null
+    }
+    fun senderAndTime(i: Int): Pair<OdinId?, Instant> = when (val item = items[i]) {
+        is MessageListContentModel.Message -> item.message.sender to item.message.userDate
+        else -> ownerOdinId to (item as PendingOutgoingMessage).sentAt
+    }
+    fun grouped(earlier: Int?, later: Int?): Boolean {
+        if (earlier == null || later == null) return false
+        val (a, aTime) = senderAndTime(earlier)
+        val (b, bTime) = senderAndTime(later)
+        // A placeholder sorts in before its day's section exists; the real message's day ends the group.
+        return inCluster(a, aTime, b, bTime) && aTime.toLocalDateTime(timeZone).date == bTime.toLocalDateTime(timeZone).date
+    }
+    return items.mapIndexed { i, item ->
+        if (item !is MessageListContentModel.Message && item !is PendingOutgoingMessage) return@mapIndexed item
+        val position = clusterPosition(grouped(neighbour(i, -1), i), grouped(i, neighbour(i, 1)))
+        when (item) {
+            is MessageListContentModel.Message -> if (position == item.clusterPosition) item else item.copy(clusterPosition = position)
+            else -> (item as PendingOutgoingMessage).copy(clusterPosition = position)
+        }
+    }
 }

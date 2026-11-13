@@ -74,4 +74,12 @@ class ImageFileSourceContractTest {
         assertEquals(6, readImageMetadata(path, ops)?.orientation)
         assertEquals(expectedReads, ops.wholeReads, "EXIF alone")
     }
+
+    @Test
+    fun theSizeIsUprightFromTheHeaderAlone() = runTest {
+        val (_, path) = rotatedJpeg()
+
+        assertEquals(ImageSize(1200, 1600), readImageSize(path, ops))
+        assertEquals(0, ops.wholeReads)
+    }
 }

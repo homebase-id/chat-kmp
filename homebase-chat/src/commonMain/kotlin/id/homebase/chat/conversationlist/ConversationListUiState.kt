@@ -213,6 +213,7 @@ data class PendingOutgoingMessage(
     val attachmentCount: Int,
     val sentAt: Instant,
     val replyPreview: ReplyPreview? = null,
+    val clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
 )
 
 internal fun MessageListUiState.withPendingSend(placeholder: PendingOutgoingMessage): MessageListUiState = copy(

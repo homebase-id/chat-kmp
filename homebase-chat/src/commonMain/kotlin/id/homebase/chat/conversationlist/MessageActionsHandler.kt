@@ -4,8 +4,9 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
-import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
+import id.homebase.api.image.aspectRatio
+import id.homebase.api.image.readImageSize
 import id.homebase.api.util.isBlobUrl
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.contactcard.SharedVCardDetector
@@ -80,17 +81,21 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import id.homebase.core.files.toUploadPath
 
 private const val TAG = "ConversationListViewModel"
+
+private val PLACEHOLDER_SIZE_WAIT = 150.milliseconds
 
 /**
  * Whether the composer should send, given the SERIALIZED markdown body it would actually send
@@ -867,74 +872,47 @@ internal class MessageActionsHandler(
             // Store a local preview context per attachment (keyed by the payload key the
             // MessageAttachmentBuilder will emit), so both the placeholder and the eventual
             // real bubble can render the local preview without fetching from the server.
-            // Populate local contexts synchronously with what we have on hand, so the
-            // placeholder shows immediately. For videos the thumbnail bytes give us the
-            // aspect for free; for images we compute aspect asynchronously below and
-            // re-put once we have it — avoids blocking the placeholder on image I/O.
-            val imagePathsToRefine = mutableListOf<Pair<String, String>>()
             // View-once media gets no local preview: nothing may render it before the viewer.
-            if (!viewOnce) resolvedFiles.forEachIndexed { index, file ->
-                val payloadKey = payloadKey(index)
-                val ctx: LocalAttachmentContext? = when (file) {
-                    is AttachmentPendingFile.FileVideo -> {
-                        val bytes = file.thumbnailBytes
-                        if (bytes != null) {
-                            val aspect = runCatching {
-                                val size = ImageUtils.getNaturalSize(bytes)
-                                if (size.pixelWidth > 0 && size.pixelHeight > 0)
-                                    size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
-                                else null
-                            }.getOrNull()
-                            LocalAttachmentContext.Video(
-                                thumbnailBytes = bytes,
-                                // Web file.file.toString() is a bare filename that fileExists() rejects, so use the
-                                // blob: playablePath there. Native: == file.toString().
-                                localFilePath = file.playablePath ?: file.file.toString(),
-                                aspectRatio = aspect,
-                                trimStartMs = file.trimStartMs,
-                                trimEndMs = file.trimEndMs,
-                                durationMs = file.durationMs,
-                            )
-                        } else null
-                    }
-                    is AttachmentPendingFile.FileImage -> {
-                        val path = file.file.toString()
-                        imagePathsToRefine += payloadKey to path
-                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
-                    }
-                    is AttachmentPendingFile.Gallery -> {
-                        val path = file.image.file.toString()
-                        imagePathsToRefine += payloadKey to path
-                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
-                    }
-                    is AttachmentPendingFile.File -> null
-                    is AttachmentPendingFile.Audio -> null
-                }
-                if (ctx != null) {
-                    localVideoContextStore.put(newMessageId, payloadKey, ctx)
-                }
-            }
-
-            // Refine image aspect ratios off the main path. Try a header-only parser
-            // first so we don't allocate the full image bytes just to read width/height;
-            // fall back to the full-bytes decoder for formats we can't sniff (e.g. HEIC).
-            if (imagePathsToRefine.isNotEmpty()) {
-                scope.launch {
-                    imagePathsToRefine.forEach { (payloadKey, path) ->
-                        val aspect = runCatching {
-                            val header = fileOperationsProvider.readFileHeaderBytes(path)
-                            val size = ImageHeaderParser.parse(header)
-                                ?: ImageUtils.getNaturalSize(fileOperationsProvider.readFileBytes(path))
-                            if (size.pixelWidth > 0 && size.pixelHeight > 0)
-                                size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
-                            else null
-                        }.getOrNull()
-                        if (aspect != null) {
-                            // Keep the path: prepare may already have pointed the preview at the file actually sent.
-                            val current = localVideoContextStore.get(newMessageId, payloadKey) as? LocalAttachmentContext.Image
-                                ?: LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
-                            localVideoContextStore.put(newMessageId, payloadKey, current.copy(aspectRatio = aspect))
+            if (!viewOnce) {
+                // A lone photo's bubble takes the photo's shape, so the placeholder briefly waits for it; album tiles are fixed.
+                val lonePhoto = resolvedFiles.singleOrNull()
+                    ?.takeIf { it is AttachmentPendingFile.FileImage || it is AttachmentPendingFile.Gallery }
+                val aspectSoon = lonePhoto?.let { scope.async { uprightAspect(attachments.single().filePath) } }
+                val aspectNow = aspectSoon?.let { withTimeoutOrNull(PLACEHOLDER_SIZE_WAIT) { it.await() } }
+                resolvedFiles.forEachIndexed { index, file ->
+                    val payloadKey = payloadKey(index)
+                    val ctx: LocalAttachmentContext? = when (file) {
+                        is AttachmentPendingFile.FileVideo -> {
+                            val bytes = file.thumbnailBytes
+                            if (bytes != null) {
+                                LocalAttachmentContext.Video(
+                                    thumbnailBytes = bytes,
+                                    // Web file.file.toString() is a bare filename that fileExists() rejects, so use the
+                                    // blob: playablePath there. Native: == file.toString().
+                                    localFilePath = file.playablePath ?: file.file.toString(),
+                                    aspectRatio = runCatching { ImageUtils.getNaturalSize(bytes).aspectRatio }.getOrNull(),
+                                    trimStartMs = file.trimStartMs,
+                                    trimEndMs = file.trimEndMs,
+                                    durationMs = file.durationMs,
+                                )
+                            } else null
                         }
+                        is AttachmentPendingFile.FileImage -> LocalAttachmentContext.Image(file.file.toString(), aspectNow)
+                        is AttachmentPendingFile.Gallery -> LocalAttachmentContext.Image(file.image.file.toString(), aspectNow)
+                        is AttachmentPendingFile.File -> null
+                        is AttachmentPendingFile.Audio -> null
+                    }
+                    if (ctx != null) {
+                        localVideoContextStore.put(newMessageId, payloadKey, ctx)
+                    }
+                }
+                if (aspectSoon != null && aspectNow == null) {
+                    scope.launch {
+                        val aspect = aspectSoon.await() ?: return@launch
+                        val key = payloadKey(0)
+                        // Keep the path: prepare may already have pointed the preview at the file actually sent.
+                        val current = localVideoContextStore.get(newMessageId, key) as? LocalAttachmentContext.Image ?: return@launch
+                        localVideoContextStore.put(newMessageId, key, current.copy(aspectRatio = aspect))
                     }
                 }
             }
@@ -1134,6 +1112,16 @@ internal class MessageActionsHandler(
         } finally {
             shareContentProcessor.cleanup(descriptor)
         }
+    }
+
+    private suspend fun uprightAspect(path: String): Float? = try {
+        readImageSize(path, fileOperationsProvider).aspectRatio
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        // Throwable: an Error here (out of memory, a missing platform impl) must not abort the send.
+        Logger.w(tag = TAG, throwable = e) { "No placeholder size for $path" }
+        null
     }
 
     private suspend fun bundleAndSend(

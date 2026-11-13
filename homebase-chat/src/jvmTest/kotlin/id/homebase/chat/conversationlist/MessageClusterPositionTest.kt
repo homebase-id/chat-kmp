@@ -9,6 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
+import kotlinx.datetime.LocalDate
 
 class MessageClusterPositionTest {
 
@@ -243,4 +245,79 @@ class MessageClusterPositionTest {
         keyHeader = KeyHeader.empty(),
         hasMore = false,
     )
+
+    private fun pending(offsetMinutes: Int) = PendingOutgoingMessage(
+        id = Uuid.random(),
+        conversationId = Uuid.random(),
+        text = "",
+        attachmentCount = 1,
+        sentAt = baseTime + offsetMinutes.minutes,
+    )
+
+    private fun positions(items: List<Any>) = items.map {
+        when (it) {
+            is MessageListContentModel.Message -> it.clusterPosition
+            is PendingOutgoingMessage -> it.clusterPosition
+            else -> null
+        }
+    }
+
+    @Test
+    fun aPlaceholderGroupsAsItsRealMessageWill() {
+        val earlier = computeClusterPositions(listOf(msg(alice, 0), msg(alice, 1)))
+        val placeholder = pending(2)
+        val real = msg(alice, 2)
+
+        val withPlaceholder = clusterPendingInto(earlier + placeholder, alice)
+        val withReal = computeClusterPositions(earlier + real)
+
+        assertEquals(positions(withReal), positions(withPlaceholder))
+        assertEquals(
+            listOf(MessageClusterPosition.START, MessageClusterPosition.MIDDLE, MessageClusterPosition.END),
+            positions(withPlaceholder),
+        )
+    }
+
+    @Test
+    fun aPlaceholderAfterSomeoneElseStandsAlone() {
+        val items = clusterPendingInto(computeClusterPositions(listOf(msg(bob, 0))) + pending(1), alice)
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, MessageClusterPosition.ALONE), positions(items))
+    }
+
+    @Test
+    fun aPlaceholderOutsideTheTimeWindowStandsAlone() {
+        val items = clusterPendingInto(computeClusterPositions(listOf(msg(alice, 0))) + pending(5), alice)
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, MessageClusterPosition.ALONE), positions(items))
+    }
+
+    @Test
+    fun aDateSectionEndsThePlaceholdersGroup() {
+        val section = MessageListContentModel.Section(LocalDate(2026, 11, 13))
+        val items = clusterPendingInto(computeClusterPositions(listOf(msg(alice, 0))) + section + pending(1), alice)
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, null, MessageClusterPosition.ALONE), positions(items))
+    }
+
+    @Test
+    fun aPlaceholderAfterMidnightDoesntGroupWithYesterday() {
+        val utc = kotlinx.datetime.TimeZone.UTC
+        val lateMessage = msg(alice, 0).let { it.copy(message = it.message.copy(userDate = Instant.parse("2026-11-12T23:59:30Z"))) }
+        val afterMidnight = pending(0).copy(sentAt = Instant.parse("2026-11-13T00:00:30Z"))
+
+        val items = clusterPendingInto(listOf(lateMessage, afterMidnight), alice, utc)
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, MessageClusterPosition.ALONE), positions(items))
+    }
+
+    @Test
+    fun aPlaceholderBeyondUnloadedNewerMessagesStandsAlone() {
+        val items = clusterPendingInto(
+            computeClusterPositions(listOf(msg(alice, 0))) + MessageListContentModel.LoadingNewer + pending(1),
+            alice,
+        )
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, null, MessageClusterPosition.ALONE), positions(items))
+    }
 }

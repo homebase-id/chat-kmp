@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -271,8 +273,17 @@ fun MediaItem(
                         )
                     }
                 }
+                // Keyed by the file, so a rebuilt row (the real bubble replacing the placeholder) draws Coil's copy in its first frame.
+                val platformContext = LocalPlatformContext.current
+                val localImageRequest = remember(platformContext, imageLocalContext.localFilePath) {
+                    ImageRequest.Builder(platformContext)
+                        .data(imageLocalContext.localFilePath)
+                        .memoryCacheKey(imageLocalContext.localFilePath)
+                        .placeholderMemoryCacheKey(imageLocalContext.localFilePath)
+                        .build()
+                }
                 AsyncImage(
-                    model = imageLocalContext.localFilePath,
+                    model = localImageRequest,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
                     modifier = imageModifier,
                     contentScale = imageContentScale,
