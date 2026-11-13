@@ -3,6 +3,8 @@ package id.homebase.chat.conversationlist
 import id.homebase.api.common.OdinId
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 private val CLUSTER_TIME_WINDOW = 3.minutes
 
@@ -39,15 +41,15 @@ private fun inCluster(earlierSender: OdinId?, earlierTime: Instant, laterSender:
     earlierSender == laterSender && (laterTime - earlierTime) < CLUSTER_TIME_WINDOW
 
 // Placeholders cluster as their real message will, so the hand-off doesn't re-space the rows around them.
-internal fun clusterPendingInto(items: List<Any>, ownerOdinId: OdinId?): List<Any> {
+internal fun clusterPendingInto(items: List<Any>, ownerOdinId: OdinId?, timeZone: TimeZone = TimeZone.currentSystemDefault()): List<Any> {
     if (ownerOdinId == null) return items
-    // Clustering skips system and separator rows; only a date section ends a group.
+    // Clustering skips system and separator rows; a date section or a not-yet-loaded page ends a group.
     fun neighbour(from: Int, step: Int): Int? {
         var i = from + step
         while (i in items.indices) {
             when (items[i]) {
                 is MessageListContentModel.Message, is PendingOutgoingMessage -> return i
-                is MessageListContentModel.Section -> return null
+                is MessageListContentModel.Section, MessageListContentModel.LoadingOlder, MessageListContentModel.LoadingNewer -> return null
             }
             i += step
         }
@@ -61,7 +63,8 @@ internal fun clusterPendingInto(items: List<Any>, ownerOdinId: OdinId?): List<An
         if (earlier == null || later == null) return false
         val (a, aTime) = senderAndTime(earlier)
         val (b, bTime) = senderAndTime(later)
-        return inCluster(a, aTime, b, bTime)
+        // A placeholder sorts in before its day's section exists; the real message's day ends the group.
+        return inCluster(a, aTime, b, bTime) && aTime.toLocalDateTime(timeZone).date == bTime.toLocalDateTime(timeZone).date
     }
     return items.mapIndexed { i, item ->
         if (item !is MessageListContentModel.Message && item !is PendingOutgoingMessage) return@mapIndexed item

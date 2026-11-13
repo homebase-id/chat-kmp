@@ -299,4 +299,25 @@ class MessageClusterPositionTest {
 
         assertEquals(listOf(MessageClusterPosition.ALONE, null, MessageClusterPosition.ALONE), positions(items))
     }
+
+    @Test
+    fun aPlaceholderAfterMidnightDoesntGroupWithYesterday() {
+        val utc = kotlinx.datetime.TimeZone.UTC
+        val lateMessage = msg(alice, 0).let { it.copy(message = it.message.copy(userDate = Instant.parse("2026-11-12T23:59:30Z"))) }
+        val afterMidnight = pending(0).copy(sentAt = Instant.parse("2026-11-13T00:00:30Z"))
+
+        val items = clusterPendingInto(listOf(lateMessage, afterMidnight), alice, utc)
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, MessageClusterPosition.ALONE), positions(items))
+    }
+
+    @Test
+    fun aPlaceholderBeyondUnloadedNewerMessagesStandsAlone() {
+        val items = clusterPendingInto(
+            computeClusterPositions(listOf(msg(alice, 0))) + MessageListContentModel.LoadingNewer + pending(1),
+            alice,
+        )
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, null, MessageClusterPosition.ALONE), positions(items))
+    }
 }
