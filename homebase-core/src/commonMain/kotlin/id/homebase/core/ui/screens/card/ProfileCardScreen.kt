@@ -11,7 +11,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.foundation.gestures.AnchoredDraggableDefaults
 import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.TargetedFlingBehavior
 import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.anchoredDraggable
@@ -22,6 +25,7 @@ import androidx.compose.material3.MenuDefaults
 import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
@@ -206,6 +210,7 @@ import id.homebase.core.widget.LocalOpenOverlays
 import id.homebase.core.widget.ProvideOpenOverlays
 import id.homebase.core.widget.ReportOverlay
 import id.homebase.core.ui.navigation.LocalPaneEntered
+import kotlin.math.abs
 
 // Wide windows get a card-width sheet rather than the page's full website layout.
 internal val WIDE_SHEET_MAX_WIDTH = 480.dp
@@ -228,6 +233,10 @@ private val MINI_CARD_CORNER = 5.dp
 private val MINI_CARD_SELECTED_CORNER = 9.dp
 private val ZeroCorner = CornerSize(0.dp)
 private const val SHEET_HEIGHT_FRACTION = 0.93f
+// A flick slower than this moves the pager or sheet only as far as the finger dragged it.
+private val DELIBERATE_FLING_VELOCITY = 1000.dp
+private const val PAGER_POSITIONAL_THRESHOLD = 0.35f
+private const val SHEET_POSITIONAL_THRESHOLD = 0.25f
 private const val SCRIM_ALPHA = 0.32f
 private const val UNSAVED_LABEL_ALPHA = 0.8f
 private const val SKELETON_ALPHA_LOW = 0.35f
@@ -355,6 +364,7 @@ private fun ProfileCardPager(
     val sheet = remember { AnchoredDraggableState(if (opened) SheetValue.Open else SheetValue.Dismissed) }
     var dismissing by remember { mutableStateOf(false) }
     val sheetHeightPx = LocalWindowInfo.current.containerSize.height * SHEET_HEIGHT_FRACTION
+    val sheetFling = deliberateFling(AnchoredDraggableDefaults.flingBehavior(sheet, positionalThreshold = { it * SHEET_POSITIONAL_THRESHOLD }))
     val scope = rememberCoroutineScope()
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { scope.launch { viewModel.captureCover() } }
     var leaving by remember { mutableStateOf(false) }
@@ -381,7 +391,11 @@ private fun ProfileCardPager(
         LaunchedEffect(sheet) {
             snapshotFlow { sheet.anchors.size }.first { it > 0 }
             // Launched: a header drag or leave() cancels the opening animation, and the dismissal watch must outlive it.
-            if (!opened) launch { sheet.animateTo(SheetValue.Open) }
+            // A frame late, as the first frame composes the whole card and would swallow the animation's start.
+            if (!opened) launch {
+                withFrameNanos { }
+                sheet.animateTo(SheetValue.Open)
+            }
             opened = true
             sheet.awaitDismissed(SheetValue.Dismissed) { dismissing }
             leaving = true
@@ -462,6 +476,7 @@ private fun ProfileCardPager(
                                 state = pagerState,
                                 key = { cards.getOrNull(it)?.let { card -> audienceKey(card.audience) } ?: it },
                                 userScrollEnabled = !uiState.isExporting,
+                                flingBehavior = deliberateFling(PagerDefaults.flingBehavior(pagerState, snapPositionalThreshold = PAGER_POSITIONAL_THRESHOLD)),
                                 modifier = Modifier.fillMaxSize(),
                             ) { page ->
                                 val card = cards[page]
@@ -522,7 +537,7 @@ private fun ProfileCardPager(
                         .fillMaxWidth()
                         .then(if (cardBands) Modifier.drawBehind { drawRect(topColor) } else Modifier)
                         // The card's webview never hands drags to Compose, so the header alone drags the sheet.
-                        .then(if (sheeted) Modifier.anchoredDraggable(sheet, Orientation.Vertical) else Modifier),
+                        .then(if (sheeted) Modifier.anchoredDraggable(sheet, Orientation.Vertical, flingBehavior = sheetFling) else Modifier),
                 ) {
                     SheetTopChrome(
                         uiState = uiState,
@@ -623,6 +638,17 @@ private fun readableOn(background: Color): Color {
 }
 
 internal enum class SheetValue { Open, Dismissed }
+
+@Composable
+private fun deliberateFling(delegate: TargetedFlingBehavior): TargetedFlingBehavior {
+    val minVelocity = with(LocalDensity.current) { DELIBERATE_FLING_VELOCITY.toPx() }
+    return remember(delegate, minVelocity) {
+        object : TargetedFlingBehavior {
+            override suspend fun ScrollScope.performFling(initialVelocity: Float, onRemainingDistanceUpdated: (Float) -> Unit): Float =
+                with(delegate) { performFling(if (abs(initialVelocity) < minVelocity) 0f else initialVelocity, onRemainingDistanceUpdated) }
+        }
+    }
+}
 
 /** Returns once the sheet has come up (or a dismissal was asked for before it moved) and is back at [dismissed]. */
 internal suspend fun <T> AnchoredDraggableState<T>.awaitDismissed(dismissed: T, dismissing: () -> Boolean) {
@@ -1125,7 +1151,7 @@ internal fun CardSurface(
         AnimatedVisibility(
             visible = uiState.cardUnsupported || failed || waiting,
             enter = fadeIn(motion.defaultEffectsSpec()),
-            exit = fadeOut(motion.slowEffectsSpec()),
+            exit = fadeOut(motion.fastEffectsSpec()),
             modifier = Modifier.fillMaxSize(),
         ) {
             CardPlaceholder(

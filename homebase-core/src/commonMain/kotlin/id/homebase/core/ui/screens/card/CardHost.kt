@@ -172,6 +172,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
     private var lastPayload: CardPayload? = null
     private var hostStyle: CardCommand.HostStyle? = null
     private var renderSent: TimeMark? = null
+    private var paintRequested: TimeMark? = null
     private var mainFrameSettled = false
     private var loadedTimeout: Job? = null
 
@@ -205,7 +206,9 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
     }
 
     override fun requestPaint() {
-        if (_isLoaded.value) send(CardCommand.RequestPaint)
+        if (!_isLoaded.value) return
+        paintRequested = TimeSource.Monotonic.markNow()
+        send(CardCommand.RequestPaint)
     }
 
     override fun scrollToTop() {
@@ -254,9 +257,9 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         when (event) {
             CardEvent.Loaded -> onLoaded()
             is CardEvent.Ready -> CardLog.info("ready layout=${event.layout} ${event.ms}ms, ${renderSent?.elapsedNow()?.inWholeMilliseconds}ms after the render was sent")
-            CardEvent.Painted -> renderSent?.let {
-                CardLog.info("painted ${it.elapsedNow().inWholeMilliseconds}ms after the render was sent")
-                renderSent = null
+            CardEvent.Painted -> paintRequested?.let {
+                CardLog.info("painted ${it.elapsedNow().inWholeMilliseconds}ms after the paint was requested")
+                paintRequested = null
             }
             is CardEvent.Png -> CardLog.info("png ${decodedSize(event.base64)}B ${event.width}x${event.height}")
             is CardEvent.Link -> CardLog.info("link ${event.href}")
