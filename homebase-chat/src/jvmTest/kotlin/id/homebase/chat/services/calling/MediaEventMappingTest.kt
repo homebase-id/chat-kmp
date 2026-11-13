@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import id.homebase.api.client.calling.CallIceServer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -38,6 +39,7 @@ private class PeerBackedEngine(private val peer: FakePeerConnection, private val
     override suspend fun createOffer(video: Boolean) = FakeCallEngine.FAKE_OFFER_SDP
     override suspend fun answer(offerSdp: String, video: Boolean) = "answer"
     override suspend fun applyRemote(answerSdp: String) = Unit
+    override fun setIceServers(iceServers: List<CallIceServer>) = Unit
     override suspend fun restartIce() = "restart"
     override suspend fun answerRestart(offerSdp: String) = "restart-answer"
     override suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?) { peer.addedIce += candidate }

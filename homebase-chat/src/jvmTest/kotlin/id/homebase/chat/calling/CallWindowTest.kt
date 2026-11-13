@@ -40,7 +40,6 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.services.calling.AudioRoute
@@ -159,7 +158,6 @@ class CallWindowTest {
                 true
             },
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
-            stunUrls = StunUrlStore(EventBus(), kotlinx.coroutines.flow.flowOf(null), scope.backgroundScope),
             scope = scope.backgroundScope,
         )
         val peer = CallController(
@@ -205,7 +203,7 @@ class CallWindowTest {
             assertTrue(rig.model.windowVisible.value)
             assertEquals(CallPhase.Outgoing, rig.model.uiState.value.phase)
 
-            settle(3_001) // no STUN URLs here, so the offer waits out awaitStunUrls before the peer rings
+            settle()
             rig.peer.accept()
             settle(1_001)
             assertEquals(CallPhase.Connected, rig.model.uiState.value.phase)

@@ -7,8 +7,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -36,24 +38,42 @@ class CallIceServersTest {
             clock = { scope.testScheduler.currentTime },
         )
         val phase get() = controller.state.value.phase
+        val engine get() = engines.single()
     }
 
-    // Each request hands out the next login, good for [lifetimeMs] from when it was asked.
-    private inner class Logins(private val scope: TestScope, private val lifetimeMs: Long = 300_000, private val latencyMs: Long = 0) {
+    // Each request hands out the next login, good for [lifetimeMs] from when it was asked; [answer] overrides it.
+    private class Logins(
+        private val scope: TestScope,
+        private val stun: CallIceServer,
+        private val turn: (Int) -> CallIceServer,
+        private val lifetimeMs: Long = 300_000,
+        private val latencyMs: Long = 0,
+    ) {
         val asked = mutableListOf<String>()
+        var answer: ((now: Long) -> CallIceServers)? = null
         suspend fun get(peer: String): CallIceServers {
             asked += peer
             delay(latencyMs)
-            return CallIceServers(listOf(stun, turn(asked.size)), expiresAtMs = scope.testScheduler.currentTime + lifetimeMs)
+            val now = scope.testScheduler.currentTime
+            return answer?.invoke(now) ?: CallIceServers(listOf(stun, turn(asked.size)), expiresAtMs = now + lifetimeMs, fetchedAtMs = now)
         }
     }
 
-    private fun TestScope.connect(caller: Logins, callee: Logins): Pair<Side, Side> {
+    private fun TestScope.logins(lifetimeMs: Long = 300_000, latencyMs: Long = 0) = Logins(this, stun, ::turn, lifetimeMs, latencyMs)
+
+    // Frodo's call is ringing on Sam's side.
+    private fun TestScope.ringing(caller: Logins, callee: Logins): Pair<Side, Side> {
         val net = LoopbackSignaling(now = { testScheduler.currentTime })
         val a = Side(frodo, this, net, caller::get)
         val b = Side(sam, this, net, callee::get)
         a.controller.startCall(sam, video = false)
         runCurrent()
+        assertEquals(CallPhase.Incoming, b.phase)
+        return a to b
+    }
+
+    private fun TestScope.connected(caller: Logins, callee: Logins): Pair<Side, Side> {
+        val (a, b) = ringing(caller, callee)
         b.controller.accept()
         advanceTimeBy(1_001)
         assertEquals(CallPhase.Connected, a.phase)
@@ -61,11 +81,13 @@ class CallIceServersTest {
         return a to b
     }
 
+    private fun stunOnly(now: Long, fromServer: Boolean) = CallIceServers(listOf(stun), fromServer = fromServer, fetchedAtMs = now)
+
     @Test
     fun eachSideGathersWithTheLoginItsOwnServerHandsOutForThatPeer() = runTest {
-        val caller = Logins(this)
-        val callee = Logins(this)
-        val (a, b) = connect(caller, callee)
+        val caller = logins()
+        val callee = logins()
+        val (a, b) = connected(caller, callee)
 
         assertEquals(listOf(sam), caller.asked)
         assertEquals(listOf(frodo), callee.asked)
@@ -75,13 +97,8 @@ class CallIceServersTest {
 
     @Test
     fun aRingFetchesTheLoginSoAcceptingDoesNotWaitForIt() = runTest {
-        val net = LoopbackSignaling(now = { testScheduler.currentTime })
-        val callee = Logins(this, latencyMs = 2_000)
-        val a = Side(frodo, this, net, Logins(this)::get)
-        val b = Side(sam, this, net, callee::get)
-        a.controller.startCall(sam, video = false)
-        runCurrent()
-        assertEquals(CallPhase.Incoming, b.phase)
+        val callee = logins(latencyMs = 2_000)
+        val (_, b) = ringing(logins(), callee)
         assertEquals(listOf(frodo), callee.asked)
 
         advanceTimeBy(5_000)
@@ -94,12 +111,8 @@ class CallIceServersTest {
 
     @Test
     fun aRingAnsweredWhenItsLoginIsAboutToExpireAsksForANewOne() = runTest {
-        val net = LoopbackSignaling(now = { testScheduler.currentTime })
-        val callee = Logins(this, lifetimeMs = 60_000)
-        val a = Side(frodo, this, net, Logins(this)::get)
-        val b = Side(sam, this, net, callee::get)
-        a.controller.startCall(sam, video = false)
-        runCurrent()
+        val callee = logins(lifetimeMs = 60_000)
+        val (_, b) = ringing(logins(), callee)
         advanceTimeBy(40_000)
         b.controller.accept()
         runCurrent()
@@ -109,64 +122,76 @@ class CallIceServersTest {
     }
 
     @Test
-    fun aReconnectAfterTheLoginsExpiredGathersWithFreshOnesOnBothSides() = runTest {
-        val caller = Logins(this)
-        val callee = Logins(this)
-        val (a, b) = connect(caller, callee)
-
-        advanceTimeBy(10 * 60_000)
-        a.engines.single().simulateDrop()
+    fun aRingWhoseRequestFailedAsksAgainOnAccept() = runTest {
+        val callee = logins()
+        callee.answer = { now -> stunOnly(now, fromServer = false) }
+        val (_, b) = ringing(logins(), callee)
+        callee.answer = null
+        advanceTimeBy(10_000)
+        b.controller.accept()
         runCurrent()
 
-        assertEquals(listOf(listOf(stun, turn(2))), a.engines.single().iceServerUpdates)
-        assertEquals(listOf(listOf(stun, turn(2))), b.engines.single().iceServerUpdates)
-        assertEquals(1, a.engines.single().restarts)
-        assertEquals(1, b.engines.single().restarts)
+        assertEquals(2, callee.asked.size)
+        assertEquals(listOf(stun, turn(2)), b.createdWith.single())
+    }
+
+    @Test
+    fun aPlacedCallWhoseRequestFailedUsesTheFallbackWithoutAskingTwice() = runTest {
+        val caller = logins()
+        caller.answer = { now -> stunOnly(now, fromServer = false) }
+        val (a, _) = ringing(caller, logins())
+
+        assertEquals(1, caller.asked.size)
+        assertEquals(listOf(stun), a.createdWith.single())
+    }
+
+    @Test
+    fun aReconnectAfterTheLoginsExpiredGathersWithFreshOnesOnBothSides() = runTest {
+        val (a, b) = connected(logins(), logins())
+
+        advanceTimeBy(10 * 60_000)
+        a.engine.simulateDrop()
+        runCurrent()
+
+        assertEquals(listOf(listOf(stun, turn(2))), a.engine.iceServerUpdates)
+        assertEquals(listOf(listOf(stun, turn(2))), b.engine.iceServerUpdates)
+        assertEquals(1, a.engine.restarts)
+        assertEquals(1, b.engine.restarts)
     }
 
     @Test
     fun aReconnectWhileTheLoginIsFreshAsksForNothing() = runTest {
-        val caller = Logins(this)
-        val callee = Logins(this)
-        val (a, b) = connect(caller, callee)
+        val caller = logins()
+        val callee = logins()
+        val (a, b) = connected(caller, callee)
 
-        a.engines.single().simulateDrop()
+        a.engine.simulateDrop()
         runCurrent()
 
-        assertEquals(1, a.engines.single().restarts)
-        assertTrue(a.engines.single().iceServerUpdates.isEmpty())
-        assertTrue(b.engines.single().iceServerUpdates.isEmpty())
+        assertEquals(1, a.engine.restarts)
+        assertTrue(a.engine.iceServerUpdates.isEmpty())
+        assertTrue(b.engine.iceServerUpdates.isEmpty())
         assertEquals(1, caller.asked.size)
         assertEquals(1, callee.asked.size)
     }
 
     @Test
-    fun aReconnectWhoseRequestFailsKeepsTheServersTheCallHas() = runTest {
-        val net = LoopbackSignaling(now = { testScheduler.currentTime })
-        var fail = false
-        val logins = Logins(this)
-        val a = Side(frodo, this, net) { peer -> if (fail) CallIceServers(listOf(stun), fromServer = false) else logins.get(peer) }
-        val b = Side(sam, this, net, Logins(this)::get)
-        a.controller.startCall(sam, video = false)
-        runCurrent()
-        b.controller.accept()
-        advanceTimeBy(1_001)
+    fun aServerWithoutTurnIsNotAskedAgainOnReconnect() = runTest {
+        val caller = logins()
+        caller.answer = { now -> stunOnly(now, fromServer = true) }
+        val (a, _) = connected(caller, logins())
 
-        fail = true
         advanceTimeBy(10 * 60_000)
-        a.engines.single().simulateDrop()
+        a.engine.simulateDrop()
         runCurrent()
 
-        assertEquals(1, a.engines.single().restarts)
-        assertTrue(a.engines.single().iceServerUpdates.isEmpty())
+        assertEquals(1, caller.asked.size)
+        assertTrue(a.engine.iceServerUpdates.isEmpty())
     }
 
     @Test
     fun theServersAnswerIsUsedAsGiven() = runTest {
-        val source = CallIceServerSource(
-            fetch = { IceServersResponse(listOf(stun, turn(1)), UnixTimeUtc(1_000_000)) },
-            handshakeStunUrls = { error("not asked") },
-        )
+        val source = CallIceServerSource({ IceServersResponse(listOf(stun, turn(1)), UnixTimeUtc(1_000_000)) }, MutableStateFlow(emptyList()))
         val ice = source.forCall(sam)
         assertEquals(listOf(stun, turn(1)), ice.servers)
         assertEquals(1_000_000L, ice.expiresAtMs)
@@ -175,7 +200,7 @@ class CallIceServersTest {
 
     @Test
     fun aServerWithoutTurnGivesStunOnlyWithNoExpiry() = runTest {
-        val ice = CallIceServerSource({ IceServersResponse(listOf(stun)) }, { error("not asked") }).forCall(sam)
+        val ice = CallIceServerSource({ IceServersResponse(listOf(stun)) }, MutableStateFlow(emptyList())).forCall(sam)
         assertEquals(listOf(stun), ice.servers)
         assertEquals(null, ice.expiresAtMs)
         assertTrue(ice.fromServer)
@@ -183,23 +208,28 @@ class CallIceServersTest {
 
     @Test
     fun aFailedRequestFallsBackToTheHandshakeStun() = runTest {
-        val ice = CallIceServerSource({ throw IllegalStateException("404") }, { stun.urls }).forCall(sam)
+        val ice = CallIceServerSource({ throw IllegalStateException("404") }, MutableStateFlow(stun.urls)).forCall(sam)
         assertEquals(listOf(stun), ice.servers)
         assertFalse(ice.fromServer)
     }
 
     @Test
-    fun aSlowRequestFallsBackToTheHandshakeStunAfterTheWait() = runTest {
-        val ice = CallIceServerSource({ awaitCancellation() }, { stun.urls }, timeoutMs = 3_000).forCall(sam)
+    fun aSlowRequestAndALateHandshakeShareOneWait() = runTest {
+        val ice = CallIceServerSource({ awaitCancellation() }, MutableStateFlow(emptyList()), timeoutMs = 3_000).forCall(sam)
         assertEquals(3_000, testScheduler.currentTime)
-        assertEquals(listOf(stun), ice.servers)
+        assertEquals(emptyList(), ice.servers)
         assertFalse(ice.fromServer)
     }
 
     @Test
-    fun noEndpointAndNoHandshakeStunGathersHostCandidatesOnly() = runTest {
-        val ice = CallIceServerSource(null, { emptyList() }).forCall(sam)
-        assertEquals(emptyList(), ice.servers)
+    fun aHandshakeThatArrivesWhileTheRequestHangsIsUsed() = runTest {
+        val handshake = MutableStateFlow(emptyList<String>())
+        val source = CallIceServerSource({ awaitCancellation() }, handshake, timeoutMs = 3_000)
+        val ice = backgroundScope.async { source.forCall(sam) }
+        advanceTimeBy(1_000)
+        handshake.value = stun.urls
+        advanceTimeBy(2_001)
+        assertEquals(listOf(stun), ice.await().servers)
     }
 
     @Test

@@ -699,6 +699,6 @@ internal fun nextCameraAfterSilence(order: List<String>, tried: List<String>): S
 // Every server as given by the device's own server; nothing is derived or added.
 private fun CallIceServer.toRtc() = RTCIceServer().also {
     it.urls = urls
-    username?.let { name -> it.username = name }
-    credential?.let { secret -> it.password = secret }
+    it.username = username
+    it.password = credential
 }

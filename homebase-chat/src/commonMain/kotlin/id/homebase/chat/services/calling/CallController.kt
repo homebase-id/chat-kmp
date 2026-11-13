@@ -80,8 +80,7 @@ class CallController(
     private var republishJob: Job? = null
     private var trickleJob: Job? = null
     private var restartOfferSdp: String? = null
-    private var iceFetch: Deferred<CallIceServers>? = null
-    private var iceFetchCallId: String? = null
+    private var iceFetch: Pair<String, Deferred<CallIceServers>>? = null
     private var callIce: CallIceServers? = null
     private val endedCalls = ArrayDeque<String>()
     @Volatile private var inFlight: Job? = null
@@ -264,33 +263,27 @@ class CallController(
 
     // Asked for as the call starts or rings, so placing it waits on one request at most and accepting it on none.
     private fun prefetchIceServers(s: CallState) {
-        if (s.isActive && s.callId == iceFetchCallId) return
-        iceFetch?.cancel()
+        val callId = s.callId.takeIf { s.isActive }
+        if (callId == iceFetch?.first) return
+        iceFetch?.second?.cancel()
         iceFetch = null
-        iceFetchCallId = null
         val peer = s.peer ?: return
-        if (!s.isActive) return
-        iceFetchCallId = s.callId
-        iceFetch = scope.async { iceServers(peer) }
+        if (callId != null) iceFetch = callId to scope.async { iceServers(peer) }
     }
 
+    // Asked again when the ring's answer is no longer usable: its login expired, or its request failed long enough ago.
     private suspend fun iceServersForEngine(): CallIceServers {
-        val s = _state.value
-        val peer = s.peer ?: return CallIceServers.None
-        val prefetched = iceFetch?.takeIf { iceFetchCallId == s.callId && !it.isCancelled }?.await()
-        // A ring asks again when its request failed (a cold push wake beats the network) or its login has since expired.
-        val reusable = prefetched?.fromServer == true || s.direction == CallDirection.Outgoing
-        if (prefetched != null && reusable && (prefetched.expiresAtMs == null || prefetched.isFresh(clock()))) return prefetched
-        return iceServers(peer)
+        val peer = _state.value.peer ?: return CallIceServers.None
+        val prefetched = iceFetch?.second?.await()
+        return if (prefetched != null && prefetched.reusableAt(clock())) prefetched else iceServers(peer)
     }
 
     // A login only opens relays until it expires, and a restart gathers again.
     private suspend fun refreshIceServers(state: CallState) {
         val current = engine ?: return
-        if (callIce?.isFresh(clock()) == true) return
+        if (callIce?.reusableAt(clock()) == true) return
         val fresh = iceServers(state.peer ?: return)
         log.i { "call=${state.callId} ICE servers for the restart: $fresh" }
-        if (!fresh.fromServer) return
         callIce = fresh
         current.setIceServers(fresh.servers)
     }

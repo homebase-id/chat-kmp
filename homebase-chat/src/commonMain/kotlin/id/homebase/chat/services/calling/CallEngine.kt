@@ -24,7 +24,7 @@ interface CallEngine {
     suspend fun answer(offerSdp: String, video: Boolean): String
     suspend fun applyRemote(answerSdp: String)
     /** Used from the next ICE gathering on: a TURN login only opens relays until it expires, so a restart needs a fresh one. */
-    fun setIceServers(iceServers: List<CallIceServer>) {}
+    fun setIceServers(iceServers: List<CallIceServer>)
     suspend fun restartIce(): String
     suspend fun answerRestart(offerSdp: String): String
     suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?)

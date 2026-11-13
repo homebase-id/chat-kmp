@@ -26,15 +26,6 @@ class IceServersProvider(
     credentialsManager: CredentialsManager,
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
-    suspend fun iceServers(peer: String): IceServersResponse {
-        val creds = requireCreds()
-        val response = encryptedPostJson(
-            url = apiUrl(creds.domain, "/calling/ice-servers"),
-            token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(IceServersRequest(peer)),
-            secret = creds.secret,
-        )
-        throwForFailure(response)
-        return deserialize(response.body)
-    }
+    suspend fun iceServers(peer: String): IceServersResponse =
+        deserialize(postChecked("/calling/ice-servers", OdinSystemSerializer.serialize(IceServersRequest(peer))))
 }
