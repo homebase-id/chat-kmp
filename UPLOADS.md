@@ -79,7 +79,7 @@ Every upload records the original file name of every payload, in one field with 
 - **Stickers** keep their neutral name on purpose, so a sticker doesn't leak the sender's camera-roll name.
 - **An app's own name is separate.** Where the user renames (a Vault label, a Filesync rename), the app's content holds the current name, and saving prefers it.
 
-**Where it lives is Open (decision A).** The descriptor is readable by the server, which is fine for ordinary drives but not for zero-knowledge ones (Vault, Photos). Photos already puts its names in encrypted file content for that reason.
+**It lives in the payload's descriptor,** which is encrypted whenever the file is: see [Encrypted files encrypt their descriptors](#10-encrypted-files-encrypt-their-descriptors).
 
 ### 4. What the main file is, recorded
 
@@ -124,6 +124,32 @@ Every upload states whether the main file keeps or strips its metadata (location
 ### 9. Payload keys
 
 Existing keys stay as they are (`chat_web0`, `mmt_0000`, `photo_main`, `vlt_pg_00`, `sync_data`), because receivers look payloads up by key. New apps use `<app>_<index>`, and the builder names them.
+
+
+### 10. Encrypted files encrypt their descriptors
+
+**Decided (Michael, 2026-11-13): a payload's descriptor is encrypted exactly when its bytes are.** An encrypted file's descriptors are encrypted with the file's own AES key, so whoever can read the file can read them and nobody else can. A public post's descriptors stay plain, like its photo.
+
+**Why the whole descriptor, not just the name.** Descriptors hold more than names. Today they carry a location message's coordinates and address, a shared link's URL, title and description, a Vault note's preview text, and a video's details, all readable on the server even in an encrypted chat. Encrypting only the name would leave those readable, and every field added later would need its own "secret or not" decision. Encrypting the whole descriptor protects everything by default.
+
+**The format** is the one both clients already use for encrypted query strings and socket messages (`SharedSecretEncryptedPayload`):
+
+```json
+{"iv": "<base64, 16 bytes>", "data": "<base64, AES-CBC of the descriptor>"}
+```
+
+- **The key** is the file's AES key, the one its payloads use.
+- **The IV is fresh and random for each descriptor,** never the payload's own IV: the payload's bytes are encrypted with that key and IV, and reusing the pair leaks.
+- **Telling old from new:** an old descriptor is never a JSON object holding exactly `iv` and `data`, so readers need no extra marker.
+- **Size:** the server allows 1,024 characters per descriptor. Encryption leaves about 730 for the descriptor itself; anything bigger goes, as today, into its own encrypted payload (`pld_desc`).
+
+**The server needs no change.** odin-core stores and copies descriptors and checks their length, and never reads them.
+
+**The web apps do read them** (odin-js): `community-app` (chat and Community: file names, video duration, link previews, and it writes `file.name` as a photo's descriptor), the feed (`common-app`: download names, gallery details), WebDrop and the video player (`ui-lib`). So both clients change together:
+
+1. **Readers, in chat-kmp and odin-js:** decrypt an `{iv, data}` descriptor with the file's key, and keep reading plain ones.
+2. **Writers, a release later, in both:** encrypt every descriptor of an encrypted file.
+3. **Existing files stay as they are.**
 
 ## Per app
 
@@ -174,8 +200,8 @@ build(sources, app options) → payloads + thumbnails + descriptors + file-conte
 
 | | Decision | Options | Recommendation |
 |---|---|---|---|
-| **A** | Where the file name lives | (1) the readable descriptor, everywhere; (2) encrypted file content, everywhere; (3) the descriptor on ordinary drives, encrypted content on zero-knowledge drives | (3), unless odin-core can encrypt the descriptor itself on zero-knowledge drives, which would make it (1). To confirm with odin-core. |
-| **B** | Vault's tiny is readable in the header on a zero-knowledge drive | keep; move it into encrypted content as Photos does | move it |
+| **A** | Where the file name lives | **Decided:** in the descriptor, and every descriptor of an encrypted file is encrypted with the file's key, in both clients. See [section 10](#10-encrypted-files-encrypt-their-descriptors). | — |
+| **B** | The tiny is readable in the header of encrypted files (chat, Vault); Photos encrypts it | keep it readable; encrypt it whenever the file is encrypted, by the same principle as the descriptors | encrypt it |
 | **C** | Vault keeps or strips metadata | keep (it's the user's own storage, like Photos); strip (today) | keep, matching Photos |
 | **D** | The plain-file descriptor switch from a raw string to JSON | now, accepting that old clients show JSON as the name; after a release | after a release |
 
