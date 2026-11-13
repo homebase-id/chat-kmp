@@ -29,7 +29,7 @@ Every user upload, in every app, is assembled by one builder into the format bel
 | Word | Meaning |
 |---|---|
 | **HomebaseFile** | What an upload creates on a drive: a header (`appData`) plus payloads. A chat message with three photos is one HomebaseFile. |
-| **Payload** | A payload of the HomebaseFile, under a key such as `chat_web0`: usually one picked photo, video or document. |
+| **Payload** | A payload of the HomebaseFile, under a name such as `chat_web0` (the record's `key` field; the codebase calls it the "payload key", but it is a name, not a cryptographic key). Payloads have no key of their own: their data is encrypted with the HomebaseFile's AES key and the payload's own IV. |
 | **Payload data** | A payload's bytes: what the user picked, or the smaller copy we made of it. |
 | **Descriptor content** | A payload's `descriptorContent` string: the one field of the server's `PayloadDescriptor` record that is ours. |
 
@@ -51,7 +51,7 @@ HomebaseFile (a chat message with 3 photos)
 └── payload chat_web2 → PayloadDescriptor ...
 ```
 
-- **Thumbnails belong to one payload** (at most 5) and are fetched by HomebaseFile, payload key and size. Their sizes are in the plain `thumbnails` list.
+- **Thumbnails belong to one payload** (at most 5) and are fetched by HomebaseFile, payload name and size. Their sizes are in the plain `thumbnails` list.
 - **`contentType`** is the payload data's format (`image/jpeg`, `image/webp`). **`kind`**, below, is how to show the payload: an `image/png` can be a photo, a sticker or a document.
 - **A view decrypts descriptor content only when it needs it:** to step up, open full screen, show info or save. Never to lay out or pick a thumbnail; those use the plain `thumbnails` and `previewThumbnail`. Decrypting and parsing one costs about 2.5 µs on a desktop JVM.
 
@@ -102,7 +102,7 @@ data class DescriptorContent(
 | `w`, `h` | payload data's pixels, upright | `i`, `v`, `s` | |
 | `q` | quality it was sent with | `i`, `v` | `sd`, `hd`, `org` |
 | `l` | length in seconds | `a` | |
-| `vd` | video details: `d` duration ms, `c` codec, `seg`, `p` the playlist's payload key, `sz` size before encryption, `bd` bit depth, `hdr`, `br` bitrate | `v` | width and height are `w`/`h` above, not repeated |
+| `vd` | video details: `d` duration ms, `c` codec, `seg`, `p` the playlist payload's name, `sz` size before encryption, `bd` bit depth, `hdr`, `br` bitrate | `v` | width and height are `w`/`h` above, not repeated |
 | `x` | app content | `x` | app-defined string |
 
 Encoding rules:
@@ -140,7 +140,7 @@ When the HomebaseFile is encrypted, `descriptorContent` holds the descriptor con
 
 ```text
 iv     = 12 random bytes
-sealed = 0x01 ‖ iv ‖ AES-128-GCM(key = KeyHeader.aesKey, iv, plaintext = UTF-8 DescriptorContent JSON, aad = UTF-8 payload key)
+sealed = 0x01 ‖ iv ‖ AES-128-GCM(key = KeyHeader.aesKey, iv, plaintext = UTF-8 DescriptorContent JSON, aad = UTF-8 payload name)
                                        (ciphertext followed by its 16-byte tag)
 descriptorContent = {"e":"<base64 of sealed>"}
 ```
@@ -150,13 +150,15 @@ descriptorContent = {"e":"<base64 of sealed>"}
 | Algorithm | AES-128-GCM, 16-byte tag | Authenticated: a changed byte fails to decrypt instead of producing altered content. CBC has no integrity check |
 | Key | The key in the HomebaseFile's header (`KeyHeader.aesKey`), the one its payloads use | Whoever can read the file can read its descriptor content, and nobody else |
 | IV | 12 random bytes per descriptor content | GCM's standard size; random is safe at a handful of encryptions per key |
-| AAD | The payload key, UTF-8 (`chat_web0`) | Ties it to its payload: descriptor content moved to another payload of the same file fails to decrypt |
+| AAD | The payload's name, UTF-8: its `key` field, e.g. `chat_web0`. A name, not a cryptographic key | Ties it to its payload: descriptor content moved to another payload of the same file fails to decrypt. Nothing extra is stored; the reader knows which payload it reads |
 | Format byte | `0x01` | Lets the scheme change later without guessing |
 | Wrapper | `{"e": …}` | Unmistakable next to old descriptors: a raw-string file name can look like base64, a JSON object with only `e` can't |
 | When | The HomebaseFile is encrypted (`isEncrypted`). Unencrypted HomebaseFiles (public posts) store the plain `DescriptorContent` | |
 | Size | 29 bytes of overhead before base64. odin-core allows 1,024 characters, about 730 of descriptor content once sealed. Nothing a user uploads comes near it (section 1) | |
 | Server | No change. odin-core stores, copies and length-checks descriptor content, and never reads it | |
 | Platforms | `AesGcm` in homebase-api on every platform; WebCrypto's AES-GCM in odin-js | |
+
+**Copying a payload re-encrypts its descriptor content.** A forward, or any copy into another HomebaseFile, decrypts it with the old file's key and encrypts it again with the new file's key and the payload's name in its new place. Today forwarding copies it verbatim, which would no longer decrypt.
 
 Why the whole descriptor content: besides names, it carries location coordinates and addresses, link URLs and titles (in `x`), and Vault note previews.
 
@@ -220,7 +222,7 @@ Applied by the builder, before the encrypted and public paths split, so public u
 | Tiny location | Plain, in the payload's `previewThumbnail` and the header's `appData.previewThumbnail` (the smallest tiny), encrypted file or not. 20 px leaks nothing meaningful |
 | Thumbnails | Encrypted with the payload, as today |
 
-### 3.6 Payload keys
+### 3.6 Payload names
 
 The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase letters, digits and `_` (odin-core `TenantPathManager.ValidPayloadKeyRegex`).
 
@@ -290,7 +292,7 @@ Filesync, WebDrop and the two photo APIs use the builder's rules (content type, 
 | `descriptorContent` | Read as |
 |---|---|
 | null | nothing |
-| JSON object with only `e` | encrypted (section 2): decrypt with the HomebaseFile's key and the payload key as AAD, then read the result with this table |
+| JSON object with only `e` | encrypted (section 2): decrypt with the HomebaseFile's key and the payload's name as AAD, then read the result with this table |
 | JSON object with `"v": 1` | `DescriptorContent` |
 | old `VideoMetadata` with `isDescriptorContentComplete: false` | the full metadata, with the playlist, is in the payload its `key` names (`pld_desc<index>`) |
 | anything else | today's rules by content type: `AudioFile`, markdown preview, `VideoMetadata`, `ImageFile`, link and location arrays, or the raw string as a file name |
@@ -308,7 +310,7 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 | Test | Checks |
 |---|---|
 | `DescriptorContent` round trip | Every kind serialises to the short keys and parses back; absent fields aren't written; `v` always is; unknown keys ignored; old quality codes translate; an HLS video writes its playlist as `pls_` and points to it |
-| Encrypted descriptor content | Encrypt then decrypt; a fresh IV each time; a flipped byte, a wrong payload key (AAD) or another file's key fails to decrypt; app content over the limit is rejected; the same vectors pass in odin-js |
+| Encrypted descriptor content | Encrypt then decrypt; a fresh IV each time; a flipped byte, a wrong payload name (AAD) or another file's key fails to decrypt; app content over the limit is rejected; the same vectors pass in odin-js |
 | Old descriptors | Each row of section 6, with real stored examples, reads as before |
 | Name rules | Paths, NFC, `/` and NUL, a long name keeps its extension, an emoji at the cut, a 20-character "extension", blank |
 | Content type | Wrong platform MIME, empty MIME, no extension, renamed file |
