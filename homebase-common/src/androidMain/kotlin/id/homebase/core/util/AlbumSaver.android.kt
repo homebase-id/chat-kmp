@@ -112,7 +112,7 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                     val publicDir = Environment.getExternalStoragePublicDirectory(directory)
                     val destDir = File(publicDir, ALBUM_FOLDER)
                     destDir.mkdirs()
-                    val destFile = File(destDir, safeName)
+                    val destFile = File(destDir, freeFileName(safeName) { File(destDir, it).exists() })
                     destFile.outputStream().use { out ->
                         openSource().use { it.copyTo(out) }
                     }

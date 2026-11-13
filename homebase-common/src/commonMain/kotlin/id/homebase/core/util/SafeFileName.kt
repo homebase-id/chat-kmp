@@ -19,6 +19,13 @@ fun saveFileName(name: String?, fallbackStem: String, contentType: String?): Str
     return build(segment, fallbackStem, extension)
 }
 
+/** [name] if it's free, else "stem (1).ext", "stem (2).ext"… as Android, Windows and browsers number a copy: a save never replaces a file unasked. */
+fun freeFileName(name: String, isTaken: (String) -> Boolean): String {
+    if (!isTaken(name)) return name
+    val (stem, ext) = splitExtension(name)
+    return generateSequence(1) { it + 1 }.map { fit(stem, " ($it)$ext", "file") }.first { !isTaken(it) }
+}
+
 /** Stem and extension (with its dot). A leading dot names a hidden file, and an overlong "extension" stays in the stem. */
 fun splitExtension(name: String): Pair<String, String> {
     val dot = name.lastIndexOf('.')

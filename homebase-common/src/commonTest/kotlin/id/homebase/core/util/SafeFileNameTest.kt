@@ -101,6 +101,19 @@ class SafeFileNameTest {
     }
 
     @Test
+    fun aTakenNameGetsTheNextNumberInsteadOfReplacingTheFile() {
+        val taken = mutableSetOf("IMG_1.jpg")
+        assertEquals("notes.txt", freeFileName("notes.txt") { it in taken })
+        assertEquals("IMG_1 (1).jpg", freeFileName("IMG_1.jpg") { it in taken })
+        taken += listOf("IMG_1 (1).jpg", "IMG_1 (2).jpg", "README", "README (1)")
+        assertEquals("IMG_1 (3).jpg", freeFileName("IMG_1.jpg") { it in taken })
+        assertEquals("README (2)", freeFileName("README") { it in taken })
+        val long = "x".repeat(251) + ".pdf"
+        val numbered = freeFileName(long) { it == long }
+        assertTrue(numbered.endsWith(" (1).pdf") && numbered.encodeToByteArray().size <= 255, numbered)
+    }
+
+    @Test
     fun aContentTypeLendsOnlyAPlainExtension() {
         assertEquals("pdf", extensionForContentType("application/pdf"))
         assertEquals("x-foo", extensionForContentType("application/x-foo"))

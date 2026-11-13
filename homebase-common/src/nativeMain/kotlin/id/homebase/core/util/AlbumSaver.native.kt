@@ -90,19 +90,11 @@ object IosAlbumSaver : AlbumSaver {
                 )
                 val documentsDir = paths.firstOrNull() as? String
                     ?: throw Exception("Could not find Documents directory")
-                val destPath = "$documentsDir/$safeName"
+                val destPath = "$documentsDir/${freeFileName(safeName) { fileManager.fileExistsAtPath("$documentsDir/$it") }}"
                 val sourcePath = fileUrl.path
                     ?: throw Exception("Source URL has no filesystem path: $fileUrl")
 
                 memScoped {
-                    // Remove existing file if present
-                    if (fileManager.fileExistsAtPath(destPath)) {
-                        val removeErr = alloc<ObjCObjectVar<NSError?>>()
-                        if (!fileManager.removeItemAtPath(destPath, removeErr.ptr)) {
-                            val msg = removeErr.value?.localizedDescription ?: "unknown error"
-                            throw Exception("Failed to remove existing file at $destPath: $msg")
-                        }
-                    }
                     val copyErr = alloc<ObjCObjectVar<NSError?>>()
                     if (!fileManager.copyItemAtPath(sourcePath, destPath, copyErr.ptr)) {
                         val msg = copyErr.value?.localizedDescription ?: "unknown error"
