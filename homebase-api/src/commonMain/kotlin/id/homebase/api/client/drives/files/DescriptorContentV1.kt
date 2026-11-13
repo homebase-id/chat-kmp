@@ -57,11 +57,11 @@ data class DescriptorContentV1(
 
     fun encode(): String = OdinSystemSerializer.serialize(this)
 
-    fun toVideoMetadata(payloadKey: String, playlist: String?): VideoMetadata? {
+    fun toVideoMetadata(payloadKey: String, contentType: String?, playlist: String?): VideoMetadata? {
         val video = video ?: return null
         val segmented = video.segmented == 1
         return VideoMetadata(
-            mimeType = if (segmented) HLS_PLAYLIST_CONTENT_TYPE else "video/mp4",
+            mimeType = if (segmented) HLS_PLAYLIST_CONTENT_TYPE else contentType ?: "video/mp4",
             isSegmented = segmented,
             fileSize = video.plainBytes ?: 0L,
             duration = video.durationMs.toFloat(),
@@ -79,9 +79,13 @@ data class DescriptorContentV1(
     companion object {
         const val VERSION = 1
 
-        // No older form is a JSON object with a "k" key, so they all stop at the cheap checks.
+        // No older form is a JSON object with "v" and "k" keys.
+        fun isCurrentFormat(content: String): Boolean =
+            content.startsWith("{") && content.contains("\"v\":") && content.contains("\"k\":")
+
+        /** Null for older forms, and for a later version or kind this client doesn't know. */
         fun parseOrNull(content: String): DescriptorContentV1? {
-            if (!content.startsWith("{") || !content.contains("\"k\"")) return null
+            if (!isCurrentFormat(content)) return null
             return runCatching { OdinSystemSerializer.deserialize<DescriptorContentV1>(content) }.getOrNull()?.takeIf { it.version == VERSION }
         }
     }

@@ -8,6 +8,7 @@ import id.homebase.resources.chat_error_file_too_large_here
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
@@ -266,8 +267,7 @@ internal class MediaDownloadHandler(
         scope.launch {
             try {
                 val hlsMetadata = resolveHlsVideoMetadata(
-                    descriptorContent = action.payload.descriptorContent,
-                    payloadKey = action.payload.key,
+                    payload = action.payload,
                     fileId = action.fileId,
                     keyHeader = action.keyHeader,
                 )
@@ -628,12 +628,12 @@ internal class MediaDownloadHandler(
     }
 
     private suspend fun resolveHlsVideoMetadata(
-        descriptorContent: String?,
-        payloadKey: String,
+        payload: PayloadDescriptor,
         fileId: Uuid,
         keyHeader: KeyHeader,
     ): VideoMetadata? {
-        val full = videoMetadataFrom(descriptorContent ?: return null, payloadKey) { key ->
+        if ((payload.descriptorInfo() as? DescriptorContent.VideoFile)?.isSegmented != true) return null
+        val full = videoMetadataFrom(payload.descriptorContent ?: return null, payload.key, payload.contentType) { key ->
             driveFileProvider.getPayloadBytesDecrypted(
                 driveId = chatTargetDrive.alias,
                 fileId = fileId,

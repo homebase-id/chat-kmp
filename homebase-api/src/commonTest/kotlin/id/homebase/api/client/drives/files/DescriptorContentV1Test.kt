@@ -91,11 +91,30 @@ class DescriptorContentV1Test {
     }
 
     @Test
-    fun namesComeFromTheNameFieldAndStickersStayNeutral() {
-        assertEquals("PXL_20261107_083131163.jpg", payload("image/webp", photo.encode()).filename())
+    fun aSaveNameIsThePickedNameOnlyWhenTheBytesAreThePickedFile() {
+        val clip = DescriptorContentV1(kind = Kind.VIDEO, name = "clip.mov", original = 1, video = DescriptorContentV1.Video(1, "hvc1"))
+        assertEquals("PXL_20261107_083131163.jpg", payload("image/jpeg", photo.copy(original = 1).encode()).filename())
+        assertEquals("clip.mov", payload("video/quicktime", clip.encode()).filename())
+        assertNull(payload("image/webp", photo.encode()).filename(), "WebP bytes would be saved as .jpg")
+        assertNull(payload("video/mp4", clip.copy(original = 0).encode()).filename())
+        assertEquals("PXL_20261107_083131163.jpg", payload("image/webp", photo.encode()).imageFile()?.name)
         assertEquals("StickerFile.png", payload("image/png", v1(Kind.STICKER, name = "IMG_9.png")).filename())
-        assertEquals("clip.mov", payload("video/mp4", v1(Kind.VIDEO, name = "clip.mov", video = DescriptorContentV1.Video(1, "video/mp4"))).filename())
-        assertNull(payload("image/webp", photo.copy(name = null).encode()).filename())
+    }
+
+    @Test
+    fun aLaterVersionOrKindIsNeverReadAsAnOlderForm() {
+        listOf("""{"v":2,"k":"f","n":"a.pdf"}""", """{"v":1,"k":"z"}""").forEach {
+            val pdf = payload("application/pdf", it)
+            assertEquals(DescriptorContent.Empty, pdf.descriptorInfo(), it)
+            assertNull(pdf.filename(), it)
+            assertNull(pdf.appContent(), it)
+        }
+    }
+
+    @Test
+    fun aProgressiveVideoKeepsItsContentType() {
+        val clip = payload("video/quicktime", DescriptorContentV1(kind = Kind.VIDEO, original = 1, video = DescriptorContentV1.Video(1_000, "hvc1")).encode())
+        assertEquals("video/quicktime", (clip.descriptorInfo() as DescriptorContent.VideoFile).mimeType)
     }
 
     @Test
@@ -171,7 +190,7 @@ class DescriptorContentV1Test {
         val file = OdinSystemSerializer.deserialize<ServerFile>(json).asHomebaseFile(sharedSecret)
 
         assertEquals(photo.encode(), file.fileMetadata.payloads!![0].descriptorContent)
-        assertEquals("PXL_20261107_083131163.jpg", file.fileMetadata.payloads!![0].filename())
+        assertEquals("PXL_20261107_083131163.jpg", file.fileMetadata.payloads!![0].imageFile()?.name)
         assertEquals(legacy, file.fileMetadata.payloads!![1].descriptorContent)
     }
 
@@ -184,7 +203,7 @@ class DescriptorContentV1Test {
             video = DescriptorContentV1.Video(durationMs = 9_000, codec = "video/mp2t", segmented = 1, playlistKey = "pls_0000", plainBytes = 1_000),
         )
         val read = mutableListOf<String>()
-        val metadata = videoMetadataFrom(video.encode(), "chat_web0") { key -> read += key; "#EXTM3U" }!!
+        val metadata = videoMetadataFrom(video.encode(), "chat_web0", "video/mp2t") { key -> read += key; "#EXTM3U" }!!
 
         assertEquals(listOf("pls_0000"), read)
         assertEquals("#EXTM3U", metadata.hlsPlaylist)
@@ -198,11 +217,11 @@ class DescriptorContentV1Test {
     fun anOlderVideoStubStillReadsItsOverflowPayload() = runTest {
         val full = VideoMetadata(mimeType = "application/vnd.apple.mpegurl", isSegmented = true, duration = 5_000f, hlsPlaylist = "#EXTM3U")
         val stub = full.copy(isDescriptorContentComplete = false, hlsPlaylist = null, key = "pld_desc0")
-        val metadata = videoMetadataFrom(OdinSystemSerializer.serialize(stub), "chat_web0") { key ->
+        val metadata = videoMetadataFrom(OdinSystemSerializer.serialize(stub), "chat_web0", null) { key ->
             if (key == "pld_desc0") OdinSystemSerializer.serialize(full) else null
         }
 
         assertEquals("#EXTM3U", metadata?.hlsPlaylist)
-        assertEquals(full, videoMetadataFrom(OdinSystemSerializer.serialize(full), "chat_web0") { null })
+        assertEquals(full, videoMetadataFrom(OdinSystemSerializer.serialize(full), "chat_web0", null) { null })
     }
 }

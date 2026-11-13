@@ -109,7 +109,7 @@ data class HomebaseImageData(
                 finalImageSize = recorded?.let { image ->
                     ImageSize(image.pixelWidth ?: return@let null, image.pixelHeight ?: return@let null)
                 },
-                payloadIsUntouchedFile = recorded?.original == true || recorded?.quality == MediaQuality.ORIGINAL,
+                payloadIsUntouchedFile = recorded?.original ?: (recorded?.quality == MediaQuality.ORIGINAL),
                 remoteOdinId = remoteOdinId,
                 globalTransitId = globalTransitId,
             )

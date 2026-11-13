@@ -31,22 +31,27 @@ sealed interface VideoContent {
 }
 
 /**
- * The full [VideoMetadata] from descriptor content in any format, reading another payload of the same
- * file through [readPayloadText] when needed: the current format's playlist payload, or an older
- * stub's overflow payload. Null when it can't be read.
+ * [readPayloadText] reads another payload of the file with the video's key header: the current format's
+ * playlist or an older stub's overflow payload, both written with the video payload's IV.
  */
 suspend fun videoMetadataFrom(
     descriptorContent: String,
     payloadKey: String,
+    contentType: String?,
     readPayloadText: suspend (key: String) -> String?,
 ): VideoMetadata? {
-    DescriptorContentV1.parseOrNull(descriptorContent)?.let { current ->
+    if (DescriptorContentV1.isCurrentFormat(descriptorContent)) {
+        val current = DescriptorContentV1.parseOrNull(descriptorContent) ?: run {
+            Logger.w(tag = "VideoIO") { "video descriptor in an unknown version or kind: ${descriptorContent.take(200)}" }
+            return null
+        }
         val playlist = current.video?.playlistKey?.let { readPayloadText(it) ?: return null }
-        return current.toVideoMetadata(payloadKey, playlist)
+        return current.toVideoMetadata(payloadKey, contentType, playlist)
     }
     val stub = try {
         OdinSystemSerializer.deserialize<VideoMetadata>(descriptorContent)
     } catch (e: Exception) {
+        Logger.w(tag = "VideoIO") { "video descriptor doesn't parse: ${descriptorContent.take(200)}, cause=${e.message}" }
         return null
     }
     if (stub.isDescriptorContentComplete) return stub
@@ -66,7 +71,7 @@ suspend fun resolveVideoMetadata(
 ): VideoMetadata {
     val content = data.descriptorContent ?: error("Missing video metadata")
     val (metadata, elapsed) = measureTimedValue {
-        videoMetadataFrom(content, data.payloadKey) { key ->
+        videoMetadataFrom(content, data.payloadKey, data.contentType) { key ->
             driveFileProvider.getPayloadBytesDecrypted(
                 driveId = data.driveId,
                 fileId = data.fileId,
