@@ -72,7 +72,6 @@ data class DescriptorContent(
     @SerialName("l") val lengthSeconds: Int? = null,     // audio
     @SerialName("vd") val video: Video? = null,
     @SerialName("x") val appContent: String? = null,     // app-defined; only the app that wrote it reads it
-    @SerialName("r") val restInPayload: String? = null,  // the full descriptor content is in this payload (too long)
 ) {
     @Serializable enum class Kind {
         @SerialName("i") IMAGE, @SerialName("v") VIDEO, @SerialName("a") AUDIO,
@@ -85,7 +84,7 @@ data class DescriptorContent(
         @SerialName("d") val durationMs: Long,
         @SerialName("c") val codec: String,              // "video/mp4", "video/mp2t"
         @SerialName("seg") val segmented: Int? = null,   // 1: HLS
-        @SerialName("p") val hlsPlaylist: String? = null,
+        @SerialName("p") val playlistKey: String? = null, // HLS: the payload holding the playlist, "pls_0003"
         @SerialName("sz") val plainBytes: Long? = null,  // size before encryption; bytesWritten is after
         @SerialName("bd") val bitDepth: Int? = null,
         @SerialName("hdr") val hdr: Int? = null,         // 1: HDR
@@ -103,15 +102,15 @@ data class DescriptorContent(
 | `w`, `h` | payload data's pixels, upright | `i`, `v`, `s` | |
 | `q` | quality it was sent with | `i`, `v` | `sd`, `hd`, `org` |
 | `l` | length in seconds | `a` | |
-| `vd` | video details: `d` duration ms, `c` codec, `seg`, `p` HLS playlist, `sz` size before encryption, `bd` bit depth, `hdr`, `br` bitrate | `v` | width and height are `w`/`h` above, not repeated |
+| `vd` | video details: `d` duration ms, `c` codec, `seg`, `p` the playlist's payload key, `sz` size before encryption, `bd` bit depth, `hdr`, `br` bitrate | `v` | width and height are `w`/`h` above, not repeated |
 | `x` | app content | `x` | app-defined string |
-| `r` | the full descriptor content is in this payload | any | a `pld_desc<index>` key |
 
 Encoding rules:
 
 - **Leave out** every field that doesn't apply; never write `null`.
 - **`v` is always written** (`@EncodeDefault`), so readers can tell this format from older ones.
-- **Too long** (over 1,024 characters plain, about 730 encrypted): the full descriptor content goes into its own encrypted payload `pld_desc<index>`, and `descriptorContent` keeps a stub with `v`, `k`, `n` and `r`. Today only long HLS playlists do this.
+- **An HLS playlist is always its own payload,** `pls_<4-digit index>` (content type `application/vnd.apple.mpegurl`), because it can be very long; `vd.p` names it. Today it's inline when short and moved with all the metadata into a `pld_desc` payload when long.
+- **Descriptor content always fits.** With the playlist out, nothing a user uploads comes near 1,024 characters (about 730 encrypted). App content over the limit is rejected by the builder, and each app caps its own (the link preview builder already trims to fit). Old files' `pld_desc` payloads are still read (section 6).
 
 The dog photo's payload record, sent at Standard in a public post. The outer keys are the server's and stay as they are:
 
@@ -148,7 +147,7 @@ When the HomebaseFile is encrypted, `descriptorContent` holds the descriptor enc
 | Key | The HomebaseFile's AES key (`KeyHeader.aesKey`), the one its payloads use |
 | IV | Fresh random 16 bytes per descriptor. Never the payload's IV, which already encrypts the payload's bytes with the same key |
 | When | The HomebaseFile is encrypted (`isEncrypted`). Unencrypted HomebaseFiles (public posts) store the plain `DescriptorContent` |
-| Size | odin-core allows 1,024 characters. Descriptor content over about 730 characters (encrypted) or 1,024 (plain) moves to its own payload `pld_desc<index>`, as today |
+| Size | odin-core allows 1,024 characters, about 730 of descriptor content once encrypted. Nothing a user uploads comes near it (section 1) |
 | Server | No change. odin-core stores, copies and length-checks descriptors, and never reads them |
 
 Why the whole descriptor content: besides names, it carries location coordinates and addresses, link URLs and titles (in `appContent`), and Vault note previews.
@@ -215,7 +214,11 @@ Applied by the builder, before the encrypted and public paths split, so public u
 
 ### 3.6 Payload keys
 
-`<prefix><index>`, prefix per app (section 5), index from 0, no padding for new prefixes. Existing prefixes keep their format, because receivers look payloads up by key.
+The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase letters, digits and `_` (odin-core `TenantPathManager.ValidPayloadKeyRegex`).
+
+- **User uploads:** `<prefix><index>`, prefix per app (section 5). Existing prefixes keep their format, because receivers look payloads up by key.
+- **HLS playlists:** `pls_<4-digit index>`, the index of the video it belongs to.
+- **Old overflow payloads** `pld_desc<index>` are read, never written.
 
 ## 4. The builder
 
@@ -281,6 +284,7 @@ Filesync, WebDrop and the two photo APIs use the builder's rules (content type, 
 | null | nothing |
 | JSON object with exactly `iv` and `data` | encrypted: decrypt with the HomebaseFile's key, then read the result with this table |
 | JSON object with `"v": 1` | `DescriptorContent` |
+| old `VideoMetadata` with `isDescriptorContentComplete: false` | the full metadata, with the playlist, is in the payload its `key` names (`pld_desc<index>`) |
 | anything else | today's rules by content type: `AudioFile`, markdown preview, `VideoMetadata`, `ImageFile`, link and location arrays, or the raw string as a file name |
 
 Old files are never rewritten.
@@ -295,8 +299,8 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 
 | Test | Checks |
 |---|---|
-| `DescriptorContent` round trip | Every kind serialises to the short keys and parses back; absent fields aren't written; `v` always is; unknown keys ignored; old quality codes translate; a long playlist moves to `pld_desc` with an `r` stub |
-| Encrypted descriptor | Encrypt then decrypt with the HomebaseFile's key; fresh IV each time; over-length moves to `pld_desc` |
+| `DescriptorContent` round trip | Every kind serialises to the short keys and parses back; absent fields aren't written; `v` always is; unknown keys ignored; old quality codes translate; an HLS video writes its playlist as `pls_` and points to it |
+| Encrypted descriptor | Encrypt then decrypt with the HomebaseFile's key; fresh IV each time; app content over the limit is rejected |
 | Old descriptors | Each row of section 6, with real stored examples, reads as before |
 | Name rules | Paths, NFC, `/` and NUL, a long name keeps its extension, an emoji at the cut, a 20-character "extension", blank |
 | Content type | Wrong platform MIME, empty MIME, no extension, renamed file |
