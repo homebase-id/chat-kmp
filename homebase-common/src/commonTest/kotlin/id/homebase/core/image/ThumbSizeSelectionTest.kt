@@ -39,7 +39,6 @@ class ThumbSizeSelectionTest {
 
     @Test
     fun `request between two natives picks the smallest native that covers it`() {
-        // longest edge 500 -> smallest native whose longest edge >= 500 is 640.
         assertEquals(ImageSize(640, 480), selectThumbSize(ImageSize(500, 400), landscapeNatives))
     }
 
@@ -104,7 +103,6 @@ class ThumbSizeSelectionTest {
         thumbs: List<ImageSize> = listOf(ImageSize(320, 240), ImageSize(640, 480)),
         contentType: String? = "image/webp",
         bytes: Long? = 400_000,
-        shortfall: Int = DETAIL_SHORTFALL_PERCENT,
         finalSize: ImageSize? = null,
         untouched: Boolean = false,
     ) = HomebaseImageData(
@@ -114,7 +112,6 @@ class ThumbSizeSelectionTest {
         availableThumbSizes = thumbs,
         payloadContentType = contentType,
         payloadBytes = bytes,
-        shortfallPercent = shortfall,
         finalImageSize = finalSize,
         payloadIsUntouchedFile = untouched,
         keyHeader = KeyHeader.newRandom16(),
@@ -137,9 +134,11 @@ class ThumbSizeSelectionTest {
         assertTrue(shouldStepUpToPayload(ImageSize(3000, 2250), stepUpData(thumbs = thumbs, finalSize = ImageSize(4000, 3000))))
     }
 
+    private val tallStandard = stepUpData(thumbs = listOf(ImageSize(240, 427), ImageSize(480, 854)), bytes = 231_112, finalSize = ImageSize(1152, 2048))
+
     @Test
     fun aViewAboveATallPhotosKeptThumbnailsStepsUpToTheFinalImage() {
-        val tall = stepUpData(thumbs = listOf(ImageSize(240, 427), ImageSize(480, 854)), bytes = 231_112, finalSize = ImageSize(1152, 2048))
+        val tall = tallStandard
         assertEquals(ImageSize(480, 854), selectThumbSize(ImageSize(1080, 1080), tall.availableThumbSizes))
         assertTrue(shouldStepUpToPayload(ImageSize(1080, 1080), tall))
         assertTrue(shouldStepUpToPayload(ImageSize(1600, 1600), tall))
@@ -175,24 +174,29 @@ class ThumbSizeSelectionTest {
 
     private val tallPhotoInPhotos = listOf(ImageSize(240, 427), ImageSize(480, 854), ImageSize(1152, 2048))
 
+    private fun gridTile(view: ImageSize) = selectThumbSize(view, tallPhotoInPhotos, crop = true, GRID_SHORTFALL_PERCENT)
+
     @Test
     fun phoneGridTilesKeepSmall() {
-        val grid = stepUpData(thumbs = tallPhotoInPhotos, shortfall = GRID_SHORTFALL_PERCENT, untouched = true)
-        assertEquals(ImageSize(240, 427), thumbSizeToRequest(ImageSize(270, 270), grid, crop = true)) // Pixel 8
-        assertEquals(ImageSize(240, 427), thumbSizeToRequest(ImageSize(330, 330), grid, crop = true)) // iPhone Pro Max
+        assertEquals(ImageSize(240, 427), gridTile(ImageSize(270, 270))) // Pixel 8
+        assertEquals(ImageSize(240, 427), gridTile(ImageSize(330, 330))) // iPhone Pro Max
     }
 
     @Test
     fun theStrictAllowanceWouldPutAPhoneGridOnMedium() {
-        val strict = stepUpData(thumbs = tallPhotoInPhotos, untouched = true)
-        assertEquals(ImageSize(480, 854), thumbSizeToRequest(ImageSize(270, 270), strict, crop = true))
+        assertEquals(ImageSize(480, 854), selectThumbSize(ImageSize(270, 270), tallPhotoInPhotos, crop = true))
     }
 
     @Test
     fun largerGridTilesLoadLargerThumbnails() {
-        val grid = stepUpData(thumbs = tallPhotoInPhotos, shortfall = GRID_SHORTFALL_PERCENT, untouched = true)
-        assertEquals(ImageSize(480, 854), thumbSizeToRequest(ImageSize(600, 600), grid, crop = true))
-        assertEquals(ImageSize(1152, 2048), thumbSizeToRequest(ImageSize(1000, 1000), grid, crop = true))
+        assertEquals(ImageSize(480, 854), gridTile(ImageSize(600, 600)))
+        assertEquals(ImageSize(1152, 2048), gridTile(ImageSize(1000, 1000)))
+    }
+
+    @Test
+    fun aGridTileGetsTheGridAllowance() {
+        assertEquals(GRID_SHORTFALL_PERCENT, stepUpData().forGridTile().shortfallPercent)
+        assertEquals(DETAIL_SHORTFALL_PERCENT, stepUpData().shortfallPercent)
     }
 
     @Test
@@ -203,8 +207,7 @@ class ThumbSizeSelectionTest {
 
     @Test
     fun aCroppedViewStepsUpWhenNoThumbnailFillsIt() {
-        val tall = stepUpData(thumbs = listOf(ImageSize(240, 427), ImageSize(480, 854)), bytes = 231_112, finalSize = ImageSize(1152, 2048))
-        assertFalse(shouldStepUpToPayload(ImageSize(480, 480), tall, crop = false))
-        assertTrue(shouldStepUpToPayload(ImageSize(600, 600), tall, crop = true))
+        assertFalse(shouldStepUpToPayload(ImageSize(480, 480), tallStandard, crop = false))
+        assertTrue(shouldStepUpToPayload(ImageSize(600, 600), tallStandard, crop = true))
     }
 }

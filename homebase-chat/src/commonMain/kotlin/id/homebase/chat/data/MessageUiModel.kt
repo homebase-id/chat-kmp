@@ -2,7 +2,6 @@ package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -132,7 +131,7 @@ data class MessageUiModel(
         // A typed message (view-once above all) owns its payload; the sticker menu would leak it.
         if (messageContent != null || content.isNotBlank()) return@lazy null
         soleMediaPayload()
-            ?.takeIf { (it.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true }
+            ?.takeIf { it.imageFile()?.isSticker == true }
             ?.key
     }
 

@@ -462,7 +462,7 @@ internal class MediaDownloadHandler(
                 // descriptorContent {"isSticker":true}). Regular images fall through to the
                 // fullscreen path unchanged.
                 val isSticker =
-                    (selectedPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+                    selectedPayload.imageFile()?.isSticker == true
                 when {
                     selectedPayload.isImage() && isSticker -> {
                         dispatch(

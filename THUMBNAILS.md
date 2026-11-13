@@ -183,7 +183,7 @@ That was about 507 kB on the wire for a 231 kB photo. Without the Large thumbnai
 
 **What it doesn't touch.** The tiny is never skipped, and GIFs make no thumbnails anyway; see [GIFs and animated images](#gifs-and-animated-images). In a Photobase library, every 9:16 photo stores one thumbnail less, about 150–200 kB each.
 
-**What it costs a viewer.** A view that wants a size between two kept images now loads the bigger one. For example, a 1000 px view of a 9:16 Standard photo loads the 231 kB final image instead of the 165 kB thumbnail. Every view steps up to the final image when no thumbnail covers it (see [Showing the images](#showing-the-images)), and full screen loads it anyway. At Original, the same view loads the 2048 thumbnail instead of the 1440 one.
+**What it costs a viewer.** A view that wants a size between two kept images now loads the bigger one. For example, a 1000 px view of a 9:16 Standard photo loads the 231 kB final image instead of the 165 kB thumbnail. A view steps up to the final image when no thumbnail covers it (see [Showing the images](#showing-the-images)), and full screen loads it anyway. At Original, the same view loads the 2048 thumbnail instead of the 1440 one.
 
 **Changing the threshold.** The [appendix](#appendix-the-15-rule-on-real-cameras) shows what the rule does to typical cameras, and `ThumbnailLadderTest` pins the same table, so a change shows up there first. Update both, and the [worked examples](#worked-examples).
 
@@ -466,13 +466,12 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 - **Covers** means the image is stretched by no more than an allowance:
   - **10%** for bubbles, posts and viewers (`DETAIL_SHORTFALL_PERCENT`);
-  - **40%** for grid tiles (`GRID_SHORTFALL_PERCENT`).
+  - **40%** for grid tiles (`GRID_SHORTFALL_PERCENT`, set with `forGridTile()`): the Photos grid and Moments' album grid.
 - **Fit or crop.** A photo fitted inside the view only has to fill one edge. A photo cropped to fill the view, such as a square tile, has to fill both.
 - **The candidates** are the thumbnails, then the final image when we made it (Standard or HD). When no thumbnail covers the view, it loads the final image instead, if that adds pixels, is under 12 MB and every client can decode it.
-- **Never an untouched file.** When the payload is the sender's file (Original, Photos, Vault), the largest thumbnail is as far as a view goes. Only full screen loads the file.
+- **Full screen loads the full payload,** whatever the setting. Nothing else loads an untouched file: when the payload is the sender's file (Original, Photos, Vault), the largest thumbnail is as far as any other view goes.
 - **Loading order.** First the tiny, on the first frame. Then any copy of the photo already in memory, of any size, such as the tile just tapped. Then the chosen thumbnail. Then, only if it's needed, the final image, about 600 ms after scrolling stops. The step-up is remembered, so scrolling back doesn't download again. A failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good, and the thumbnail stays on screen without an error.
 - **Pagers** keep neighbouring pages composed off screen, so only the settled page steps up.
-- **Full screen** loads the full payload, whatever the setting.
 - **The album grid loads what you stop on first.** While the grid moves, a tile that isn't already in memory shows only its tiny and starts no download (`HomebaseImage`'s `deferLoad`). About 150 ms after it stops, the tiles in view start. The background prefetch of the newest 500 waits out each scroll.
 - **On the Photos drive, a thumbnail download nobody waits for is cancelled.** `DriveFileProviderCached` shares one download per thumbnail between everyone asking for it. Photos' `DedicatedThumbCache` sets `cancelWhenUnwatched`, so the download stops when the last of them leaves, and a tile scrolled off the screen stops queueing ahead of the ones on it. Every other drive keeps the download going, so a contact row's avatar still lands in the cache after it scrolls away.
 - **The tiny** is decoded off the main thread and kept in memory, so the placeholder is there on the first frame.
@@ -485,8 +484,6 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 - **Crop needs both edges.** A cropped tile spreads the photo's short edge across the whole tile, so comparing long edges would pick a thumbnail too small for it.
 - **Never the untouched file in a view.** An original can be 5–12 MB, HEIC or RAW, and 4,000+ px. Pulling it to draw a 1,000 px bubble wastes most of it. Full screen is where its pixels are seen.
 - **Straight to the chosen size, not up every step.** Walking up through every thumbnail downloads more and gives no earlier sharp frame. The one step in between is the thumbnail while the final image waits for scrolling to stop, so a fling never downloads final images.
-
-`ThumbSizeSelectionTest` pins each of these: the allowances, fit against crop, phone and larger grid tiles, the untouched-file ceiling, and the step-up conditions.
 
 ## Wire format and older clients
 
@@ -620,6 +617,12 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 ## To do, and what isn't settled
 
 ### Not built yet
+
+- **Every upload records whether its main file is the user's original.** Views must never download an original in place of a thumbnail, so they need to know. Today:
+  - **Chat** records it in the photo's descriptor (`quality` Original).
+  - **Photos and Vault** record nothing, so each screen that shows their photos says so in code (`payloadIsUntouchedFile = true`): the Photos grid, Vault's cards and Vault's detail sheet. A new app that uploads originals and forgets that line would have its views download originals.
+
+  The fix: the shared upload code knows whether it made a smaller copy, so it writes this into every upload, for every app, and no screen has to say it. Photos and Vault files already uploaded don't have it, so they still need a default per app.
 
 - **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
 

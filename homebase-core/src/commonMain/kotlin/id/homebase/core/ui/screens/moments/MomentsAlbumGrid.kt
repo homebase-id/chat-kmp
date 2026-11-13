@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.forGridTile
 import id.homebase.core.image.ImageSize
 import id.homebase.core.moments.MomentsAlbumZoom
 import coil3.compose.AsyncImage
@@ -268,8 +269,8 @@ private fun AlbumMomentCell(
                 firstImagePayload.iv?.bytes
             }
             if (payloadIv != null) {
-                HomebaseImage(
-                    imageData = HomebaseImageData.from(
+                val imageData = remember(moment.fileId, firstImagePayload.key, firstImagePayload.lastModified, payloadIv) {
+                    HomebaseImageData.from(
                         driveId = moment.driveId,
                         fileId = moment.fileId,
                         descriptor = firstImagePayload,
@@ -285,7 +286,10 @@ private fun AlbumMomentCell(
                             iv = payloadIv,
                             aesKey = moment.keyHeader.aesKey,
                         ),
-                    ),
+                    ).forGridTile()
+                }
+                HomebaseImage(
+                    imageData = imageData,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                     contentDescription = null,

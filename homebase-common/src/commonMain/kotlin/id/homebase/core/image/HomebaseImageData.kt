@@ -2,7 +2,6 @@ package id.homebase.core.image
 
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -26,17 +25,9 @@ data class HomebaseImageData(
     val payloadKey: String,
     /** Embedded tiny preview thumbnail (base64) for instant display */
     val previewThumbnail: EmbeddedThumb? = null,
-    /** Desired resolution for thumbnail loading */
+    /** Not read when loading: the measured view size picks the thumbnail. */
     val requestedSize: ImageSize? = null,
-    /**
-     * Native sizes of the server-side thumbnails this image actually has, taken
-     * from the payload descriptor. The loader snaps each measured display size to
-     * the best of these via [selectThumbSize] so the request — and therefore the
-     * disk cache key — matches what the sender seeded under the optimistic fileId
-     * (and what every other device requests), instead of minting a fresh cache
-     * entry per measured size. Empty when the caller has no descriptor (link
-     * previews, avatars), in which case the measured size is requested unchanged.
-     */
+    /** The server's thumbnails for this payload; empty without a descriptor (link previews, avatars). */
     val availableThumbSizes: List<ImageSize> = emptyList(),
     /** If true, load full resolution payload instead of thumbnail */
     val loadFullPayload: Boolean = false,
@@ -58,13 +49,13 @@ data class HomebaseImageData(
     val payloadContentType: String? = null,
     /** KeyHeader for decryption of the payload */
     val keyHeader: KeyHeader,
-    /** The payload's size, which decides whether a bubble may step up to it. */
+    /** The payload's size, which decides whether a view may step up to it. */
     val payloadBytes: Long? = null,
     /** The payload's pixels, when the sender recorded them. Without it a step-up has to guess. */
     val finalImageSize: ImageSize? = null,
     /** The payload is the sender's untouched file, which a view never loads in place of a thumbnail. */
     val payloadIsUntouchedFile: Boolean = false,
-    /** How much smaller than the view a thumbnail may be: [DETAIL_SHORTFALL_PERCENT], or [GRID_SHORTFALL_PERCENT] for a grid tile. */
+    /** How much smaller than the view a thumbnail may be; a grid tile sets it with [forGridTile]. */
     val shortfallPercent: Int = DETAIL_SHORTFALL_PERCENT,
     /** Set with [globalTransitId] to fetch over peer; both null for local media. */
     val remoteOdinId: OdinId? = null,
@@ -101,32 +92,33 @@ data class HomebaseImageData(
             pendingFileUri: String? = null,
             payloadContentType: String? = descriptor.contentType,
             payloadBytes: Long? = descriptor.bytesWritten,
-            payloadIsUntouchedFile: Boolean = descriptor.recordedImage()?.quality == MediaQuality.ORIGINAL,
-            shortfallPercent: Int = DETAIL_SHORTFALL_PERCENT,
+            payloadIsUntouchedFile: Boolean? = null,
             remoteOdinId: OdinId? = null,
             globalTransitId: Uuid? = null,
-        ): HomebaseImageData = HomebaseImageData(
-            driveId = driveId,
-            fileId = fileId,
-            payloadKey = descriptor.key,
-            previewThumbnail = previewThumbnail,
-            requestedSize = requestedSize,
-            availableThumbSizes = availableThumbSizes,
-            loadFullPayload = loadFullPayload,
-            isEncrypted = isEncrypted,
-            lastModified = lastModified,
-            pendingFileUri = pendingFileUri,
-            payloadContentType = payloadContentType,
-            keyHeader = keyHeader,
-            payloadBytes = payloadBytes,
-            finalImageSize = descriptor.recordedImage()?.let { image ->
-                ImageSize(image.pixelWidth ?: return@let null, image.pixelHeight ?: return@let null)
-            },
-            payloadIsUntouchedFile = payloadIsUntouchedFile,
-            shortfallPercent = shortfallPercent,
-            remoteOdinId = remoteOdinId,
-            globalTransitId = globalTransitId,
-        )
+        ): HomebaseImageData {
+            val recorded = descriptor.imageFile()
+            return HomebaseImageData(
+                driveId = driveId,
+                fileId = fileId,
+                payloadKey = descriptor.key,
+                previewThumbnail = previewThumbnail,
+                requestedSize = requestedSize,
+                availableThumbSizes = availableThumbSizes,
+                loadFullPayload = loadFullPayload,
+                isEncrypted = isEncrypted,
+                lastModified = lastModified,
+                pendingFileUri = pendingFileUri,
+                payloadContentType = payloadContentType,
+                keyHeader = keyHeader,
+                payloadBytes = payloadBytes,
+                finalImageSize = recorded?.let { image ->
+                    ImageSize(image.pixelWidth ?: return@let null, image.pixelHeight ?: return@let null)
+                },
+                payloadIsUntouchedFile = payloadIsUntouchedFile ?: (recorded?.quality == MediaQuality.ORIGINAL),
+                remoteOdinId = remoteOdinId,
+                globalTransitId = globalTransitId,
+            )
+        }
     }
 
     /** Whether this is a pending/local file not yet uploaded */
@@ -182,8 +174,7 @@ fun thumbSizesFrom(thumbnails: List<ThumbnailDescriptor>?): List<ImageSize> =
         if (w <= 0 || h <= 0) null else ImageSize(w, h)
     }
 
-// Well under PayloadSizePolicy.RENDER_LIMIT_BYTES: every bubble that asks pulls the payload, so a
-// large Original must never get pulled just to show a bubble.
+// Well under PayloadSizePolicy.RENDER_LIMIT_BYTES: every view that asks pulls the payload.
 private const val STEP_UP_LIMIT_BYTES = 12L * 1024 * 1024
 
 /**
@@ -207,16 +198,13 @@ fun HomebaseImageData.payloadDecodesHere(): Boolean = !(isWeb() && payloadConten
 fun HomebaseImageData.forFullScreen(): HomebaseImageData =
     if (loadFullPayload && !payloadDecodesHere() && availableThumbSizes.isNotEmpty()) copy(loadFullPayload = false) else this
 
-fun thumbSizeToRequest(view: ImageSize, data: HomebaseImageData, crop: Boolean = false): ImageSize =
-    selectThumbSize(view, data.availableThumbSizes, crop, data.shortfallPercent)
-
 /** Bubbles, posts and viewers: a photo may be drawn up to 10% larger than its pixels. */
 const val DETAIL_SHORTFALL_PERCENT = 10
 
 /** A tile among hundreds is glanced at, so a phone grid stays on the smallest thumbnail. */
 const val GRID_SHORTFALL_PERCENT = 40
 
-/** Whether [image], drawn into [view] filling it ([crop]) or fitting inside it, is stretched by less than [shortfallPercent]. */
+/** Whether [image], drawn into [view] filling it ([crop]) or fitting inside it, is stretched by no more than [shortfallPercent]. */
 fun coversView(image: ImageSize, view: ImageSize, crop: Boolean, shortfallPercent: Int): Boolean {
     val keep = 100L - shortfallPercent
     val wide = image.pixelWidth * 100L >= view.pixelWidth * keep
@@ -240,4 +228,4 @@ fun selectThumbSize(
     return smallestFirst.firstOrNull { coversView(it, view, crop, shortfallPercent) } ?: smallestFirst.last()
 }
 
-private fun PayloadDescriptor.recordedImage() = descriptorInfo() as? DescriptorContent.ImageFile
+fun HomebaseImageData.forGridTile(): HomebaseImageData = copy(shortfallPercent = GRID_SHORTFALL_PERCENT)
