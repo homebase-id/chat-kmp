@@ -4,9 +4,7 @@ package id.homebase.core.ui.screens.card
 
 import androidx.compose.ui.draw.shadow
 
-import androidx.compose.material3.DropdownMenuGroup
 
-import androidx.compose.material3.DropdownMenuPopup
 
 import androidx.compose.material3.IconButtonDefaults
 
@@ -141,6 +139,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
@@ -190,6 +189,8 @@ import id.homebase.resources.profile_card_design_dossier
 import id.homebase.resources.profile_card_design_links
 import id.homebase.resources.profile_card_design_poster
 import id.homebase.resources.edit
+import id.homebase.resources.profile_card_menu_edit_desc
+import id.homebase.resources.profile_card_menu_design_desc
 import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_error
 import id.homebase.resources.profile_card_save
@@ -538,6 +539,7 @@ private fun ProfileCardPager(
                         onEdit = onEdit,
                         onChangeDesign = onChangeDesign,
                         onExplainReadOnly = { explainReadOnly = true },
+                        pencilContainer = cards.getOrNull(pagerState.currentPage)?.let(::pencilContainer),
                         extraActions = { nfc?.let { CardChromePill { CardNfcAction(it) } } },
                         fullWindow = fullWindow,
                         onToggleFullWindow = onToggleFullWindow,
@@ -615,6 +617,12 @@ private fun ShareFab(accent: Int?, isExporting: Boolean, canShare: Boolean, save
     }
 }
 
+// A lighter companion to the share FAB: its accent washed 30% over white, or over the card's ground when that is dark.
+private fun pencilContainer(card: ProfileCard): Color {
+    val ground = Color(card.overrides.palette?.ground?.let(::hexToArgb) ?: CardDesign.baseArgb(card.design))
+    return lerp(if (ground.luminance() < 0.5f) ground else Color.White, Color(cardAccentArgb(card.design, card.overrides)), 0.3f)
+}
+
 // Black or white, whichever has the higher WCAG contrast against [background].
 private fun readableOn(background: Color): Color {
     val l = background.luminance()
@@ -656,6 +664,7 @@ private fun SheetTopChrome(
     onEdit: () -> Unit,
     onChangeDesign: () -> Unit,
     onExplainReadOnly: () -> Unit,
+    pencilContainer: Color?,
     extraActions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     fullWindow: Boolean = false,
@@ -691,6 +700,7 @@ private fun SheetTopChrome(
                     EditDesignMenu(
                         readOnly = uiState.isCircleReadOnly,
                         onExplainReadOnly = onExplainReadOnly,
+                        container = pencilContainer,
                         onEdit = onEdit,
                         onChangeDesign = onChangeDesign,
                     )
@@ -810,44 +820,63 @@ private fun CardSwatch(card: ProfileCard, selected: Boolean) {
 }
 
 @Composable
-private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, onEdit: () -> Unit, onChangeDesign: () -> Unit) {
+private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, container: Color?, onEdit: () -> Unit, onChangeDesign: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val label = stringResource(MR.string.edit)
+    val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
+    val fill by animateColorAsState(container ?: MaterialTheme.colorScheme.secondaryContainer, spec)
+    val ink by animateColorAsState(container?.let(::readableOn) ?: MaterialTheme.colorScheme.onSecondaryContainer, spec)
     Box {
         WithTooltip(label) {
-            // The secondary action: tonal and lifted, while the accent-coloured share FAB stays the primary one.
             FilledTonalIconButton(
                 onClick = { if (readOnly) onExplainReadOnly() else open = true },
                 shapes = IconButtonDefaults.shapes(),
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                ),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = fill, contentColor = ink),
                 modifier = Modifier
-                    .size(IconButtonDefaults.mediumContainerSize())
+                    .size(CHROME_CONTROL_SIZE)
                     .shadow(3.dp, CircleShape),
             ) {
-                Icon(Icons.Outlined.Edit, contentDescription = label, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
+                Icon(Icons.Outlined.Edit, contentDescription = label, modifier = Modifier.size(20.dp))
             }
         }
-        DropdownMenuPopup(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 6.dp,
+            modifier = Modifier.widthIn(min = 220.dp).padding(horizontal = 8.dp),
+        ) {
             ReportOverlay()
-            DropdownMenuGroup(shapes = MenuDefaults.groupShape(0, 1)) {
-                DropdownMenuItem(
-                    onClick = { open = false; onEdit() },
-                    text = { Text(stringResource(MR.string.edit)) },
-                    shape = MenuDefaults.leadingItemShape,
-                    leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
-                )
-                DropdownMenuItem(
-                    onClick = { open = false; onChangeDesign() },
-                    text = { Text(stringResource(MR.string.profile_card_design_action)) },
-                    shape = MenuDefaults.trailingItemShape,
-                    leadingIcon = { Icon(Icons.Outlined.Palette, contentDescription = null) },
-                )
+            EditMenuItem(Icons.Outlined.Edit, stringResource(MR.string.edit), stringResource(MR.string.profile_card_menu_edit_desc), fill, ink) {
+                open = false
+                onEdit()
+            }
+            EditMenuItem(Icons.Outlined.Palette, stringResource(MR.string.profile_card_design_action), stringResource(MR.string.profile_card_menu_design_desc), fill, ink) {
+                open = false
+                onChangeDesign()
             }
         }
     }
+}
+
+@Composable
+private fun EditMenuItem(icon: ImageVector, title: String, supporting: String, tint: Color, onTint: Color, onClick: () -> Unit) {
+    DropdownMenuItem(
+        onClick = onClick,
+        text = {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        leadingIcon = {
+            Box(Modifier.size(40.dp).background(tint, CircleShape), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, tint = onTint, modifier = Modifier.size(20.dp))
+            }
+        },
+        modifier = Modifier.clip(RoundedCornerShape(12.dp)),
+    )
 }
 
 @Composable
