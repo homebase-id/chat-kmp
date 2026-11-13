@@ -72,8 +72,12 @@ object UserUploadBuilder {
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer?,
     ): Built {
-        val contentType = source.contentType.ifBlank { OCTET_STREAM }.let { if (it == OCTET_STREAM) sniffed(source.path, fileOps) else it }
+        // The bytes decide the type with the current format only: the detector's weaker signatures ("BM", AVIF's
+        // mif1 brand) must be tightened before the switch flips (UPLOADS.md section 7).
+        val untyped = source.contentType.isBlank() || source.contentType == OCTET_STREAM
+        val contentType = if (options.currentFormat && untyped) sniffed(source.path, fileOps) else source.contentType
         val name = source.pickedName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
+        val oldName = source.pickedName?.let { safeFileName(it) }
         fun descriptor(current: () -> DescriptorContentV1, old: () -> String?) =
             if (options.currentFormat) current().encode() else old()
 
@@ -86,7 +90,7 @@ object UserUploadBuilder {
                     contentType = contentType,
                     descriptorContent = descriptor(
                         { DescriptorContentV1(kind = DescriptorContentV1.Kind.AUDIO, name = name, lengthSeconds = source.audioLengthSeconds) },
-                        { DescriptorContent.descriptorContentFromAudioFile(name ?: safeFileName(source.path), source.audioLengthSeconds ?: 0) },
+                        { DescriptorContent.descriptorContentFromAudioFile(safeFileName(source.pickedName ?: source.path), source.audioLengthSeconds ?: 0) },
                     ),
                 ),
                 source.waveformPath?.let { UploadImages.generate(it, key, fileOps) },
@@ -99,7 +103,7 @@ object UserUploadBuilder {
                         key = key,
                         filePath = source.path,
                         contentType = contentType,
-                        descriptorContent = descriptor({ DescriptorContentV1(kind = kind, name = name) }, { name }),
+                        descriptorContent = descriptor({ DescriptorContentV1(kind = kind, name = name) }, { oldName }),
                         trimStartMs = source.trimStartMs,
                         trimEndMs = source.trimEndMs,
                         inputBlobUrl = source.inputBlobUrl,
@@ -121,8 +125,8 @@ object UserUploadBuilder {
     ): Built {
         val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker)
         val finalPath = UploadImages.finalImagePath(thumbs, fileOps)
-        // The decode already read the header, so its format is the bytes' word on the type (UPLOADS.md 3.1).
-        val contentType = if (finalPath != null) "image/webp" else thumbs.sourceFormat?.takeIf { it.startsWith("image/") } ?: declaredType
+        val sniffedType = thumbs.sourceFormat?.takeIf { options.currentFormat && it.startsWith("image/") }
+        val contentType = if (finalPath != null) "image/webp" else sniffedType ?: declaredType
 
         // Quality is recorded only for an HD or Original photo that really is one, and never for a
         // sticker: its bytes are bounded at 512 px whatever the setting.

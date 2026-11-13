@@ -88,7 +88,7 @@ class PayloadBundleEncryptionService(
                         payload = payload,
                         keyHeader = keyHeader,
                         onProgress = progress,
-                        descriptorContentPayloadKey = "${HomebaseProtocol.PayloadDescriptorKeyPrefix}$index",
+                        descriptorContentPayloadKey = HomebaseProtocol.payloadDescriptorKey(index),
                         playlistPayloadKey = HomebaseProtocol.playlistPayloadKey(index),
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,

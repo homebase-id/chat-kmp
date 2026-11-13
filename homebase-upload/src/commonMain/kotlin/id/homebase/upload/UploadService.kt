@@ -64,7 +64,7 @@ class UploadService(
             keyHeader = spec.keyHeader,
             metadata = metadata.encryptContent(spec.keyHeader),
             transitOptions = spec.transit,
-            payloads = sealed(encryptedBundle.payloads, spec.keyHeader),
+            payloads = sealed(encryptedBundle.payloads, spec.keyHeader, metadata.isEncrypted),
             thumbnails = encryptedBundle.thumbnails,
             existingFileIsSuccess = spec.existingFileIsSuccess,
             fileSystemType = spec.requestFileSystemType,
@@ -122,8 +122,8 @@ class UploadService(
     }
 
     // Copies too: the device keeps descriptor content opened, so a forward starts from the readable form.
-    private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader): List<PayloadFile> {
-        if (!sealDescriptorContent) return payloads
+    private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader, encrypted: Boolean): List<PayloadFile> {
+        if (!sealDescriptorContent || !encrypted) return payloads
         return payloads.map { payload ->
             val content = payload.descriptorContent?.takeIf { it.isNotBlank() } ?: return@map payload
             payload.copy(descriptorContent = DescriptorContentSeal.seal(content, keyHeader.aesKey))
@@ -160,7 +160,7 @@ class UploadService(
             freshlyEncrypted = encrypted
         }
 
-        val sent = sealed(payloads, spec.keyHeader)
+        val sent = sealed(payloads, spec.keyHeader, spec.metadata.isEncrypted)
         val request = UpdateFileByUniqueIdRequest(
             driveId = spec.driveId,
             uniqueId = spec.uniqueId,
