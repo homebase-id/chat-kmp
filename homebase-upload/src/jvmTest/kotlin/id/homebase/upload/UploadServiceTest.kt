@@ -109,8 +109,7 @@ class UploadServiceTest {
             outboxSync = outbox,
             optimisticWriter = writer,
             payloadCacheSeeder = seeder,
-            sealDescriptorContent = sealDescriptorContent,
-        )
+        ).also { it.sealDescriptorContent = sealDescriptorContent }
         return Harness(service, db, encryptor, writer, seeder)
     }
 
