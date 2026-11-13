@@ -69,7 +69,7 @@ fun PendingMessageBubble(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .padding(top = 4.dp),
+            .padding(top = message.clusterPosition.topSpacing(), bottom = message.clusterPosition.bottomSpacing()),
         horizontalArrangement = Arrangement.End,
     ) {
         if (contexts.isNotEmpty()) {

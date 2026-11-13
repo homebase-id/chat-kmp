@@ -213,6 +213,8 @@ data class PendingOutgoingMessage(
     val attachmentCount: Int,
     val sentAt: Instant,
     val replyPreview: ReplyPreview? = null,
+    /** Set where the list is drawn ([clusterPendingInto]), so the placeholder is spaced as its real message will be. */
+    val clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
 )
 
 internal fun MessageListUiState.withPendingSend(placeholder: PendingOutgoingMessage): MessageListUiState = copy(

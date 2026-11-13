@@ -135,6 +135,7 @@ import id.homebase.chat.conversationlist.matching
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.PendingOutgoingMessage
+import id.homebase.chat.conversationlist.clusterPendingInto
 import id.homebase.chat.conversationlist.RecipientGroupModel
 import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
@@ -962,7 +963,7 @@ fun ConversationContent(
                 // This matters when a video is still processing — any text or
                 // incoming messages with a later timestamp must render BELOW the
                 // video placeholder, not above it.
-                val mergedItems = remember(uiState.messages, pendingForConvo) {
+                val mergedItems = remember(uiState.messages, pendingForConvo, myOdinId) {
                     if (pendingForConvo.isEmpty()) {
                         uiState.messages.toList<Any>()
                     } else {
@@ -979,7 +980,7 @@ fun ConversationContent(
                             result += item
                         }
                         result.addAll(pending)
-                        result.toList()
+                        clusterPendingInto(result, myOdinId)
                     }
                 }
 

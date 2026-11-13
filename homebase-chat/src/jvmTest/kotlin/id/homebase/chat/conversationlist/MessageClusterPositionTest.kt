@@ -243,4 +243,58 @@ class MessageClusterPositionTest {
         keyHeader = KeyHeader.empty(),
         hasMore = false,
     )
+
+    private fun pending(offsetMinutes: Int) = PendingOutgoingMessage(
+        id = kotlin.uuid.Uuid.random(),
+        conversationId = kotlin.uuid.Uuid.random(),
+        text = "",
+        attachmentCount = 1,
+        sentAt = baseTime + offsetMinutes.minutes,
+    )
+
+    private fun positions(items: List<Any>) = items.map {
+        when (it) {
+            is MessageListContentModel.Message -> it.clusterPosition
+            is PendingOutgoingMessage -> it.clusterPosition
+            else -> null
+        }
+    }
+
+    @Test
+    fun aPlaceholderGroupsAsItsRealMessageWill() {
+        val earlier = computeClusterPositions(listOf(msg(alice, 0), msg(alice, 1)))
+        val placeholder = pending(2)
+        val real = msg(alice, 2)
+
+        val withPlaceholder = clusterPendingInto(earlier + placeholder, alice)
+        val withReal = computeClusterPositions(earlier + real)
+
+        assertEquals(positions(withReal), positions(withPlaceholder))
+        assertEquals(
+            listOf(MessageClusterPosition.START, MessageClusterPosition.MIDDLE, MessageClusterPosition.END),
+            positions(withPlaceholder),
+        )
+    }
+
+    @Test
+    fun aPlaceholderAfterSomeoneElseStandsAlone() {
+        val items = clusterPendingInto(computeClusterPositions(listOf(msg(bob, 0))) + pending(1), alice)
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, MessageClusterPosition.ALONE), positions(items))
+    }
+
+    @Test
+    fun aPlaceholderOutsideTheTimeWindowStandsAlone() {
+        val items = clusterPendingInto(computeClusterPositions(listOf(msg(alice, 0))) + pending(5), alice)
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, MessageClusterPosition.ALONE), positions(items))
+    }
+
+    @Test
+    fun aDateSectionEndsThePlaceholdersGroup() {
+        val section = MessageListContentModel.Section(kotlinx.datetime.LocalDate(2026, 11, 13))
+        val items = clusterPendingInto(computeClusterPositions(listOf(msg(alice, 0))) + section + pending(1), alice)
+
+        assertEquals(listOf(MessageClusterPosition.ALONE, null, MessageClusterPosition.ALONE), positions(items))
+    }
 }
