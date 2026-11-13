@@ -53,11 +53,14 @@ internal fun largestThumbnailLongEdge(setting: MediaQuality): Int {
     return (if (setting == MediaQuality.ORIGINAL) rows else rows.dropLast(1)).last().longEdge
 }
 
-/** Pure integer math on the displayed size: nothing here decodes, scales or encodes. */
-fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
+/**
+ * Pure integer math on the displayed size: nothing here decodes, scales or encodes. [makesFinalImage]
+ * is false where the file stays the payload even at Standard or HD (GIFs, stickers, SVGs).
+ */
+fun planMediaImages(source: ImageSize, setting: MediaQuality, makesFinalImage: Boolean = true): MediaImagePlan {
     val rows = ROWS.mapNotNull { row -> row.quality(setting)?.let { row to it } }
-    val finalRow = if (setting == MediaQuality.ORIGINAL) null else rows.last()
-    val thumbnailRows = if (finalRow == null) rows else rows.dropLast(1)
+    val thumbnailRows = if (setting == MediaQuality.ORIGINAL) rows else rows.dropLast(1)
+    val finalRow = if (setting == MediaQuality.ORIGINAL || !makesFinalImage) null else rows.last()
 
     val thumbnails = mergeNearSizes(
         thumbnailRows.map { (row, quality) -> sized(source, row.longEdge, row.minShortEdge, row.longestEdgeAllowed, quality) },
@@ -74,9 +77,24 @@ fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
     }
     return MediaImagePlan(
         tiny = sized(source, tinyThumbSize.maxPixelDimension, 0, tinyThumbSize.maxPixelDimension, tinyThumbSize.quality, keepSourceWhenNear = false),
-        thumbnails = thumbnails,
+        thumbnails = if (finalImage == null) thumbnails else withoutCloseSteps(thumbnails, finalImage),
         finalImage = finalImage,
     )
+}
+
+/**
+ * Drops a thumbnail whose next bigger image, the next one kept or the final image, is less than 1.5×
+ * its long edge: it costs about as much to send as it can save. The smallest is always kept.
+ * Only where the pipeline makes the final image: an untouched file's bytes don't follow its pixels.
+ */
+private fun withoutCloseSteps(smallestFirst: List<PlannedImage>, finalImage: PlannedImage): List<PlannedImage> {
+    var above = finalImage.longEdge.toLong()
+    return smallestFirst.indices.reversed().mapNotNull { index ->
+        val image = smallestFirst[index]
+        val keep = index == 0 || above * 2 >= image.longEdge.toLong() * 3
+        if (keep) above = image.longEdge.toLong()
+        image.takeIf { keep }
+    }.reversed()
 }
 
 private fun sized(

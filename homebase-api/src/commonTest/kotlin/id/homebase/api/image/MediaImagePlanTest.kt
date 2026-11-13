@@ -44,25 +44,26 @@ class MediaImagePlanTest {
 
     @Test
     fun workedExample_4000x2250() {
-        val thumbs = listOf("427x240", "854x480", "1440x810")
+        // 1440x810 is only 1.42x below 2048, so the planner skips it wherever it makes the final image.
+        val thumbs = listOf("427x240", "854x480")
         assertPlan(4000, 2250, MediaQuality.STANDARD, thumbs, "2048x1152")
         assertPlan(4000, 2250, MediaQuality.HD, thumbs + "2048x1152", "4000x2250")
-        assertPlan(4000, 2250, MediaQuality.ORIGINAL, thumbs + "2048x1152", null)
+        assertPlan(4000, 2250, MediaQuality.ORIGINAL, thumbs + listOf("1440x810", "2048x1152"), null)
     }
 
     @Test
     fun workedExample_1179x2556() {
-        val thumbs = listOf("240x521", "480x1041", "810x1757")
+        val thumbs = listOf("240x521", "480x1041")
         assertPlan(1179, 2556, MediaQuality.STANDARD, thumbs, "1179x2556")
-        assertPlan(1179, 2556, MediaQuality.HD, thumbs + "1179x2556", "1179x2556")
-        assertPlan(1179, 2556, MediaQuality.ORIGINAL, thumbs + "1179x2556", null)
+        assertPlan(1179, 2556, MediaQuality.HD, thumbs, "1179x2556")
+        assertPlan(1179, 2556, MediaQuality.ORIGINAL, thumbs + listOf("810x1757", "1179x2556"), null)
     }
 
     @Test
     fun workedExample_1179x8000() {
         val thumbs = listOf("94x640", "189x1280", "318x2160")
         assertPlan(1179, 8000, MediaQuality.STANDARD, thumbs, "1179x8000")
-        assertPlan(1179, 8000, MediaQuality.HD, thumbs + "1179x8000", "1179x8000")
+        assertPlan(1179, 8000, MediaQuality.HD, thumbs, "1179x8000")
         assertPlan(1179, 8000, MediaQuality.ORIGINAL, thumbs + "1179x8000", null)
     }
 
@@ -76,13 +77,13 @@ class MediaImagePlanTest {
 
     @Test
     fun workedExample_1100x825_withQualities() {
+        // The 1100x825 thumbnail would duplicate the final image, so only Original keeps it.
         val standard = planMediaImages(ImageSize(1100, 825), MediaQuality.STANDARD)
-        assertEquals(listOf("320x240", "640x480", "1100x825"), sizes(standard.thumbnails))
+        assertEquals(listOf("320x240", "640x480"), sizes(standard.thumbnails))
         assertEquals(PlannedImage(1100, 825, 70), standard.finalImage, "Takes the near thumbnail's quality")
 
         val hd = planMediaImages(ImageSize(1100, 825), MediaQuality.HD)
-        assertEquals(listOf("320x240", "640x480", "1100x825"), sizes(hd.thumbnails))
-        assertEquals(76, hd.thumbnails.last().quality)
+        assertEquals(listOf("320x240", "640x480"), sizes(hd.thumbnails))
         assertEquals(PlannedImage(1100, 825, 80), hd.finalImage)
 
         val original = planMediaImages(ImageSize(1100, 825), MediaQuality.ORIGINAL)
@@ -92,42 +93,42 @@ class MediaImagePlanTest {
 
     @Test
     fun workedExample_1000x750() {
-        val thumbs = listOf("320x240", "640x480", "1000x750")
+        val thumbs = listOf("320x240", "640x480")
         val standard = planMediaImages(ImageSize(1000, 750), MediaQuality.STANDARD)
         assertEquals(thumbs, sizes(standard.thumbnails))
         assertEquals(PlannedImage(1000, 750, 70), standard.finalImage)
         val hd = planMediaImages(ImageSize(1000, 750), MediaQuality.HD)
         assertEquals(thumbs, sizes(hd.thumbnails))
         assertEquals(PlannedImage(1000, 750, 80), hd.finalImage)
-        assertPlan(1000, 750, MediaQuality.ORIGINAL, thumbs, null)
+        assertPlan(1000, 750, MediaQuality.ORIGINAL, thumbs + "1000x750", null)
     }
 
     @Test
     fun bandEdges() {
         val small = listOf("320x240", "640x480")
-        assertPlan(1200, 900, MediaQuality.STANDARD, small + "1200x900", "1200x900")
+        assertPlan(1200, 900, MediaQuality.STANDARD, small, "1200x900")
         assertEquals(70, planMediaImages(ImageSize(1200, 900), MediaQuality.STANDARD).finalImage?.quality)
-        assertPlan(1201, 901, MediaQuality.STANDARD, small + "1080x810", "1201x901")
+        assertPlan(1201, 901, MediaQuality.STANDARD, small, "1201x901")
         assertEquals(60, planMediaImages(ImageSize(1201, 901), MediaQuality.STANDARD).finalImage?.quality)
-        assertPlan(1201, 901, MediaQuality.HD, small + listOf("1080x810", "1201x901"), "1201x901")
+        assertPlan(1201, 901, MediaQuality.HD, small, "1201x901")
         assertPlan(2275, 1706, MediaQuality.STANDARD, listOf("321x241", "641x481", "1081x811"), "2275x1706")
         assertPlan(2276, 1707, MediaQuality.STANDARD, small + "1080x810", "2048x1536")
-        assertPlan(2276, 1707, MediaQuality.HD, small + listOf("1080x810", "2048x1536"), "2276x1707")
+        assertPlan(2276, 1707, MediaQuality.HD, small + "1080x810", "2276x1707")
         assertEquals("4551x3413", planMediaImages(ImageSize(4551, 3413), MediaQuality.HD).finalImage?.let { "${it.width}x${it.height}" })
         assertEquals("4096x3072", planMediaImages(ImageSize(4552, 3414), MediaQuality.HD).finalImage?.let { "${it.width}x${it.height}" })
     }
 
     @Test
     fun aThumbnailEnlargedByTheBandRemembersItsRowSize() {
-        val plan = planMediaImages(ImageSize(1100, 825), MediaQuality.HD)
+        val plan = planMediaImages(ImageSize(1100, 825), MediaQuality.ORIGINAL)
         assertEquals(ImageSize(1080, 810), plan.thumbnails.last().rowSize)
         assertNull(plan.thumbnails.first().rowSize)
     }
 
     @Test
     fun workedExample_600x450() {
-        assertPlan(600, 450, MediaQuality.STANDARD, listOf("320x240", "600x450"), "600x450")
-        assertPlan(600, 450, MediaQuality.HD, listOf("320x240", "600x450"), "600x450")
+        assertPlan(600, 450, MediaQuality.STANDARD, listOf("320x240"), "600x450")
+        assertPlan(600, 450, MediaQuality.HD, listOf("320x240"), "600x450")
         assertPlan(600, 450, MediaQuality.ORIGINAL, listOf("320x240", "600x450"), null)
     }
 
@@ -177,8 +178,13 @@ class MediaImagePlanTest {
                 plan.thumbnails.zipWithNext { a, b ->
                     assertTrue(a.longEdge.toLong() * 10 < b.longEdge.toLong() * 9, "$width x $height $setting near-duplicate thumbnails")
                 }
-                val largest = plan.thumbnails.lastOrNull()
                 val final = plan.finalImage
+                if (final != null) {
+                    (plan.thumbnails + final).zipWithNext().drop(1).forEach { (thumbnail, above) ->
+                        assertTrue(above.longEdge.toLong() * 2 >= thumbnail.longEdge.toLong() * 3, "$width x $height $setting kept $thumbnail under $above")
+                    }
+                }
+                val largest = plan.thumbnails.lastOrNull()
                 if (largest != null && final != null && largest.longEdge.toLong() * 10 >= final.longEdge.toLong() * 9) {
                     assertTrue(final.quality >= largest.quality, "$width x $height $setting final looks worse than its thumbnail")
                 }

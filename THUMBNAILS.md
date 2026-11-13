@@ -20,24 +20,26 @@ How chat-kmp turns a photo into the images people see. Read this before changing
 3. [The three settings](#the-three-settings)
 4. [The table](#the-table)
 5. [Why these resolutions](#why-these-resolutions)
-6. [Why these qualities](#why-these-qualities)
-7. [Changing the table](#changing-the-table)
-8. [Working out the sizes](#working-out-the-sizes)
-9. [Rules for edge cases](#rules-for-edge-cases)
-10. [Worked examples](#worked-examples)
-11. [Byte limits](#byte-limits)
-12. [Making the pixels](#making-the-pixels)
-13. [Colour](#colour)
-14. [Metadata](#metadata)
-15. [Formats](#formats)
-16. [Where each caller lands](#where-each-caller-lands)
-17. [Showing the images](#showing-the-images)
-18. [Wire format and older clients](#wire-format-and-older-clients)
-19. [Video](#video)
-20. [How others do it](#how-others-do-it)
-21. [Testing](#testing)
-22. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
-23. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
+6. [Skipping a thumbnail too close to the next image](#skipping-a-thumbnail-too-close-to-the-next-image)
+7. [Why these qualities](#why-these-qualities)
+8. [Changing the table](#changing-the-table)
+9. [Working out the sizes](#working-out-the-sizes)
+10. [Rules for edge cases](#rules-for-edge-cases)
+11. [Worked examples](#worked-examples)
+12. [Byte limits](#byte-limits)
+13. [Making the pixels](#making-the-pixels)
+14. [Colour](#colour)
+15. [Metadata](#metadata)
+16. [Formats](#formats)
+17. [Where each caller lands](#where-each-caller-lands)
+18. [Showing the images](#showing-the-images)
+19. [Wire format and older clients](#wire-format-and-older-clients)
+20. [Video](#video)
+21. [How others do it](#how-others-do-it)
+22. [Testing](#testing)
+23. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
+24. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
+25. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
 
 ## The goal
 
@@ -77,6 +79,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 - **The table:** sizes and qualities for every row and setting, as in [The table](#the-table).
 - **Sizing:** long edge, plus a minimum short edge and a longest edge allowed, worked out with integer math before any pixels are touched.
 - **Never upscale.** A row within 10% of the source is made at the source size, with no scaling.
+- **No thumbnail too close to the next image.** Where the pipeline makes the final image, a thumbnail is kept only if the next bigger image is at least 1.5× its long edge. See [Skipping a thumbnail](#skipping-a-thumbnail-too-close-to-the-next-image).
 - **Only three byte limits:** the tiny's 768 bytes, 1 MiB per thumbnail (the server's), and none on the final image. Over 1 MiB, a thumbnail shrinks at the same quality.
 - **Pixels:** decode once, scale from largest to smallest, halve while the image is at least 2× too big, then a Lanczos-class resampler for the last step.
 - **Colour:** keep wide-gamut colour, and put no colour profile on sRGB images or the tiny.
@@ -141,6 +144,47 @@ Each row has a job. A change to a row should show that the row still does its jo
 - **So both, with a cap.** Aim for the long edge, grow until the short edge reaches its minimum, and never pass the longest edge allowed. That keeps a sliver useful and a panorama bounded.
 - The minimum is ¾ of the long edge, so ordinary 4:3 photos are unaffected, and 16:9 and 3:2 photos grow slightly, which is intended. For example, 4000×2250 gets 427×240 instead of 320×180.
 
+## Skipping a thumbnail too close to the next image
+
+**The rule.** Where the pipeline makes the final image (Standard and HD), a thumbnail is kept only if the next bigger image a viewer could load, meaning the next kept thumbnail or the final image, is at least **1.5× its long edge**. The planner walks down from the largest thumbnail and always keeps the smallest. It's integer math on the planned sizes, so a skipped thumbnail is never resized, encoded, encrypted or uploaded.
+
+```text
+above = the final image's long edge
+for each thumbnail, largest first (the smallest is always kept):
+    if above × 2 >= thumbnail × 3:   keep it; above = its long edge
+    else:                            skip it
+```
+
+**Why.** Our server can't see the photo, so it can't make the sizes, as Telegram's does. The sender encodes, encrypts and uploads every thumbnail, the server stores it, and every recipient's device may sync it. A thumbnail earns that cost only when a viewer loads it instead of the bigger image above it, and then it saves the difference between the two. When the two are close, it costs nearly a whole extra photo and saves little.
+
+The table made exactly that case for tall and wide photos. The Large row's minimum short edge (810) stretches a 9:16 photo to 810×1440, only 1.42× below Standard's 2048. A 9:16 Pixel photo sent at Standard, measured on the phone:
+
+| Image | Size | Bytes | Step from the one below (edge / bytes) |
+|---|---|---|---|
+| Small | 240×427 | 26,658 | |
+| Medium | 480×854 | 80,970 | 2.0× / 3.0× |
+| Large | ~~810×1440~~ | ~~165,388~~ | 1.69× / 2.0× |
+| Final image | 1152×2048 | 231,112 | 1.42× / 1.4× |
+
+That was about 507 kB on the wire for a 231 kB photo. Without the Large thumbnail it's about 342 kB, a third less, and the photo the recipient saves is the same.
+
+**Why 1.5.**
+
+- **It separates today's steps.** Per edge, the table steps 2.0×, then 1.69×, then 1.9× for a 4:3 photo or 1.42× for a 16:9 one. Any threshold between 1.42 and 1.69 removes only the redundant step, and 1.5 leaves a margin on both sides. At 1.7, every 4:3 photo would lose its Medium row.
+- **It's about where a thumbnail stops paying for itself.** 1.5× on the edge is 2.25× the pixels. Below it, a thumbnail costs more to send than a view saves: the 810×1440 above cost 165 kB to save 66 kB per view, so it needs about 2.5 views to pay off, while a chat photo is usually seen once or twice. The 480×854 below the final image (2.4×) costs 81 kB and saves 150 kB on its first view.
+- **It's in line with common practice.** Responsive-image sets on the web usually step 1.5–2× per edge. Telegram's server-made photo sizes (320, 800, 1280 and 2560 px) step 2.5×, 1.6× and 2×.
+
+**Other chat apps.** WhatsApp and Signal upload one compressed image plus a tiny preview inside the message (WhatsApp a small JPEG, Signal a blurhash), so they send about one photo: 362 kB and 243 kB for the photo above. Telegram uploads one image and its servers make the other sizes, which an end-to-end encrypted server can't. With the rule, our 9:16 Standard photo is about 342 kB on the wire, between the two, and its final image measured sharper than both.
+
+**Where it doesn't apply.**
+
+- **Wherever the untouched file is the payload,** every thumbnail is kept: Original (Photobase backup, Vault, chat at Original), stickers, GIFs and animated images, SVGs, PDF and video posters. Pixels don't predict an untouched file's bytes: a 1500 px PNG screenshot can be 2 MB against its 100 kB Large thumbnail, and skipping that thumbnail would make every view download the file. GIFs make no thumbnails anyway; see [GIFs and animated images](#gifs-and-animated-images).
+- **The tiny** is never skipped.
+
+**What it costs a viewer.** A view that wants a size between the kept thumbnail and the final image now loads the final image instead, for example a 1000 px view of a 9:16 photo loads the 231 kB final image instead of the 165 kB thumbnail. Chat bubbles already step up to the final image, and full-screen views load it anyway.
+
+**Changing the threshold.** The [appendix](#appendix-the-15-rule-on-real-cameras) shows what the rule does to typical cameras, and `ThumbnailLadderTest` pins the same table, so a change shows up there first. Update both, and the [worked examples](#worked-examples).
+
 ## Why these qualities
 
 | Setting | Qualities | Why |
@@ -176,7 +220,7 @@ The table is settled, not frozen. A change should come with:
    - no thumbnail over 1 MiB in normal photos;
    - the tiny within 768 bytes;
    - older clients still read the result.
-5. **Updated [worked examples](#worked-examples), tests and this document.**
+5. **Updated [worked examples](#worked-examples), the [appendix](#appendix-the-15-rule-on-real-cameras), tests and this document.**
 
 Existing images aren't regenerated, so a change only affects new uploads. That's safe, because every client reads any thumbnail size.
 
@@ -194,13 +238,14 @@ if long × 10 >= L × 9:                 # within 10% of the source: keep the so
 short = max(1, round(S × long / L))
 ```
 
-Then put `long` and `short` back as width and height in the source's orientation, and apply the rules below. The tiny skips the 10% step: it is always at most 20 px.
+Then put `long` and `short` back as width and height in the source's orientation, and apply the rules below. The tiny skips the 10% step: it is always at most 20 px. Last, where the pipeline makes the final image, drop the thumbnails [too close to the next image](#skipping-a-thumbnail-too-close-to-the-next-image).
 
 **Properties that must always hold.** Tests check these on random sizes:
 
 - no output is larger than its source or smaller than 1 px;
 - outputs never get smaller going down the table;
-- any output, other than the tiny, whose long edge is at least 90% of the source's is exactly the source size.
+- any output, other than the tiny, whose long edge is at least 90% of the source's is exactly the source size;
+- where a final image is made, every thumbnail but the smallest is at most 1/1.5 of the next image's long edge.
 
 ## Rules for edge cases
 
@@ -269,20 +314,20 @@ Each cell lists the thumbnails, then the final image after the arrow. They come 
 | Source | Standard | HD | Original |
 |---|---|---|---|
 | 4000×3000 | 320×240 q70, 640×480 q70, 1080×810 q70 → 2048×1536 q60 | 320×240 q80, 640×480 q80, 1080×810 q76, 2048×1536 q70 → 4000×3000 q80 | 320×240 q80, 640×480 q80, 1080×810 q80, 2048×1536 q76 → file |
-| 4000×2250 | 427×240, 854×480, 1440×810 → 2048×1152 | 427×240, 854×480, 1440×810, 2048×1152 → 4000×2250 | Same thumbnails → file |
-| 1179×2556 (iPhone screenshot) | 240×521, 480×1041, 810×1757 → 1179×2556 | 240×521, 480×1041, 810×1757, 1179×2556 → 1179×2556 | Same thumbnails → file |
-| 1179×8000 (long screenshot) | 94×640, 189×1280, 318×2160 → 1179×8000 | 94×640, 189×1280, 318×2160, 1179×8000 → 1179×8000 | Same thumbnails → file |
+| 4000×2250 | 427×240, 854×480 → 2048×1152 | 427×240, 854×480, 2048×1152 → 4000×2250 | 427×240, 854×480, 1440×810, 2048×1152 → file |
+| 1179×2556 (iPhone screenshot) | 240×521, 480×1041 → 1179×2556 | 240×521, 480×1041 → 1179×2556 | 240×521, 480×1041, 810×1757, 1179×2556 → file |
+| 1179×8000 (long screenshot) | 94×640, 189×1280, 318×2160 → 1179×8000 | 94×640, 189×1280, 318×2160 → 1179×8000 | 94×640, 189×1280, 318×2160, 1179×8000 → file |
 | 12000×4000 (panorama) | 640×213, 1280×427, 2160×720 → 3240×1080 | 640×213, 1280×427, 2160×720, 3240×1080 → 6480×2160 | Same thumbnails → file |
-| 1100×825 | 320×240, 640×480, 1100×825 → 1100×825 q70 | 320×240, 640×480, 1100×825 q76 → 1100×825 q80 | 320×240, 640×480, 1100×825 q80 → file |
-| 1200×900 (band edge) | 320×240, 640×480, 1200×900 → 1200×900 q70 | 320×240, 640×480, 1200×900 q76 → 1200×900 q80 | 320×240, 640×480, 1200×900 q80 → file |
-| 1201×901 (just outside) | 320×240, 640×480, 1080×810 → 1201×901 q60 | 320×240, 640×480, 1080×810, 1201×901 → 1201×901 | Same thumbnails → file |
-| 2275×1706 (band edge) | 321×241, 641×481, 1081×811 → 2275×1706 | 321×241, 641×481, 1081×811, 2275×1706 → 2275×1706 | Same thumbnails → file |
-| 2276×1707 (just outside) | 320×240, 640×480, 1080×810 → 2048×1536 | 320×240, 640×480, 1080×810, 2048×1536 → 2276×1707 | Same thumbnails → file |
+| 1100×825 | 320×240, 640×480 → 1100×825 q70 | 320×240, 640×480 → 1100×825 q80 | 320×240, 640×480, 1100×825 q80 → file |
+| 1200×900 (band edge) | 320×240, 640×480 → 1200×900 q70 | 320×240, 640×480 → 1200×900 q80 | 320×240, 640×480, 1200×900 q80 → file |
+| 1201×901 (just outside) | 320×240, 640×480 → 1201×901 q60 | 320×240, 640×480 → 1201×901 | 320×240, 640×480, 1080×810, 1201×901 → file |
+| 2275×1706 (band edge) | 321×241, 641×481, 1081×811 → 2275×1706 | 321×241, 641×481, 1081×811 → 2275×1706 | 321×241, 641×481, 1081×811, 2275×1706 → file |
+| 2276×1707 (just outside) | 320×240, 640×480, 1080×810 → 2048×1536 | 320×240, 640×480, 1080×810 → 2276×1707 | 320×240, 640×480, 1080×810, 2048×1536 → file |
 | 4551×3413 / 4552×3414 (HD band edge) | … → 2048×1536 | … → 4551×3413, and 4096×3072 just outside | … → file |
-| 600×450 | 320×240, 600×450 → 600×450 | 320×240, 600×450 → 600×450 | 320×240, 600×450 → file |
+| 600×450 | 320×240 → 600×450 | 320×240 → 600×450 | 320×240, 600×450 → file |
 | 200×150 | 200×150 → 200×150 | 200×150 → 200×150 | 200×150 → file |
 
-Qualities are omitted where they follow the table directly. The 321×241 in the 2275×1706 row isn't a typo: 1706 × 320 / 2275 is just under 240, so the minimum short edge pushes the row up one pixel.
+Standard and HD often list fewer thumbnails than Original: a thumbnail less than 1.5× below the final image is [skipped](#skipping-a-thumbnail-too-close-to-the-next-image), and one that would duplicate the final image always is. Qualities are omitted where they follow the table directly. The 1100×825 final image keeps q70 because the thumbnail it would have duplicated had it. The 321×241 in the 2275×1706 row isn't a typo: 1706 × 320 / 2275 is just under 240, so the minimum short edge pushes the row up one pixel.
 
 ## Byte limits
 
@@ -477,6 +522,8 @@ What must stay proven, and where.
 - Small sources never upscale: 600×450, 200×150, 20×15 and 1×1, in every setting.
 - A random-size property test, over 5,000 sizes for each setting, checks the [properties](#working-out-the-sizes) above. It also checks that no two thumbnails are within 90% of each other, and that the final image's quality is at least that of any thumbnail within 90% of it.
 - Portrait and landscape give the same sizes, transposed.
+- The random-size test also checks the [1.5 rule](#skipping-a-thumbnail-too-close-to-the-next-image) wherever a final image is made.
+- `ThumbnailLadderTest` pins the [appendix](#appendix-the-15-rule-on-real-cameras): real camera sizes at Standard and HD, with the thumbnails each keeps, and that Original and a file kept as the payload keep every thumbnail.
 
 ### Pipeline contract: real decoders, scalers and encoders on every platform
 
@@ -581,3 +628,46 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 - **Animated WebP in bubbles.** It shows still today. Animating it needs a descriptor flag, because its type is the same `image/webp` as a still image.
 - **Should Vault keep metadata?** It's the user's own encrypted storage, like Photos, but today it strips through the shared upload scrub.
 - **Linear-light resampling.** Not used; see [How to resize well](#how-to-resize-well). Revisit only if a real-photo test shows a visible gain.
+
+## Appendix: the 1.5 rule on real cameras
+
+What the planner keeps for typical camera and screen sizes. ~~Struck~~ thumbnails are skipped; the number in brackets is how many times bigger, per edge, the next kept image is. `ThumbnailLadderTest` pins this table, so read it before changing the threshold or the [table](#the-table).
+
+**Standard** (final image at most 2048 px):
+
+| Source | Size | Thumbnails | Final image |
+|---|---|---|---|
+| Pixel 8, 12.5 MP 4:3 | 3072×4080 | 241×320, 482×640 (1.69), 813×1080 (1.90) | 1542×2048 |
+| Pixel 9 MP 9:16 | 2268×4032 | 240×427, 480×854 (2.40), ~~810×1440~~ (1.42) | 1152×2048 |
+| Pixel 8 Pro, 50 MP 4:3 | 6144×8160 | 241×320, 482×640, 813×1080 | 1542×2048 |
+| iPhone 12, 24 and 48 MP 4:3 | 3024×4032 to 6048×8064 | 240×320, 480×640, 810×1080 | 1536×2048 |
+| iPhone 12 MP 16:9 | 2268×4032 | 240×427, 480×854, ~~810×1440~~ (1.42) | 1152×2048 |
+| Galaxy S23 12 MP, S23 Ultra 200 MP | 3000×4000, 12240×16320 | 240×320, 480×640, 810×1080 | 1536×2048 |
+| Square | 3024×3024 | 320×320, 640×640, 1080×1080 | 2048×2048 |
+| DSLR 24 MP 3:2 | 6000×4000 | 360×240, 720×480, 1215×810 (1.69) | 2048×1365 |
+| Panorama | 9546×1619 | 640×109, 1280×217, 2160×366 (2.95) | 6368×1080 |
+| Phone screenshot | 1080×2400 | 240×534, 480×1067 (2.25), ~~810×1800~~ (1.33) | 1080×2400 |
+| Desktop screenshot | 2560×1440 | 427×240, 854×480 (2.40), ~~1440×810~~ (1.42) | 2048×1152 |
+| Small photo | 1600×1200 | 320×240, 640×480 (2.50), ~~1080×810~~ (1.48) | 1600×1200 |
+
+**HD** (final image at most 4096 px):
+
+| Source | Size | Thumbnails | Final image |
+|---|---|---|---|
+| Every 4:3 phone above | | all four kept, steps 2.0, 1.69, 1.90, about 2.0 | 3000–3084 × 4000–4096 |
+| Pixel 9 MP 9:16, iPhone 16:9 | 2268×4032 | 240×427, 480×854, ~~810×1440~~ (1.42), 1152×2048 (1.97) | 2268×4032 |
+| Square | 3024×3024 | 320×320, 640×640, 1080×1080 (2.80), ~~2048×2048~~ (1.48) | 3024×3024 |
+| DSLR 24 MP 3:2 | 6000×4000 | all four kept | 4096×2731 |
+| Panorama | 9546×1619 | 640×109, 1280×217, 2160×366 (3.79), ~~6368×1080~~ (1.29) | 8192×1389 |
+| Phone screenshot | 1080×2400 | 240×534, 480×1067 (2.25), ~~810×1800~~, ~~1080×2400~~ (1.00) | 1080×2400 |
+| Desktop screenshot | 2560×1440 | 427×240, 854×480, 1440×810 (1.78), ~~2048×1152~~ (1.25) | 2560×1440 |
+| Small photo | 1600×1200 | 320×240, 640×480 (2.50), ~~1080×810~~, ~~1600×1200~~ (1.00) | 1600×1200 |
+
+**Original** keeps every thumbnail in every case, as does any file kept as the payload.
+
+What it shows:
+
+- **9:16 and 16:9 photos and screenshots lose one thumbnail,** at Standard and HD alike: the one the minimum short edge stretched to within 1.42× of the next image.
+- **Ordinary 4:3 photos from every phone keep every thumbnail.** Their steps are 2.0, 1.69 and 1.90.
+- **A thumbnail the same size as the final image (1.00) is always dropped.** Before the rule, a small photo or a phone screenshot at HD encoded and uploaded the same pixels twice.
+- **The closest calls are 1.48:** a small photo's 1080×810 at Standard and a square photo's 2048×2048 at HD. Both are dropped, which fits the cost argument, but they show where 1.5 sits.
