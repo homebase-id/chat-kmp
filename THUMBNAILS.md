@@ -20,24 +20,26 @@ How chat-kmp turns a photo into the images people see. Read this before changing
 3. [The three settings](#the-three-settings)
 4. [The table](#the-table)
 5. [Why these resolutions](#why-these-resolutions)
-6. [Why these qualities](#why-these-qualities)
-7. [Changing the table](#changing-the-table)
-8. [Working out the sizes](#working-out-the-sizes)
-9. [Rules for edge cases](#rules-for-edge-cases)
-10. [Worked examples](#worked-examples)
-11. [Byte limits](#byte-limits)
-12. [Making the pixels](#making-the-pixels)
-13. [Colour](#colour)
-14. [Metadata](#metadata)
-15. [Formats](#formats)
-16. [Where each caller lands](#where-each-caller-lands)
-17. [Showing the images](#showing-the-images)
-18. [Wire format and older clients](#wire-format-and-older-clients)
-19. [Video](#video)
-20. [How others do it](#how-others-do-it)
-21. [Testing](#testing)
-22. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
-23. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
+6. [Skipping a thumbnail too close to the next image](#skipping-a-thumbnail-too-close-to-the-next-image)
+7. [Why these qualities](#why-these-qualities)
+8. [Changing the table](#changing-the-table)
+9. [Working out the sizes](#working-out-the-sizes)
+10. [Rules for edge cases](#rules-for-edge-cases)
+11. [Worked examples](#worked-examples)
+12. [Byte limits](#byte-limits)
+13. [Making the pixels](#making-the-pixels)
+14. [Colour](#colour)
+15. [Metadata](#metadata)
+16. [Formats](#formats)
+17. [Where each caller lands](#where-each-caller-lands)
+18. [Showing the images](#showing-the-images)
+19. [Wire format and older clients](#wire-format-and-older-clients)
+20. [Video](#video)
+21. [How others do it](#how-others-do-it)
+22. [Testing](#testing)
+23. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
+24. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
+25. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
 
 ## The goal
 
@@ -77,11 +79,12 @@ These are agreed. Change one only with the evidence described in [Changing the t
 - **The table:** sizes and qualities for every row and setting, as in [The table](#the-table).
 - **Sizing:** long edge, plus a minimum short edge and a longest edge allowed, worked out with integer math before any pixels are touched.
 - **Never upscale.** A row within 10% of the source is made at the source size, with no scaling.
+- **No thumbnail too close to the next image.** In every setting, a thumbnail is kept only if the next bigger image is at least 1.5× its long edge. When the untouched file is the payload, the largest thumbnail always stays. See [Skipping a thumbnail](#skipping-a-thumbnail-too-close-to-the-next-image).
 - **Only three byte limits:** the tiny's 768 bytes, 1 MiB per thumbnail (the server's), and none on the final image. Over 1 MiB, a thumbnail shrinks at the same quality.
 - **Pixels:** decode once, scale from largest to smallest, halve while the image is at least 2× too big, then a Lanczos-class resampler for the last step.
 - **Colour:** keep wide-gamut colour, and put no colour profile on sRGB images or the tiny.
 - **Metadata:** the calling app decides whether a final image or video keeps its location and other metadata, through a required keep-or-strip parameter. The library never decides. Thumbnails never carry metadata.
-- **Display:** step up from the largest thumbnail to the final image only when that gains pixels. Photobase's grid always uses Small.
+- **Display:** every view shows the smallest image that covers the area it's drawn in, allowing 10% of stretch (40% for grid tiles), and never loads an untouched file in place of a thumbnail. See [Showing the images](#showing-the-images).
 - **Wire codes:** Standard records nothing, HD records `"hd"`, and Original records `"high"`.
 
 ## The three settings
@@ -127,7 +130,7 @@ Each row has a job. A change to a row should show that the row still does its jo
 | Row | Its job | Why this size |
 |---|---|---|
 | **Tiny, 20 px** | A blurred placeholder on the first frame, before anything downloads | Enough for the right colours and shape, and small enough to embed in every file's metadata within 768 bytes. Never contains a color map |
-| **Small, 320 px** | Grid cells and small previews | A grid cell on a phone is about 380 px. Photobase's grid always uses this row, so a small rise here costs bytes on every photo in the library. |
+| **Small, 320 px** | Grid cells and small previews | A phone grid's tiles are 270–330 px, and grids allow 40% of stretch, so phone grids use this row. A small rise here costs bytes on every photo in the library. |
 | **Medium, 640 px** | Chat bubbles on phones | A phone bubble is about 600–900 physical pixels wide. |
 | **Large, 1080 px** | Full phone width, and bubbles on desktop | Matches the width of most phone screens. |
 | **Extra large, 2048 px** | Standard's photo, and a big thumbnail in HD and Original | **Screenshots need pixels.** At the old 1600 px, a phone screenshot was 738 px wide, and small text blurred; at 2048 it's 1080 px wide and readable. In HD and Original, it's the thumbnail desktop bubbles and full-screen views use first. |
@@ -140,6 +143,49 @@ Each row has a job. A change to a row should show that the row still does its jo
 - **The short edge alone,** which is what Immich does, handles odd shapes. But sizes become unpredictable: a panorama's "250 px" thumbnail can be 3000 px long.
 - **So both, with a cap.** Aim for the long edge, grow until the short edge reaches its minimum, and never pass the longest edge allowed. That keeps a sliver useful and a panorama bounded.
 - The minimum is ¾ of the long edge, so ordinary 4:3 photos are unaffected, and 16:9 and 3:2 photos grow slightly, which is intended. For example, 4000×2250 gets 427×240 instead of 320×180.
+
+## Skipping a thumbnail too close to the next image
+
+**The rule.** For every caller and setting, a thumbnail is kept only if the next bigger image a viewer could load, meaning the next kept thumbnail or the final image, is at least **1.5× its long edge**. The planner walks down from the top and always keeps the smallest thumbnail. What the walk starts from is the only difference between callers:
+
+- **The pipeline makes the final image** (Standard and HD): the walk starts from the final image.
+- **The untouched file is the payload** (Original, so Photobase backup, Vault and chat at Original; stickers, animated images, SVGs, PDF and video posters): the largest thumbnail always stays, and the walk starts from it. Pixels don't predict an untouched file's bytes: a 1500 px PNG screenshot can be 2 MB against its 100 kB thumbnail, and viewers never step up to a large Original. So the largest thumbnail is the best image most views ever load.
+
+It's integer math on the planned sizes, so a skipped thumbnail is never resized, encoded, encrypted or uploaded.
+
+```text
+above = the final image's long edge, or none when the file is the payload
+for each thumbnail, largest first (the smallest is always kept):
+    if above is none or above × 2 >= thumbnail × 3:   keep it; above = its long edge
+    else:                                             skip it
+```
+
+**Why.** Our server can't see the photo, so it can't make the sizes, as Telegram's does. The sender encodes, encrypts and uploads every thumbnail, the server stores it, and every recipient's device may sync it. A thumbnail earns that cost only when a viewer loads it instead of the bigger image above it, and then it saves the difference between the two. When the two are close, it costs nearly a whole extra photo and saves little.
+
+The table made exactly that case for tall and wide photos. The Large row's minimum short edge (810) stretches a 9:16 photo to 810×1440, only 1.42× below Standard's 2048. A 9:16 Pixel photo sent at Standard, measured on the phone:
+
+| Image | Size | Bytes | Step from the one below (edge / bytes) |
+|---|---|---|---|
+| Small | 240×427 | 26,658 | |
+| Medium | 480×854 | 80,970 | 2.0× / 3.0× |
+| Large | ~~810×1440~~ | ~~165,388~~ | 1.69× / 2.0× |
+| Final image | 1152×2048 | 231,112 | 1.42× / 1.4× |
+
+That was about 507 kB on the wire for a 231 kB photo. Without the Large thumbnail it's about 342 kB, a third less, and the photo the recipient saves is the same.
+
+**Why 1.5.**
+
+- **It separates today's steps.** Per edge, the table steps 2.0×, then 1.69×, then 1.9× for a 4:3 photo or 1.42× for a 16:9 one. Any threshold between 1.42 and 1.69 removes only the redundant step, and 1.5 leaves a margin on both sides. At 1.7, every 4:3 photo would lose its Medium row.
+- **It's about where a thumbnail stops paying for itself.** 1.5× on the edge is 2.25× the pixels. Below it, a thumbnail costs more to send than a view saves: the 810×1440 above cost 165 kB to save 66 kB per view, so it needs about 2.5 views to pay off, while a chat photo is usually seen once or twice. The 480×854 below the final image (2.4×) costs 81 kB and saves 150 kB on its first view.
+- **It's in line with common practice.** Responsive-image sets on the web usually step 1.5–2× per edge. Telegram's server-made photo sizes (320, 800, 1280 and 2560 px) step 2.5×, 1.6× and 2×.
+
+**Other chat apps.** WhatsApp and Signal upload one compressed image plus a tiny preview inside the message (WhatsApp a small JPEG, Signal a blurhash), so they send about one photo: 362 kB and 243 kB for the photo above. Telegram uploads one image and its servers make the other sizes, which an end-to-end encrypted server can't. With the rule, our 9:16 Standard photo is about 342 kB on the wire, between the two, and its final image measured sharper than both.
+
+**What it doesn't touch.** The tiny is never skipped, and GIFs make no thumbnails anyway; see [GIFs and animated images](#gifs-and-animated-images). In a Photobase library, every 9:16 photo stores one thumbnail less, about 150–200 kB each.
+
+**What it costs a viewer.** A view that wants a size between two kept images now loads the bigger one. For example, a 1000 px view of a 9:16 Standard photo loads the 231 kB final image instead of the 165 kB thumbnail. A view steps up to the final image when no thumbnail covers it (see [Showing the images](#showing-the-images)), and full screen loads it anyway. At Original, the same view loads the 2048 thumbnail instead of the 1440 one.
+
+**Changing the threshold.** The [appendix](#appendix-the-15-rule-on-real-cameras) shows what the rule does to typical cameras, and `ThumbnailLadderTest` pins the same table, so a change shows up there first. Update both, and the [worked examples](#worked-examples).
 
 ## Why these qualities
 
@@ -176,7 +222,7 @@ The table is settled, not frozen. A change should come with:
    - no thumbnail over 1 MiB in normal photos;
    - the tiny within 768 bytes;
    - older clients still read the result.
-5. **Updated [worked examples](#worked-examples), tests and this document.**
+5. **Updated [worked examples](#worked-examples), the [appendix](#appendix-the-15-rule-on-real-cameras), tests and this document.**
 
 Existing images aren't regenerated, so a change only affects new uploads. That's safe, because every client reads any thumbnail size.
 
@@ -194,13 +240,14 @@ if long × 10 >= L × 9:                 # within 10% of the source: keep the so
 short = max(1, round(S × long / L))
 ```
 
-Then put `long` and `short` back as width and height in the source's orientation, and apply the rules below. The tiny skips the 10% step: it is always at most 20 px.
+Then put `long` and `short` back as width and height in the source's orientation, and apply the rules below. The tiny skips the 10% step: it is always at most 20 px. Last, drop the thumbnails [too close to the next image](#skipping-a-thumbnail-too-close-to-the-next-image).
 
 **Properties that must always hold.** Tests check these on random sizes:
 
 - no output is larger than its source or smaller than 1 px;
 - outputs never get smaller going down the table;
-- any output, other than the tiny, whose long edge is at least 90% of the source's is exactly the source size.
+- any output, other than the tiny, whose long edge is at least 90% of the source's is exactly the source size;
+- every thumbnail but the smallest is at most 1/1.5 of the next image's long edge, counting the final image when one is made.
 
 ## Rules for edge cases
 
@@ -236,7 +283,7 @@ Then put `long` and `short` back as width and height in the source's orientation
 - **Animated WebP** keeps its file as the final image in every setting, because the still encoder would freeze it. It gets the normal still thumbnails from its first frame, so today it shows still in a bubble and only animates where the full file loads.
 - **APNG, animated HEIC and animated AVIF** keep their file as the final image too, detected by `ImageFormatDetector.isAnimated`.
 
-**Cost.** A GIF has no small version, so every place that shows it downloads the whole file. That includes Photobase's grid, which otherwise never loads more than Small. See [To do](#to-do-and-what-isnt-settled).
+**Cost.** A GIF has no small version, so every place that shows it downloads the whole file. That includes Photobase's grid, which otherwise loads only thumbnails. See [To do](#to-do-and-what-isnt-settled).
 
 ### RAW photos
 
@@ -269,20 +316,20 @@ Each cell lists the thumbnails, then the final image after the arrow. They come 
 | Source | Standard | HD | Original |
 |---|---|---|---|
 | 4000×3000 | 320×240 q70, 640×480 q70, 1080×810 q70 → 2048×1536 q60 | 320×240 q80, 640×480 q80, 1080×810 q76, 2048×1536 q70 → 4000×3000 q80 | 320×240 q80, 640×480 q80, 1080×810 q80, 2048×1536 q76 → file |
-| 4000×2250 | 427×240, 854×480, 1440×810 → 2048×1152 | 427×240, 854×480, 1440×810, 2048×1152 → 4000×2250 | Same thumbnails → file |
-| 1179×2556 (iPhone screenshot) | 240×521, 480×1041, 810×1757 → 1179×2556 | 240×521, 480×1041, 810×1757, 1179×2556 → 1179×2556 | Same thumbnails → file |
-| 1179×8000 (long screenshot) | 94×640, 189×1280, 318×2160 → 1179×8000 | 94×640, 189×1280, 318×2160, 1179×8000 → 1179×8000 | Same thumbnails → file |
+| 4000×2250 | 427×240, 854×480 → 2048×1152 | 427×240, 854×480, 2048×1152 → 4000×2250 | 427×240, 854×480, 2048×1152 → file |
+| 1179×2556 (iPhone screenshot) | 240×521, 480×1041 → 1179×2556 | 240×521, 480×1041 → 1179×2556 | 240×521, 480×1041, 1179×2556 → file |
+| 1179×8000 (long screenshot) | 94×640, 189×1280, 318×2160 → 1179×8000 | 94×640, 189×1280, 318×2160 → 1179×8000 | 94×640, 189×1280, 318×2160, 1179×8000 → file |
 | 12000×4000 (panorama) | 640×213, 1280×427, 2160×720 → 3240×1080 | 640×213, 1280×427, 2160×720, 3240×1080 → 6480×2160 | Same thumbnails → file |
-| 1100×825 | 320×240, 640×480, 1100×825 → 1100×825 q70 | 320×240, 640×480, 1100×825 q76 → 1100×825 q80 | 320×240, 640×480, 1100×825 q80 → file |
-| 1200×900 (band edge) | 320×240, 640×480, 1200×900 → 1200×900 q70 | 320×240, 640×480, 1200×900 q76 → 1200×900 q80 | 320×240, 640×480, 1200×900 q80 → file |
-| 1201×901 (just outside) | 320×240, 640×480, 1080×810 → 1201×901 q60 | 320×240, 640×480, 1080×810, 1201×901 → 1201×901 | Same thumbnails → file |
-| 2275×1706 (band edge) | 321×241, 641×481, 1081×811 → 2275×1706 | 321×241, 641×481, 1081×811, 2275×1706 → 2275×1706 | Same thumbnails → file |
-| 2276×1707 (just outside) | 320×240, 640×480, 1080×810 → 2048×1536 | 320×240, 640×480, 1080×810, 2048×1536 → 2276×1707 | Same thumbnails → file |
+| 1100×825 | 320×240, 640×480 → 1100×825 q70 | 320×240, 640×480 → 1100×825 q80 | 320×240, 640×480, 1100×825 q80 → file |
+| 1200×900 (band edge) | 320×240, 640×480 → 1200×900 q70 | 320×240, 640×480 → 1200×900 q80 | 320×240, 640×480, 1200×900 q80 → file |
+| 1201×901 (just outside) | 320×240, 640×480 → 1201×901 q60 | 320×240, 640×480 → 1201×901 | 320×240, 640×480, 1201×901 → file |
+| 2275×1706 (band edge) | 321×241, 641×481, 1081×811 → 2275×1706 | 321×241, 641×481, 1081×811 → 2275×1706 | 321×241, 641×481, 1081×811, 2275×1706 → file |
+| 2276×1707 (just outside) | 320×240, 640×480, 1080×810 → 2048×1536 | 320×240, 640×480, 1080×810 → 2276×1707 | 320×240, 640×480, 1080×810, 2048×1536 → file |
 | 4551×3413 / 4552×3414 (HD band edge) | … → 2048×1536 | … → 4551×3413, and 4096×3072 just outside | … → file |
-| 600×450 | 320×240, 600×450 → 600×450 | 320×240, 600×450 → 600×450 | 320×240, 600×450 → file |
+| 600×450 | 320×240 → 600×450 | 320×240 → 600×450 | 320×240, 600×450 → file |
 | 200×150 | 200×150 → 200×150 | 200×150 → 200×150 | 200×150 → file |
 
-Qualities are omitted where they follow the table directly. The 321×241 in the 2275×1706 row isn't a typo: 1706 × 320 / 2275 is just under 240, so the minimum short edge pushes the row up one pixel.
+A thumbnail less than 1.5× below the next image is [skipped](#skipping-a-thumbnail-too-close-to-the-next-image), so one that would duplicate the final image is too, unless it's the only thumbnail. That's why Standard and HD can list fewer thumbnails than Original, where the largest thumbnail always stays. Qualities are omitted where they follow the table directly. The 1100×825 final image keeps q70 because the thumbnail it would have duplicated had it. The 321×241 in the 2275×1706 row isn't a typo: 1706 × 320 / 2275 is just under 240, so the minimum short edge pushes the row up one pixel.
 
 ## Byte limits
 
@@ -415,18 +462,31 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 ## Showing the images
 
-- **Picking a thumbnail.** `selectThumbSize` (`HomebaseImageData.kt`) picks the smallest thumbnail whose long edge covers the displayed size, or the largest one if none does. It compares long edges, the same as generation.
-- **Stepping up to the photo.** Once the thumbnail is showing, a bubble can load the final image when the display is more than 10% larger than the largest thumbnail. Without this, a 2× monitor stretches a 1080 px thumbnail. The step-up:
-  - waits about 600 ms after scrolling stops, so a fling doesn't download everything it passes;
-  - only loads JPEG, PNG or WebP payloads under a size limit, never a large Original;
-  - only steps up when the final image is actually larger than the largest thumbnail. The final image's size is recorded in the descriptor for this;
-  - is remembered, so scrolling back doesn't download again, and a failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good;
-  - is opted into per surface, such as chat bubbles, not applied everywhere;
-  - on failure, keeps the thumbnail on screen without flashing an error.
-- **Photobase's album grid always uses Small,** and never steps up. The album in chat-kmp is meant to stay simple; a separate app handles fast album viewing.
+**One rule for every view:** bubbles, Moments, the feed, Vault cards and the Photos grid all show **the smallest image that covers the area it's drawn in**, measured in physical pixels. `selectThumbSize` and `shouldStepUpToPayload` in `HomebaseImageData.kt` make the choice for all of them.
+
+- **Covers** means the image is stretched by no more than an allowance:
+  - **10%** for bubbles, posts and viewers (`DETAIL_SHORTFALL_PERCENT`);
+  - **40%** for grid tiles (`GRID_SHORTFALL_PERCENT`, set with `forGridTile()`): the Photos grid and Moments' album grid.
+- **Fit or crop.** A photo fitted inside the view only has to fill one edge. A photo cropped to fill the view, such as a square tile, has to fill both.
+- **The candidates** are the thumbnails, then the final image, but only one the view *knows* we made: its descriptor records its pixel size and it isn't marked Original. Chat and Moments have recorded this since November 2026. When no thumbnail covers the view, it loads that final image instead, if it adds pixels, is under 12 MB and every client can decode it.
+- **Everything else stops at its largest thumbnail:** Original sends, Photos, Vault, stickers, photos posted from the web app, and older messages. Their payload may be the sender's untouched file, of any size.
+- **Grid tiles stop at thumbnails** too, whatever they show.
+- **Full screen loads the full payload,** whatever the setting.
+- **The tiny always comes first.** Every upload must embed a tiny (the planner always makes one, GIFs and SVGs included), and every view must draw it, blurred, on its very first frame, before anything is downloaded. A photo never shows as an empty box. Only a file with no tiny, such as one uploaded by another client, shows a placeholder.
+- **Each image replaces the one before only once it has loaded,** so a view never drops back to the tiny or to blank. After the tiny: any copy of the photo already in memory, of any size, such as the tile just tapped; then the chosen thumbnail; then, only if it's needed, the final image, about 600 ms after scrolling stops. The step-up is remembered, so scrolling back doesn't download again. A failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good, and the thumbnail stays on screen without an error.
+- **Pagers** keep neighbouring pages composed off screen, so only the settled page steps up.
 - **The album grid loads what you stop on first.** While the grid moves, a tile that isn't already in memory shows only its tiny and starts no download (`HomebaseImage`'s `deferLoad`). About 150 ms after it stops, the tiles in view start. The background prefetch of the newest 500 waits out each scroll.
 - **On the Photos drive, a thumbnail download nobody waits for is cancelled.** `DriveFileProviderCached` shares one download per thumbnail between everyone asking for it. Photos' `DedicatedThumbCache` sets `cancelWhenUnwatched`, so the download stops when the last of them leaves, and a tile scrolled off the screen stops queueing ahead of the ones on it. Every other drive keeps the download going, so a contact row's avatar still lands in the cache after it scrolls away.
 - **The tiny** is decoded off the main thread and kept in memory, so the placeholder is there on the first frame.
+
+**Why these choices.** Change one only with this reasoning in hand:
+
+- **Measured, not a fixed size per screen.** Screens differ about 3× in pixel density, and the same bubble is 400 px wide on one phone and 1,200 on a tablet. A fixed request is too big on one and too soft on the other.
+- **10% for bubbles and viewers.** A 10% stretch isn't visible at normal viewing distance, while text in a screenshot starts to soften beyond about 15%. It's also the planner's own band: a row within 10% of the source is made at the source size.
+- **40% for grid tiles.** A tile is glanced at among hundreds, and the grid's cost multiplies by the whole library. Phone tiles are 270 px (Pixel 8) to 330 px (iPhone Pro Max), just past Small's 240 px short edge. At 10%, every phone grid would load Medium, about 3× the data per tile and per prefetch. At 40%, phones stay on Small, as Immich does with its fixed 250 px grid thumbnail, and larger tiles still move up a thumbnail: a 600 px tablet tile gets Medium, and a 1,000 px desktop tile Large, or the 2048 thumbnail for a tall photo. Tiles never load the final image, because the grid's cost multiplies by the library. Google Photos instead makes each tile's exact size on its server, which an end-to-end encrypted server can't.
+- **Crop needs both edges.** A cropped tile spreads the photo's short edge across the whole tile, so comparing long edges would pick a thumbnail too small for it.
+- **Never the untouched file in a view.** An original can be 5–12 MB, HEIC or RAW, and 4,000+ px. Pulling it to draw a 1,000 px bubble wastes most of it. Full screen is where its pixels are seen. A view can't tell an original from a final image unless the descriptor says so, which is why it steps up only to one whose size was recorded.
+- **Straight to the chosen size, not up every step.** Walking up through every thumbnail downloads more and gives no earlier sharp frame. The one step in between is the thumbnail while the final image waits for scrolling to stop, so a fling never downloads final images.
 
 ## Wire format and older clients
 
@@ -477,6 +537,10 @@ What must stay proven, and where.
 - Small sources never upscale: 600×450, 200×150, 20×15 and 1×1, in every setting.
 - A random-size property test, over 5,000 sizes for each setting, checks the [properties](#working-out-the-sizes) above. It also checks that no two thumbnails are within 90% of each other, and that the final image's quality is at least that of any thumbnail within 90% of it.
 - Portrait and landscape give the same sizes, transposed.
+- The random-size test also checks the [1.5 rule](#skipping-a-thumbnail-too-close-to-the-next-image) in every setting.
+- `ThumbnailLadderTest` pins the [appendix](#appendix-the-15-rule-on-real-cameras): real camera sizes at Standard, HD and Original, with the thumbnails each keeps, and that a file kept as the payload keeps its largest thumbnail.
+- `HomebaseImageTinyFirstTest` pins that a view draws the tiny on its first frame while the thumbnail loads, and shows the placeholder only without a tiny. `CreateThumbnailsTest` pins that every upload, of every format, gets a tiny.
+- `ThumbSizeSelectionTest` pins [how a view picks its image](#showing-the-images): the 10% and 40% allowances, fit against crop, phone and larger grid tiles, that only a recorded final image is pulled, that grid tiles never pull it, and when a view steps up.
 
 ### Pipeline contract: real decoders, scalers and encoders on every platform
 
@@ -558,6 +622,9 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 ### Not built yet
 
+- **Every upload records its final image's size and whether it's the user's original** (#911). A view steps up only to a final image whose size is recorded, so today only chat and Moments photos do: both go through `MessageAttachmentBuilder`. Photos, Vault and stickers stop at their largest thumbnail until the shared upload factory records this for every app.
+- **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
+
 | What | Issue |
 |---|---|
 | Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` | #2301 |
@@ -581,3 +648,55 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 - **Animated WebP in bubbles.** It shows still today. Animating it needs a descriptor flag, because its type is the same `image/webp` as a still image.
 - **Should Vault keep metadata?** It's the user's own encrypted storage, like Photos, but today it strips through the shared upload scrub.
 - **Linear-light resampling.** Not used; see [How to resize well](#how-to-resize-well). Revisit only if a real-photo test shows a visible gain.
+
+## Appendix: the 1.5 rule on real cameras
+
+What the planner keeps for typical camera and screen sizes. ~~Struck~~ thumbnails are skipped; the number in brackets is how many times bigger, per edge, the next kept image is. `ThumbnailLadderTest` pins this table, so read it before changing the threshold or the [table](#the-table).
+
+**Standard** (final image at most 2048 px):
+
+| Source | Size | Thumbnails | Final image |
+|---|---|---|---|
+| Pixel 8, 12.5 MP 4:3 | 3072×4080 | 241×320, 482×640 (1.69), 813×1080 (1.90) | 1542×2048 |
+| Pixel 9 MP 9:16, iPhone 12 MP 16:9 | 2268×4032 | 240×427, 480×854 (2.40), ~~810×1440~~ (1.42) | 1152×2048 |
+| Pixel 8 Pro, 50 MP 4:3 | 6144×8160 | 241×320, 482×640, 813×1080 | 1542×2048 |
+| iPhone 12, 24 and 48 MP 4:3 | 3024×4032 to 6048×8064 | 240×320, 480×640, 810×1080 | 1536×2048 |
+| Galaxy S23 12 MP, S23 Ultra 200 MP | 3000×4000, 12240×16320 | 240×320, 480×640, 810×1080 | 1536×2048 |
+| Square | 3024×3024 | 320×320, 640×640, 1080×1080 | 2048×2048 |
+| DSLR 24 MP 3:2 | 6000×4000 | 360×240, 720×480, 1215×810 (1.69) | 2048×1365 |
+| Panorama | 9546×1619 | 640×109, 1280×217, 2160×366 (2.95) | 6368×1080 |
+| Phone screenshot | 1080×2400 | 240×534, 480×1067 (2.25), ~~810×1800~~ (1.33) | 1080×2400 |
+| Desktop screenshot | 2560×1440 | 427×240, 854×480 (2.40), ~~1440×810~~ (1.42) | 2048×1152 |
+| Small photo | 1600×1200 | 320×240, 640×480 (2.50), ~~1080×810~~ (1.48) | 1600×1200 |
+
+**HD** (final image at most 4096 px):
+
+| Source | Size | Thumbnails | Final image |
+|---|---|---|---|
+| Every 4:3 phone above | | all four kept, steps 2.0, 1.69, 1.90, about 2.0 | 3000–3084 × 4000–4096 |
+| Pixel 9 MP 9:16, iPhone 16:9 | 2268×4032 | 240×427, 480×854, ~~810×1440~~ (1.42), 1152×2048 (1.97) | 2268×4032 |
+| Square | 3024×3024 | 320×320, 640×640, 1080×1080 (2.80), ~~2048×2048~~ (1.48) | 3024×3024 |
+| DSLR 24 MP 3:2 | 6000×4000 | all four kept | 4096×2731 |
+| Panorama | 9546×1619 | 640×109, 1280×217, 2160×366 (3.79), ~~6368×1080~~ (1.29) | 8192×1389 |
+| Phone screenshot | 1080×2400 | 240×534, 480×1067 (2.25), ~~810×1800~~, ~~1080×2400~~ (1.00) | 1080×2400 |
+| Desktop screenshot | 2560×1440 | 427×240, 854×480, 1440×810 (1.78), ~~2048×1152~~ (1.25) | 2560×1440 |
+| Small photo | 1600×1200 | 320×240, 640×480 (2.50), ~~1080×810~~, ~~1600×1200~~ (1.00) | 1600×1200 |
+
+**Original** (the untouched file is the payload, so the largest thumbnail always stays):
+
+| Source | Size | Thumbnails |
+|---|---|---|
+| Every 4:3 phone above, square | | all four kept, steps 2.0, 1.69, 1.90 |
+| Pixel 9 MP 9:16, iPhone 16:9 | 2268×4032 | 240×427, 480×854, ~~810×1440~~ (1.42), 1152×2048 |
+| DSLR 24 MP 3:2 | 6000×4000 | all four kept (1.69) |
+| Panorama | 9546×1619 | all four kept (2.95) |
+| Phone screenshot | 1080×2400 | 240×534, 480×1067, ~~810×1800~~ (1.33), 1080×2400 |
+| Desktop screenshot | 2560×1440 | 427×240, 854×480, ~~1440×810~~ (1.42), 2048×1152 |
+| Small photo | 1600×1200 | 320×240, 640×480, ~~1080×810~~ (1.48), 1600×1200 |
+
+What it shows:
+
+- **9:16 and 16:9 photos and screenshots lose one thumbnail** in every setting.
+- **Ordinary 4:3 photos from every phone keep every thumbnail.** Their steps are 2.0, 1.69 and 1.90.
+- **A thumbnail the same size as the final image (1.00) is dropped,** unless it's the only one: a 200×150 photo still sends its one thumbnail. Before the rule, a small photo or a phone screenshot at HD encoded and uploaded the same pixels twice.
+- **The closest calls are 1.48:** a small photo's 1080×810 at Standard and a square photo's 2048×2048 at HD. Both are dropped, which fits the cost argument, but they show where 1.5 sits.

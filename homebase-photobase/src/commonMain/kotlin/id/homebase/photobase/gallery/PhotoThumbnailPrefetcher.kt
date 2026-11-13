@@ -2,6 +2,7 @@ package id.homebase.photobase.gallery
 
 import co.touchlab.kermit.Logger
 import id.homebase.core.image.ImageSize
+import id.homebase.core.image.GRID_SHORTFALL_PERCENT
 import id.homebase.core.image.selectThumbSize
 import id.homebase.core.image.thumbSizesFrom
 import kotlinx.coroutines.CancellationException
@@ -40,7 +41,7 @@ class PhotoThumbnailPrefetcher(
                 if (sizes.isEmpty()) continue
                 paused.first { !it }
                 try {
-                    ensureThumbnail(item, selectThumbSize(ImageSize.THUMB_SMALL, sizes))
+                    ensureThumbnail(item, selectThumbSize(PHONE_GRID_TILE, sizes, crop = true, GRID_SHORTFALL_PERCENT))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -64,3 +65,6 @@ class PhotoThumbnailPrefetcher(
         const val RECENT_PHOTOS = 500
     }
 }
+
+// Phone grid tiles are 270–330 px, so this picks what they will; a tablet's bigger tiles fetch their own.
+private val PHONE_GRID_TILE = ImageSize(320, 320)

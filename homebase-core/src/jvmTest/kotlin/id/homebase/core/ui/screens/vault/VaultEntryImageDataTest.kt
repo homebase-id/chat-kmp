@@ -7,7 +7,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.imageDataFor
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -95,13 +94,11 @@ class VaultEntryImageDataTest {
                 descriptor,
                 loadFullPayload = false,
                 previewThumbnail = thumb,
-                requestedSize = ImageSize.THUMB_MEDIUM,
             )
         )
 
         assertFalse(data.loadFullPayload)
         assertEquals(thumb, data.previewThumbnail)
-        assertEquals(ImageSize.THUMB_MEDIUM, data.requestedSize)
     }
 
     @Test

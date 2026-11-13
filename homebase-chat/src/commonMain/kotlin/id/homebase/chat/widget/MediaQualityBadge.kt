@@ -12,9 +12,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.core.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.settings.label
@@ -31,7 +29,7 @@ import org.jetbrains.compose.resources.stringResource
  * therefore render identically, with no badge.
  */
 fun PayloadDescriptor.badgedQuality(): MediaQuality? =
-    (descriptorInfo() as? DescriptorContent.ImageFile)?.quality?.takeIf { it != MediaQuality.STANDARD }
+    imageFile()?.quality?.takeIf { it != MediaQuality.STANDARD }
 
 /**
  * Quality marker overlaid on a photo. Carries its own scrim because it sits on arbitrary picture
@@ -62,7 +60,3 @@ fun MediaQualityBadge(quality: MediaQuality, modifier: Modifier = Modifier) {
     }
 }
 
-fun PayloadDescriptor.recordedImageSize(): ImageSize? {
-    val image = descriptorInfo() as? DescriptorContent.ImageFile ?: return null
-    return ImageSize(image.pixelWidth ?: return null, image.pixelHeight ?: return null)
-}

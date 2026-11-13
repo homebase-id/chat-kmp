@@ -32,7 +32,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.core.image.ImageSize
 import id.homebase.api.common.OdinId
 import kotlin.uuid.Uuid
 
@@ -225,7 +224,7 @@ fun MomentMediaCarousel(
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
                     modifier = Modifier.fillMaxSize(),
-                    imageSize = ImageSize.THUMB_LARGE,
+                    stepUpToPayload = pagerState.settledPage == pageIndex,
                     // Normally the carousel box is the aspect-locked region and
                     // images crop to fill it (like the 4-up grid). While shrunk
                     // for the comments sheet ([fitToContent]) the box is the 1/3
