@@ -316,6 +316,10 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 | **B** | The tiny stays plain on every file. |
 | **C** | Vault keeps metadata. |
 | **D** | One switch, at once, for every kind including plain files. Unencrypted files' descriptors stay plain. |
+| **E** | Descriptor content uses short JSON keys (section 1); the server's own keys stay as they are. |
+| **F** | An HLS playlist is always its own payload (`pls_`), so descriptor content always fits. |
+| **G** | Stripping an AVIF or TIFF re-encodes it to WebP; GIFs aren't stripped. |
+| **H** | The odin-js half (readers and writers in the web apps) is done by the web side, not in this change. |
 
 ## 10. Today, for reference
 
