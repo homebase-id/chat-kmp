@@ -9,9 +9,10 @@ enum class CardOption {
     PORTRAIT_SHAPE,
     SOCIALS_STYLE,
     BLOCK_STYLE,
+    // Entry order is the design panel's tab order.
+    BLOCK_ORDER,
     DISPLAY_FONT,
     TEXT_FONT,
-    BLOCK_ORDER,
 }
 
 /** [portraitSlots] is how many portraits the layout's preset draws; the web replaces the preset's list, so a shape override must fill every slot. */

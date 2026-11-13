@@ -2337,8 +2337,6 @@
     <string name="profile_card_tool_style">Stil</string>
     <string name="profile_card_tool_presets">Forslag</string>
     <string name="profile_card_option_presets">Færdige stilarter</string>
-    <string name="profile_card_tool_layout">Layout</string>
-    <string name="profile_card_option_layout">Kortets layout</string>
     <string name="profile_card_presentation_bare">Almindelig</string>
     <string name="profile_card_presentation_boxed">Boks</string>
     <string name="profile_card_presentation_row">Rækker</string>

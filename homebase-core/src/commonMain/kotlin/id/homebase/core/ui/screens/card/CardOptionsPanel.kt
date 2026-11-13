@@ -98,7 +98,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Style
@@ -182,8 +181,6 @@ import id.homebase.resources.profile_card_option_block_style
 import id.homebase.resources.profile_card_tool_style
 import id.homebase.resources.profile_card_tool_presets
 import id.homebase.resources.profile_card_option_presets
-import id.homebase.resources.profile_card_option_layout
-import id.homebase.resources.profile_card_tool_layout
 import id.homebase.resources.profile_card_presentation_bare
 import id.homebase.resources.profile_card_presentation_boxed
 import id.homebase.resources.profile_card_presentation_row
@@ -247,16 +244,13 @@ internal fun CardOptionsPanel(
     styles: List<ResolvedCardStyle>,
     custom: ResolvedCardStyle?,
     onStyle: (ResolvedCardStyle) -> Unit,
-    onDesign: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
     val orderable = spec?.reorderable(hasLinks).orEmpty()
     val options = CardOption.entries.filter { spec != null && it in spec.options && (it != CardOption.BLOCK_ORDER || orderable.size > 1) }
     val tools = remember(options, styles.isEmpty()) {
-        val optionTools = options.map { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it)) }.toMutableList()
-        optionTools.add(options.indexOfLast { it == CardOption.COLOURS || it == CardOption.BACKGROUND } + 1, LAYOUT_TOOL)
-        listOfNotNull(PRESETS_TOOL.takeIf { styles.isNotEmpty() }) + optionTools
+        listOfNotNull(PRESETS_TOOL.takeIf { styles.isNotEmpty() }) + options.map { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it)) }
     }
     var picked by rememberSaveable(design) { mutableStateOf(tools.firstOrNull()?.key.orEmpty()) }
     val current = tools.firstOrNull { it.key == picked } ?: tools.firstOrNull() ?: return
@@ -275,8 +269,7 @@ internal fun CardOptionsPanel(
             // The picked tool names itself in the group below, so the control stands alone here.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val option = options.firstOrNull { it.name == shown }
-                if (shown == LAYOUT_TOOL.key) DesignStrip(design, enabled, dimmed = false, onSelect = onDesign, modifier = Modifier.fillMaxSize())
-                else if (option == null) CardStyleRow(styles, overrides, design, enabled, onStyle, custom = custom)
+                if (option == null) CardStyleRow(styles, overrides, design, enabled, onStyle, custom = custom)
                 else OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
             }
         }
@@ -862,8 +855,6 @@ private fun List<String>.swap(a: Int, b: Int): List<String> {
 private data class PanelTool(val key: String, val icon: ImageVector, val label: StringResource, val description: StringResource)
 
 private val PRESETS_TOOL = PanelTool("presets", Icons.Outlined.Layers, MR.string.profile_card_tool_presets, MR.string.profile_card_option_presets)
-
-private val LAYOUT_TOOL = PanelTool("layout", Icons.Outlined.Dashboard, MR.string.profile_card_tool_layout, MR.string.profile_card_option_layout)
 
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
