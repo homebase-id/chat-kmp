@@ -5,12 +5,12 @@ import id.homebase.api.util.compareStringUuId
 enum class CardOption {
     COLOURS,
     ACCENT,
-    DISPLAY_FONT,
-    TEXT_FONT,
     PORTRAIT_SHAPE,
     SOCIALS_STYLE,
-    BLOCK_ORDER,
     BLOCK_STYLE,
+    DISPLAY_FONT,
+    TEXT_FONT,
+    BLOCK_ORDER,
 }
 
 /** [portraitSlots] is how many portraits the layout's preset draws; the web replaces the preset's list, so a shape override must fill every slot. */
