@@ -8,7 +8,14 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -21,7 +28,11 @@ fun WithTooltip(
 ) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(if (below) TooltipAnchorPosition.Below else TooltipAnchorPosition.Above),
-        tooltip = { PlainTooltip { Text(text) } },
+        tooltip = {
+            var area by remember { mutableStateOf<Rect?>(null) }
+            ReportOverlay(area)
+            PlainTooltip(Modifier.onGloballyPositioned { area = it.boundsInWindow() }) { Text(text) }
+        },
         state = rememberTooltipState(),
         modifier = modifier,
         content = content,

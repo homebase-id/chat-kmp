@@ -4,11 +4,13 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
+import kotlin.uuid.Uuid
 
 // Public feed files ship plaintext payloads, so the request bypasses UploadService's encryptBundle.
 internal suspend fun enqueuePlaintextUpload(
@@ -16,8 +18,11 @@ internal suspend fun enqueuePlaintextUpload(
     optimisticWriter: OptimisticWriter,
     request: UploadFileRequest,
     tag: String,
+    optimisticFileId: Uuid? = null,
+    optimisticMetadata: UploadFileMetadata = request.metadata,
+    overPeer: Boolean = false,
 ) {
-    val enqueued = outboxSync.tryEnqueue(request)
+    val enqueued = outboxSync.tryEnqueue(request, overPeer = overPeer)
     if (!enqueued.enqueued) error("Failed to enqueue upload (outbox: $enqueued)")
 
     val payloadDescriptors = request.payloads.map { payload ->
@@ -41,10 +46,11 @@ internal suspend fun enqueuePlaintextUpload(
         optimisticWriter.writeNewFile(
             driveId = request.driveId,
             keyHeader = request.keyHeader,
-            unecryptedMetadata = request.metadata,
+            unecryptedMetadata = optimisticMetadata,
             originalRecipientCount = request.transitOptions?.recipients?.size ?: 0,
             fileSystemType = FileSystemType.Standard,
             payloadDescriptors = payloadDescriptors,
+            fileId = optimisticFileId ?: Uuid.random(),
         )
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = tag) {

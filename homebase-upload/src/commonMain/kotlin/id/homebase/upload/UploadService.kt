@@ -63,13 +63,14 @@ class UploadService(
             payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails,
             existingFileIsSuccess = spec.existingFileIsSuccess,
+            fileSystemType = spec.requestFileSystemType,
         )
 
         // 3. Outbox enqueue — the durable success gate. Once accepted, delivery is guaranteed.
         val enqueue = if (spec.replace) {
             outboxSync.replaceEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
         } else {
-            outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
+            outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow, spec.overPeer)
         }
         when (enqueue) {
             is EnqueueResult.Enqueued -> Unit

@@ -59,6 +59,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -106,6 +109,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
+import id.homebase.core.widget.WithTooltip
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.Smartphone
+import androidx.compose.ui.semantics.role
+import id.homebase.core.widget.connectedButtonShapes
+import id.homebase.core.widget.ProvideOpenOverlays
+import id.homebase.core.widget.ReportOverlay
 import id.homebase.core.util.isDesktopOrWeb
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Brush
@@ -141,6 +153,8 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.close
 import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_preview
+import id.homebase.resources.profile_card_preview_desktop
+import id.homebase.resources.profile_card_preview_mobile
 import id.homebase.resources.profile_card_change_design_to
 import id.homebase.resources.profile_card_audience_editing
 import id.homebase.resources.profile_card_design_save_failed
@@ -193,6 +207,8 @@ private val WIDE_PANEL_WIDTH = 440.dp
 private val ROOMY_PANEL_WIDTH = 488.dp
 private val ROOMY_LAYOUT_MIN_WIDTH = 1080.dp
 private val PREVIEW_MAX_WIDTH = 440.dp
+// Past the site's 768 CSS px breakpoint, where it lays the card out as its wide page.
+private val DESKTOP_PREVIEW_WIDTH = 1024.dp
 private val PREVIEW_SIDE_INSET = 16.dp
 private val PREVIEW_FADE_HEIGHT = 40.dp
 private val DESIGN_LABEL_HEIGHT = 24.dp
@@ -221,6 +237,20 @@ fun ProfileCardEditorScreen(
     cardsEnabled: Boolean = true,
     // Opened straight on the design picker, back leaves the editor instead of stepping to the content list.
     openDesign: Boolean = false,
+) {
+    ProvideOpenOverlays {
+        ProfileCardEditor(viewModel, avatarViewModel, onBack, onNavigateToCropper, cardsEnabled, openDesign)
+    }
+}
+
+@Composable
+private fun ProfileCardEditor(
+    viewModel: ProfileCardViewModel,
+    avatarViewModel: ProfileAvatarEditViewModel,
+    onBack: () -> Unit,
+    onNavigateToCropper: (Uuid) -> Unit,
+    cardsEnabled: Boolean,
+    openDesign: Boolean,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
@@ -404,11 +434,13 @@ fun ProfileCardEditorScreen(
                 paintWhileAttached = viewModel::paintWhileAttached,
                 modifier = Modifier.fillMaxSize(),
                 layoutWidth = layoutWidth,
+                shape = MaterialTheme.shapes.extraLargeIncreased,
                 cover = designCover,
                 coverHeld = uiState.isSwitchingDesign,
                 skeleton = true,
             )
         }
+        if (avatarState.removalToConfirm != null) ReportOverlay()
         PhotoRemovalConfirmDialog(avatarState.removalToConfirm, avatarViewModel::onAction)
         uiState.pendingPublic?.let { pending ->
             MakePublicDialog(itemLabel = pending.itemLabel, onConfirm = viewModel::onPublicConfirmed, onDismiss = viewModel::onPublicCancelled)
@@ -421,6 +453,7 @@ fun ProfileCardEditorScreen(
 
 @Composable
 internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
@@ -437,6 +470,7 @@ internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismis
 
 @Composable
 internal fun NamelessPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
@@ -499,6 +533,7 @@ internal fun ProfileCardEditorContent(
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
             val contentOpen = mode == EditorMode.Content
             var previewOpen by rememberSaveable { mutableStateOf(false) }
+            var previewWidth by rememberSaveable { mutableStateOf(PreviewWidth.Desktop) }
             val previewing = previewOpen && contentOpen && showCard
             @Suppress("DEPRECATION") BackHandler(enabled = previewing) { previewOpen = false }
             val density = LocalDensity.current
@@ -610,13 +645,13 @@ internal fun ProfileCardEditorContent(
                     }
                 } else if (contentOpen && contentLayout == ContentLayout.CompactHeader) {
                     val selectedCard = uiState.cards.firstOrNull { it.audience == uiState.selectedAudience }
-                    val capturing = host != null && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+                    val capturing = host != null && uiState.cards.isNotEmpty()
                     LaunchedEffect(capturing, host, uiState.contentSaves, uiState.selectedAudience, uiState.cards) {
                         if (capturing) onCaptureTiles()
                     }
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         // Occluded by the opaque column above it: the host only has to be attached for the snapshot.
-                        if (capturing && host != null) {
+                        if (capturing && host != null && !isDesktopOrWeb()) {
                             CardHostView(
                                 host = host,
                                 modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
@@ -655,6 +690,7 @@ internal fun ProfileCardEditorContent(
                         }
                     }
                 } else if (wide) {
+                    val desktopPreview = previewWidth == PreviewWidth.Desktop
                     // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
                     Row(
                         modifier = Modifier
@@ -666,29 +702,35 @@ internal fun ProfileCardEditorContent(
                         verticalAlignment = Alignment.Top,
                     ) {
                         Column(
-                            modifier = Modifier.weight(1f, fill = false).fillMaxHeight(),
+                            modifier = Modifier.weight(1f, fill = desktopPreview).fillMaxHeight(),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(WIDE_CHIP_GAP),
                         ) {
                             val chipDescription = stringResource(MR.string.profile_card_audience_editing, audienceLabel(uiState.selectedAudience))
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.widthIn(max = with(density) { wideCard.width.toDp() }.takeIf { it > 0.dp } ?: Dp.Unspecified),
+                            ) {
                                 AudienceChip(
                                     audience = uiState.selectedAudience,
                                     locked = uiState.isCircleReadOnly,
                                     unsaved = uiState.isUnsavedCard,
                                     elevated = false,
                                     modifier = Modifier
-                                        .widthIn(max = with(density) { wideCard.width.toDp() }.takeIf { it > 0.dp } ?: Dp.Unspecified)
+                                        .weight(1f, fill = false)
                                         .clearAndSetSemantics { contentDescription = chipDescription },
                                 )
+                                PreviewWidthToggle(selected = previewWidth, onSelect = { previewWidth = it })
                                 if (contentOpen && onDesign != null) DesignButton(onDesign)
                             }
                             CardPreviewFrame(
-                                keepProportions = true,
+                                keepProportions = !desktopPreview,
+                                maxWidth = if (desktopPreview) Dp.Infinity else PREVIEW_MAX_WIDTH,
                                 alignment = Alignment.TopCenter,
                                 onCardSize = { wideCard = it },
-                                modifier = Modifier.weight(1f),
-                            ) { preview(cardWidth) }
+                                modifier = Modifier.weight(1f).then(if (desktopPreview) Modifier.fillMaxWidth() else Modifier),
+                            ) { preview(if (desktopPreview) DESKTOP_PREVIEW_WIDTH else cardWidth) }
                         }
                         panel(
                             Modifier.width(widePanelWidth).then(if (contentOpen) Modifier.verticalScroll(rememberScrollState()) else Modifier),
@@ -761,6 +803,7 @@ private class PanelMetrics(val body: Dp, val gap: Dp, val edge: Dp) {
 private fun CardPreviewFrame(
     keepProportions: Boolean,
     modifier: Modifier = Modifier,
+    maxWidth: Dp = PREVIEW_MAX_WIDTH,
     alignment: Alignment = Alignment.Center,
     fadeInto: (() -> Color)? = null,
     onCardSize: ((IntSize) -> Unit)? = null,
@@ -770,7 +813,7 @@ private fun CardPreviewFrame(
     Box(modifier = modifier, contentAlignment = alignment) {
         Box(
             modifier = Modifier
-                .widthIn(max = PREVIEW_MAX_WIDTH)
+                .widthIn(max = maxWidth)
                 .then(
                     if (keepProportions) Modifier.aspectRatio(CARD_THUMB_ASPECT, matchHeightConstraintsFirst = true)
                     else Modifier.fillMaxSize(),
@@ -793,6 +836,42 @@ private fun CardPreviewFrame(
                             drawRect(Brush.verticalGradient(listOf(color.copy(alpha = 0f), color)))
                         },
                 )
+            }
+        }
+    }
+}
+
+internal enum class PreviewWidth { Desktop, Mobile }
+
+@Composable
+private fun PreviewWidthToggle(selected: PreviewWidth, onSelect: (PreviewWidth) -> Unit) {
+    val options = PreviewWidth.entries
+    Row(
+        modifier = Modifier.selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+    ) {
+        options.forEachIndexed { index, option ->
+            val label = stringResource(
+                when (option) {
+                    PreviewWidth.Desktop -> MR.string.profile_card_preview_desktop
+                    PreviewWidth.Mobile -> MR.string.profile_card_preview_mobile
+                },
+            )
+            WithTooltip(label) {
+                ToggleButton(
+                    checked = option == selected,
+                    onCheckedChange = { onSelect(option) },
+                    shapes = connectedButtonShapes(index, options.size),
+                    modifier = Modifier.semantics { role = Role.RadioButton },
+                ) {
+                    Icon(
+                        imageVector = when (option) {
+                            PreviewWidth.Desktop -> Icons.Outlined.Computer
+                            PreviewWidth.Mobile -> Icons.Outlined.Smartphone
+                        },
+                        contentDescription = label,
+                    )
+                }
             }
         }
     }
@@ -862,8 +941,11 @@ private fun EditorTopBar(
             }
             if (onDesign != null) DesignButton(onDesign)
             if (onPreview != null) {
-                IconButton(onClick = onPreview, shapes = IconButtonDefaults.shapes()) {
-                    Icon(Icons.Outlined.Visibility, contentDescription = stringResource(MR.string.profile_card_preview))
+                val previewLabel = stringResource(MR.string.profile_card_preview)
+                WithTooltip(previewLabel, below = true) {
+                    IconButton(onClick = onPreview, shapes = IconButtonDefaults.shapes()) {
+                        Icon(Icons.Outlined.Visibility, contentDescription = previewLabel)
+                    }
                 }
             } else if (onSave != null) {
                 FilledIconButton(
@@ -1261,7 +1343,7 @@ private fun DesignStrip(
                 state = state,
                 horizontalArrangement = Arrangement.spacedBy(DESIGN_TILE_SPACING),
                 contentPadding = PaddingValues(horizontal = DESIGN_STRIP_INSET),
-                modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(itemHeight).selectableGroup(),
+                modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(itemHeight).wheelScrollsRow(state).selectableGroup(),
             ) {
                 items(designs.size, key = { designs[it] }) { index -> tile(index, Modifier.size(itemWidth, itemHeight)) }
             }
@@ -1291,9 +1373,12 @@ private fun DesignTile(
     val shape = RoundedCornerShape(corner)
     val label = stringResource(designLabel(design))
     val labelStyle = if (selected) typography.labelLargeEmphasized else typography.labelLarge
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
     Column(
         modifier = modifier
-            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .selectable(selected, interactions, LocalIndication.current, enabled, Role.RadioButton, onClick)
+            .handCursor(enabled)
             .semantics { contentDescription = label },
     ) {
         Box(
@@ -1306,7 +1391,8 @@ private fun DesignTile(
                     alpha = dim
                 }
                 .clip(shape)
-                .border(BorderStroke(ring, if (selected) colors.primary else colors.outlineVariant), shape),
+                .border(BorderStroke(ring, if (selected) colors.primary else colors.outlineVariant), shape)
+                .focusRing(focused, shape, colors.secondary),
         ) {
             CardDesignThumbnail(design = design, modifier = Modifier.fillMaxSize())
             Box(
@@ -1351,6 +1437,7 @@ internal enum class EditorMode { Content, Design }
 
 @Composable
 private fun DiscardDialog(onKeep: () -> Unit, onDiscard: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onKeep,
         title = { Text(stringResource(MR.string.profile_card_discard_title)) },

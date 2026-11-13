@@ -75,6 +75,11 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -186,6 +191,7 @@ import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_load_failed_desc
 import id.homebase.resources.profile_edit_retry
 import id.homebase.core.widget.WithTooltip
+import id.homebase.core.widget.ReportOverlay
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.graphics.Color
 
@@ -649,7 +655,7 @@ private fun PhotoRow(card: CardAudience, photo: CardPhotoUi, onChange: () -> Uni
                     .size(PHOTO_SIZE)
                     .clip(MaterialShapes.Cookie9Sided.toShape())
                     .background(colors.surfaceContainerHighest)
-                    .then(if (photo.canChange) Modifier.clickable(role = Role.Button, onClickLabel = change, onClick = onChange) else Modifier),
+                    .then(if (photo.canChange) Modifier.clickable(role = Role.Button, onClickLabel = change, onClick = onChange).handCursor() else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
                 ExistingAvatarContent(photo.photo, "CardContentEditor")
@@ -782,25 +788,23 @@ private fun EditorRow(
         val toggle: @Composable () -> Unit = {
             if (display != null && !item.required && !pending) {
                 val on = display.onCard
-                IconButton(
+                RowIconButton(
+                    icon = if (on) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline,
+                    label = toggleLabel,
+                    tint = if (on) colors.onSurfaceVariant else colors.primary,
+                    enabled = enabled,
                     onClick = display.onToggle,
-                    enabled = enabled,
                     modifier = Modifier.testTag(if (on) "field_remove" else "field_add"),
-                ) {
-                    Icon(
-                        imageVector = if (on) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline,
-                        contentDescription = toggleLabel,
-                        tint = if (on) colors.onSurfaceVariant else colors.primary,
-                    )
-                }
+                )
             } else if (addable && !pending) {
-                IconButton(
-                    onClick = { addAudience?.let(onApply) ?: run { choosing = true } },
+                RowIconButton(
+                    icon = Icons.Outlined.AddCircleOutline,
+                    label = addLabel,
+                    tint = colors.primary,
                     enabled = enabled,
+                    onClick = { addAudience?.let(onApply) ?: run { choosing = true } },
                     modifier = Modifier.testTag("field_add"),
-                ) {
-                    Icon(Icons.Outlined.AddCircleOutline, contentDescription = addLabel, tint = colors.primary)
-                }
+                )
             }
         }
         val controls: @Composable () -> Unit = {
@@ -913,13 +917,23 @@ private fun CardFieldRow(
             if (removeSlot) {
                 Box(Modifier.size(ROW_SLOT), contentAlignment = Alignment.Center) {
                     if (onRemove != null) {
-                        IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
-                            Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
-                        }
+                        RowIconButton(
+                            icon = Icons.Outlined.RemoveCircleOutline,
+                            label = remove,
+                            tint = colors.onSurfaceVariant,
+                            enabled = enabled,
+                            onClick = onRemove,
+                            modifier = Modifier.testTag("field_remove"),
+                        )
                     } else if (onAdd != null) {
-                        IconButton(onClick = onAdd, enabled = enabled, modifier = Modifier.testTag("field_add")) {
-                            Icon(Icons.Outlined.AddCircleOutline, contentDescription = add, tint = colors.primary)
-                        }
+                        RowIconButton(
+                            icon = Icons.Outlined.AddCircleOutline,
+                            label = add,
+                            tint = colors.primary,
+                            enabled = enabled,
+                            onClick = onAdd,
+                            modifier = Modifier.testTag("field_add"),
+                        )
                     }
                 }
             }
@@ -945,22 +959,55 @@ private fun CardFieldRow(
             }
             if (onMove != null) {
                 val onFront = display?.onCard == true
-                FilledTonalIconButton(
-                    onClick = onMove,
-                    enabled = enabled,
-                    modifier = Modifier.testTag(if (onFront) "field_to_back" else "field_to_front"),
-                ) {
-                    Icon(
-                        imageVector = if (onFront) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward,
-                        contentDescription = if (onFront) toBack else toFront,
-                        modifier = Modifier.size(20.dp),
-                    )
+                val moveLabel = if (onFront) toBack else toFront
+                WithTooltip(moveLabel) {
+                    FilledTonalIconButton(
+                        onClick = onMove,
+                        enabled = enabled,
+                        modifier = Modifier.testTag(if (onFront) "field_to_back" else "field_to_front").handCursor(enabled),
+                    ) {
+                        Icon(
+                            imageVector = if (onFront) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward,
+                            contentDescription = moveLabel,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
             when {
                 display?.handle != null -> ReorderHandle(display, enabled, label)
                 handleSlot -> Spacer(Modifier.size(ROW_SLOT))
             }
+        }
+    }
+}
+
+// The 8% hover layer is lost on a dark row, so a hovered button fills with its tonal container instead.
+@Composable
+private fun RowIconButton(
+    icon: ImageVector,
+    label: String,
+    tint: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val interactions = remember { MutableInteractionSource() }
+    val hovered by interactions.collectIsHoveredAsState()
+    val lit = hovered && enabled
+    WithTooltip(label) {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            interactionSource = interactions,
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = if (lit) colors.secondaryContainer else Color.Transparent,
+                contentColor = if (lit) colors.onSecondaryContainer else tint,
+            ),
+            modifier = modifier.size(ROW_SLOT).handCursor(enabled),
+        ) {
+            Icon(icon, contentDescription = label)
         }
     }
 }
@@ -986,6 +1033,7 @@ private fun ReorderHandle(display: FieldDisplay, enabled: Boolean, label: String
     ) {
         Icon(Icons.Rounded.DragHandle, contentDescription = null, tint = colors.onSurfaceVariant)
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            ReportOverlay()
             display.moveUp?.let { up ->
                 DropdownMenuItem(
                     text = { Text(moveUpLabel) },
@@ -1143,6 +1191,7 @@ internal fun CardSwitcher(
             modifier = Modifier
                 .weight(1f)
                 .fadingEdges(scroll)
+                .wheelScrollsRow(scroll)
                 .horizontalScroll(scroll)
                 .padding(horizontal = 16.dp)
                 .semantics { contentDescription = label }
@@ -1154,10 +1203,14 @@ internal fun CardSwitcher(
                 val reveal = remember { BringIntoViewRequester() }
                 // A long circle name can sit past the edge; the card being edited is always scrolled into sight.
                 LaunchedEffect(checked, scroll.maxValue) { if (checked) reveal.bringIntoView() }
+                val interactions = remember { MutableInteractionSource() }
+                val focused by interactions.collectIsFocusedAsState()
                 ToggleButton(
                     checked = checked,
                     onCheckedChange = { onSelect(card) },
                     shapes = connectedButtonShapes(index, cards.size),
+                    border = if (focused) BorderStroke(FOCUS_RING_WIDTH, MaterialTheme.colorScheme.secondary) else null,
+                    interactionSource = interactions,
                     modifier = Modifier.bringIntoViewRequester(reveal).semantics { role = Role.Tab },
                 ) {
                     AudienceGlyph(audienceIcon(card), circles.emojiOf(card), ButtonDefaults.IconSize)

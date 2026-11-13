@@ -72,7 +72,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.mutableStateOf
@@ -223,6 +225,8 @@ fun MediaAttachmentEditor(
     aboveStripOverlay: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     addMoreEnabled: Boolean = true,
+    // The tools, strip and caption fade in once the media is drawn, as Signal's media editor controls do.
+    fadeInChrome: Boolean = false,
 ) {
     val isFileMode = attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -268,6 +272,11 @@ fun MediaAttachmentEditor(
     LaunchedEffect(activeDrawn, revealed, attachments.size) {
         if (activeDrawn && revealed) onContentShown?.invoke()
     }
+    val chromeAlpha by animateFloatAsState(
+        if (!fadeInChrome || (activeDrawn && revealed)) 1f else 0f,
+        MaterialTheme.motionScheme.defaultEffectsSpec(),
+    )
+    val chromeFade = Modifier.graphicsLayer { alpha = chromeAlpha }
 
     // Extract the thumbnail strip for the currently-visible video. Persist across
     // swipes by stashing in framesByAtt; cancellation happens automatically when
@@ -557,6 +566,7 @@ fun MediaAttachmentEditor(
             visible = !collapseSecondaryChrome,
             enter = secondaryChromeEnter(),
             exit = secondaryChromeExit(),
+            modifier = chromeFade,
         ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -748,6 +758,7 @@ fun MediaAttachmentEditor(
             visible = !collapseSecondaryChrome,
             enter = secondaryChromeEnter(),
             exit = secondaryChromeExit(),
+            modifier = chromeFade,
         ) {
         // Reserve the toolbar's height whenever tools can appear, so paging onto an attachment
         // without tools fades the toolbar instead of growing the pager.
@@ -814,7 +825,7 @@ fun MediaAttachmentEditor(
         Box(
             modifier = Modifier.windowInsetsPadding(
                 WindowInsets.ime.union(WindowInsets.navigationBars)
-            )
+            ).then(chromeFade)
         ) {
             bottomBar()
         }
