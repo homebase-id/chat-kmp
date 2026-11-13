@@ -3,6 +3,8 @@ package id.homebase.core.files
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
+import id.homebase.api.util.safeFileName
+import id.homebase.api.util.splitExtension
 import id.homebase.core.util.extensionForMimeType
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
@@ -72,9 +74,9 @@ internal fun FileOperationsProvider.sandboxCopyDest(name: String, mimeType: Stri
     "${scratchDir("${AppCacheDirs.PICKER_COPIES}/${Uuid.random()}")}/${sandboxCopyName(name, mimeType)}"
 
 internal fun sandboxCopyName(name: String, mimeType: String?): String {
-    val hasExtension = name.substringAfterLast('.', "").isNotEmpty()
-    val ext = if (hasExtension) null else mimeType?.let(::extensionForMimeType)
-    return if (ext != null) "$name.$ext" else name
+    val safe = safeFileName(name)
+    val ext = if (splitExtension(safe).second.isEmpty()) mimeType?.let(::extensionForMimeType) else null
+    return if (ext != null) safeFileName(name, extension = ext) else safe
 }
 
 /**

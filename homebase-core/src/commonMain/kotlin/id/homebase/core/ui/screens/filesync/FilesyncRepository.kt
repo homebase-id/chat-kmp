@@ -20,7 +20,7 @@ import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.filesync.FilesyncProtocol
-import id.homebase.core.util.safeFileName
+import id.homebase.api.util.safeFileName
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.delay

@@ -1,7 +1,7 @@
 package id.homebase.core.ui.screens.moments
 
 import id.homebase.core.util.extensionForContentType
-import id.homebase.core.util.safeFileName
+import id.homebase.api.util.safeFileName
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger

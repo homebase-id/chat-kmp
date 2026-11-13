@@ -9,6 +9,8 @@ import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
+import id.homebase.api.util.freeFileName
+import id.homebase.api.util.safeFileName
 import kotlinx.io.files.Path
 import java.io.File
 

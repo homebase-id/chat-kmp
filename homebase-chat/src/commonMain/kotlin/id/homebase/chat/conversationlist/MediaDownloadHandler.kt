@@ -1,7 +1,7 @@
 package id.homebase.chat.conversationlist
 
 import id.homebase.core.util.extensionForContentType
-import id.homebase.core.util.safeFileName
+import id.homebase.api.util.safeFileName
 import id.homebase.api.file.FileTooLargeForMemoryException
 import id.homebase.core.util.saveFileName
 import kotlinx.coroutines.CancellationException

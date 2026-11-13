@@ -2,6 +2,8 @@ package id.homebase.core.util
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.util.freeFileName
+import id.homebase.api.util.safeFileName
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.addressOf

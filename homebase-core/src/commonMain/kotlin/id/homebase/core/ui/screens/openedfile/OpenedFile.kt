@@ -2,7 +2,7 @@ package id.homebase.core.ui.screens.openedfile
 
 import id.homebase.api.file.createStagingPathIn
 import id.homebase.api.file.systemFileSystem
-import id.homebase.core.util.safeFileName
+import id.homebase.api.util.safeFileName
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow

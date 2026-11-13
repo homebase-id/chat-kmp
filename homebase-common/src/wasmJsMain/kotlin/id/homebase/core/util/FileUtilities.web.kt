@@ -2,6 +2,7 @@ package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
 import id.homebase.api.file.readWebFileBytes
+import id.homebase.api.util.safeFileName
 import id.homebase.api.util.toBlobObjectUrl
 import kotlinx.browser.window
 import kotlinx.io.files.Path

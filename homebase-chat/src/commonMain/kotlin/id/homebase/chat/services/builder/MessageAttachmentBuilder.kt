@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
+import id.homebase.api.util.safeFileName
 import id.homebase.api.video.toVideoQuality
 import id.homebase.upload.PayloadBundle
 
@@ -117,7 +118,7 @@ object MessageAttachmentBuilder {
                                         contentType = attachment.contentType,
                                         previewThumbnail = thumbs?.preview,
                                         descriptorContent = DescriptorContent.descriptorContentFromAudioFile(
-                                            name = attachment.displayName ?: attachment.filePath,
+                                            name = safeFileName(attachment.displayName ?: attachment.filePath),
                                             lengthSeconds = attachment.audioLengthSeconds ?: 0)
                                     )
                                 ),
@@ -137,7 +138,7 @@ object MessageAttachmentBuilder {
                                         filePath = attachment.filePath,
                                         contentType = attachment.contentType,
                                         previewThumbnail = thumbs?.preview,
-                                        descriptorContent = attachment.displayName,
+                                        descriptorContent = attachment.displayName?.let { safeFileName(it) },
                                     )
                                 ),
                             thumbnails = thumbs?.thumbnails ?: emptyList(),
@@ -152,7 +153,7 @@ object MessageAttachmentBuilder {
                                         key = payloadKey,
                                         filePath = attachment.filePath,
                                         contentType = attachment.contentType,
-                                        descriptorContent = attachment.displayName,
+                                        descriptorContent = attachment.displayName?.let { safeFileName(it) },
                                         trimStartMs = attachment.trimStartMs,
                                         trimEndMs = attachment.trimEndMs,
                                         inputBlobUrl = attachment.inputBlobUrl,

@@ -11,7 +11,7 @@ import id.homebase.core.util.StreamedSave
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.openBrowserSave
-import id.homebase.core.util.splitExtension
+import id.homebase.api.util.splitExtension
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

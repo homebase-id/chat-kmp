@@ -4,8 +4,8 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import co.touchlab.kermit.Logger
-import id.homebase.core.util.safeFileName
-import id.homebase.core.util.splitExtension
+import id.homebase.api.util.safeFileName
+import id.homebase.api.util.splitExtension
 import java.io.File
 
 /**
@@ -80,9 +80,8 @@ object SharedContentExtractor {
 
             val rawName = queryDisplayName(uri, contentResolver)
             val mimeType = contentResolver.getType(uri) ?: fallbackMimeType
-            // The name the message is sent under; only the temp copy is held to safeFileName.
-            val sentName = rawName?.replace(Regex("[/\\\\]"), "_")?.trimStart('.')?.takeIf { it.isNotEmpty() }
-            val (stem, ownExtension) = splitExtension(safeFileName(sentName, "share"))
+            val sentName = rawName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
+            val (stem, ownExtension) = splitExtension(sentName ?: "share")
             val extension = ownExtension.removePrefix(".").ifEmpty { mimeTypeToExtension(mimeType) }
             // The timestamp leads, so a long name's cut can't drop it.
             val uniqueName = safeFileName("${System.currentTimeMillis()}_$stem", extension = extension)

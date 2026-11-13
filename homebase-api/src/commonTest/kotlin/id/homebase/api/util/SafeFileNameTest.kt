@@ -1,4 +1,4 @@
-package id.homebase.core.util
+package id.homebase.api.util
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,7 +24,7 @@ class SafeFileNameTest {
     @Test
     fun theResultIsNeverAPath() {
         listOf("../x", "..\\x", "a/../../b", "C:evil.txt", "C:\\x", "//server/share/f", "x/", "x\\", "a:b:c", "..", ".", "/", "\\").forEach { raw ->
-            listOf(safeFileName(raw), safeFileName(raw, extension = "mp4"), saveFileName(raw, "k", "image/png")).forEach { name ->
+            listOf(safeFileName(raw), safeFileName(raw, extension = "mp4")).forEach { name ->
                 assertTrue(name.none { it == '/' || it == '\\' || it == ':' } && name != "." && name != ".." && !name.startsWith("."), "$raw -> $name")
             }
         }
@@ -113,22 +113,4 @@ class SafeFileNameTest {
         assertTrue(numbered.endsWith(" (1).pdf") && numbered.encodeToByteArray().size <= 255, numbered)
     }
 
-    @Test
-    fun aContentTypeLendsOnlyAPlainExtension() {
-        assertEquals("pdf", extensionForContentType("application/pdf"))
-        assertEquals("x-foo", extensionForContentType("application/x-foo"))
-        assertEquals("txt", extensionForContentType("Text/Plain; charset=utf-8"))
-        listOf(null, "", "image", "image/../../x", "a/b/c", "application/octet-stream", "image/svg+x", "text/a.b").forEach {
-            assertEquals("bin", extensionForContentType(it), it)
-        }
-    }
-
-    @Test
-    fun aSavedPayloadGetsAnExtensionFromItsContentTypeOnlyWhenItHasNone() {
-        assertEquals("contract.pdf", saveFileName("contract.pdf", "chat_web0", "application/octet-stream"))
-        assertEquals("contract.pdf", saveFileName("contract", "chat_web0", "application/pdf"))
-        assertEquals("chat_web0.webp", saveFileName(null, "chat_web0", "image/webp"))
-        assertEquals("chat_web0.bin", saveFileName(null, "chat_web0", "application/octet-stream"))
-        assertEquals("passwd.bin", saveFileName("../../etc/passwd", "chat_web0", null))
-    }
 }

@@ -1,6 +1,4 @@
-package id.homebase.core.util
-
-import id.homebase.api.util.toNfc
+package id.homebase.api.util
 
 private const val MAX_BYTES = 255
 private const val MAX_EXTENSION_CHARS = 32
@@ -11,13 +9,6 @@ private val WINDOWS_DEVICES = setOf("CON", "PRN", "AUX", "NUL", "CONIN$", "CONOU
 /** One path segment that every platform we save to takes (Windows is the strictest); [extension] is appended. */
 fun safeFileName(raw: String?, fallback: String = "file", extension: String? = null): String =
     build(lastSegment(raw), fallback, extension)
-
-/** A payload saved to the device: the sender's name, with an extension from [contentType] when it has none. */
-fun saveFileName(name: String?, fallbackStem: String, contentType: String?): String {
-    val segment = lastSegment(name)
-    val extension = if (splitExtension(segment).second.isEmpty()) extensionForContentType(contentType) else null
-    return build(segment, fallbackStem, extension)
-}
 
 /** [name] if it's free, else "stem (1).ext", "stem (2).ext"… as Android, Windows and browsers number a copy: a save never replaces a file unasked. */
 fun freeFileName(name: String, isTaken: (String) -> Boolean): String {

@@ -3,8 +3,8 @@ package id.homebase.core.ui.screens.filesync
 import id.homebase.api.util.toNfc
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.filesync.FilesyncRoleFolder
-import id.homebase.core.util.splitExtension
-import id.homebase.core.util.trimToUtf8Boundary
+import id.homebase.api.util.splitExtension
+import id.homebase.api.util.trimToUtf8Boundary
 import kotlin.uuid.Uuid
 
 /** Filesync's name rules (filesync docs/spec/node-schema-v1.md): NFC, at most 255 UTF-8 bytes, no / or NUL, not . or .. */
