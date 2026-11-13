@@ -164,7 +164,7 @@ fun MediaItem(
         payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
             // Render link preview
             val linkDescriptors = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
+                payload.appContent()?.let { content ->
                     try {
                         OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
                             content
@@ -204,7 +204,7 @@ fun MediaItem(
             // NEW messages carry the descriptor in the header (locationHeaderDescriptor); OLD ones
             // parse it from the payload's descriptorContent. Header wins when present.
             val payloadDescriptor = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
+                payload.appContent()?.let { content ->
                     try {
                         OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
                             content

@@ -49,7 +49,7 @@ fun DocumentMediaItem(
     previewImageData: HomebaseImageData? = null,
     showDownloadButton: Boolean = true,
 ) {
-    val fileName = payload.descriptorContent ?: payload.key
+    val fileName = payload.filename() ?: payload.key
     val fileSize = payload.bytesWritten?.formatFileSize() ?: ""
     val fileIcon = fileKindOf(payload.contentType, fileName).icon
 

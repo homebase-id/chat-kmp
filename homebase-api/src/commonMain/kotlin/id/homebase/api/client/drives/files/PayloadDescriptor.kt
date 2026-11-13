@@ -35,6 +35,7 @@ data class PayloadDescriptor(
     }
 
     fun descriptorInfo(): DescriptorContent {
+        descriptorContent?.let(DescriptorContentV1::parseOrNull)?.let { return it.toDescriptorContent() }
         return when {
             descriptorContent == null -> {
                 DescriptorContent.Empty
@@ -115,6 +116,50 @@ data class PayloadDescriptor(
         }
     }
 
+    private fun DescriptorContentV1.toDescriptorContent(): DescriptorContent = when (kind) {
+        DescriptorContentV1.Kind.IMAGE -> DescriptorContent.ImageFile(
+            quality = quality?.mediaQuality,
+            pixelWidth = pixelWidth,
+            pixelHeight = pixelHeight,
+            name = name,
+            original = original?.let { it == 1 },
+        )
+        DescriptorContentV1.Kind.STICKER -> DescriptorContent.ImageFile(
+            isSticker = true,
+            format = contentType,
+            pixelWidth = pixelWidth,
+            pixelHeight = pixelHeight,
+            original = original?.let { it == 1 },
+        )
+        DescriptorContentV1.Kind.VIDEO -> DescriptorContent.VideoFile(
+            durationMs = video?.durationMs?.takeIf { it > 0 },
+            isSegmented = video?.segmented == 1,
+            codec = video?.codec,
+            widthPx = pixelWidth ?: 0,
+            heightPx = pixelHeight ?: 0,
+            bitDepth = video?.bitDepth ?: 0,
+            isHdr = video?.hdr == 1,
+            videoBitrateBps = video?.bitrateBps ?: 0L,
+            fileSizeBytes = video?.plainBytes ?: 0L,
+            mimeType = contentType,
+            name = name,
+        )
+        DescriptorContentV1.Kind.AUDIO -> DescriptorContent.AudioFile(name = name, lengthSeconds = lengthSeconds ?: 0)
+        DescriptorContentV1.Kind.FILE -> DescriptorContent.File(name = name.orEmpty())
+        // Link and location previews carry an image content type and render as images, as before.
+        DescriptorContentV1.Kind.APP -> when {
+            contentType == "text/markdown" -> DescriptorContent.NoteFile(preview = appContent)
+            isImage() -> DescriptorContent.ImageFile()
+            else -> DescriptorContent.Empty
+        }
+    }
+
+    /** What an app wrote for itself: `x` in the current format, the whole string in older ones. */
+    fun appContent(): String? = descriptorContent?.let { content ->
+        val current = DescriptorContentV1.parseOrNull(content)
+        if (current != null) current.appContent else content
+    }
+
     fun isImage(): Boolean = contentType?.startsWith("image/") == true
 
     fun isVideo(): Boolean =
@@ -139,9 +184,9 @@ data class PayloadDescriptor(
             // Ordinary images carry no ImageFile descriptor (blank "" → ImageFile(false)) and
             // keep returning null so download falls back to the payload key, as before.
             is DescriptorContent.ImageFile ->
-                if (info.isSticker) "StickerFile.${info.fileExtension()}" else null
+                if (info.isSticker) "StickerFile.${info.fileExtension()}" else info.name
             is DescriptorContent.NoteFile -> null
-            is DescriptorContent.VideoFile -> null
+            is DescriptorContent.VideoFile -> info.name
         }
     }
 }
@@ -178,6 +223,9 @@ sealed interface DescriptorContent {
         /** The payload's pixel size; null on anything sent before this field shipped. */
         val pixelWidth: Int? = null,
         val pixelHeight: Int? = null,
+        val name: String? = null,
+        /** Whether the payload data is the sender's file, byte for byte; null when not recorded. */
+        val original: Boolean? = null,
     ) : DescriptorContent {
         /**
          * Filename extension for a downloaded sticker, derived from [format]. Defaults to
@@ -205,6 +253,7 @@ sealed interface DescriptorContent {
         val videoBitrateBps: Long = 0L,
         val fileSizeBytes: Long = 0L,
         val mimeType: String? = null,
+        val name: String? = null,
     ) : DescriptorContent
 
     companion object {

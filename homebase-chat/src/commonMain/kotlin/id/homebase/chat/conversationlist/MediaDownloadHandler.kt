@@ -24,6 +24,7 @@ import id.homebase.resources.vault_chat_image_name
 import id.homebase.resources.vault_save_failed
 import id.homebase.resources.vault_saved
 import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
@@ -266,6 +267,7 @@ internal class MediaDownloadHandler(
             try {
                 val hlsMetadata = resolveHlsVideoMetadata(
                     descriptorContent = action.payload.descriptorContent,
+                    payloadKey = action.payload.key,
                     fileId = action.fileId,
                     keyHeader = action.keyHeader,
                 )
@@ -627,35 +629,18 @@ internal class MediaDownloadHandler(
 
     private suspend fun resolveHlsVideoMetadata(
         descriptorContent: String?,
+        payloadKey: String,
         fileId: Uuid,
         keyHeader: KeyHeader,
     ): VideoMetadata? {
-        val stub = descriptorContent?.let {
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(it)
-            } catch (_: Exception) {
-                null
-            }
-        } ?: return null
-
-        if (!stub.isSegmented) return null
-
-        val full = if (stub.isDescriptorContentComplete) {
-            stub
-        } else {
-            val json = driveFileProvider.getPayloadBytesDecrypted(
+        val full = videoMetadataFrom(descriptorContent ?: return null, payloadKey) { key ->
+            driveFileProvider.getPayloadBytesDecrypted(
                 driveId = chatTargetDrive.alias,
                 fileId = fileId,
-                key = stub.key,
+                key = key,
                 keyHeader = keyHeader,
-            )?.bytes?.decodeToString() ?: return null
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(json)
-            } catch (_: Exception) {
-                return null
-            }
-        }
-
+            )?.bytes?.decodeToString()
+        } ?: return null
         return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
     }
 

@@ -144,7 +144,7 @@ fun MomentMediaItem(
     when {
         payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
             val linkDescriptors = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
+                payload.appContent()?.let { content ->
                     try {
                         OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
                             content
@@ -179,7 +179,7 @@ fun MomentMediaItem(
 
         payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> {
             val locationDescriptors = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
+                payload.appContent()?.let { content ->
                     try {
                         OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
                             content

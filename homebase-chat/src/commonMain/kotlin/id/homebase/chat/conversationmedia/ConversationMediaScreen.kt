@@ -349,7 +349,7 @@ private fun LocationListTab(
     ) {
         items(items, key = { it.fileId.toString() }) { item ->
             val descriptor = remember(item.payload.descriptorContent) {
-                item.payload.descriptorContent?.let { content ->
+                item.payload.appContent()?.let { content ->
                     try {
                         OdinSystemSerializer
                             .deserialize<List<LocationPreviewDescriptor>>(content)

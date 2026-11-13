@@ -387,7 +387,7 @@ private fun PostLinkPreview(
 ) {
     val payload = post.payloads.firstOrNull { it.key == FeedProtocol.LinksPayloadKey } ?: return
     val descriptor = remember(payload.descriptorContent) {
-        payload.descriptorContent?.let { content ->
+        payload.appContent()?.let { content ->
             runCatching {
                 OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(content).firstOrNull()
             }.getOrNull()
