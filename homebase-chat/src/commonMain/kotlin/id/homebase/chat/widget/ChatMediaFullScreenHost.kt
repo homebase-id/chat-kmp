@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.extensionForContentType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -37,6 +38,7 @@ import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.util.formatMediumDate
+import id.homebase.core.util.saveFileName
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.vault_chat_image_name
 import id.homebase.resources.vault_save_failed
@@ -170,9 +172,7 @@ private fun SharedMediaViewer(
         .collectAsStateWithLifecycle(false)
     val vaultFileSaver = org.koin.compose.koinInject<VaultFileSaver>()
 
-    val ext = remember(item) {
-        item.payload.contentType?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "bin"
-    }
+    val ext = remember(item) { extensionForContentType(item.payload.contentType) }
 
     FullScreenMediaViewer(
         data = FullScreenOverlay.ViewMessageData(
@@ -283,9 +283,7 @@ fun rememberSharedMediaSaver(
             scope.launch {
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
-                    val ext = item.payload.contentType?.substringAfterLast('/')
-                        ?.takeIf { it.isNotBlank() } ?: "bin"
-                    val name = item.payload.filename() ?: "${item.payload.key}.$ext"
+                    val name = saveFileName(item.payload.filename(), item.payload.key, item.payload.contentType)
                     val outPath = "${AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.EXPORT)}/$name"
                     val ok = driveFileProvider.streamPayloadDecryptedToPath(
                         driveId = driveId,

@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.client.drives.files.PayloadDamagedException
 import id.homebase.api.file.zip.ZipStreamWriter
+import id.homebase.api.util.safeFileName
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.onEach
@@ -78,7 +79,7 @@ internal class FilesyncArchive(
         /** A lone folder's own name, else the folder they're in, else Filesync's. */
         fun name(nodes: List<FilesyncNode>, folderName: String?, fallback: String): String {
             val base = nodes.singleOrNull()?.takeIf { it.isFolder }?.name ?: folderName ?: fallback
-            return base.replace('/', '_').replace('\\', '_') + ".zip"
+            return safeFileName(base, fallback, "zip")
         }
     }
 }

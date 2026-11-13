@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import id.homebase.api.util.safeFileName
 import kotlinx.io.files.Path
 
 /**
@@ -36,7 +37,7 @@ interface FileSystemHandler {
     fun shareText(text: String, onError: (Throwable) -> Unit = {})
     fun openAppStore(onError: (Throwable) -> Unit = {})
 
-    /** Save a file to the user's device storage (Downloads/Photos/etc).
+    /** Save a file to the user's device storage (Downloads/Photos/etc), under [suggestedName] made [safeFileName].
      *  [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). */
     fun saveFile(
         file: Path,

@@ -2,6 +2,8 @@ package id.homebase.core.util
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.util.freeFileName
+import id.homebase.api.util.safeFileName
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.addressOf
@@ -43,7 +45,8 @@ object IosAlbumSaver : AlbumSaver {
         onError: (Throwable) -> Unit,
     ) {
         val fileUrl = NSURL.fileURLWithPath(file.toString())
-        val extension = suggestedName.substringAfterLast('.', "").lowercase()
+        val safeName = safeFileName(suggestedName)
+        val extension = safeName.substringAfterLast('.', "").lowercase()
         val isImage =
             extension in setOf("jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "bmp", "tiff")
         val isVideo = extension in setOf("mp4", "mov", "m4v", "avi", "mkv", "webm", "3gp")
@@ -81,10 +84,6 @@ object IosAlbumSaver : AlbumSaver {
             // Save other files to Documents directory
             val scoped = fileUrl.startAccessingSecurityScopedResource()
             try {
-                val safeName = suggestedName
-                    .replace('/', '_')
-                    .replace('\\', '_')
-                    .replace('\u0000', '_')
                 val fileManager = NSFileManager.defaultManager
                 val paths = NSSearchPathForDirectoriesInDomains(
                     NSDocumentDirectory,
@@ -93,19 +92,11 @@ object IosAlbumSaver : AlbumSaver {
                 )
                 val documentsDir = paths.firstOrNull() as? String
                     ?: throw Exception("Could not find Documents directory")
-                val destPath = "$documentsDir/$safeName"
+                val destPath = "$documentsDir/${freeFileName(safeName) { fileManager.fileExistsAtPath("$documentsDir/$it") }}"
                 val sourcePath = fileUrl.path
                     ?: throw Exception("Source URL has no filesystem path: $fileUrl")
 
                 memScoped {
-                    // Remove existing file if present
-                    if (fileManager.fileExistsAtPath(destPath)) {
-                        val removeErr = alloc<ObjCObjectVar<NSError?>>()
-                        if (!fileManager.removeItemAtPath(destPath, removeErr.ptr)) {
-                            val msg = removeErr.value?.localizedDescription ?: "unknown error"
-                            throw Exception("Failed to remove existing file at $destPath: $msg")
-                        }
-                    }
                     val copyErr = alloc<ObjCObjectVar<NSError?>>()
                     if (!fileManager.copyItemAtPath(sourcePath, destPath, copyErr.ptr)) {
                         val msg = copyErr.value?.localizedDescription ?: "unknown error"

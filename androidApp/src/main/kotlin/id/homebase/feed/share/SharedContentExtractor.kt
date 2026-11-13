@@ -4,6 +4,8 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import co.touchlab.kermit.Logger
+import id.homebase.api.util.safeFileName
+import id.homebase.api.util.splitExtension
 import java.io.File
 
 /**
@@ -78,15 +80,11 @@ object SharedContentExtractor {
 
             val rawName = queryDisplayName(uri, contentResolver)
             val mimeType = contentResolver.getType(uri) ?: fallbackMimeType
-            val extension = rawName?.substringAfterLast('.', "")
-                ?.takeIf { it.isNotEmpty() && it != rawName }
-                ?: mimeTypeToExtension(mimeType)
-            val safeName = rawName
-                ?.replace(Regex("[/\\\\]"), "_")
-                ?.trimStart('.')
-                ?.takeIf { it.isNotEmpty() }
-            val baseName = safeName?.substringBeforeLast('.') ?: "share"
-            val uniqueName = "${baseName}_${System.currentTimeMillis()}.$extension"
+            val sentName = rawName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
+            val (stem, ownExtension) = splitExtension(sentName ?: "share")
+            val extension = ownExtension.removePrefix(".").ifEmpty { mimeTypeToExtension(mimeType) }
+            // The timestamp leads, so a long name's cut can't drop it.
+            val uniqueName = safeFileName("${System.currentTimeMillis()}_$stem", extension = extension)
             val tempFile = File(tempDir, uniqueName)
 
             contentResolver.openInputStream(uri)?.use { input ->
@@ -98,7 +96,7 @@ object SharedContentExtractor {
             SharedFile(
                 path = tempFile.absolutePath,
                 mimeType = mimeType,
-                displayName = safeName ?: uniqueName,
+                displayName = sentName ?: uniqueName,
             )
         } catch (e: Exception) {
             Logger.e(tag = TAG) { "Failed to copy shared URI: ${e.message}" }
