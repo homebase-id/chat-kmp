@@ -43,7 +43,8 @@ object IosAlbumSaver : AlbumSaver {
         onError: (Throwable) -> Unit,
     ) {
         val fileUrl = NSURL.fileURLWithPath(file.toString())
-        val extension = suggestedName.substringAfterLast('.', "").lowercase()
+        val safeName = safeFileName(suggestedName)
+        val extension = safeName.substringAfterLast('.', "").lowercase()
         val isImage =
             extension in setOf("jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "bmp", "tiff")
         val isVideo = extension in setOf("mp4", "mov", "m4v", "avi", "mkv", "webm", "3gp")
@@ -81,7 +82,6 @@ object IosAlbumSaver : AlbumSaver {
             // Save other files to Documents directory
             val scoped = fileUrl.startAccessingSecurityScopedResource()
             try {
-                val safeName = safeFileName(suggestedName)
                 val fileManager = NSFileManager.defaultManager
                 val paths = NSSearchPathForDirectoriesInDomains(
                     NSDocumentDirectory,

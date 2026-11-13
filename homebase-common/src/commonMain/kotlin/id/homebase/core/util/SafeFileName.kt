@@ -5,7 +5,8 @@ import id.homebase.api.util.toNfc
 private const val MAX_BYTES = 255
 private const val MAX_EXTENSION_CHARS = 32
 private const val RESERVED = "<>:\"/\\|?*"
-private val WINDOWS_DEVICES = setOf("CON", "PRN", "AUX", "NUL") + (1..9).flatMap { listOf("COM$it", "LPT$it") }
+private val WINDOWS_DEVICES = setOf("CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$") +
+    listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³").flatMap { listOf("COM$it", "LPT$it") }
 
 /** One path segment that every platform we save to takes (Windows is the strictest); [extension] is appended. */
 fun safeFileName(raw: String?, fallback: String = "file", extension: String? = null): String =
@@ -27,7 +28,7 @@ fun splitExtension(name: String): Pair<String, String> {
 
 private fun build(segment: String, fallback: String, extension: String?): String {
     if (extension == null) return splitExtension(segment).let { (stem, ext) -> fit(stem, ext, fallback) }
-    val ext = clean(extension)
+    val ext = clean(extension).take(MAX_EXTENSION_CHARS - 1)
     return fit(segment, if (ext.isEmpty()) "" else ".$ext", fallback)
 }
 
@@ -40,10 +41,11 @@ private fun clean(name: String): String =
 
 // The cut comes from the stem so the extension survives.
 private fun fit(stem: String, ext: String, fallback: String): String {
-    val budget = (MAX_BYTES - ext.encodeToByteArray().size).coerceAtLeast(1)
-    val bytes = stem.encodeToByteArray()
-    val cut = if (bytes.size <= budget) stem else bytes.copyOf(budget).trimToUtf8Boundary().decodeToString().trimEnd('.', ' ')
-    val safe = cut.ifEmpty { fallback }
+    val whole = stem.ifEmpty { fallback }
     // Windows reserves a device name before any extension: con.txt and nul.tar.gz too.
-    return (if (safe.substringBefore('.').trimEnd().uppercase() in WINDOWS_DEVICES) "_$safe" else safe) + ext
+    val prefix = if (whole.substringBefore('.').trimEnd().uppercase() in WINDOWS_DEVICES) "_" else ""
+    val budget = MAX_BYTES - ext.encodeToByteArray().size - prefix.length
+    val bytes = whole.encodeToByteArray()
+    val cut = if (bytes.size <= budget) whole else bytes.copyOf(budget).trimToUtf8Boundary().decodeToString().trimEnd('.', ' ')
+    return prefix + cut.ifEmpty { fallback } + ext
 }

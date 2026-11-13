@@ -67,6 +67,15 @@ class SafeFileNameTest {
         assertEquals("_nul.tar.gz", safeFileName("nul.tar.gz"))
         assertEquals("_LPT9.mp4", safeFileName("LPT9", extension = "mp4"))
         assertEquals("console.txt", safeFileName("console.txt"))
+        listOf("COM0.txt", "lpt¹.log", "CONIN$", "conout$.txt").forEach { assertTrue(safeFileName(it).startsWith("_"), it) }
+    }
+
+    @Test
+    fun aDeviceNamePrefixNeverPushesTheNamePast255Bytes() {
+        listOf("nul." + "x".repeat(300), "con" + ".y".repeat(200), "aux.txt").forEach {
+            assertTrue(safeFileName(it).encodeToByteArray().size <= 255, it)
+        }
+        assertTrue(safeFileName("a", extension = "e".repeat(400)).encodeToByteArray().size <= 255)
     }
 
     @Test
@@ -95,6 +104,7 @@ class SafeFileNameTest {
     fun aContentTypeLendsOnlyAPlainExtension() {
         assertEquals("pdf", extensionForContentType("application/pdf"))
         assertEquals("x-foo", extensionForContentType("application/x-foo"))
+        assertEquals("txt", extensionForContentType("Text/Plain; charset=utf-8"))
         listOf(null, "", "image", "image/../../x", "a/b/c", "application/octet-stream", "image/svg+x", "text/a.b").forEach {
             assertEquals("bin", extensionForContentType(it), it)
         }

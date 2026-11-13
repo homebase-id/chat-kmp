@@ -11,6 +11,7 @@ import id.homebase.core.util.StreamedSave
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.openBrowserSave
+import id.homebase.core.util.splitExtension
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -108,7 +109,7 @@ internal class FilesyncTransfers(
                 }
                 // share_outbound is swept whenever the app comes back to the front, which a drop's composer outlives.
                 // Viewers read a path as a URI, which a # or % in the name breaks; a preview's copy needs no name.
-                val cacheName = if (target == FilesyncShareTarget.Preview) "preview" + FilesyncNames.split(source.name).second else source.name
+                val cacheName = if (target == FilesyncShareTarget.Preview) "preview" + splitExtension(source.name).second else source.name
                 val path = repository.writeToCache(cacheName, toShareOutbound = target == FilesyncShareTarget.Open || target == FilesyncShareTarget.OtherApp, write)
                 when (target) {
                     FilesyncShareTarget.Open -> send(FilesyncUiEvent.OpenFile(path))

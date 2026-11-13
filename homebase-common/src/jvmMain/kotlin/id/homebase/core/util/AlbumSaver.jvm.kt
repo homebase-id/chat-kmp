@@ -13,14 +13,15 @@ class JvmAlbumSaver : AlbumSaver {
         onError: (Throwable) -> Unit,
     ) {
         try {
-            val mimeType = detectContentTypeFromExtensionOrHint(suggestedName)
+            val safeName = safeFileName(suggestedName)
+            val mimeType = detectContentTypeFromExtensionOrHint(safeName)
             val folder = if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) {
                 "Pictures"
             } else {
                 "Downloads"
             }
             val destDir = File(System.getProperty("user.home"), folder).apply { mkdirs() }
-            File(file.toString()).copyTo(File(destDir, safeFileName(suggestedName)), overwrite = true)
+            File(file.toString()).copyTo(File(destDir, safeName), overwrite = true)
             onSuccess(folder)
         } catch (e: Exception) {
             onError(e)

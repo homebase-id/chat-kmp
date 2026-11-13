@@ -80,10 +80,12 @@ object SharedContentExtractor {
 
             val rawName = queryDisplayName(uri, contentResolver)
             val mimeType = contentResolver.getType(uri) ?: fallbackMimeType
-            val safeName = rawName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
-            val (stem, ownExtension) = splitExtension(safeName ?: "share")
+            // The name the message is sent under; only the temp copy is held to safeFileName.
+            val sentName = rawName?.replace(Regex("[/\\\\]"), "_")?.trimStart('.')?.takeIf { it.isNotEmpty() }
+            val (stem, ownExtension) = splitExtension(safeFileName(sentName, "share"))
             val extension = ownExtension.removePrefix(".").ifEmpty { mimeTypeToExtension(mimeType) }
-            val uniqueName = safeFileName("${stem}_${System.currentTimeMillis()}", extension = extension)
+            // The timestamp leads, so a long name's cut can't drop it.
+            val uniqueName = safeFileName("${System.currentTimeMillis()}_$stem", extension = extension)
             val tempFile = File(tempDir, uniqueName)
 
             contentResolver.openInputStream(uri)?.use { input ->
@@ -95,7 +97,7 @@ object SharedContentExtractor {
             SharedFile(
                 path = tempFile.absolutePath,
                 mimeType = mimeType,
-                displayName = safeName ?: uniqueName,
+                displayName = sentName ?: uniqueName,
             )
         } catch (e: Exception) {
             Logger.e(tag = TAG) { "Failed to copy shared URI: ${e.message}" }

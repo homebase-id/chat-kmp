@@ -31,7 +31,7 @@ internal object FilesyncNames {
 
     /** [requested] made valid, then numbered "(1)", "(2)"… until no key in [takenKeys] uses it. */
     fun freeName(requested: String, takenKeys: Set<String>): String {
-        val (stem, extension) = split(clean(requested))
+        val (stem, extension) = splitExtension(clean(requested))
         var candidate = fit(stem, "", extension)
         var n = 1
         while (key(candidate) in takenKeys) {
@@ -44,7 +44,7 @@ internal object FilesyncNames {
     /** [name] if no live sibling uses it, else "(restored)", "(restored 2)"… up to 99 as the desktop names it; null when all are taken. */
     fun restoredName(name: String, takenKeys: Set<String>): String? {
         if (key(name) !in takenKeys) return name
-        val (stem, extension) = split(name)
+        val (stem, extension) = splitExtension(name)
         return (1..MAX_RESTORED).asSequence()
             .map { n -> fit(stem, if (n == 1) " (restored)" else " (restored $n)", extension) }
             .firstOrNull { key(it) !in takenKeys }
@@ -56,8 +56,6 @@ internal object FilesyncNames {
 
     private fun clean(name: String): String =
         name.toNfc().replace('/', '_').replace('\u0000', '_').takeIf(::isValid) ?: FALLBACK
-
-    fun split(name: String): Pair<String, String> = splitExtension(name)
 
     // Only the stem is cut: cutting the " (n)" suffix could turn a numbered name back into the taken one.
     private fun fit(stem: String, suffix: String, extension: String): String {
