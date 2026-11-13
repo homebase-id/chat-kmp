@@ -2,6 +2,10 @@ package id.homebase.api.image
 
 data class ImageSize(val pixelWidth: Int, val pixelHeight: Int)
 
+/** Width over height, or null for a size with no area. */
+val ImageSize.aspectRatio: Float?
+    get() = if (pixelWidth > 0 && pixelHeight > 0) pixelWidth.toFloat() / pixelHeight else null
+
 data class ImageResult(
     val bytes: ByteArray,
     val naturalSize: ImageSize, // original image size

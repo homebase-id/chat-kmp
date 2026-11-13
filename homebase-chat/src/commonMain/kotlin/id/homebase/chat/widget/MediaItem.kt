@@ -80,8 +80,6 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 
-private const val LOCAL_PREVIEW_MAX_EDGE_PX = 1080
-
 /**
  * Composable that renders a single media item based on the payload's content type.
  *
@@ -275,12 +273,13 @@ fun MediaItem(
                         )
                     }
                 }
-                // A fixed size lets Coil draw its in-memory copy in the first frame when the real bubble replaces the placeholder.
+                // Keyed by the file, so a rebuilt row (the real bubble replacing the placeholder) draws Coil's copy in its first frame.
                 val platformContext = LocalPlatformContext.current
                 val localImageRequest = remember(platformContext, imageLocalContext.localFilePath) {
                     ImageRequest.Builder(platformContext)
                         .data(imageLocalContext.localFilePath)
-                        .size(LOCAL_PREVIEW_MAX_EDGE_PX)
+                        .memoryCacheKey(imageLocalContext.localFilePath)
+                        .placeholderMemoryCacheKey(imageLocalContext.localFilePath)
                         .build()
                 }
                 AsyncImage(

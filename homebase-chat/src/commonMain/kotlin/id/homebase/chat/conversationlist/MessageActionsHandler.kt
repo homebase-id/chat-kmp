@@ -5,6 +5,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.image.ImageUtils
+import id.homebase.api.image.aspectRatio
 import id.homebase.api.image.readImageSize
 import id.homebase.api.util.isBlobUrl
 import id.homebase.api.util.truncateToCodePoints
@@ -86,6 +87,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -95,8 +98,13 @@ import id.homebase.core.files.toUploadPath
 
 private const val TAG = "ConversationListViewModel"
 
-// Long enough for a header read on the phones; an iOS Photos-library asset is fetched whole and waits instead.
 private val PLACEHOLDER_SIZE_WAIT = 150.milliseconds
+
+private fun AttachmentPendingFile.imagePath(): String? = when (this) {
+    is AttachmentPendingFile.FileImage -> file.toString()
+    is AttachmentPendingFile.Gallery -> image.file.toString()
+    else -> null
+}
 
 /**
  * Whether the composer should send, given the SERIALIZED markdown body it would actually send
@@ -873,64 +881,51 @@ internal class MessageActionsHandler(
             // Store a local preview context per attachment (keyed by the payload key the
             // MessageAttachmentBuilder will emit), so both the placeholder and the eventual
             // real bubble can render the local preview without fetching from the server.
-            // A placeholder shaped differently from the real bubble jumps when that takes over,
-            // so it waits briefly for each image's upright size; one that takes longer is refined below.
-            val imageAspects = if (viewOnce) emptyMap() else resolvedFiles.withIndex().mapNotNull { (index, file) ->
-                val path = when (file) {
-                    is AttachmentPendingFile.FileImage -> file.file.toString()
-                    is AttachmentPendingFile.Gallery -> file.image.file.toString()
-                    else -> return@mapNotNull null
-                }
-                payloadKey(index) to scope.async { uprightAspect(path) }
-            }.toMap()
-            withTimeoutOrNull(PLACEHOLDER_SIZE_WAIT) { imageAspects.values.awaitAll() }
             // View-once media gets no local preview: nothing may render it before the viewer.
-            if (!viewOnce) resolvedFiles.forEachIndexed { index, file ->
-                val payloadKey = payloadKey(index)
-                val ctx: LocalAttachmentContext? = when (file) {
-                    is AttachmentPendingFile.FileVideo -> {
-                        val bytes = file.thumbnailBytes
-                        if (bytes != null) {
-                            val aspect = runCatching {
-                                val size = ImageUtils.getNaturalSize(bytes)
-                                if (size.pixelWidth > 0 && size.pixelHeight > 0)
-                                    size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
-                                else null
-                            }.getOrNull()
-                            LocalAttachmentContext.Video(
-                                thumbnailBytes = bytes,
-                                // Web file.file.toString() is a bare filename that fileExists() rejects, so use the
-                                // blob: playablePath there. Native: == file.toString().
-                                localFilePath = file.playablePath ?: file.file.toString(),
-                                aspectRatio = aspect,
-                                trimStartMs = file.trimStartMs,
-                                trimEndMs = file.trimEndMs,
-                                durationMs = file.durationMs,
-                            )
-                        } else null
+            if (!viewOnce) {
+                // Briefly wait for image sizes, so the placeholder already has the real bubble's shape.
+                val oneAtATime = Mutex()
+                val imageAspects = resolvedFiles.withIndex().mapNotNull { (index, file) ->
+                    val path = file.imagePath() ?: return@mapNotNull null
+                    payloadKey(index) to scope.async { oneAtATime.withLock { uprightAspect(path) } }
+                }.toMap()
+                withTimeoutOrNull(PLACEHOLDER_SIZE_WAIT) { imageAspects.values.awaitAll() }
+                resolvedFiles.forEachIndexed { index, file ->
+                    val payloadKey = payloadKey(index)
+                    val ctx: LocalAttachmentContext? = when (file) {
+                        is AttachmentPendingFile.FileVideo -> {
+                            val bytes = file.thumbnailBytes
+                            if (bytes != null) {
+                                LocalAttachmentContext.Video(
+                                    thumbnailBytes = bytes,
+                                    // Web file.file.toString() is a bare filename that fileExists() rejects, so use the
+                                    // blob: playablePath there. Native: == file.toString().
+                                    localFilePath = file.playablePath ?: file.file.toString(),
+                                    aspectRatio = runCatching { ImageUtils.getNaturalSize(bytes).aspectRatio }.getOrNull(),
+                                    trimStartMs = file.trimStartMs,
+                                    trimEndMs = file.trimEndMs,
+                                    durationMs = file.durationMs,
+                                )
+                            } else null
+                        }
+                        is AttachmentPendingFile.FileImage, is AttachmentPendingFile.Gallery -> LocalAttachmentContext.Image(
+                            localFilePath = file.imagePath() ?: return@forEachIndexed,
+                            aspectRatio = imageAspects[payloadKey]?.takeIf { it.isCompleted }?.await(),
+                        )
+                        is AttachmentPendingFile.File -> null
+                        is AttachmentPendingFile.Audio -> null
                     }
-                    is AttachmentPendingFile.FileImage -> LocalAttachmentContext.Image(
-                        localFilePath = file.file.toString(),
-                        aspectRatio = imageAspects[payloadKey]?.takeIf { it.isCompleted }?.await(),
-                    )
-                    is AttachmentPendingFile.Gallery -> LocalAttachmentContext.Image(
-                        localFilePath = file.image.file.toString(),
-                        aspectRatio = imageAspects[payloadKey]?.takeIf { it.isCompleted }?.await(),
-                    )
-                    is AttachmentPendingFile.File -> null
-                    is AttachmentPendingFile.Audio -> null
+                    if (ctx != null) {
+                        localVideoContextStore.put(newMessageId, payloadKey, ctx)
+                    }
                 }
-                if (ctx != null) {
-                    localVideoContextStore.put(newMessageId, payloadKey, ctx)
-                }
-            }
-
-            imageAspects.filterValues { !it.isCompleted }.forEach { (payloadKey, aspectSoon) ->
-                scope.launch {
-                    val aspect = aspectSoon.await() ?: return@launch
-                    // Keep the path: prepare may already have pointed the preview at the file actually sent.
-                    val current = localVideoContextStore.get(newMessageId, payloadKey) as? LocalAttachmentContext.Image ?: return@launch
-                    localVideoContextStore.put(newMessageId, payloadKey, current.copy(aspectRatio = aspect))
+                imageAspects.filterValues { !it.isCompleted }.forEach { (payloadKey, aspectSoon) ->
+                    scope.launch {
+                        val aspect = aspectSoon.await() ?: return@launch
+                        // Keep the path: prepare may already have pointed the preview at the file actually sent.
+                        val current = localVideoContextStore.get(newMessageId, payloadKey) as? LocalAttachmentContext.Image ?: return@launch
+                        localVideoContextStore.put(newMessageId, payloadKey, current.copy(aspectRatio = aspect))
+                    }
                 }
             }
 
@@ -1132,9 +1127,7 @@ internal class MessageActionsHandler(
     }
 
     private suspend fun uprightAspect(path: String): Float? = try {
-        readImageSize(path, fileOperationsProvider)
-            .takeIf { it.pixelWidth > 0 && it.pixelHeight > 0 }
-            ?.let { it.pixelWidth.toFloat() / it.pixelHeight }
+        readImageSize(path, fileOperationsProvider).aspectRatio
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
