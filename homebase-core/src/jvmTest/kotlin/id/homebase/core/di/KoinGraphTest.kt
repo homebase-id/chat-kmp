@@ -83,9 +83,9 @@ class KoinGraphTest {
     @OptIn(KoinInternalApi::class)
     @Test
     fun aClassKoinBuildsFromItsConstructorHasNoDefaultsItWouldIgnore() {
-        val skip = setOf("build", ".git", ".gradle", "node_modules")
+        val skip = setOf("build", ".git", ".gradle", "node_modules", ".claude")
         val byConstructor = File("..").walkTopDown().onEnter { it.name !in skip }
-            .filter { it.isFile && it.extension == "kt" && "/src/" in it.invariantSeparatorsPath && "Test" !in it.invariantSeparatorsPath }
+            .filter { it.isFile && it.extension == "kt" && Regex("/src/[A-Za-z]*[Mm]ain/").containsMatchIn(it.invariantSeparatorsPath) }
             .flatMap { file -> file.readLines().filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") } }
             .flatMap { Regex("""\b(?:single|factory|viewModel|scoped)Of\(::(\w+)""").findAll(it).map { m -> m.groupValues[1] } }
             .toSet()

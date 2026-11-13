@@ -10,8 +10,6 @@ import id.homebase.upload.UserUploadBuilder
 
 object MessageAttachmentBuilder {
 
-    private const val PDF_PREVIEW_RENDER_WIDTH = 1600
-
     suspend fun buildSingle(
         attachment: AttachmentInput,
         fileOperationsProvider: FileOperationsProvider,
@@ -40,7 +38,7 @@ object MessageAttachmentBuilder {
             sources = attachments.map { it.toUploadSource() },
             options = UploadOptions(quality = mediaQuality),
             fileOps = fileOperationsProvider,
-            pdfPageRenderer = { path -> generatePdfThumbnailFromFile(path, PDF_PREVIEW_RENDER_WIDTH)?.thumbnailBytes },
+            pdfPageRenderer = { path, width -> generatePdfThumbnailFromFile(path, width)?.thumbnailBytes },
         ) { index -> payloadKeyFactory(index, attachments[index]) }
 }
 

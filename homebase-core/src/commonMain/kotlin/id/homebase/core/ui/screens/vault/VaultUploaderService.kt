@@ -14,6 +14,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFiles
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.sync.database.enqueued
+import id.homebase.api.video.VideoQuality
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.upload.MetadataPolicy
 import id.homebase.upload.PayloadBundle
@@ -30,7 +31,6 @@ import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
 import id.homebase.core.util.extensionForMimeType
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.core.pdf.PDF_CARD_RENDER_WIDTH
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.cancellation.CancellationException
@@ -335,10 +335,10 @@ class VaultUploaderService(
         sources = files.map { (path, type) ->
             UploadSource(path, type, appContent = notePreview?.takeIf { type == CONTENT_TYPE_MARKDOWN })
         },
-        options = UploadOptions(quality = MediaQuality.ORIGINAL, metadata = MetadataPolicy.KEEP),
+        options = UploadOptions(quality = MediaQuality.ORIGINAL, metadata = MetadataPolicy.KEEP, videoQuality = VideoQuality.STANDARD),
         fileOps = fileOperationsProvider,
-        pdfPageRenderer = { path ->
-            generatePdfThumbnailFromFile(path, PDF_CARD_RENDER_WIDTH)
+        pdfPageRenderer = { path, width ->
+            generatePdfThumbnailFromFile(path, width)
                 ?.also { if (path == files.first().first) onPdfPageCount?.invoke(it.pageCount) }
                 ?.thumbnailBytes
         },
