@@ -283,7 +283,7 @@ Then put `long` and `short` back as width and height in the source's orientation
 - **Animated WebP** keeps its file as the final image in every setting, because the still encoder would freeze it. It gets the normal still thumbnails from its first frame, so today it shows still in a bubble and only animates where the full file loads.
 - **APNG, animated HEIC and animated AVIF** keep their file as the final image too, detected by `ImageFormatDetector.isAnimated`.
 
-**Cost.** A GIF has no small version, so every place that shows it downloads the whole file. That includes Photobase's grid, which otherwise never loads more than Small. See [To do](#to-do-and-what-isnt-settled).
+**Cost.** A GIF has no small version, so every place that shows it downloads the whole file. That includes Photobase's grid, which otherwise loads only thumbnails. See [To do](#to-do-and-what-isnt-settled).
 
 ### RAW photos
 
@@ -468,8 +468,10 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
   - **10%** for bubbles, posts and viewers (`DETAIL_SHORTFALL_PERCENT`);
   - **40%** for grid tiles (`GRID_SHORTFALL_PERCENT`, set with `forGridTile()`): the Photos grid and Moments' album grid.
 - **Fit or crop.** A photo fitted inside the view only has to fill one edge. A photo cropped to fill the view, such as a square tile, has to fill both.
-- **The candidates** are the thumbnails, then the final image when we made it (Standard or HD). When no thumbnail covers the view, it loads the final image instead, if that adds pixels, is under 12 MB and every client can decode it.
-- **Full screen loads the full payload,** whatever the setting. Nothing else loads an untouched file: when the payload is the sender's file (Original, Photos, Vault), the largest thumbnail is as far as any other view goes.
+- **The candidates** are the thumbnails, then the final image, but only one the view *knows* we made: its descriptor records its pixel size and it isn't marked Original. Chat and Moments have recorded this since November 2026. When no thumbnail covers the view, it loads that final image instead, if it adds pixels, is under 12 MB and every client can decode it.
+- **Everything else stops at its largest thumbnail:** Original sends, Photos, Vault, stickers, photos posted from the web app, and older messages. Their payload may be the sender's untouched file, of any size.
+- **Grid tiles stop at thumbnails** too, whatever they show.
+- **Full screen loads the full payload,** whatever the setting.
 - **Loading order.** First the tiny, on the first frame. Then any copy of the photo already in memory, of any size, such as the tile just tapped. Then the chosen thumbnail. Then, only if it's needed, the final image, about 600 ms after scrolling stops. The step-up is remembered, so scrolling back doesn't download again. A failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good, and the thumbnail stays on screen without an error.
 - **Pagers** keep neighbouring pages composed off screen, so only the settled page steps up.
 - **The album grid loads what you stop on first.** While the grid moves, a tile that isn't already in memory shows only its tiny and starts no download (`HomebaseImage`'s `deferLoad`). About 150 ms after it stops, the tiles in view start. The background prefetch of the newest 500 waits out each scroll.
@@ -480,9 +482,9 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 - **Measured, not a fixed size per screen.** Screens differ about 3× in pixel density, and the same bubble is 400 px wide on one phone and 1,200 on a tablet. A fixed request is too big on one and too soft on the other.
 - **10% for bubbles and viewers.** A 10% stretch isn't visible at normal viewing distance, while text in a screenshot starts to soften beyond about 15%. It's also the planner's own band: a row within 10% of the source is made at the source size.
-- **40% for grid tiles.** A tile is glanced at among hundreds, and the grid's cost multiplies by the whole library. Phone tiles are 270 px (Pixel 8) to 330 px (iPhone Pro Max), just past Small's 240 px short edge. At 10%, every phone grid would load Medium, about 3× the data per tile and per prefetch. At 40%, phones stay on Small, as Immich does with its fixed 250 px grid thumbnail, and larger tiles still move up: a 600 px tablet tile gets Medium, and a 1,000 px desktop tile the 2048 thumbnail. Google Photos instead makes each tile's exact size on its server, which an end-to-end encrypted server can't.
+- **40% for grid tiles.** A tile is glanced at among hundreds, and the grid's cost multiplies by the whole library. Phone tiles are 270 px (Pixel 8) to 330 px (iPhone Pro Max), just past Small's 240 px short edge. At 10%, every phone grid would load Medium, about 3× the data per tile and per prefetch. At 40%, phones stay on Small, as Immich does with its fixed 250 px grid thumbnail, and larger tiles still move up a thumbnail: a 600 px tablet tile gets Medium, and a 1,000 px desktop tile Large, or the 2048 thumbnail for a tall photo. Tiles never load the final image, because the grid's cost multiplies by the library. Google Photos instead makes each tile's exact size on its server, which an end-to-end encrypted server can't.
 - **Crop needs both edges.** A cropped tile spreads the photo's short edge across the whole tile, so comparing long edges would pick a thumbnail too small for it.
-- **Never the untouched file in a view.** An original can be 5–12 MB, HEIC or RAW, and 4,000+ px. Pulling it to draw a 1,000 px bubble wastes most of it. Full screen is where its pixels are seen.
+- **Never the untouched file in a view.** An original can be 5–12 MB, HEIC or RAW, and 4,000+ px. Pulling it to draw a 1,000 px bubble wastes most of it. Full screen is where its pixels are seen. A view can't tell an original from a final image unless the descriptor says so, which is why it steps up only to one whose size was recorded.
 - **Straight to the chosen size, not up every step.** Walking up through every thumbnail downloads more and gives no earlier sharp frame. The one step in between is the thumbnail while the final image waits for scrolling to stop, so a fling never downloads final images.
 
 ## Wire format and older clients
@@ -536,7 +538,7 @@ What must stay proven, and where.
 - Portrait and landscape give the same sizes, transposed.
 - The random-size test also checks the [1.5 rule](#skipping-a-thumbnail-too-close-to-the-next-image) in every setting.
 - `ThumbnailLadderTest` pins the [appendix](#appendix-the-15-rule-on-real-cameras): real camera sizes at Standard, HD and Original, with the thumbnails each keeps, and that a file kept as the payload keeps its largest thumbnail.
-- `ThumbSizeSelectionTest` pins [how a view picks its image](#showing-the-images): the 10% and 40% allowances, fit against crop, phone and larger grid tiles, the untouched-file ceiling, and when a view steps up to the final image.
+- `ThumbSizeSelectionTest` pins [how a view picks its image](#showing-the-images): the 10% and 40% allowances, fit against crop, phone and larger grid tiles, that only a recorded final image is pulled, that grid tiles never pull it, and when a view steps up.
 
 ### Pipeline contract: real decoders, scalers and encoders on every platform
 
@@ -618,12 +620,7 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 ### Not built yet
 
-- **Every upload records whether its main file is the user's original.** Views must never download an original in place of a thumbnail, so they need to know. Today:
-  - **Chat** records it in the photo's descriptor (`quality` Original).
-  - **Photos and Vault** record nothing, so each screen that shows their photos says so in code (`payloadIsUntouchedFile = true`): the Photos grid, Vault's cards and Vault's detail sheet. A new app that uploads originals and forgets that line would have its views download originals.
-
-  The fix: the shared upload code knows whether it made a smaller copy, so it writes this into every upload, for every app, and no screen has to say it. Photos and Vault files already uploaded don't have it, so they still need a default per app.
-
+- **Every upload records its final image's size and whether it's the user's original** (#911). A view steps up only to a final image whose size is recorded, so today only chat and Moments photos do: both go through `MessageAttachmentBuilder`. Photos, Vault and stickers stop at their largest thumbnail until the shared upload factory records this for every app.
 - **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
 
 | What | Issue |

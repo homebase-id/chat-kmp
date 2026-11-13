@@ -176,6 +176,7 @@ fun ZoomableSubSamplingImage(
             }
             HomebaseImage(
                 imageData = thumbnailData,
+                stepUpToPayload = false,
                 contentDescription = null,
                 contentScale = contentScale,
                 modifier = Modifier.fillMaxSize(),

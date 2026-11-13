@@ -127,8 +127,7 @@ fun HomebaseImage(
     var steppedUp by remember(imageData) { mutableStateOf(false) }
     var stepUpFailed by remember(imageData) { mutableStateOf(false) }
     var displaySize by remember(imageData) { mutableStateOf<ImageSize?>(null) }
-    val mayStepUp = stepUpToPayload && !imageData.payloadIsUntouchedFile && !imageData.loadFullPayload &&
-        !imageData.isPending && imageData.availableThumbSizes.isNotEmpty()
+    val mayStepUp = stepUpToPayload && imageData.mayStepUp
     var lastSharpPainter by remember(imageData) { mutableStateOf<Painter?>(null) }
     val thumbnailKey = remember(imageData) { HomebaseImageKeyer.thumbnailCacheKey(imageData) }
     val model: Any = remember(imageData, platformContext, steppedUp) {

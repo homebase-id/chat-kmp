@@ -249,7 +249,6 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
         descriptor = payload,
         previewThumbnail = tinyPreview ?: payload.previewThumbnail?.toEmbeddedThumb(),
         requestedSize = ImageSize.THUMB_SMALL,
-        payloadIsUntouchedFile = true,
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }

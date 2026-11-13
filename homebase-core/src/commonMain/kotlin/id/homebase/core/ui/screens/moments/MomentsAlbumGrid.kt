@@ -269,7 +269,7 @@ private fun AlbumMomentCell(
                 firstImagePayload.iv?.bytes
             }
             if (payloadIv != null) {
-                val imageData = remember(moment.fileId, firstImagePayload.key, firstImagePayload.lastModified, payloadIv) {
+                val imageData = remember(moment.driveId, moment.fileId, firstImagePayload, moment.previewThumbnail, moment.keyHeader, payloadIv) {
                     HomebaseImageData.from(
                         driveId = moment.driveId,
                         fileId = moment.fileId,

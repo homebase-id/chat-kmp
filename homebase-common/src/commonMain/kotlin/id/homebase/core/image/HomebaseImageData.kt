@@ -51,12 +51,12 @@ data class HomebaseImageData(
     val keyHeader: KeyHeader,
     /** The payload's size, which decides whether a view may step up to it. */
     val payloadBytes: Long? = null,
-    /** The payload's pixels, when the sender recorded them. Without it a step-up has to guess. */
+    /** The payload's pixels, when the sender recorded them; a view steps up only to a payload it knows. */
     val finalImageSize: ImageSize? = null,
     /** The payload is the sender's untouched file, which a view never loads in place of a thumbnail. */
     val payloadIsUntouchedFile: Boolean = false,
-    /** How much smaller than the view a thumbnail may be; a grid tile sets it with [forGridTile]. */
-    val shortfallPercent: Int = DETAIL_SHORTFALL_PERCENT,
+    /** Set with [forGridTile]: a looser allowance, and never the payload. */
+    val gridTile: Boolean = false,
     /** Set with [globalTransitId] to fetch over peer; both null for local media. */
     val remoteOdinId: OdinId? = null,
     val globalTransitId: Uuid? = null,
@@ -92,7 +92,6 @@ data class HomebaseImageData(
             pendingFileUri: String? = null,
             payloadContentType: String? = descriptor.contentType,
             payloadBytes: Long? = descriptor.bytesWritten,
-            payloadIsUntouchedFile: Boolean? = null,
             remoteOdinId: OdinId? = null,
             globalTransitId: Uuid? = null,
         ): HomebaseImageData {
@@ -114,7 +113,7 @@ data class HomebaseImageData(
                 finalImageSize = recorded?.let { image ->
                     ImageSize(image.pixelWidth ?: return@let null, image.pixelHeight ?: return@let null)
                 },
-                payloadIsUntouchedFile = payloadIsUntouchedFile ?: (recorded?.quality == MediaQuality.ORIGINAL),
+                payloadIsUntouchedFile = recorded?.quality == MediaQuality.ORIGINAL,
                 remoteOdinId = remoteOdinId,
                 globalTransitId = globalTransitId,
             )
@@ -177,15 +176,13 @@ fun thumbSizesFrom(thumbnails: List<ThumbnailDescriptor>?): List<ImageSize> =
 // Well under PayloadSizePolicy.RENDER_LIMIT_BYTES: every view that asks pulls the payload.
 private const val STEP_UP_LIMIT_BYTES = 12L * 1024 * 1024
 
-/**
- * Whether no thumbnail covers [view] and the payload is a final image worth loading instead.
- * A descriptor without [HomebaseImageData.finalImageSize] can't rule out a payload with no extra pixels.
- */
+/** Whether no thumbnail covers [view] and the payload is a final image we know we made, with more pixels. */
 fun shouldStepUpToPayload(view: ImageSize, data: HomebaseImageData, crop: Boolean = false): Boolean {
-    if (data.payloadIsUntouchedFile || data.availableThumbSizes.isEmpty()) return false
+    if (!data.mayStepUp) return false
     if (data.availableThumbSizes.any { coversView(it, view, crop, data.shortfallPercent) }) return false
     val largest = data.availableThumbSizes.maxOf { max(it.pixelWidth, it.pixelHeight) }
-    if (data.finalImageSize != null && max(data.finalImageSize.pixelWidth, data.finalImageSize.pixelHeight) <= largest) return false
+    val final = data.finalImageSize ?: return false
+    if (max(final.pixelWidth, final.pixelHeight) <= largest) return false
     val payloadBytes = data.payloadBytes ?: return false
     return payloadBytes <= STEP_UP_LIMIT_BYTES && data.payloadContentType in ImageFormatDetector.TYPES_EVERY_CLIENT_CAN_DECODE
 }
@@ -228,4 +225,14 @@ fun selectThumbSize(
     return smallestFirst.firstOrNull { coversView(it, view, crop, shortfallPercent) } ?: smallestFirst.last()
 }
 
-fun HomebaseImageData.forGridTile(): HomebaseImageData = copy(shortfallPercent = GRID_SHORTFALL_PERCENT)
+fun HomebaseImageData.forGridTile(): HomebaseImageData = copy(gridTile = true)
+
+val HomebaseImageData.shortfallPercent: Int get() = if (gridTile) GRID_SHORTFALL_PERCENT else DETAIL_SHORTFALL_PERCENT
+
+/**
+ * Only a final image whose size the sender recorded and that isn't their original: anything else
+ * (Photos, Vault, stickers, web posts, older messages) may be an untouched file of any size.
+ */
+val HomebaseImageData.mayStepUp: Boolean
+    get() = finalImageSize != null && !payloadIsUntouchedFile && !gridTile && !loadFullPayload &&
+        !isPending && availableThumbSizes.isNotEmpty()

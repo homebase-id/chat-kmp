@@ -103,7 +103,7 @@ class ThumbSizeSelectionTest {
         thumbs: List<ImageSize> = listOf(ImageSize(320, 240), ImageSize(640, 480)),
         contentType: String? = "image/webp",
         bytes: Long? = 400_000,
-        finalSize: ImageSize? = null,
+        finalSize: ImageSize? = ImageSize(1600, 1200),
         untouched: Boolean = false,
     ) = HomebaseImageData(
         driveId = Uuid.NIL,
@@ -144,9 +144,15 @@ class ThumbSizeSelectionTest {
         assertTrue(shouldStepUpToPayload(ImageSize(1600, 1600), tall))
     }
 
+    // Photos, Vault, stickers, web posts and older messages record no size: their payload may be an original.
     @Test
-    fun anOldDescriptorWithoutASizeKeepsTheOldRule() {
-        assertTrue(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(finalSize = null)))
+    fun aPayloadWithoutARecordedSizeIsNeverPulled() {
+        assertFalse(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(finalSize = null)))
+    }
+
+    @Test
+    fun aGridTileNeverPullsThePayload() {
+        assertFalse(shouldStepUpToPayload(ImageSize(3000, 3000), tallStandard.forGridTile(), crop = true))
     }
 
     @Test

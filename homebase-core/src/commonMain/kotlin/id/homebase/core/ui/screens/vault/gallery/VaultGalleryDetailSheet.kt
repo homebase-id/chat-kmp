@@ -177,7 +177,6 @@ fun VaultGalleryDetailSheet(
                                     descriptor = descriptor,
                                     previewThumbnail = file.previewThumbnail,
                                     isEncrypted = file.isEncrypted,
-                                    payloadIsUntouchedFile = true,
                                     keyHeader = KeyHeader(
                                         iv = payloadIv, aesKey = file.keyHeader.aesKey
                                     ),
