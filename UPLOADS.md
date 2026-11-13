@@ -29,7 +29,7 @@ Every user upload, in every app, is assembled by one builder into the format bel
 | Word | Meaning |
 |---|---|
 | **HomebaseFile** | What an upload creates on a drive: a header (`appData`) plus payloads. A chat message with three photos is one HomebaseFile. |
-| **Payload** | A payload of the HomebaseFile, under a name such as `chat_web0` (the record's `key` field; the codebase calls it the "payload key", but it is a name, not a cryptographic key). Payloads have no key of their own: their data is encrypted with the HomebaseFile's AES key and the payload's own IV. |
+| **Payload** | A payload of the HomebaseFile, under a name such as `chat_web0` (the record's `key` field; the codebase calls it the "payload key", but it is a name, not a cryptographic key). Payloads have no key of their own: their data is encrypted with the HomebaseFile's AES key and the payload's own IV. A video's thumbnails and its `pls_` playlist use the video payload's IV. |
 | **Payload data** | A payload's bytes: what the user picked, or the smaller copy we made of it. |
 | **Descriptor content** | A payload's `descriptorContent` string: the one field of the server's `PayloadDescriptor` record that is ours. |
 
@@ -109,7 +109,7 @@ Encoding rules:
 
 - **Leave out** every field that doesn't apply; never write `null`.
 - **`v` is always written** (`@EncodeDefault`), so readers can tell this format from older ones.
-- **An HLS playlist is always its own payload,** `pls_<4-digit index>` (content type `application/vnd.apple.mpegurl`), because it can be very long; `vd.p` names it. Today it's inline when short and moved with all the metadata into a `pld_desc` payload when long.
+- **An HLS playlist is always its own payload,** `pls_<4-digit index>` (content type `application/vnd.apple.mpegurl`), because it can be very long; `vd.p` names it. Like the video's thumbnails, it is encrypted with the video payload's IV, and its record carries that IV, so a player reads it with the key header it already holds for the video. Today it's inline when short and moved with all the metadata into a `pld_desc` payload when long.
 - **Descriptor content always fits.** With the playlist out, nothing a user uploads comes near 1,024 characters (about 730 encrypted). App content over the limit is rejected by the builder, and each app caps its own (the link preview builder already trims to fit). Old files' `pld_desc` payloads are still read (section 6).
 
 The dog photo's payload record, sent at Standard in a public post. The outer keys are the server's and stay as they are:
@@ -158,7 +158,7 @@ descriptorContent = {"e":"<base64 of sealed>"}
 | Server | No change. odin-core stores, copies and length-checks descriptor content, and never reads it | |
 | Platforms | `AesGcm` in homebase-api on every platform; WebCrypto's AES-GCM in odin-js | |
 
-**Copying a payload re-encrypts its descriptor content.** A forward, or any copy into another HomebaseFile, decrypts it with the old file's key and encrypts it again with the new file's key. Today forwarding copies it verbatim, which would no longer decrypt.
+**Copying a payload re-encrypts its descriptor content.** Descriptor content is stored readable on the device, so a forward, or any copy into another HomebaseFile, starts from the readable form. The upload step encrypts every descriptor content of an encrypted HomebaseFile with that file's key as it encrypts the payloads, so a copy is never sent readable and never carries the old file's key.
 
 Why the whole descriptor content: besides names, it carries location coordinates and addresses, link URLs and titles (in `x`), and Vault note previews.
 
