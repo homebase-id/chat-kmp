@@ -487,32 +487,6 @@ class ProfileCardEditorShotsTest {
         }
     }
 
-    @Test
-    fun polishedIntroRendersTheNewCircleTile() {
-        for (dark in listOf(false, true)) {
-            runDesktopComposeUiTest(width = (REDMI_W * SCALE).toInt(), height = (REDMI_H * SCALE).toInt()) {
-                mainClock.autoAdvance = false
-                setContent {
-                    themed(dark) {
-                        CardIntro(
-                            uiState = polishBase,
-                            tiles = emptyMap(),
-                            host = null,
-                            revision = 0,
-                            onOpen = {},
-                            onClose = {},
-                            onRetry = {},
-                            onCapture = {},
-                            onTilePainted = {},
-                            onNewCircle = {},
-                        )
-                    }
-                }
-                mainClock.advanceTimeBy(SETTLE_MS)
-                save("p04-intro-new-circle", dark)
-            }
-        }
-    }
 
     @Test
     fun polishedCreateCircleSheetRendersEveryState() {
@@ -545,28 +519,7 @@ class ProfileCardEditorShotsTest {
         }
     }
 
-    @Test
-    fun fixedCircleCardsRenderEveryState() {
-        for (dark in listOf(false, true)) {
-            for (shot in fixedViewerShots) renderViewer(shot, dark)
-            for (shot in fixedEditorShots) render(shot, dark)
-            renderPopup("k6-d01-reset-public", dark) { ResetCardDialog(audience = CardAudience.Public, onReset = {}, onDismiss = {}) }
-            renderPopup("k6-d02-reset-circle", dark) { ResetCardDialog(audience = friends, onReset = {}, onDismiss = {}) }
-            renderPopup("k6-d03-reset-long", dark) { ResetCardDialog(audience = longCircle, onReset = {}, onDismiss = {}) }
-            renderPopup("k6-d04-read-only", dark) { ReadOnlyCardDialog(onDismiss = {}) }
-        }
-    }
 
-    @Test
-    fun viewerChromeRendersEveryState() {
-        for (dark in listOf(false, true)) {
-            for (shot in viewerShots) renderViewer(shot, dark)
-            renderPopup("v06-reset-dialog", dark) { ResetCardDialog(audience = work, onReset = {}, onDismiss = {}) }
-            renderPopup("v03-share-public-confirm", dark) {
-                SharePublicCardDialog(circleLabel = "Acquaintances", saveInsteadOfShare = false, onConfirm = {}, onDismiss = {})
-            }
-        }
-    }
 
     @Composable
     private fun themed(dark: Boolean, fontScale: Float = 1f, rtl: Boolean = false, content: @Composable () -> Unit) {
@@ -589,27 +542,7 @@ class ProfileCardEditorShotsTest {
             themed(dark, shot.fontScale, shot.rtl) {
                 var state by remember { mutableStateOf(shot.state) }
                 Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(state.design)))) {
-                    SheetTopChrome(
-                        uiState = state,
-                        onClose = {},
-                        bandDrag = Modifier,
-                        handleDrag = Modifier,
-                        modifier = Modifier.align(Alignment.TopCenter),
-                    )
-                    CardBottomChrome(
-                        audience = state.selectedAudience,
-                        isExporting = state.isExporting,
-                        canShare = true,
-                        saveInsteadOfShare = false,
-                        readOnly = state.isCircleReadOnly,
-                        showsReset = state.showsReset,
-                        canReset = state.canReset,
-                        onShare = {},
-                        onEdit = {},
-                        onChangeDesign = {},
-                        onReset = {},
-                        extraActions = {},
-                    )
+                    AudienceTitle(state, Modifier.align(Alignment.TopCenter))
                 }
             }
         }
@@ -847,59 +780,8 @@ class ProfileCardEditorShotsTest {
     // The card pages' slot on desktop: the settings pane's detail column at a 1440x900 and 1024x768 window, and a narrow window.
     private val desktopSlots = listOf("w1440" to (736 to 744), "w1024" to (698 to 635), "w600" to (600 to 800))
 
-    @Test
-    fun desktopSlotsRender() {
-        for (dark in listOf(false, true)) {
-            for ((slot, size) in desktopSlots) {
-                val (w, h) = size
-                for (shot in listOf(
-                    Shot("d-$slot-design", fixedFriends, widthDp = w, heightDp = h),
-                    Shot("d-$slot-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = w, heightDp = h),
-                    editor("d-$slot-content", polishBase, w = w, h = h, newCircle = true),
-                    editor("d-$slot-content-photo", polishBase, w = w, h = h, photo = CardPhotoUi(null, true, true, false)),
-                    editor("d-$slot-content-design", editorBase, w = w, h = h, act = {
-                        onNodeWithContentDescription("Design").performClick()
-                        mainClock.advanceTimeBy(SETTLE_MS)
-                    }),
-                    editor("d-$slot-content-add", k15Friends, w = w, h = h, act = {
-                        onNodeWithTag("content_add").performSemanticsAction(SemanticsActions.OnClick)
-                        mainClock.advanceTimeBy(SETTLE_MS)
-                    }),
-                )) render(shot, dark)
-                runDesktopComposeUiTest(width = (w * SCALE).toInt(), height = (h * SCALE).toInt()) {
-                    mainClock.autoAdvance = false
-                    setContent {
-                        themed(dark) {
-                            CardIntro(polishBase, emptyMap(), null, 0, {}, {}, {}, {}, {}, onNewCircle = {})
-                        }
-                    }
-                    mainClock.advanceTimeBy(SETTLE_MS)
-                    save("d-$slot-intro", dark)
-                }
-                renderViewer(ViewerShot("d-$slot-viewer", fixedFriends, widthDp = w, heightDp = h), dark)
-                renderPopup("d-$slot-reset-dialog", dark, w, h) { ResetCardDialog(audience = friends, onReset = {}, onDismiss = {}) }
-                renderPopup("d-$slot-create-circle", dark, w, h, backdrop = { EditorShot(editor("b", polishBase, w = w, h = h, newCircle = true)) }) {
-                    CreateCircleSheet(CreateCircleUiState(open = true), {}, {}, {}, {}, {}, {})
-                }
-            }
-        }
-    }
 
     // CARD_EXPORT_DIR holds real exportPng() PNGs, one per design: tile-sized from a narrow page, or the 390x844 compact card.
-    @Test
-    fun introTilesShowTheExportedCard() {
-        val exports = System.getenv("CARD_EXPORT_DIR")?.let(::File)?.listFiles { f -> f.extension == "png" }.orEmpty().sorted()
-        for (file in exports) {
-            val still = ImageIO.read(file).toComposeImageBitmap()
-            val tiles = polishBase.cards.associate { audienceKey(it.audience) to still }
-            runDesktopComposeUiTest(width = (736 * SCALE).toInt(), height = (744 * SCALE).toInt()) {
-                mainClock.autoAdvance = false
-                setContent { themed(false) { CardIntro(polishBase, tiles, null, 0, {}, {}, {}, {}, {}, onNewCircle = {}) } }
-                mainClock.advanceTimeBy(SETTLE_MS)
-                save("intro-export-${file.nameWithoutExtension}", false)
-            }
-        }
-    }
 
     private companion object {
         const val SCALE = 2f

@@ -344,7 +344,7 @@ private fun ProfileCardEditor(
                     )
                     if (result == SnackbarResult.ActionPerformed) viewModel.onAudienceUndone()
                 }
-                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
+                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed -> Unit
             }
         }
     }

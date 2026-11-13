@@ -2527,6 +2527,8 @@
     <string name="profile_card_share_failed">Couldn't create the card image.</string>
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
     <string name="profile_card_design_action">Design</string>
+    <string name="profile_card_edit_content">Edit content</string>
+    <string name="profile_card_add_card">Add new card</string>
     <string name="profile_card_content_on_card">On this card</string>
     <string name="profile_card_content_on_card_desc">Switch one off to leave it off this card.</string>
     <string name="profile_card_content_not_on_card">Not on this card</string>
@@ -2585,17 +2587,8 @@
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>
-    <string name="profile_card_intro_hint">Pick a card to view, share or edit it.</string>
-    <string name="profile_card_intro_open">Open the %1$s card</string>
     <string name="profile_card_audience_description">Card for %1$s</string>
-    <string name="profile_card_reset_failed">Couldn't reset this card.</string>
     <string name="profile_card_circle_unsupported">Your Homebase server can't keep a separate card for each circle yet, so circle cards can't be changed.</string>
-    <string name="profile_card_reset_card">Reset to default design</string>
-    <string name="profile_card_reset_title">Reset this card?</string>
-    <string name="profile_card_reset_message_public">Your public card goes back to its starting design. Your profile details aren't changed.</string>
-    <string name="profile_card_reset_message_circle">%1$s will see your public card again. Your profile details aren't changed.</string>
-    <string name="profile_card_reset_message_template">%1$s goes back to its starting design. Your profile details aren't changed.</string>
-    <string name="profile_card_reset_confirm">Reset</string>
     <string name="profile_card_read_only">Read-only</string>
     <string name="profile_card_read_only_why">Why can't I edit?</string>
     <string name="profile_card_read_only_title">This card is locked</string>
