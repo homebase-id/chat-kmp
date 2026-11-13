@@ -67,6 +67,9 @@ interface CardHost {
     fun probeEdges()
     fun requestPaint()
 
+    // The page keeps the viewer's scroll, but a tile stands for the card's top.
+    fun scrollToTop() {}
+
     // Room at the page's end for chrome floating over its bottom, which the page itself knows nothing of.
     fun reserveBottom(bottom: Dp) {}
 
@@ -203,6 +206,10 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
 
     override fun requestPaint() {
         if (_isLoaded.value) send(CardCommand.RequestPaint)
+    }
+
+    override fun scrollToTop() {
+        if (_isLoaded.value) send(CardCommand.ScrollToTop)
     }
 
     override fun reserveBottom(bottom: Dp) {

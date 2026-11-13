@@ -394,6 +394,7 @@ class ProfileCardViewModel(
         host.isLoaded.first { it }
         var touched = false
         host.sizeForTiles(true)
+        host.scrollToTop()
         try {
             for (card in _uiState.value.cards) {
                 if (interruptedByViewer(ignoreViewing)) return
