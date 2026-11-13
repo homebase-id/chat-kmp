@@ -136,21 +136,30 @@ In an encrypted chat, `descriptorContent` holds the same JSON encrypted (section
 
 ## 2. Encrypted descriptor content
 
-When the HomebaseFile is encrypted, `descriptorContent` holds the descriptor encrypted, in the shape both clients already use for encrypted query strings and socket messages (`SharedSecretEncryptedPayload`):
+When the HomebaseFile is encrypted, `descriptorContent` holds the descriptor content sealed with AES-GCM, following the format the zero-knowledge sharing code already uses (`ShareKeys.lock`: format byte, nonce, ciphertext with tag, associated data):
 
-```json
-{"iv":"<base64, 16 random bytes>","data":"<base64, AES-CBC-PKCS7(fileAesKey, iv, UTF-8 DescriptorContent JSON)>"}
+```text
+descriptorKey = HKDF-SHA256(ikm = fileAesKey, salt = none, info = "homebase.descriptor-content.v1", length = 16)
+nonce         = 12 random bytes
+sealed        = 0x01 ‖ nonce ‖ AES-128-GCM(descriptorKey, nonce, plaintext = UTF-8 DescriptorContent JSON, aad = UTF-8 payload key)
+                                                              (ciphertext followed by its 16-byte tag)
+descriptorContent = {"e":"<base64 of sealed>"}
 ```
 
-| Item | Value |
-|---|---|
-| Key | The HomebaseFile's AES key (`KeyHeader.aesKey`), the one its payloads use |
-| IV | Fresh random 16 bytes per descriptor. Never the payload's IV, which already encrypts the payload's bytes with the same key |
-| When | The HomebaseFile is encrypted (`isEncrypted`). Unencrypted HomebaseFiles (public posts) store the plain `DescriptorContent` |
-| Size | odin-core allows 1,024 characters, about 730 of descriptor content once encrypted. Nothing a user uploads comes near it (section 1) |
-| Server | No change. odin-core stores, copies and length-checks descriptors, and never reads them |
+| Item | Value | Why |
+|---|---|---|
+| Algorithm | AES-128-GCM, 16-byte tag | Authenticated: a changed byte fails to decrypt instead of producing altered content. CBC has no integrity check |
+| Key | HKDF-SHA256 of the HomebaseFile's AES key (`KeyHeader.aesKey`), info `homebase.descriptor-content.v1` | Whoever can read the file can derive it; a key of its own, so the file key isn't used in two modes (CBC for payloads, GCM here) |
+| Nonce | 12 random bytes per descriptor content | GCM's standard size; random is safe at a handful of encryptions per key |
+| AAD | The payload key, UTF-8 (`chat_web0`) | Ties it to its payload: descriptor content moved to another payload of the same file fails to decrypt |
+| Format byte | `0x01` | Lets the scheme change later without guessing |
+| Wrapper | `{"e": …}` | Unmistakable next to old descriptors: a raw-string file name can look like base64, a JSON object with only `e` can't |
+| When | The HomebaseFile is encrypted (`isEncrypted`). Unencrypted HomebaseFiles (public posts) store the plain `DescriptorContent` | |
+| Size | 29 bytes of overhead before base64. odin-core allows 1,024 characters, about 730 of descriptor content once sealed. Nothing a user uploads comes near it (section 1) | |
+| Server | No change. odin-core stores, copies and length-checks descriptor content, and never reads it | |
+| Platforms | `AesGcm` and `HashUtil.hkdf` in homebase-api on every platform; WebCrypto's AES-GCM and HKDF in odin-js | |
 
-Why the whole descriptor content: besides names, it carries location coordinates and addresses, link URLs and titles (in `appContent`), and Vault note previews.
+Why the whole descriptor content: besides names, it carries location coordinates and addresses, link URLs and titles (in `x`), and Vault note previews.
 
 ## 3. The rules
 
@@ -282,7 +291,7 @@ Filesync, WebDrop and the two photo APIs use the builder's rules (content type, 
 | `descriptorContent` | Read as |
 |---|---|
 | null | nothing |
-| JSON object with exactly `iv` and `data` | encrypted: decrypt with the HomebaseFile's key, then read the result with this table |
+| JSON object with only `e` | sealed (section 2): open with the key derived from the HomebaseFile's key and the payload key as AAD, then read the result with this table |
 | JSON object with `"v": 1` | `DescriptorContent` |
 | old `VideoMetadata` with `isDescriptorContentComplete: false` | the full metadata, with the playlist, is in the payload its `key` names (`pld_desc<index>`) |
 | anything else | today's rules by content type: `AudioFile`, markdown preview, `VideoMetadata`, `ImageFile`, link and location arrays, or the raw string as a file name |
@@ -300,7 +309,7 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 | Test | Checks |
 |---|---|
 | `DescriptorContent` round trip | Every kind serialises to the short keys and parses back; absent fields aren't written; `v` always is; unknown keys ignored; old quality codes translate; an HLS video writes its playlist as `pls_` and points to it |
-| Encrypted descriptor | Encrypt then decrypt with the HomebaseFile's key; fresh IV each time; app content over the limit is rejected |
+| Sealed descriptor content | Seal then open; a fresh nonce each time; a flipped byte, a wrong payload key (AAD) or another file's key fails to open; app content over the limit is rejected; the same vectors pass in odin-js |
 | Old descriptors | Each row of section 6, with real stored examples, reads as before |
 | Name rules | Paths, NFC, `/` and NUL, a long name keeps its extension, an emoji at the cut, a 20-character "extension", blank |
 | Content type | Wrong platform MIME, empty MIME, no extension, renamed file |
@@ -312,7 +321,7 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 
 | | Decision |
 |---|---|
-| **A** | The name lives in the descriptor; an encrypted HomebaseFile encrypts its payloads' whole descriptors (section 2), in both clients. |
+| **A** | The name lives in the descriptor content; an encrypted HomebaseFile seals its payloads' whole descriptor content with AES-GCM (section 2), in both clients. |
 | **B** | The tiny stays plain on every file. |
 | **C** | Vault keeps metadata. |
 | **D** | One switch, at once, for every kind including plain files. Unencrypted files' descriptors stay plain. |
