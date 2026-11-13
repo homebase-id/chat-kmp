@@ -181,9 +181,9 @@ build(sources, app options) → payloads + thumbnails + descriptors + file-conte
 
 ## Bugs found while writing this
 
-These are bugs in today's code, not design. Each should be filed and fixed on its own, before the builder:
+Bugs in today's code. The first is filed on its own; the builder fixes the others:
 
-1. **Public feed posts and comments publish location.** They upload through `enqueuePlaintextUpload`, which skips the encryption step, and only that step strips metadata. An Original photo, or a Standard one whose file is kept, is published with its GPS.
-2. **A voice note or audio file can be named by its full local path** (`MessageAttachmentBuilder`, `attachment.displayName ?: attachment.filePath`), which puts a device path in the descriptor.
-3. **Vault keeps only the first file's name** when several are picked (`VaultViewModel`).
-4. **Saving a chat photo to Vault names it with the date,** not the file name (`ChatMediaFullScreenHost`).
+1. **Public feed posts and comments publish location** (#2395, fixed right after the builder lands). They upload through `enqueuePlaintextUpload`, which skips the encryption step, and only that step strips metadata. An Original photo, or a Standard one whose file is kept, is published with its GPS.
+2. **A voice note or audio file can be named by its full local path** (`MessageAttachmentBuilder`, `attachment.displayName ?: attachment.filePath`), which puts a device path in the descriptor. Covered by #911's name rule.
+3. **Vault keeps only the first file's name** when several are picked (`VaultViewModel`). Covered by #911's migration of Vault.
+4. **Saving a chat photo to Vault names it with the date,** not the file name (`ChatMediaFullScreenHost`). Covered by #2393's save-name helper, once #911 records names.
