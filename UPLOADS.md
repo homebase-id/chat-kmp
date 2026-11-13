@@ -12,8 +12,8 @@ Every user upload, in every app, is assembled by one builder into the format bel
 
 ## Contents
 
-1. [The descriptor](#1-the-descriptor)
-2. [The encrypted descriptor](#2-the-encrypted-descriptor)
+1. [The descriptor content](#1-the-descriptor-content)
+2. [Encrypted descriptor content](#2-encrypted-descriptor-content)
 3. [The rules](#3-the-rules)
 4. [The builder](#4-the-builder)
 5. [Per app](#5-per-app)
@@ -31,61 +31,88 @@ Every user upload, in every app, is assembled by one builder into the format bel
 | **HomebaseFile** | What an upload creates on a drive: a header (`appData`) plus payloads. A chat message with three photos is one HomebaseFile. |
 | **Payload** | A payload of the HomebaseFile, under a key such as `chat_web0`: usually one picked photo, video or document. |
 | **Payload data** | A payload's bytes: what the user picked, or the smaller copy we made of it. |
-| **Descriptor** | A payload's `descriptorContent` string, stored with the payload on the server. |
+| **Descriptor content** | A payload's `descriptorContent` string: the one field of the server's `PayloadDescriptor` record that is ours. |
 
-## 1. The descriptor
+## 1. The descriptor content
 
-Every payload's `descriptorContent` is one JSON object, `UploadDescriptor`, for every kind of payload. Fields that don't apply are omitted.
+### Where it sits
+
+A HomebaseFile has one payload per picked item. The server keeps a fixed, plain record of each payload, its `PayloadDescriptor`. The only part of that record that is ours to define is one string, `descriptorContent`:
+
+```text
+HomebaseFile (a chat message with 3 photos)
+├── header (appData: content, previewThumbnail = the file's tiny, ...)
+├── payload chat_web0 → PayloadDescriptor (server's record, plain)
+│     ├── key, contentType ("image/webp"), iv, bytesWritten, lastModified
+│     ├── thumbnails: [ThumbnailDescriptor 240×427, ThumbnailDescriptor 480×854]   sizes, plain
+│     ├── previewThumbnail: ThumbnailDescriptor 11×20, bytes inline                the tiny, plain
+│     └── descriptorContent: String                                                ours: DescriptorContent, below
+├── payload chat_web1 → PayloadDescriptor ...
+└── payload chat_web2 → PayloadDescriptor ...
+```
+
+- **Thumbnails belong to one payload** (at most 5) and are fetched by HomebaseFile, payload key and size. Their sizes are in the plain `thumbnails` list.
+- **`contentType`** is the payload data's format (`image/jpeg`, `image/webp`). **`kind`**, below, is how to show the payload: an `image/png` can be a photo, a sticker or a document.
+- **A view decrypts descriptor content only when it needs it:** to step up, open full screen, show info or save. Never to lay out or pick a thumbnail; those use the plain `thumbnails` and `previewThumbnail`. Decrypting and parsing one costs about 2.5 µs on a desktop JVM.
+
+### The format
 
 ```kotlin
 @Serializable
-data class UploadDescriptor(
+data class DescriptorContent(
     val v: Int = 1,
-    val kind: Kind,
+    val kind: Kind,                    // how to show it
     val name: String? = null,          // original file name; rules in 3.2
     val original: Boolean? = null,     // image, video, sticker: payload data is the user's file, byte for byte
-    val pixelWidth: Int? = null,       // image, video, sticker: the payload data's pixels, upright
+    val pixelWidth: Int? = null,       // image, video, sticker: payload data's pixels, upright
     val pixelHeight: Int? = null,
-    val quality: MediaQuality? = null, // image, video: "standard" | "hd" | "high" (= Original)
-    val format: String? = null,        // sticker: detected image type, for its neutral save name
+    val quality: Quality? = null,      // image, video
     val lengthSeconds: Int? = null,    // audio
     val video: VideoMetadata? = null,  // video: today's VideoMetadata, unchanged
-    val links: List<LinkPreviewDescriptor>? = null,   // link preview
-    val location: LocationPreviewDescriptor? = null,  // location preview
-    val preview: String? = null,       // note: first lines of a markdown note
+    val appContent: String? = null,    // app-defined; only the app that wrote it reads it
 ) {
-    @Serializable enum class Kind { image, video, audio, file, sticker, link, location, note }
+    @Serializable enum class Kind { image, video, audio, file, sticker, app }
+    @Serializable enum class Quality { sd, hd, org }
 }
 ```
 
-Example, a 9:16 photo sent at Standard:
+The dog photo's payload, sent at Standard in a public post:
 
 ```json
-{"v":1,"kind":"image","name":"PXL_20261107_083131163.jpg","original":false,"pixelWidth":1152,"pixelHeight":2048,"quality":"standard"}
+{
+  "key": "chat_web0",
+  "contentType": "image/webp",
+  "bytesWritten": 231120,
+  "thumbnails": [{"pixelWidth": 240, "pixelHeight": 427}, {"pixelWidth": 480, "pixelHeight": 854}],
+  "previewThumbnail": {"pixelWidth": 11, "pixelHeight": 20, "content": "UklG…"},
+  "descriptorContent": "{\"v\":1,\"kind\":\"image\",\"name\":\"PXL_20261107_083131163.jpg\",\"original\":false,\"pixelWidth\":1152,\"pixelHeight\":2048,\"quality\":\"sd\"}"
+}
 ```
 
-- Field names reuse today's (`pixelWidth`, `format`, `quality`, `lengthSeconds`, `VideoMetadata`, the link and location descriptors), so readers map them one to one.
-- `quality` is always written for images and videos, including `"standard"`. Today Standard writes nothing, which makes it indistinguishable from "not recorded".
-- `v` lets readers tell this shape from every older one (section 6).
-- The payload's content type stays in `PayloadDescriptor.contentType`, not here.
+In an encrypted chat, `descriptorContent` holds the same JSON encrypted (section 2).
 
-## 2. The encrypted descriptor
+- **`quality`** is always written for images and videos. `sd`, `hd` and `org` replace the old `standard`, `hd` and `high` in this format only; readers translate old `ImageFile` descriptors (section 6), and saved settings keep their codes.
+- **`appContent`** is for payloads that aren't user uploads but ride on a HomebaseFile: chat's link previews (`chat_links`: URL, title, description) and location previews (`chat_loc`: coordinates, address), and Vault notes' preview text. Each app keeps its own format inside it, with `kind = app`.
+- **No separate extension field.** The original extension is in `name`; the saved file's extension comes from `contentType`.
+- **Size:** the server allows 1,024 characters of descriptor content, about 730 once encrypted. Over that, the whole descriptor content moves to its own encrypted payload, `pld_desc<index>`, as today.
+
+## 2. Encrypted descriptor content
 
 When the HomebaseFile is encrypted, `descriptorContent` holds the descriptor encrypted, in the shape both clients already use for encrypted query strings and socket messages (`SharedSecretEncryptedPayload`):
 
 ```json
-{"iv":"<base64, 16 random bytes>","data":"<base64, AES-CBC-PKCS7(fileAesKey, iv, UTF-8 UploadDescriptor JSON)>"}
+{"iv":"<base64, 16 random bytes>","data":"<base64, AES-CBC-PKCS7(fileAesKey, iv, UTF-8 DescriptorContent JSON)>"}
 ```
 
 | Item | Value |
 |---|---|
 | Key | The HomebaseFile's AES key (`KeyHeader.aesKey`), the one its payloads use |
 | IV | Fresh random 16 bytes per descriptor. Never the payload's IV, which already encrypts the payload's bytes with the same key |
-| When | The HomebaseFile is encrypted (`isEncrypted`). Unencrypted HomebaseFiles (public posts) store the plain `UploadDescriptor` |
-| Size | odin-core allows 1,024 characters. A descriptor over about 730 characters (encrypted) or 1,024 (plain) moves to its own payload `pld_desc<index>`, as today |
+| When | The HomebaseFile is encrypted (`isEncrypted`). Unencrypted HomebaseFiles (public posts) store the plain `DescriptorContent` |
+| Size | odin-core allows 1,024 characters. Descriptor content over about 730 characters (encrypted) or 1,024 (plain) moves to its own payload `pld_desc<index>`, as today |
 | Server | No change. odin-core stores, copies and length-checks descriptors, and never reads them |
 
-Why the whole descriptor: besides names, descriptors carry location coordinates and addresses, link URLs and titles, and Vault note previews.
+Why the whole descriptor content: besides names, it carries location coordinates and addresses, link URLs and titles (in `appContent`), and Vault note previews.
 
 ## 3. The rules
 
@@ -107,7 +134,8 @@ name = basename(pickedName)          // never a path
 name = NFC(name)
 replace "/", "\", NUL and control characters with "_"
 trim whitespace
-truncate to 255 UTF-8 bytes on a code-point boundary, keeping the extension
+over 255 UTF-8 bytes: cut the part before the last dot, on a character boundary; never cut the extension
+  (an "extension" over 16 characters isn't one: cut the whole name)
 blank → null
 ```
 
@@ -141,7 +169,7 @@ Applied by the builder, before the encrypted and public paths split, so public u
 
 | Item | Rule |
 |---|---|
-| Who gets them | Every `image`, `video`, `sticker` and PDF `file`. Not `audio`, other files or `note`. `link` and `location` keep their tiny-only previews |
+| Who gets them | Every `image`, `video`, `sticker` and PDF `file`. Not `audio` or other files. Link and location previews keep their tiny-only previews |
 | Sizes | `THUMBNAILS.md`, for the app's quality |
 | Tiny location | Plain, in the payload's `previewThumbnail` and the header's `appData.previewThumbnail` (the smallest tiny), encrypted file or not. 20 px leaks nothing meaningful |
 | Thumbnails | Encrypted with the payload, as today |
@@ -159,7 +187,8 @@ data class UploadSource(
     val path: String,                // local file to upload
     val pickedName: String?,         // as the device showed it; null if none
     val platformMimeType: String?,
-    val kindHint: UploadDescriptor.Kind? = null,   // sticker, note, link, location: the app says so
+    val kindHint: DescriptorContent.Kind? = null,   // sticker, or a file sent as a document: the app says so
+    val appContent: String? = null,  // for kind = app
 )
 
 data class UploadOptions(
@@ -179,7 +208,7 @@ data class UserUpload(
     val payloads: List<PayloadFile>,         // descriptorContent filled, plain or encrypted
     val thumbnails: List<ThumbnailFile>,
     val headerTiny: EmbeddedThumb?,          // for appData.previewThumbnail
-    val descriptors: List<UploadDescriptor>, // plain copies, for apps that also keep the name in their content
+    val descriptors: List<DescriptorContent>, // plain copies, for apps that also keep the name in their content
 )
 ```
 
@@ -212,7 +241,7 @@ Filesync, WebDrop and the two photo APIs use the builder's rules (content type, 
 |---|---|
 | null | nothing |
 | JSON object with exactly `iv` and `data` | encrypted: decrypt with the HomebaseFile's key, then read the result with this table |
-| JSON object with `"v": 1` | `UploadDescriptor` |
+| JSON object with `"v": 1` | `DescriptorContent` |
 | anything else | today's rules by content type: `AudioFile`, markdown preview, `VideoMetadata`, `ImageFile`, link and location arrays, or the raw string as a file name |
 
 Old files are never rewritten.
@@ -227,10 +256,10 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 
 | Test | Checks |
 |---|---|
-| `UploadDescriptor` round trip | Every kind serialises and parses; unknown fields ignored |
+| `DescriptorContent` round trip | Every kind serialises and parses; unknown fields ignored; old quality codes translate |
 | Encrypted descriptor | Encrypt then decrypt with the HomebaseFile's key; fresh IV each time; over-length moves to `pld_desc` |
 | Old descriptors | Each row of section 6, with real stored examples, reads as before |
-| Name rules | Paths, NFC, `/` and NUL, 255-byte truncation with an emoji at the edge, blank |
+| Name rules | Paths, NFC, `/` and NUL, a long name keeps its extension, an emoji at the cut, a 20-character "extension", blank |
 | Content type | Wrong platform MIME, empty MIME, no extension, renamed file |
 | Metadata | A GPS-tagged JPEG, HEIC, PNG, AVIF and a video, per policy, on Android, iOS, desktop and web, encrypted and public |
 | Per app | One typical upload per app produces section 5's options |
