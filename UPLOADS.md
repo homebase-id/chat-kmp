@@ -1,6 +1,6 @@
 # What a user upload looks like
 
-**Status: draft for discussion.** Nothing here is built yet. The decisions marked **Open** need an answer before the shared builder is written (#911).
+**Status: decided, not built yet.** The shared builder (#911) implements this.
 
 Every mini app lets the user upload something: a photo in chat, a Moment, a Vault document, a Photos backup, a Filesync file. Today each app builds its uploads its own way, so the same photo is named, typed, described and stripped differently depending on where it was uploaded. This document sets one format for everything a user uploads, and the reasons for it. One shared builder in `homebase-upload` produces that format for every app.
 
@@ -15,7 +15,7 @@ Thumbnails and the tiny are specified in [`THUMBNAILS.md`](THUMBNAILS.md). This 
 5. [The shared builder](#the-shared-builder)
 6. [Migration and older clients](#migration-and-older-clients)
 7. [Testing](#testing)
-8. [Open decisions](#open-decisions)
+8. [Decisions](#decisions)
 9. [Bugs found while writing this](#bugs-found-while-writing-this)
 
 ## Words
@@ -95,13 +95,13 @@ Every image or video payload records, at upload:
 
 Every payload's descriptor becomes one JSON object, the same for every kind, with the common fields above and a field per kind (an audio's length, a video's codec and duration, a sticker flag, a document's preview text). Readers keep accepting the four old encodings, because existing files are never rewritten.
 
-**Why:** one parser, no overwriting (a video's name survives its metadata), and new fields (a name, a size) added once. Older clients ignore fields they don't know (`ignoreUnknownKeys`). The one exception is the raw-string form for files: an older client shows the whole JSON as the file's name, so that switch waits until most clients read the new form. See [Migration](#migration-and-older-clients).
+**Why:** one parser, no overwriting (a video's name survives its metadata), and new fields (a name, a size) added once. Plain files move to the same shape in the same change (decision D): everything that needs a file name works the new way at once.
 
 ### 6. Thumbnails and the tiny
 
 - **Every image, video, PDF and sticker upload gets a tiny,** made by the shared pipeline. `THUMBNAILS.md` sets the sizes. Filesync and WebDrop don't, because they store files, not media; contact photos do, instead of throwing theirs away.
 - **The quality setting decides the thumbnails and any final image,** passed in by the app (`THUMBNAILS.md`, "Where each caller lands").
-- **Where the tiny lives depends on the drive:** readable in the header (`previewThumbnail`) on ordinary drives, so lists render before decrypting; inside encrypted content on zero-knowledge drives, as Photos does. Vault puts it in the readable header today: **Open (decision B).**
+- **The tiny is readable, in the header's `previewThumbnail`, for every upload,** encrypted file or not (decision B). At 20 px it can't show anything meaningful; at most it's a vague fingerprint of the image. Lists render it before decrypting anything. Photos keeps reading the encrypted copy in its older backups.
 
 ### 7. Metadata: the app decides, the builder applies it
 
@@ -112,7 +112,7 @@ Every upload states whether the main file keeps or strips its metadata (location
 | Chat, Moments, feed, stickers | strip | Shared with others; location must never leak by accident. Moments' GPS opt-in stays. |
 | Photos | keep | The user's own library; capture time and place are the point. |
 | Filesync, WebDrop | keep | They move files; changing the bytes breaks the sync and the transfer. |
-| Vault | **Open (decision C)** | The user's own encrypted storage, like Photos, but it strips today. |
+| Vault | keep | The user's own encrypted storage, like Photos (decision C). It strips today; that changes with the builder. |
 | Contact photo | strip | Nobody needs a contact photo's location. It stays on the user's own drive today, and a shared contact card already goes through chat's strip. |
 | Profile and card photos | strip | Public. Already re-encoded. |
 
@@ -147,9 +147,8 @@ Existing keys stay as they are (`chat_web0`, `mmt_0000`, `photo_main`, `vlt_pg_0
 
 **The web apps do read them** (odin-js): `community-app` (chat and Community: file names, video duration, link previews, and it writes `file.name` as a photo's descriptor), the feed (`common-app`: download names, gallery details), WebDrop and the video player (`ui-lib`). So both clients change together:
 
-1. **Readers, in chat-kmp and odin-js:** decrypt an `{iv, data}` descriptor with the file's key, and keep reading plain ones.
-2. **Writers, a release later, in both:** encrypt every descriptor of an encrypted file.
-3. **Existing files stay as they are.**
+1. **Readers and writers, in chat-kmp and odin-js, in the same release:** decrypt an `{iv, data}` descriptor with the file's key and keep reading plain ones; encrypt every descriptor of an encrypted file.
+2. **Existing files stay as they are.**
 
 ## Per app
 
@@ -161,7 +160,7 @@ What each app sends to the builder, and what it keeps for itself:
 | Moments, feed | as chat | user setting (Standard today) | strip, GPS opt-in | picked name | public posts' plaintext upload |
 | Stickers | cut-out, saved image | Original rows | strip | none (neutral) | — |
 | Photos | device library export | Original (photos), app setting (videos) | keep | `DISPLAY_NAME` / `originalFilename` | hashing, dedupe, `uniqueId` |
-| Vault | picker, scanner, PDF render | Original | decision C | picked name, every file | labels, notes, sections |
+| Vault | picker, scanner, PDF render | Original | keep | picked name, every file | labels, notes, sections |
 | Filesync | picker, folders | none (stores bytes) | keep | picked name, cleaned | sync, versions, peer writes |
 | WebDrop | picker | none | keep | picked name | link key, manifest |
 | Contact, profile photos | picker, crop | their own sizes | strip | none | their own APIs |
@@ -184,10 +183,11 @@ build(sources, app options) → payloads + thumbnails + descriptors + file-conte
 
 ## Migration and older clients
 
-1. **Readers first.** Every client learns the new descriptor shape and keeps reading the old ones. Ship it.
-2. **Writers, app by app,** starting with chat and Moments (already closest), then Vault, stickers and Photos, then Filesync and WebDrop for the parts that apply.
-3. **Plain files' raw-string descriptor last,** once most clients read the new shape: an older client would otherwise show the JSON as the name.
-4. **Existing files are never rewritten.** Every rule here applies to new uploads.
+**One switch, at once** (decision D). The new descriptor shape, the recorded names and the encrypted descriptors ship together, for every app and every kind of payload, in chat-kmp and odin-js in step:
+
+- **Readers and writers in the same release.** Everything that needs a file name works the new way from that release on.
+- **Existing files are never rewritten.** Readers keep reading every old encoding (raw-string names, `ImageFile`, `AudioFile`, `VideoMetadata`, the link and location arrays, plain descriptors on encrypted files).
+- **The cost, accepted:** an app that hasn't updated shows a new upload's descriptor as text (or ciphertext) until it does. People update quickly.
 
 ## Testing
 
@@ -196,14 +196,16 @@ build(sources, app options) → payloads + thumbnails + descriptors + file-conte
 - **Reader tests** for every old encoding, so nothing already stored stops rendering.
 - **The metadata rule on the real platforms,** because stripping is per format and per platform: a GPS-tagged JPEG, HEIC and PNG, uploaded by each app, checked for location afterwards.
 
-## Open decisions
+## Decisions
 
-| | Decision | Options | Recommendation |
-|---|---|---|---|
-| **A** | Where the file name lives | **Decided:** in the descriptor, and every descriptor of an encrypted file is encrypted with the file's key, in both clients. See [section 10](#10-encrypted-files-encrypt-their-descriptors). | — |
-| **B** | The tiny is readable in the header of encrypted files (chat, Vault); Photos encrypts it | keep it readable; encrypt it whenever the file is encrypted, by the same principle as the descriptors | encrypt it |
-| **C** | Vault keeps or strips metadata | keep (it's the user's own storage, like Photos); strip (today) | keep, matching Photos |
-| **D** | The plain-file descriptor switch from a raw string to JSON | now, accepting that old clients show JSON as the name; after a release | after a release |
+All decided by Michael on 2026-11-13:
+
+| | Decision | Outcome |
+|---|---|---|
+| **A** | Where the file name lives | In the descriptor, and every descriptor of an encrypted file is encrypted with the file's key, in both clients. See [section 10](#10-encrypted-files-encrypt-their-descriptors). |
+| **B** | Whether the tiny is encrypted on encrypted files | No. It stays readable: at 20 px it can't leak anything meaningful. |
+| **C** | Whether Vault keeps metadata | Always keeps it, like Photos. |
+| **D** | When the new descriptor replaces the old forms | At once, for every kind, plain files included. Unencrypted files' descriptors stay plain. |
 
 ## Bugs found while writing this
 
