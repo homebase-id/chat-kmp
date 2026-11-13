@@ -36,17 +36,11 @@ private const val TAG = "StickerService"
 
 /**
  * Persists and resolves saved stickers on the dedicated Stickers drive.
- *
- * Structural copy of [id.homebase.core.ui.screens.vault.VaultUploaderService], reduced
- * to the single-payload sticker case:
- *  - [saveSticker] uploads one transparent image as a `STICKER_FILE_TYPE` file whose
- *    sole payload carries `descriptorContent = {"isSticker":true}` (PR #664 wire format).
+ *  - [saveSticker] uploads one transparent image as a `STICKER_FILE_TYPE` file, built as a sticker.
  *  - [resolveForSend] downloads + decrypts a saved sticker's bytes to a temp file so the
  *    composer can re-stage it as a normal image attachment with `forceSticker = true`.
  *  - [deleteSticker] enqueues a local-file delete (mirror of VaultService.deleteEntry).
  *  - [activate] registers + mounts the optional Stickers drive on first-time grant.
- *
- * Reuses all existing crypto/outbox machinery — no hand-rolled encryption, no new table.
  */
 class StickerService(
     private val outboxSync: OutboxSync,
@@ -100,9 +94,7 @@ class StickerService(
         // auto-mounted at login (registered) or activated when the user granted the
         // Stickers permission (StickerHandler.awaitDriveGranted gates on that). No mount here.
 
-        // Mirror VaultUploaderService: convert HEIC/HEIF to JPEG so the drive and receivers
-        // get a web image format. A directly-saved transparent HEIC would otherwise upload as
-        // image/heic and fail thumbnail generation on platforms that can't decode it.
+        // Receivers need a web image format: HEIC fails thumbnailing where it can't be decoded.
         val uploadBytes = if (ImageFormatDetector.isHeic(bytes)) convertHeicToJpeg(bytes) ?: bytes else bytes
         val uploadType = if (uploadBytes !== bytes) "image/jpeg" else contentType
 
@@ -110,14 +102,13 @@ class StickerService(
         val tempPath = fileOperationsProvider.writeBytesToTempFile(uploadBytes, "sticker_", ".$ext")
         return try {
             val keyHeader = KeyHeader.newRandom16()
-            val key = StickerProtocol.STICKER_PAYLOAD_KEY
-
             // A saved sticker is the user's cut-out, kept as it is; its metadata goes (UPLOADS.md section 5).
             val bundle = UserUploadBuilder.build(
                 sources = listOf(UploadSource(tempPath, uploadType, sticker = true)),
                 options = UploadOptions(quality = MediaQuality.ORIGINAL, metadata = MetadataPolicy.STRIP),
                 fileOps = fileOperationsProvider,
-            ) { key }
+            ) { StickerProtocol.STICKER_PAYLOAD_KEY }
+            val sent = bundle.payloads.single()
 
             val content = OdinSystemSerializer.serialize(
                 StickerFileContent(name = name, sourceFileId = sourceFileId)
@@ -166,12 +157,12 @@ class StickerService(
                     fileId = optimisticFileId,
                     uniqueId = uniqueId,
                     driveId = driveId,
-                    payloadKey = key,
-                    contentType = uploadType,
+                    payloadKey = sent.key,
+                    contentType = sent.contentType,
                     keyHeader = keyHeader,
                     previewThumbnail = bundle.previewThumbs.firstOrNull(),
                     payloadDescriptor = outcome.payloadDescriptors?.firstOrNull()
-                        ?: PayloadDescriptor(key = key, contentType = uploadType),
+                        ?: PayloadDescriptor(key = sent.key, contentType = sent.contentType),
                     createdAt = Clock.System.now().toEpochMilliseconds(),
                     sourceFileId = sourceFileId,
                     isPending = true,

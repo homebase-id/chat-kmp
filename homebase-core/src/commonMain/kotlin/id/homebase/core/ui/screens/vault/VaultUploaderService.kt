@@ -7,7 +7,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.PayloadDownloadService
-import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
@@ -40,7 +39,6 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private const val TAG = "VaultUploaderService"
-private fun vaultPayloadKey(index: Int): String = "vlt_pg_${index.toString().padStart(2, '0')}"
 
 class VaultUploaderService(
     private val uploadService: UploadService,
@@ -93,7 +91,7 @@ class VaultUploaderService(
             val keyHeader = KeyHeader.newRandom16()
 
             var pdfPageCount: Int? = null
-            val bundle = vaultBundle(files, notePreview = notePreview) { if (pdfPageCount == null) pdfPageCount = it }
+            val bundle = vaultBundle(files, { VaultEntry.pageKey(it) }, notePreview) { pdfPageCount = it }
 
             val content = OdinSystemSerializer.serialize(
                 VaultFileContent(name = entryName, label = label, notes = notes, pdfPageCount = pdfPageCount)
@@ -150,15 +148,7 @@ class VaultUploaderService(
         scope: CoroutineScope,
     ): Boolean {
         return try {
-            val existingMaxIndex =
-                file.payloadDescriptors.mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
-                    .maxOrNull() ?: -1
-            val startIndex = existingMaxIndex + 1
-
-            val bundle = vaultBundle(newFiles, startIndex)
-
-            // Plaintext bundle — UploadService.updateFile (via enqueueFileContentUpdate) encrypts
-            // (fail-soft), builds the manifest, and writes the optimistic update.
+            val start = file.nextPageIndex()
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -169,7 +159,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                bundle = bundle,
+                bundle = vaultBundle(newFiles, { VaultEntry.pageKey(start + it) }),
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
@@ -179,9 +169,7 @@ class VaultUploaderService(
 
     /**
      * Replaces the image payload at [payloadKey] in place with [newFilePath]
-     * (the edited bytes). Same encryption/thumbnail/outbox path as
-     * [appendResolvedPages] — only the key is reused so the page is updated
-     * rather than appended.
+     * (the edited bytes).
      */
     suspend fun replacePagePayload(
         file: VaultEntry,
@@ -208,8 +196,6 @@ class VaultUploaderService(
         scope: CoroutineScope,
     ): Boolean {
         return try {
-            val bundle = vaultBundle(listOf(newFilePath to contentType), keyFor = { payloadKey })
-
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -220,7 +206,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                bundle = bundle,
+                bundle = vaultBundle(listOf(newFilePath to contentType), { payloadKey }),
             )
         } catch (e: CancellationException) {
             throw e
@@ -274,13 +260,6 @@ class VaultUploaderService(
             val existingKey = file.payloadDescriptors.firstOrNull()?.key
                 ?: VaultEntry.DEFAULT_PAYLOAD_KEY
 
-            val payload = PayloadFile(
-                key = existingKey,
-                filePath = tempPath,
-                contentType = CONTENT_TYPE_MARKDOWN,
-                descriptorContent = notePreview,
-            )
-
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -291,7 +270,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                bundle = PayloadBundle(listOf(payload), emptyList(), emptyList()),
+                bundle = vaultBundle(listOf(tempPath to CONTENT_TYPE_MARKDOWN), { existingKey }, notePreview),
                 // A note edit is a full-state single-payload overwrite: write the new body through +
                 // seed it (so a read-back before send is correct) and coalesce rapid re-saves so the
                 // newest body wins instead of being dropped as AlreadyQueued (issue #927).
@@ -346,11 +325,11 @@ class VaultUploaderService(
     }
 
     // Vault keeps a photo's metadata and its file as it is: it's the user's own encrypted storage (UPLOADS.md section 5).
+    // [onPdfPageCount] counts the entry's first file only, when it is a PDF.
     private suspend fun vaultBundle(
         files: List<Pair<String, String>>,
-        startIndex: Int = 0,
+        keyFor: (Int) -> String,
         notePreview: String? = null,
-        keyFor: (Int) -> String = { vaultPayloadKey(startIndex + it) },
         onPdfPageCount: ((Int) -> Unit)? = null,
     ): PayloadBundle = UserUploadBuilder.build(
         sources = files.map { (path, type) ->
@@ -359,7 +338,9 @@ class VaultUploaderService(
         options = UploadOptions(quality = MediaQuality.ORIGINAL, metadata = MetadataPolicy.KEEP),
         fileOps = fileOperationsProvider,
         pdfPageRenderer = { path ->
-            generatePdfThumbnailFromFile(path, PDF_CARD_RENDER_WIDTH)?.also { onPdfPageCount?.invoke(it.pageCount) }?.thumbnailBytes
+            generatePdfThumbnailFromFile(path, PDF_CARD_RENDER_WIDTH)
+                ?.also { if (path == files.first().first) onPdfPageCount?.invoke(it.pageCount) }
+                ?.thumbnailBytes
         },
         payloadKey = keyFor,
     )

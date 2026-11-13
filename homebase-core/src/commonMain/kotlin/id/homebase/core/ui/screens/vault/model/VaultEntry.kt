@@ -72,8 +72,13 @@ data class VaultEntry(
             return (descriptor.descriptorInfo() as? DescriptorContent.NoteFile)?.preview
         }
 
+    /** The index after the highest page key; the uploader and the placeholder rows must agree on it. */
+    fun nextPageIndex(): Int = (payloadDescriptors.mapNotNull { it.key.removePrefix(PAGE_KEY_PREFIX).toIntOrNull() }.maxOrNull() ?: -1) + 1
+
     companion object {
-        const val DEFAULT_PAYLOAD_KEY = "vlt_pg_00"
+        private const val PAGE_KEY_PREFIX = "vlt_pg_"
+        fun pageKey(index: Int): String = PAGE_KEY_PREFIX + index.toString().padStart(2, '0')
+        val DEFAULT_PAYLOAD_KEY = pageKey(0)
     }
 }
 
