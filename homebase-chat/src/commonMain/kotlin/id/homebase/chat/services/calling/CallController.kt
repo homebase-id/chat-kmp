@@ -12,6 +12,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -33,7 +34,7 @@ class CallController(
     private val signaling: CallSignaling,
     private val engineFactory: CallEngineFactory,
     private val scope: CoroutineScope,
-    private val stunUrls: suspend () -> List<String> = { emptyList() },
+    private val iceServers: suspend (peer: String) -> CallIceServers = { CallIceServers.None },
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
     private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
@@ -79,6 +80,9 @@ class CallController(
     private var republishJob: Job? = null
     private var trickleJob: Job? = null
     private var restartOfferSdp: String? = null
+    private var iceFetch: Deferred<CallIceServers>? = null
+    private var iceFetchCallId: String? = null
+    private var callIce: CallIceServers? = null
     private val endedCalls = ArrayDeque<String>()
     @Volatile private var inFlight: Job? = null
 
@@ -236,6 +240,7 @@ class CallController(
         _state.value = transition.state
         if (transition.state != before) _transitions.tryEmit(transition.state)
         if (transition.state.phase is CallPhase.Ended) transition.state.callId?.let(::rememberEnded)
+        prefetchIceServers(transition.state)
         for (effect in transition.effects) run(effect, transition.state)
     }
 
@@ -257,13 +262,48 @@ class CallController(
         if (endedCalls.size > ENDED_CALLS_REMEMBERED) endedCalls.removeFirst()
     }
 
+    // Asked for as the call starts or rings, so placing it waits on one request at most and accepting it on none.
+    private fun prefetchIceServers(s: CallState) {
+        if (s.isActive && s.callId == iceFetchCallId) return
+        iceFetch?.cancel()
+        iceFetch = null
+        iceFetchCallId = null
+        val peer = s.peer ?: return
+        if (!s.isActive) return
+        iceFetchCallId = s.callId
+        iceFetch = scope.async { iceServers(peer) }
+    }
+
+    private suspend fun iceServersForEngine(): CallIceServers {
+        val s = _state.value
+        val peer = s.peer ?: return CallIceServers.None
+        val prefetched = iceFetch?.takeIf { iceFetchCallId == s.callId && !it.isCancelled }?.await()
+        // A ring asks again when its request failed (a cold push wake beats the network) or its login has since expired.
+        val reusable = prefetched?.fromServer == true || s.direction == CallDirection.Outgoing
+        if (prefetched != null && reusable && (prefetched.expiresAtMs == null || prefetched.isFresh(clock()))) return prefetched
+        return iceServers(peer)
+    }
+
+    // A login only opens relays until it expires, and a restart gathers again.
+    private suspend fun refreshIceServers(state: CallState) {
+        val current = engine ?: return
+        if (callIce?.isFresh(clock()) == true) return
+        val fresh = iceServers(state.peer ?: return)
+        log.i { "call=${state.callId} ICE servers for the restart: $fresh" }
+        if (!fresh.fromServer) return
+        callIce = fresh
+        current.setIceServers(fresh.servers)
+    }
+
     private suspend fun engine(): CallEngine = engine ?: run {
+        val ice = iceServersForEngine()
         // The next call's camera, mic and audio mode must not race the last call's release of them.
         closingEngine?.join()
-        engineFactory.create(stunUrls())
+        callIce = ice
+        engineFactory.create(ice.servers)
     }.also { created ->
         engine = created
-        log.i { "call=${_state.value.callId} engine created on ${Platform.osName} ${Platform.osVersion}" }
+        log.i { "call=${_state.value.callId} engine created on ${Platform.osName} ${Platform.osVersion}, ICE $callIce" }
         _mediaDevices.value = created.mediaDevices
         remoteReady = false
         engineEvents = scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -316,10 +356,14 @@ class CallController(
                 }
                 CallEffect.RestartIce -> {
                     // Resend the unanswered offer: a fresh one would orphan an answer already in flight for it.
-                    val sdp = restartOfferSdp ?: engine().restartIce().also { restartOfferSdp = it }
+                    val sdp = restartOfferSdp ?: run {
+                        refreshIceServers(state)
+                        engine().restartIce()
+                    }.also { restartOfferSdp = it }
                     sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
                 }
                 is CallEffect.AnswerRestart -> {
+                    refreshIceServers(state)
                     val sdp = engine().answerRestart(effect.offerSdp)
                     sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
                 }
@@ -443,6 +487,7 @@ class CallController(
             closingEngine = scope.launch(start = CoroutineStart.ATOMIC) { released.close() }
         }
         engine = null
+        callIce = null
         remoteReady = false
         bufferedIce.clear()
         heldIce.clear()

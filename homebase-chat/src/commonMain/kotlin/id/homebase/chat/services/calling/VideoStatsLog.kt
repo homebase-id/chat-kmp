@@ -53,7 +53,7 @@ internal fun videoStatsLines(
         ?.members?.let { m ->
             add(
                 "pair sent=${m["bytesSent"]} received=${m["bytesReceived"]} rtt=${m["currentRoundTripTime"]} " +
-                    "outBitrate=${m["availableOutgoingBitrate"]} local=${m["localCandidateId"]} remote=${m["remoteCandidateId"]}",
+                    "outBitrate=${m["availableOutgoingBitrate"]} route=${stats.candidate(m["localCandidateId"])}-${stats.candidate(m["remoteCandidateId"])}",
             )
         }
 }
@@ -61,6 +61,13 @@ internal fun videoStatsLines(
 internal fun Collection<StatsEntry>.video(type: String) = media(type, "video")
 
 private fun Collection<StatsEntry>.media(type: String, kind: String) = firstOrNull { it.type == type && it.members["kind"] == kind }?.members
+
+// host, srflx or prflx is direct; relay went through a TURN server (and over which transport to it).
+private fun Collection<StatsEntry>.candidate(id: Any?): String {
+    val c = firstOrNull { it.id == id }?.members ?: return "?"
+    val type = c["candidateType"]?.toString() ?: "?"
+    return c["relayProtocol"]?.let { "$type/$it" } ?: type
+}
 
 private fun Collection<StatsEntry>.codecOf(rtp: Map<String, Any?>): Any? =
     firstOrNull { it.type == "codec" && it.id == rtp["codecId"] }?.members?.get("mimeType")

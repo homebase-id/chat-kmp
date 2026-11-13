@@ -3,6 +3,7 @@ package id.homebase.chat.services.calling
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.calling.IceServersResponse
 import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
@@ -39,6 +40,7 @@ class CallService(
     private val relay: LiveRelaySend,
     private val engineFactory: CallEngineFactory?,
     private val stunUrls: StunUrlStore,
+    private val fetchIceServers: (suspend (peer: String) -> IceServersResponse)? = null,
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val onCallActiveChanged: (Boolean) -> Unit = {},
@@ -110,7 +112,7 @@ class CallService(
             signaling = LiveRelayCallSignaling(selfOdinId, relay, eventBus),
             engineFactory = engineFactory,
             scope = CoroutineScope(scope.coroutineContext + job),
-            stunUrls = { stunUrls.urls.awaitStunUrls() },
+            iceServers = CallIceServerSource(fetchIceServers, { stunUrls.urls.awaitStunUrls() })::forCall,
         )
     }
 

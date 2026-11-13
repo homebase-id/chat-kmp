@@ -8,6 +8,7 @@ import dev.onvoid.webrtc.CreateSessionDescriptionObserver
 import dev.onvoid.webrtc.PeerConnectionFactory
 import dev.onvoid.webrtc.RTCAnswerOptions
 import dev.onvoid.webrtc.RTCConfiguration
+import id.homebase.api.client.calling.CallIceServer
 import dev.onvoid.webrtc.RTCDataChannel
 import dev.onvoid.webrtc.RTCDataChannelBuffer
 import dev.onvoid.webrtc.RTCDataChannelInit
@@ -61,7 +62,7 @@ import id.homebase.api.coroutines.ioDispatcher
  * real hardware.
  */
 class WebRtcJavaCallEngine(
-    stunUrls: List<String>,
+    iceServers: List<CallIceServer>,
     audioDevice: AudioDeviceModuleBase? = null,
     devicePreferences: CallDevicePreferences = InMemoryCallDevicePreferences(),
     private val cameraSource: (() -> VideoTrackSource)? = null,
@@ -140,10 +141,7 @@ class WebRtcJavaCallEngine(
     override val mediaDevices: CallMediaDevices get() = devices
 
     private val peer: RTCPeerConnection = factory.createPeerConnection(
-        RTCConfiguration().apply {
-            // Every URL as given by the device's own server; nothing is derived or added.
-            if (stunUrls.isNotEmpty()) iceServers = listOf(RTCIceServer().apply { urls = stunUrls })
-        },
+        RTCConfiguration().apply { this.iceServers = iceServers.map { it.toRtc() } },
         GuardedPeerObserver(
             mapper = mapper,
             isClosed = { closed },
@@ -471,6 +469,11 @@ class WebRtcJavaCallEngine(
 
     override suspend fun applyRemote(answerSdp: String) = setRemote(RTCSessionDescription(RTCSdpType.ANSWER, answerSdp))
 
+    override fun setIceServers(iceServers: List<CallIceServer>) = synchronized(lock) {
+        if (closed) return
+        peer.setConfiguration(peer.configuration.apply { this.iceServers = iceServers.map { it.toRtc() } })
+    }
+
     override suspend fun restartIce(): String = offer(RTCOfferOptions().apply { iceRestart = true })
 
     override suspend fun answerRestart(offerSdp: String): String {
@@ -692,3 +695,10 @@ internal class FrameCounter : dev.onvoid.webrtc.media.video.VideoTrackSink {
 
 /** The first camera in [order] not yet [tried], or null when every camera has been given a chance. */
 internal fun nextCameraAfterSilence(order: List<String>, tried: List<String>): String? = order.firstOrNull { it !in tried }
+
+// Every server as given by the device's own server; nothing is derived or added.
+private fun CallIceServer.toRtc() = RTCIceServer().also {
+    it.urls = urls
+    username?.let { name -> it.username = name }
+    credential?.let { secret -> it.password = secret }
+}
