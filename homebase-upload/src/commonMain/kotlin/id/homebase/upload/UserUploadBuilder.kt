@@ -165,7 +165,8 @@ object UserUploadBuilder {
                 filePath = finalPath ?: source.path,
                 contentType = contentType,
                 descriptorContent = descriptorContent,
-                stripMetadata = options.metadata == MetadataPolicy.STRIP,
+                // The builder's own final image carries no metadata to strip.
+                stripMetadata = options.metadata == MetadataPolicy.STRIP && finalPath == null,
             ),
             thumbs,
         )

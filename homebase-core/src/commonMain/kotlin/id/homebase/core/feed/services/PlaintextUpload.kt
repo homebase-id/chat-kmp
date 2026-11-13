@@ -14,20 +14,19 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.upload.withMetadataStripped
 import kotlin.uuid.Uuid
 
-// Public feed files ship plaintext payloads, so the request bypasses UploadService's encryptBundle;
-// their images are stripped here with the function the encryption step uses.
+// Public feed files ship plaintext payloads, so the request bypasses UploadService's encryptBundle.
 internal suspend fun enqueuePlaintextUpload(
     outboxSync: OutboxSync,
     optimisticWriter: OptimisticWriter,
     fileOps: FileOperationsProvider,
-    unstrippedRequest: UploadFileRequest,
+    request: UploadFileRequest,
     tag: String,
     optimisticFileId: Uuid? = null,
-    optimisticMetadata: UploadFileMetadata = unstrippedRequest.metadata,
+    optimisticMetadata: UploadFileMetadata = request.metadata,
     overPeer: Boolean = false,
 ) {
-    val request = unstrippedRequest.copy(payloads = unstrippedRequest.payloads.map { withMetadataStripped(it, fileOps) })
-    val enqueued = outboxSync.tryEnqueue(request, overPeer = overPeer)
+    val stripped = request.copy(payloads = request.payloads.map { withMetadataStripped(it, fileOps) })
+    val enqueued = outboxSync.tryEnqueue(stripped, overPeer = overPeer)
     if (!enqueued.enqueued) error("Failed to enqueue upload (outbox: $enqueued)")
 
     val payloadDescriptors = request.payloads.map { payload ->

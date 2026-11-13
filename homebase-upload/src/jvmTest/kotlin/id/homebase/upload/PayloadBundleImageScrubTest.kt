@@ -105,7 +105,7 @@ class PayloadBundleImageScrubTest {
     }
 
     @Test
-    fun aPublicUploadIsStrippedExactlyLikeAnEncryptedOne() = runTest {
+    fun aPublicUploadStagesTheScrubbedCopyDurably() = runTest {
         val provider = JvmFileOperationsProvider()
         val original = geotaggedJpeg()
         val src = provider.writeBytesToTempFile(original, "public_src_", ".jpg")

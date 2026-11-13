@@ -122,7 +122,7 @@ class FeedPostSenderService(
                 outboxSync = outboxSync,
                 optimisticWriter = optimisticWriter,
                 fileOps = fileOps,
-                unstrippedRequest = UploadFileRequest(
+                request = UploadFileRequest(
                     driveId = channelId,
                     keyHeader = keyHeader,
                     metadata = metadata,

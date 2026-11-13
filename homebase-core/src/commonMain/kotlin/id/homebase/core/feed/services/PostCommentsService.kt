@@ -420,7 +420,7 @@ class PostCommentsService(
                 outboxSync = outboxSync,
                 optimisticWriter = optimisticWriter,
                 fileOps = fileOps,
-                unstrippedRequest = UploadFileRequest(
+                request = UploadFileRequest(
                     driveId = uploadDrive,
                     keyHeader = keyHeader,
                     metadata = uploadMetadata,

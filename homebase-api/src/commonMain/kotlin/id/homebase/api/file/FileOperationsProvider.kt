@@ -101,7 +101,7 @@ interface FileOperationsProvider {
         promoteIntoStaging(path, getOutboxStagingDirectory())
 
     /**
-     * Write an ENCRYPTED, ready-to-transmit payload into the durable outbox
+     * Write a ready-to-transmit payload (encrypted, or a public upload's plaintext) into the durable outbox
      * staging dir ([getOutboxStagingDirectory]) and return its absolute path.
      * Each staged file is referenced by an outbox row and reaped only along the
      * outbox lifecycle — never by the CacheSweeper or OS cache reclaim.

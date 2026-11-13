@@ -110,20 +110,12 @@ object UploadImages {
     }
 }
 
-/**
- * [payload] with its image's EXIF/XMP removed when its app strips, for a public upload, which the outbox
- * sends from its path: the copy is staged durably. Encrypted uploads strip in the encryption step with the
- * same function (UPLOADS.md 3.4).
- */
+/** [payload] with its image's EXIF/XMP removed when its app strips. Staged durably: a public upload is sent from this path later. */
 suspend fun withMetadataStripped(payload: PayloadFile, fileOps: FileOperationsProvider): PayloadFile {
     if (!payload.stripMetadata) return payload
     val stripped = imageWithoutMetadata(payload.filePath, payload.contentType, fileOps) ?: return payload
     return payload.copy(filePath = fileOps.writeBytesToOutboxTempFile(stripped, "scrubbed_", ".img"))
 }
-
-/** A path to the image without its EXIF/XMP, in upload-temp, or [path] itself when there was nothing to strip. */
-internal suspend fun withoutImageMetadata(path: String, contentType: String, fileOps: FileOperationsProvider): String =
-    imageWithoutMetadata(path, contentType, fileOps)?.let { fileOps.writeBytesToTempFile(it, "scrubbed_", ".img") } ?: path
 
 /**
  * The image at [path] with its EXIF/XMP removed, or null when there was nothing to strip. The pixel data
@@ -142,7 +134,7 @@ private suspend fun imageWithoutMetadata(path: String, contentType: String, file
         Logger.w(throwable = t, tag = TAG) { "metadata scrub skipped — could not read $path" }
         return null
     }
-    val why = when (val outcome = ImageMetadataScrubber.scrubWithOutcome(original)) {
+    val why = when (val outcome = withContext(Dispatchers.Default) { ImageMetadataScrubber.scrubWithOutcome(original) }) {
         is ImageMetadataScrubber.Outcome.Scrubbed -> return outcome.bytes
         ImageMetadataScrubber.Outcome.NothingToStrip -> return null
         ImageMetadataScrubber.Outcome.UnsupportedFormat -> "isn't a format the scrubber handles"
