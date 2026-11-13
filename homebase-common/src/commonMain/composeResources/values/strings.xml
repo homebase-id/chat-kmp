@@ -2670,7 +2670,6 @@
     <string name="profile_card_colours_lemon">Lemon</string>
     <string name="profile_card_colours_purple">Purple</string>
     <string name="profile_card_colours_blue">Blue</string>
-    <string name="profile_card_change_design_to">Change design. Current design: %1$s</string>
     <string name="profile_card_option_accent_swatch">Accent %1$s</string>
     <string name="profile_card_option_display_font">Heading font</string>
     <string name="profile_card_option_text_font">Body font</string>
@@ -2681,6 +2680,8 @@
     <string name="profile_card_tool_style">Style</string>
     <string name="profile_card_tool_presets">Presets</string>
     <string name="profile_card_option_presets">Ready-made styles</string>
+    <string name="profile_card_tool_layout">Layout</string>
+    <string name="profile_card_option_layout">Card layout</string>
     <string name="profile_card_presentation_bare">Plain</string>
     <string name="profile_card_presentation_boxed">Boxed</string>
     <string name="profile_card_presentation_row">Rows</string>
