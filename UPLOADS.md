@@ -53,7 +53,7 @@ HomebaseFile (a chat message with 3 photos)
 
 - **Thumbnails belong to one payload** (at most 5) and are fetched by HomebaseFile, payload name and size. Their sizes are in the plain `thumbnails` list.
 - **`contentType`** is the payload data's format (`image/jpeg`, `image/webp`). **`kind`**, below, is how to show the payload: an `image/png` can be a photo, a sticker or a document.
-- **A view decrypts descriptor content only when it needs it:** to step up, open full screen, show info or save. Never to lay out or pick a thumbnail; those use the plain `thumbnails` and `previewThumbnail`. Decrypting and parsing one costs about 2.5 µs on a desktop JVM.
+- **Descriptor content is opened once, when the HomebaseFile arrives** (`ServerFile.asHomebaseFile`, where `appData` is decrypted), and stored readable in the encrypted local database, like the file's content. Views never decrypt it, and laying out or choosing a thumbnail doesn't read it at all: those use the plain `thumbnails` and `previewThumbnail`.
 
 ### The format
 
@@ -287,12 +287,12 @@ Filesync, WebDrop and the two photo APIs use the builder's rules (content type, 
 
 ## 6. Reading old descriptors
 
-`PayloadDescriptor.descriptorInfo()` decides in this order:
+`PayloadDescriptor.descriptorInfo()` decides in this order, once per payload:
 
 | `descriptorContent` | Read as |
 |---|---|
 | null | nothing |
-| JSON object with only `e` | encrypted (section 2): decrypt with the HomebaseFile's key, then read the result with this table |
+| JSON object with only `e` | sealed: opened when the HomebaseFile arrives (section 1), so readers never see this form |
 | JSON object with `"v": 1` | `DescriptorContent` |
 | old `VideoMetadata` with `isDescriptorContentComplete: false` | the full metadata, with the playlist, is in the payload its `key` names (`pld_desc<index>`) |
 | anything else | today's rules by content type: `AudioFile`, markdown preview, `VideoMetadata`, `ImageFile`, link and location arrays, or the raw string as a file name |
