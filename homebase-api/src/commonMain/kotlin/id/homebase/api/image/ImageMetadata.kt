@@ -50,6 +50,21 @@ suspend fun readImageMetadata(path: String, fileOps: FileOperationsProvider): Im
     }
 
 /**
+ * The upright size of the image at [path], the one its thumbnails will have, reading only the
+ * file's header wherever the format allows. Throws on a file no decoder can read.
+ */
+suspend fun readImageSize(path: String, fileOps: FileOperationsProvider): ImageSize =
+    withContext(Dispatchers.Default) {
+        openImageFile(path, fileOps)?.use { return@withContext it.displayedSize }
+        val header = fileOps.readFileHeaderBytes(path)
+        ImageHeaderParser.parse(header)?.let { stored ->
+            val turned = readJpegExifOrientation(header)?.let(::jpegOrientationSwapsDimensions) == true
+            return@withContext if (turned) ImageSize(stored.pixelHeight, stored.pixelWidth) else stored
+        }
+        openImageSource(fileOps.readFileBytes(path)).use { it.displayedSize }
+    }
+
+/**
  * Parse an EXIF DateTimeOriginal string ("YYYY:MM:DD HH:MM:SS") into a
  * [LocalDateTime]. Returns null on malformed input.
  *

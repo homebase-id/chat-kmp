@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -77,6 +79,8 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+
+private const val LOCAL_PREVIEW_MAX_EDGE_PX = 1080
 
 /**
  * Composable that renders a single media item based on the payload's content type.
@@ -271,8 +275,16 @@ fun MediaItem(
                         )
                     }
                 }
+                // A fixed size lets Coil draw its in-memory copy in the first frame when the real bubble replaces the placeholder.
+                val platformContext = LocalPlatformContext.current
+                val localImageRequest = remember(platformContext, imageLocalContext.localFilePath) {
+                    ImageRequest.Builder(platformContext)
+                        .data(imageLocalContext.localFilePath)
+                        .size(LOCAL_PREVIEW_MAX_EDGE_PX)
+                        .build()
+                }
                 AsyncImage(
-                    model = imageLocalContext.localFilePath,
+                    model = localImageRequest,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
                     modifier = imageModifier,
                     contentScale = imageContentScale,
