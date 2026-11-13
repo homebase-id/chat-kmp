@@ -57,26 +57,63 @@ HomebaseFile (a chat message with 3 photos)
 
 ### The format
 
+Short JSON keys, because every character counts against the server's 1,024 and is stored for every payload. The code keeps readable names through `@SerialName`; odin-js uses the same table.
+
 ```kotlin
 @Serializable
 data class DescriptorContent(
-    val v: Int = 1,
-    val kind: Kind,                    // how to show it
-    val name: String? = null,          // original file name; rules in 3.2
-    val original: Boolean? = null,     // image, video, sticker: payload data is the user's file, byte for byte
-    val pixelWidth: Int? = null,       // image, video, sticker: payload data's pixels, upright
-    val pixelHeight: Int? = null,
-    val quality: Quality? = null,      // image, video
-    val lengthSeconds: Int? = null,    // audio
-    val video: VideoMetadata? = null,  // video: today's VideoMetadata, unchanged
-    val appContent: String? = null,    // app-defined; only the app that wrote it reads it
+    @EncodeDefault @SerialName("v") val version: Int = 1,
+    @SerialName("k") val kind: Kind,
+    @SerialName("n") val name: String? = null,           // original file name; rules in 3.2
+    @SerialName("o") val original: Int? = null,          // 1: payload data is the user's file, byte for byte; 0: a copy we made
+    @SerialName("w") val pixelWidth: Int? = null,        // payload data's pixels, upright
+    @SerialName("h") val pixelHeight: Int? = null,
+    @SerialName("q") val quality: Quality? = null,
+    @SerialName("l") val lengthSeconds: Int? = null,     // audio
+    @SerialName("vd") val video: Video? = null,
+    @SerialName("x") val appContent: String? = null,     // app-defined; only the app that wrote it reads it
+    @SerialName("r") val restInPayload: String? = null,  // the full descriptor content is in this payload (too long)
 ) {
-    @Serializable enum class Kind { image, video, audio, file, sticker, app }
-    @Serializable enum class Quality { sd, hd, org }
+    @Serializable enum class Kind {
+        @SerialName("i") IMAGE, @SerialName("v") VIDEO, @SerialName("a") AUDIO,
+        @SerialName("f") FILE, @SerialName("s") STICKER, @SerialName("x") APP,
+    }
+    @Serializable enum class Quality { @SerialName("sd") SD, @SerialName("hd") HD, @SerialName("org") ORG }
+
+    @Serializable
+    data class Video(
+        @SerialName("d") val durationMs: Long,
+        @SerialName("c") val codec: String,              // "video/mp4", "video/mp2t"
+        @SerialName("seg") val segmented: Int? = null,   // 1: HLS
+        @SerialName("p") val hlsPlaylist: String? = null,
+        @SerialName("sz") val plainBytes: Long? = null,  // size before encryption; bytesWritten is after
+        @SerialName("bd") val bitDepth: Int? = null,
+        @SerialName("hdr") val hdr: Int? = null,         // 1: HDR
+        @SerialName("br") val bitrateBps: Long? = null,
+    )
 }
 ```
 
-The dog photo's payload, sent at Standard in a public post:
+| Key | Field | Used by | Values |
+|---|---|---|---|
+| `v` | version | all | `1`, always written |
+| `k` | kind: how to show it | all | `i` image, `v` video, `a` audio, `f` file, `s` sticker, `x` app |
+| `n` | original file name | all but `x` | ≤255 UTF-8 bytes, extension never cut |
+| `o` | payload data is the user's file | `i`, `v`, `s` | `1` or `0` |
+| `w`, `h` | payload data's pixels, upright | `i`, `v`, `s` | |
+| `q` | quality it was sent with | `i`, `v` | `sd`, `hd`, `org` |
+| `l` | length in seconds | `a` | |
+| `vd` | video details: `d` duration ms, `c` codec, `seg`, `p` HLS playlist, `sz` size before encryption, `bd` bit depth, `hdr`, `br` bitrate | `v` | width and height are `w`/`h` above, not repeated |
+| `x` | app content | `x` | app-defined string |
+| `r` | the full descriptor content is in this payload | any | a `pld_desc<index>` key |
+
+Encoding rules:
+
+- **Leave out** every field that doesn't apply; never write `null`.
+- **`v` is always written** (`@EncodeDefault`), so readers can tell this format from older ones.
+- **Too long** (over 1,024 characters plain, about 730 encrypted): the full descriptor content goes into its own encrypted payload `pld_desc<index>`, and `descriptorContent` keeps a stub with `v`, `k`, `n` and `r`. Today only long HLS playlists do this.
+
+The dog photo's payload record, sent at Standard in a public post. The outer keys are the server's and stay as they are:
 
 ```json
 {
@@ -85,16 +122,18 @@ The dog photo's payload, sent at Standard in a public post:
   "bytesWritten": 231120,
   "thumbnails": [{"pixelWidth": 240, "pixelHeight": 427}, {"pixelWidth": 480, "pixelHeight": 854}],
   "previewThumbnail": {"pixelWidth": 11, "pixelHeight": 20, "content": "UklG…"},
-  "descriptorContent": "{\"v\":1,\"kind\":\"image\",\"name\":\"PXL_20261107_083131163.jpg\",\"original\":false,\"pixelWidth\":1152,\"pixelHeight\":2048,\"quality\":\"sd\"}"
+  "descriptorContent": "{\"v\":1,\"k\":\"i\",\"n\":\"PXL_20261107_083131163.jpg\",\"o\":0,\"w\":1152,\"h\":2048,\"q\":\"sd\"}"
 }
 ```
 
+About 70 characters of descriptor content, against about 120 with long keys; about 145 encrypted, against 210.
+
 In an encrypted chat, `descriptorContent` holds the same JSON encrypted (section 2).
 
-- **`quality`** is always written for images and videos. `sd`, `hd` and `org` replace the old `standard`, `hd` and `high` in this format only; readers translate old `ImageFile` descriptors (section 6), and saved settings keep their codes.
-- **`appContent`** is for payloads that aren't user uploads but ride on a HomebaseFile: chat's link previews (`chat_links`: URL, title, description) and location previews (`chat_loc`: coordinates, address), and Vault notes' preview text. Each app keeps its own format inside it, with `kind = app`.
-- **No separate extension field.** The original extension is in `name`; the saved file's extension comes from `contentType`.
-- **Size:** the server allows 1,024 characters of descriptor content, about 730 once encrypted. Over that, the whole descriptor content moves to its own encrypted payload, `pld_desc<index>`, as today.
+- **`q`** is always written for images and videos. `sd`, `hd` and `org` replace the old `standard`, `hd` and `high` in this format only; readers translate old `ImageFile` descriptors (section 6), and saved settings keep their codes.
+- **`x` (app content)** is for payloads that aren't user uploads but ride on a HomebaseFile: chat's link previews (`chat_links`: URL, title, description) and location previews (`chat_loc`: coordinates, address), and Vault notes' preview text. Each app keeps its own format inside it.
+- **No extension field.** The original extension is in `n`; the saved file's extension comes from `contentType`.
+- **The server's keys stay long.** `key`, `contentType`, `bytesWritten`, `thumbnails`, `previewThumbnail` and the rest are odin-core's API, shared by every client.
 
 ## 2. Encrypted descriptor content
 
@@ -256,7 +295,7 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 
 | Test | Checks |
 |---|---|
-| `DescriptorContent` round trip | Every kind serialises and parses; unknown fields ignored; old quality codes translate |
+| `DescriptorContent` round trip | Every kind serialises to the short keys and parses back; absent fields aren't written; `v` always is; unknown keys ignored; old quality codes translate; a long playlist moves to `pld_desc` with an `r` stub |
 | Encrypted descriptor | Encrypt then decrypt with the HomebaseFile's key; fresh IV each time; over-length moves to `pld_desc` |
 | Old descriptors | Each row of section 6, with real stored examples, reads as before |
 | Name rules | Paths, NFC, `/` and NUL, a long name keeps its extension, an emoji at the cut, a 20-character "extension", blank |
