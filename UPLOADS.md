@@ -183,7 +183,7 @@ Filesync and WebDrop still store `application/octet-stream` payloads (they move 
 basename only (after the last "/" or "")      // never a path
 NFC
 control characters and < > : " / \ | ? *  →  "_"
-no leading dot (a hidden file), no trailing dot or space (Windows drops them)
+no trailing dot or space (Windows drops them); a leading dot stays, and a name of only dots becomes "file"
 a Windows device name (CON, PRN, AUX, NUL, COM0-9, LPT0-9, COM¹-³, LPT¹-³, CONIN$, CONOUT$) before any extension gets a leading "_"
 over 255 UTF-8 bytes: cut the part before the last dot, on a character boundary; never cut the extension
   (an "extension" over 32 characters isn't one: cut the whole name)
