@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationmedia
 
+import id.homebase.chat.services.builder.locationPreviews
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,11 +47,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationsettings.DiceRollItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
-import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.widget.ChatMediaFullScreenHost
 import id.homebase.chat.widget.SharedMediaHero
 import id.homebase.chat.widget.LoadingListItem
@@ -349,15 +348,7 @@ private fun LocationListTab(
     ) {
         items(items, key = { it.fileId.toString() }) { item ->
             val descriptor = remember(item.payload.descriptorContent) {
-                item.payload.appContent()?.let { content ->
-                    try {
-                        OdinSystemSerializer
-                            .deserialize<List<LocationPreviewDescriptor>>(content)
-                            .firstOrNull()
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                item.payload.locationPreviews()?.firstOrNull()
             }
             val payloadIv = remember(item.payload.iv) {
                 item.payload.iv?.bytes

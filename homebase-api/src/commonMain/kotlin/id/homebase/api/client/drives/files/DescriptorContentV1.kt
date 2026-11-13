@@ -2,20 +2,17 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.SecureByteArray
-import id.homebase.api.crypto.AesGcm
 import id.homebase.api.crypto.Base64Encoder
-import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.crypto.ZkLock
+import id.homebase.api.crypto.ZkOpenException
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
-import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
-/** The wire format of a payload's descriptor content, as UPLOADS.md section 1 specifies it. */
+// UPLOADS.md section 1.
 @Serializable
 data class DescriptorContentV1(
     @SerialName("v") val version: Int = VERSION,
@@ -44,11 +41,6 @@ data class DescriptorContentV1(
         @SerialName("sd") SD(MediaQuality.STANDARD),
         @SerialName("hd") HD(MediaQuality.HD),
         @SerialName("org") ORG(MediaQuality.ORIGINAL),
-        ;
-
-        companion object {
-            fun of(quality: MediaQuality): Quality = entries.first { it.mediaQuality == quality }
-        }
     }
 
     @Serializable
@@ -65,7 +57,6 @@ data class DescriptorContentV1(
 
     fun encode(): String = OdinSystemSerializer.serialize(this)
 
-    /** Today's video model, so the player reads both formats one way. [playlist] is the `p` payload's text. */
     fun toVideoMetadata(payloadKey: String, playlist: String?): VideoMetadata? {
         val video = video ?: return null
         val segmented = video.segmented == 1
@@ -88,58 +79,34 @@ data class DescriptorContentV1(
     companion object {
         const val VERSION = 1
 
-        /** Null for every older form: none of them is a JSON object carrying `v` and `k`. */
+        // No older form is a JSON object with a "k" key, so they all stop at the cheap checks.
         fun parseOrNull(content: String): DescriptorContentV1? {
-            if (!content.trimStart().startsWith("{") || !content.contains("\"k\"")) return null
-            return try {
-                OdinSystemSerializer.deserialize<DescriptorContentV1>(content).takeIf { it.version == VERSION }
-            } catch (e: Exception) {
-                null
-            }
+            if (!content.startsWith("{") || !content.contains("\"k\"")) return null
+            return runCatching { OdinSystemSerializer.deserialize<DescriptorContentV1>(content) }.getOrNull()?.takeIf { it.version == VERSION }
         }
     }
 }
 
-/** AES-GCM for the descriptor content of an encrypted HomebaseFile (UPLOADS.md section 2). */
+/** The descriptor content of an encrypted HomebaseFile: `{"e": base64(0x01 ‖ zkLock)}` (UPLOADS.md section 2). */
 object DescriptorContentSeal {
     private const val FORMAT: Byte = 1
-    private const val IV_LENGTH = 12
-    private const val WRAPPER_KEY = "e"
-    private val json = Json { ignoreUnknownKeys = false }
+    private val strict = Json
 
-    suspend fun seal(plaintext: String, key: SecureByteArray): String {
-        val iv = ByteArrayUtil.getRndByteArray(IV_LENGTH)
-        val sealed = byteArrayOf(FORMAT) + iv + AesGcm.encrypt(plaintext.encodeToByteArray(), key, iv)
-        return OdinSystemSerializer.serialize(mapOf(WRAPPER_KEY to Base64Encoder.encode(sealed)))
-    }
+    @Serializable
+    private class Sealed(val e: String)
 
-    /** The sealed bytes when [content] is a JSON object holding only `e`, else null. */
-    private fun sealedBytes(content: String): ByteArray? {
-        if (!content.trimStart().startsWith("{")) return null
-        val wrapper = try {
-            json.parseToJsonElement(content) as? JsonObject
-        } catch (e: Exception) {
-            null
-        } ?: return null
-        if (wrapper.keys != setOf(WRAPPER_KEY)) return null
+    suspend fun seal(plaintext: String, key: SecureByteArray): String =
+        strict.encodeToString(Sealed.serializer(), Sealed(Base64Encoder.encode(byteArrayOf(FORMAT) + ZkLock.lock(plaintext.encodeToByteArray(), key.unsafeBytes))))
+
+    /** [content] itself when it isn't sealed; its plaintext when it is; null when it doesn't open. */
+    suspend fun open(content: String, key: SecureByteArray): String? {
+        if (!content.startsWith("{\"e\":")) return content
+        val sealed = runCatching { Base64Encoder.decode(strict.decodeFromString(Sealed.serializer(), content).e) }.getOrNull()
+            ?: return content
+        if (sealed.firstOrNull() != FORMAT) return null
         return try {
-            Base64Encoder.decode(wrapper.getValue(WRAPPER_KEY).jsonPrimitive.content)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    fun isSealed(content: String): Boolean = sealedBytes(content) != null
-
-    /** The plaintext, or null when it isn't sealed or doesn't open (a wrong key or a changed byte). */
-    suspend fun openOrNull(content: String, key: SecureByteArray): String? {
-        val sealed = sealedBytes(content) ?: return null
-        if (sealed.size <= 1 + IV_LENGTH || sealed[0] != FORMAT) return null
-        return try {
-            AesGcm.decrypt(sealed.copyOfRange(1 + IV_LENGTH, sealed.size), key, sealed.copyOfRange(1, 1 + IV_LENGTH)).decodeToString()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
+            ZkLock.open(sealed.copyOfRange(1, sealed.size), key.unsafeBytes).decodeToString()
+        } catch (e: ZkOpenException) {
             Logger.w(tag = "DescriptorContentSeal") { "descriptor content doesn't open: ${e.message}" }
             null
         }

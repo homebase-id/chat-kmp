@@ -34,7 +34,12 @@ data class PayloadDescriptor(
         return key.equals(otherKey, ignoreCase = true)
     }
 
-    fun descriptorInfo(): DescriptorContent {
+    // Parsed once per payload: bubbles and list rows ask on every recomposition.
+    private val info: DescriptorContent by lazy(LazyThreadSafetyMode.PUBLICATION) { parseDescriptorContent() }
+
+    fun descriptorInfo(): DescriptorContent = info
+
+    private fun parseDescriptorContent(): DescriptorContent {
         descriptorContent?.let(DescriptorContentV1::parseOrNull)?.let { return it.toDescriptorContent() }
         return when {
             descriptorContent == null -> {
@@ -64,19 +69,7 @@ data class PayloadDescriptor(
 
             contentType?.startsWith("video/") == true -> {
                 try {
-                    val meta = OdinSystemSerializer.deserialize<VideoMetadata>(descriptorContent)
-                    DescriptorContent.VideoFile(
-                        durationMs = meta.duration.toLong().takeIf { it > 0 },
-                        isSegmented = meta.isSegmented,
-                        codec = meta.codec.takeIf { it.isNotBlank() },
-                        widthPx = meta.widthPx,
-                        heightPx = meta.heightPx,
-                        bitDepth = meta.bitDepth,
-                        isHdr = meta.isHdr,
-                        videoBitrateBps = meta.videoBitrateBps,
-                        fileSizeBytes = meta.fileSize,
-                        mimeType = meta.mimeType,
-                    )
+                    OdinSystemSerializer.deserialize<VideoMetadata>(descriptorContent).toVideoFile(name = null)
                 } catch (e: Exception) {
                     Logger.w("PayloadFile.descriptorInfo", e)
                     DescriptorContent.Empty
@@ -117,33 +110,16 @@ data class PayloadDescriptor(
     }
 
     private fun DescriptorContentV1.toDescriptorContent(): DescriptorContent = when (kind) {
-        DescriptorContentV1.Kind.IMAGE -> DescriptorContent.ImageFile(
+        DescriptorContentV1.Kind.IMAGE, DescriptorContentV1.Kind.STICKER -> DescriptorContent.ImageFile(
+            isSticker = kind == DescriptorContentV1.Kind.STICKER,
+            format = contentType,
             quality = quality?.mediaQuality,
             pixelWidth = pixelWidth,
             pixelHeight = pixelHeight,
             name = name,
             original = original?.let { it == 1 },
         )
-        DescriptorContentV1.Kind.STICKER -> DescriptorContent.ImageFile(
-            isSticker = true,
-            format = contentType,
-            pixelWidth = pixelWidth,
-            pixelHeight = pixelHeight,
-            original = original?.let { it == 1 },
-        )
-        DescriptorContentV1.Kind.VIDEO -> DescriptorContent.VideoFile(
-            durationMs = video?.durationMs?.takeIf { it > 0 },
-            isSegmented = video?.segmented == 1,
-            codec = video?.codec,
-            widthPx = pixelWidth ?: 0,
-            heightPx = pixelHeight ?: 0,
-            bitDepth = video?.bitDepth ?: 0,
-            isHdr = video?.hdr == 1,
-            videoBitrateBps = video?.bitrateBps ?: 0L,
-            fileSizeBytes = video?.plainBytes ?: 0L,
-            mimeType = contentType,
-            name = name,
-        )
+        DescriptorContentV1.Kind.VIDEO -> toVideoMetadata(key, playlist = null)?.toVideoFile(name) ?: DescriptorContent.Empty
         DescriptorContentV1.Kind.AUDIO -> DescriptorContent.AudioFile(name = name, lengthSeconds = lengthSeconds ?: 0)
         DescriptorContentV1.Kind.FILE -> DescriptorContent.File(name = name.orEmpty())
         // Link and location previews carry an image content type and render as images, as before.
@@ -154,7 +130,7 @@ data class PayloadDescriptor(
         }
     }
 
-    /** What an app wrote for itself: `x` in the current format, the whole string in older ones. */
+    // Link, location and note previews: `x` in the current format, the whole string in older ones.
     fun appContent(): String? = descriptorContent?.let { content ->
         val current = DescriptorContentV1.parseOrNull(content)
         if (current != null) current.appContent else content
@@ -191,6 +167,20 @@ data class PayloadDescriptor(
     }
 }
 
+private fun VideoMetadata.toVideoFile(name: String?) = DescriptorContent.VideoFile(
+    durationMs = duration.toLong().takeIf { it > 0 },
+    isSegmented = isSegmented,
+    codec = codec.takeIf { it.isNotBlank() },
+    widthPx = widthPx,
+    heightPx = heightPx,
+    bitDepth = bitDepth,
+    isHdr = isHdr,
+    videoBitrateBps = videoBitrateBps,
+    fileSizeBytes = fileSize,
+    mimeType = mimeType,
+    name = name,
+)
+
 fun List<PayloadDescriptor>.withoutInternalDescriptors(): List<PayloadDescriptor> =
     filterNot { it.isInternalDescriptor() }
 
@@ -224,7 +214,7 @@ sealed interface DescriptorContent {
         val pixelWidth: Int? = null,
         val pixelHeight: Int? = null,
         val name: String? = null,
-        /** Whether the payload data is the sender's file, byte for byte; null when not recorded. */
+        /** The payload data is the sender's file, byte for byte; null when not recorded. */
         val original: Boolean? = null,
     ) : DescriptorContent {
         /**

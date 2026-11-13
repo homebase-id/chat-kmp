@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.moments.widget
 
+import id.homebase.chat.services.builder.locationPreviews
+import id.homebase.chat.services.builder.linkPreviews
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -45,7 +47,6 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.toImageBitmap
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
@@ -53,8 +54,6 @@ import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.builder.LinkPreviewDescriptor
-import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
 import id.homebase.chat.widget.DocumentMediaItem
 import id.homebase.chat.widget.LinkPreviewCard
@@ -144,15 +143,7 @@ fun MomentMediaItem(
     when {
         payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
             val linkDescriptors = remember(payload.descriptorContent) {
-                payload.appContent()?.let { content ->
-                    try {
-                        OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
-                            content
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.linkPreviews()
             }
 
             val payloadIv = payload.iv?.bytes
@@ -179,15 +170,7 @@ fun MomentMediaItem(
 
         payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> {
             val locationDescriptors = remember(payload.descriptorContent) {
-                payload.appContent()?.let { content ->
-                    try {
-                        OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
-                            content
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.locationPreviews()
             }
 
             val payloadIv = payload.iv?.bytes

@@ -5,6 +5,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.client.drives.ServerFile
+import id.homebase.api.client.drives.files.DescriptorContentV1.Kind
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
@@ -13,7 +14,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -23,7 +23,7 @@ import kotlin.uuid.Uuid
 class DescriptorContentV1Test {
 
     private val photo = DescriptorContentV1(
-        kind = DescriptorContentV1.Kind.IMAGE,
+        kind = Kind.IMAGE,
         name = "PXL_20261107_083131163.jpg",
         original = 0,
         pixelWidth = 1152,
@@ -34,19 +34,24 @@ class DescriptorContentV1Test {
     private fun payload(contentType: String, descriptorContent: String?, key: String = "chat_web0") =
         PayloadDescriptor(key = key, contentType = contentType, descriptorContent = descriptorContent)
 
+    private fun v1(kind: Kind, name: String? = null, lengthSeconds: Int? = null, video: DescriptorContentV1.Video? = null, appContent: String? = null) =
+        DescriptorContentV1(kind = kind, name = name, lengthSeconds = lengthSeconds, video = video, appContent = appContent).encode()
+
+    private fun wrapped(sealed: String) = Base64.decode(sealed.substringAfter("\"e\":\"").substringBefore("\""))
+
     @Test
     fun itIsWrittenWithShortKeysAndNoNulls() {
         assertEquals(
             """{"v":1,"k":"i","n":"PXL_20261107_083131163.jpg","o":0,"w":1152,"h":2048,"q":"sd"}""",
             photo.encode(),
         )
-        assertEquals("""{"v":1,"k":"f"}""", DescriptorContentV1(kind = DescriptorContentV1.Kind.FILE).encode())
+        assertEquals("""{"v":1,"k":"f"}""", v1(Kind.FILE))
     }
 
     @Test
     fun itReadsBackEveryField() {
         val video = DescriptorContentV1(
-            kind = DescriptorContentV1.Kind.VIDEO,
+            kind = Kind.VIDEO,
             name = "clip.mov",
             original = 0,
             pixelWidth = 1280,
@@ -73,33 +78,33 @@ class DescriptorContentV1Test {
     @Test
     fun theParserReadsEachKindIntoTheTypesTheAppUses() {
         val image = payload("image/webp", photo.encode()).descriptorInfo() as DescriptorContent.ImageFile
-        assertEquals(DescriptorContent.ImageFile(quality = MediaQuality.STANDARD, pixelWidth = 1152, pixelHeight = 2048, name = "PXL_20261107_083131163.jpg", original = false), image)
+        assertEquals(DescriptorContent.ImageFile(format = "image/webp", quality = MediaQuality.STANDARD, pixelWidth = 1152, pixelHeight = 2048, name = "PXL_20261107_083131163.jpg", original = false), image)
 
-        val sticker = payload("image/png", DescriptorContentV1(kind = DescriptorContentV1.Kind.STICKER).encode()).descriptorInfo()
+        val sticker = payload("image/png", v1(Kind.STICKER)).descriptorInfo()
         assertEquals(DescriptorContent.ImageFile(isSticker = true, format = "image/png"), sticker)
 
-        val audio = payload("audio/mp4", DescriptorContentV1(kind = DescriptorContentV1.Kind.AUDIO, name = "memo.m4a", lengthSeconds = 7).encode()).descriptorInfo()
+        val audio = payload("audio/mp4", v1(Kind.AUDIO, name = "memo.m4a", lengthSeconds = 7)).descriptorInfo()
         assertEquals(DescriptorContent.AudioFile(name = "memo.m4a", lengthSeconds = 7), audio)
 
-        val file = payload("application/pdf", DescriptorContentV1(kind = DescriptorContentV1.Kind.FILE, name = "contract.pdf").encode()).descriptorInfo()
+        val file = payload("application/pdf", v1(Kind.FILE, name = "contract.pdf")).descriptorInfo()
         assertEquals(DescriptorContent.File(name = "contract.pdf"), file)
     }
 
     @Test
     fun namesComeFromTheNameFieldAndStickersStayNeutral() {
         assertEquals("PXL_20261107_083131163.jpg", payload("image/webp", photo.encode()).filename())
-        assertEquals("StickerFile.png", payload("image/png", DescriptorContentV1(kind = DescriptorContentV1.Kind.STICKER, name = "IMG_9.png").encode()).filename())
-        assertEquals("clip.mov", payload("video/mp4", DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, name = "clip.mov", video = DescriptorContentV1.Video(1, "video/mp4")).encode()).filename())
+        assertEquals("StickerFile.png", payload("image/png", v1(Kind.STICKER, name = "IMG_9.png")).filename())
+        assertEquals("clip.mov", payload("video/mp4", v1(Kind.VIDEO, name = "clip.mov", video = DescriptorContentV1.Video(1, "video/mp4"))).filename())
         assertNull(payload("image/webp", photo.copy(name = null).encode()).filename())
     }
 
     @Test
     fun appContentIsTheXFieldOrTheWholeOlderString() {
         val links = """[{"url":"https://example.com","hasImage":false,"description":"","title":"Example"}]"""
-        assertEquals(links, payload("image/webp", DescriptorContentV1(kind = DescriptorContentV1.Kind.APP, appContent = links).encode(), "chat_links").appContent())
+        assertEquals(links, payload("image/webp", v1(Kind.APP, appContent = links), "chat_links").appContent())
         assertEquals(links, payload("image/webp", links, "chat_links").appContent())
         assertNull(payload("image/webp", photo.encode()).appContent())
-        assertEquals(DescriptorContent.NoteFile("# Groceries"), payload("text/markdown", DescriptorContentV1(kind = DescriptorContentV1.Kind.APP, appContent = "# Groceries").encode()).descriptorInfo())
+        assertEquals(DescriptorContent.NoteFile("# Groceries"), payload("text/markdown", v1(Kind.APP, appContent = "# Groceries")).descriptorInfo())
     }
 
     @Test
@@ -107,21 +112,19 @@ class DescriptorContentV1Test {
         val key = KeyHeader.newRandom16().aesKey
         val sealed = DescriptorContentSeal.seal(photo.encode(), key)
 
-        assertTrue(DescriptorContentSeal.isSealed(sealed))
         assertTrue(sealed.startsWith("""{"e":"""))
-        assertEquals(photo.encode(), DescriptorContentSeal.openOrNull(sealed, key))
-        assertNull(DescriptorContentSeal.openOrNull(sealed, KeyHeader.newRandom16().aesKey))
+        assertEquals(photo.encode(), DescriptorContentSeal.open(sealed, key))
+        assertNull(DescriptorContentSeal.open(sealed, KeyHeader.newRandom16().aesKey))
     }
 
     @Test
     fun aChangedByteFailsToOpen() = runTest {
         val key = KeyHeader.newRandom16().aesKey
         val sealed = DescriptorContentSeal.seal(photo.encode(), key)
-        val bytes = Base64.decode(sealed.substringAfter("\"e\":\"").substringBefore("\""))
+        val bytes = wrapped(sealed)
         bytes[bytes.size - 20] = (bytes[bytes.size - 20].toInt() xor 1).toByte()
-        val tampered = """{"e":"${Base64.encode(bytes)}"}"""
 
-        assertNull(DescriptorContentSeal.openOrNull(tampered, key))
+        assertNull(DescriptorContentSeal.open("""{"e":"${Base64.encode(bytes)}"}""", key))
     }
 
     @Test
@@ -131,9 +134,10 @@ class DescriptorContentV1Test {
     }
 
     @Test
-    fun olderDescriptorContentIsNotSealed() {
-        listOf("IMG_1234.pdf", "e", """{"e":1,"f":2}""", """{"isSticker":true}""", photo.encode()).forEach {
-            assertFalse(DescriptorContentSeal.isSealed(it), it)
+    fun anythingNotSealedComesBackAsItIs() = runTest {
+        val key = KeyHeader.newRandom16().aesKey
+        listOf("IMG_1234.pdf", "e", """{"e":1,"f":2}""", """{"e":"not base64!"}""", """{"isSticker":true}""", photo.encode()).forEach {
+            assertEquals(it, DescriptorContentSeal.open(it, key), it)
         }
     }
 
@@ -174,7 +178,7 @@ class DescriptorContentV1Test {
     @Test
     fun aVideoInTheCurrentFormatReadsItsPlaylistPayload() = runTest {
         val video = DescriptorContentV1(
-            kind = DescriptorContentV1.Kind.VIDEO,
+            kind = Kind.VIDEO,
             pixelWidth = 1280,
             pixelHeight = 720,
             video = DescriptorContentV1.Video(durationMs = 9_000, codec = "video/mp2t", segmented = 1, playlistKey = "pls_0000", plainBytes = 1_000),

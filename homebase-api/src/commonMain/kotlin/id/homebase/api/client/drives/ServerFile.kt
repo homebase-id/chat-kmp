@@ -196,18 +196,15 @@ fun FileMetadata.withDecryptedContent(bytes: ByteArray): FileMetadata =
         isEncrypted = false
     )
 
-// Opened once here, like appData, so every reader sees plain descriptor content (UPLOADS.md section 2).
-private suspend fun FileMetadata.openDescriptorContents(keyHeader: KeyHeader): FileMetadata {
-    val sealed = payloads?.filter { p -> p.descriptorContent?.let(DescriptorContentSeal::isSealed) == true }
-    if (sealed.isNullOrEmpty()) return this
-    return copy(
-        payloads = payloads.map { payload ->
-            val content = payload.descriptorContent
-            if (payload !in sealed || content == null) payload
-            else payload.copy(descriptorContent = DescriptorContentSeal.openOrNull(content, keyHeader.aesKey))
+// Opened once, like appData (UPLOADS.md section 2).
+private suspend fun FileMetadata.openDescriptorContents(keyHeader: KeyHeader): FileMetadata =
+    copy(
+        payloads = payloads?.map { p ->
+            val content = p.descriptorContent ?: return@map p
+            val opened = DescriptorContentSeal.open(content, keyHeader.aesKey)
+            if (opened == content) p else p.copy(descriptorContent = opened)
         },
     )
-}
 
 private suspend fun FileMetadata.decryptAppData(
     keyHeader: KeyHeader
