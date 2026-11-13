@@ -122,6 +122,8 @@ internal class IosCardHost(pageUrl: String) : CardHostBase(pageUrl) {
         setBackgroundColor(UIColor.clearColor)
         scrollView.setBackgroundColor(UIColor.clearColor)
         scrollView.setShowsVerticalScrollIndicator(false)
+        // The webview is transparent, so a bounce shows whatever is under the dialog.
+        scrollView.setBounces(false)
         scrollView.contentInsetAdjustmentBehavior =
             UIScrollViewContentInsetAdjustmentBehavior.UIScrollViewContentInsetAdjustmentNever
         navigationDelegate = navigationPolicy

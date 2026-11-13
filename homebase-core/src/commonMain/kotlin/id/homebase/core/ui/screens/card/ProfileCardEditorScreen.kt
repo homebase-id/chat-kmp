@@ -549,10 +549,7 @@ internal fun ProfileCardEditorContent(
                 heroPulse.animateTo(HERO_PULSE_SCALE, pulseIn)
                 heroPulse.animateTo(1f, pulseOut)
             }
-            val previewEdge by cardEdgeColor(
-                uiState.cardBottomArgb ?: uiState.overrides.palette?.ground?.let(::hexToArgb),
-                uiState.design,
-            )
+            val previewEdge by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val panel: @Composable (Modifier, Shape) -> Unit = { modifier, shape ->
                 EditorPanel(
                     uiState = uiState,

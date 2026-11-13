@@ -109,8 +109,10 @@ data class ProfileCardUiState(
         get() = selectedCard?.let { !it.isDefault || (it.audience == CardAudience.Public && hasLocalPublicDesign) } ?: false
     val isUnsavedCard: Boolean get() = selectedCard != null && !hasStoredCard
     val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
-    val cardTopArgb: Int? get() = edges[design]?.topArgb
-    val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
+    internal val edgeKey: String get() = "${audienceKey(selectedAudience)}/$design"
+    private val paletteGround: Int? get() = overrides.palette?.ground?.let(::hexToArgb)
+    val cardTopArgb: Int? get() = edges[edgeKey]?.topArgb ?: paletteGround
+    val cardBottomArgb: Int? get() = edges[edgeKey]?.bottomArgb ?: paletteGround
     val canShare: Boolean get() = isCardReady && !isExporting
     val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy && !isCircleReadOnly
 }
@@ -180,10 +182,12 @@ class DefaultProfileCardSource(
 ) : ProfileCardSource {
     override suspend fun odinId(): OdinId = ownerSessionRepository.user.filterNotNull().first().odinId
 
-    override suspend fun attributes(): List<ProfileAttribute> = profileRepository.loadAttributes()
+    // The api client parses responses on the caller's dispatcher, which here is Main.
+    override suspend fun attributes(): List<ProfileAttribute> =
+        withContext(Dispatchers.Default) { profileRepository.loadAttributes() }
 
     override suspend fun siteDefaults(odinId: OdinId): CardSiteDefaults =
-        publicIdentityRepository.loadCardSiteDefaults(odinId)
+        withContext(Dispatchers.Default) { publicIdentityRepository.loadCardSiteDefaults(odinId) }
 
     override suspend fun posts(odinId: OdinId): List<CardPostEntry> =
         withContext(Dispatchers.Default) { loadCardPosts(odinId.domainName, postDrives) }
@@ -216,10 +220,10 @@ class DefaultProfileCardSource(
     override val supportsCircleCards: Boolean get() = cardRepository.supportsCircleCards
 
     override suspend fun circles(): List<CardCircle> =
-        contactsCircles(connectionProvider.getCirclesWithMembers())
+        withContext(Dispatchers.Default) { contactsCircles(connectionProvider.getCirclesWithMembers()) }
 
     override suspend fun serverCircleIds(): Set<String> =
-        connectionProvider.getCirclesWithMembers().map { it.circle.id }.toSet()
+        withContext(Dispatchers.Default) { connectionProvider.getCirclesWithMembers().map { it.circle.id }.toSet() }
 
     override suspend fun saveCircleCard(card: ProfileCard) = cardRepository.saveCircle(card)
 
@@ -445,6 +449,8 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(selectedAudience = audience, previewDesign = null, previewOverrides = null) }
         designSwitchJob = viewModelScope.launch {
             if (!_uiState.value.isExporting) coverOutgoingDesign()
+            // One webview shows every card, so the next one would open at the previous one's scroll.
+            _host.value?.scrollToTop()
             render()
         }
     }
@@ -876,7 +882,7 @@ class ProfileCardViewModel(
     }
 
     private fun onEdges(edges: CardEvent.Edges) {
-        _uiState.update { it.copy(edges = it.edges + (it.design to edges)) }
+        _uiState.update { it.copy(edges = it.edges + (it.edgeKey to edges)) }
     }
 
     // Per attached view: every render the page reports is awaited onto the screen, then its edges are probed.
