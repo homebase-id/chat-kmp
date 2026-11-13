@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.filesync
 import id.homebase.api.util.toNfc
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.filesync.FilesyncRoleFolder
+import id.homebase.core.util.splitExtension
 import id.homebase.core.util.trimToUtf8Boundary
 import kotlin.uuid.Uuid
 
@@ -56,12 +57,7 @@ internal object FilesyncNames {
     private fun clean(name: String): String =
         name.toNfc().replace('/', '_').replace('\u0000', '_').takeIf(::isValid) ?: FALLBACK
 
-    fun split(name: String): Pair<String, String> {
-        val dot = name.lastIndexOf('.')
-        // A leading dot is a hidden file's name, not an extension; an oversized "extension" is kept whole in the stem.
-        if (dot <= 0 || name.length - dot > 32) return name to ""
-        return name.substring(0, dot) to name.substring(dot)
-    }
+    fun split(name: String): Pair<String, String> = splitExtension(name)
 
     // Only the stem is cut: cutting the " (n)" suffix could turn a numbered name back into the taken one.
     private fun fit(stem: String, suffix: String, extension: String): String {

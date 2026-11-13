@@ -7,40 +7,38 @@ private const val MAX_EXTENSION_CHARS = 32
 private const val RESERVED = "<>:\"/\\|?*"
 private val WINDOWS_DEVICES = setOf("CON", "PRN", "AUX", "NUL") + (1..9).flatMap { listOf("COM$it", "LPT$it") }
 
-/**
- * A file name that every platform we save to accepts, Windows being the strictest, and that can't leave
- * its folder: one path segment, no control or reserved characters, not a Windows device name, no
- * leading dot (a hidden file) and no trailing dot or space (Windows drops them), NFC, and at most 255
- * UTF-8 bytes, cut from the stem so the extension survives. [extension], when given, replaces the
- * name's own. [fallback] stands in for a name with nothing left.
- */
-fun safeFileName(raw: String?, fallback: String = "file", extension: String? = null): String {
-    val name = lastSegment(raw)
-    val (stem, ext) = if (extension != null) name to clean(extension).let { if (it.isEmpty()) "" else ".$it" } else split(name)
-    return fit(stem.ifEmpty { fallback }, ext, fallback)
-}
+/** One path segment that every platform we save to takes (Windows is the strictest); [extension] is appended. */
+fun safeFileName(raw: String?, fallback: String = "file", extension: String? = null): String =
+    build(lastSegment(raw), fallback, extension)
 
-/** [safeFileName] of a payload saved to the device: the sender's name, else [fallbackStem], with an extension from [contentType] when the name has none. */
+/** A payload saved to the device: the sender's name, with an extension from [contentType] when it has none. */
 fun saveFileName(name: String?, fallbackStem: String, contentType: String?): String {
-    if (split(lastSegment(name)).second.isNotEmpty()) return safeFileName(name, fallbackStem)
-    val extension = contentType?.let { extensionForMimeType(it) }
-        ?: contentType?.substringAfter("/")?.takeIf { it != "octet-stream" && '.' !in it && '+' !in it }
-        ?: "bin"
-    return safeFileName(name, fallbackStem, extension)
+    val segment = lastSegment(name)
+    val extension = if (splitExtension(segment).second.isEmpty()) extensionForContentType(contentType) else null
+    return build(segment, fallbackStem, extension)
 }
 
-private fun lastSegment(raw: String?): String = clean(raw.orEmpty().substringAfterLast('/').substringAfterLast('\\'))
-
-private fun clean(name: String): String =
-    name.toNfc().map { if (it.code < 0x20 || it.code == 0x7f || it in RESERVED) '_' else it }.joinToString("")
-        .trim().trimStart('.').trimEnd('.', ' ')
-
-private fun split(name: String): Pair<String, String> {
+/** Stem and extension (with its dot). A leading dot names a hidden file, and an overlong "extension" stays in the stem. */
+fun splitExtension(name: String): Pair<String, String> {
     val dot = name.lastIndexOf('.')
     if (dot <= 0 || name.length - dot > MAX_EXTENSION_CHARS) return name to ""
     return name.substring(0, dot) to name.substring(dot)
 }
 
+private fun build(segment: String, fallback: String, extension: String?): String {
+    if (extension == null) return splitExtension(segment).let { (stem, ext) -> fit(stem, ext, fallback) }
+    val ext = clean(extension)
+    return fit(segment, if (ext.isEmpty()) "" else ".$ext", fallback)
+}
+
+private fun lastSegment(raw: String?): String = clean(raw.orEmpty().substringAfterLast('/').substringAfterLast('\\'))
+
+private fun clean(name: String): String =
+    buildString(name.length) {
+        for (c in name.toNfc()) append(if (c.code < 0x20 || c.code == 0x7f || c in RESERVED) '_' else c)
+    }.trim().trimStart('.').trimEnd('.', ' ')
+
+// The cut comes from the stem so the extension survives.
 private fun fit(stem: String, ext: String, fallback: String): String {
     val budget = (MAX_BYTES - ext.encodeToByteArray().size).coerceAtLeast(1)
     val bytes = stem.encodeToByteArray()

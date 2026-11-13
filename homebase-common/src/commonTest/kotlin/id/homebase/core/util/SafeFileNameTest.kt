@@ -85,10 +85,19 @@ class SafeFileNameTest {
     }
 
     @Test
-    fun aGivenExtensionReplacesTheNamesOwn() {
+    fun aGivenExtensionIsAppended() {
         assertEquals("IMG_1234.HEIC.mp4", safeFileName("IMG_1234.HEIC", extension = "mp4"))
         assertEquals("clip.mp4", safeFileName("clip", extension = "mp4"))
         assertEquals("clip.m_u8", safeFileName("clip", extension = "m/u8"))
+    }
+
+    @Test
+    fun aContentTypeLendsOnlyAPlainExtension() {
+        assertEquals("pdf", extensionForContentType("application/pdf"))
+        assertEquals("x-foo", extensionForContentType("application/x-foo"))
+        listOf(null, "", "image", "image/../../x", "a/b/c", "application/octet-stream", "image/svg+x", "text/a.b").forEach {
+            assertEquals("bin", extensionForContentType(it), it)
+        }
     }
 
     @Test

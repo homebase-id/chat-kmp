@@ -20,8 +20,7 @@ class JvmAlbumSaver : AlbumSaver {
                 "Downloads"
             }
             val destDir = File(System.getProperty("user.home"), folder).apply { mkdirs() }
-            val safeName = safeFileName(suggestedName)
-            File(file.toString()).copyTo(File(destDir, safeName), overwrite = true)
+            File(file.toString()).copyTo(File(destDir, safeFileName(suggestedName)), overwrite = true)
             onSuccess(folder)
         } catch (e: Exception) {
             onError(e)

@@ -1,6 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
-import id.homebase.core.util.saveFileName
+import id.homebase.core.util.extensionForContentType
 import id.homebase.core.util.safeFileName
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,7 +17,6 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.VideoMetadata
-import id.homebase.core.util.extensionForMimeType
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.ConversationStream
@@ -37,6 +36,7 @@ import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import id.homebase.core.settings.UserPreferences
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.core.util.saveFileName
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -715,9 +715,7 @@ class MomentDetailViewModel(
                     }
                     remuxed.first
                 } else {
-                    val extension = payload.contentType?.let { extensionForMimeType(it) }
-                        ?: payload.contentType?.substringAfter("/")
-                        ?: "bin"
+                    val extension = extensionForContentType(payload.contentType)
                     val exported = payloadDownloadService.exportToTemp(
                         driveId = moment.driveId,
                         fileId = moment.fileId,

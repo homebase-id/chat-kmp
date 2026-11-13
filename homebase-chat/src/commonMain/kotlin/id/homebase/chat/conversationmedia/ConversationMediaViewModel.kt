@@ -1,6 +1,5 @@
 package id.homebase.chat.conversationmedia
 
-import id.homebase.core.util.saveFileName
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -21,7 +20,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.navigation.Route
-import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.util.saveFileName
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf

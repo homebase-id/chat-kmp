@@ -1,8 +1,9 @@
 package id.homebase.chat.conversationlist
 
-import id.homebase.core.util.saveFileName
+import id.homebase.core.util.extensionForContentType
 import id.homebase.core.util.safeFileName
 import id.homebase.api.file.FileTooLargeForMemoryException
+import id.homebase.core.util.saveFileName
 import kotlinx.coroutines.CancellationException
 import id.homebase.chat.widget.preview.chatChipPreviewKind
 import id.homebase.chat.widget.preview.decryptedCopyName
@@ -16,7 +17,6 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
-import id.homebase.core.util.extensionForMimeType
 import id.homebase.core.util.formatMediumDate
 import id.homebase.resources.chat_error_copy_image
 import id.homebase.resources.chat_image_copied
@@ -42,7 +42,6 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.chat.agentui.agentUiImagePayloads
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.util.extensionForMimeType
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_convert_video
 import id.homebase.resources.chat_error_download_file
@@ -97,9 +96,7 @@ internal class MediaDownloadHandler(
                 val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
                     )).bytes
-                val extension = payload.contentType?.let { extensionForMimeType(it) }
-                    ?: payload.contentType?.substringAfter("/")
-                    ?: "bin"
+                val extension = extensionForContentType(payload.contentType)
                 // Cleartext copy of an end-to-end-encrypted Homebase payload —
                 // STREAM-decrypted straight into the share_outbound subdir (#845:
                 // bounded RAM for any payload size, LRU untouched; the old
@@ -145,7 +142,7 @@ internal class MediaDownloadHandler(
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
                 val contentType = payload.contentType ?: return@launch
                 val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
-                val extension = extensionForMimeType(contentType) ?: contentType.substringAfter("/")
+                val extension = extensionForContentType(contentType)
                 val tempPath = chatMessageActionService.streamPayloadToUploadTemp(
                     message.fileId,
                     action.payloadKey,

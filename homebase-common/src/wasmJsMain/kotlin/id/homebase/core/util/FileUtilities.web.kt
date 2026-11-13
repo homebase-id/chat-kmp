@@ -29,7 +29,7 @@ actual fun getUriHandler(): FileSystemHandler {
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
         ) {
-            runCatching { downloadWebFile(file, suggestedName) }
+            runCatching { downloadWebFile(file, safeFileName(suggestedName)) }
                 .onSuccess { onSuccess(DOWNLOADS_LOCATION) }
                 .onFailure(onError)
         }

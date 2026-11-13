@@ -1,10 +1,11 @@
 package id.homebase.feed.share
 
-import id.homebase.core.util.safeFileName
 import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import co.touchlab.kermit.Logger
+import id.homebase.core.util.safeFileName
+import id.homebase.core.util.splitExtension
 import java.io.File
 
 /**
@@ -79,11 +80,10 @@ object SharedContentExtractor {
 
             val rawName = queryDisplayName(uri, contentResolver)
             val mimeType = contentResolver.getType(uri) ?: fallbackMimeType
-            val extension = rawName?.substringAfterLast('.', "")
-                ?.takeIf { it.isNotEmpty() && it != rawName }
-                ?: mimeTypeToExtension(mimeType)
             val safeName = rawName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
-            val uniqueName = safeFileName("${safeName?.substringBeforeLast('.') ?: "share"}_${System.currentTimeMillis()}", extension = extension)
+            val (stem, ownExtension) = splitExtension(safeName ?: "share")
+            val extension = ownExtension.removePrefix(".").ifEmpty { mimeTypeToExtension(mimeType) }
+            val uniqueName = safeFileName("${stem}_${System.currentTimeMillis()}", extension = extension)
             val tempFile = File(tempDir, uniqueName)
 
             contentResolver.openInputStream(uri)?.use { input ->

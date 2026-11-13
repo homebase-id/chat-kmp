@@ -91,7 +91,7 @@ internal class JvmFileSystemHandler(
         javax.swing.SwingUtilities.invokeLater {
             val dest: java.io.File
             try {
-                dest = chooseSaveTarget(suggestedName) ?: return@invokeLater
+                dest = chooseSaveTarget(safeFileName(suggestedName)) ?: return@invokeLater
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "Failed to show save dialog: ${e.message}" }
                 onError(e)

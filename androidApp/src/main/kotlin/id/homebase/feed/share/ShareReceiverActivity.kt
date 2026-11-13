@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import id.homebase.core.util.safeFileName
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
 import id.homebase.resources.contact_share_prompt_add
@@ -907,7 +908,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         val shareId = Uuid.random()
         val names = try {
             attachments.mapIndexed { index, attachment ->
-                val originalName = (attachment.displayName ?: attachment.filePath).substringAfterLast('/')
+                val originalName = safeFileName(attachment.displayName ?: attachment.filePath)
                 val name = "$shareId/$index/$originalName"
                 val target = java.io.File(shareContentProcessor.resolveFilePath(name))
                 target.parentFile?.mkdirs()

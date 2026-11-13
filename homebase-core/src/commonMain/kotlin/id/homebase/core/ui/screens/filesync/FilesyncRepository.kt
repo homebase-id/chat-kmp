@@ -19,8 +19,8 @@ import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.filesync.FilesyncProtocol
+import id.homebase.core.util.safeFileName
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.delay
@@ -241,7 +241,7 @@ class FilesyncRepository(
      */
     suspend fun writeToCache(name: String, toShareOutbound: Boolean, write: suspend (out: suspend (ByteArray) -> Unit) -> Unit): String {
         val folder = if (toShareOutbound) fileOperationsProvider.createShareOutboundPath("") else fileOperationsProvider.createUploadTempPath("fs_", "")
-        val path = "$folder/${cacheFileName(name)}"
+        val path = "$folder/${safeFileName(name)}"
         try {
             // Its own producer, so the bytes reach the disk as they come.
             fileOperationsProvider.writeDownload(path, channelFlow { write { send(it) } })
@@ -250,19 +250,6 @@ class FilesyncRepository(
             throw t
         }
         return path
-    }
-
-    // The name comes from any desktop OS; what no file system takes, or a name too long for any, is replaced.
-    private fun cacheFileName(name: String): String {
-        val clean = buildString { name.forEach { append(if (it in "/\\:*?\"<>|" || it < ' ') '_' else it) } }.trim().trimEnd('.')
-        return when {
-            clean.isEmpty() -> "file"
-            clean.encodeToByteArray().size <= MAX_NAME_BYTES -> clean
-            else -> {
-                val (stem, ext) = FilesyncNames.split(clean)
-                stem.truncateToCodePoints(MAX_NAME_BYTES / 4 - ext.length) + ext
-            }
-        }
     }
 
     fun sizeOf(path: String): Long = fileOperationsProvider.getFileSize(path)
@@ -274,7 +261,6 @@ class FilesyncRepository(
 
     private companion object {
         const val PAGE_SIZE = 1000
-        const val MAX_NAME_BYTES = 255
         const val RECENT_LIMIT = 100
     }
 }
