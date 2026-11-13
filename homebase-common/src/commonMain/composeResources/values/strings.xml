@@ -2632,6 +2632,14 @@
     <string name="profile_card_step_design_title">Choose a design</string>
     <string name="profile_card_option_default">Default</string>
     <string name="profile_card_option_accent">Accent colour</string>
+    <string name="profile_card_option_background">Background pattern</string>
+    <string name="profile_card_tool_background">Background</string>
+    <string name="profile_card_background_circles">Circles</string>
+    <string name="profile_card_background_waves">Waves</string>
+    <string name="profile_card_background_dots">Dots</string>
+    <string name="profile_card_background_blobs">Blobs</string>
+    <string name="profile_card_background_lines">Lines</string>
+    <string name="profile_card_background_none">No pattern</string>
     <string name="profile_card_option_colours">Colours</string>
     <string name="profile_card_option_colours_swatch">%1$s colours</string>
     <string name="profile_card_colours_midnight">Midnight</string>

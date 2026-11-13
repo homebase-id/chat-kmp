@@ -4,6 +4,7 @@ import id.homebase.api.util.compareStringUuId
 
 enum class CardOption {
     COLOURS,
+    BACKGROUND,
     ACCENT,
     PORTRAIT_SHAPE,
     SOCIALS_STYLE,
@@ -64,7 +65,7 @@ object CardDesignSpecs {
     private val specs = listOf(
         CardDesignSpec(
             CardDesign.POSTER,
-            setOf(CardOption.COLOURS, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER, CardOption.BLOCK_STYLE),
+            setOf(CardOption.COLOURS, CardOption.BACKGROUND, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER, CardOption.BLOCK_STYLE),
             presetOrder = listOf("chat", "moments", "links"),
             schemes = listOf(
                 CardColourScheme("midnight", "#0F1626", "#EEF2FA", "#B4BCCB", "#4A505E", "#EEF2FA", listOf("#7FD4E8", "#8B7CF6", "#4FD1C5", "#F2B84B")),
@@ -186,6 +187,7 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
             ?.map { if (has(CardOption.BLOCK_STYLE)) it else it.copy(presentation = null) },
         socials = socials?.takeIf { has(CardOption.SOCIALS_STYLE) },
         fields = fields,
+        background = background?.takeIf { has(CardOption.BACKGROUND) && it in CardBackgrounds.variantsFor(design) },
     )
 }
 

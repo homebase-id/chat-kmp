@@ -22,6 +22,7 @@ data class CardOverrides(
     val blocks: List<CardBlock>? = null,
     val socials: String? = null,
     val fields: CardFields? = null,
+    val background: String? = null,
 ) {
     fun isEmpty(): Boolean = this == EMPTY
 
@@ -59,6 +60,7 @@ data class CardOverrides(
                 },
                 socials = json.strictString("socials"),
                 fields = json.field("fields") { o -> CardFields(order = o.texts("order"), hidden = o.texts("hidden"), hiddenSections = o.texts("hiddenSections")) },
+                background = CardBackgrounds.known(json.strictString("background")),
             )
 
         private fun <T> JsonObject.field(key: String, read: (JsonObject) -> T): T? =

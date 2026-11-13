@@ -100,6 +100,7 @@ class CardOverridesTest {
 
     private fun fieldOf(option: CardOption): String = when (option) {
         CardOption.COLOURS -> "palette.ground"
+        CardOption.BACKGROUND -> "background"
         CardOption.ACCENT -> "palette.accent"
         CardOption.DISPLAY_FONT -> "type.display"
         CardOption.TEXT_FONT -> "type.text"

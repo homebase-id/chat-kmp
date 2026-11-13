@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.material.icons.outlined.Texture
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -172,6 +173,8 @@ import id.homebase.resources.profile_card_font_montserrat_alt
 import id.homebase.resources.profile_card_font_newsreader
 import id.homebase.resources.profile_card_font_space_mono
 import id.homebase.resources.profile_card_option_accent
+import id.homebase.resources.profile_card_option_background
+import id.homebase.resources.profile_card_tool_background
 import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
 import id.homebase.resources.profile_card_option_block_style
@@ -292,6 +295,7 @@ private fun OptionControl(
 ) {
     when (option) {
         CardOption.COLOURS -> SchemeRow(design, overrides.palette, enabled) { onOption(option, it) }
+        CardOption.BACKGROUND -> BackgroundRow(design, overrides, enabled) { onOption(option, it) }
         CardOption.ACCENT -> SwatchRow(design, overrides.valueOf(CardOption.COLOURS), overrides.valueOf(option), enabled) { onOption(option, it) }
         CardOption.BLOCK_ORDER -> BlockOrderRow(overrides.blockOrder().filter { it in orderable }, enabled, chipHeight) {
             onBlockOrder(overrides.withShownBlockOrder(orderable, it).blockOrder())
@@ -584,6 +588,27 @@ private fun InkDot(ink: Color, size: Dp = INK_DOT_SIZE, edge: Color = Color.Tran
     Box(Modifier.size(size).background(ink, CircleShape).border(1.dp, edge, CircleShape))
 }
 
+@Composable
+private fun BackgroundRow(design: String, overrides: CardOverrides, enabled: Boolean, onSelect: (String?) -> Unit) {
+    val scheme = CardDesignSpecs.schemeFor(design, overrides.palette?.ground)
+    val ground = Color(scheme?.let { hexToArgb(it.ground) } ?: CardDesign.baseArgb(design))
+    val ink = Color(scheme?.let { hexToArgb(it.ink) } ?: CardDesign.inkArgb(design))
+    val selected = overrides.background
+    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
+        (listOf<String?>(null) + CardBackgrounds.variantsFor(design)).forEach { id ->
+            BackgroundTile(
+                id = id,
+                selected = selected == id,
+                enabled = enabled,
+                ground = ground,
+                ink = ink,
+                description = stringResource(id?.let(::backgroundLabel) ?: MR.string.profile_card_option_default),
+                onClick = { onSelect(id) },
+            )
+        }
+    }
+}
+
 // Accents are curated per ground and vanish on the app's own surface, so each is shown on the scheme it is meant for.
 @Composable
 private fun SwatchRow(design: String, colours: String?, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
@@ -833,6 +858,7 @@ private val PRESETS_TOOL = PanelTool("presets", Icons.Outlined.Layers, MR.string
 
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
+    CardOption.BACKGROUND -> MR.string.profile_card_option_background
     CardOption.ACCENT -> MR.string.profile_card_option_accent
     CardOption.DISPLAY_FONT -> MR.string.profile_card_option_display_font
     CardOption.TEXT_FONT -> MR.string.profile_card_option_text_font
@@ -844,6 +870,7 @@ private fun optionLabel(option: CardOption): StringResource = when (option) {
 
 private fun toolLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
+    CardOption.BACKGROUND -> MR.string.profile_card_tool_background
     CardOption.ACCENT -> MR.string.profile_card_tool_accent
     CardOption.DISPLAY_FONT -> MR.string.profile_card_tool_heading
     CardOption.TEXT_FONT -> MR.string.profile_card_tool_body
@@ -855,6 +882,7 @@ private fun toolLabel(option: CardOption): StringResource = when (option) {
 
 private fun optionIcon(option: CardOption): ImageVector = when (option) {
     CardOption.COLOURS -> Icons.Outlined.Palette
+    CardOption.BACKGROUND -> Icons.Outlined.Texture
     CardOption.ACCENT -> Icons.Outlined.Colorize
     CardOption.DISPLAY_FONT -> Icons.Outlined.Title
     CardOption.TEXT_FONT -> Icons.Outlined.FormatSize
