@@ -25,9 +25,18 @@ internal suspend fun enqueuePlaintextUpload(
     optimisticMetadata: UploadFileMetadata = request.metadata,
     overPeer: Boolean = false,
 ) {
-    val stripped = request.copy(payloads = request.payloads.map { withMetadataStripped(it, fileOps) })
-    val enqueued = outboxSync.tryEnqueue(stripped, overPeer = overPeer)
-    if (!enqueued.enqueued) error("Failed to enqueue upload (outbox: $enqueued)")
+    // Staged copies belong to the outbox row once it exists; until then they are ours to delete.
+    val staged = mutableListOf<String>()
+    try {
+        val payloads = request.payloads.map { payload ->
+            withMetadataStripped(payload, fileOps, staged = true).also { if (it.filePath != payload.filePath) staged += it.filePath }
+        }
+        val enqueued = outboxSync.tryEnqueue(request.copy(payloads = payloads), overPeer = overPeer)
+        if (!enqueued.enqueued) error("Failed to enqueue upload (outbox: $enqueued)")
+    } catch (e: Throwable) {
+        staged.forEach { runCatching { fileOps.deleteTempFile(it) } }
+        throw e
+    }
 
     val payloadDescriptors = request.payloads.map { payload ->
         PayloadDescriptor(

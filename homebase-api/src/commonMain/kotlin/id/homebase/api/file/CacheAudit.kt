@@ -222,7 +222,7 @@ object CacheAudit {
         name.startsWith("hbvid_") -> "decrypted video playback scratch"
         name == "coil3_disk_cache" -> "orphan Coil disk cache"
         name == UPLOAD_TEMP_DIR_NAME -> "raw pre-encryption upload temps (disposable — swept every startup)"
-        name == OUTBOX_TEMP_DIR_NAME -> "encrypted outbox payload temps (kept until sent/dropped to protect pending sends)"
+        name == OUTBOX_TEMP_DIR_NAME -> "outbox payload temps (encrypted, or public plaintext) (kept until sent/dropped to protect pending sends)"
         name == "homebase-payloads" || name == "homebase-thumbs" ||
             name == "homebase-public-profiles" || name == "homebase-public-images" ->
             "legacy kache dir (pre-v2)"

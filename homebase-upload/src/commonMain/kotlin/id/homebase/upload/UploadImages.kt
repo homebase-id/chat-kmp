@@ -110,11 +110,20 @@ object UploadImages {
     }
 }
 
-/** [payload] with its image's EXIF/XMP removed when its app strips. Staged durably: a public upload is sent from this path later. */
-suspend fun withMetadataStripped(payload: PayloadFile, fileOps: FileOperationsProvider): PayloadFile {
+/**
+ * [payload] with its image's EXIF/XMP removed when its app strips. [staged]: the copy goes to outbox staging,
+ * for a public upload the outbox sends from this path later; otherwise to upload-temp, which every start clears,
+ * for the encryption step, which deletes it once encrypted.
+ */
+suspend fun withMetadataStripped(payload: PayloadFile, fileOps: FileOperationsProvider, staged: Boolean): PayloadFile {
     if (!payload.stripMetadata) return payload
     val stripped = imageWithoutMetadata(payload.filePath, payload.contentType, fileOps) ?: return payload
-    return payload.copy(filePath = fileOps.writeBytesToOutboxTempFile(stripped, "scrubbed_", ".img"))
+    val path = if (staged) {
+        fileOps.writeBytesToOutboxTempFile(stripped, "scrubbed_", ".img")
+    } else {
+        fileOps.writeBytesToTempFile(stripped, "scrubbed_", ".img")
+    }
+    return payload.copy(filePath = path)
 }
 
 /**

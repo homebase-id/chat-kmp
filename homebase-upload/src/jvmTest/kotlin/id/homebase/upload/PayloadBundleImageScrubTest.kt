@@ -109,7 +109,7 @@ class PayloadBundleImageScrubTest {
         val provider = JvmFileOperationsProvider()
         val original = geotaggedJpeg()
         val src = provider.writeBytesToTempFile(original, "public_src_", ".jpg")
-        val public = withMetadataStripped(PayloadFile(key = "pst_mdi0", filePath = src, contentType = "image/jpeg"), provider)
+        val public = withMetadataStripped(PayloadFile(key = "pst_mdi0", filePath = src, contentType = "image/jpeg"), provider, staged = true)
         try {
             val sent = File(public.filePath).readBytes()
             assertContentEquals(ImageMetadataScrubber.scrub(original), sent, "the same function as the encryption step")
@@ -128,9 +128,9 @@ class PayloadBundleImageScrubTest {
         val src = provider.writeBytesToTempFile(geotaggedJpeg(), "public_keep_", ".jpg")
         try {
             val kept = PayloadFile(key = "p0", filePath = src, contentType = "image/jpeg", stripMetadata = false)
-            assertEquals(kept, withMetadataStripped(kept, provider))
+            assertEquals(kept, withMetadataStripped(kept, provider, staged = true))
             val pdf = PayloadFile(key = "p1", filePath = src, contentType = "application/pdf")
-            assertEquals(pdf, withMetadataStripped(pdf, provider))
+            assertEquals(pdf, withMetadataStripped(pdf, provider, staged = true))
         } finally {
             provider.deleteTempFile(src)
         }
@@ -177,6 +177,7 @@ class PayloadBundleImageScrubTest {
         val svc = service(provider)
         val key = KeyHeader.newRandom16()
         val src = provider.writeBytesToTempFile(geotaggedJpeg(), "scrub_src_", ".jpg")
+        val started = System.currentTimeMillis() - 1_000
         var staged: String? = null
         try {
             staged = svc.encryptBundle(
@@ -186,10 +187,9 @@ class PayloadBundleImageScrubTest {
                 this,
             ).payloads.single().filePath
 
-            val leftovers = File(provider.getCacheDirectory())
-                .listFiles { f -> f.name.startsWith("scrubbed_") }
-                ?.toList()
-                .orEmpty()
+            // Wherever a copy could land: upload-temp under the cache, or outbox staging.
+            val leftovers = listOf(provider.getCacheDirectory(), provider.getOutboxStagingDirectory())
+                .flatMap { File(it).walkTopDown().filter { f -> f.isFile && f.name.startsWith("scrubbed_") && f.lastModified() >= started }.toList() }
             assertTrue(leftovers.isEmpty(), "scrubbed temp must be reaped, found: $leftovers")
         } finally {
             provider.deleteTempFile(src)
