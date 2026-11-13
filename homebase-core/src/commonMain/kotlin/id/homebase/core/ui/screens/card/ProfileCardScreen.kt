@@ -3,27 +3,32 @@
 package id.homebase.core.ui.screens.card
 
 import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.selected
+import kotlinx.coroutines.Job
+import kotlin.math.exp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.rememberUpdatedState
-import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.profile_card_add_card
 import id.homebase.resources.profile_card_edit_content
-import id.homebase.resources.menu_back
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.heightIn
@@ -206,9 +211,25 @@ internal val WIDE_SHEET_MAX_WIDTH = 480.dp
 // Past the site's 768 CSS px breakpoint, so the wide page shows, but no wider than it reads well.
 private val DESKTOP_PAGE_MAX_WIDTH = 1024.dp
 
+private val TOP_BAND_HEIGHT = 56.dp
+private val BAND_FADE_HEIGHT = 16.dp
 // The share FAB plus its vertical margins.
 private val FAB_BAND_HEIGHT = 88.dp
+private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
+private val MAX_SHEET_PULL = 32.dp
+private val DISMISS_DRAG_DISTANCE = 96.dp
+private const val DISMISS_FLING_VELOCITY = 1500f
+private val MENU_MIN_WIDTH = 248.dp
+private val MENU_MAX_WIDTH = 320.dp
+private val MENU_INSET = 4.dp
+private val MENU_ITEM_CORNER = 12.dp
+private val MENU_SELECTED_CORNER = 20.dp
+private val MENU_ITEM_SHAPE = RoundedCornerShape(MENU_ITEM_CORNER)
+private val MINI_CARD_WIDTH = 26.dp
+private val MINI_CARD_CORNER = 5.dp
+private val MINI_CARD_SELECTED_CORNER = 9.dp
+private val ZeroCorner = CornerSize(0.dp)
 private const val UNSAVED_LABEL_ALPHA = 0.8f
 private const val SKELETON_ALPHA_LOW = 0.35f
 private const val SKELETON_ALPHA_HIGH = 0.8f
@@ -285,6 +306,7 @@ private fun ProfileCardPager(
     val host by viewModel.host.collectAsStateWithLifecycle()
     val tiles by viewModel.introTiles.collectAsStateWithLifecycle()
     val cover by viewModel.cover.collectAsStateWithLifecycle()
+    val motion = MaterialTheme.motionScheme
     val snackbarHostState = remember { SnackbarHostState() }
     val fileSystemHandler = getUriHandler()
     // Desktop and web have no share sheet; saving is their way to get the image out.
@@ -328,6 +350,18 @@ private fun ProfileCardPager(
         }
     }
 
+    val density = LocalDensity.current
+    val maxPull = with(density) { MAX_SHEET_PULL.toPx() }
+    val dismissDistance = with(density) { DISMISS_DRAG_DISTANCE.toPx() }
+    var rawPull by remember { mutableFloatStateOf(0f) }
+    // While the sheet moves, a still of the card stands in for the native view, which may not follow a Compose transform.
+    var coverHeld by remember { mutableStateOf(false) }
+    val holdCover: suspend () -> Unit = {
+        if (!coverHeld) {
+            viewModel.captureCover()
+            coverHeld = true
+        }
+    }
     val scope = rememberCoroutineScope()
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { scope.launch { viewModel.captureCover() } }
     var leaving by remember { mutableStateOf(false) }
@@ -335,13 +369,30 @@ private fun ProfileCardPager(
         if (!leaving) {
             leaving = true
             scope.launch {
-                viewModel.captureCover()
+                holdCover()
                 onBack()
             }
         }
     }
-    // System back would otherwise pop straight past captureCover(), leaving the native card view behind on iOS/Desktop.
+    // System back would otherwise pop straight past holdCover(), leaving the native card view behind on iOS/Desktop.
     BackHandler { leave() }
+    val dragState = rememberDraggableState { delta -> rawPull = (rawPull + delta).coerceAtLeast(0f) }
+    var dragCapture by remember { mutableStateOf<Job?>(null) }
+    val dismissDrag = Modifier.draggable(
+        state = dragState,
+        orientation = Orientation.Vertical,
+        onDragStarted = { dragCapture = scope.launch { holdCover() } },
+        onDragStopped = { velocity ->
+            // Start and stop run as separate coroutines: a capture landing after the release would re-cover the live card.
+            dragCapture?.join()
+            if (rawPull > dismissDistance || velocity > DISMISS_FLING_VELOCITY) {
+                leave()
+            } else {
+                animate(rawPull, 0f, animationSpec = motion.fastSpatialSpec()) { value, _ -> rawPull = value }
+                coverHeld = false
+            }
+        },
+    )
 
     val cards = uiState.cards
     LaunchedEffect(cards.isNotEmpty()) {
@@ -370,75 +421,47 @@ private fun ProfileCardPager(
         snapshotFlow { pagerState.isScrollInProgress }.collect { if (it) viewModel.captureCover() }
     }
 
-    var selectorOpen by rememberSaveable { mutableStateOf(false) }
     var confirmPublicShare by rememberSaveable { mutableStateOf(false) }
     var explainReadOnly by remember { mutableStateOf(false) }
 
     // Inside a pane the card keeps its card-width sheet; a whole wide window gets the site's wide page, which desktop caps at a reading width.
     val inPane = onToggleFullWindow != null && !fullWindow
     val wide = isExpandedLayout() && (onToggleFullWindow == null || fullWindow)
-    val pageWidth = when {
+    // In a pane the card is the pane's whole body, so it takes the pane's corners.
+    val sheetShape = if (inPane) MaterialTheme.shapes.extraLarge else cardSheetShape()
+    val sheetWidth = when {
         inPane -> Modifier
         !wide -> Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH)
         isDesktopOrWeb() -> Modifier.widthIn(max = DESKTOP_PAGE_MAX_WIDTH)
         else -> Modifier
     }
-    val fabBand = !chromeFloatsOverCard
     val reservedBottom = FAB_BAND_HEIGHT + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    LaunchedEffect(host, reservedBottom, fabBand) { if (!fabBand) host?.reserveBottom(reservedBottom) }
+    LaunchedEffect(host, reservedBottom) { if (!cardBands.bottom) host?.reserveBottom(reservedBottom) }
 
     CardExpressiveTheme {
+        val bands = cardBands
+        val topColor by cardEdgeColor(uiState.cardTopArgb, uiState.design)
         val bottomColor by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
-        val share: @Composable () -> Unit = {
-            ShareFab(
-                isExporting = uiState.isExporting,
-                canShare = uiState.canShare,
-                saveInsteadOfShare = saveInsteadOfShare,
-                onClick = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
-            )
-        }
-        val snackbar: @Composable () -> Unit = {
-            SnackbarHost(hostState = snackbarHostState) { data ->
-                ReportOverlay()
-                Snackbar(data, Modifier.padding(8.dp))
-            }
-        }
-        Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
-            TopAppBar(
-                title = { AudienceTitle(uiState, onClick = { selectorOpen = true }.takeIf { cards.isNotEmpty() }) },
-                navigationIcon = {
-                    val backLabel = stringResource(MR.string.menu_back)
-                    WithTooltip(backLabel) {
-                        IconButton(onClick = leave) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = backLabel)
-                        }
-                    }
-                },
-                actions = {
-                    onToggleFullWindow?.let { toggle ->
-                        val label = stringResource(if (fullWindow) MR.string.collapse else MR.string.expand)
-                        WithTooltip(label) {
-                            IconButton(onClick = toggle) {
-                                Icon(
-                                    imageVector = if (fullWindow) Icons.Filled.CloseFullscreen else Icons.Filled.OpenInFull,
-                                    contentDescription = label,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        }
-                    }
-                    nfc?.let { CardNfcAction(it) }
-                    EditDesignMenu(
-                        readOnly = uiState.isCircleReadOnly,
-                        onExplainReadOnly = { explainReadOnly = true },
-                        onEdit = onEdit,
-                        onChangeDesign = onChangeDesign,
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-            )
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                Box(modifier = Modifier.then(pageWidth).fillMaxSize()) {
+        // Under a band the sheet's clip rounds the top; the native view rounds only the corners it reaches.
+        val cardShape = if (bands.top) sheetShape.copy(topStart = ZeroCorner, topEnd = ZeroCorner) else sheetShape
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .then(sheetWidth)
+                    .fillMaxSize()
+                    .then(if (inPane) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars.only(WindowInsetsSides.Top)).padding(top = 8.dp))
+                    // Rubber-banded: the sheet gives a little, and letting go past the threshold hands over to the real pop transition.
+                    .graphicsLayer { translationY = maxPull * (1f - exp(-rawPull / maxPull)) }
+                    .clip(sheetShape)
+                    .drawBehind { drawRect(bottomColor) },
+            ) {
+                CardBandsLayout(
+                    bands = bands,
+                    topColor = { topColor },
+                    bottomColor = { bottomColor },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
                     when {
                         uiState.loadFailed && cards.isEmpty() -> CardErrorPlate(
                             message = MR.string.profile_edit_load_failed,
@@ -449,12 +472,12 @@ private fun ProfileCardPager(
                         else -> HorizontalPager(
                             state = pagerState,
                             key = { cards.getOrNull(it)?.let { card -> audienceKey(card.audience) } ?: it },
-                            userScrollEnabled = !uiState.isExporting,
+                            userScrollEnabled = !uiState.isExporting && !coverHeld,
                             modifier = Modifier.fillMaxSize(),
                         ) { page ->
                             val card = cards[page]
                             val selected = card.audience == uiState.selectedAudience
-                            val moving = pagerState.isScrollInProgress || leaving
+                            val moving = pagerState.isScrollInProgress || leaving || coverHeld
                             val shownCover = cover?.image
                             when {
                                 selected && !moving -> CardSurface(
@@ -465,6 +488,7 @@ private fun ProfileCardPager(
                                     paintWhileAttached = viewModel::paintWhileAttached,
                                     cover = shownCover,
                                     modifier = Modifier.fillMaxSize(),
+                                    shape = cardShape,
                                 )
                                 selected && shownCover != null -> Image(
                                     bitmap = shownCover,
@@ -476,48 +500,47 @@ private fun ProfileCardPager(
                             }
                         }
                     }
-                    if (!fabBand) {
-                        AboveCard(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .semantics {
-                                    isTraversalGroup = true
-                                    traversalIndex = -1f
-                                }
-                                .navigationBarsPadding()
-                                .padding(16.dp),
-                        ) {
-                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                snackbar()
-                                share()
-                            }
+                }
+                SheetTopChrome(
+                    uiState = uiState,
+                    onClose = leave,
+                    onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
+                    onNewCard = onNewCard.takeIf { uiState.circleCardsSupported },
+                    onEdit = onEdit,
+                    onChangeDesign = onChangeDesign,
+                    onExplainReadOnly = { explainReadOnly = true },
+                    extraActions = { nfc?.let { CardChromePill { CardNfcAction(it) } } },
+                    fullWindow = fullWindow,
+                    onToggleFullWindow = onToggleFullWindow,
+                    // Over a band the whole strip drags; floating over the card only the handle does, so the card keeps its taps.
+                    bandDrag = if (bands.top) dismissDrag else Modifier,
+                    handleDrag = if (bands.top) Modifier else dismissDrag,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+                AboveCard(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .semantics {
+                            isTraversalGroup = true
+                            traversalIndex = -1f
                         }
+                        .navigationBarsPadding()
+                        .padding(16.dp),
+                ) {
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SnackbarHost(hostState = snackbarHostState) { data ->
+                            ReportOverlay()
+                            Snackbar(data, Modifier.padding(8.dp))
+                        }
+                        ShareFab(
+                            isExporting = uiState.isExporting,
+                            canShare = uiState.canShare,
+                            saveInsteadOfShare = saveInsteadOfShare,
+                            onClick = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
+                        )
                     }
                 }
             }
-            if (fabBand) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .drawBehind { drawRect(bottomColor) }
-                        .navigationBarsPadding()
-                        .height(FAB_BAND_HEIGHT)
-                        .padding(horizontal = 16.dp),
-                ) {
-                    Box(Modifier.weight(1f)) { snackbar() }
-                    share()
-                }
-            }
-        }
-        if (selectorOpen) {
-            AudienceSheet(
-                uiState = uiState,
-                onDismiss = { selectorOpen = false },
-                onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
-                onNewCard = onNewCard.takeIf { uiState.circleCardsSupported },
-            )
         }
         val circle = uiState.selectedAudience as? CardAudience.Circle
         if (confirmPublicShare && circle != null) {
@@ -552,14 +575,240 @@ private fun ShareFab(isExporting: Boolean, canShare: Boolean, saveInsteadOfShare
     }
 }
 
+// Native bands in the page's colour where a design has content under the chrome; the page has no safe-area support.
+private data class CardBands(val top: Boolean, val bottom: Boolean)
+
+// Web paints the card's frame over any Compose chrome, so only there does the chrome need bands of its own.
+private val cardBands = CardBands(top = !chromeFloatsOverCard, bottom = !chromeFloatsOverCard)
+
+@Composable
+private fun CardBandsLayout(
+    bands: CardBands,
+    topColor: () -> Color,
+    bottomColor: () -> Color,
+    modifier: Modifier = Modifier,
+    card: @Composable BoxScope.() -> Unit,
+) {
+    Column(modifier = modifier) {
+        if (bands.top) {
+            Spacer(modifier = Modifier.fillMaxWidth().height(TOP_BAND_HEIGHT).drawBehind { drawRect(topColor()) })
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            card()
+            if (bands.top) {
+                // Softens the band's straight edge where the page's own artwork runs up into it.
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(BAND_FADE_HEIGHT)
+                        .drawBehind {
+                            val color = topColor()
+                            drawRect(Brush.verticalGradient(listOf(color, color.copy(alpha = 0f))))
+                        },
+                )
+            }
+        }
+        if (bands.bottom) {
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind { drawRect(bottomColor()) }
+                    .navigationBarsPadding()
+                    .height(FAB_BAND_HEIGHT),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetTopChrome(
+    uiState: ProfileCardUiState,
+    onClose: () -> Unit,
+    onSelect: (Int) -> Unit,
+    onNewCard: (() -> Unit)?,
+    onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
+    onExplainReadOnly: () -> Unit,
+    extraActions: @Composable () -> Unit,
+    bandDrag: Modifier,
+    handleDrag: Modifier,
+    modifier: Modifier = Modifier,
+    fullWindow: Boolean = false,
+    onToggleFullWindow: (() -> Unit)? = null,
+) {
+    val gap = with(LocalDensity.current) { CHROME_GAP.roundToPx() }
+    val edge = with(LocalDensity.current) { 8.dp.roundToPx() }
+    val closeLabel = stringResource(MR.string.close)
+    // The handle is the way out, so it always shows and the audience pill ellipsises before reaching it.
+    Layout(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(TOP_BAND_HEIGHT)
+            .then(bandDrag)
+            .semantics {
+                isTraversalGroup = true
+                traversalIndex = -1f
+            },
+        content = {
+            AboveCard(Modifier) { AudiencePopover(uiState, onSelect, onNewCard) }
+            AboveCard(Modifier) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    onToggleFullWindow?.let { toggle ->
+                        val label = stringResource(if (fullWindow) MR.string.collapse else MR.string.expand)
+                        WithTooltip(label) {
+                            ChromeIconButton(onClick = toggle) {
+                                Icon(
+                                    imageVector = if (fullWindow) Icons.Filled.CloseFullscreen else Icons.Filled.OpenInFull,
+                                    contentDescription = label,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+                    extraActions()
+                    EditDesignMenu(
+                        readOnly = uiState.isCircleReadOnly,
+                        onExplainReadOnly = onExplainReadOnly,
+                        onEdit = onEdit,
+                        onChangeDesign = onChangeDesign,
+                    )
+                }
+            }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(width = 64.dp, height = 48.dp)
+                    .then(handleDrag)
+                    .clearAndSetSemantics {
+                        contentDescription = closeLabel
+                        role = Role.Button
+                        onClick { onClose(); true }
+                    },
+            ) {
+                AboveCard(Modifier) {
+                    Surface(
+                        shape = CircleShape,
+                        color = chromePillColor(),
+                        shadowElevation = 2.dp,
+                        modifier = Modifier.size(width = 36.dp, height = 6.dp),
+                    ) {}
+                }
+            }
+        },
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val actions = measurables[1].measure(loose)
+        val handle = measurables[2].measure(loose)
+        val handleStart = (width - handle.width) / 2
+        val badgeRoom = minOf(width - edge * 2 - actions.width - gap, handleStart - edge - gap).coerceAtLeast(0)
+        val badge = measurables[0].measure(loose.copy(maxWidth = badgeRoom))
+        layout(width, height) {
+            badge.placeRelative(edge, (height - badge.height) / 2)
+            actions.placeRelative(width - edge - actions.width, (height - actions.height) / 2)
+            handle.placeRelative(handleStart, (height - handle.height) / 2)
+        }
+    }
+}
+
+@Composable
+private fun AudiencePopover(uiState: ProfileCardUiState, onSelect: (Int) -> Unit, onNewCard: (() -> Unit)?) {
+    var expanded by remember { mutableStateOf(false) }
+    val cards = uiState.cards
+    Box {
+        AudienceTitle(uiState, onClick = { expanded = true }.takeIf { cards.isNotEmpty() })
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            shape = MaterialTheme.shapes.extraLarge,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            shadowElevation = 3.dp,
+            modifier = Modifier.widthIn(min = MENU_MIN_WIDTH, max = MENU_MAX_WIDTH).padding(horizontal = MENU_INSET),
+        ) {
+            ReportOverlay()
+            cards.forEachIndexed { index, card ->
+                CardMenuItem(
+                    card = card,
+                    emoji = uiState.circles.emojiOf(card.audience),
+                    selected = card.audience == uiState.selectedAudience,
+                    onClick = {
+                        expanded = false
+                        onSelect(index)
+                    },
+                )
+            }
+            onNewCard?.let { addCard ->
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.profile_card_add_card), style = MaterialTheme.typography.labelLarge) },
+                    leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        addCard()
+                    },
+                    modifier = Modifier.clip(MENU_ITEM_SHAPE),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardMenuItem(card: ProfileCard, emoji: String?, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
+    val fill by animateColorAsState(if (selected) audienceContainer(card.audience) else Color.Transparent, spec)
+    val ink = if (selected) onAudienceContainer(card.audience) else colors.onSurface
+    val corner by animateDpAsState(if (selected) MENU_SELECTED_CORNER else MENU_ITEM_CORNER, MaterialTheme.motionScheme.fastSpatialSpec())
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = audienceLabel(card.audience),
+                style = if (selected) MaterialTheme.typography.labelLargeEmphasized else MaterialTheme.typography.labelLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        leadingIcon = { AudienceGlyph(audienceIcon(card.audience), emoji, 24.dp) },
+        trailingIcon = { CardSwatch(card = card, selected = selected) },
+        colors = MenuDefaults.itemColors(textColor = ink, leadingIconColor = ink, trailingIconColor = ink),
+        onClick = onClick,
+        modifier = Modifier
+            .padding(vertical = 1.dp)
+            .clip(RoundedCornerShape(corner))
+            .background(fill)
+            .semantics { this.selected = selected },
+    )
+}
+
+@Composable
+private fun CardSwatch(card: ProfileCard, selected: Boolean) {
+    val palette = card.overrides.palette
+    val corner by animateDpAsState(if (selected) MINI_CARD_SELECTED_CORNER else MINI_CARD_CORNER, MaterialTheme.motionScheme.fastSpatialSpec())
+    val shape = RoundedCornerShape(corner)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (selected) Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+        CardDesignThumbnail(
+            design = card.design,
+            groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
+            inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
+            modifier = Modifier
+                .size(width = MINI_CARD_WIDTH, height = MINI_CARD_WIDTH / CARD_THUMB_ASPECT)
+                .clip(shape)
+                .border(1.dp, MaterialTheme.colorScheme.outline, shape),
+        )
+    }
+}
+
 @Composable
 private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, onEdit: () -> Unit, onChangeDesign: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val label = stringResource(MR.string.edit)
     Box {
         WithTooltip(label) {
-            IconButton(onClick = { if (readOnly) onExplainReadOnly() else open = true }) {
-                Icon(Icons.Outlined.Edit, contentDescription = label)
+            ChromeIconButton(onClick = { if (readOnly) onExplainReadOnly() else open = true }) {
+                Icon(Icons.Outlined.Edit, contentDescription = label, modifier = Modifier.size(20.dp))
             }
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -579,35 +828,33 @@ private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, onE
 }
 
 @Composable
-private fun AudienceSheet(
-    uiState: ProfileCardUiState,
-    onDismiss: () -> Unit,
-    onSelect: (Int) -> Unit,
-    onNewCard: (() -> Unit)?,
-) {
-    AdaptiveSheet(onDismiss = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
-            uiState.cards.forEachIndexed { index, card ->
-                ListItem(
-                    headlineContent = { Text(audienceLabel(card.audience), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingContent = { AudienceGlyph(audienceIcon(card.audience), uiState.circles.emojiOf(card.audience), 24.dp) },
-                    trailingContent = if (card.audience == uiState.selectedAudience) {
-                        { Icon(Icons.Filled.Check, contentDescription = null) }
-                    } else {
-                        null
-                    },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.clickable(role = Role.Button) { dismiss { onDismiss(); onSelect(index) } },
-                )
-            }
-            onNewCard?.let { addCard ->
-                ListItem(
-                    headlineContent = { Text(stringResource(MR.string.profile_card_add_card)) },
-                    leadingContent = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.clickable(role = Role.Button) { dismiss { onDismiss(); addCard() } },
-                )
-            }
+private fun chromePillColor(): Color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f)
+
+// A tonal pill keeps chrome legible over any design's colours, light or dark.
+@Composable
+private fun CardChromePill(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = chromePillColor(),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shadowElevation = 2.dp,
+        content = content,
+    )
+}
+
+@Composable
+private fun ChromeIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(modifier = modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = chromePillColor(),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            shadowElevation = 2.dp,
+            modifier = Modifier.size(CHROME_CONTROL_SIZE).semantics { role = Role.Button },
+        ) {
+            Box(contentAlignment = Alignment.Center) { content() }
         }
     }
 }
@@ -666,7 +913,6 @@ internal fun AudienceTitle(uiState: ProfileCardUiState, modifier: Modifier = Mod
         audience = uiState.selectedAudience,
         locked = uiState.isCircleReadOnly,
         unsaved = uiState.isUnsavedCard,
-        elevated = onClick == null,
         trailing = onClick?.let { { Icon(Icons.Filled.ArrowDropDown, contentDescription = null, modifier = Modifier.padding(start = 2.dp).size(20.dp)) } },
         modifier = modifier
             .minimumInteractiveComponentSize()
