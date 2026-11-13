@@ -120,6 +120,22 @@ class CardHostBaseTest {
     }
 
     @Test
+    fun theToolbarRoomStaysOutOfTheExportedImage() {
+        host.onBridgeMessage("""{"type":"loaded"}""")
+        host.reserveBottom(88.dp)
+        host.sent.clear()
+
+        host.exportPng()
+        host.reserveBottom(100.dp)
+        host.onBridgeMessage("""{"type":"png","base64":"AAAA","width":1,"height":1}""")
+
+        assertEquals(
+            listOf(CardCommand.HostStyle(0), CardCommand.ExportPng, CardCommand.HostStyle(100)),
+            host.sent,
+        )
+    }
+
+    @Test
     fun pageEventsAreForwarded() = runTest {
         val next = async(start = CoroutineStart.UNDISPATCHED) { host.events.first() }
 

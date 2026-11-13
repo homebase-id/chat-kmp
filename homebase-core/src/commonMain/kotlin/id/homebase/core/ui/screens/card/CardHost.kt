@@ -171,6 +171,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
 
     private var lastPayload: CardPayload? = null
     private var hostStyle: CardCommand.HostStyle? = null
+    private var exporting = false
     private var renderSent: TimeMark? = null
     private var paintRequested: TimeMark? = null
     private var mainFrameSettled = false
@@ -197,8 +198,18 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         send(CardCommand.Render(payload))
     }
 
+    // The toolbar's room is padding inside the card, so it would be drawn into the image.
     override fun exportPng() {
-        if (_isLoaded.value) send(CardCommand.ExportPng) else onPageError("exportPng before the page loaded")
+        if (!_isLoaded.value) return onPageError("exportPng before the page loaded")
+        if (hostStyle != null) send(NO_ROOM)
+        exporting = true
+        send(CardCommand.ExportPng)
+    }
+
+    private fun onExportFinished() {
+        if (!exporting) return
+        exporting = false
+        hostStyle?.let(::send)
     }
 
     override fun probeEdges() {
@@ -219,7 +230,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         val style = CardCommand.HostStyle(bottom.value.roundToInt())
         if (style == hostStyle) return
         hostStyle = style
-        if (_isLoaded.value) send(style)
+        if (_isLoaded.value && !exporting) send(style)
     }
 
     override suspend fun snapshot(): ImageBitmap? = null
@@ -261,9 +272,15 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
                 CardLog.info("painted ${it.elapsedNow().inWholeMilliseconds}ms after the paint was requested")
                 paintRequested = null
             }
-            is CardEvent.Png -> CardLog.info("png ${decodedSize(event.base64)}B ${event.width}x${event.height}")
+            is CardEvent.Png -> {
+                CardLog.info("png ${decodedSize(event.base64)}B ${event.width}x${event.height}")
+                onExportFinished()
+            }
             is CardEvent.Link -> CardLog.info("link ${event.href}")
-            is CardEvent.Error -> CardLog.error(event.message)
+            is CardEvent.Error -> {
+                CardLog.error(event.message)
+                onExportFinished()
+            }
             is CardEvent.Edges -> Unit
         }
         _events.tryEmit(event)
@@ -278,9 +295,14 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         CardLog.info("loaded")
         loadedTimeout?.cancel()
         _isLoaded.value = true
+        exporting = false
         hostStyle?.let(::send)
         // Covers a render queued before load and a page that reloaded under a rendered card.
         lastPayload?.let(::sendRender)
+    }
+
+    private companion object {
+        val NO_ROOM = CardCommand.HostStyle(0)
     }
 
     private fun decodedSize(base64: String): Int =
