@@ -36,8 +36,10 @@ class UploadService(
     private val outboxSync: OutboxSync,
     private val optimisticWriter: OptimisticLocalWriter,
     private val payloadCacheSeeder: PayloadCacheSeeder,
-    private val sealDescriptorContent: Boolean = DescriptorContentV1.WRITE,
 ) {
+    // Not a constructor parameter: Koin builds this with singleOf, which can't fill one (or use its default).
+    internal var sealDescriptorContent: Boolean = DescriptorContentV1.WRITE
+
     /**
      * Encrypt + enqueue [spec] and (best-effort) seed the cache and write the optimistic row.
      * Returns a typed [UploadOutcome]; never throws for an expected failure (a missing source
