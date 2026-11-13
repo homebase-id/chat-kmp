@@ -29,7 +29,7 @@ class SaveFileNameTest {
     fun aSavedNameIsNeverAPath() {
         listOf("../x", "..\\x", "a/../../b", "C:evil.txt", "//server/share/f", "..", "/").forEach { raw ->
             val name = saveFileName(raw, "k", "image/png")
-            assertTrue(name.none { it == '/' || it == '\\' || it == ':' } && !name.startsWith("."), "$raw -> $name")
+            assertTrue(name.none { it == '/' || it == '\\' || it == ':' } && name != "." && name != "..", "$raw -> $name")
         }
     }
 }

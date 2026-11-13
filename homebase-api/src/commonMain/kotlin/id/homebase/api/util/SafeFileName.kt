@@ -35,7 +35,7 @@ private fun lastSegment(raw: String?): String = clean(raw.orEmpty().substringAft
 private fun clean(name: String): String =
     buildString(name.length) {
         for (c in name.toNfc()) append(if (c.code < 0x20 || c.code == 0x7f || c in RESERVED) '_' else c)
-    }.trim().trimStart('.').trimEnd('.', ' ')
+    }.trim().trimEnd('.', ' ')
 
 // The cut comes from the stem so the extension survives.
 private fun fit(stem: String, ext: String, fallback: String): String {

@@ -25,7 +25,7 @@ class SafeFileNameTest {
     fun theResultIsNeverAPath() {
         listOf("../x", "..\\x", "a/../../b", "C:evil.txt", "C:\\x", "//server/share/f", "x/", "x\\", "a:b:c", "..", ".", "/", "\\").forEach { raw ->
             listOf(safeFileName(raw), safeFileName(raw, extension = "mp4")).forEach { name ->
-                assertTrue(name.none { it == '/' || it == '\\' || it == ':' } && name != "." && name != ".." && !name.startsWith("."), "$raw -> $name")
+                assertTrue(name.none { it == '/' || it == '\\' || it == ':' } && name != "." && name != "..", "$raw -> $name")
             }
         }
     }
@@ -49,9 +49,10 @@ class SafeFileNameTest {
     }
 
     @Test
-    fun aLeadingDotDoesNotMakeAHiddenFile() {
-        assertEquals("bashrc", safeFileName(".bashrc"))
-        assertEquals("hidden.txt", safeFileName(".hidden.txt"))
+    fun aLeadingDotIsKept() {
+        assertEquals(".gitignore", safeFileName(".gitignore"))
+        assertEquals(".hidden.txt", safeFileName(".hidden.txt"))
+        assertEquals(".gitignore.mp4", safeFileName(".gitignore", extension = "mp4"))
     }
 
     @Test
