@@ -277,7 +277,7 @@ fun ProfileCardScreen(
 ) {
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
     ProvideOpenOverlays {
-        val newCard = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = true) }
+        val newCard = rememberNewCircleAction { id -> viewModel.onCircleCreated(id) }
         ProfileCardPager(
             viewModel = viewModel,
             onBack = onBack,

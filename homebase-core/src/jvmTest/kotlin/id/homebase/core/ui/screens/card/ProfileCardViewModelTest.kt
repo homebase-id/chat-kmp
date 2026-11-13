@@ -904,11 +904,6 @@ class ProfileCardViewModelTest {
         assertEquals(listOf<CardAudience>(CardAudience.Public), vm.uiState.value.cards.map { it.audience })
     }
 
-
-
-
-
-
     @Test
     fun tilesAreStillsOfEachRealCardAndTheHostGoesBackToTheViewedCard() = runTest(dispatcher) {
         val host = FakeHost()
@@ -1017,10 +1012,8 @@ class ProfileCardViewModelTest {
 
         vm.captureEditorTiles()
 
-        assertTrue(vm.uiState.value.viewing)
         assertTrue("public" in vm.introTiles.value.keys)
     }
-
 
     @Test
     fun switchingCardChangesAudienceDesignAndOverrides() = runTest(dispatcher) {
@@ -1419,13 +1412,12 @@ class ProfileCardViewModelTest {
         backgroundScope.launch { vm.events.collect { events += it } }
 
         source.circleList = source.circleList + made
-        vm.onCircleCreated(made.id, openCard = true)
+        vm.onCircleCreated(made.id)
         advanceUntilIdle()
 
         val audience = CardAudience.Circle(made.id, "Climbing")
         assertTrue(vm.uiState.value.cards.any { it.audience == audience })
         assertEquals(audience, vm.uiState.value.selectedAudience)
-        assertTrue(vm.uiState.value.viewing)
         assertTrue(store.writes.isEmpty())
     }
 
@@ -1437,11 +1429,10 @@ class ProfileCardViewModelTest {
         backgroundScope.launch { vm.events.collect { events += it } }
 
         source.circleList = source.circleList + made
-        vm.onCircleCreated(made.id, openCard = false)
+        vm.onCircleCreated(made.id)
         advanceUntilIdle()
 
         assertEquals(CardAudience.Circle(made.id, "Climbing"), vm.uiState.value.selectedAudience)
-        assertFalse(vm.uiState.value.viewing)
     }
 
     @Test
@@ -1462,7 +1453,7 @@ class ProfileCardViewModelTest {
         val made = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing")
 
         source.circleList = source.circleList + made
-        vm.onCircleCreated(made.id, openCard = false)
+        vm.onCircleCreated(made.id)
         advanceUntilIdle()
 
         val state = vm.uiState.value
@@ -1501,7 +1492,6 @@ class ProfileCardViewModelTest {
         )
         assertEquals(listOf(PUBLIC_CARD_PRIORITY, 10, 20, 30), vm.uiState.value.cards.map { it.priority })
     }
-
 
     @Test
     fun editingACircleCardSavesItScopedAndNeverTouchesThePublicCard() = runTest(dispatcher) {
@@ -1563,16 +1553,6 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.POSTER, vm.uiState.value.previewDesign)
         assertTrue(vm.uiState.value.hasUnsavedChanges)
     }
-
-
-
-
-
-
-
-
-
-
 
     private suspend fun wireCircleVm(
         wire: CardWireHarness,
@@ -1667,8 +1647,6 @@ class ProfileCardViewModelTest {
         assertFalse(vm.uiState.value.canSaveDesign)
     }
 
-
-
     @Test
     fun anEmptyCardSetShowsFourDistinctTemplates() = runTest(dispatcher) {
         val work = CardCircle(WORK_CIRCLE_ID, "Work")
@@ -1713,7 +1691,6 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.POSTER, vm.uiState.value.design)
         assertTrue(vm.uiState.value.overrides.isEmpty())
     }
-
 
     @Test
     fun theDesignPickerOffersFiveDesignsWithSimpleFirstAndCustomisable() {
@@ -1776,8 +1753,6 @@ class ProfileCardViewModelTest {
 
         assertEquals(vm.uiState.value.savedDesign, vm.uiState.value.cards.first { it.audience == friends }.design)
     }
-
-
 
     @Test
     fun aCircleCardPreviewShowsExactlyWhatThatCircleMaySee() = runTest(dispatcher) {

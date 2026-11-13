@@ -82,7 +82,6 @@ data class ProfileCardUiState(
     val isSwitchingDesign: Boolean = false,
     val cards: List<ProfileCard> = emptyList(),
     val selectedAudience: CardAudience = CardAudience.Public,
-    val viewing: Boolean = false,
     val previewOverrides: CardOverrides? = null,
     val circleCardsSupported: Boolean = true,
     val hasLocalPublicDesign: Boolean = false,
@@ -382,7 +381,6 @@ class ProfileCardViewModel(
         val card = state.cards.firstOrNull { it.audience.isSameAs(audience) }
         if (state.isExporting || card == null) return
         selectAudience(card.audience)
-        _uiState.update { it.copy(viewing = true) }
     }
 
     private fun CardAudience.logName() = when (this) {
@@ -390,12 +388,7 @@ class ProfileCardViewModel(
         is CardAudience.Circle -> label
     }
 
-    private fun interruptedByViewer(ignoreViewing: Boolean) = (_uiState.value.viewing && !ignoreViewing) || _uiState.value.isExporting
-
-    // The editor is reached from the open viewer, so `viewing` is still set while it is on screen.
-    suspend fun captureEditorTiles() = captureTiles(ignoreViewing = true)
-
-    private suspend fun captureTiles(ignoreViewing: Boolean) {
+    suspend fun captureEditorTiles() {
         val host = _host.value ?: return
         host.isLoaded.first { it }
         var touched = false
@@ -403,7 +396,7 @@ class ProfileCardViewModel(
         host.scrollToTop()
         try {
             for (card in _uiState.value.cards) {
-                if (interruptedByViewer(ignoreViewing)) return
+                if (_uiState.value.isExporting) return
                 val key = audienceKey(card.audience)
                 val design = if (card.audience == CardAudience.Public) _uiState.value.savedDesign else card.design
                 val payload = payloadFor(design, card.audience) ?: return
@@ -418,14 +411,13 @@ class ProfileCardViewModel(
                 withTimeoutOrNull(PAINT_TIMEOUT) {
                     host.events.onSubscription { host.requestPaint() }.first { it is CardEvent.Painted }
                 }
-                if (interruptedByViewer(ignoreViewing)) return
+                if (_uiState.value.isExporting) return
                 val image = attempt("capturing the ${card.audience.logName()} intro tile") { host.snapshot() ?: exportedStill(host) }
                 if (image == null) {
                     Logger.i(tag = TAG) { "card intro: no snapshot for ${card.audience.logName()}, tile stays a placeholder" }
                     return
                 }
-                // The viewer may have opened during the snapshot, so the image can show its card, not this one.
-                if (interruptedByViewer(ignoreViewing)) return
+                if (_uiState.value.isExporting) return
                 tilePayloads[key] = payload
                 _introTiles.update { it + (key to image) }
             }
@@ -669,7 +661,7 @@ class ProfileCardViewModel(
     fun onPhotoChanged() = load(force = true)
 
     /** Reloads so the new circle's card exists, then lands on it and saves it with only the photo and name showing. */
-    fun onCircleCreated(id: String, openCard: Boolean) {
+    fun onCircleCreated(id: String) {
         viewModelScope.launch {
             load(force = true)
             loadJob?.join()
@@ -677,7 +669,6 @@ class ProfileCardViewModel(
                 ?: return@launch
             selectAudience(card.audience)
             if (card.isDefault && !_uiState.value.isCircleReadOnly) editFields { it.startingBlank(_uiState.value.contentItems) }
-            if (openCard) _uiState.update { it.copy(viewing = true) }
         }
     }
 

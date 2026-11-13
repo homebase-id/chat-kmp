@@ -268,7 +268,7 @@ private fun ProfileCardEditor(
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
     val errContent = stringResource(MR.string.profile_card_content_save_failed)
 
-    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = false) }
+    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id) }
     LaunchedEffect(viewModel) {
         if (cardsEnabled) viewModel.startHost()
         viewModel.onContentEditorShown()
