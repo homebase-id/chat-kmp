@@ -80,7 +80,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 - **Only three byte limits:** the tiny's 768 bytes, 1 MiB per thumbnail (the server's), and none on the final image. Over 1 MiB, a thumbnail shrinks at the same quality.
 - **Pixels:** decode once, scale from largest to smallest, halve while the image is at least 2× too big, then a Lanczos-class resampler for the last step.
 - **Colour:** keep wide-gamut colour, and put no colour profile on sRGB images or the tiny.
-- **Metadata:** Photos keeps everything on the final image, chat strips everything, and Moments asks. Thumbnails never carry metadata. The image API takes a required keep-or-strip parameter, so each caller chooses.
+- **Metadata:** the calling app decides whether a final image or video keeps its location and other metadata, through a required keep-or-strip parameter. The library never decides. Thumbnails never carry metadata.
 - **Display:** step up from the largest thumbnail to the final image only when that gains pixels. Photobase's grid always uses Small.
 - **Wire codes:** Standard records nothing, HD records `"hd"`, and Original records `"high"`.
 
@@ -373,11 +373,9 @@ Every platform has one interface, `ImageSource` plus `PipelineBitmap`, whose KDo
 
 ## Metadata
 
-| Where | Final image ("the photo") | Thumbnails and tiny |
-|---|---|---|
-| **Photos (Photobase)** | **Keeps everything,** in every setting: GPS, EXIF and XMP. It's the user's own zero-knowledge encrypted library. | None |
-| **Chat** | **Always stripped** (`PayloadBundleEncryptionService.scrubImageMetadata`, #1297), so recipients don't get the sender's location or camera serial | None |
-| **Moments** | **Stripped** by the same upload scrub as chat, HEIC on Original included. The per-image location selector decides whether GPS travels, in the `MediaInfo` sidecar | None |
+**The calling app decides, never the library.** Whether a final image or video keeps its location, capture time, camera data and other metadata depends on what the app is for: an owner's own library keeps everything, while sending to someone else usually strips it. This library is used by many apps, so it offers the choice and makes none of its own. Each app records its choice and the reasons with the app itself (for example Photos in #2386, chat in #1297).
+
+Thumbnails and the tiny never carry metadata, whatever the app chooses.
 
 The scrubber handles JPEG, PNG, WebP and HEIC. Any other image format (GIF, BMP, an AVIF branded `avif`), or a file in one of those four that the scrubber can't parse, goes out with its metadata intact, and the upload logs a warning naming the format. A file cut off inside a metadata segment has the rest of that segment dropped.
 
@@ -386,15 +384,7 @@ The scrubber handles JPEG, PNG, WebP and HEIC. Any other image format (GIF, BMP,
 - **Required, with no default.** Every caller has to choose. A default would either leak a sender's location in a new chat feature, or silently lose data in a new Photos feature.
 - **It covers both kinds of final image.** A re-encoded image gets the source's metadata copied in (`Keep`) or gets none (`Strip`). A source file kept as it is is uploaded untouched (`Keep`) or goes through the scrubber (`Strip`, `ImageMetadataScrubber`). Today chat's scrub runs separately at upload (`PayloadBundleEncryptionService.scrubImageMetadata`). The parameter makes the pipeline the one place that decides, and the upload step stays as a safety net for chat.
 - **Thumbnails and the tiny always strip,** whatever the parameter says.
-- **Who passes what:**
-
-  | Caller | Parameter |
-  |---|---|
-  | Photobase | `Keep` |
-  | Chat, the share sheet and view-once | `Strip` |
-  | Moments | `Strip` on the file; its location selector controls the `MediaInfo` sidecar as today |
-  | Vault | `Strip`, as today: Vault uploads go through the same upload scrub as chat. Whether it should keep is open |
-  | Everything else (avatars, link previews, contacts, stickers) | `Strip` |
+- **Video takes the same parameter** (see [Video](#video)).
 
 When `Keep` applies to a re-encoded image, the pipeline has to copy the metadata itself, because neither Android's nor Skia's encoders carry it over:
 
@@ -462,7 +452,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 | HD | 1080p transcode |
 | Original | Untouched |
 
-Metadata follows the same rule as photos. Photos keeps it, and chat strips it without re-encoding, for example with a remux using `-map_metadata -1` that also removes the location atom.
+**Metadata is the caller's choice, as for images.** The video path takes the same required keep-or-strip parameter, with no default. With `Keep`, a re-encode copies the source's location, capture time and other metadata, and Original uploads the file untouched. With `Strip`, a re-encode drops them (`-map_metadata -1`), and Original is remuxed without re-encoding to remove them. The library never decides; each app does.
 
 ## How others do it
 
@@ -505,7 +495,7 @@ The pipeline contract tests are in `homebase-api/src/imageContractTest/kotlin/`.
   - transparency survives;
   - a corrupt body throws or decodes, never comes out blank;
   - a very thin image never goes below 1 px.
-- **Metadata:** a Photos final image keeps GPS, capture time and camera model with Orientation 1, and the chat path has none.
+- **Metadata:** with `Keep`, a final image keeps GPS, capture time and camera model, with Orientation 1; with `Strip`, it has none.
 
 ### Running them
 
@@ -560,7 +550,7 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 | How to resample? | Halve, then a Lanczos-class filter | Plain bilinear, all Skia modes, and area averaging: all measured to alias. |
 | Native code on phones? | Wherever it's measurably better, preferring platform APIs and proven libraries | Skia everywhere: no good resampler. Our own C code: libraries already exist. |
 | Decode per size, or once? | Once, then chain from largest to smallest | Decoding per size meant 11 HEIC conversions per photo in the old code. |
-| Keep metadata? | Photos keeps everything; chat strips; Moments asks | Stripping everywhere loses the user's own library data. Keeping it everywhere leaks the sender's location in chat. |
+| Keep metadata? | The calling app decides, through a required parameter | Stripping everywhere loses an owner's own library data. Keeping it everywhere leaks a sender's location. Only the app knows which case it is. |
 | Colour profile on sRGB images? | None | 456 bytes per image for no visible gain, and over half the tiny's budget. |
 | Byte cap on the final photo? | None, like every other app | It would cost detailed photos their quality. |
 
