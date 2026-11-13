@@ -70,12 +70,15 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
+import id.homebase.api.client.calling.IceServersProvider
+import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.calling.CallViewModel
 import id.homebase.chat.calling.history.CallLogDeleter
 import id.homebase.chat.calling.history.CallsViewModel
 import id.homebase.chat.services.calling.history.CallHistoryService
 import id.homebase.core.calling.CallsPreferences
+import id.homebase.chat.services.calling.CallIceServerSource
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.platformCallEngineFactory
 import id.homebase.chat.services.livelocation.LiveLocationShareService
@@ -487,7 +490,7 @@ val appModule = module {
             eventBus = get(),
             relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push, wakeCause = null) },
             engineFactory = platformCallEngineFactory().takeIf { get<CallsPreferences>().enabled.value },
-            stunUrls = get(),
+            iceServers = CallIceServerSource({ peer -> get<IceServersProvider>().iceServers(peer) }, get<StunUrlStore>().urls)::forCall,
             scope = get(),
             onCallActiveChanged = { active ->
                 get<AuthConnectionCoordinator>().run { if (active) holdWebSocket(CALL_WS_HOLD) else releaseWebSocket(CALL_WS_HOLD) }

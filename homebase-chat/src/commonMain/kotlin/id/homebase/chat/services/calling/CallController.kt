@@ -12,6 +12,8 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -33,7 +35,7 @@ class CallController(
     private val signaling: CallSignaling,
     private val engineFactory: CallEngineFactory,
     private val scope: CoroutineScope,
-    private val stunUrls: suspend () -> List<String> = { emptyList() },
+    private val iceServers: suspend (peer: String) -> CallIceServers = { CallIceServers.None },
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
     private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
@@ -58,6 +60,7 @@ class CallController(
     private sealed interface Command {
         class Event(val event: CallEvent, val processed: CompletableDeferred<CallState>? = null) : Command
         class RepublishOffer(val callId: String) : Command
+        class RenewIce(val engine: CallEngine, val lease: IceLease) : Command
         data object Close : Command
     }
 
@@ -79,6 +82,11 @@ class CallController(
     private var republishJob: Job? = null
     private var trickleJob: Job? = null
     private var restartOfferSdp: String? = null
+    private var iceFetch: Pair<String, Deferred<IceLease>>? = null
+    private var callIce: IceLease? = null
+    private var renewJob: Job? = null
+    // A request that fails must fail its own step, not the controller.
+    private val iceScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
     private val endedCalls = ArrayDeque<String>()
     @Volatile private var inFlight: Job? = null
 
@@ -99,6 +107,7 @@ class CallController(
                             command.processed?.complete(_state.value)
                         }
                         is Command.RepublishOffer -> republishOffer(command.callId)
+                        is Command.RenewIce -> renewIce(command.engine, command.lease)
                         Command.Close -> break
                     }
                 }
@@ -236,6 +245,7 @@ class CallController(
         _state.value = transition.state
         if (transition.state != before) _transitions.tryEmit(transition.state)
         if (transition.state.phase is CallPhase.Ended) transition.state.callId?.let(::rememberEnded)
+        prefetchIceServers(transition.state)
         for (effect in transition.effects) run(effect, transition.state)
     }
 
@@ -257,13 +267,81 @@ class CallController(
         if (endedCalls.size > ENDED_CALLS_REMEMBERED) endedCalls.removeFirst()
     }
 
+    private class IceLease(val ice: CallIceServers, val untilMs: Long) {
+        fun usableAt(nowMs: Long) = nowMs < untilMs
+    }
+
+    private suspend fun lease(peer: String): IceLease {
+        val ice = iceServers(peer)
+        val now = clock()
+        return IceLease(ice, (now + ice.reuseForMs).let { if (it < now) Long.MAX_VALUE else it })
+    }
+
+    // Asked for as the call starts or rings, so placing it waits on one request at most and accepting it on none.
+    private fun prefetchIceServers(s: CallState) {
+        val callId = s.callId.takeIf { s.isActive }
+        if (callId == iceFetch?.first) return
+        iceFetch?.second?.cancel()
+        iceFetch = null
+        val peer = s.peer ?: return
+        if (callId != null) iceFetch = callId to iceScope.async { lease(peer) }
+    }
+
+    private suspend fun iceServersForEngine(): IceLease {
+        val peer = _state.value.peer ?: return IceLease(CallIceServers.None, 0)
+        val prefetched = iceFetch?.second?.await()
+        return if (prefetched != null && prefetched.usableAt(clock())) prefetched else lease(peer)
+    }
+
+    // Kept only once the engine takes it.
+    private fun useIce(engine: CallEngine, lease: IceLease) {
+        if (!engine.setIceServers(lease.ice.servers)) {
+            log.w { "call=${_state.value.callId} engine refused ICE ${lease.ice}" }
+            return
+        }
+        callIce = lease
+        scheduleRenewal(engine, lease)
+    }
+
+    // Renewed ahead of expiry, so a reconnect after a network change doesn't wait on the network it just lost.
+    private fun scheduleRenewal(engine: CallEngine, lease: IceLease) {
+        renewJob?.cancel()
+        renewJob = null
+        val peer = _state.value.peer ?: return
+        if (!lease.ice.hasLogin || lease.untilMs == Long.MAX_VALUE) return
+        renewJob = iceScope.launch {
+            delay(lease.untilMs - clock())
+            inbox.trySend(Command.RenewIce(engine, lease(peer)))
+        }
+    }
+
+    // A failed renewal keeps the servers the call has; the next restart asks again.
+    private fun renewIce(engine: CallEngine, lease: IceLease) {
+        if (engine !== this.engine) return
+        log.i { "call=${_state.value.callId} ICE renewed: ${lease.ice}" }
+        if (lease.ice.fromServer) useIce(engine, lease)
+    }
+
+    // A login only opens relays until it expires, and a restart gathers again.
+    private suspend fun refreshIceServers(state: CallState) {
+        val current = engine ?: return
+        if (callIce?.usableAt(clock()) == true) return
+        val fresh = lease(state.peer ?: return)
+        log.i { "call=${state.callId} ICE servers for the restart: ${fresh.ice}" }
+        if (fresh.ice.fromServer) useIce(current, fresh)
+    }
+
     private suspend fun engine(): CallEngine = engine ?: run {
+        val lease = iceServersForEngine()
         // The next call's camera, mic and audio mode must not race the last call's release of them.
         closingEngine?.join()
-        engineFactory.create(stunUrls())
+        engineFactory.create(lease.ice.servers).also {
+            callIce = lease
+            scheduleRenewal(it, lease)
+        }
     }.also { created ->
         engine = created
-        log.i { "call=${_state.value.callId} engine created on ${Platform.osName} ${Platform.osVersion}" }
+        log.i { "call=${_state.value.callId} engine created on ${Platform.osName} ${Platform.osVersion}, ICE ${callIce?.ice}" }
         _mediaDevices.value = created.mediaDevices
         remoteReady = false
         engineEvents = scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -316,10 +394,14 @@ class CallController(
                 }
                 CallEffect.RestartIce -> {
                     // Resend the unanswered offer: a fresh one would orphan an answer already in flight for it.
-                    val sdp = restartOfferSdp ?: engine().restartIce().also { restartOfferSdp = it }
+                    val sdp = restartOfferSdp ?: run {
+                        refreshIceServers(state)
+                        engine().restartIce()
+                    }.also { restartOfferSdp = it }
                     sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
                 }
                 is CallEffect.AnswerRestart -> {
+                    refreshIceServers(state)
                     val sdp = engine().answerRestart(effect.offerSdp)
                     sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
                 }
@@ -443,6 +525,9 @@ class CallController(
             closingEngine = scope.launch(start = CoroutineStart.ATOMIC) { released.close() }
         }
         engine = null
+        callIce = null
+        renewJob?.cancel()
+        renewJob = null
         remoteReady = false
         bufferedIce.clear()
         heldIce.clear()

@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import id.homebase.api.client.calling.CallIceServer
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.channels.Channel
@@ -80,6 +81,15 @@ class FakeCallEngine(
 
     var restarts = 0
         private set
+    val iceServerUpdates = mutableListOf<List<CallIceServer>>()
+
+    var refuseIceServers = false
+
+    override fun setIceServers(iceServers: List<CallIceServer>): Boolean {
+        if (refuseIceServers) return false
+        iceServerUpdates += iceServers
+        return true
+    }
 
     override suspend fun restartIce(): String {
         restarts++
