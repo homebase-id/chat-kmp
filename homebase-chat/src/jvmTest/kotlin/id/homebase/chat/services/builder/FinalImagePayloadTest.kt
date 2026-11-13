@@ -7,6 +7,8 @@ import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.RenderedImage
 import id.homebase.api.image.MediaQuality
+import id.homebase.upload.ThumbnailResult
+import id.homebase.upload.UploadImages
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
@@ -23,6 +25,11 @@ import kotlin.test.assertTrue
  * Standard and HD: a photo's payload becomes the final image, and anything that would lose
  * information, or gain nothing, keeps its file.
  */
+private suspend fun finalImagePayload(attachment: AttachmentInput, thumbs: ThumbnailResult, ops: FileOperationsProvider): AttachmentInput {
+    val (path, type) = UploadImages.finalImageOrSource(attachment.filePath, attachment.contentType, thumbs, ops)
+    return if (path == attachment.filePath) attachment else attachment.copy(filePath = path, contentType = type)
+}
+
 class FinalImagePayloadTest {
 
     private fun fixture(name: String): ByteArray =
@@ -57,7 +64,7 @@ class FinalImagePayloadTest {
         quality: MediaQuality = MediaQuality.STANDARD,
     ): AttachmentInput {
         val ops = Serving(bytes)
-        val thumbs = MessageThumbnailGenerator.generate(attachment.filePath, "chat_web0", ops, quality, attachment.forceSticker)
+        val thumbs = UploadImages.generate(attachment.filePath, "chat_web0", ops, quality, attachment.forceSticker)
         return finalImagePayload(attachment, thumbs, ops)
     }
 
@@ -131,7 +138,7 @@ class FinalImagePayloadTest {
         assertSame(attachment, send(attachment, animated))
 
         // The animation check is what keeps the animated one out of the still encoder.
-        val thumbs = MessageThumbnailGenerator.generate("/unused", "chat_web0", Serving(still), MediaQuality.HD)
+        val thumbs = UploadImages.generate("/unused", "chat_web0", Serving(still), MediaQuality.HD)
         assertEquals(1700, thumbs.finalImage?.width)
     }
 
@@ -141,7 +148,7 @@ class FinalImagePayloadTest {
         val garbage = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8)
         val ops = Serving(garbage)
 
-        val thumbs = MessageThumbnailGenerator.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
+        val thumbs = UploadImages.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
 
         assertTrue(thumbs.thumbnails.isEmpty())
         assertSame(attachment, finalImagePayload(attachment, thumbs, ops))
@@ -156,7 +163,7 @@ class FinalImagePayloadTest {
             override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String =
                 throw IllegalStateException("No space left on device")
         }
-        val thumbs = MessageThumbnailGenerator.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
+        val thumbs = UploadImages.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
 
         assertSame(attachment, finalImagePayload(attachment, thumbs, ops))
     }

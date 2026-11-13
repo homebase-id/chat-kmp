@@ -37,9 +37,10 @@ object ImageFormatDetector {
             bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> "image/png"
             // GIF: 47 49 46
             bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() -> "image/gif"
-            // WebP: 52 49 46 46 (RIFF)
-            bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
-            bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() -> "image/webp"
+            // WebP: "RIFF" then "WEBP" at 8; WAV and AVI are RIFF too.
+            bytes.size >= 12 && bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
+            bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&
+            bytes.decodeToString(8, 12) == "WEBP" -> "image/webp"
             // BMP: 42 4D
             bytes[0] == 0x42.toByte() && bytes[1] == 0x4D.toByte() -> "image/bmp"
             // HEIC/HEIF: ISOBMFF container with ftyp box

@@ -1,0 +1,99 @@
+{
+  "about": "UPLOADS.md sections 1 and 2. Readers in every client must parse each `plain` into `expect`, and open each `sealed` with `aesKey` into its `plaintext`. A sealed value that fails to open reads as no descriptor content.",
+  "aesKey": "AAECAwQFBgcICQoLDA0ODw==",
+  "plain": [
+    {
+      "name": "image at standard",
+      "descriptorContent": "{\"v\":1,\"k\":\"i\",\"n\":\"PXL_20261107_083131163.jpg\",\"o\":0,\"w\":1152,\"h\":2048,\"q\":\"sd\"}",
+      "expect": {
+        "kind": "i",
+        "name": "PXL_20261107_083131163.jpg",
+        "original": 0,
+        "width": 1152,
+        "height": 2048,
+        "quality": "sd"
+      }
+    },
+    {
+      "name": "sticker",
+      "descriptorContent": "{\"v\":1,\"k\":\"s\",\"o\":1,\"w\":512,\"h\":512}",
+      "expect": {
+        "kind": "s",
+        "original": 1,
+        "width": 512,
+        "height": 512
+      }
+    },
+    {
+      "name": "voice note",
+      "descriptorContent": "{\"v\":1,\"k\":\"a\",\"l\":7}",
+      "expect": {
+        "kind": "a",
+        "lengthSeconds": 7
+      }
+    },
+    {
+      "name": "document",
+      "descriptorContent": "{\"v\":1,\"k\":\"f\",\"n\":\"Q3 plan.pdf\"}",
+      "expect": {
+        "kind": "f",
+        "name": "Q3 plan.pdf"
+      }
+    },
+    {
+      "name": "hls video",
+      "descriptorContent": "{\"v\":1,\"k\":\"v\",\"n\":\"clip.mov\",\"o\":0,\"w\":1280,\"h\":720,\"vd\":{\"d\":9000,\"c\":\"hvc1\",\"seg\":1,\"p\":\"pls_0003\",\"sz\":4000000,\"br\":2500000}}",
+      "expect": {
+        "kind": "v",
+        "name": "clip.mov",
+        "original": 0,
+        "width": 1280,
+        "height": 720,
+        "video": {
+          "durationMs": 9000,
+          "codec": "hvc1",
+          "segmented": 1,
+          "playlistKey": "pls_0003",
+          "plainBytes": 4000000,
+          "bitrateBps": 2500000
+        }
+      }
+    },
+    {
+      "name": "link previews",
+      "descriptorContent": "{\"v\":1,\"k\":\"x\",\"x\":\"[{\\\"url\\\":\\\"https://example.com\\\",\\\"hasImage\\\":false,\\\"description\\\":\\\"\\\",\\\"title\\\":\\\"Example\\\"}]\"}",
+      "expect": {
+        "kind": "x",
+        "appContent": "[{\"url\":\"https://example.com\",\"hasImage\":false,\"description\":\"\",\"title\":\"Example\"}]"
+      }
+    }
+  ],
+  "sealed": [
+    {
+      "name": "sealed image",
+      "plaintext": "{\"v\":1,\"k\":\"i\",\"n\":\"PXL_20261107_083131163.jpg\",\"o\":0,\"w\":1152,\"h\":2048,\"q\":\"sd\"}",
+      "descriptorContent": "{\"e\":\"AQcHBwcHBwcHBwcHB+puIv9biuwbnGkY4XabxFtY5nAo4qcJ09n4yxNz4PAy9ALOvKRZv2r8Z4OGtQcLvdLyjWUar2Zhw6Gg4skSvN92GUvbbCrdd9gknAZw/c8Ct4/H9XOFZuddtbnuF5AQHNg=\"}"
+    },
+    {
+      "name": "sealed document",
+      "plaintext": "{\"v\":1,\"k\":\"f\",\"n\":\"Q3 plan.pdf\"}",
+      "descriptorContent": "{\"e\":\"AWRlZmdoaWprbG1ub2FAOIfhM5TY8BxtMuDoB85eqkLdw5r9KpgO37nMlpHRx27zd4DyTngOIkiJFIiwqNg=\"}"
+    }
+  ],
+  "doesNotOpen": [
+    {
+      "name": "wrong format byte",
+      "descriptorContent": "{\"e\":\"AgAAAAAAAAAAAAAAADKrpSA5q3ANGwyLF8HkHwvoCg==\"}"
+    },
+    {
+      "name": "tampered tag",
+      "descriptorContent": "{\"e\":\"AQAAAAAAAAAAAAAAADL08XGjqoquiKtASgajnL/XjxEMZVniSDw8WHDs05p0TX/hRa9qtCCkgoRE5wfRVMk=\"}"
+    }
+  ],
+  "olderForms": [
+    "IMG_1234.pdf",
+    "",
+    "{\"isSticker\":true,\"format\":\"image/png\"}",
+    "{\"name\":\"note.m4a\",\"lengthSeconds\":3}"
+  ]
+}

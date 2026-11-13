@@ -1,15 +1,18 @@
 package id.homebase.chat.services.builder
 
-import id.homebase.api.client.drives.files.DescriptorContent
-import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
-import id.homebase.api.util.safeFileName
-import id.homebase.api.video.toVideoQuality
+import id.homebase.core.pdf.generatePdfThumbnailFromFile
+import id.homebase.upload.MetadataPolicy
 import id.homebase.upload.PayloadBundle
+import id.homebase.upload.UploadOptions
+import id.homebase.upload.UploadSource
+import id.homebase.upload.UserUploadBuilder
 
 object MessageAttachmentBuilder {
+
+    private const val PDF_PREVIEW_RENDER_WIDTH = 1600
 
     suspend fun buildSingle(
         attachment: AttachmentInput,
@@ -33,143 +36,25 @@ object MessageAttachmentBuilder {
         attachments: List<AttachmentInput>,
         fileOperationsProvider: FileOperationsProvider,
         mediaQuality: MediaQuality = MediaQuality.STANDARD,
+        currentFormat: Boolean = DescriptorContentV1.WRITE,
         payloadKeyFactory: (index: Int, attachment: AttachmentInput) -> String
-    ): PayloadBundle {
-        val bundles =
-            attachments.mapIndexed { index, attachment ->
-
-                val payloadKey = payloadKeyFactory(index, attachment)
-
-                when {
-                    attachment.contentType.startsWith("image/") -> {
-                        val thumbs =
-                            MessageThumbnailGenerator.generate(
-                                attachment.filePath,
-                                payloadKey,
-                                fileOperationsProvider,
-                                mediaQuality,
-                                forceSticker = attachment.forceSticker,
-                            )
-
-                        val primary = finalImagePayload(attachment, thumbs, fileOperationsProvider)
-
-                        // Sticker is opt-in only: the "Send as sticker" toggle, the sticker
-                        // tool, and the background-remover all set forceSticker=true. We do
-                        // NOT auto-sticker by transparency — a shared/normal image (or any
-                        // transparent PNG/WebP the user didn't choose to stickerize) must send
-                        // as a normal image (issue #854). When it IS a sticker we detect the
-                        // real format so the download is named "StickerFile.<ext>"; ordinary
-                        // photos keep the legacy "" so nothing changes for them.
-                        //
-                        // Quality is recorded only for an HD or Original ordinary photo that really
-                        // is one: absent reads as standard, and a sticker's bytes are bounded at 512px
-                        // regardless of the setting, so a badge would lie. The size is the payload's.
-                        val sentFinalImage = thumbs.finalImage?.takeIf { primary.filePath != attachment.filePath }
-                        val finalSize = sentFinalImage?.let { ImageSize(it.width, it.height) } ?: thumbs.displayedSize
-                        val recordedQuality = mediaQuality.takeIf {
-                            it == MediaQuality.ORIGINAL || (it == MediaQuality.HD && thumbs.finalImage != null)
-                        }
-                        val descriptorContent =
-                            if (attachment.forceSticker) {
-                                DescriptorContent.descriptorContentFromImage(
-                                    isSticker = true,
-                                    format = thumbs.sourceFormat,
-                                )
-                            } else if (recordedQuality != null || finalSize != null) {
-                                DescriptorContent.descriptorContentFromImage(
-                                    isSticker = false,
-                                    quality = recordedQuality,
-                                    pixelWidth = finalSize?.pixelWidth,
-                                    pixelHeight = finalSize?.pixelHeight,
-                                )
-                            } else {
-                                ""
-                            }
-
-                        PayloadBundle(
-                            payloads =
-                                listOf(
-                                    PayloadFile(
-                                        key = payloadKey,
-                                        filePath = primary.filePath,
-                                        contentType = primary.contentType,
-                                        previewThumbnail = thumbs.preview,
-                                        descriptorContent = descriptorContent
-                                    )
-                                ),
-                            thumbnails = thumbs.thumbnails,
-                            previewThumbs = listOfNotNull(thumbs.preview)
-                        )
-                    }
-                    attachment.contentType.startsWith("audio/") -> {
-                        val thumbs = if (attachment.waveformFile == null) null else
-                            MessageThumbnailGenerator.generate(
-                                attachment.waveformFile,
-                                payloadKey,
-                                fileOperationsProvider,
-                            )
-
-                        PayloadBundle(
-                            payloads =
-                                listOf(
-                                    PayloadFile(
-                                        key = payloadKey,
-                                        filePath = attachment.filePath,
-                                        contentType = attachment.contentType,
-                                        previewThumbnail = thumbs?.preview,
-                                        descriptorContent = DescriptorContent.descriptorContentFromAudioFile(
-                                            name = safeFileName(attachment.displayName ?: attachment.filePath),
-                                            lengthSeconds = attachment.audioLengthSeconds ?: 0)
-                                    )
-                                ),
-                            thumbnails = thumbs?.thumbnails ?: emptyList(),
-                            previewThumbs = listOfNotNull(thumbs?.preview)
-                        )
-                    }
-                    attachment.contentType == "application/pdf" -> {
-                        val thumbs =
-                            MessageThumbnailGenerator.generateFromPdf(attachment.filePath, payloadKey)
-
-                        PayloadBundle(
-                            payloads =
-                                listOf(
-                                    PayloadFile(
-                                        key = payloadKey,
-                                        filePath = attachment.filePath,
-                                        contentType = attachment.contentType,
-                                        previewThumbnail = thumbs?.preview,
-                                        descriptorContent = attachment.displayName?.let { safeFileName(it) },
-                                    )
-                                ),
-                            thumbnails = thumbs?.thumbnails ?: emptyList(),
-                            previewThumbs = listOfNotNull(thumbs?.preview)
-                        )
-                    }
-                    else ->
-                        PayloadBundle(
-                            payloads =
-                                listOf(
-                                    PayloadFile(
-                                        key = payloadKey,
-                                        filePath = attachment.filePath,
-                                        contentType = attachment.contentType,
-                                        descriptorContent = attachment.displayName?.let { safeFileName(it) },
-                                        trimStartMs = attachment.trimStartMs,
-                                        trimEndMs = attachment.trimEndMs,
-                                        inputBlobUrl = attachment.inputBlobUrl,
-                                        videoQuality = mediaQuality.toVideoQuality(),
-                                    )
-                                ),
-                            thumbnails = emptyList(),
-                            previewThumbs = emptyList()
-                        )
-                }
-            }
-
-        return PayloadBundle(
-            payloads = bundles.flatMap { it.payloads },
-            thumbnails = bundles.flatMap { it.thumbnails },
-            previewThumbs = bundles.flatMap { it.previewThumbs }
-        )
-    }
+    ): PayloadBundle =
+        UserUploadBuilder.build(
+            sources = attachments.map { it.toUploadSource() },
+            options = UploadOptions(quality = mediaQuality, metadata = MetadataPolicy.STRIP, currentFormat = currentFormat),
+            fileOps = fileOperationsProvider,
+            pdfPageRenderer = { path -> generatePdfThumbnailFromFile(path, PDF_PREVIEW_RENDER_WIDTH)?.thumbnailBytes },
+        ) { index, _ -> payloadKeyFactory(index, attachments[index]) }
 }
+
+private fun AttachmentInput.toUploadSource() = UploadSource(
+    path = filePath,
+    contentType = contentType,
+    pickedName = displayName,
+    kindHint = DescriptorContentV1.Kind.STICKER.takeIf { forceSticker },
+    waveformPath = waveformFile,
+    audioLengthSeconds = audioLengthSeconds,
+    trimStartMs = trimStartMs,
+    trimEndMs = trimEndMs,
+    inputBlobUrl = inputBlobUrl,
+)

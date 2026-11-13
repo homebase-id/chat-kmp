@@ -1,6 +1,8 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContentV1
+import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.request.forms.InputProvider
@@ -290,6 +292,56 @@ class VideoPayloadProcessorCompressionSeamTest {
         assertEquals("$stagingDir/hls_test/segments.ts", videoPayload.filePath)
         assertFalse(store.containsKey(segmentsPath), "scratch segments must be moved, not copied")
         assertFalse(store.containsKey(playlistPath), "scratch playlist must be moved, not copied")
+    }
+
+    @Test
+    fun aCurrentFormatVideoWritesItsPlaylistAsAPayloadThePlayerCanRead() = runTest {
+        val inputPath = "$cacheDir/input.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val playlistPath = "$cacheDir/hls_v1/playlist.m3u8"
+        val segmentsPath = "$cacheDir/hls_v1/segments.ts"
+        // Long enough that the old format would have needed its overflow payload.
+        val playlistText = "#EXTM3U\n" + "#EXTINF:2.0,\nseg.ts\n".repeat(200)
+        val store = mutableMapOf(
+            inputPath to ByteArray(1024),
+            compressedPath to ByteArray(5 * 1024 * 1024),
+            playlistPath to playlistText.encodeToByteArray(),
+            segmentsPath to ByteArray(2048),
+        )
+        val fileOps = FakeFileOperationsProvider(store)
+        val compressor = FakeVideoCompressor(compressedPath = compressedPath, segmented = SegmentedVideo(playlistPath, segmentsPath))
+        val processor = VideoPayloadProcessor(fileOps, compressor, FakeVideoProbe(9_000L))
+        val keyHeader = KeyHeader.newRandom16()
+
+        val result = processor.process(
+            payload = PayloadFile(key = "chat_web3", filePath = inputPath, descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, name = "clip.mov").encode()),
+            keyHeader = keyHeader,
+            onProgress = null,
+            descriptorContentPayloadKey = "pld_desc3",
+            playlistPayloadKey = "pls_0003",
+        )
+
+        assertEquals(listOf("chat_web3", "pls_0003"), result.payloads.map { it.key }, "no pld_desc overflow in the current format")
+        val video = result.payloads[0]
+        val playlist = result.payloads[1]
+        val written = DescriptorContentV1.parseOrNull(video.descriptorContent!!)!!
+        assertEquals("clip.mov", written.name)
+        assertEquals(0, written.original)
+        val vd = written.video!!
+        assertEquals(9_000L, vd.durationMs)
+        assertEquals(1, vd.segmented)
+        assertEquals("pls_0003", vd.playlistKey)
+        assertTrue(vd.bitrateBps!! > 0)
+        assertEquals(HLS_PLAYLIST_CONTENT_TYPE, playlist.contentType)
+        assertTrue(playlist.iv.contentEquals(video.iv), "the playlist uses the video's IV, like its thumbnails")
+
+        val read = videoMetadataFrom(video.descriptorContent!!, video.key, video.contentType) { key ->
+            assertEquals("pls_0003", key)
+            KeyHeader(iv = video.iv!!, aesKey = keyHeader.aesKey).decrypt(store.getValue(playlist.filePath)).decodeToString()
+        }!!
+        assertEquals(playlistText, read.hlsPlaylist)
+        assertTrue(read.isSegmented)
+        assertEquals(9_000f, read.duration)
     }
 
     @Test

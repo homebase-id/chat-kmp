@@ -1,5 +1,8 @@
 package id.homebase.upload
 
+import kotlin.test.assertFalse
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -74,6 +77,7 @@ class UploadServiceTest {
     private suspend fun buildHarness(
         scope: CoroutineScope,
         encryptor: RecordingEncryptor = RecordingEncryptor(),
+        sealDescriptorContent: Boolean = false,
     ): Harness {
         val db = DatabaseManager({
             val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -105,6 +109,7 @@ class UploadServiceTest {
             outboxSync = outbox,
             optimisticWriter = writer,
             payloadCacheSeeder = seeder,
+            sealDescriptorContent = sealDescriptorContent,
         )
         return Harness(service, db, encryptor, writer, seeder)
     }
@@ -122,6 +127,50 @@ class UploadServiceTest {
 
     private fun bundleOf(vararg keys: String) =
         PayloadBundle(payloads = keys.map { payload(it) }, thumbnails = emptyList(), previewThumbs = emptyList())
+
+    // ---------- sealing descriptor content (UPLOADS.md section 2) ----------
+
+    private suspend fun sentAndKept(seal: Boolean, update: Boolean): Pair<String, String?> = coroutineScope {
+        val h = buildHarness(this, sealDescriptorContent = seal)
+        val uid = Uuid.random()
+        val bundle = PayloadBundle(
+            payloads = listOf(PayloadFile(key = "chat_web0", filePath = "src/a", contentType = "application/pdf", descriptorContent = "secret-name.pdf")),
+            thumbnails = emptyList(),
+            previewThumbs = emptyList(),
+        )
+        val outcome = if (update) {
+            h.service.updateFile(
+                MediaUpdateSpec(driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), metadata = metadata(uid, Uuid.random()), bundle = bundle, sendNow = false),
+                scope = this,
+            )
+        } else {
+            h.service.upload(
+                MediaUploadSpec(driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), bundle = bundle, metadata = metadata(uid), seedCache = false, sendNow = false),
+                scope = this,
+            )
+        }
+        val row = assertNotNull(h.dbm.outbox.selectByUniqueId(uid))
+        val kept = (outcome as? UploadOutcome.Enqueued)?.payloadDescriptors?.single()?.descriptorContent
+        coroutineContext.cancelChildren()
+        row.json.decodeToString() to kept
+    }
+
+    @Test
+    fun anEncryptedFileSendsItsDescriptorContentSealedAndKeepsItReadable() = runTest {
+        val (sent, kept) = sentAndKept(seal = true, update = false)
+        assertFalse("secret-name.pdf" in sent, "the name must not reach the server readable")
+        assertEquals("secret-name.pdf", kept, "the optimistic copy stays readable, like everything opened on arrival")
+    }
+
+    @Test
+    fun anUpdateSealsItsPayloadsToo() = runTest {
+        assertFalse("secret-name.pdf" in sentAndKept(seal = true, update = true).first)
+    }
+
+    @Test
+    fun withTheSwitchOffDescriptorContentGoesOutAsBefore() = runTest {
+        assertTrue("secret-name.pdf" in sentAndKept(seal = false, update = false).first)
+    }
 
     // ---------- upload (create) ----------
 

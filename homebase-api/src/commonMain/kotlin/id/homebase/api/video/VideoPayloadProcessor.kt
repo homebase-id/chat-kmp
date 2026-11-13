@@ -3,6 +3,7 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -38,6 +39,7 @@ class VideoPayloadProcessor(
         trimEndMs: Long? = null,
         videoQuality: VideoQuality = VideoQuality.STANDARD,
         inputBlobUrl: String? = null,
+        playlistPayloadKey: String = "pls_0000",
     ): VideoProcessResult {
         // Without it iOS suspends ffmpeg mid-encode as soon as the user leaves the app.
         val assertion =
@@ -63,6 +65,7 @@ class VideoPayloadProcessor(
                     trimEndMs = trimEndMs,
                     videoQuality = videoQuality,
                     inputBlobUrl = inputBlobUrl,
+                    playlistPayloadKey = playlistPayloadKey,
                 )
             }
         } finally {
@@ -90,6 +93,7 @@ class VideoPayloadProcessor(
         // Web only: a blob: URL for the original, read by ffmpeg/decoder in JS (poster + compress)
         // so the bytes never enter Kotlin. Read-only here; revoked by writeFileFromUrl.
         inputBlobUrl: String?,
+        playlistPayloadKey: String,
     ): VideoProcessResult {
         // The okio path stays the source of truth for size, the compress-skip fallback, and the
         // non-HLS encrypt of an uncompressed clip; inputBlobUrl only short-circuits the INPUT reads.
@@ -185,6 +189,7 @@ class VideoPayloadProcessor(
                 keyHeader = keyHeader,
                 onProgress = onProgress,
                 descriptorContentPayloadKey = descriptorContentPayloadKey,
+                playlistPayloadKey = playlistPayloadKey,
                 compressedPath = compressedPath,
                 compressElapsed = compressElapsed,
                 inputSize = inputSize,
@@ -206,6 +211,7 @@ class VideoPayloadProcessor(
         keyHeader: KeyHeader,
         onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
         descriptorContentPayloadKey: String,
+        playlistPayloadKey: String,
         compressedPath: String,
         compressElapsed: Duration,
         inputSize: Long,
@@ -361,54 +367,71 @@ class VideoPayloadProcessor(
                 videoBitrateBps = videoBitrateBps,
             )
 
-        val metadataJson = OdinSystemSerializer.serialize(metadata)
-        val shouldEmbed =
-            metadataJson.length < HomebaseProtocol.MaxPayloadDescriptorBytes
-
         /* ---------- PHASE 6: PAYLOADS ---------- */
 
-        val videoPayload =
-            PayloadFile(
-                key = payload.key,
-                filePath = finalVideoPath,
-                contentType = if (isSegmented) "video/mp2t" else "video/mp4",
-                descriptorContent =
-                    if (shouldEmbed) metadataJson
-                    else OdinSystemSerializer.serialize(
-                        metadata.copy(
-                            isDescriptorContentComplete = false,
-                            hlsPlaylist = null,  // too large — full playlist goes in separate payload
-                            key = descriptorContentPayloadKey  // tells player where to fetch full metadata
-                        )
-                    ),
-                isPreEncrypted = true,
-                previewThumbnail = tinyThumb,
-                iv = keyHeader.iv
-            )
+        fun videoPayload(descriptorContent: String) = PayloadFile(
+            key = payload.key,
+            filePath = finalVideoPath,
+            contentType = if (isSegmented) "video/mp2t" else "video/mp4",
+            descriptorContent = descriptorContent,
+            isPreEncrypted = true,
+            previewThumbnail = tinyThumb,
+            iv = keyHeader.iv
+        )
 
-        val payloads =
-            if (shouldEmbed) {
-                listOf(videoPayload)
+        // Encrypted, ready-to-transmit and referenced by the outbox row: the durable staging bucket,
+        // NOT the disposable upload-temp/ that gets swept every startup (#842). The video's IV, like its
+        // thumbnails (UPLOADS.md "Words"), so a player reads it with the key header it holds.
+        suspend fun sidePayload(key: String, text: String, contentType: String, suffix: String) = PayloadFile(
+            key = key,
+            filePath = fileOperationsProvider.writeBytesToOutboxTempFile(keyHeader.encryptDataAes(text.toByteArray()), "payload", suffix),
+            contentType = contentType,
+            isPreEncrypted = true,
+            iv = keyHeader.iv
+        )
+
+        // The builder hands over current-format content when the switch is on; the old format otherwise.
+        val current = payload.descriptorContent?.let(DescriptorContentV1::parseOrNull)
+        val payloads = if (current != null) {
+            val playlist = playlistContent?.takeIf { isSegmented }
+            val descriptor = current.copy(
+                original = if (compressedPath == payload.filePath && !isSegmented) 1 else 0,
+                pixelWidth = metadata.widthPx.takeIf { it > 0 },
+                pixelHeight = metadata.heightPx.takeIf { it > 0 },
+                video = DescriptorContentV1.Video(
+                    durationMs = durationMs,
+                    codec = codec,
+                    segmented = if (isSegmented) 1 else null,
+                    playlistKey = playlist?.let { playlistPayloadKey },
+                    plainBytes = metadata.fileSize,
+                    bitDepth = metadata.bitDepth.takeIf { it > 0 },
+                    hdr = if (metadata.isHdr) 1 else null,
+                    bitrateBps = videoBitrateBps.takeIf { it > 0 },
+                ),
+            )
+            listOfNotNull(
+                videoPayload(descriptor.encode()),
+                playlist?.let { sidePayload(playlistPayloadKey, it, HLS_PLAYLIST_CONTENT_TYPE, ".m3u8") },
+            )
+        } else {
+            val metadataJson = OdinSystemSerializer.serialize(metadata)
+            if (metadataJson.length < HomebaseProtocol.MaxPayloadDescriptorBytes) {
+                listOf(videoPayload(metadataJson))
             } else {
                 listOf(
-                    videoPayload,
-                    PayloadFile(
-                        key = descriptorContentPayloadKey,
-                        filePath =
-                            // Encrypted, ready-to-transmit and referenced by the outbox row —
-                            // belongs in the durable staging bucket, NOT the disposable
-                            // upload-temp/ that gets swept every startup (#842).
-                            fileOperationsProvider.writeBytesToOutboxTempFile(
-                                keyHeader.encryptDataAes(metadataJson.toByteArray()),
-                                "payload",
-                                ".metadata"
-                            ),
-                        contentType = "application/json",
-                        isPreEncrypted = true,
-                        iv = keyHeader.iv
-                    )
+                    videoPayload(
+                        OdinSystemSerializer.serialize(
+                            metadata.copy(
+                                isDescriptorContentComplete = false,
+                                hlsPlaylist = null,  // too large — full playlist goes in separate payload
+                                key = descriptorContentPayloadKey  // tells player where to fetch full metadata
+                            )
+                        )
+                    ),
+                    sidePayload(descriptorContentPayloadKey, metadataJson, "application/json", ".metadata"),
                 )
             }
+        }
 
         /* ---------- RESULT ---------- */
 

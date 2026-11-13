@@ -1,6 +1,9 @@
 package id.homebase.upload
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContentSeal
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.PayloadFile
@@ -33,6 +36,7 @@ class UploadService(
     private val outboxSync: OutboxSync,
     private val optimisticWriter: OptimisticLocalWriter,
     private val payloadCacheSeeder: PayloadCacheSeeder,
+    private val sealDescriptorContent: Boolean = DescriptorContentV1.WRITE,
 ) {
     /**
      * Encrypt + enqueue [spec] and (best-effort) seed the cache and write the optimistic row.
@@ -60,7 +64,7 @@ class UploadService(
             keyHeader = spec.keyHeader,
             metadata = metadata.encryptContent(spec.keyHeader),
             transitOptions = spec.transit,
-            payloads = encryptedBundle.payloads,
+            payloads = sealed(encryptedBundle.payloads, spec.keyHeader),
             thumbnails = encryptedBundle.thumbnails,
             existingFileIsSuccess = spec.existingFileIsSuccess,
             fileSystemType = spec.requestFileSystemType,
@@ -117,6 +121,16 @@ class UploadService(
         )
     }
 
+    // Every descriptor content of an encrypted file goes out sealed with its key, copies included:
+    // the device keeps them opened, so a forward or re-send starts from the readable form (UPLOADS.md section 2).
+    private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader): List<PayloadFile> {
+        if (!sealDescriptorContent) return payloads
+        return payloads.map { payload ->
+            val content = payload.descriptorContent?.takeIf { it.isNotBlank() } ?: return@map payload
+            payload.copy(descriptorContent = DescriptorContentSeal.seal(content, keyHeader.aesKey))
+        }
+    }
+
     /**
      * Update an existing file (`UpdateFileByUniqueIdRequest`). The shared counterpart to [upload]
      * for the non-create paths: header-only edits, appending/overwriting payloads, delete-only
@@ -147,6 +161,7 @@ class UploadService(
             freshlyEncrypted = encrypted
         }
 
+        val sent = sealed(payloads, spec.keyHeader)
         val request = UpdateFileByUniqueIdRequest(
             driveId = spec.driveId,
             uniqueId = spec.uniqueId,
@@ -156,7 +171,7 @@ class UploadService(
                 locale = spec.locale,
                 recipients = spec.recipients,
                 manifest = UpdateManifest.build(
-                    payloads = payloads.ifEmpty { null },
+                    payloads = sent.ifEmpty { null },
                     toDeletePayloads = spec.toDeletePayloads,
                     thumbnails = thumbnails.ifEmpty { null },
                     generatePayloadIv = spec.generatePayloadIv,
@@ -165,7 +180,7 @@ class UploadService(
                 appNotificationOptions = spec.appNotificationOptions,
             ),
             metadata = spec.metadata.encryptContent(spec.keyHeader),
-            payloads = payloads.ifEmpty { null },
+            payloads = sent.ifEmpty { null },
             thumbnails = thumbnails.ifEmpty { null },
         )
 

@@ -41,6 +41,11 @@ data class DescriptorContentV1(
         @SerialName("sd") SD(MediaQuality.STANDARD),
         @SerialName("hd") HD(MediaQuality.HD),
         @SerialName("org") ORG(MediaQuality.ORIGINAL),
+        ;
+
+        companion object {
+            fun of(quality: MediaQuality): Quality = entries.first { it.mediaQuality == quality }
+        }
     }
 
     @Serializable
@@ -78,6 +83,9 @@ data class DescriptorContentV1(
 
     companion object {
         const val VERSION = 1
+
+        /** Whether uploads write this format. It flips once, together with the feed in odin-js (UPLOADS.md section 7). */
+        const val WRITE = false
 
         // No older form is a JSON object with "v" and "k" keys.
         fun isCurrentFormat(content: String): Boolean =

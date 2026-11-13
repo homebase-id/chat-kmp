@@ -8,13 +8,10 @@ import id.homebase.api.client.drives.upload.cleanupHlsScratch
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
-import co.touchlab.kermit.Logger
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.encryptFileStreaming
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
-import id.homebase.api.lib.image.ImageFormatDetector
-import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.video.VideoPayloadProgressPhase
 import id.homebase.api.video.VideoPayloadProcessor
 import kotlinx.coroutines.CoroutineScope
@@ -92,6 +89,7 @@ class PayloadBundleEncryptionService(
                         keyHeader = keyHeader,
                         onProgress = progress,
                         descriptorContentPayloadKey = "${HomebaseProtocol.PayloadDescriptorKeyPrefix}$index",
+                        playlistPayloadKey = "pls_${index.toString().padStart(4, '0')}",
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,
                         inputBlobUrl = payload.inputBlobUrl,
@@ -101,7 +99,7 @@ class PayloadBundleEncryptionService(
                     newPayloads += result.payloads
                     newThumbnails += result.thumbnails
                 } else {
-                    val sourcePath = scrubImageMetadata(payload)
+                    val sourcePath = withoutImageMetadata(payload.filePath, payload.contentType, fileOps)
                     val encryptedFile = encryptFile(sourcePath, keyHeader)
                     if (sourcePath != payload.filePath) {
                         runCatching { fileOps.deleteTempFile(sourcePath) }
@@ -138,42 +136,6 @@ class PayloadBundleEncryptionService(
         return bundle.copy(
             payloads = newPayloads, thumbnails = newThumbnails
         )
-    }
-
-    /**
-     * Returns a path to [payload]'s bytes with EXIF/XMP metadata removed, or its own
-     * `filePath` when there was nothing to strip. The caller reaps the temp.
-     *
-     * Images are uploaded byte-for-byte — nothing on the send path re-encodes them — so a
-     * camera JPEG otherwise reached the recipient carrying GPS, capture time and camera
-     * serial (#1297). Stripping the metadata segments keeps the compressed pixel data
-     * bit-identical, unlike a re-encode.
-     *
-     * Fail-soft by design: a file that can't be read, isn't a format the scrubber handles, or
-     * couldn't be parsed goes out as it is rather than failing the send. The cost of that is a
-     * leak, not a crash, so it is logged loudly.
-     */
-    private suspend fun scrubImageMetadata(payload: PayloadFile): String {
-        if (!payload.contentType.startsWith("image/")) return payload.filePath
-        val original = try {
-            fileOps.readFileBytes(payload.filePath)
-        } catch (t: Throwable) {
-            Logger.w(throwable = t, tag = TAG) {
-                "metadata scrub skipped — could not read ${payload.filePath}"
-            }
-            return payload.filePath
-        }
-        val why = when (val outcome = ImageMetadataScrubber.scrubWithOutcome(original)) {
-            is ImageMetadataScrubber.Outcome.Scrubbed -> return fileOps.writeBytesToTempFile(outcome.bytes, "scrubbed_", ".img")
-            ImageMetadataScrubber.Outcome.NothingToStrip -> return payload.filePath
-            ImageMetadataScrubber.Outcome.UnsupportedFormat -> "isn't a format the scrubber handles"
-            ImageMetadataScrubber.Outcome.Unparseable -> "couldn't be parsed"
-        }
-        Logger.w(tag = TAG) {
-            "metadata scrub skipped — ${payload.contentType} (sniffed ${ImageFormatDetector.detectFormat(original)}) " +
-                "$why; any EXIF/XMP goes out intact"
-        }
-        return payload.filePath
     }
 
     private suspend fun encryptFile(
