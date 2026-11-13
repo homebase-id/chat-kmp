@@ -2,6 +2,16 @@
 
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.ui.draw.shadow
+
+import androidx.compose.material3.DropdownMenuGroup
+
+import androidx.compose.material3.DropdownMenuPopup
+
+import androidx.compose.material3.IconButtonDefaults
+
+import androidx.compose.material3.FilledTonalIconButton
+
 import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.border
@@ -427,39 +437,23 @@ private fun ProfileCardPager(
         else -> Modifier
     }
     val reservedBottom = FAB_BAND_HEIGHT + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    LaunchedEffect(host, reservedBottom) { if (!bottomBand) host?.reserveBottom(reservedBottom) }
+    LaunchedEffect(host, reservedBottom) { if (!cardBands) host?.reserveBottom(reservedBottom) }
 
     CardExpressiveTheme {
         val topColor by cardEdgeColor(uiState.cardTopArgb, uiState.design)
         val bottomColor by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
-        // The header above rounds the top; the native view rounds only the corners it reaches.
-        val cardShape = if (sheeted) RectangleShape else sheetShape.copy(topStart = ZeroCorner, topEnd = ZeroCorner)
+        // Under a band the sheet's clip rounds the top; the native view rounds only the corners it reaches.
+        val cardShape = if (cardBands) sheetShape.copy(topStart = ZeroCorner, topEnd = ZeroCorner) else sheetShape
         val body: @Composable (Modifier) -> Unit = { bodyModifier ->
-            Column(modifier = bodyModifier) {
+            Box(modifier = bodyModifier) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .drawBehind { drawRect(topColor) }
-                        // The card's webview never hands drags to Compose, so the header alone drags the sheet.
-                        .then(if (sheeted) Modifier.anchoredDraggable(sheet, Orientation.Vertical) else Modifier),
+                        .fillMaxSize()
+                        .drawBehind { drawRect(bottomColor) }
+                        .padding(top = if (cardBands) TOP_BAND_HEIGHT else 0.dp),
                 ) {
-                    SheetTopChrome(
-                        uiState = uiState,
-                        onClose = leave.takeIf { !sheeted },
-                        onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
-                        onNewCard = onNewCard.takeIf { uiState.circleCardsSupported },
-                        onEdit = onEdit,
-                        onChangeDesign = onChangeDesign,
-                        onExplainReadOnly = { explainReadOnly = true },
-                        extraActions = { nfc?.let { CardChromePill { CardNfcAction(it) } } },
-                        fullWindow = fullWindow,
-                        onToggleFullWindow = onToggleFullWindow,
-                    )
-                    if (sheeted) BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.Center))
-                }
-                Box(modifier = Modifier.weight(1f).fillMaxWidth().drawBehind { drawRect(bottomColor) }) {
                     CardBandsLayout(
-                        bottomBand = bottomBand,
+                        bottomBand = cardBands,
                         bottomColor = { bottomColor },
                         modifier = Modifier.fillMaxSize(),
                     ) {
@@ -526,6 +520,29 @@ private fun ProfileCardPager(
                             )
                         }
                     }
+                }
+                // Floats over the page's own top space, as the chrome always did; web's iframe paints over Compose, so it gets a band.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .then(if (cardBands) Modifier.drawBehind { drawRect(topColor) } else Modifier)
+                        // The card's webview never hands drags to Compose, so the header alone drags the sheet.
+                        .then(if (sheeted) Modifier.anchoredDraggable(sheet, Orientation.Vertical) else Modifier),
+                ) {
+                    SheetTopChrome(
+                        uiState = uiState,
+                        onClose = leave.takeIf { !sheeted },
+                        onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
+                        onNewCard = onNewCard.takeIf { uiState.circleCardsSupported },
+                        onEdit = onEdit,
+                        onChangeDesign = onChangeDesign,
+                        onExplainReadOnly = { explainReadOnly = true },
+                        extraActions = { nfc?.let { CardChromePill { CardNfcAction(it) } } },
+                        fullWindow = fullWindow,
+                        onToggleFullWindow = onToggleFullWindow,
+                    )
+                    if (sheeted) BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.Center))
                 }
             }
         }
@@ -606,8 +623,8 @@ private fun readableOn(background: Color): Color {
 
 private enum class SheetValue { Open, Dismissed }
 
-// Web paints the card's frame over any Compose chrome, so only there does the FAB need a band of its own.
-private val bottomBand = !chromeFloatsOverCard
+// Web paints the card's frame over any Compose chrome, so only there does the chrome need bands of its own.
+private val cardBands = !chromeFloatsOverCard
 
 @Composable
 private fun CardBandsLayout(
@@ -798,22 +815,37 @@ private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, onE
     val label = stringResource(MR.string.edit)
     Box {
         WithTooltip(label) {
-            ChromeIconButton(onClick = { if (readOnly) onExplainReadOnly() else open = true }) {
-                Icon(Icons.Outlined.Edit, contentDescription = label, modifier = Modifier.size(20.dp))
+            // The secondary action: tonal and lifted, while the accent-coloured share FAB stays the primary one.
+            FilledTonalIconButton(
+                onClick = { if (readOnly) onExplainReadOnly() else open = true },
+                shapes = IconButtonDefaults.shapes(),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
+                modifier = Modifier
+                    .size(IconButtonDefaults.mediumContainerSize())
+                    .shadow(3.dp, CircleShape),
+            ) {
+                Icon(Icons.Outlined.Edit, contentDescription = label, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
             }
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenuPopup(expanded = open, onDismissRequest = { open = false }) {
             ReportOverlay()
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.edit)) },
-                leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
-                onClick = { open = false; onEdit() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.profile_card_design_action)) },
-                leadingIcon = { Icon(Icons.Outlined.Palette, contentDescription = null) },
-                onClick = { open = false; onChangeDesign() },
-            )
+            DropdownMenuGroup(shapes = MenuDefaults.groupShape(0, 1)) {
+                DropdownMenuItem(
+                    onClick = { open = false; onEdit() },
+                    text = { Text(stringResource(MR.string.edit)) },
+                    shape = MenuDefaults.leadingItemShape,
+                    leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+                )
+                DropdownMenuItem(
+                    onClick = { open = false; onChangeDesign() },
+                    text = { Text(stringResource(MR.string.profile_card_design_action)) },
+                    shape = MenuDefaults.trailingItemShape,
+                    leadingIcon = { Icon(Icons.Outlined.Palette, contentDescription = null) },
+                )
+            }
         }
     }
 }

@@ -109,6 +109,7 @@ import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.dialog
 import androidx.navigation.compose.currentBackStackEntryAsState
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseManager
@@ -204,6 +205,8 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.ui.screens.card.CardTapShareDriver
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
+import id.homebase.core.ui.screens.card.CardSheetWindowEffect
+import id.homebase.core.ui.screens.card.cardSheetDialogProperties
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
@@ -1878,32 +1881,35 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.ProfileCard> { entry ->
+                            // A dialog, so the screen it opened from stays drawn under the sheet's scrim.
+                            dialog<Route.ProfileCard>(dialogProperties = cardSheetDialogProperties()) { entry ->
+                                CardSheetWindowEffect()
                                 if (isAuthenticated) {
                                     ProfileCardScreen(
                                         viewModel = koinViewModel(
                                             viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                         ),
                                         onBack = { navController.popBackStack() },
-                                        onEdit = { navController.navigate(Route.ProfileCardEditor()) },
-                                        onChangeDesign = { navController.navigate(Route.ProfileCardEditor(design = true)) },
+                                        onEdit = { navController.navigate(Route.ProfileCardEditor(fromCard = true)) },
+                                        onChangeDesign = { navController.navigate(Route.ProfileCardEditor(design = true, fromCard = true)) },
                                     )
                                 }
                             }
 
                             composable<Route.ProfileCardEditor> { entry ->
                                 if (isAuthenticated) {
+                                    val route = entry.toRoute<Route.ProfileCardEditor>()
                                     ProfileCardEditorScreen(
                                         viewModel = koinViewModel(
                                             viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                         ),
                                         avatarViewModel = koinViewModel(),
-                                        onBack = { navController.popBackStack() },
+                                        onBack = { navController.leaveCardEditor(route.fromCard) },
                                         onNavigateToCropper = { requestId ->
                                             navController.navigate(Route.Crop(requestId.toString(), lockedAspect = "square"))
                                         },
                                         cardsEnabled = profileCardEnabled,
-                                        openDesign = entry.toRoute<Route.ProfileCardEditor>().design,
+                                        openDesign = route.design,
                                     )
                                 }
                             }
@@ -2619,15 +2625,22 @@ private fun rememberSettingsOwner(navController: NavHostController, entry: NavBa
         navController.currentBackStack.value.lastOrNull { it.destination.hasRoute(Route.Settings::class) } ?: entry
     }
 
-// The card host lives with the Settings entry, so it is warm before the card opens and survives it.
+// The card host lives with the Settings entry, so it is warm before the card opens; otherwise with the screen the card
+// opened from, since opening the editor pops the card's dialog entry and the selected page must survive that.
 @Composable
 private fun rememberCardHostOwner(navController: NavHostController, entry: NavBackStackEntry): ViewModelStoreOwner =
     remember(entry) {
         val backStack = navController.currentBackStack.value
         backStack.lastOrNull { it.destination.hasRoute(Route.Settings::class) }
-            ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileCard::class) }
+            ?: backStack.lastOrNull { it != entry && !it.destination.isCardRoute() }
             ?: entry
     }
+
+// Navigating to the editor popped the card's dialog, so leaving an editor opened from the card brings the sheet back.
+private fun NavHostController.leaveCardEditor(fromCard: Boolean) {
+    popBackStack()
+    if (fromCard) navigate(Route.ProfileCard)
+}
 
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,

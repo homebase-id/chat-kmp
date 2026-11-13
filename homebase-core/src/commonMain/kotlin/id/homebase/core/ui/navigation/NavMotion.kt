@@ -58,10 +58,8 @@ internal fun NavDestination.routeMotion(wide: Boolean): RouteMotion = when {
             hasRoute(Route.Crop::class) ||
             hasRoute(Route.Draw::class) -> RouteMotion.Modal
     // Splash and login are not a step in the hierarchy; the card editor redraws the card it opens from.
-    // The card viewer is a modal sheet that slides itself up.
     hasRoute(Route.AppLoading::class) ||
             hasRoute(Route.Login::class) ||
-            hasRoute(Route.ProfileCard::class) ||
             hasRoute(Route.ProfileCardEditor::class) -> RouteMotion.Fade
     hasRoute(Route.VaultEntryDetail::class) -> RouteMotion.Redirect
     else -> RouteMotion.Push
