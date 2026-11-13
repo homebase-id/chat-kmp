@@ -311,8 +311,6 @@ class ProfileCardViewModel(
     private val tilePayloads = mutableMapOf<String, CardPayload>()
     private val _introTiles = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
     val introTiles: StateFlow<Map<String, ImageBitmap>> = _introTiles.asStateFlow()
-    private val _introRevision = MutableStateFlow(0)
-    val introRevision: StateFlow<Int> = _introRevision.asStateFlow()
     private var hostJob: Job? = null
     private var loadJob: Job? = null
     private var postsJob: Job? = null
@@ -1031,7 +1029,6 @@ class ProfileCardViewModel(
         val state = _uiState.value
         _cover.update { cover -> cover?.takeIf { it.design == state.savedDesign } }
         if (content == null) return
-        _introRevision.update { it + 1 }
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
             val payload = payloadFor(state.design, state.selectedAudience) ?: return@launch

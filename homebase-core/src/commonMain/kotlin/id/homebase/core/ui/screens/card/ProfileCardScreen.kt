@@ -3,13 +3,8 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.ui.draw.shadow
-
-
-
 import androidx.compose.material3.IconButtonDefaults
-
 import androidx.compose.material3.FilledTonalIconButton
-
 import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.border
@@ -46,15 +41,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.FilledTonalButton
 import id.homebase.resources.profile_card_read_only_ok
 import id.homebase.resources.profile_card_read_only
 import id.homebase.resources.profile_card_not_saved
 import id.homebase.resources.profile_card_read_only_title
-import id.homebase.resources.profile_card_read_only_why
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
@@ -109,7 +101,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
@@ -148,7 +139,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -269,7 +259,7 @@ internal fun CardExpressiveTheme(content: @Composable () -> Unit) {
 
 @Composable
 internal fun cardSheetShape(): CornerBasedShape =
-    MaterialTheme.shapes.extraLargeIncreased.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
+    MaterialTheme.shapes.extraLargeIncreased.copy(bottomStart = ZeroCorner, bottomEnd = ZeroCorner)
 
 // Read the returned state only in draw, so the colour animation redraws instead of recomposing the card.
 @Composable

@@ -2592,7 +2592,6 @@
     <string name="profile_card_audience_description">Card for %1$s</string>
     <string name="profile_card_circle_unsupported">Your Homebase server can't keep a separate card for each circle yet, so circle cards can't be changed.</string>
     <string name="profile_card_read_only">Read-only</string>
-    <string name="profile_card_read_only_why">Why can't I edit?</string>
     <string name="profile_card_read_only_title">This card is locked</string>
     <string name="profile_card_read_only_ok">Got it</string>
     <string name="profile_card_design_locked_title">Design · %1$s</string>

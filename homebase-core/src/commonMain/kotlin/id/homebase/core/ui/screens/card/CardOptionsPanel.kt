@@ -227,7 +227,6 @@ private val OPTION_SIDE_INSET = 16.dp
 // Seven tools plus the picked label only fit 393dp at this inset.
 private val TOOLBAR_SIDE_INSET = 0.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
-private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
 private val BLOCK_TILE_SPACING = 6.dp
 private val BLOCK_TILE_CORNER = 12.dp
