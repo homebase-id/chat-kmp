@@ -97,6 +97,8 @@ fun MomentMediaItem(
     onRequestDecryptedFile: (() -> Unit)? = null,
     // Routes photos through [ZoomableSubSamplingImage] for inline pinch-zoom; only affects image payloads.
     enableZoom: Boolean = false,
+    // Only the page on screen: pagers keep neighbours composed, and those would pull their payloads too.
+    stepUpToPayload: Boolean = false,
     // True while the zoomed photo is panned past fit; the carousel pager uses it to suspend page-swiping.
     onZoomedChanged: ((Boolean) -> Unit)? = null,
     shape: Shape =
@@ -326,7 +328,7 @@ fun MomentMediaItem(
 
                 HomebaseImage(
                     imageData = imageData,
-                    stepUpToPayload = true,
+                    stepUpToPayload = stepUpToPayload,
                     modifier = finalModifier,
                     contentScale = imageContentScale,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),

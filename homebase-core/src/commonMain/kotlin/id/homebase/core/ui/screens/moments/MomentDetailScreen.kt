@@ -1772,6 +1772,7 @@ private fun MomentDetailContent(
                             keyHeader = moment.keyHeader,
                             modifier = Modifier.fillMaxSize(),
                             imageSize = ImageSize.THUMB_XLARGE,
+                            stepUpToPayload = isActivePage && pagerState.settledPage == page,
                             // Fit (not crop) — the whole post is visible,
                             // including landscape media in a portrait viewport
                             // (and vice versa). Letterbox bars take the Box's

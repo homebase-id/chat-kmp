@@ -8,9 +8,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class MediaImagePlanTest {
+internal fun sizes(images: List<PlannedImage>) = images.map { "${it.width}x${it.height}" }
 
-    private fun sizes(images: List<PlannedImage>) = images.map { "${it.width}x${it.height}" }
+class MediaImagePlanTest {
 
     private fun assertPlan(
         width: Int,
@@ -44,7 +44,6 @@ class MediaImagePlanTest {
 
     @Test
     fun workedExample_4000x2250() {
-        // 1440x810 is only 1.42x below 2048, so every setting skips it.
         val thumbs = listOf("427x240", "854x480")
         assertPlan(4000, 2250, MediaQuality.STANDARD, thumbs, "2048x1152")
         assertPlan(4000, 2250, MediaQuality.HD, thumbs + "2048x1152", "4000x2250")

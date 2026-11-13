@@ -3,17 +3,12 @@ package id.homebase.api.image
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * Real camera sizes through the planner: a thumbnail is planned only when the next bigger image
- * (the next kept thumbnail, or the final image the pipeline makes) is at least 1.5× its long edge.
- */
+// THUMBNAILS.md's appendix: change the two together.
 class ThumbnailLadderTest {
-    private fun thumbs(source: ImageSize, setting: MediaQuality) =
-        planMediaImages(source, setting).thumbnails.map { "${it.width}x${it.height}" }
 
     private val standard = mapOf(
         ImageSize(3072, 4080) to listOf("241x320", "482x640", "813x1080"), // Pixel 8, 12.5 MP 4:3
-        ImageSize(2268, 4032) to listOf("240x427", "480x854"), // Pixel 9 MP / iPhone 12 MP 16:9: 810x1440 is 1.42x below 2048
+        ImageSize(2268, 4032) to listOf("240x427", "480x854"), // Pixel 9 MP / iPhone 12 MP 16:9
         ImageSize(6144, 8160) to listOf("241x320", "482x640", "813x1080"), // Pixel 8 Pro, 50 MP
         ImageSize(3024, 4032) to listOf("240x320", "480x640", "810x1080"), // iPhone 12 MP 4:3
         ImageSize(4284, 5712) to listOf("240x320", "480x640", "810x1080"), // iPhone 24 MP
@@ -40,18 +35,9 @@ class ThumbnailLadderTest {
         ImageSize(1600, 1200) to listOf("320x240", "640x480"),
     )
 
-    @Test
-    fun standardKeepsOnlyThumbnailsAStepBelowTheNextImage() =
-        standard.forEach { (source, expected) -> assertEquals(expected, thumbs(source, MediaQuality.STANDARD), "$source") }
-
-    @Test
-    fun hdKeepsOnlyThumbnailsAStepBelowTheNextImage() =
-        hd.forEach { (source, expected) -> assertEquals(expected, thumbs(source, MediaQuality.HD), "$source") }
-
-    // The untouched file's bytes don't follow its pixels, so its largest thumbnail anchors the walk and always stays.
     private val original = mapOf(
         ImageSize(3072, 4080) to listOf("241x320", "482x640", "813x1080", "1542x2048"),
-        ImageSize(2268, 4032) to listOf("240x427", "480x854", "1152x2048"), // 810x1440 is 1.42x below 2048
+        ImageSize(2268, 4032) to listOf("240x427", "480x854", "1152x2048"),
         ImageSize(3024, 4032) to listOf("240x320", "480x640", "810x1080", "1536x2048"),
         ImageSize(3024, 3024) to listOf("320x320", "640x640", "1080x1080", "2048x2048"),
         ImageSize(6000, 4000) to listOf("360x240", "720x480", "1215x810", "2048x1365"),
@@ -62,14 +48,19 @@ class ThumbnailLadderTest {
     )
 
     @Test
-    fun originalKeepsItsLargestThumbnailAndOnlyThumbnailsAStepBelow() =
-        original.forEach { (source, expected) -> assertEquals(expected, thumbs(source, MediaQuality.ORIGINAL), "$source") }
+    fun everyKeptThumbnailIsAStepBelowTheNextImage() {
+        for ((setting, table) in mapOf(MediaQuality.STANDARD to standard, MediaQuality.HD to hd, MediaQuality.ORIGINAL to original)) {
+            for ((source, expected) in table) {
+                assertEquals(expected, sizes(planMediaImages(source, setting).thumbnails), "$source $setting")
+            }
+        }
+    }
 
     @Test
     fun aFileKeptAsThePayloadKeepsItsLargestThumbnail() {
         val nineBySixteen = ImageSize(2268, 4032)
         val plan = planMediaImages(nineBySixteen, MediaQuality.STANDARD, makesFinalImage = false)
-        assertEquals(listOf("240x427", "480x854", "810x1440"), plan.thumbnails.map { "${it.width}x${it.height}" })
+        assertEquals(listOf("240x427", "480x854", "810x1440"), sizes(plan.thumbnails))
         assertEquals(null, plan.finalImage)
     }
 }

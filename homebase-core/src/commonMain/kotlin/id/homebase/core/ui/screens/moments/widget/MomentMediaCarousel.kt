@@ -226,6 +226,7 @@ fun MomentMediaCarousel(
                         ?: previewThumbnail,
                     modifier = Modifier.fillMaxSize(),
                     imageSize = ImageSize.THUMB_LARGE,
+                    stepUpToPayload = pagerState.settledPage == pageIndex,
                     // Normally the carousel box is the aspect-locked region and
                     // images crop to fill it (like the 4-up grid). While shrunk
                     // for the comments sheet ([fitToContent]) the box is the 1/3

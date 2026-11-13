@@ -641,10 +641,9 @@ What the planner keeps for typical camera and screen sizes. ~~Struck~~ thumbnail
 | Source | Size | Thumbnails | Final image |
 |---|---|---|---|
 | Pixel 8, 12.5 MP 4:3 | 3072×4080 | 241×320, 482×640 (1.69), 813×1080 (1.90) | 1542×2048 |
-| Pixel 9 MP 9:16 | 2268×4032 | 240×427, 480×854 (2.40), ~~810×1440~~ (1.42) | 1152×2048 |
+| Pixel 9 MP 9:16, iPhone 12 MP 16:9 | 2268×4032 | 240×427, 480×854 (2.40), ~~810×1440~~ (1.42) | 1152×2048 |
 | Pixel 8 Pro, 50 MP 4:3 | 6144×8160 | 241×320, 482×640, 813×1080 | 1542×2048 |
 | iPhone 12, 24 and 48 MP 4:3 | 3024×4032 to 6048×8064 | 240×320, 480×640, 810×1080 | 1536×2048 |
-| iPhone 12 MP 16:9 | 2268×4032 | 240×427, 480×854, ~~810×1440~~ (1.42) | 1152×2048 |
 | Galaxy S23 12 MP, S23 Ultra 200 MP | 3000×4000, 12240×16320 | 240×320, 480×640, 810×1080 | 1536×2048 |
 | Square | 3024×3024 | 320×320, 640×640, 1080×1080 | 2048×2048 |
 | DSLR 24 MP 3:2 | 6000×4000 | 360×240, 720×480, 1215×810 (1.69) | 2048×1365 |
@@ -680,7 +679,7 @@ What the planner keeps for typical camera and screen sizes. ~~Struck~~ thumbnail
 
 What it shows:
 
-- **9:16 and 16:9 photos and screenshots lose one thumbnail** in every setting: the one the minimum short edge stretched to within 1.42× of the next image.
+- **9:16 and 16:9 photos and screenshots lose one thumbnail** in every setting.
 - **Ordinary 4:3 photos from every phone keep every thumbnail.** Their steps are 2.0, 1.69 and 1.90.
 - **A thumbnail the same size as the final image (1.00) is always dropped.** Before the rule, a small photo or a phone screenshot at HD encoded and uploaded the same pixels twice.
 - **The closest calls are 1.48:** a small photo's 1080×810 at Standard and a square photo's 2048×2048 at HD. Both are dropped, which fits the cost argument, but they show where 1.5 sits.
