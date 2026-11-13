@@ -28,10 +28,10 @@ Every user upload, in every app, is assembled by one builder into the format bel
 
 | Word | Meaning |
 |---|---|
-| **File** | One drive file the upload creates: a header (`appData`) plus payloads. A chat message with three photos is one file. |
-| **Payload** | One stored part of the file under a key such as `chat_web0`: usually one picked photo, video or document. |
-| **Main file** | The payload's bytes: what the user picked, or the smaller copy we made of it. |
-| **Descriptor** | A payload's `descriptorContent` string, stored next to it on the server. |
+| **HomebaseFile** | What an upload creates on a drive: a header (`appData`) plus payloads. A chat message with three photos is one HomebaseFile. |
+| **Payload** | A payload of the HomebaseFile, under a key such as `chat_web0`: usually one picked photo, video or document. |
+| **Payload data** | A payload's bytes: what the user picked, or the smaller copy we made of it. |
+| **Descriptor** | A payload's `descriptorContent` string, stored with the payload on the server. |
 
 ## 1. The descriptor
 
@@ -43,8 +43,8 @@ data class UploadDescriptor(
     val v: Int = 1,
     val kind: Kind,
     val name: String? = null,          // original file name; rules in 3.2
-    val original: Boolean? = null,     // image, video, sticker: main file is the user's untouched file
-    val pixelWidth: Int? = null,       // image, video, sticker: the main file's pixels, upright
+    val original: Boolean? = null,     // image, video, sticker: payload data is the user's file, byte for byte
+    val pixelWidth: Int? = null,       // image, video, sticker: the payload data's pixels, upright
     val pixelHeight: Int? = null,
     val quality: MediaQuality? = null, // image, video: "standard" | "hd" | "high" (= Original)
     val format: String? = null,        // sticker: detected image type, for its neutral save name
@@ -71,7 +71,7 @@ Example, a 9:16 photo sent at Standard:
 
 ## 2. The encrypted descriptor
 
-When the file is encrypted, `descriptorContent` holds the descriptor encrypted, in the shape both clients already use for encrypted query strings and socket messages (`SharedSecretEncryptedPayload`):
+When the HomebaseFile is encrypted, `descriptorContent` holds the descriptor encrypted, in the shape both clients already use for encrypted query strings and socket messages (`SharedSecretEncryptedPayload`):
 
 ```json
 {"iv":"<base64, 16 random bytes>","data":"<base64, AES-CBC-PKCS7(fileAesKey, iv, UTF-8 UploadDescriptor JSON)>"}
@@ -79,9 +79,9 @@ When the file is encrypted, `descriptorContent` holds the descriptor encrypted, 
 
 | Item | Value |
 |---|---|
-| Key | The file's AES key (`KeyHeader.aesKey`), the one its payloads use |
+| Key | The HomebaseFile's AES key (`KeyHeader.aesKey`), the one its payloads use |
 | IV | Fresh random 16 bytes per descriptor. Never the payload's IV, which already encrypts the payload's bytes with the same key |
-| When | The file is encrypted (`isEncrypted`). Unencrypted files (public posts) store the plain `UploadDescriptor` |
+| When | The HomebaseFile is encrypted (`isEncrypted`). Unencrypted HomebaseFiles (public posts) store the plain `UploadDescriptor` |
 | Size | odin-core allows 1,024 characters. A descriptor over about 730 characters (encrypted) or 1,024 (plain) moves to its own payload `pld_desc<index>`, as today |
 | Server | No change. odin-core stores, copies and length-checks descriptors, and never reads them |
 
@@ -118,7 +118,7 @@ blank → null
 
 ### 3.3 Original or copy
 
-`original = true` when the main file is the user's file byte for byte (Original, Photos, Vault, a GIF, a kept source). `false` when the builder made it (Standard or HD final image, a transcoded video). Views step up to the main file only when `original == false` and `pixelWidth` is set (`THUMBNAILS.md`, "Showing the images").
+`original = true` when the payload data is the user's file byte for byte (Original, Photos, Vault, a GIF, a kept source). `false` when the builder made it (Standard or HD final image, a transcoded video). Views step up to the payload data only when `original == false` and `pixelWidth` is set (`THUMBNAILS.md`, "Showing the images").
 
 ### 3.4 Metadata
 
@@ -211,7 +211,7 @@ Filesync, WebDrop and the two photo APIs use the builder's rules (content type, 
 | `descriptorContent` | Read as |
 |---|---|
 | null | nothing |
-| JSON object with exactly `iv` and `data` | encrypted: decrypt with the file's key, then read the result with this table |
+| JSON object with exactly `iv` and `data` | encrypted: decrypt with the HomebaseFile's key, then read the result with this table |
 | JSON object with `"v": 1` | `UploadDescriptor` |
 | anything else | today's rules by content type: `AudioFile`, markdown preview, `VideoMetadata`, `ImageFile`, link and location arrays, or the raw string as a file name |
 
@@ -228,7 +228,7 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 | Test | Checks |
 |---|---|
 | `UploadDescriptor` round trip | Every kind serialises and parses; unknown fields ignored |
-| Encrypted descriptor | Encrypt then decrypt with the file key; fresh IV each time; over-length moves to `pld_desc` |
+| Encrypted descriptor | Encrypt then decrypt with the HomebaseFile's key; fresh IV each time; over-length moves to `pld_desc` |
 | Old descriptors | Each row of section 6, with real stored examples, reads as before |
 | Name rules | Paths, NFC, `/` and NUL, 255-byte truncation with an emoji at the edge, blank |
 | Content type | Wrong platform MIME, empty MIME, no extension, renamed file |
@@ -240,7 +240,7 @@ odin-js reads descriptors in `community-app` (chat, Community), `common-app` (fe
 
 | | Decision |
 |---|---|
-| **A** | The name lives in the descriptor; an encrypted file encrypts its whole descriptor (section 2), in both clients. |
+| **A** | The name lives in the descriptor; an encrypted HomebaseFile encrypts its payloads' whole descriptors (section 2), in both clients. |
 | **B** | The tiny stays plain on every file. |
 | **C** | Vault keeps metadata. |
 | **D** | One switch, at once, for every kind including plain files. Unencrypted files' descriptors stay plain. |
