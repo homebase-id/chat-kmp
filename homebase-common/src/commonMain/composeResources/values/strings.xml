@@ -2631,6 +2631,14 @@
     <string name="profile_card_background_dots">Dots</string>
     <string name="profile_card_background_blobs">Blobs</string>
     <string name="profile_card_background_lines">Lines</string>
+    <string name="profile_card_background_rings">Rings</string>
+    <string name="profile_card_background_grid">Grid</string>
+    <string name="profile_card_background_checker">Checker</string>
+    <string name="profile_card_background_zigzag">Zigzag</string>
+    <string name="profile_card_background_confetti">Confetti</string>
+    <string name="profile_card_background_contours">Contours</string>
+    <string name="profile_card_background_halftone">Halftone</string>
+    <string name="profile_card_background_sparkles">Sparkles</string>
     <string name="profile_card_background_none">No pattern</string>
     <string name="profile_card_option_colours">Colours</string>
     <string name="profile_card_option_colours_swatch">%1$s colours</string>
