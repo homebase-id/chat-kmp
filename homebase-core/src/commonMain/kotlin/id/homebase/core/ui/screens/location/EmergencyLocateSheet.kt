@@ -81,7 +81,7 @@ fun EmergencyLocateSheet(
             modifier = Modifier
                 .verticalScroll(rememberScrollState())
                 .imePadding()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .padding(start = 24.dp, end = 24.dp, top = if (isDialog) 0.dp else 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(

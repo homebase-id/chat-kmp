@@ -10,9 +10,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import id.homebase.api.browser.guardJsCallback
 import id.homebase.core.util.showHtmlOverlay
@@ -20,12 +22,14 @@ import id.homebase.core.util.showHtmlOverlay
 actual fun createCardHost(odinId: String): CardHost = WebCardHost(odinId)
 
 @Composable
-actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
+actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?, shape: Shape) {
     val cardHost = host as WebCardHost
-    val density = LocalDensity.current.density
+    val densityScope = LocalDensity.current
+    val density = densityScope.density
+    val layoutDirection = LocalLayoutDirection.current
     var bounds by remember { mutableStateOf<Rect?>(null) }
 
-    LaunchedEffect(cardHost, bounds, layoutWidth) {
+    LaunchedEffect(cardHost, bounds, layoutWidth, shape) {
         val b = bounds ?: return@LaunchedEffect
         val width = b.width / density
         // The iframe gets the full layout size and a CSS scale, so its own viewport is the full-size card's.
@@ -38,6 +42,7 @@ actual fun CardHostView(host: CardHost, modifier: Modifier, layoutWidth: Dp?) {
             (b.height / density / scale).toDouble(),
         )
         setCardFrameScale(cardHost.frame, scale.toDouble())
+        setCardFrameCorners(cardHost.frame, cssCornerRadii(shape, b.size, densityScope, layoutDirection, scale) ?: "")
     }
     DisposableEffect(cardHost) {
         onDispose { hideCardFrame(cardHost.frame) }
@@ -64,7 +69,7 @@ internal class WebCardHost(odinId: String) : CardHostBase(cardPageUrl(odinId, Ca
         is CardCommand.Render -> postCardCommand(frame, "render", command.payload.toJson(), origin)
         CardCommand.ExportPng -> postCardCommand(frame, "exportPng", null, origin)
         // A cross-origin frame runs none of our script: its colours stay the fallback ones and it paints as the browser composites it.
-        CardCommand.ProbeEdges -> Unit
+        CardCommand.ProbeEdges, is CardCommand.HostStyle -> Unit
         CardCommand.RequestPaint -> onBridgeMessage("""{"type":"hostPainted"}""")
     }
 
@@ -127,8 +132,15 @@ private fun setCardFrameScale(frame: JsAny, scale: Double): Unit = js(
     "{ frame.style.transformOrigin = '0 0'; frame.style.transform = scale === 1 ? '' : 'scale(' + scale + ')'; }"
 )
 
+private fun setCardFrameCorners(frame: JsAny, radii: String): Unit = js("{ frame.style.borderRadius = radii; }")
+
 private fun hideCardFrame(frame: JsAny): Unit = js("{ frame.style.display = 'none'; }")
 
 private fun removeCardFrame(frame: JsAny): Unit = js(
     "{ if (frame.parentNode) frame.parentNode.removeChild(frame); }"
 )
+
+@Composable
+actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) = InlineAboveCard(modifier, content)
+
+internal actual val chromeFloatsOverCard: Boolean = false

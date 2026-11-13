@@ -51,6 +51,7 @@ interface OutboxUploader {
 
 private fun uploadTypeName(t: Long): String = when (t) {
     DriveOutboxUploader.UploadNewFile -> "UploadNewFile"
+    DriveOutboxUploader.UploadNewFileOverPeer -> "UploadNewFileOverPeer"
     DriveOutboxUploader.UpdateFile -> "UpdateFile"
     DriveOutboxUploader.DeleteFile -> "DeleteFile"
     DriveOutboxUploader.UpdateLocalMetadataTags -> "UpdateLocalMetadataTags"
@@ -62,6 +63,9 @@ private fun uploadTypeName(t: Long): String = when (t) {
     DriveOutboxUploader.TransformKeyHeaders -> "TransformKeyHeaders"
     else -> "Unknown"
 }
+
+private fun Long.isCreate() =
+    this == DriveOutboxUploader.UploadNewFile || this == DriveOutboxUploader.UploadNewFileOverPeer
 
 private fun Outbox.uploadTypeLabel(): String = "${uploadTypeName(uploadType)}($uploadType)"
 
@@ -558,7 +562,8 @@ class OutboxSync(
         request: UploadFileRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
-        sendNow: Boolean = true
+        sendNow: Boolean = true,
+        overPeer: Boolean = false,
     ): EnqueueResult = kickIfEnqueued(
         tryEnqueue(
             driveId = request.driveId,
@@ -566,7 +571,7 @@ class OutboxSync(
                 ?: error("unique id required to place in outbox"),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
-            uploadType = DriveOutboxUploader.UploadNewFile,
+            uploadType = if (overPeer) DriveOutboxUploader.UploadNewFileOverPeer else DriveOutboxUploader.UploadNewFile,
             json = OutboxSerializer.serialize(request)
         ),
         sendNow,
@@ -838,7 +843,7 @@ class OutboxSync(
     public suspend fun cancelPending(driveId: Uuid, uniqueId: Uuid): CancelOutcome {
         val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
             ?: return CancelOutcome.NothingPending
-        val isCreate = row.uploadType == DriveOutboxUploader.UploadNewFile
+        val isCreate = row.uploadType.isCreate()
         if (row.checkOutStamp != null) return CancelOutcome.InFlight(isCreate)
 
         val deleted = databaseManager.outbox.deleteByIfNotCheckedOut(driveId, uniqueId)
@@ -847,7 +852,7 @@ class OutboxSync(
             // either checked out or drained. Re-read to report which.
             val now = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
                 ?: return CancelOutcome.NothingPending
-            return CancelOutcome.InFlight(now.uploadType == DriveOutboxUploader.UploadNewFile)
+            return CancelOutcome.InFlight(now.uploadType.isCreate())
         }
         Logger.i("OutboxSync: cancelPending removed queued ${if (isCreate) "create" else "row"} uniqueId=$uniqueId")
         return if (isCreate) CancelOutcome.CancelledCreate else CancelOutcome.Cancelled
@@ -1167,7 +1172,7 @@ class OutboxSync(
         // Lenient: the row is being dropped and cleanup should still find a stale row's temp files.
         val json = outboxRecord.json.decodeToString()
         val payloads = when (outboxRecord.uploadType) {
-            DriveOutboxUploader.UploadNewFile ->
+            DriveOutboxUploader.UploadNewFile, DriveOutboxUploader.UploadNewFileOverPeer ->
                 OdinSystemSerializer.deserialize<UploadFileRequest>(json).payloads
             DriveOutboxUploader.UpdateFile ->
                 OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(json).payloads

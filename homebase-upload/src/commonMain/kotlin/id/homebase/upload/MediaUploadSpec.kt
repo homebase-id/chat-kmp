@@ -43,6 +43,10 @@ data class MediaUploadSpec(
     /** Recipient count recorded on the optimistic row (delivery-status display). */
     val originalRecipientCount: Int = 0,
     val fileSystemType: FileSystemType = FileSystemType.Standard,
+    /** The file system the server stores the upload in, when it differs from the optimistic row's [fileSystemType]. */
+    val requestFileSystemType: FileSystemType? = null,
+    /** Send the create to the recipient's host (`transit.remoteTargetDrive`) instead of writing it to our own drive. */
+    val overPeer: Boolean = false,
     /** Pre-minted so the caller (and the cache seed) can reference the optimistic fileId. */
     val optimisticFileId: Uuid = Uuid.random(),
     val writeOptimistic: Boolean = true,

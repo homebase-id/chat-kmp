@@ -59,6 +59,7 @@ data class DeleteLocalFilesByFileIdRequest(
     val fileIds: List<Uuid>,
     val recipients: List<OdinId>? = null,
     val hardDelete: Boolean = false,
+    val fileSystemType: FileSystemType? = null,
 )
 
 @OptIn(ExperimentalEncodingApi::class)
@@ -494,13 +495,15 @@ public class DriveFileProvider(
     suspend fun deleteFiles(
         driveId: Uuid,
         fileIds: List<Uuid>,
-        recipients: List<OdinId>? = null
+        recipients: List<OdinId>? = null,
+        fileSystemType: FileSystemType? = null,
     ): DeleteFileIdBatchResult {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuidList(fileIds, "fileIds")
         val creds = requireCreds()
 
-        val endpoint = "/drives/${driveId}/files/delete-batch/by-file-id"
+        val endpoint = "/drives/${driveId}/files/delete-batch/by-file-id" +
+            (fileSystemType?.let { "?xfst=$it" } ?: "")
         val request =
             DeleteFilesBatchRequest(
                 requests =

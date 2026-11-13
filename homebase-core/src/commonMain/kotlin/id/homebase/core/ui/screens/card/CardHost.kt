@@ -1,9 +1,15 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasureResult
@@ -12,7 +18,9 @@ import androidx.compose.ui.node.LayoutModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateMeasurement
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import co.touchlab.kermit.Logger
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.util.truncateToCodePoints
@@ -59,6 +67,12 @@ interface CardHost {
     fun probeEdges()
     fun requestPaint()
 
+    // Room at the page's end for chrome floating over its bottom, which the page itself knows nothing of.
+    fun reserveBottom(bottom: Dp) {}
+
+    // A narrow page exports what it shows, so a host with no snapshot() is laid out at a tile's size while it captures tiles.
+    fun sizeForTiles(on: Boolean) {}
+
     // Callers keep the image (tiles, covers), so each call must return a new one, never a reused buffer.
     suspend fun snapshot(): ImageBitmap?
     fun dispose()
@@ -70,9 +84,33 @@ expect fun createCardHost(odinId: String): CardHost
  * Shows [host]'s page. With a [layoutWidth] wider than the view, the page lays out at that width (keeping the view's
  * aspect ratio) and is drawn scaled down to fit, so a small preview reflows exactly like the full-size card.
  * Desktop lays out at the view's own size: wry exposes no zoom.
+ * Desktop and web float a native view over Compose, which no Compose clip reaches, so they round it to [shape] themselves.
  */
 @Composable
-expect fun CardHostView(host: CardHost, modifier: Modifier = Modifier, layoutWidth: Dp? = null)
+expect fun CardHostView(host: CardHost, modifier: Modifier = Modifier, layoutWidth: Dp? = null, shape: Shape = RectangleShape)
+
+/**
+ * Lays [content] out at its own size, as a Box would, drawn above any [CardHostView] beneath it and never above an
+ * overlay reported to LocalOpenOverlays. Desktop's card is a native view no Compose draws over, so there
+ * the content floats in a window of its own; elsewhere Compose already draws over the card.
+ */
+@Composable
+expect fun AboveCard(modifier: Modifier, content: @Composable () -> Unit)
+
+/** False where [AboveCard] can't float over the card (web), so chrome there needs a band of its own. */
+internal expect val chromeFloatsOverCard: Boolean
+
+@Composable
+internal fun InlineAboveCard(modifier: Modifier, content: @Composable () -> Unit) {
+    Box(modifier, contentAlignment = Alignment.Center) { content() }
+}
+
+/** [shape]'s corner radii as a CSS radius list in CSS px of a page drawn at [scale], or null when it has no rounded corners. */
+internal fun cssCornerRadii(shape: Shape, size: Size, density: Density, layoutDirection: LayoutDirection, scale: Float = 1f): String? {
+    val rect = (shape.createOutline(size, layoutDirection, density) as? Outline.Rounded)?.roundRect ?: return null
+    return listOf(rect.topLeftCornerRadius, rect.topRightCornerRadius, rect.bottomRightCornerRadius, rect.bottomLeftCornerRadius)
+        .joinToString(" ") { "${it.x / density.density / scale}px" }
+}
 
 internal fun pageScale(viewWidth: Float, layoutWidth: Float): Float = (viewWidth / layoutWidth).coerceIn(MIN_PAGE_SCALE, 1f)
 
@@ -129,6 +167,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
     protected val scope = supervisedScope("card-host", Dispatchers.Main)
 
     private var lastPayload: CardPayload? = null
+    private var hostStyle: CardCommand.HostStyle? = null
     private var renderSent: TimeMark? = null
     private var mainFrameSettled = false
     private var loadedTimeout: Job? = null
@@ -164,6 +203,13 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
 
     override fun requestPaint() {
         if (_isLoaded.value) send(CardCommand.RequestPaint)
+    }
+
+    override fun reserveBottom(bottom: Dp) {
+        val style = CardCommand.HostStyle(bottom.value.roundToInt())
+        if (style == hostStyle) return
+        hostStyle = style
+        if (_isLoaded.value) send(style)
     }
 
     override suspend fun snapshot(): ImageBitmap? = null
@@ -222,6 +268,7 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         CardLog.info("loaded")
         loadedTimeout?.cancel()
         _isLoaded.value = true
+        hostStyle?.let(::send)
         // Covers a render queued before load and a page that reloaded under a rendered card.
         lastPayload?.let(::sendRender)
     }

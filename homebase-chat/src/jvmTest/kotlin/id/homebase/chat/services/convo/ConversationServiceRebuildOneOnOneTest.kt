@@ -1,7 +1,6 @@
 package id.homebase.chat.services.convo
 
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
@@ -44,11 +43,8 @@ class ConversationServiceRebuildOneOnOneTest {
         }
     }
 
-    private suspend fun ConversationServiceTestFixture.uploadRequestFor(uniqueId: Uuid): UploadFileRequest {
-        val row = drainOutboxInDependencyOrder().single { it.uniqueId == uniqueId }
-        assertEquals(DriveOutboxUploader.UploadNewFile, row.uploadType)
-        return OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
-    }
+    private suspend fun ConversationServiceTestFixture.uploadRequestFor(uniqueId: Uuid): UploadFileRequest =
+        drainOutboxInDependencyOrder().single { it.uniqueId == uniqueId }.asUploadFileRequest()
 
     private fun HomebaseFile.recipients(): List<String> =
         OdinSystemSerializer.deserialize<ConversationAppDataJson>(fileMetadata.appData.content!!)
