@@ -177,15 +177,19 @@ Filesync and WebDrop still store `application/octet-stream` payloads (they move 
 
 ### 3.2 Name
 
+`name = safeFileName(pickedName)`, or null when the picked name is blank. `safeFileName` (homebase-api `id.homebase.api.util`) is the one function for every file name the apps write to a disk or send. The builder, the save paths and the share paths all call it, so a name is cleaned the same way wherever it goes:
+
 ```text
-name = basename(pickedName)          // never a path
-name = NFC(name)
-replace "/", "\", NUL and control characters with "_"
-trim whitespace
+basename only (after the last "/" or "")      // never a path
+NFC
+control characters and < > : " / \ | ? *  →  "_"
+no trailing dot or space (Windows drops them); a leading dot stays, and a name of only dots becomes "file"
+a Windows device name (CON, PRN, AUX, NUL, COM0-9, LPT0-9, COM¹-³, LPT¹-³, CONIN$, CONOUT$) before any extension gets a leading "_"
 over 255 UTF-8 bytes: cut the part before the last dot, on a character boundary; never cut the extension
-  (an "extension" over 16 characters isn't one: cut the whole name)
-blank → null
+  (an "extension" over 32 characters isn't one: cut the whole name)
 ```
+
+A name that collides with an existing file when saved becomes `name (1).ext`, `name (2).ext`… (`freeFileName`); a save never replaces a file unless the user is asked.
 
 - **No name** (null) for a camera capture, a pasted image, a recorded voice note. Saving then uses a dated name (#2393).
 - **Stickers** always null; they save as `StickerFile.<format>`.
