@@ -92,10 +92,9 @@ internal fun DrawScope.backgroundPattern(id: String, color: Color) {
             drawCircle(color, radius = w * 0.2f, center = Offset(w * 0.2f, h * 0.82f))
         }
         "lines" -> {
-            val stroke = Stroke(h * 0.04f)
             for (i in 0 until 6) {
                 val x = w * (i * 0.25f - 0.2f)
-                drawLine(color, Offset(x, h), Offset(x + w * 0.6f, 0f), strokeWidth = stroke.width)
+                drawLine(color, Offset(x, h), Offset(x + w * 0.6f, 0f), strokeWidth = h * 0.04f)
             }
         }
     }
