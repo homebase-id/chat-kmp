@@ -68,6 +68,16 @@ class CardOverridesTest {
     }
 
     @Test
+    fun aColourThatIsNotRrggbbDropsLikeOnTheWebAndTheAccentFallsBackToTheDesigns() {
+        val stored = cardJson.parseToJsonElement("""{"palette":{"ground":"#fff","accent":"red","ink":"#0A0B0C"}}""").jsonObject
+
+        val read = CardOverrides.fromJson(stored)
+
+        assertEquals(CardPalette(ink = "#0A0B0C"), read.palette)
+        assertEquals(cardAccentArgb(CardDesign.BOARD, CardOverrides.EMPTY), cardAccentArgb(CardDesign.BOARD, read))
+    }
+
+    @Test
     fun unknownStoredKeysAndUndecodableValuesReadAsWhatTheyCanBe() {
         val future = buildJsonObject { put("socials", "bar"); put("sparkle", "yes") }
         assertEquals(CardOverrides(socials = "bar"), CardOverrides.fromJson(future))
@@ -100,6 +110,7 @@ class CardOverridesTest {
 
     private fun fieldOf(option: CardOption): String = when (option) {
         CardOption.COLOURS -> "palette.ground"
+        CardOption.BACKGROUND -> "background"
         CardOption.ACCENT -> "palette.accent"
         CardOption.DISPLAY_FONT -> "type.display"
         CardOption.TEXT_FONT -> "type.text"

@@ -103,6 +103,7 @@ internal sealed interface CardCommand {
     data object ExportPng : CardCommand
     data object ProbeEdges : CardCommand
     data object RequestPaint : CardCommand
+    data object ScrollToTop : CardCommand
     data class HostStyle(val bottomPx: Int) : CardCommand
 }
 
@@ -147,6 +148,7 @@ internal fun CardCommand.script(): String = when (this) {
     CardCommand.ExportPng -> "window.homebaseCard.exportPng()"
     CardCommand.ProbeEdges -> PROBE_EDGES_SCRIPT
     CardCommand.RequestPaint -> REQUEST_PAINT_SCRIPT
+    CardCommand.ScrollToTop -> "window.scrollTo(0,0)"
     is CardCommand.HostStyle -> hostStyleScript(bottomPx)
 }
 

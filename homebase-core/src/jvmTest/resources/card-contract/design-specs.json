@@ -10,6 +10,7 @@
         "links": {
             "options": [
                 "ACCENT",
+                "BACKGROUND",
                 "BLOCK_ORDER",
                 "COLOURS",
                 "DISPLAY_FONT",
@@ -33,6 +34,7 @@
         },
         "poster": {
             "options": [
+                "BACKGROUND",
                 "BLOCK_ORDER",
                 "BLOCK_STYLE",
                 "COLOURS",
@@ -54,6 +56,7 @@
         "board": {
             "options": [
                 "ACCENT",
+                "BACKGROUND",
                 "BLOCK_ORDER",
                 "BLOCK_STYLE",
                 "COLOURS",
@@ -77,6 +80,7 @@
         "collage": {
             "options": [
                 "ACCENT",
+                "BACKGROUND",
                 "BLOCK_ORDER",
                 "COLOURS",
                 "DISPLAY_FONT",
@@ -101,6 +105,7 @@
         "dossier": {
             "options": [
                 "ACCENT",
+                "BACKGROUND",
                 "BLOCK_ORDER",
                 "BLOCK_STYLE",
                 "COLOURS",

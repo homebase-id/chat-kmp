@@ -33,8 +33,6 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.Deferred
@@ -84,7 +82,6 @@ data class ProfileCardUiState(
     val isSwitchingDesign: Boolean = false,
     val cards: List<ProfileCard> = emptyList(),
     val selectedAudience: CardAudience = CardAudience.Public,
-    val viewing: Boolean = false,
     val previewOverrides: CardOverrides? = null,
     val circleCardsSupported: Boolean = true,
     val hasLocalPublicDesign: Boolean = false,
@@ -110,11 +107,7 @@ data class ProfileCardUiState(
     val isCircleReadOnly: Boolean get() = isCircleSelected && !circleCardsSupported
     private val hasStoredCard: Boolean
         get() = selectedCard?.let { !it.isDefault || (it.audience == CardAudience.Public && hasLocalPublicDesign) } ?: false
-    private val isAtTemplate: Boolean
-        get() = selectedCard?.let { card -> cardTemplateFor(card.audience)?.let { it.design == card.design && it.overrides == card.overrides } } == true
-    val showsReset: Boolean get() = hasStoredCard && !isAtTemplate && !isCircleReadOnly
     val isUnsavedCard: Boolean get() = selectedCard != null && !hasStoredCard
-    val canReset: Boolean get() = showsReset && !isExporting && !isCardBusy && !isSavingDesign
     val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
     val cardTopArgb: Int? get() = edges[design]?.topArgb
     val cardBottomArgb: Int? get() = edges[design]?.bottomArgb
@@ -144,7 +137,6 @@ sealed interface ProfileCardEvent {
     data object ShareFailed : ProfileCardEvent
     data object DesignSaved : ProfileCardEvent
     data object DesignSaveFailed : ProfileCardEvent
-    data object ResetFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
@@ -172,9 +164,6 @@ interface ProfileCardSource {
     /** Puts [previous]'s exact ACL back on [current], which is the same attribute after a later write. */
     suspend fun restoreProfileAttribute(current: ProfileAttribute, previous: ProfileAttribute): ProfileAttribute
     suspend fun deleteProfileAttribute(attribute: ProfileAttribute): Boolean
-    suspend fun resetPublicCard()
-    suspend fun resetCircleCard(card: ProfileCard)
-    suspend fun clearSavedDesign()
 }
 
 class DefaultProfileCardSource(
@@ -247,12 +236,6 @@ class DefaultProfileCardSource(
     override suspend fun deleteProfileAttribute(attribute: ProfileAttribute) =
         profileRepository.delete(attribute.id, attribute.versionTag)
 
-    override suspend fun resetPublicCard() = cardRepository.resetPublic()
-
-    override suspend fun resetCircleCard(card: ProfileCard) = cardRepository.resetCircle(card)
-
-    override suspend fun clearSavedDesign() = cardPreferences.clearDesign()
-
 }
 
 internal fun contactsCircles(circles: List<CircleWithMembers>): List<CardCircle> =
@@ -324,13 +307,9 @@ class ProfileCardViewModel(
     private val templateLock = Mutex()
     private val fieldsLock = Mutex()
     private var shownBefore = false
-    private var shownAt: TimeMark? = null
-    private val tilesLogged = mutableSetOf<String>()
     private val tilePayloads = mutableMapOf<String, CardPayload>()
     private val _introTiles = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
     val introTiles: StateFlow<Map<String, ImageBitmap>> = _introTiles.asStateFlow()
-    private val _introRevision = MutableStateFlow(0)
-    val introRevision: StateFlow<Int> = _introRevision.asStateFlow()
     private var hostJob: Job? = null
     private var loadJob: Job? = null
     private var postsJob: Job? = null
@@ -389,24 +368,19 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(isSwitchingDesign = true) }
     }
 
+    private var sheetOpenOnReturn = false
+
+    fun onLeftForEditor() {
+        sheetOpenOnReturn = true
+    }
+
+    fun takeSheetOpenOnReturn(): Boolean = sheetOpenOnReturn.also { sheetOpenOnReturn = false }
+
     fun onCardOpened(audience: CardAudience) {
         val state = _uiState.value
         val card = state.cards.firstOrNull { it.audience.isSameAs(audience) }
         if (state.isExporting || card == null) return
         selectAudience(card.audience)
-        _uiState.update { it.copy(viewing = true) }
-    }
-
-    fun onIntroReturned() {
-        _uiState.update { it.copy(viewing = false) }
-    }
-
-    fun onIntroTilePainted(audience: CardAudience) {
-        val shown = shownAt ?: return
-        if (!tilesLogged.add(audienceKey(audience))) return
-        Logger.i(tag = TAG) {
-            "card intro first paint: \"${audience.logName()}\" ${shown.elapsedNow().inWholeMilliseconds}ms (${_uiState.value.cards.size} cards)"
-        }
     }
 
     private fun CardAudience.logName() = when (this) {
@@ -414,22 +388,15 @@ class ProfileCardViewModel(
         is CardAudience.Circle -> label
     }
 
-    private fun interruptedByViewer(ignoreViewing: Boolean) = (_uiState.value.viewing && !ignoreViewing) || _uiState.value.isExporting
-
-    // The host goes back to the card the viewer shows when done or cancelled.
-    suspend fun captureIntroTiles() = captureTiles(ignoreViewing = false)
-
-    // The editor is reached from the open viewer, so `viewing` is still set while it is on screen.
-    suspend fun captureEditorTiles() = captureTiles(ignoreViewing = true)
-
-    private suspend fun captureTiles(ignoreViewing: Boolean) {
+    suspend fun captureEditorTiles() {
         val host = _host.value ?: return
         host.isLoaded.first { it }
         var touched = false
         host.sizeForTiles(true)
+        host.scrollToTop()
         try {
             for (card in _uiState.value.cards) {
-                if (interruptedByViewer(ignoreViewing)) return
+                if (_uiState.value.isExporting) return
                 val key = audienceKey(card.audience)
                 val design = if (card.audience == CardAudience.Public) _uiState.value.savedDesign else card.design
                 val payload = payloadFor(design, card.audience) ?: return
@@ -444,14 +411,13 @@ class ProfileCardViewModel(
                 withTimeoutOrNull(PAINT_TIMEOUT) {
                     host.events.onSubscription { host.requestPaint() }.first { it is CardEvent.Painted }
                 }
-                if (interruptedByViewer(ignoreViewing)) return
+                if (_uiState.value.isExporting) return
                 val image = attempt("capturing the ${card.audience.logName()} intro tile") { host.snapshot() ?: exportedStill(host) }
                 if (image == null) {
                     Logger.i(tag = TAG) { "card intro: no snapshot for ${card.audience.logName()}, tile stays a placeholder" }
                     return
                 }
-                // The viewer may have opened during the snapshot, so the image can show its card, not this one.
-                if (interruptedByViewer(ignoreViewing)) return
+                if (_uiState.value.isExporting) return
                 tilePayloads[key] = payload
                 _introTiles.update { it + (key to image) }
             }
@@ -695,7 +661,7 @@ class ProfileCardViewModel(
     fun onPhotoChanged() = load(force = true)
 
     /** Reloads so the new circle's card exists, then lands on it and saves it with only the photo and name showing. */
-    fun onCircleCreated(id: String, openCard: Boolean) {
+    fun onCircleCreated(id: String) {
         viewModelScope.launch {
             load(force = true)
             loadJob?.join()
@@ -703,7 +669,6 @@ class ProfileCardViewModel(
                 ?: return@launch
             selectAudience(card.audience)
             if (card.isDefault && !_uiState.value.isCircleReadOnly) editFields { it.startingBlank(_uiState.value.contentItems) }
-            if (openCard) _uiState.update { it.copy(viewing = true) }
         }
     }
 
@@ -813,32 +778,6 @@ class ProfileCardViewModel(
         }
     }
 
-    fun onResetCardConfirmed() {
-        val state = _uiState.value
-        val card = state.selectedCard ?: return
-        if (!state.canReset) return
-        _uiState.update { it.copy(isCardBusy = true) }
-        viewModelScope.launch {
-            val done = attempt("resetting the ${card.audience} card") {
-                when (card.audience) {
-                    CardAudience.Public -> {
-                        cardJob?.cancel()
-                        unsavedCard = null
-                        source.resetPublicCard()
-                        source.clearSavedDesign()
-                    }
-                    is CardAudience.Circle -> source.resetCircleCard(card)
-                }
-            } != null
-            _uiState.update { it.copy(isCardBusy = false, previewDesign = null, previewOverrides = null) }
-            if (done) {
-                load(force = true)
-            } else {
-                _events.tryEmit(ProfileCardEvent.ResetFailed)
-            }
-        }
-    }
-
     // Off the save path: offline it would hang the spinner. Until it lands the local design wins on reload, and a reload retries it.
     private fun writeCard(card: UnsavedCard) {
         cardJob?.cancel()
@@ -856,8 +795,6 @@ class ProfileCardViewModel(
 
     /** Picks up profile edits made since the pre-warm; the warm card shows until they land. */
     fun onScreenShown() {
-        shownAt = TimeSource.Monotonic.markNow()
-        tilesLogged.clear()
         startHost()
         failedImages.forEach(imageSrcs::remove)
         failedImages.clear()
@@ -1091,7 +1028,6 @@ class ProfileCardViewModel(
         val state = _uiState.value
         _cover.update { cover -> cover?.takeIf { it.design == state.savedDesign } }
         if (content == null) return
-        _introRevision.update { it + 1 }
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
             val payload = payloadFor(state.design, state.selectedAudience) ?: return@launch

@@ -191,7 +191,7 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
             CardCommand.ExportPng -> CardEvent.Png::class
             CardCommand.ProbeEdges -> CardEvent.Edges::class
             CardCommand.RequestPaint -> CardEvent.Painted::class
-            is CardCommand.HostStyle -> null
+            is CardCommand.HostStyle, CardCommand.ScrollToTop -> null
         }?.let(::awaitReply)
         val script = command.script()
         scope.launch(webView) { panel.evaluateJavaScript(script) {} }
