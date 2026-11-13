@@ -1,5 +1,7 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.core.util.saveFileName
+import id.homebase.core.util.safeFileName
 import id.homebase.api.file.FileTooLargeForMemoryException
 import kotlinx.coroutines.CancellationException
 import id.homebase.chat.widget.preview.chatChipPreviewKind
@@ -221,7 +223,7 @@ internal class MediaDownloadHandler(
                         "encrypted payload requires key header"
                     )).bytes
 
-                val fullName = resolveDownloadFileName(
+                val fullName = saveFileName(
                     payload.filename(), payload.key, payload.contentType
                 )
                 val filePath =
@@ -285,7 +287,7 @@ internal class MediaDownloadHandler(
                     }
                     sendEvent(SaveFileToDevice(mp4Path, mp4Name))
                 } else {
-                    val fullName = resolveDownloadFileName(
+                    val fullName = saveFileName(
                         action.payload.filename(), action.payloadKey, action.payload.contentType
                     )
                     val filePath =
@@ -715,36 +717,7 @@ internal class MediaDownloadHandler(
             return null
         }
 
-        val base = suggestedBaseName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "video"
-        val safeBase = base.replace('/', '_').replace('\\', '_').replace('\u0000', '_')
-        return mp4Path to "$safeBase.mp4"
-    }
-
-    /**
-     * Returns a safe filename for saving a downloaded file.
-     * If the original filename (from descriptorContent) has an extension, uses it as-is.
-     * Only derives an extension from contentType when there's no original filename or no extension.
-     */
-    private fun resolveDownloadFileName(
-        originalName: String?,
-        fallbackKey: String,
-        contentType: String?,
-    ): String {
-        val safeName = originalName
-            ?.replace('/', '_')
-            ?.replace('\\', '_')
-            ?.replace('\u0000', '_')
-
-        // If the original filename has an extension, trust it completely
-        if (safeName != null && safeName.contains('.')) return safeName
-
-        // No extension in name — derive one from contentType
-        val name = safeName ?: fallbackKey
-        val ext = contentType?.let { extensionForMimeType(it) }
-            ?: contentType?.substringAfter("/")
-                ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
-            ?: "bin"
-        return "$name.$ext"
+        return mp4Path to safeFileName(suggestedBaseName?.substringBeforeLast('.'), "video", "mp4")
     }
 }
 

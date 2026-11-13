@@ -20,10 +20,7 @@ class JvmAlbumSaver : AlbumSaver {
                 "Downloads"
             }
             val destDir = File(System.getProperty("user.home"), folder).apply { mkdirs() }
-            val safeName = suggestedName
-                .replace('/', '_')
-                .replace('\\', '_')
-                .replace(' ', '_')
+            val safeName = safeFileName(suggestedName)
             File(file.toString()).copyTo(File(destDir, safeName), overwrite = true)
             onSuccess(folder)
         } catch (e: Exception) {

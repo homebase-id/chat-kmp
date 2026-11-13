@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationmedia
 
+import id.homebase.core.util.saveFileName
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -154,15 +155,8 @@ class ConversationMediaViewModel(
             try {
                 val payloadIv = (item.payload.iv
                         ?: throw IllegalStateException("encrypted payload requires key header")).bytes
-                val rawName = item.payload.filename() ?: item.payload.key
-                val filePath = if (rawName.contains('.')) {
-                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName"
-                } else {
-                    val extension = item.payload.contentType?.let { extensionForMimeType(it) }
-                        ?: item.payload.contentType?.substringAfter("/")
-                        ?: "bin"
-                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName.$extension"
-                }
+                val name = saveFileName(item.payload.filename(), item.payload.key, item.payload.contentType)
+                val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$name"
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(
                     driveId = chatTargetDrive.alias,

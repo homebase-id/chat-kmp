@@ -2,7 +2,7 @@ package id.homebase.core.ui.screens.openedfile
 
 import id.homebase.api.file.createStagingPathIn
 import id.homebase.api.file.systemFileSystem
-import id.homebase.core.ui.screens.filesync.FilesyncNames
+import id.homebase.core.util.safeFileName
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -30,21 +30,11 @@ fun isForeignContentUri(scheme: String?, authority: String?, isOwnAuthority: (St
     return scheme == "content" && provider.isNotEmpty() && !isOwnAuthority(provider)
 }
 
-/** The name other apps give a file is theirs to choose: keep one path segment, no control or reserved characters, no leading dot. */
-fun sanitizeOpenedFileName(raw: String?): String {
-    val segment = raw.orEmpty().substringAfterLast('/').substringAfterLast('\\')
-    val scrubbed = segment.map { if (it.code < 0x20 || it.code == 0x7f || it in RESERVED) '_' else it }.joinToString("")
-    val trimmed = scrubbed.trim().trimStart('.').trimEnd('.', ' ')
-    return FilesyncNames.freeName(trimmed.ifEmpty { "file" }, emptySet())
-}
-
-private const val RESERVED = "<>:\"|?*"
-
 /** An empty folder of its own under [root], so the upload is named by the file and two files with one name never share a path. */
 fun reserveStagedPath(root: String, rawName: String?, fileSystem: FileSystem = systemFileSystem): String {
     val dir = createStagingPathIn(root, "open-", "", fileSystem).toPath()
     fileSystem.createDirectories(dir)
-    return (dir / sanitizeOpenedFileName(rawName)).toString()
+    return (dir / safeFileName(rawName)).toString()
 }
 
 fun stageFileCopy(source: String, root: String, rawName: String?, fileSystem: FileSystem = systemFileSystem): String {

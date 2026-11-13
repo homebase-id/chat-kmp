@@ -100,7 +100,8 @@ class FilesyncArchiveTest {
         assertEquals("Photos.zip", FilesyncArchive.name(listOf(photos), "Home", "Filesync"))
         assertEquals("Home.zip", FilesyncArchive.name(listOf(photos, doc), "Home", "Filesync"))
         assertEquals("Filesync.zip", FilesyncArchive.name(listOf(doc), null, "Filesync"))
-        assertEquals("a_b.zip", FilesyncArchive.name(listOf(folder("a/b")), null, "Filesync"))
+        assertEquals("b.zip", FilesyncArchive.name(listOf(folder("a/b")), null, "Filesync"))
+        assertEquals("Filesync.zip", FilesyncArchive.name(listOf(folder("..")), null, "Filesync"))
     }
 
     @Test

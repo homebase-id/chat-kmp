@@ -23,10 +23,7 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
     ) {
-        val safeName = suggestedName
-            .replace('/', '_')
-            .replace('\\', '_')
-            .replace('\u0000', '_')
+        val safeName = safeFileName(suggestedName)
 
         // kotlinx.io.files.Path collapses `content://` to `content:/`; restore it.
         val rawPath = file.toString()

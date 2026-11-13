@@ -81,10 +81,7 @@ object IosAlbumSaver : AlbumSaver {
             // Save other files to Documents directory
             val scoped = fileUrl.startAccessingSecurityScopedResource()
             try {
-                val safeName = suggestedName
-                    .replace('/', '_')
-                    .replace('\\', '_')
-                    .replace('\u0000', '_')
+                val safeName = safeFileName(suggestedName)
                 val fileManager = NSFileManager.defaultManager
                 val paths = NSSearchPathForDirectoriesInDomains(
                     NSDocumentDirectory,

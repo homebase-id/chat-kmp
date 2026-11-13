@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.saveFileName
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -283,9 +284,7 @@ fun rememberSharedMediaSaver(
             scope.launch {
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
-                    val ext = item.payload.contentType?.substringAfterLast('/')
-                        ?.takeIf { it.isNotBlank() } ?: "bin"
-                    val name = item.payload.filename() ?: "${item.payload.key}.$ext"
+                    val name = saveFileName(item.payload.filename(), item.payload.key, item.payload.contentType)
                     val outPath = "${AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.EXPORT)}/$name"
                     val ok = driveFileProvider.streamPayloadDecryptedToPath(
                         driveId = driveId,
