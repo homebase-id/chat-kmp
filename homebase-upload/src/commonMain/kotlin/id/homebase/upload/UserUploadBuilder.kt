@@ -13,6 +13,7 @@ import id.homebase.api.video.toVideoQuality
 import kotlinx.coroutines.CancellationException
 
 private const val TAG = "UserUploadBuilder"
+private const val OCTET_STREAM = "application/octet-stream"
 
 enum class MetadataPolicy { KEEP, STRIP }
 
@@ -22,8 +23,8 @@ data class UploadSource(
     /** The platform's type, else the name's extension; an image's own bytes override it. */
     val contentType: String,
     val pickedName: String? = null,
-    /** Only [DescriptorContentV1.Kind.STICKER] today: a sticker is the user's choice, never inferred. */
-    val kindHint: DescriptorContentV1.Kind? = null,
+    /** The user's choice, never inferred. */
+    val sticker: Boolean = false,
     val waveformPath: String? = null,
     val audioLengthSeconds: Int? = null,
     val trimStartMs: Long? = null,
@@ -42,27 +43,25 @@ data class UploadOptions(
 typealias PdfPageRenderer = suspend (path: String) -> ByteArray?
 
 /**
- * Builds the payloads, thumbnails and descriptor content of everything a user uploads, the same way in
- * every app (UPLOADS.md). Payload encryption, and sealing the descriptor content of an encrypted file,
- * stay in [UploadService].
+ * The payloads, thumbnails and descriptor content of everything a user uploads, the same in every app
+ * (UPLOADS.md). The transport applies the metadata strip it decides, encrypts, and seals.
  */
 object UserUploadBuilder {
+
+    private class Built(val payload: PayloadFile, val thumbs: ThumbnailResult?)
 
     suspend fun build(
         sources: List<UploadSource>,
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer? = null,
-        payloadKey: (index: Int, source: UploadSource) -> String,
+        payloadKey: (index: Int) -> String,
     ): PayloadBundle {
-        val bundles = sources.mapIndexed { index, source ->
-            val typed = source.copy(contentType = contentTypeOf(source, fileOps))
-            buildOne(typed, payloadKey(index, typed), options, fileOps, pdfPageRenderer)
-        }
+        val built = sources.mapIndexed { index, source -> buildOne(source, payloadKey(index), options, fileOps, pdfPageRenderer) }
         return PayloadBundle(
-            payloads = bundles.flatMap { it.payloads },
-            thumbnails = bundles.flatMap { it.thumbnails },
-            previewThumbs = bundles.flatMap { it.previewThumbs },
+            payloads = built.map { it.payload.copy(previewThumbnail = it.thumbs?.preview) },
+            thumbnails = built.flatMap { it.thumbs?.thumbnails.orEmpty() },
+            previewThumbs = built.mapNotNull { it.thumbs?.preview },
         )
     }
 
@@ -72,73 +71,81 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer?,
-    ): PayloadBundle {
+    ): Built {
+        val contentType = source.contentType.ifBlank { OCTET_STREAM }.let { if (it == OCTET_STREAM) sniffed(source.path, fileOps) else it }
         val name = source.pickedName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
+        fun descriptor(current: () -> DescriptorContentV1, old: () -> String?) =
+            if (options.currentFormat) current().encode() else old()
+
         return when {
-            source.contentType.startsWith("image/") -> image(source, key, name, options, fileOps)
-            source.contentType.startsWith("audio/") -> audio(source, key, name, options, fileOps)
-            source.contentType == "application/pdf" -> pdf(source, key, name, options, pdfPageRenderer)
-            else -> PayloadBundle(
-                payloads = listOf(
+            contentType.startsWith("image/") -> image(source, contentType, key, name, options, fileOps)
+            contentType.startsWith("audio/") -> Built(
+                PayloadFile(
+                    key = key,
+                    filePath = source.path,
+                    contentType = contentType,
+                    descriptorContent = descriptor(
+                        { DescriptorContentV1(kind = DescriptorContentV1.Kind.AUDIO, name = name, lengthSeconds = source.audioLengthSeconds) },
+                        { DescriptorContent.descriptorContentFromAudioFile(name ?: safeFileName(source.path), source.audioLengthSeconds ?: 0) },
+                    ),
+                ),
+                source.waveformPath?.let { UploadImages.generate(it, key, fileOps) },
+            )
+            else -> {
+                val video = contentType.startsWith("video/")
+                val kind = if (video) DescriptorContentV1.Kind.VIDEO else DescriptorContentV1.Kind.FILE
+                Built(
                     PayloadFile(
                         key = key,
                         filePath = source.path,
-                        contentType = source.contentType,
-                        descriptorContent = if (!options.currentFormat) name else DescriptorContentV1(
-                            kind = if (source.contentType.startsWith("video/")) DescriptorContentV1.Kind.VIDEO else DescriptorContentV1.Kind.FILE,
-                            name = name,
-                        ).encode(),
+                        contentType = contentType,
+                        descriptorContent = descriptor({ DescriptorContentV1(kind = kind, name = name) }, { name }),
                         trimStartMs = source.trimStartMs,
                         trimEndMs = source.trimEndMs,
                         inputBlobUrl = source.inputBlobUrl,
                         videoQuality = options.quality.toVideoQuality(),
                     ),
-                ),
-                thumbnails = emptyList(),
-                previewThumbs = emptyList(),
-            )
+                    pdfPageRenderer?.takeIf { contentType == "application/pdf" }?.let { UploadImages.fromPdf(source.path, key, it) },
+                )
+            }
         }
     }
 
     private suspend fun image(
         source: UploadSource,
+        declaredType: String,
         key: String,
         name: String?,
         options: UploadOptions,
         fileOps: FileOperationsProvider,
-    ): PayloadBundle {
-        val sticker = source.kindHint == DescriptorContentV1.Kind.STICKER
-        val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = sticker)
-        val (finalPath, finalType) = UploadImages.finalImageOrSource(source.path, source.contentType, thumbs, fileOps)
-        val keptSource = finalPath == source.path
-        val payloadPath = if (keptSource && options.metadata == MetadataPolicy.STRIP) {
-            withoutImageMetadata(source.path, source.contentType, fileOps)
-        } else {
-            finalPath
-        }
+    ): Built {
+        val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker)
+        val finalPath = UploadImages.finalImagePath(thumbs, fileOps)
+        // The decode already read the header, so its format is the bytes' word on the type (UPLOADS.md 3.1).
+        val contentType = if (finalPath != null) "image/webp" else thumbs.sourceFormat?.takeIf { it.startsWith("image/") } ?: declaredType
 
         // Quality is recorded only for an HD or Original photo that really is one, and never for a
         // sticker: its bytes are bounded at 512 px whatever the setting.
-        val sentFinalImage = thumbs.finalImage?.takeIf { !keptSource }
+        val sentFinalImage = thumbs.finalImage?.takeIf { finalPath != null }
         val finalSize = sentFinalImage?.let { ImageSize(it.width, it.height) } ?: thumbs.displayedSize
         val recordedQuality = options.quality.takeIf {
             it == MediaQuality.ORIGINAL || (it == MediaQuality.HD && thumbs.finalImage != null)
         }
         val descriptorContent = when {
             options.currentFormat -> DescriptorContentV1(
-                kind = if (sticker) DescriptorContentV1.Kind.STICKER else DescriptorContentV1.Kind.IMAGE,
-                name = name.takeIf { !sticker },
-                original = if (keptSource) 1 else 0,
+                kind = if (source.sticker) DescriptorContentV1.Kind.STICKER else DescriptorContentV1.Kind.IMAGE,
+                name = name.takeIf { !source.sticker },
+                original = if (finalPath == null) 1 else 0,
                 pixelWidth = finalSize?.pixelWidth,
                 pixelHeight = finalSize?.pixelHeight,
                 quality = when {
-                    sticker -> null
+                    source.sticker -> null
                     recordedQuality != null -> DescriptorContentV1.Quality.of(recordedQuality)
                     sentFinalImage != null -> DescriptorContentV1.Quality.SD
                     else -> null
                 },
             ).encode()
-            sticker -> DescriptorContent.descriptorContentFromImage(isSticker = true, format = thumbs.sourceFormat)
+            source.sticker -> DescriptorContent.descriptorContentFromImage(isSticker = true, format = thumbs.sourceFormat)
             recordedQuality != null || finalSize != null -> DescriptorContent.descriptorContentFromImage(
                 isSticker = false,
                 quality = recordedQuality,
@@ -148,94 +155,28 @@ object UserUploadBuilder {
             else -> ""
         }
 
-        return PayloadBundle(
-            payloads = listOf(
-                PayloadFile(
-                    key = key,
-                    filePath = payloadPath,
-                    contentType = finalType,
-                    previewThumbnail = thumbs.preview,
-                    descriptorContent = descriptorContent,
-                ),
+        return Built(
+            PayloadFile(
+                key = key,
+                filePath = finalPath ?: source.path,
+                contentType = contentType,
+                descriptorContent = descriptorContent,
+                stripMetadata = options.metadata == MetadataPolicy.STRIP,
             ),
-            thumbnails = thumbs.thumbnails,
-            previewThumbs = listOfNotNull(thumbs.preview),
+            thumbs,
         )
     }
 
-    private suspend fun audio(
-        source: UploadSource,
-        key: String,
-        name: String?,
-        options: UploadOptions,
-        fileOps: FileOperationsProvider,
-    ): PayloadBundle {
-        val thumbs = source.waveformPath?.let { UploadImages.generate(it, key, fileOps) }
-        val descriptorContent = if (options.currentFormat) {
-            DescriptorContentV1(kind = DescriptorContentV1.Kind.AUDIO, name = name, lengthSeconds = source.audioLengthSeconds).encode()
-        } else {
-            DescriptorContent.descriptorContentFromAudioFile(
-                name = name ?: safeFileName(source.path),
-                lengthSeconds = source.audioLengthSeconds ?: 0,
-            )
-        }
-        return PayloadBundle(
-            payloads = listOf(
-                PayloadFile(
-                    key = key,
-                    filePath = source.path,
-                    contentType = source.contentType,
-                    previewThumbnail = thumbs?.preview,
-                    descriptorContent = descriptorContent,
-                ),
-            ),
-            thumbnails = thumbs?.thumbnails ?: emptyList(),
-            previewThumbs = listOfNotNull(thumbs?.preview),
-        )
-    }
-
-    private suspend fun pdf(
-        source: UploadSource,
-        key: String,
-        name: String?,
-        options: UploadOptions,
-        pdfPageRenderer: PdfPageRenderer?,
-    ): PayloadBundle {
-        val thumbs = pdfPageRenderer?.let { UploadImages.fromPdf(source.path, key, it) }
-        return PayloadBundle(
-            payloads = listOf(
-                PayloadFile(
-                    key = key,
-                    filePath = source.path,
-                    contentType = source.contentType,
-                    previewThumbnail = thumbs?.preview,
-                    descriptorContent = if (options.currentFormat) {
-                        DescriptorContentV1(kind = DescriptorContentV1.Kind.FILE, name = name).encode()
-                    } else {
-                        name
-                    },
-                ),
-            ),
-            thumbnails = thumbs?.thumbnails ?: emptyList(),
-            previewThumbs = listOfNotNull(thumbs?.preview),
-        )
-    }
-
-    // The bytes outrank what the platform says, for the formats the detector knows (UPLOADS.md 3.1).
-    // Only images and untyped files are sniffed: other types can't be images, and their sources may not be readable here.
-    private suspend fun contentTypeOf(source: UploadSource, fileOps: FileOperationsProvider): String {
-        val declared = source.contentType.ifBlank { OCTET_STREAM }
-        if (!declared.startsWith("image/") && declared != OCTET_STREAM) return declared
+    // Only an untyped file is read for its type up front: it decides which branch the file takes.
+    private suspend fun sniffed(path: String, fileOps: FileOperationsProvider): String {
         val header = try {
-            fileOps.readFileHeaderBytes(source.path)
+            fileOps.readFileHeaderBytes(path)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "Couldn't read ${source.path} to check its type; keeping $declared" }
-            return declared
+            Logger.w(tag = TAG, throwable = e) { "Couldn't read $path to check its type" }
+            return OCTET_STREAM
         }
-        return ImageFormatDetector.detectFormat(header).takeIf { it != OCTET_STREAM } ?: declared
+        return ImageFormatDetector.detectFormat(header)
     }
-
-    private const val OCTET_STREAM = "application/octet-stream"
 }

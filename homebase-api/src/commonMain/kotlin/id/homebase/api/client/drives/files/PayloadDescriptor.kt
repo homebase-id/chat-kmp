@@ -28,7 +28,7 @@ data class PayloadDescriptor(
     // Add fields as needed
 ) {
     fun isInternalDescriptor(): Boolean =
-        key.startsWith(HomebaseProtocol.PayloadDescriptorKeyPrefix)
+        key.startsWith(HomebaseProtocol.PayloadDescriptorKeyPrefix) || key.startsWith(HomebaseProtocol.PlaylistPayloadKeyPrefix)
 
     fun keyEquals(otherKey: String): Boolean {
         return key.equals(otherKey, ignoreCase = true)

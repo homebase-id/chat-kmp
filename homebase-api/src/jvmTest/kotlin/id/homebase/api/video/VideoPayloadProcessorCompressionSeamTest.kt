@@ -173,6 +173,7 @@ class VideoPayloadProcessorCompressionSeamTest {
             keyHeader = KeyHeader.newRandom16(),
             onProgress = null,
             descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
             trimStartMs = 1_000L,
             trimEndMs = 4_000L,
             videoQuality = VideoQuality.HIGH,
@@ -214,6 +215,7 @@ class VideoPayloadProcessorCompressionSeamTest {
             keyHeader = KeyHeader.newRandom16(),
             onProgress = null,
             descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
             inputBlobUrl = contentUri,
         )
 
@@ -243,6 +245,7 @@ class VideoPayloadProcessorCompressionSeamTest {
             keyHeader = KeyHeader.newRandom16(),
             onProgress = null,
             descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
             inputBlobUrl = blobUrl,
         )
 
@@ -277,6 +280,7 @@ class VideoPayloadProcessorCompressionSeamTest {
             keyHeader = KeyHeader.newRandom16(),
             onProgress = null,
             descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
         )
 
         assertTrue(compressor.segmentAndEncryptCalled)
@@ -372,6 +376,7 @@ class VideoPayloadProcessorCompressionSeamTest {
             keyHeader = KeyHeader.newRandom16(),
             onProgress = null,
             descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
         )
 
         val overflow = result.payloads.single { it.key == "descriptor" }
@@ -409,6 +414,7 @@ class VideoPayloadProcessorCompressionSeamTest {
             keyHeader = KeyHeader.newRandom16(),
             onProgress = { events.add(it) },
             descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
         )
 
         // The fake fired ~1000 sub-percent ticks per phase; the processor must collapse each
@@ -455,6 +461,7 @@ class VideoPayloadProcessorCompressionSeamTest {
                 keyHeader = KeyHeader.newRandom16(),
                 onProgress = null,
                 descriptorContentPayloadKey = "descriptor",
+                playlistPayloadKey = "pls_0000",
             )
         }
 

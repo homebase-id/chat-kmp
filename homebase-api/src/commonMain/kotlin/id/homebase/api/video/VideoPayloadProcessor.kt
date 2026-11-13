@@ -39,7 +39,7 @@ class VideoPayloadProcessor(
         trimEndMs: Long? = null,
         videoQuality: VideoQuality = VideoQuality.STANDARD,
         inputBlobUrl: String? = null,
-        playlistPayloadKey: String = "pls_0000",
+        playlistPayloadKey: String,
     ): VideoProcessResult {
         // Without it iOS suspends ffmpeg mid-encode as soon as the user leaves the app.
         val assertion =
@@ -379,9 +379,8 @@ class VideoPayloadProcessor(
             iv = keyHeader.iv
         )
 
-        // Encrypted, ready-to-transmit and referenced by the outbox row: the durable staging bucket,
-        // NOT the disposable upload-temp/ that gets swept every startup (#842). The video's IV, like its
-        // thumbnails (UPLOADS.md "Words"), so a player reads it with the key header it holds.
+        // Referenced by the outbox row, so staged durably, not in the upload-temp that every startup sweeps.
+        // The video's IV, like its thumbnails, so a player reads it with the key header it already holds.
         suspend fun sidePayload(key: String, text: String, contentType: String, suffix: String) = PayloadFile(
             key = key,
             filePath = fileOperationsProvider.writeBytesToOutboxTempFile(keyHeader.encryptDataAes(text.toByteArray()), "payload", suffix),
@@ -390,28 +389,13 @@ class VideoPayloadProcessor(
             iv = keyHeader.iv
         )
 
-        // The builder hands over current-format content when the switch is on; the old format otherwise.
         val current = payload.descriptorContent?.let(DescriptorContentV1::parseOrNull)
         val payloads = if (current != null) {
-            val playlist = playlistContent?.takeIf { isSegmented }
-            val descriptor = current.copy(
-                original = if (compressedPath == payload.filePath && !isSegmented) 1 else 0,
-                pixelWidth = metadata.widthPx.takeIf { it > 0 },
-                pixelHeight = metadata.heightPx.takeIf { it > 0 },
-                video = DescriptorContentV1.Video(
-                    durationMs = durationMs,
-                    codec = codec,
-                    segmented = if (isSegmented) 1 else null,
-                    playlistKey = playlist?.let { playlistPayloadKey },
-                    plainBytes = metadata.fileSize,
-                    bitDepth = metadata.bitDepth.takeIf { it > 0 },
-                    hdr = if (metadata.isHdr) 1 else null,
-                    bitrateBps = videoBitrateBps.takeIf { it > 0 },
-                ),
-            )
+            val untouched = compressedPath == payload.filePath && !isSegmented
+            val descriptor = current.withVideo(metadata, untouched, playlistContent?.let { playlistPayloadKey })
             listOfNotNull(
                 videoPayload(descriptor.encode()),
-                playlist?.let { sidePayload(playlistPayloadKey, it, HLS_PLAYLIST_CONTENT_TYPE, ".m3u8") },
+                playlistContent?.let { sidePayload(playlistPayloadKey, it, HLS_PLAYLIST_CONTENT_TYPE, ".m3u8") },
             )
         } else {
             val metadataJson = OdinSystemSerializer.serialize(metadata)

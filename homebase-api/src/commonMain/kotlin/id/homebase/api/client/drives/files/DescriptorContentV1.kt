@@ -62,6 +62,22 @@ data class DescriptorContentV1(
 
     fun encode(): String = OdinSystemSerializer.serialize(this)
 
+    fun withVideo(metadata: VideoMetadata, original: Boolean, playlistKey: String?): DescriptorContentV1 = copy(
+        original = if (original) 1 else 0,
+        pixelWidth = metadata.widthPx.takeIf { it > 0 },
+        pixelHeight = metadata.heightPx.takeIf { it > 0 },
+        video = Video(
+            durationMs = metadata.duration.toLong(),
+            codec = metadata.codec,
+            segmented = if (metadata.isSegmented) 1 else null,
+            playlistKey = playlistKey,
+            plainBytes = metadata.fileSize,
+            bitDepth = metadata.bitDepth.takeIf { it > 0 },
+            hdr = if (metadata.isHdr) 1 else null,
+            bitrateBps = metadata.videoBitrateBps.takeIf { it > 0 },
+        ),
+    )
+
     fun toVideoMetadata(payloadKey: String, contentType: String?, playlist: String?): VideoMetadata? {
         val video = video ?: return null
         val segmented = video.segmented == 1

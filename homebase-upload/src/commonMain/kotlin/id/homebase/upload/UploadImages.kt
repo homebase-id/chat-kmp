@@ -15,6 +15,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private const val TAG = "UploadImages"
+
 data class ThumbnailResult(
     val preview: EmbeddedThumb?,
     val thumbnails: List<ThumbnailFile>,
@@ -46,7 +48,7 @@ object UploadImages {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = "UploadImages", throwable = e) { "No thumbnails for $payloadKey; sending the file as it is" }
+            Logger.w(tag = TAG, throwable = e) { "No thumbnails for $payloadKey; sending the file as it is" }
             return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceFormat = null, sourceByteCount = null)
         }
         return ThumbnailResult(
@@ -70,7 +72,7 @@ object UploadImages {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.w(tag = "UploadImages", throwable = e) { "PDF preview render failed" }
+                Logger.w(tag = TAG, throwable = e) { "PDF preview render failed" }
                 null
             }
         } ?: return null
@@ -85,35 +87,25 @@ object UploadImages {
     }
 
     /**
-     * The final image a Standard or HD send makes, as a file, or the source itself when there is none,
-     * or when the source already fits and re-encoding wouldn't save at least a quarter, since that
-     * would only add generational loss.
-     *
-     * It becomes the payload rather than one more thumbnail because the server builds a file's stored
-     * payload list from the multipart parts that actually arrive: a payload key with no bytes gets its
-     * thumbnails orphaned and reaped.
+     * The final image a Standard or HD send makes, written to a file; null to send the source itself, which is
+     * also chosen when the source already fits and re-encoding wouldn't save a quarter. It replaces the
+     * file rather than joining the thumbnails: the server drops thumbnails whose payload sent no bytes.
      */
-    suspend fun finalImageOrSource(
-        path: String,
-        contentType: String,
-        thumbs: ThumbnailResult,
-        fileOperationsProvider: FileOperationsProvider,
-    ): Pair<String, String> {
-        val image = thumbs.finalImage ?: return path to contentType
+    suspend fun finalImagePath(thumbs: ThumbnailResult, fileOperationsProvider: FileOperationsProvider): String? {
+        val image = thumbs.finalImage ?: return null
         val sourceFits = thumbs.displayedSize?.let { it.pixelWidth == image.width && it.pixelHeight == image.height } == true
         val savesEnough = thumbs.sourceByteCount?.let { image.bytes.size.toLong() * 4 <= it * 3 } ?: true
         val keepable = thumbs.sourceFormat in ImageFormatDetector.TYPES_EVERY_CLIENT_CAN_DECODE
-        if (sourceFits && !savesEnough && keepable) return path to contentType
+        if (sourceFits && !savesEnough && keepable) return null
 
-        val finalPath = try {
+        return try {
             fileOperationsProvider.writeBytesToTempFile(image.bytes, "img_final_", ".webp")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = "UploadImages", throwable = e) { "Couldn't save the final image; sending the file as it is" }
-            return path to contentType
+            Logger.w(tag = TAG, throwable = e) { "Couldn't save the final image; sending the file as it is" }
+            null
         }
-        return finalPath to "image/webp"
     }
 }
 
@@ -131,7 +123,7 @@ internal suspend fun withoutImageMetadata(path: String, contentType: String, fil
     } catch (e: CancellationException) {
         throw e
     } catch (t: Throwable) {
-        Logger.w(throwable = t, tag = "ImageMetadata") { "metadata scrub skipped — could not read $path" }
+        Logger.w(throwable = t, tag = TAG) { "metadata scrub skipped — could not read $path" }
         return path
     }
     val why = when (val outcome = ImageMetadataScrubber.scrubWithOutcome(original)) {
@@ -140,7 +132,7 @@ internal suspend fun withoutImageMetadata(path: String, contentType: String, fil
         ImageMetadataScrubber.Outcome.UnsupportedFormat -> "isn't a format the scrubber handles"
         ImageMetadataScrubber.Outcome.Unparseable -> "couldn't be parsed"
     }
-    Logger.w(tag = "ImageMetadata") {
+    Logger.w(tag = TAG) {
         "metadata scrub skipped — $contentType (sniffed ${ImageFormatDetector.detectFormat(original)}) $why; any EXIF/XMP goes out intact"
     }
     return path

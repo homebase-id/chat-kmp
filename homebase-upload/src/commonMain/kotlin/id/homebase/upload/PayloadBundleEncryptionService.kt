@@ -89,7 +89,7 @@ class PayloadBundleEncryptionService(
                         keyHeader = keyHeader,
                         onProgress = progress,
                         descriptorContentPayloadKey = "${HomebaseProtocol.PayloadDescriptorKeyPrefix}$index",
-                        playlistPayloadKey = "pls_${index.toString().padStart(4, '0')}",
+                        playlistPayloadKey = HomebaseProtocol.playlistPayloadKey(index),
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,
                         inputBlobUrl = payload.inputBlobUrl,
@@ -99,7 +99,7 @@ class PayloadBundleEncryptionService(
                     newPayloads += result.payloads
                     newThumbnails += result.thumbnails
                 } else {
-                    val sourcePath = withoutImageMetadata(payload.filePath, payload.contentType, fileOps)
+                    val sourcePath = if (payload.stripMetadata) withoutImageMetadata(payload.filePath, payload.contentType, fileOps) else payload.filePath
                     val encryptedFile = encryptFile(sourcePath, keyHeader)
                     if (sourcePath != payload.filePath) {
                         runCatching { fileOps.deleteTempFile(sourcePath) }

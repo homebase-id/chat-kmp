@@ -22,7 +22,6 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -48,7 +47,7 @@ class UserUploadBuilderCurrentFormatTest {
         listOf(source),
         UploadOptions(quality = quality, metadata = metadata, currentFormat = true),
         fileOps,
-    ) { _, _ -> "chat_web0" }
+    ) { "chat_web0" }
 
     private fun PayloadBundle.received() = payloads.single().let {
         PayloadDescriptor(key = it.key, contentType = it.contentType, descriptorContent = it.descriptorContent)
@@ -86,7 +85,7 @@ class UserUploadBuilderCurrentFormatTest {
 
     @Test
     fun aStickerNeverCarriesTheSendersName() = runTest {
-        val sent = build(UploadSource(file("s.png", image(300, 300, EncodedImageFormat.PNG)), "image/png", pickedName = "IMG_9.png", kindHint = DescriptorContentV1.Kind.STICKER))
+        val sent = build(UploadSource(file("s.png", image(300, 300, EncodedImageFormat.PNG)), "image/png", pickedName = "IMG_9.png", sticker = true))
         assertEquals(DescriptorContentV1.Kind.STICKER, sent.written().kind)
         assertNull(sent.written().name)
         assertEquals("StickerFile.png", sent.received().filename())
@@ -96,7 +95,9 @@ class UserUploadBuilderCurrentFormatTest {
     fun theBytesDecideAnImagesType() = runTest {
         val png = file("mislabelled.jpg", image(200, 200, EncodedImageFormat.PNG))
         assertEquals("image/png", build(UploadSource(png, "image/jpeg"), MediaQuality.ORIGINAL).payloads.single().contentType)
-        assertEquals("image/png", build(UploadSource(png, "application/octet-stream"), MediaQuality.ORIGINAL).payloads.single().contentType)
+        val untyped = build(UploadSource(png, "application/octet-stream"), MediaQuality.ORIGINAL)
+        assertEquals("image/png", untyped.payloads.single().contentType)
+        assertTrue(untyped.thumbnails.isNotEmpty(), "an untyped image still goes the image way")
     }
 
     @Test
@@ -121,18 +122,9 @@ class UserUploadBuilderCurrentFormatTest {
     }
 
     @Test
-    fun stripRemovesAnOriginalsMetadataAndKeepLeavesItAlone() = runTest {
-        val jpeg = image(400, 300)
-        // An APP1 Exif segment right after SOI, as cameras write it.
-        val exif = "Exif".encodeToByteArray() + byteArrayOf(0, 0) + "MM".encodeToByteArray() + byteArrayOf(0, 42, 0, 0, 0, 8, 0, 0)
-        val tagged = jpeg.copyOf(2) + byteArrayOf(0xFF.toByte(), 0xE1.toByte(), 0, (exif.size + 2).toByte()) + exif + jpeg.copyOfRange(2, jpeg.size)
-        val path = file("gps.jpg", tagged)
-
-        val stripped = build(UploadSource(path, "image/jpeg"), MediaQuality.ORIGINAL, MetadataPolicy.STRIP).payloads.single().filePath
-        assertNotEquals(path, stripped)
-        assertFalse(File(stripped).readBytes().decodeToString(0, 64).contains("Exif"))
-
-        val kept = build(UploadSource(path, "image/jpeg"), MediaQuality.ORIGINAL, MetadataPolicy.KEEP).payloads.single().filePath
-        assertEquals(path, kept)
+    fun theAppsMetadataPolicyTravelsWithTheImage() = runTest {
+        val path = file("p.jpg", image(400, 300))
+        assertTrue(build(UploadSource(path, "image/jpeg"), MediaQuality.ORIGINAL, MetadataPolicy.STRIP).payloads.single().stripMetadata)
+        assertFalse(build(UploadSource(path, "image/jpeg"), MediaQuality.ORIGINAL, MetadataPolicy.KEEP).payloads.single().stripMetadata)
     }
 }

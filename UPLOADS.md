@@ -206,7 +206,7 @@ A name that collides with an existing file when saved becomes `name (1).ext`, `n
 enum class MetadataPolicy { KEEP, STRIP }
 ```
 
-Applied by the builder, before the encrypted and public paths split, so public uploads are stripped exactly like encrypted ones (#2395). The encryption step no longer strips.
+The builder decides it per app and records it on each image payload (`PayloadFile.stripMetadata`). Each transport applies it with the same function, `withoutImageMetadata`, so public uploads are stripped exactly like encrypted ones (#2395), and each image is read for it once.
 
 | Payload | STRIP does | KEEP does |
 |---|---|---|
@@ -236,44 +236,13 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 
 ## 4. The builder
 
-In `homebase-upload` (`UserUploadBuilder.kt`):
+`UserUploadBuilder.build(sources, options, fileOps, pdfPageRenderer, payloadKey)` in `homebase-upload` (`UserUploadBuilder.kt`). An `UploadSource` is one file as the app has it (path, the platform's type, the picked name, whether the user made it a sticker, audio length and waveform, video trim); `UploadOptions` holds the app's quality, metadata policy and the format switch. It returns a `PayloadBundle`: payloads with descriptor content filled in, thumbnails and tinies.
 
-```kotlin
-enum class MetadataPolicy { KEEP, STRIP }
-
-data class UploadSource(
-    val path: String,
-    val contentType: String,           // the platform's type, else the name's extension; an image's bytes override it
-    val pickedName: String? = null,    // as the device showed it; cleaned with safeFileName
-    val kindHint: DescriptorContentV1.Kind? = null,  // STICKER: the user's choice, never inferred
-    val waveformPath: String? = null,  // audio
-    val audioLengthSeconds: Int? = null,
-    val trimStartMs: Long? = null, val trimEndMs: Long? = null,  // video
-    val inputBlobUrl: String? = null,  // web video
-)
-
-data class UploadOptions(
-    val quality: MediaQuality = MediaQuality.STANDARD,  // decides thumbnails, final image, video transcode
-    val metadata: MetadataPolicy = MetadataPolicy.STRIP,
-    val currentFormat: Boolean = DescriptorContentV1.WRITE,  // the one switch (section 7)
-)
-
-object UserUploadBuilder {
-    suspend fun build(
-        sources: List<UploadSource>,
-        options: UploadOptions,
-        fileOps: FileOperationsProvider,
-        pdfPageRenderer: PdfPageRenderer? = null,   // the PDF renderer lives in homebase-common, so the app passes it
-        payloadKey: (index: Int, source: UploadSource) -> String,
-    ): PayloadBundle   // payloads with descriptor content filled in, thumbnails, tinies
-}
-```
-
-- Images and stickers go through `createMediaImages`; a PDF's first page through the same thumbnail pipeline; audio gets its waveform's thumbnails.
-- Videos leave the builder with `k`, `n` and nothing else. The encryption step's `VideoPayloadProcessor` transcodes them and fills in `w`, `h`, `vd` and `o`, and writes a segmented video's playlist as its `pls_` payload, whenever the descriptor content it is handed is in the current format.
-- `UploadService` seals the descriptor content of every payload it sends when the switch is on, whatever built it: a forward or re-send starts from the readable copy the device keeps, and goes out sealed with the new file's key. The optimistic local copy stays readable.
-- Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it. `MessageThumbnailGenerator`, `FinalImagePayload` and `ThumbnailResult` moved into it (`UploadImages`).
-- Still to fold in (sections 5 and 7): `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, Vault's and Photos' own assembly, and `enqueuePlaintextUpload` for public files.
+- Images and stickers go through `createMediaImages`; a PDF's first page through the same thumbnail pipeline, rendered by the app (the renderer lives in homebase-common); audio gets its waveform's thumbnails.
+- Videos leave the builder with `k` and `n` only. The encryption step's `VideoPayloadProcessor` transcodes them and, whenever the descriptor content it is handed is in the current format, fills in `w`, `h`, `vd` and `o` and writes a segmented video's playlist as its `pls_` payload.
+- `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable.
+- Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
+- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, Vault's and Photos' own assembly, and `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app
 
@@ -307,6 +276,12 @@ Filesync, WebDrop and the two photo APIs use the builder's rules (content type, 
 Old files are never rewritten.
 
 ## 7. Rollout
+
+**Before the switch flips:**
+
+- **Seal where every encrypted upload passes.** `UploadService` seals today, but chat's re-send (`ChatMessageSenderService.resendAsCreate`/`resendAsUpdate`) and other callers enqueue requests themselves. Move sealing to the upload providers, where the manifest is built for the server with the file's key at hand, so every encrypted upload is covered.
+- **The guard (section 8) allows `VideoPayloadProcessor`** to write video descriptor content, or the processor hands back facts and the encryption step writes it.
+- **The other uploaders move onto the builder** (sections 4 and 5), so nothing still writes the old format.
 
 **One switch, at once** (decision D): readers and writers for every app and kind, in chat-kmp and odin-js, in the same release. An app that hasn't updated shows a new upload's descriptor as text until it does.
 

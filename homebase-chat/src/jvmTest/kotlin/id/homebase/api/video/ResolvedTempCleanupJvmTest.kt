@@ -89,6 +89,7 @@ class ResolvedTempCleanupJvmTest {
                 keyHeader = KeyHeader.newRandom16(),
                 onProgress = null,
                 descriptorContentPayloadKey = "desc",
+                playlistPayloadKey = "pls_0000",
             )
 
             val resolvedCopy = provider.resolvedCopies.single()

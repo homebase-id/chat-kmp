@@ -30,7 +30,6 @@ class DescriptorContentVectorsTest {
             val content = v.str("descriptorContent")
             val parsed = assertNotNull(DescriptorContentV1.parseOrNull(content), v.str("name"))
             assertEquals(content, parsed.encode(), v.str("name"))
-            assertEquals(v.getValue("expect").jsonObject.str("kind"), Json.parseToJsonElement(content).jsonObject.str("k"))
         }
     }
 

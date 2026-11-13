@@ -121,8 +121,7 @@ class UploadService(
         )
     }
 
-    // Every descriptor content of an encrypted file goes out sealed with its key, copies included:
-    // the device keeps them opened, so a forward or re-send starts from the readable form (UPLOADS.md section 2).
+    // Copies too: the device keeps descriptor content opened, so a forward starts from the readable form.
     private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader): List<PayloadFile> {
         if (!sealDescriptorContent) return payloads
         return payloads.map { payload ->

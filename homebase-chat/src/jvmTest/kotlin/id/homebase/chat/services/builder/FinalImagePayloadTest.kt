@@ -25,10 +25,8 @@ import kotlin.test.assertTrue
  * Standard and HD: a photo's payload becomes the final image, and anything that would lose
  * information, or gain nothing, keeps its file.
  */
-private suspend fun finalImagePayload(attachment: AttachmentInput, thumbs: ThumbnailResult, ops: FileOperationsProvider): AttachmentInput {
-    val (path, type) = UploadImages.finalImageOrSource(attachment.filePath, attachment.contentType, thumbs, ops)
-    return if (path == attachment.filePath) attachment else attachment.copy(filePath = path, contentType = type)
-}
+private suspend fun finalImagePayload(attachment: AttachmentInput, thumbs: ThumbnailResult, ops: FileOperationsProvider): AttachmentInput =
+    UploadImages.finalImagePath(thumbs, ops)?.let { attachment.copy(filePath = it, contentType = "image/webp") } ?: attachment
 
 class FinalImagePayloadTest {
 
