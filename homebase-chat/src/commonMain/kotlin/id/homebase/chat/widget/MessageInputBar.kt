@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
@@ -192,6 +193,7 @@ import id.homebase.resources.chat_markdown_nested_list
 import id.homebase.resources.chat_markdown_task_list
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
+import id.homebase.resources.next
 import id.homebase.resources.collapse
 import id.homebase.resources.expand
 import id.homebase.resources.slide_to_cancel
@@ -1351,6 +1353,8 @@ fun MessageTextFieldForAttachment(
     clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
     // Non-null puts the view-once toggle inside the caption field; null when the attachment can't be view once.
     viewOnceToggle: ViewOnceToggle? = null,
+    // Chat-list capture has no chat yet: Next moves on to the recipient picker, so no emoji and no Send.
+    nextInsteadOfSend: Boolean = false,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     val linkDialog = remember { LinkDialogState() }
@@ -1428,7 +1432,7 @@ fun MessageTextFieldForAttachment(
                             enterSendsMessage = enterSendsMessage,
                             onSend = {
                                 if (!hasSent) {
-                                    hasSent = true
+                                    hasSent = !nextInsteadOfSend
                                     onSendMessage()
                                 }
                             },
@@ -1440,7 +1444,8 @@ fun MessageTextFieldForAttachment(
                         Text(stringResource(MR.string.chat_new_message_placeholder))
                     },
                     trailingIcon = viewOnceToggle?.let { toggle -> { ViewOnceCaptionToggle(toggle) } },
-                    leadingIcon = {
+                    leadingIcon = if (nextInsteadOfSend) null else {
+                        {
                         IconButton(
                             onClick = {
                                 if (emojiPanel.isOpen) {
@@ -1459,6 +1464,7 @@ fun MessageTextFieldForAttachment(
                                     MR.string.chat_message_emoji_options
                                 )
                             )
+                        }
                         }
                     },
                     shape = RoundedCornerShape(12.dp),
@@ -1492,14 +1498,15 @@ fun MessageTextFieldForAttachment(
                         enterSendsMessage = enterSendsMessage,
                     ) {
                         IconButton(
-                            onClick = { hasSent = true; onSendMessage() },
+                            onClick = { hasSent = !nextInsteadOfSend; onSendMessage() },
                             enabled = !hasSent,
                             colors = sendButtonColors,
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                imageVector = if (nextInsteadOfSend) Icons.AutoMirrored.Filled.ArrowForward
+                                else Icons.AutoMirrored.Filled.Send,
                                 contentDescription = stringResource(
-                                    MR.string.chat_send_message_button
+                                    if (nextInsteadOfSend) MR.string.next else MR.string.chat_send_message_button
                                 ),
                             )
                         }

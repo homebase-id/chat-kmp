@@ -90,3 +90,5 @@ private class CameraPreviewView(
         onLayout()
     }
 }
+
+internal actual val previewFollowsComposeTransforms: Boolean = false
