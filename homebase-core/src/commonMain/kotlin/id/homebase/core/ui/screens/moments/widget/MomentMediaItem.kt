@@ -326,6 +326,7 @@ fun MomentMediaItem(
 
                 HomebaseImage(
                     imageData = imageData,
+                    stepUpToPayload = true,
                     modifier = finalModifier,
                     contentScale = imageContentScale,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),

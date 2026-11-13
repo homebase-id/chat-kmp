@@ -48,17 +48,28 @@ class ThumbnailLadderTest {
     fun hdKeepsOnlyThumbnailsAStepBelowTheNextImage() =
         hd.forEach { (source, expected) -> assertEquals(expected, thumbs(source, MediaQuality.HD), "$source") }
 
-    // The untouched file is the top image there, and pixels don't predict its bytes.
-    @Test
-    fun aFileKeptAsThePayloadKeepsEveryThumbnail() {
-        val nineBySixteen = ImageSize(2268, 4032)
-        val standardRows = listOf("240x427", "480x854", "810x1440")
-        assertEquals(standardRows, planMediaImages(nineBySixteen, MediaQuality.STANDARD, makesFinalImage = false).thumbnails.map { "${it.width}x${it.height}" })
-        assertEquals(null, planMediaImages(nineBySixteen, MediaQuality.STANDARD, makesFinalImage = false).finalImage)
-    }
+    // The untouched file's bytes don't follow its pixels, so its largest thumbnail anchors the walk and always stays.
+    private val original = mapOf(
+        ImageSize(3072, 4080) to listOf("241x320", "482x640", "813x1080", "1542x2048"),
+        ImageSize(2268, 4032) to listOf("240x427", "480x854", "1152x2048"), // 810x1440 is 1.42x below 2048
+        ImageSize(3024, 4032) to listOf("240x320", "480x640", "810x1080", "1536x2048"),
+        ImageSize(3024, 3024) to listOf("320x320", "640x640", "1080x1080", "2048x2048"),
+        ImageSize(6000, 4000) to listOf("360x240", "720x480", "1215x810", "2048x1365"),
+        ImageSize(9546, 1619) to listOf("640x109", "1280x217", "2160x366", "6368x1080"),
+        ImageSize(1080, 2400) to listOf("240x534", "480x1067", "1080x2400"),
+        ImageSize(2560, 1440) to listOf("427x240", "854x480", "2048x1152"),
+        ImageSize(1600, 1200) to listOf("320x240", "640x480", "1600x1200"),
+    )
 
     @Test
-    fun originalKeepsEveryThumbnail() {
-        assertEquals(listOf("240x427", "480x854", "810x1440", "1152x2048"), thumbs(ImageSize(2268, 4032), MediaQuality.ORIGINAL))
+    fun originalKeepsItsLargestThumbnailAndOnlyThumbnailsAStepBelow() =
+        original.forEach { (source, expected) -> assertEquals(expected, thumbs(source, MediaQuality.ORIGINAL), "$source") }
+
+    @Test
+    fun aFileKeptAsThePayloadKeepsItsLargestThumbnail() {
+        val nineBySixteen = ImageSize(2268, 4032)
+        val plan = planMediaImages(nineBySixteen, MediaQuality.STANDARD, makesFinalImage = false)
+        assertEquals(listOf("240x427", "480x854", "810x1440"), plan.thumbnails.map { "${it.width}x${it.height}" })
+        assertEquals(null, plan.finalImage)
     }
 }

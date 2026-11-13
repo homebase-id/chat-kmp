@@ -77,23 +77,23 @@ fun planMediaImages(source: ImageSize, setting: MediaQuality, makesFinalImage: B
     }
     return MediaImagePlan(
         tiny = sized(source, tinyThumbSize.maxPixelDimension, 0, tinyThumbSize.maxPixelDimension, tinyThumbSize.quality, keepSourceWhenNear = false),
-        thumbnails = if (finalImage == null) thumbnails else withoutCloseSteps(thumbnails, finalImage),
+        thumbnails = withoutCloseSteps(thumbnails, finalImage),
         finalImage = finalImage,
     )
 }
 
 /**
- * Drops a thumbnail whose next bigger image, the next one kept or the final image, is less than 1.5×
- * its long edge: it costs about as much to send as it can save. The smallest is always kept.
- * Only where the pipeline makes the final image: an untouched file's bytes don't follow its pixels.
+ * Drops a thumbnail whose next bigger image is less than 1.5× its long edge: it costs about as much to
+ * send as it can save. The smallest is always kept, and so is the largest when the untouched file is the
+ * payload, because that file's bytes don't follow its pixels.
  */
-private fun withoutCloseSteps(smallestFirst: List<PlannedImage>, finalImage: PlannedImage): List<PlannedImage> {
-    var above = finalImage.longEdge.toLong()
+private fun withoutCloseSteps(smallestFirst: List<PlannedImage>, finalImage: PlannedImage?): List<PlannedImage> {
+    var above = finalImage?.longEdge?.toLong()
     return smallestFirst.indices.reversed().mapNotNull { index ->
-        val image = smallestFirst[index]
-        val keep = index == 0 || above * 2 >= image.longEdge.toLong() * 3
-        if (keep) above = image.longEdge.toLong()
-        image.takeIf { keep }
+        val edge = smallestFirst[index].longEdge.toLong()
+        val keep = index == 0 || above == null || above * 2 >= edge * 3
+        if (keep) above = edge
+        smallestFirst[index].takeIf { keep }
     }.reversed()
 }
 

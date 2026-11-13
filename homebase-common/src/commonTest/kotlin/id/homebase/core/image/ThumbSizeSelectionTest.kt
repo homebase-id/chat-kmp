@@ -125,6 +125,15 @@ class ThumbSizeSelectionTest {
         assertTrue(shouldStepUpToPayload(ImageSize(3000, 2250), stepUpData(thumbs = thumbs, finalSize = ImageSize(4000, 3000))))
     }
 
+    // A 9:16 Standard photo has no 810x1440 thumbnail any more, so a feed or bubble view loads the final image.
+    @Test
+    fun aViewAboveATallPhotosKeptThumbnailsStepsUpToTheFinalImage() {
+        val tall = stepUpData(thumbs = listOf(ImageSize(240, 427), ImageSize(480, 854)), bytes = 231_112, finalSize = ImageSize(1152, 2048))
+        assertEquals(ImageSize(480, 854), selectThumbSize(ImageSize(1080, 1080), tall.availableThumbSizes))
+        assertTrue(shouldStepUpToPayload(ImageSize(1080, 1080), tall))
+        assertTrue(shouldStepUpToPayload(ImageSize(1600, 1600), tall))
+    }
+
     @Test
     fun anOldDescriptorWithoutASizeKeepsTheOldRule() {
         assertTrue(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(finalSize = null)))

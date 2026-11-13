@@ -247,11 +247,9 @@ class CreateThumbnailsTest {
         assertEquals(100, naturalSize.pixelHeight)
         assertNotNull(embeddedThumb)
         assertEquals("image/webp", embeddedThumb.contentType)
-        // Vectors render crisp at any size — we always produce every row regardless of the SVG's declared size,
-        // so hi-DPI viewers can ask for THUMB_LARGE without falling
-        // back to an undersized intrinsic render.
-        assertEquals(ORIGINAL_ROW_LONG_EDGES.size, thumbList.size,
-            "SVG should produce one raster per row, got ${thumbList.size}")
+        // Rendered at the largest row whatever its declared size, so hi-DPI viewers get a sharp raster;
+        // the 1620x810 row is only 1.26x below 2048 and is skipped like any other close step.
+        assertEquals(listOf(480 to 240, 960 to 480, 2048 to 1024), thumbList.map { it.pixelWidth to it.pixelHeight })
         for (thumb in thumbList) {
             assertEquals("image/webp", thumb.contentType)
             ImageTestHelper.assertValidWebp(thumb.thumbnailBytes)
@@ -296,8 +294,7 @@ class CreateThumbnailsTest {
     fun svg_producesAdditionalRasterThumbs() = runTest {
         val svgBytes = ImageTestHelper.makeSvgBytes(2000, 1000, "<rect width=\"2000\" height=\"1000\"/>")
         val (_, _, thumbList) = createThumbnails(svgBytes, "key")
-        assertEquals(ORIGINAL_ROW_LONG_EDGES.size, thumbList.size,
-            "Every SVG should rasterize into every row")
+        assertEquals(listOf(480 to 240, 960 to 480, 2048 to 1024), thumbList.map { it.pixelWidth to it.pixelHeight })
     }
 
     /**
