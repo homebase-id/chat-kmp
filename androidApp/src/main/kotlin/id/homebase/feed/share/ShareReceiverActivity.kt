@@ -97,7 +97,7 @@ import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.ui.screens.contactbook.saveNewContact
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.feed.MainActivity
 import id.homebase.feed.R
 import io.github.vinceglb.filekit.PlatformFile

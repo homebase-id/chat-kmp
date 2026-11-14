@@ -13,7 +13,7 @@ import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.moments.services.MediaInfo
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.UserPreferences
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.api.file.resolveContentType
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus

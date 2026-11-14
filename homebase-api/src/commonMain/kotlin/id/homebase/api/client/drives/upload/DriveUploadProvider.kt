@@ -105,7 +105,8 @@ data class UpdateFileByUniqueIdRequest(
     val instructions: FileUpdateInstructionSet,
     val metadata: UploadFileMetadata,
     val payloads: List<PayloadFile>? = null,
-    val thumbnails: List<ThumbnailFile>? = null,    val fileSystemType: FileSystemType? = null,
+    val thumbnails: List<ThumbnailFile>? = null,
+    val fileSystemType: FileSystemType? = null,
     /** As [UploadFileRequest.sealDescriptorContent]. */
     val sealDescriptorContent: Boolean = false,
 )
@@ -292,7 +293,7 @@ class DriveUploadProvider(
 
         val data =
             buildUpdateFormData(
-                instructionSet = request.sealedInstructions(),
+                instructionSet = request.instructions.sealedIf(request.sealsDescriptors, request.keyHeader),
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
                 thumbnails = request.thumbnails,
@@ -345,7 +346,7 @@ class DriveUploadProvider(
 
         val data =
             buildUpdateFormData(
-                instructionSet = request.sealedInstructions(),
+                instructionSet = request.instructions.sealedIf(request.sealsDescriptors, request.keyHeader),
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
                 thumbnails = request.thumbnails,
@@ -628,18 +629,13 @@ class DriveUploadProvider(
 }
 
 // Sealed here, where every upload's manifest is built for the server with the file's key at hand, so a request
-// enqueued by any caller is covered; the outbox keeps the readable form.
+// enqueued by any caller is covered; the outbox keeps the readable form. The size check reads the same rule.
+internal val UploadFileRequest.sealsDescriptors get() = DescriptorContentSeal.appliesTo(metadata.isEncrypted, sealDescriptorContent)
+internal val UpdateFileByUniqueIdRequest.sealsDescriptors get() = keyHeader != null && DescriptorContentSeal.appliesTo(metadata.isEncrypted, sealDescriptorContent)
+private val UpdateFileByFileIdRequest.sealsDescriptors get() = keyHeader != null && DescriptorContentSeal.appliesTo(metadata.isEncrypted, asked = false)
+
 internal suspend fun UploadFileRequest.sealedPayloads(): List<PayloadFile> =
-    if (DescriptorContentSeal.appliesTo(metadata.isEncrypted, sealDescriptorContent)) payloads.map { it.withSealedDescriptor(keyHeader.aesKey) } else payloads
+    if (sealsDescriptors) payloads.map { it.withSealedDescriptor(keyHeader.aesKey) } else payloads
 
-private suspend fun UpdateFileByUniqueIdRequest.sealedInstructions(): FileUpdateInstructionSet {
-    val key = keyHeader?.aesKey ?: return instructions
-    if (!DescriptorContentSeal.appliesTo(metadata.isEncrypted, sealDescriptorContent)) return instructions
-    return instructions.copy(manifest = instructions.manifest.withSealedDescriptors(key))
-}
-
-private suspend fun UpdateFileByFileIdRequest.sealedInstructions(): FileUpdateInstructionSet {
-    val key = keyHeader?.aesKey ?: return instructions
-    if (!DescriptorContentSeal.appliesTo(metadata.isEncrypted, asked = false)) return instructions
-    return instructions.copy(manifest = instructions.manifest.withSealedDescriptors(key))
-}
+private suspend fun FileUpdateInstructionSet.sealedIf(seals: Boolean, keyHeader: KeyHeader?): FileUpdateInstructionSet =
+    if (seals && keyHeader != null) copy(manifest = manifest.withSealedDescriptors(keyHeader.aesKey)) else this

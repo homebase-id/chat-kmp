@@ -33,14 +33,12 @@ private val PAYLOAD_KEY_PATTERN = Regex(PAYLOAD_KEY_PATTERN_RAW)
 
 fun UploadFileRequest.validateForUpload() {
     validateMetadata(metadata)
-    val sealed = DescriptorContentSeal.appliesTo(metadata.isEncrypted, sealDescriptorContent)
-    payloads.forEach { validatePayload(it, sealed) }
+    payloads.forEach { validatePayload(it, sealsDescriptors) }
 }
 
 fun UpdateFileByUniqueIdRequest.validateForUpload() {
     validateMetadata(metadata)
-    val sealed = keyHeader != null && DescriptorContentSeal.appliesTo(metadata.isEncrypted, sealDescriptorContent)
-    payloads?.forEach { validatePayload(it, sealed) }
+    payloads?.forEach { validatePayload(it, sealsDescriptors) }
 }
 
 private fun validateMetadata(metadata: UploadFileMetadata) {

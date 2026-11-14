@@ -252,10 +252,6 @@ private fun requireHashesBoundToIvs(payloads: List<PayloadFile>?) {
 /** Helper class for specifying payloads to delete. */
 data class PayloadDeleteKey(val key: String)
 
-/** The append instructions' descriptor content, sealed like a new file's (UPLOADS.md section 2). */
-suspend fun UpdateManifest.withSealedDescriptors(aesKey: SecureByteArray): UpdateManifest = copy(
-    payloadDescriptors = payloadDescriptors?.map { d ->
-        val content = d.descriptorContent?.takeIf { it.isNotBlank() && !DescriptorContentSeal.isSealed(it) } ?: return@map d
-        d.copy(descriptorContent = DescriptorContentSeal.seal(content, aesKey))
-    },
+internal suspend fun UpdateManifest.withSealedDescriptors(aesKey: SecureByteArray): UpdateManifest = copy(
+    payloadDescriptors = payloadDescriptors?.map { it.copy(descriptorContent = DescriptorContentSeal.sealIfPlain(it.descriptorContent, aesKey)) },
 )

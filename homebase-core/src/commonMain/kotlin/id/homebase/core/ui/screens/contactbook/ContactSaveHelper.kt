@@ -20,7 +20,7 @@ import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.readBytes
 import kotlin.coroutines.cancellation.CancellationException

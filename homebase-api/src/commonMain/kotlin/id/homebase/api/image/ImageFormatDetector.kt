@@ -1,5 +1,6 @@
 package id.homebase.api.lib.image
 
+import id.homebase.api.file.OCTET_STREAM
 import co.touchlab.kermit.Logger
 
 /**
@@ -12,7 +13,7 @@ object ImageFormatDetector {
 
     /** An image's type from its signature; callers outside this module go through contentTypeFromBytes. */
     internal fun detectFormat(bytes: ByteArray): String {
-        if (bytes.size < 4) return "application/octet-stream"
+        if (bytes.size < 4) return OCTET_STREAM
 
         return when {
             // JPEG: FF D8 FF
@@ -42,33 +43,12 @@ object ImageFormatDetector {
             // AVIF is a HEIF too, often with the generic mif1 brand: its own brands tell them apart.
             isAvif(bytes) -> "image/avif"
             isHeic(bytes) -> "image/heic"
-            else -> "application/octet-stream"
+            else -> OCTET_STREAM
         }
     }
 
-    /**
-     * Detects if bytes represent a HEIC/HEIF image (ISOBMFF container with ftyp box).
-     * Checks for 'ftyp' at offset 4 and known HEIC brand identifiers at offset 8.
-     */
-    fun isHeic(bytes: ByteArray): Boolean {
-        if (bytes.size < 12) return false
-
-        // Check for 'ftyp' at offset 4
-        val ftyp = bytes[4] == 0x66.toByte() && // f
-                   bytes[5] == 0x74.toByte() && // t
-                   bytes[6] == 0x79.toByte() && // y
-                   bytes[7] == 0x70.toByte()    // p
-        if (!ftyp) return false
-
-        // Check brand at offset 8 (4 chars)
-        val brand = try {
-            bytes.sliceArray(8..11).decodeToString()
-        } catch (_: Exception) {
-            return false
-        }
-
-        return brand in listOf("heic", "heix", "hevc", "hevx", "mif1", "msf1")
-    }
+    /** A HEIF container by its major brand: HEIC, and the generic mif1/msf1 an AVIF can carry too. */
+    fun isHeic(bytes: ByteArray): Boolean = ftypBrands(bytes)?.first() in HEIC_BRANDS
 
     // "BM" alone is common in text and other files: a real BMP also has zeroed reserved bytes and a known DIB header size.
     private fun isBmp(b: ByteArray): Boolean =
@@ -86,6 +66,7 @@ object ImageFormatDetector {
 
     private val BMP_DIB_HEADER_SIZES = setOf(12, 40, 52, 56, 64, 108, 124)
     private val AVIF_BRANDS = setOf("avif", "avis")
+    private val HEIC_BRANDS = setOf("heic", "heix", "hevc", "hevx", "mif1", "msf1")
 
     // A single-frame GIF counts as still.
     fun isAnimated(bytes: ByteArray): Boolean =

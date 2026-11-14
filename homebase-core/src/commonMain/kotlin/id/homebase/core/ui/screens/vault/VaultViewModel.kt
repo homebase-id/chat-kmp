@@ -34,7 +34,7 @@ import id.homebase.core.ui.screens.vault.model.webDropFileNames
 import id.homebase.core.ui.screens.vault.model.webDropGuardKey
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider

@@ -1,5 +1,8 @@
 package id.homebase.api.file
 
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.mimeType
+import io.github.vinceglb.filekit.PlatformFile
 import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.CancellationException
@@ -44,26 +47,12 @@ fun extensionForContentType(contentType: String?): String {
         ?: "bin"
 }
 
-/**
- * Resolves the best content type for a file:
- * 1. Platform-provided MIME type (if specific, i.e. not octet-stream)
- * 2. Extension-based lookup from the filename (140+ extensions)
- * Falls back to "application/octet-stream" if both fail.
- *
- * [platformMimeType] is the optional result from PlatformFile.mimeType().
- */
-fun resolveContentType(
-    fileName: String?,
-    platformMimeType: String? = null,
-): String {
-    // 1. Trust platform MIME type if it's specific
-    if (platformMimeType != null && platformMimeType != OCTET_STREAM) {
-        return platformMimeType
-    }
+/** The platform's type when it gives one, else the name's. */
+fun resolveContentType(fileName: String?, platformMimeType: String? = null): String =
+    platformMimeType?.takeUnless(::isUntyped) ?: detectContentTypeFromExtensionOrHint(fileName)
 
-    // 2. Extension-based lookup
-    return detectContentTypeFromExtensionOrHint(fileName)
-}
+// On the originally picked handle only: a sandbox copy has lost the platform's type and often the extension too (#1149).
+fun PlatformFile.contentType(): String = resolveContentType(fileName = name, platformMimeType = mimeType()?.toString())
 
 private val commonExtToMime: Map<String, String> = mapOf(
     // Images
@@ -241,7 +230,6 @@ private val commonMimeToExt: Map<String, String> by lazy {
         "rb", "css", "sql", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
         "apk", "gz", "rar", "7z",
     )
-    // First pass: add all entries
     for ((ext, mime) in commonExtToMime) {
         if (!reverse.containsKey(mime) || ext in preferred) {
             reverse[mime] = ext
