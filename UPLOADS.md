@@ -198,7 +198,7 @@ A name that collides with an existing file when saved becomes `name (1).ext`, `n
 
 ### 3.3 Original or copy
 
-`original = true` when the payload data is the user's file byte for byte (Original, Photos, Vault, a GIF, a kept source). `false` when the builder made it (Standard or HD final image, a transcoded video). Views step up to the payload data only when `original == false` and `pixelWidth` is set (`THUMBNAILS.md`, "Showing the images").
+`original = true` when the payload data is the user's own file: byte for byte, or with only its metadata stripped (section 3.4), which leaves the picture itself untouched (Original, Photos, Vault, a GIF, a kept source). `false` when the builder made it (Standard or HD final image, a transcoded video). Views step up to the payload data only when `original == false` and `pixelWidth` is set (`THUMBNAILS.md`, "Showing the images").
 
 ### 3.4 Metadata
 
@@ -206,7 +206,7 @@ A name that collides with an existing file when saved becomes `name (1).ext`, `n
 enum class MetadataPolicy { KEEP, STRIP }
 ```
 
-Applied by the builder, before the encrypted and public paths split, so public uploads are stripped exactly like encrypted ones (#2395). The encryption step no longer strips.
+The builder decides it per app and records it on each image payload (`PayloadFile.stripMetadata`). Each transport applies it with the same function, `withoutImageMetadata`, so public uploads are stripped exactly like encrypted ones (#2395), and each image is read for it once.
 
 | Payload | STRIP does | KEEP does |
 |---|---|---|
@@ -236,41 +236,13 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 
 ## 4. The builder
 
-In `homebase-upload`:
+`UserUploadBuilder.build(sources, options, fileOps, pdfPageRenderer, payloadKey)` in `homebase-upload` (`UserUploadBuilder.kt`). An `UploadSource` is one file as the app has it (path, the platform's type, the picked name, whether the user made it a sticker, audio length and waveform, video trim); `UploadOptions` holds the app's quality, metadata policy and the format switch. It returns a `PayloadBundle`: payloads with descriptor content filled in, thumbnails and tinies.
 
-```kotlin
-data class UploadSource(
-    val path: String,                // local file to upload
-    val pickedName: String?,         // as the device showed it; null if none
-    val platformMimeType: String?,
-    val kindHint: DescriptorContent.Kind? = null,   // sticker, or a file sent as a document: the app says so
-    val appContent: String? = null,  // for kind = app
-)
-
-data class UploadOptions(
-    val keyPrefix: String,           // "chat_web"
-    val quality: MediaQuality,       // decides thumbnails, final image, video transcode
-    val metadata: MetadataPolicy,
-    val encrypted: Boolean,          // encrypts descriptors (section 2); payload encryption stays in UploadService
-)
-
-suspend fun buildUserUpload(
-    sources: List<UploadSource>,
-    options: UploadOptions,
-    keyHeader: KeyHeader?,           // required when encrypted
-): UserUpload
-
-data class UserUpload(
-    val payloads: List<PayloadFile>,         // descriptorContent filled, plain or encrypted
-    val thumbnails: List<ThumbnailFile>,
-    val headerTiny: EmbeddedThumb?,          // for appData.previewThumbnail
-    val descriptors: List<DescriptorContent>, // plain copies, for apps that also keep the name in their content
-)
-```
-
-- Calls `createMediaImages` / `planMediaImages` for images and stickers, the video processor for videos, and takes a PDF page render from the app.
-- `MessageAttachmentBuilder`, `MessageThumbnailGenerator`, `FinalImagePayload`, `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder` and Vault's and Photos' assembly fold into it.
-- `UploadService` (encrypted) and `enqueuePlaintextUpload` (public) both take a `UserUpload`; neither builds or changes descriptors.
+- Images and stickers go through `createMediaImages`; a PDF's first page through the same thumbnail pipeline, rendered by the app (the renderer lives in homebase-common); audio gets its waveform's thumbnails.
+- Videos leave the builder with `k` and `n` only. The encryption step's `VideoPayloadProcessor` transcodes them and, whenever the descriptor content it is handed is in the current format, fills in `w`, `h`, `vd` and `o` and writes a segmented video's playlist as its `pls_` payload.
+- `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable.
+- Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
+- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, Vault's and Photos' own assembly, and `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app
 
@@ -305,6 +277,14 @@ Old files are never rewritten.
 
 ## 7. Rollout
 
+**Before the switch flips:**
+
+- **Seal where every encrypted upload passes.** `UploadService` seals today, but chat's re-send (`ChatMessageSenderService.resendAsCreate`/`resendAsUpdate`) and other callers enqueue requests themselves. Move sealing to the upload providers, where the manifest is built for the server with the file's key at hand, so every encrypted upload is covered.
+- **The guard (section 8) allows `VideoPayloadProcessor`** to write video descriptor content, or the processor hands back facts and the encryption step writes it.
+- **The other uploaders move onto the builder** (sections 4 and 5), so nothing still writes the old format.
+- **Tighten `ImageFormatDetector` before the bytes decide a type.** With the switch on, an untyped file is sniffed and an image's own format replaces its declared type. Today a file starting with "BM" reads as BMP and an AVIF with the `mif1` brand as HEIC; they need real signatures first.
+- **Strip a video that isn't transcoded.** A clip under the compression threshold goes out as the user's file, container metadata included (`o: 1`). Under STRIP it needs a metadata-only remux (`-map_metadata -1`), on the encrypted and public paths alike (#2395).
+
 **One switch, at once** (decision D): readers and writers for every app and kind, in chat-kmp and odin-js, in the same release. An app that hasn't updated shows a new upload's descriptor as text until it does.
 
 **The web apps (Michael):** the only web apps in real use are Community and the feed. **Community is standalone** (its own drives and its own descriptor content) and is unaffected. **The feed** (`common-app` in odin-js) reads feed posts' descriptor content, so it's updated in the same release. (odin-js also touches descriptor content in `web-drop-app`, `ui-lib`'s video player and `js-lib`'s upload helpers; they move with the feed where they serve it.)
@@ -314,7 +294,8 @@ Old files are never rewritten.
 | Test | Checks |
 |---|---|
 | `DescriptorContent` round trip | Every kind serialises to the short keys and parses back; absent fields aren't written; `v` always is; unknown keys ignored; old quality codes translate; an HLS video writes its playlist as `pls_` and points to it |
-| Encrypted descriptor content | Encrypt then decrypt; a fresh IV each time; a flipped byte or another file's key fails to decrypt; app content over the limit is rejected; the same vectors pass in odin-js |
+| Encrypted descriptor content | Encrypt then decrypt; a fresh IV each time; a flipped byte or another file's key fails to decrypt; app content over the limit is rejected |
+| Shared vectors | `homebase-api/src/jvmTest/resources/uploads-descriptor-vectors.json`: plain descriptors of every kind, sealed ones made with an independent AES-GCM (Python `cryptography`), broken seals and older forms. `DescriptorContentVectorsTest` runs them here; odin-js runs the same file |
 | Old descriptors | Each row of section 6, with real stored examples, reads as before |
 | Name rules | Paths, NFC, `/` and NUL, a long name keeps its extension, an emoji at the cut, a 20-character "extension", blank |
 | Content type | Wrong platform MIME, empty MIME, no extension, renamed file |

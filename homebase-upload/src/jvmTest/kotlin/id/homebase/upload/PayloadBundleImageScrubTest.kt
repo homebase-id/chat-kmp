@@ -166,6 +166,31 @@ class PayloadBundleImageScrubTest {
     }
 
     @Test
+    fun encryptBundle_keepsTheMetadataOfAnImageTheAppKeeps() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val key = KeyHeader.newRandom16()
+        val original = geotaggedJpeg()
+        val src = provider.writeBytesToTempFile(original, "keep_", ".jpg")
+        var staged: String? = null
+        try {
+            val payload = service(provider).encryptBundle(
+                Uuid.random(),
+                bundle(PayloadFile(key = "p0", filePath = src, contentType = "image/jpeg", stripMetadata = false)),
+                key.aesKey,
+                this,
+            ).payloads.single()
+            staged = payload.filePath
+            assertContentEquals(
+                KeyHeader(aesKey = key.aesKey, iv = assertNotNull(payload.iv)).encryptDataAes(original),
+                File(staged).readBytes(),
+            )
+        } finally {
+            provider.deleteTempFile(src)
+            staged?.let { provider.deleteTempFile(it) }
+        }
+    }
+
+    @Test
     fun encryptBundle_nonImagePayloadIsUntouched() = runTest {
         val provider = JvmFileOperationsProvider()
         val svc = service(provider)

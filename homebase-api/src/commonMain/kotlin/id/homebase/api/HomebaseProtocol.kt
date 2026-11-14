@@ -5,6 +5,11 @@ object HomebaseProtocol {
     const val MaxPayloadDescriptorBytes = 1024
 
     const val PayloadDescriptorKeyPrefix = "pld_desc"
+    const val PlaylistPayloadKeyPrefix = "pls_"
+
+    fun payloadDescriptorKey(index: Int): String = PayloadDescriptorKeyPrefix + index
+
+    fun playlistPayloadKey(index: Int): String = PlaylistPayloadKeyPrefix + index.toString().padStart(4, '0')
     const val MaxHeaderContentBytes = 7000
 
     /** [plain] as `appData.content` once encrypted: base64 of AES-CBC with PKCS7 padding, which is what [MaxHeaderContentBytes] caps. */

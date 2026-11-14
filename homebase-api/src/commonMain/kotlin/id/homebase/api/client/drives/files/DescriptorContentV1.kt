@@ -41,6 +41,11 @@ data class DescriptorContentV1(
         @SerialName("sd") SD(MediaQuality.STANDARD),
         @SerialName("hd") HD(MediaQuality.HD),
         @SerialName("org") ORG(MediaQuality.ORIGINAL),
+        ;
+
+        companion object {
+            fun of(quality: MediaQuality): Quality = entries.first { it.mediaQuality == quality }
+        }
     }
 
     @Serializable
@@ -56,6 +61,22 @@ data class DescriptorContentV1(
     )
 
     fun encode(): String = OdinSystemSerializer.serialize(this)
+
+    fun withVideo(metadata: VideoMetadata, original: Boolean, playlistKey: String?): DescriptorContentV1 = copy(
+        original = if (original) 1 else 0,
+        pixelWidth = metadata.widthPx.takeIf { it > 0 },
+        pixelHeight = metadata.heightPx.takeIf { it > 0 },
+        video = Video(
+            durationMs = metadata.duration.toLong(),
+            codec = metadata.codec,
+            segmented = if (metadata.isSegmented) 1 else null,
+            playlistKey = playlistKey,
+            plainBytes = metadata.fileSize,
+            bitDepth = metadata.bitDepth.takeIf { it > 0 },
+            hdr = if (metadata.isHdr) 1 else null,
+            bitrateBps = metadata.videoBitrateBps.takeIf { it > 0 },
+        ),
+    )
 
     fun toVideoMetadata(payloadKey: String, contentType: String?, playlist: String?): VideoMetadata? {
         val video = video ?: return null
@@ -78,6 +99,9 @@ data class DescriptorContentV1(
 
     companion object {
         const val VERSION = 1
+
+        /** Whether uploads write this format. It flips once, together with the feed in odin-js (UPLOADS.md section 7). */
+        const val WRITE = false
 
         // No older form is a JSON object with "v" and "k" keys.
         fun isCurrentFormat(content: String): Boolean =

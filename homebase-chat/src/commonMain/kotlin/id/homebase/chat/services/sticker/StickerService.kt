@@ -19,9 +19,9 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.PayloadBundle
+import id.homebase.upload.UploadImages
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
-import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.core.config.stickerLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
 import kotlinx.coroutines.CancellationException
@@ -112,7 +112,7 @@ class StickerService(
             val key = StickerProtocol.STICKER_PAYLOAD_KEY
 
             val thumbs = try {
-                MessageThumbnailGenerator.generate(tempPath, key, fileOperationsProvider)
+                UploadImages.generate(tempPath, key, fileOperationsProvider)
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "Sticker thumbnail generation failed" }
                 null

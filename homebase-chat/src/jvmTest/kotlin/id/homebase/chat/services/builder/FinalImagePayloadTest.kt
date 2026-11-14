@@ -7,6 +7,8 @@ import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.RenderedImage
 import id.homebase.api.image.MediaQuality
+import id.homebase.upload.ThumbnailResult
+import id.homebase.upload.UploadImages
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
@@ -15,8 +17,8 @@ import kotlin.math.max
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
-import kotlin.test.assertSame
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -55,21 +57,19 @@ class FinalImagePayloadTest {
         attachment: AttachmentInput,
         bytes: ByteArray,
         quality: MediaQuality = MediaQuality.STANDARD,
-    ): AttachmentInput {
+    ): String? {
         val ops = Serving(bytes)
-        val thumbs = MessageThumbnailGenerator.generate(attachment.filePath, "chat_web0", ops, quality, attachment.forceSticker)
-        return finalImagePayload(attachment, thumbs, ops)
+        val thumbs = UploadImages.generate(attachment.filePath, "chat_web0", ops, quality, attachment.forceSticker)
+        return UploadImages.finalImagePath(thumbs, ops)
     }
 
     @Test
     fun aLargePhotoBecomesA2048pxWebpOnStandard() = runTest {
         val attachment = input("image/jpeg")
 
-        val result = send(attachment, fixture("5760_x_4320.jpg"))
+        val result = assertNotNull(send(attachment, fixture("5760_x_4320.jpg")))
 
-        assertEquals("image/webp", result.contentType)
-        assertNotEquals(attachment.filePath, result.filePath)
-        val written = File(result.filePath).readBytes()
+        val written = File(result).readBytes()
         assertEquals("RIFF", written.copyOf(4).decodeToString())
         val size = ImageUtils.getNaturalSize(written)
         assertEquals(2048, max(size.pixelWidth, size.pixelHeight))
@@ -77,9 +77,9 @@ class FinalImagePayloadTest {
 
     @Test
     fun aLargePhotoStopsAt4096OnHd() = runTest {
-        val result = send(input("image/jpeg"), fixture("5760_x_4320.jpg"), MediaQuality.HD)
+        val result = assertNotNull(send(input("image/jpeg"), fixture("5760_x_4320.jpg"), MediaQuality.HD))
 
-        val size = ImageUtils.getNaturalSize(File(result.filePath).readBytes())
+        val size = ImageUtils.getNaturalSize(File(result).readBytes())
         assertEquals(4096, max(size.pixelWidth, size.pixelHeight))
     }
 
@@ -87,7 +87,7 @@ class FinalImagePayloadTest {
     fun originalKeepsItsFileWhateverItsSize() = runTest {
         val attachment = input("image/jpeg")
 
-        assertSame(attachment, send(attachment, fixture("5760_x_4320.jpg"), MediaQuality.ORIGINAL))
+        assertNull(send(attachment, fixture("5760_x_4320.jpg"), MediaQuality.ORIGINAL))
     }
 
     @Test
@@ -96,7 +96,7 @@ class FinalImagePayloadTest {
         val attachment = input("image/jpeg")
         val bytes = ImageUtils.resizePreserveAspect(noise(400, 300), 400, 400, ImageFormat.JPEG, 40).bytes
 
-        assertSame(attachment, send(attachment, bytes))
+        assertNull(send(attachment, bytes))
     }
 
     @Test
@@ -104,9 +104,8 @@ class FinalImagePayloadTest {
         // A PNG photo: lossless, so a WebP saves far more than a quarter.
         val attachment = input("image/png")
 
-        val result = send(attachment, gradientPng(600, 400))
+        val result = assertNotNull(send(attachment, gradientPng(600, 400)))
 
-        assertEquals("image/webp", result.contentType)
     }
 
     @Test
@@ -115,9 +114,9 @@ class FinalImagePayloadTest {
         val svg = input("image/svg+xml")
         val sticker = input("image/png", forceSticker = true)
 
-        assertSame(gif, send(gif, ImageTestGif))
-        assertSame(svg, send(svg, """<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>""".encodeToByteArray()))
-        assertSame(sticker, send(sticker, gradientPng(600, 400)))
+        assertNull(send(gif, ImageTestGif))
+        assertNull(send(svg, """<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>""".encodeToByteArray()))
+        assertNull(send(sticker, gradientPng(600, 400)))
     }
 
     @Test
@@ -128,10 +127,10 @@ class FinalImagePayloadTest {
         val attachment = input("image/webp")
         assertEquals(1700, ImageUtils.getNaturalSize(animated).pixelWidth)
 
-        assertSame(attachment, send(attachment, animated))
+        assertNull(send(attachment, animated))
 
         // The animation check is what keeps the animated one out of the still encoder.
-        val thumbs = MessageThumbnailGenerator.generate("/unused", "chat_web0", Serving(still), MediaQuality.HD)
+        val thumbs = UploadImages.generate("/unused", "chat_web0", Serving(still), MediaQuality.HD)
         assertEquals(1700, thumbs.finalImage?.width)
     }
 
@@ -141,10 +140,10 @@ class FinalImagePayloadTest {
         val garbage = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8)
         val ops = Serving(garbage)
 
-        val thumbs = MessageThumbnailGenerator.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
+        val thumbs = UploadImages.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
 
         assertTrue(thumbs.thumbnails.isEmpty())
-        assertSame(attachment, finalImagePayload(attachment, thumbs, ops))
+        assertNull(UploadImages.finalImagePath(thumbs, ops))
     }
 
     @Test
@@ -156,9 +155,9 @@ class FinalImagePayloadTest {
             override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String =
                 throw IllegalStateException("No space left on device")
         }
-        val thumbs = MessageThumbnailGenerator.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
+        val thumbs = UploadImages.generate(attachment.filePath, "chat_web0", ops, MediaQuality.STANDARD)
 
-        assertSame(attachment, finalImagePayload(attachment, thumbs, ops))
+        assertNull(UploadImages.finalImagePath(thumbs, ops))
     }
 
     private companion object {
@@ -177,7 +176,7 @@ class FinalImagePayloadTest {
         val finalImage = RenderedImage(ByteArray(10), 600, 400, 70, ImageFormat.WEBP)
         val thumbs = ThumbnailResult(null, emptyList(), "image/png", sourceByteCount = null, finalImage, ImageSize(600, 400))
 
-        assertEquals("image/webp", finalImagePayload(attachment, thumbs, Serving(ByteArray(0))).contentType)
+        assertNotNull(UploadImages.finalImagePath(thumbs, Serving(ByteArray(0))))
     }
 }
 

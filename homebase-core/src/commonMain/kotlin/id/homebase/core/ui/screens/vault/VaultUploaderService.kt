@@ -19,10 +19,10 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.UploadImages
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
 import id.homebase.upload.thumbnailDescriptorsFor
-import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
@@ -166,7 +166,7 @@ class VaultUploaderService(
 
                 if (contentType.startsWith("image/")) {
                     try {
-                        val result = MessageThumbnailGenerator.generate(
+                        val result = UploadImages.generate(
                             filePath, key, fileOperationsProvider,
                         )
                         previewThumbnail = result.preview
@@ -240,7 +240,7 @@ class VaultUploaderService(
             var thumbnails = emptyList<ThumbnailFile>()
             if (contentType.startsWith("image/")) {
                 try {
-                    val result = MessageThumbnailGenerator.generate(
+                    val result = UploadImages.generate(
                         newFilePath, payloadKey, fileOperationsProvider,
                     )
                     previewThumbnail = result.preview
@@ -408,7 +408,7 @@ class VaultUploaderService(
 
             if (contentType.startsWith("image/")) {
                 try {
-                    val result = MessageThumbnailGenerator.generate(
+                    val result = UploadImages.generate(
                         filePath, key, fileOperationsProvider,
                     )
                     previewThumbnail = result.preview
