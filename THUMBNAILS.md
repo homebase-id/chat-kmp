@@ -400,7 +400,7 @@ None of Skia's sampling modes is good enough, and neither is a simple area avera
 | **Decode** | ImageIO, `CGImageSourceCreateThumbnailAtIndex`: reads HEIC and RAW directly, applies orientation, and decodes only as large as asked | `ImageDecoder`, which applies orientation and reads HEIC directly, with BitmapFactory as the fallback. JPEG shrinks properly while decoding (by 2, 4 or 8); HEIC, PNG and WebP shrinking skips pixels or scales bilinearly, so they decode at full size (#2302) |
 | **Scale** | Accelerate's `vImageScale_ARGB8888` with its default Lanczos-3, between the Skia images' own raster pixels (`ImageResample.native.kt`). `kvImageHighQualityResampling` would pick Lanczos-5, which costs more and differs from the other platforms | No system high-quality resampler, so `stb_image_resize2` with a Lanczos-3 kernel through the NDK, on `AndroidBitmap_lockPixels` (`homebase-imageresize`, its own Android library because the KMP Android plugin can't build native code) |
 | **Encode** | WebP through Skia's bundled libwebp, since iOS has no system WebP encoder | `Bitmap.compress`, unless a bundled libwebp measures better |
-| **Pixel hand-off** | Draw straight into the destination's native memory, never into a Kotlin `ByteArray`, which is up to 50 MB on the Kotlin/Native heap (#2236) | Bitmaps already live in native memory |
+| **Pixel hand-off** | ImageIO's image is drawn straight into the Skia bitmap's native memory (`allocPixels`, then `peekPixels`), never into a Kotlin `ByteArray`, which was up to 96 MB on the Kotlin/Native heap. The one extra copy left is ImageIO's own decoded `CGImage`, held until the draw finishes | Bitmaps already live in native memory |
 
 The rule on phones: native code wherever it's measurably better in quality, speed, memory or battery, and an existing, proven library before writing our own. As of 2026-11-08 there's no Kotlin Multiplatform library with a proper resampler.
 
@@ -628,7 +628,7 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 | What | Issue |
 |---|---|
 | Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` | #2301 |
-| iOS: hand pixels from ImageIO over without extra copies | #2236 |
+| iOS: peak memory of a 48 MP decode on a real iPhone, and whether ImageIO's own decoded copy can be skipped | #2273 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
 | Original video untouched, with chat's copy stripped by a remux | #2235 |

@@ -2,12 +2,14 @@
 
 package id.homebase.api.image
 
+import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.interpretCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
@@ -25,11 +27,13 @@ import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFNumberIntType
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
+import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorSpace
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Pixmap
 import platform.CoreFoundation.CFDataRef
 import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFRelease
@@ -124,35 +128,12 @@ private class ImageIoSource(
 }
 
 // Drawing into a context of the matching colour space keeps P3 pixels P3 for Skia to carry on.
+// The context draws straight into the bitmap's native pixels, so there's no heap copy.
 private fun CGImageRef.toSkiaImage(): Image {
     val width = CGImageGetWidth(this).toInt()
     val height = CGImageGetHeight(this).toInt()
     val wide = CGImageGetColorSpace(this)?.let { CGColorSpaceIsWideGamutRGB(it) } == true
     val opaque = CGImageGetAlphaInfo(this) in OPAQUE_ALPHA_INFO
-    val colorSpace = CGColorSpaceCreateWithName(if (wide) kCGColorSpaceDisplayP3 else kCGColorSpaceSRGB)
-    require(width.toLong() * 4 * height <= Int.MAX_VALUE) { "$width x $height is too large to decode" }
-    val rowBytes = width * 4
-    val pixels = ByteArray(rowBytes * height)
-    try {
-        pixels.usePinned { pinned ->
-            val context = CGBitmapContextCreate(
-                pinned.addressOf(0),
-                width.convert(),
-                height.convert(),
-                8.convert(),
-                rowBytes.convert(),
-                colorSpace,
-                CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value or kCGBitmapByteOrder32Big,
-            ) ?: throw IllegalStateException("Couldn't create a bitmap context")
-            try {
-                CGContextDrawImage(context, CGRectMake(0.0, 0.0, width.toDouble(), height.toDouble()), this)
-            } finally {
-                CGContextRelease(context)
-            }
-        }
-    } finally {
-        CGColorSpaceRelease(colorSpace)
-    }
     val info = ImageInfo(
         width,
         height,
@@ -160,7 +141,33 @@ private fun CGImageRef.toSkiaImage(): Image {
         if (opaque) ColorAlphaType.OPAQUE else ColorAlphaType.PREMUL,
         if (wide) ColorSpace.displayP3 else ColorSpace.sRGB,
     )
-    return Image.makeRaster(info, pixels, rowBytes)
+    val bitmap = Bitmap()
+    var pixels: Pixmap? = null
+    val colorSpace = CGColorSpaceCreateWithName(if (wide) kCGColorSpaceDisplayP3 else kCGColorSpaceSRGB)
+    try {
+        check(bitmap.allocPixels(info)) { "Couldn't allocate $width x $height pixels" }
+        val target = checkNotNull(bitmap.peekPixels()).also { pixels = it }
+        val context = CGBitmapContextCreate(
+            interpretCPointer<ByteVar>(target.addr),
+            width.convert(),
+            height.convert(),
+            8.convert(),
+            target.rowBytes.convert(),
+            colorSpace,
+            CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value or kCGBitmapByteOrder32Big,
+        ) ?: throw IllegalStateException("Couldn't create a bitmap context")
+        try {
+            CGContextDrawImage(context, CGRectMake(0.0, 0.0, width.toDouble(), height.toDouble()), this)
+        } finally {
+            CGContextRelease(context)
+        }
+        bitmap.setImmutable()
+        return Image.makeFromBitmap(bitmap)
+    } finally {
+        CGColorSpaceRelease(colorSpace)
+        pixels?.close()
+        bitmap.close()
+    }
 }
 
 private val OPAQUE_ALPHA_INFO = setOf(
