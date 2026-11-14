@@ -35,15 +35,14 @@ object ImageFormatDetector {
             // PNG: 89 50 4E 47
             bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
             bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> "image/png"
-            // GIF: 47 49 46
-            bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() -> "image/gif"
+            bytes.size >= 6 && bytes.decodeToString(0, 6).let { it == "GIF87a" || it == "GIF89a" } -> "image/gif"
             // WebP: "RIFF" then "WEBP" at 8; WAV and AVI are RIFF too.
             bytes.size >= 12 && bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
             bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&
             bytes.decodeToString(8, 12) == "WEBP" -> "image/webp"
-            // BMP: 42 4D
-            bytes[0] == 0x42.toByte() && bytes[1] == 0x4D.toByte() -> "image/bmp"
-            // HEIC/HEIF: ISOBMFF container with ftyp box
+            isBmp(bytes) -> "image/bmp"
+            // AVIF is a HEIF too, often with the generic mif1 brand: its own brands tell them apart.
+            isAvif(bytes) -> "image/avif"
             isHeic(bytes) -> "image/heic"
             else -> "application/octet-stream"
         }
@@ -72,6 +71,23 @@ object ImageFormatDetector {
 
         return brand in listOf("heic", "heix", "hevc", "hevx", "mif1", "msf1")
     }
+
+    // "BM" alone is common in text and other files: a real BMP also has zeroed reserved bytes and a known DIB header size.
+    private fun isBmp(b: ByteArray): Boolean =
+        b.size >= 18 && b[0] == 0x42.toByte() && b[1] == 0x4D.toByte() &&
+            (6..9).all { b[it] == 0.toByte() } && u32le(b, 14) in BMP_DIB_HEADER_SIZES
+
+    private fun isAvif(b: ByteArray): Boolean = ftypBrands(b)?.any { it in AVIF_BRANDS } == true
+
+    // The major brand and the compatible brands of an ISOBMFF file's ftyp box; null when it has none.
+    private fun ftypBrands(b: ByteArray): List<String>? {
+        if (b.size < 12 || b.decodeToString(4, 8) != "ftyp") return null
+        val end = u32be(b, 0).coerceAtMost(b.size)
+        return listOf(b.decodeToString(8, 12)) + (16 until end - 3 step 4).map { b.decodeToString(it, it + 4) }
+    }
+
+    private val BMP_DIB_HEADER_SIZES = setOf(12, 40, 52, 56, 64, 108, 124)
+    private val AVIF_BRANDS = setOf("avif", "avis")
 
     // A single-frame GIF counts as still.
     fun isAnimated(bytes: ByteArray): Boolean =
@@ -177,6 +193,7 @@ object ImageFormatDetector {
     private fun u16le(b: ByteArray, at: Int): Int = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
 
     private fun u32be(b: ByteArray, at: Int): Int = (0..3).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }
+    private fun u32le(b: ByteArray, at: Int): Int = (3 downTo 0).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }
 
     private const val VP8X_ANIMATION_FLAG = 0x02
 
