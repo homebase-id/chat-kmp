@@ -245,14 +245,15 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 Only Photos at Original keeps a video untouched (THUMBNAILS.md, "Video"); every other upload sends a transcode. An untouched video may not play everywhere and must download whole before it plays, so it travels with a copy to play:
 
 ```
-video_main   the user's file, untouched     {"v":1,"k":"v","n":"IMG_0042.MOV","o":1,"w":3840,"h":2160,"vd":{"pc":"vcp_0000"}}
-vcp_0000     a 1080p HLS transcode          {"v":1,"k":"v","o":0,"w":1920,"h":1080,"vd":{"seg":true,"p":"pls_0000",...}}
-pls_0000     the copy's playlist
+video_main   the user's file, untouched     {"v":1,"k":"v","n":"IMG_0042.MOV","o":1,"vd":{"pc":"vcp_0000"}}
+vcp_0000     a 1080p HLS transcode          {"v":1,"k":"v","o":0,"w":1920,"h":1080,"vd":{"seg":1,"p":"pls_0001",...}}
+pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 ```
 
 - **The original names its copy** in `vd.pc`. A reader plays the copy, and downloads, saves and restores the original.
 - **`vcp_` and `pls_` payloads are never shown** as attachments of their own, like `pld_desc` (`PayloadDescriptor.isInternalDescriptor`).
 - **The copy is made in the encryption step** from the original, encrypted with the file's key and its own IV, and has its own descriptor content like any transcoded video.
+- The original isn't probed, so it has no `w`, `h` or duration; the copy has them.
 - A video with no `vd.pc` is played as it is, as before.
 
 ## 4. The builder

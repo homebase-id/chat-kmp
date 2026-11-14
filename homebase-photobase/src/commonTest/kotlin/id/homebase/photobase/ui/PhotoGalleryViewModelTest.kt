@@ -282,6 +282,14 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
+    fun anUntouchedOriginalVideoPlaysItsCopy() {
+        val video = item(1, contentType = "video/quicktime")
+        val withCopy = video.copy(playableCopy = video.payload.copy(key = "vcp_0000", contentType = "video/mp4"))
+
+        assertEquals("vcp_0000", assertIs<FullScreenOverlay.VideoPlayerData>(withCopy.toViewer()).payloadKey)
+    }
+
+    @Test
     fun aVideoOpensInTheVideoPlayer() {
         val video = item(1, contentType = "video/mp4")
 

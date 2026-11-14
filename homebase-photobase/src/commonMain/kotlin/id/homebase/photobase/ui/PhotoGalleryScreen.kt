@@ -241,12 +241,12 @@ private fun VideoStill(item: PhotoGalleryItem) {
 }
 
 private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
-    val iv = payload.iv?.bytes ?: return null
+    val iv = shown.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
-        descriptor = payload,
-        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+        descriptor = shown,
+        previewThumbnail = shown.previewThumbnail?.toEmbeddedThumb(),
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }

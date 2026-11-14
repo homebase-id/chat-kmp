@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
@@ -29,6 +30,7 @@ class OutboxBackupUploader(
     private val outboxSync: OutboxSync,
     private val uploadService: UploadService,
     private val scope: CoroutineScope,
+    private val videoQuality: () -> MediaQuality = { MediaQuality.HD },
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : BackupUploader {
 
@@ -93,7 +95,7 @@ class OutboxBackupUploader(
             keyHeader = KeyHeader.newRandom16(),
             bundle = UserUploadBuilder.build(
                 listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.VIDEO)),
-                PHOTOS_UPLOAD_OPTIONS,
+                photosUploadOptions(video = videoQuality()),
                 fileOps,
             ) { PhotobaseProtocol.VideoPayloadKey },
             metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, PhotoContent()),

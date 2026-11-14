@@ -28,7 +28,12 @@ data class PayloadDescriptor(
     // Add fields as needed
 ) {
     fun isInternalDescriptor(): Boolean =
-        key.startsWith(HomebaseProtocol.PayloadDescriptorKeyPrefix) || key.startsWith(HomebaseProtocol.PlaylistPayloadKeyPrefix)
+        key.startsWith(HomebaseProtocol.PayloadDescriptorKeyPrefix) || key.startsWith(HomebaseProtocol.PlaylistPayloadKeyPrefix) ||
+            key.startsWith(HomebaseProtocol.PlayableCopyKeyPrefix)
+
+    /** The payload to play for this one: its playable copy when it is an untouched original (UPLOADS.md section 3.6). */
+    fun playableCopyKey(): String? =
+        descriptorContent?.takeIf(DescriptorContentV1::isCurrentFormat)?.let(DescriptorContentV1::parseOrNull)?.video?.playableCopyKey
 
     fun keyEquals(otherKey: String): Boolean {
         return key.equals(otherKey, ignoreCase = true)

@@ -51,10 +51,13 @@ data class DescriptorContentV1(
 
     @Serializable
     data class Video(
-        @SerialName("d") val durationMs: Long,
-        @SerialName("c") val codec: String,
+        // Absent on an untouched original, which nothing probes; its playable copy has them.
+        @SerialName("d") val durationMs: Long? = null,
+        @SerialName("c") val codec: String? = null,
         @SerialName("seg") val segmented: Int? = null,
         @SerialName("p") val playlistKey: String? = null,
+        /** The playable copy of an untouched original (UPLOADS.md section 3.6). */
+        @SerialName("pc") val playableCopyKey: String? = null,
         @SerialName("sz") val plainBytes: Long? = null,
         @SerialName("bd") val bitDepth: Int? = null,
         @SerialName("hdr") val hdr: Int? = null,
@@ -86,9 +89,9 @@ data class DescriptorContentV1(
             mimeType = if (segmented) HLS_PLAYLIST_CONTENT_TYPE else contentType ?: "video/mp4",
             isSegmented = segmented,
             fileSize = video.plainBytes ?: 0L,
-            duration = video.durationMs.toFloat(),
+            duration = (video.durationMs ?: 0L).toFloat(),
             key = payloadKey,
-            codec = video.codec,
+            codec = video.codec.orEmpty(),
             hlsPlaylist = playlist,
             widthPx = pixelWidth ?: 0,
             heightPx = pixelHeight ?: 0,

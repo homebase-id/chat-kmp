@@ -37,7 +37,7 @@ class PhotoThumbnailPrefetcher(
             if (!mayDownload()) return@withContext
             val page = store.page(cursor, newestFirst = true)
             for (item in page.items.take(RECENT_PHOTOS - seen)) {
-                val sizes = thumbSizesFrom(item.payload.thumbnails)
+                val sizes = thumbSizesFrom(item.shown.thumbnails)
                 if (sizes.isEmpty()) continue
                 paused.first { !it }
                 try {

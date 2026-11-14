@@ -1,5 +1,6 @@
 package id.homebase.photobase.ui
 
+import id.homebase.api.image.MediaQuality
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.photobase.backup.BackupSettings
@@ -29,6 +30,8 @@ sealed interface BackupSettingsUiAction {
     data class SetNewestFirst(val newestFirst: Boolean) : BackupSettingsUiAction
     data class SetOnlyNewFromNow(val onlyNew: Boolean) : BackupSettingsUiAction
     data class SetAlbums(val albumIds: Set<String>) : BackupSettingsUiAction
+    data class SetPhotoQuality(val quality: MediaQuality) : BackupSettingsUiAction
+    data class SetVideoQuality(val quality: MediaQuality) : BackupSettingsUiAction
     data object LoadAlbums : BackupSettingsUiAction
     data object BackUpNow : BackupSettingsUiAction
     data object RecheckDriveAndBackUp : BackupSettingsUiAction
@@ -68,6 +71,8 @@ class BackupSettingsViewModel(
                 it.copy(onlyNewFromMs = if (action.onlyNew) clock.now().toEpochMilliseconds() else null)
             }
             is BackupSettingsUiAction.SetAlbums -> controller.update { it.copy(albumIds = action.albumIds) }
+            is BackupSettingsUiAction.SetPhotoQuality -> controller.update { it.copy(photoQuality = action.quality) }
+            is BackupSettingsUiAction.SetVideoQuality -> controller.update { it.copy(videoQuality = action.quality) }
             BackupSettingsUiAction.LoadAlbums -> viewModelScope.launch {
                 val albums = controller.albums()
                 _uiState.update { it.copy(albums = albums) }

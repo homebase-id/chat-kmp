@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.video.toVideoQuality
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.files.PayloadFile
@@ -25,29 +26,26 @@ import id.homebase.upload.UploadSource
 import id.homebase.upload.UserUploadBuilder
 import kotlin.uuid.Uuid
 
-/** One photo as an upload request: original bytes encrypted to staged files, however it's then sent. */
+/** One photo as an upload request: its bytes, at the photo setting's quality, encrypted to staged files, however it's then sent. */
 class BackupRequestBuilder(
     private val fileOps: FileOperationsProvider,
+    /** The source's content hash, to check it before a re-encode, whose bytes the server's hash can't vouch for. */
+    private val digestOf: suspend (path: String) -> ByteArray,
+    private val photoQuality: () -> MediaQuality = { MediaQuality.ORIGINAL },
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) {
     /** Null when the bytes no longer match the hash; nothing is left behind then. On success the caller owns the staged files. */
     suspend fun build(row: DeviceBackupAsset, uniqueId: Uuid, mediaType: BackupMediaType, exported: ExportedAsset): UploadFileRequest? {
         val digests = digestsOf(row)
         require(exported.parts.size == digests.size) { "${exported.parts.size} parts against ${digests.size} digests" }
+        val quality = photoQuality()
+        val still = exported.parts.first()
+        if (quality != MediaQuality.ORIGINAL && !exported.isHashedCopy && !digestOf(still.path).contentEquals(digests.first())) return null
         val keyHeader = KeyHeader.newRandom16()
         val payloads = mutableListOf<PayloadFile>()
+        val reencoded = mutableListOf<String>()
         var complete = false
         try {
-            for ((index, part) in exported.parts.withIndex()) {
-                val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
-                payloads += PayloadFile(key = keyFor(part.role), filePath = encryptedPath, contentType = part.contentType, isPreEncrypted = true)
-                val hashed = timed(BackupStage.Encrypt) {
-                    fileOps.encryptWithPayloadHash(part.path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
-                }
-                val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
-                if (digest == null || !digest.contentEquals(digests[index])) return null
-                payloads[index] = payloads[index].copy(iv = hashed.iv, hash = hashed.hash)
-            }
             var exif: ImageMetadata? = null
             val bundle = timed(BackupStage.Thumbnails) {
                 UserUploadBuilder.build(
@@ -58,15 +56,24 @@ class BackupRequestBuilder(
                             UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE)
                         }
                     },
-                    PHOTOS_UPLOAD_OPTIONS,
+                    photosUploadOptions(photo = quality),
                     fileOps,
                     onImageMetadata = { _, metadata -> exif = metadata },
-                ) { payloads[it].key }
+                ) { keyFor(exported.parts[it].role) }
             }
-            val described = payloads.zip(bundle.payloads).mapIndexed { index, (encrypted, built) ->
-                // The hash above vouches for these bytes, so the builder must not have swapped in a copy.
-                check(built.filePath == exported.parts[index].path) { "the builder replaced ${built.key}" }
-                encrypted.copy(contentType = built.contentType, descriptorContent = built.descriptorContent, previewThumbnail = built.previewThumbnail)
+            for ((index, built) in bundle.payloads.withIndex()) {
+                val untouched = built.filePath == exported.parts[index].path
+                if (!untouched) reencoded += built.filePath
+                val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
+                payloads += built.copy(filePath = encryptedPath, isPreEncrypted = true)
+                val hashed = timed(BackupStage.Encrypt) {
+                    fileOps.encryptWithPayloadHash(built.filePath, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
+                }
+                if (untouched) {
+                    val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
+                    if (digest == null || !digest.contentEquals(digests[index])) return null
+                }
+                payloads[index] = payloads[index].copy(iv = hashed.iv, hash = hashed.hash)
             }
             val metadata = photoMetadata(
                 uniqueId,
@@ -75,12 +82,12 @@ class BackupRequestBuilder(
                 PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
                 bundle.previewThumbs.firstOrNull(),
             )
-            val keyByPayload = described.associate { it.key to KeyHeader(it.iv!!, keyHeader.aesKey) }
+            val keyByPayload = payloads.associate { it.key to KeyHeader(it.iv!!, keyHeader.aesKey) }
             val request = UploadFileRequest(
                 driveId = photosDriveId,
                 keyHeader = keyHeader,
                 metadata = metadata.encryptContent(keyHeader),
-                payloads = described,
+                payloads = payloads.toList(),
                 thumbnails = bundle.thumbnails.map { it.copy(thumbnailBytes = keyByPayload.getValue(it.key).encryptDataAes(it.thumbnailBytes)) },
                 existingFileIsSuccess = true,
                 sealDescriptorContent = true,
@@ -88,22 +95,22 @@ class BackupRequestBuilder(
             complete = true
             return request
         } finally {
+            reencoded.forEach { runCatching { fileOps.deleteTempFile(it) } }
             if (!complete) payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
         }
     }
 
     private fun keyFor(role: ExportedPartRole) =
         if (role == ExportedPartRole.PairedVideo) PhotobaseProtocol.LivePhotoVideoPayloadKey else PhotobaseProtocol.ImagePayloadKey
-
 }
 
-// The current format ahead of the switch: only this app has ever read the Photos drive.
-// Videos stay at Standard until Photos has its own video setting.
-internal val PHOTOS_UPLOAD_OPTIONS = UploadOptions(
-    quality = MediaQuality.ORIGINAL,
+// The current format ahead of the switch: only this app has ever read the Photos drive. Metadata is always kept.
+internal fun photosUploadOptions(photo: MediaQuality = MediaQuality.ORIGINAL, video: MediaQuality = MediaQuality.HD) = UploadOptions(
+    quality = photo,
     metadata = MetadataPolicy.KEEP,
     currentFormat = true,
-    videoQuality = VideoQuality.STANDARD,
+    videoQuality = video.toVideoQuality(),
+    originalVideo = video == MediaQuality.ORIGINAL,
 )
 
 @OptIn(ExperimentalStdlibApi::class)

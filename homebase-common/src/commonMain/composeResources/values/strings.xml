@@ -3388,6 +3388,15 @@
     <string name="photobase_refresh_status">Refresh backup status</string>
     <string name="photobase_refresh_status_desc">Checks your drive for every photo and video, and backs up any that are missing.</string>
     <string name="photobase_backup_albums">Albums</string>
+    <string name="photobase_backup_photo_quality">Photo quality</string>
+    <string name="photobase_backup_video_quality">Video quality</string>
+    <string name="photobase_backup_photo_standard_desc">Up to 2048 pixels. Uses the least space.</string>
+    <string name="photobase_backup_photo_hd_desc">Up to 4096 pixels. Stays sharp when zoomed.</string>
+    <string name="photobase_backup_photo_original_desc">The exact photo, as your phone has it.</string>
+    <string name="photobase_backup_video_standard_desc">720p. Uses the least space.</string>
+    <string name="photobase_backup_video_hd_desc">1080p.</string>
+    <string name="photobase_backup_video_original_desc">The video exactly as recorded, plus a 1080p copy to play. Uses the most space.</string>
+    <string name="photobase_backup_quality_note">Applies to new backups. What is already backed up stays as it is.</string>
     <string name="photobase_backup_albums_default">Camera</string>
     <string name="photobase_backup_wifi_only">Wi-Fi only</string>
     <string name="photobase_backup_videos_cellular">Videos on cellular</string>
