@@ -1,5 +1,6 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.upload.UserUploadBuilder
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.location.LocationPreview
@@ -34,11 +35,6 @@ object LocationPreviewPayloadBuilder {
 
         val actualHasImage = imageBytes.isNotEmpty()
 
-        var descriptorContent = buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = null)
-        if (descriptorContent.encodeToByteArray().size > ChatProtocol.MaxDescriptorContentLength) {
-            descriptorContent = buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = 200)
-        }
-
         val mimeType = if (actualHasImage && imageUrl != null) {
             imageUrl.substringAfter("data:").substringBefore(";")
         } else {
@@ -69,7 +65,11 @@ object LocationPreviewPayloadBuilder {
                     key = ChatProtocol.PAYLOAD_KEY_LOCATION,
                     filePath = tempPath,
                     contentType = mimeType,
-                    descriptorContent = descriptorContent,
+                    descriptorContent = UserUploadBuilder.appDescriptor(
+                        buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = null),
+                        buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = 200),
+                        buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = 0),
+                    ),
                     previewThumbnail = tinyThumb,
                 )
             ),

@@ -1,7 +1,9 @@
 package id.homebase.upload
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
@@ -61,6 +63,19 @@ typealias PdfPageRenderer = suspend (path: String, width: Int) -> ByteArray?
 object UserUploadBuilder {
 
     private class Built(val payload: PayloadFile, val thumbs: ThumbnailResult?)
+
+    /**
+     * The descriptor content of a payload that carries an app's own data (chat's link and location previews):
+     * the first of [tries] that fits the server's limit, sealed when the current format is written. Null when
+     * none does, so a preview goes without its text rather than failing the upload.
+     */
+    fun appDescriptor(vararg tries: String, currentFormat: Boolean = DescriptorContentV1.WRITE): String? =
+        tries.asSequence()
+            .map { if (currentFormat) DescriptorContentV1(kind = DescriptorContentV1.Kind.APP, appContent = it).encode() else it }
+            .firstOrNull { content ->
+                val bytes = content.encodeToByteArray().size
+                (if (currentFormat) DescriptorContentSeal.sealedLength(bytes) else bytes) <= HomebaseProtocol.MaxPayloadDescriptorBytes
+            }
 
     suspend fun build(
         sources: List<UploadSource>,

@@ -46,6 +46,13 @@ class DescriptorContentVectorsTest {
     }
 
     @Test
+    fun theSealedLengthIsWhatSealingWrites() = runTest {
+        for (size in listOf(1, 2, 3, 100, 700, 733, 734, 1000)) {
+            assertEquals(DescriptorContentSeal.seal("a".repeat(size), key).length, DescriptorContentSeal.sealedLength(size), "size $size")
+        }
+    }
+
+    @Test
     fun noOlderFormIsReadAsTheCurrentOne() {
         vectors.getValue("olderForms").jsonArray.forEach { assertNull(DescriptorContentV1.parseOrNull(it.jsonPrimitive.content)) }
     }

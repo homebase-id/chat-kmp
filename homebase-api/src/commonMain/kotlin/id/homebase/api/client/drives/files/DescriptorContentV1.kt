@@ -123,6 +123,12 @@ object DescriptorContentSeal {
     @Serializable
     private class Sealed(val e: String)
 
+    /** The length of [plaintextBytes] of descriptor content once sealed: 29 bytes of format, IV and tag, base64, wrapped. */
+    fun sealedLength(plaintextBytes: Int): Int = WRAPPER_CHARS + 4 * ((plaintextBytes + OVERHEAD_BYTES + 2) / 3)
+
+    private const val OVERHEAD_BYTES = 29
+    private const val WRAPPER_CHARS = 8
+
     suspend fun seal(plaintext: String, key: SecureByteArray): String =
         strict.encodeToString(Sealed.serializer(), Sealed(Base64Encoder.encode(byteArrayOf(FORMAT) + ZkLock.lock(plaintext.encodeToByteArray(), key.unsafeBytes))))
 
