@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.serialization.OdinSystemSerializer
 import org.junit.Assume.assumeTrue
 import id.homebase.upload.PayloadBundleEncryptionService
 import id.homebase.api.video.VideoPayloadProcessor
@@ -86,8 +87,8 @@ class OutboxBackupUploaderTest {
         return ledger.row(id)!! to hashed.uniqueId
     }
 
-    private class PartsSource(val parts: List<ExportedPart>) : DeviceChangeSource by FakeSource() {
-        override suspend fun export(assetId: String, mediaType: BackupMediaType) = ExportedAsset(parts, "IMG_0001.HEIC")
+    private class PartsSource(val parts: List<ExportedPart>, val hashedCopy: Boolean = false) : DeviceChangeSource by FakeSource() {
+        override suspend fun export(assetId: String, mediaType: BackupMediaType) = ExportedAsset(parts, "IMG_0001.HEIC", isHashedCopy = hashedCopy)
     }
 
     private fun CoroutineScope.uploader(
@@ -95,8 +96,9 @@ class OutboxBackupUploaderTest {
         encryptor: PayloadBundleEncryptor = NoEncryption,
         photoQuality: MediaQuality = MediaQuality.ORIGINAL,
         videoQuality: MediaQuality = MediaQuality.HD,
+        hashedCopy: Boolean = false,
     ): OutboxBackupUploader {
-        val source = PartsSource(parts)
+        val source = PartsSource(parts, hashedCopy)
         val outbox = OutboxSync(db, NeverSends, EventBus(), this).also { it.setOnline(false) }
         val http = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
         val creds = CredentialsManager()
@@ -326,6 +328,7 @@ class OutboxBackupUploaderTest {
             val sent = KeyHeader(payload.iv!!, request.keyHeader.aesKey).decrypt(File(payload.filePath).readBytes())
             assertFalse(sent.contentEquals(bytes), "$quality is a transcode")
             assertEquals(filmedAt, locationOf(sent), "$quality: Photos keeps where it was filmed")
+            assertEquals(PhotoContent(latitude = 37.7749, longitude = -122.4194), request.photoContent(), "$quality: and in the file's own content, which an HLS stream can't lose")
         }
     }
 
@@ -349,7 +352,50 @@ class OutboxBackupUploaderTest {
         val copy = sent("vcp_0000")
         assertFalse(copy.contentEquals(bytes), "the copy is a transcode")
         assertEquals(filmedAt, locationOf(copy), "and keeps where it was filmed")
+        assertNotNull(request.payloads.single { it.key == PhotobaseProtocol.VideoPayloadKey }.hash, "the original is hashed as it's encrypted")
+        assertEquals(PhotoContent(latitude = 37.7749, longitude = -122.4194), request.photoContent())
     }
+
+    @Test
+    fun anOriginalVideoThatChangedBeforeItsEncryptedIsNotUploaded() = runTest {
+        // A hashed copy skips the up-front check, so only the check as it's encrypted can catch this.
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Video, "what was hashed".encodeToByteArray())
+        val uploader = backgroundScope.uploader(
+            listOf(ExportedPart(ExportedPartRole.Primary, file("v.mov", "what is there now".encodeToByteArray()), "video/quicktime", false)),
+            PreviewingEncryptor(),
+            videoQuality = MediaQuality.ORIGINAL,
+            hashedCopy = true,
+        )
+
+        assertEquals(HandOffResult.ChangedUnderUs, uploader.handOff(row, uniqueId))
+        assertNull(db.outbox.selectByDriveAndUnique(PhotobaseProtocol.DriveAlias, uniqueId))
+    }
+
+    @Test
+    fun anOriginalVideoWithNoPlayableCopyIsBackedUpAlone() = runTest {
+        assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
+        // Bytes no ffmpeg can transcode.
+        val bytes = ByteArray(4096) { (it * 31).toByte() }
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
+        val uploader = backgroundScope.uploader(
+            listOf(ExportedPart(ExportedPartRole.Primary, file("v.mov", bytes), "video/quicktime", false)),
+            realEncryption(),
+            videoQuality = MediaQuality.ORIGINAL,
+        )
+
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+
+        val request = queuedRequest(uniqueId).second
+        val original = request.payloads.single()
+        assertEquals(PhotobaseProtocol.VideoPayloadKey, original.key)
+        assertContentEquals(bytes, KeyHeader(original.iv!!, request.keyHeader.aesKey).decrypt(File(original.filePath).readBytes()))
+        val described = assertNotNull(request.opened(original))
+        assertEquals(1, described.original)
+        assertNull(described.video?.playableCopyKey, "no copy to name: it plays as it is")
+    }
+
+    private suspend fun UploadFileRequest.photoContent(): PhotoContent =
+        OdinSystemSerializer.deserialize(keyHeader.decrypt(Base64.decode(metadata.appData.content!!)).decodeToString())
 
     @Test
     fun aPhotoThatChangedIsNotUploaded() = runTest {

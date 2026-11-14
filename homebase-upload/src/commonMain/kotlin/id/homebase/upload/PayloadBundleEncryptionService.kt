@@ -63,13 +63,18 @@ class PayloadBundleEncryptionService(
             var index = 0;
             for (payload in bundle.payloads) {
 
+                // Its caller encrypted it with this key and its own IV, and vouches for its bytes.
+                val preEncryptedIv = payload.iv?.takeIf { payload.isPreEncrypted }
                 // payloads get their own IV
                 val keyHeader = KeyHeader(
                     aesKey = aesKey,
-                    iv = ByteArrayUtil.getRndByteArray(16)
+                    iv = preEncryptedIv ?: ByteArrayUtil.getRndByteArray(16)
                 )
 
-                if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
+                if (preEncryptedIv != null) {
+                    newPayloads += payload
+                    newThumbnails += bundle.thumbnails.filter { it.key == payload.key }.map { it.copy(thumbnailBytes = encryptBytes(it.thumbnailBytes, keyHeader)) }
+                } else if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
 
                     val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
                         scope.launch {

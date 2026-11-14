@@ -3,17 +3,22 @@ package id.homebase.api.image
 import co.touchlab.kermit.Logger
 
 /**
- * A re-encoded WebP [finalImage] carrying [source]'s EXIF and XMP, for an app that keeps metadata
- * (THUMBNAILS.md, "Metadata"): Orientation 1, because the pixels are already upright; the pixel-size
- * tags set to the new size; the camera's embedded EXIF thumbnail left out. Neither Android's nor
- * Skia's encoder carries metadata over. [finalImage] comes back unchanged when the source has none.
+ * A re-encoded WebP [finalImage] carrying [source]'s EXIF, for an app that keeps metadata (THUMBNAILS.md,
+ * "Metadata"): Orientation 1, because the pixels are already upright; the pixel-size tags set to the new
+ * size; the camera's embedded EXIF thumbnail left out. Neither Android's nor Skia's encoder carries
+ * metadata over. [finalImage] comes back unchanged when the source has none.
+ *
+ * XMP isn't carried: on phones it describes the source file's structure (a Motion Photo's video, an
+ * Ultra HDR gain map, its orientation), which a re-encode makes false.
  */
 fun withSourceMetadata(finalImage: ByteArray, source: ByteArray, width: Int, height: Int): ByteArray {
-    val blocks = ImageMetadataScrubber.readBlocks(source) ?: return finalImage
-    val exif = blocks.exif?.let { ExifTiff.normalized(it, width, height) }
-    if (blocks.exif != null && exif == null) Logger.w(tag = "ImageMetadataCarry") { "source EXIF couldn't be read; only its XMP is kept" }
-    if (exif == null && blocks.xmp == null) return finalImage
-    return WebpMetadata.embed(finalImage, exif, blocks.xmp, width, height)
+    val tiff = ImageMetadataScrubber.readBlocks(source)?.exif ?: return finalImage
+    val exif = ExifTiff.normalized(tiff, width, height)
+    if (exif == null) {
+        Logger.w(tag = "ImageMetadataCarry") { "source EXIF couldn't be read; the final image goes without" }
+        return finalImage
+    }
+    return WebpMetadata.embed(finalImage, exif, width, height)
 }
 
 internal object ExifTiff {
@@ -115,20 +120,18 @@ internal object ExifTiff {
 
 internal object WebpMetadata {
     private const val FLAG_EXIF = 0x08
-    private const val FLAG_XMP = 0x04
     private const val FLAG_ALPHA = 0x10
     private const val CHUNKS_START = 12
     private const val VP8X_CHUNK_SIZE = 18
 
-    /** [webp] with [exif] and [xmp] chunks and the extended header that announces them, in one allocation. */
-    fun embed(webp: ByteArray, exif: ByteArray?, xmp: ByteArray?, width: Int, height: Int): ByteArray {
+    /** [webp] with an [exif] chunk and the extended header that announces it, in one allocation. */
+    fun embed(webp: ByteArray, exif: ByteArray, width: Int, height: Int): ByteArray {
         if (webp.size <= CHUNKS_START + 8 || fourCc(webp, 0) != "RIFF" || fourCc(webp, 8) != "WEBP") return webp
-        val flags = (if (exif != null) FLAG_EXIF else 0) or (if (xmp != null) FLAG_XMP else 0)
+        val flags = FLAG_EXIF
         val extended = fourCc(webp, CHUNKS_START) == "VP8X"
-        val exifChunk = exif?.let { webpChunk("EXIF", it) }
-        val xmpChunk = xmp?.let { webpChunk("XMP ", it) }
+        val exifChunk = webpChunk("EXIF", exif)
         val bodySize = webp.size - CHUNKS_START
-        val out = ByteArray(CHUNKS_START + (if (extended) 0 else VP8X_CHUNK_SIZE) + bodySize + (exifChunk?.size ?: 0) + (xmpChunk?.size ?: 0))
+        val out = ByteArray(CHUNKS_START + (if (extended) 0 else VP8X_CHUNK_SIZE) + bodySize + exifChunk.size)
         webp.copyInto(out, 0, 0, CHUNKS_START)
         writeLe32(out, 4, out.size - 8)
         var at = CHUNKS_START
@@ -144,9 +147,7 @@ internal object WebpMetadata {
             at += VP8X_CHUNK_SIZE
             webp.copyInto(out, at, CHUNKS_START, webp.size)
         }
-        at += bodySize
-        exifChunk?.copyInto(out, at)?.also { at += exifChunk.size }
-        xmpChunk?.copyInto(out, at)
+        exifChunk.copyInto(out, at + bodySize)
         return out
     }
 

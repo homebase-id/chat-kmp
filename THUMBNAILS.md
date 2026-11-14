@@ -435,7 +435,7 @@ The scrubber handles JPEG, PNG, WebP and HEIC. Any other image format (GIF, BMP,
 
 When `Keep` applies to a re-encoded image, the pipeline has to copy the metadata itself, because neither Android's nor Skia's encoders carry it over:
 
-- copy the source's EXIF, XMP and GPS across;
+- copy the source's EXIF (GPS included) across, but not its XMP: on phones it describes the source file's structure (a Motion Photo's video, an Ultra HDR gain map, the orientation), which the re-encode makes false;
 - set Orientation to 1, because the pixels are already upright;
 - update the pixel-size tags;
 - never copy the camera's embedded EXIF thumbnail.
@@ -460,7 +460,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 | Link and location previews | Tiny only, made with `createTinyPreview` |
 | Profile avatars | Their own sizes and budgets, plus the shared tiny rule |
 
-**Photos' two settings** (decided 2026-11-14): photos and videos each Standard, HD or Original, defaulting to Original for photos and HD for videos. At Standard or HD the uploaded bytes aren't the library's file, so Photos checks a re-encoded photo's source against its hash and refuses the upload when it changed, and dedupe keeps keying on the source's hash: changing the setting never re-uploads what is already backed up. Under `Keep`, a re-encoded photo carries the source's metadata (section [Metadata](#metadata)).
+**Photos' two settings** (decided 2026-11-14): photos and videos each Standard, HD or Original, defaulting to Original for photos and HD for videos. At Standard or HD the uploaded bytes aren't the library's file, so Photos checks a re-encoded photo's source against its hash and refuses the upload when it changed, and dedupe keeps keying on the source's hash: changing the setting never re-uploads what is already backed up. Under `Keep`, a re-encoded photo carries the source's EXIF but not its XMP (section [Metadata](#metadata)).
 
 ## Showing the images
 
@@ -517,6 +517,8 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 **Original video is only for Photos** (decided by the team, 2026-11-14). An untouched video may not play on every client (an iPhone's HEVC, often 10-bit HDR) and has to download whole before it plays, so a sent video is always a transcode. A backup that isn't the original isn't a backup, so Photos at Original keeps the user's file and adds a copy to play; download, save and restore get the original (UPLOADS.md section 3.6). Vault videos are HD, with no setting.
 
 **Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata (`-map_metadata 0`), and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them (`-map_metadata -1`). The library never decides; each app does.
+
+A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source as it checks the file's hash (`VideoLocationReader`, common code: Apple's ISO 6709 key and the `©xyz` atom Android writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
 
 ## How others do it
 

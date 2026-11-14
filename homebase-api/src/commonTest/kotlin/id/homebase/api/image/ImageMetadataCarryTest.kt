@@ -5,6 +5,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -64,7 +65,7 @@ class ImageMetadataCarryTest {
         val out = withSourceMetadata(lossyWebp, jpeg, 640, 480)
 
         assertEquals("VP8X", out.decodeToString(12, 16), "the extended header announces the metadata")
-        assertEquals(0x0C, out[20].toInt() and 0x0C, "EXIF and XMP flags")
+        assertEquals(0x08, out[20].toInt() and 0x0C, "the EXIF flag, and no XMP")
         assertEquals(639, u16(out, 24) or ((out[26].toInt() and 0xFF) shl 16))
         assertEquals(479, u16(out, 27) or ((out[29].toInt() and 0xFF) shl 16))
         assertEquals(out.size - 8, u32(out, 4), "the RIFF size covers the new chunks")
@@ -77,7 +78,7 @@ class ImageMetadataCarryTest {
         assertTrue(exif.contains("GPS-7749".encodeToByteArray()), "location kept")
         assertFalse(exif.contains("THUMB".encodeToByteArray()), "the camera's embedded thumbnail isn't copied")
         assertEquals(0, u32(exif, 8 + 2 + 3 * 12), "IFD1 unlinked")
-        assertContentEquals(xmp, carried.xmp)
+        assertNull(carried.xmp, "XMP describes the source file's structure, so it isn't carried")
     }
 
     @Test
@@ -85,7 +86,7 @@ class ImageMetadataCarryTest {
         val vp8x = ByteArray(10).also { it[0] = 0x20 } // already has an ICC profile flag
         val out = withSourceMetadata(riff(chunk("VP8X", vp8x), chunk("VP8 ", ByteArray(10))), jpeg, 640, 480)
 
-        assertEquals(0x2C, out[20].toInt() and 0xFF, "its own flags kept, EXIF and XMP added")
+        assertEquals(0x28, out[20].toInt() and 0xFF, "its own flags kept, EXIF added")
         assertNotNull(ImageMetadataScrubber.readBlocks(out)?.exif)
     }
 

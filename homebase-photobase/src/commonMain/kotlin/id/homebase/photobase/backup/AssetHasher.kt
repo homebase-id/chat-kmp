@@ -29,7 +29,7 @@ class AssetHasher(
         try {
             val hashed = timed(BackupStage.Hash) {
                 var size = 0L
-                HashedAsset(exported.parts.map { part -> digest(part.path) { size += it } }, size)
+                HashedAsset(exported.parts.map { part -> digest(part.path) { size += it.size } }, size)
             }
             exports.keep(assetId, mediaType, exported)
             return hashed
@@ -45,15 +45,21 @@ class AssetHasher(
 
     suspend fun forgetAll() = exports.forgetAll()
 
-    /** Whether [part] still holds the bytes hashed as [expected]; a hashed copy is those very files. */
-    suspend fun matches(exported: ExportedAsset, part: ExportedPart, expected: ByteArray): Boolean =
-        exported.isHashedCopy || digest(part.path).contentEquals(expected)
+    /**
+     * Whether [part] still holds the bytes hashed as [expected]; a hashed copy is those very files.
+     * [onChunk] sees every byte, so a hashed copy is read for it too.
+     */
+    suspend fun matches(exported: ExportedAsset, part: ExportedPart, expected: ByteArray, onChunk: ((ByteArray) -> Unit)? = null): Boolean {
+        if (exported.isHashedCopy && onChunk == null) return true
+        val digest = digest(part.path) { onChunk?.invoke(it) }
+        return exported.isHashedCopy || digest.contentEquals(expected)
+    }
 
-    suspend fun digest(path: String, onBytes: (Int) -> Unit = {}): ByteArray {
+    suspend fun digest(path: String, onChunk: (ByteArray) -> Unit = {}): ByteArray {
         val hasher = Blake3Hasher()
         fileOps.readFileAsFlow(path).onEach {
             hasher.update(it)
-            onBytes(it.size)
+            onChunk(it)
         }.collect()
         return hasher.digest()
     }
