@@ -2,16 +2,15 @@
 
 How chat-kmp turns a photo into the images people see. Read this before changing anything that creates, sizes, scales, encodes or picks an image, or strips its metadata.
 
-> **Status (2026-11-08).** This is the agreed design. `main` still runs the old ladder (320, 640, 1080 and 1600, with byte budgets). Everything not built yet is listed in [To do, and what isn't settled](#to-do-and-what-isnt-settled) at the end.
+> **Status (2026-11-14).** This is the agreed design, and `main` runs it: the table, the 10% band and the 1.5 rule (`MediaImagePlan.kt`), the decode-once pipeline, and native resampling on both phones. Everything not built yet is listed in [To do, and what isn't settled](#to-do-and-what-isnt-settled) at the end.
 >
-> | Issue or PR | What it covers |
+> | Issue | What it covers |
 > |---|---|
 > | #2221 | Goals for the pipeline |
 > | #2230 | Spec for the settings and the table |
-> | PR #2231 | Implements the pipeline (draft) |
-> | PR #2232 | Implements the table (draft) |
-> | #2235 | Fixes from review of #2231 and #2232 |
-> | #2236 | The resampler |
+> | #2235 | Fixes from review of the pipeline and the table |
+> | #2236 | The resampler, and iOS pixel hand-off |
+> | #2301 | Native resampling on the phones |
 
 ## Contents
 
@@ -365,7 +364,7 @@ One entry point, `renderImages(source, plan)` in `homebase-api`:
 **The recipe.** This is best practice, used by Pillow, libvips and image CDNs:
 
 1. **Plan all sizes first,** with integer math on the upright (orientation-applied) size. Never resize to discover a size.
-2. **Decode once.** Let the decoder do a coarse reduction only when it averages properly: ImageIO on iOS, but only by 2× or more, because it aliases below that (1.43× leaves a stripe spread of 20, 1.34× of 30, 2× about 3); and JPEG decoding on Android, which can shrink by 2, 4 or 8. Never use decoding that skips pixels or scales bilinearly, which is Android's HEIC, PNG and WebP sampling and its `ImageDecoder.setTargetSize`. Over 24 MP, iOS decodes smaller as a memory guard, but never below what the largest output needs. Android has no guard: measured on a phone, `setTargetSize` decodes at full size and then scales bilinearly, so it aliased (stripe spread 74) and peaked higher than a full decode (48 MP HEIC: 358–408 MB against 304 MB). So Android decodes HEIC, PNG and WebP at full size, and JPEG only by its own 2, 4 or 8. On iOS the guard is the one thing that can force ImageIO under 2×: HD on a 48 MP photo needs 4096 from 8064, so ImageIO shrinks 1.43× and aliases until native resizing (#2301) lands.
+2. **Decode once.** Let the decoder do a coarse reduction only when it averages properly: ImageIO on iOS, but only by 2× or more, because it aliases below that (1.43× leaves a stripe spread of 20, 1.34× of 30, 2× about 3); and JPEG decoding on Android, which can shrink by 2, 4 or 8. Never use decoding that skips pixels or scales bilinearly, which is Android's HEIC, PNG and WebP sampling and its `ImageDecoder.setTargetSize`. Over 24 MP, iOS decodes smaller as a memory guard, but never below what the largest output needs. Android has no guard: measured on a phone, `setTargetSize` decodes at full size and then scales bilinearly, so it aliased (stripe spread 74) and peaked higher than a full decode (48 MP HEIC: 358–408 MB against 304 MB). So Android decodes HEIC, PNG and WebP at full size, and JPEG only by its own 2, 4 or 8. On iOS the guard is the one thing that can force ImageIO under 2×: HD on a 48 MP photo needs 4096 from 8064, so the guard has ImageIO shrink 8064 to about 5645 (1.43×), which aliases, before vImage makes the last step. Native resizing doesn't fix this, because the aliasing happens in the decode; only changing the guard does.
 3. **Filter with premultiplied alpha.** Blending transparent and opaque pixels without premultiplying gives dark or coloured fringes around cut-outs and stickers.
 4. **While the image is at least 2× too big, halve it** by averaging each 2×2 block. That's exact, cheap and blends every pixel.
 5. **Do the last step, under 2×, with a Lanczos-3 filter whose width grows with the reduction.** It blends the whole patch and keeps edges crisp. It runs the pass that shrinks more first, so the in-between copy is the smaller one, and pauses every 8 ms so the web page, where it shares the UI thread, keeps drawing. The phones run it natively on the bitmap's own pixels (Accelerate on iOS, `stb_image_resize2` on Android), so there's no heap copy and no softer fallback; desktop and web run the shared Kotlin Lanczos. Mitchell is an acceptable alternative if it passes the same tests: slightly softer, with less ringing around hard edges like text. Fixed-size filters (bilinear, or Skia's cubic) and a plain box average fail the test; see the table below.
@@ -400,13 +399,17 @@ None of Skia's sampling modes is good enough, and neither is a simple area avera
 | **Decode** | ImageIO, `CGImageSourceCreateThumbnailAtIndex`: reads HEIC and RAW directly, applies orientation, and decodes only as large as asked | `ImageDecoder`, which applies orientation and reads HEIC directly, with BitmapFactory as the fallback. JPEG shrinks properly while decoding (by 2, 4 or 8); HEIC, PNG and WebP shrinking skips pixels or scales bilinearly, so they decode at full size (#2302) |
 | **Scale** | Accelerate's `vImageScale_ARGB8888` with its default Lanczos-3, between the Skia images' own raster pixels (`ImageResample.native.kt`). `kvImageHighQualityResampling` would pick Lanczos-5, which costs more and differs from the other platforms | No system high-quality resampler, so `stb_image_resize2` with a Lanczos-3 kernel through the NDK, on `AndroidBitmap_lockPixels` (`homebase-imageresize`, its own Android library because the KMP Android plugin can't build native code) |
 | **Encode** | WebP through Skia's bundled libwebp, since iOS has no system WebP encoder | `Bitmap.compress`, unless a bundled libwebp measures better |
-| **Pixel hand-off** | Draw straight into the destination's native memory, never into a Kotlin `ByteArray`, which is up to 50 MB on the Kotlin/Native heap (#2236) | Bitmaps already live in native memory |
+| **Pixel hand-off** | Goal: draw straight into the destination's native memory. Today ImageIO's pixels are drawn into a Kotlin `ByteArray` first (`toSkiaImage`), up to 50 MB on the Kotlin/Native heap (#2236) | Bitmaps already live in native memory |
 
 The rule on phones: native code wherever it's measurably better in quality, speed, memory or battery, and an existing, proven library before writing our own. As of 2026-11-08 there's no Kotlin Multiplatform library with a proper resampler.
 
 ### Desktop and web
 
-Same decode-once pipeline and the same quality bar, on Skia. The last scaling step uses `stb_image_resize2` if it's easy to bundle; otherwise a small shared Kotlin Lanczos. Speed matters less here.
+Same decode-once pipeline and the same quality bar, on Skia. The last scaling step is the shared Kotlin Lanczos (`LanczosResampler`, in the `kotlinResamplerMain` source set that JVM and web share). Speed matters less here.
+
+### Reading from a file
+
+`createMediaImages(path, fileOps, …)` hands the decoder the file itself, so the encoded file never sits in memory whole: `ImageDecoder.createSource(File)` or a content URI on Android, `CGImageSourceCreateWithURL` on iOS. Photobase backup (`BackupRequestBuilder`) and chat (`MessageThumbnailGenerator`) use it. Where a file can't be opened that way, such as a Photos-library asset, and on desktop and web, it reads the bytes and takes the byte-array path. Both paths give the same output (`ImageFileSourceContractTest`).
 
 ### The contract
 
@@ -501,6 +504,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
   Original keeps `"high"` because every existing `"high"` already means "the exact file". Saved "High" settings become Original.
 - **Older clients** read `"hd"` as null, through `coerceInputValues`, and show no badge. A test proves it, because a failure there would lose the whole descriptor.
 - **New descriptor fields** in `ImageFile` (descriptor content), such as the final image's pixel size, are safe: older clients have `ignoreUnknownKeys`.
+- **Two descriptor formats are read.** Clients read both the legacy `ImageFile` JSON above and the [UPLOADS.md](UPLOADS.md) format (`DescriptorContentV1`), sealed or not. In that format, quality is `"q"`: `"sd"`, `"hd"` or `"org"`; the size is `"w"` and `"h"`; and `"o": 1` marks the sender's untouched file. Senders still write only the legacy form (`MessageAttachmentBuilder`, `StickerService`), which never sets `original`, so a view infers an untouched file from `"high"` alone (`HomebaseImageData`).
 - **Badges:** Original shows "Original", HD shows "HD", and Standard or missing values show nothing.
 - **Existing messages are never regenerated.** Any thumbnail size is readable by every client, so new sizes don't need a migration.
 
@@ -545,6 +549,8 @@ What must stay proven, and where.
 ### Pipeline contract: real decoders, scalers and encoders on every platform
 
 The pipeline contract tests are in `homebase-api/src/imageContractTest/kotlin/`. That folder is compiled into the JVM, iOS simulator and web tests, which CI runs, and into Android device tests, which CI doesn't run. **Run them on a real iPhone and Android phone before calling phone work done.**
+
+`homebase-api/src/imageFileContractTest/kotlin/` holds `ImageFileSourceContractTest`: rendering from a file path gives the same output and metadata as rendering from its bytes. It runs in the JVM, iOS simulator and Android device tests; web has no file path to test. Android checks the same through a content URI in `ImageFileAndroidTest`, a device test.
 
 - **Aliasing:** 1-pixel stripes turn grey at 10×, 3.94× (8064 → 2048), 2.93× (6000 → 2048), 1.97×, 1.90×, 1.69×, 1.50× and 1.46× (standard deviation ≤ 5), and at 1.25× (≤ 30). There are two variants: one where the pipeline's scaler does the work, which forces a full-size decode first, and one where the decoder scales, which on iOS means ImageIO. On iOS, a 48 MP source also goes through the memory guard: ≤ 5 at 2048, and ≤ 30 at HD's 4096, where the guard forces ImageIO's 1.43× step. On Android, a 28 MP PNG is ≤ 5 at 2048 and 4096, and no decode over 24 MP peaks above a plain full decode (`LargeDecodeAndroidTest`).
 - **Sharpness:** 8-pixel stripes keep their contrast (min ≤ 20, max ≥ 235). A slight blur scores about 82–173, so blurring everything can't pass.
@@ -622,12 +628,12 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 ### Not built yet
 
-- **Every upload records its final image's size and whether it's the user's original** (#911). A view steps up only to a final image whose size is recorded, so today only chat and Moments photos do: both go through `MessageAttachmentBuilder`. Photos, Vault and stickers stop at their largest thumbnail until the shared upload factory records this for every app.
+- **Every upload records its final image's size and whether it's the user's original** (#911). Reading the [UPLOADS.md](UPLOADS.md) format is done; writing it isn't. A view steps up only to a final image whose size is recorded, so today only chat and Moments photos do: both go through `MessageAttachmentBuilder`. Photos, Vault and stickers stop at their largest thumbnail until the shared upload factory writes the new format, `original` included, for every app.
 - **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
 
 | What | Issue |
 |---|---|
-| Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` | #2301 |
+| iPhone measurements of the native resampler against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` (Android's are there) | #2301 |
 | iOS: hand pixels from ImageIO over without extra copies | #2236 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
@@ -639,7 +645,6 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 ### Not settled
 
 - **Whether vImage beats `stb_image_resize2` on iOS.** vImage ships now because it's a system library; swap only if the phone measurements say so.
-- **Reading from the file instead of a byte array** on phones (`ImageDecoder.createSource(File)`, `CGImageSourceCreateWithURL`), so the encoded file isn't held in memory as well. Measure whether it's worth it for Photobase.
 - **Does Photos offer HD?** Today it backs up only the untouched file, and an HD backup would need `BackupRequestBuilder.kt` changed, because it requires the uploaded bytes to match the device file's hash.
 - **Final qualities.** q60 and q70 are pending the real-photo test, especially on faces.
 - **Judgement calls to check on real photos:** the 10% band, the q60 floor and the shrink estimate follow common practice. Adjust them if real photos say otherwise.
