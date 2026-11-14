@@ -5,12 +5,14 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.RenderedImage
 import id.homebase.api.image.createMediaImages
 import id.homebase.api.image.createThumbnails
+import id.homebase.api.image.readImageMetadata
 import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +31,8 @@ data class ThumbnailResult(
     /** What a Standard or HD send should carry instead of the file, made from the same decode. */
     val finalImage: RenderedImage? = null,
     val displayedSize: ImageSize? = null,
+    /** Read only when asked for: GPS, capture time and camera, for an app that keeps them beside the file. */
+    val metadata: ImageMetadata? = null,
 )
 
 object UploadImages {
@@ -46,14 +50,17 @@ object UploadImages {
         fileOperationsProvider: FileOperationsProvider,
         mediaQuality: MediaQuality = MediaQuality.ORIGINAL,
         forceSticker: Boolean = false,
+        readMetadata: Boolean = false,
     ): ThumbnailResult {
         val media = try {
-            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker)
+            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker, readMetadata = readMetadata)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "No thumbnails for $payloadKey; sending the file as it is" }
-            return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceFormat = null, sourceByteCount = null)
+            // A format the decoder can't draw can still have EXIF the reader understands.
+            val metadata = if (readMetadata) metadataOrNull(filePath, fileOperationsProvider) else null
+            return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceFormat = null, sourceByteCount = null, metadata = metadata)
         }
         return ThumbnailResult(
             preview = media.tiny,
@@ -62,7 +69,17 @@ object UploadImages {
             sourceByteCount = media.sourceByteCount,
             finalImage = media.finalImage,
             displayedSize = media.displayedSize,
+            metadata = media.metadata,
         )
+    }
+
+    private suspend fun metadataOrNull(path: String, fileOps: FileOperationsProvider): ImageMetadata? = try {
+        readImageMetadata(path, fileOps)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "No readable EXIF" }
+        null
     }
 
     /**

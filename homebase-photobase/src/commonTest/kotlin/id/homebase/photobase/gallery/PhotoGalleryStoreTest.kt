@@ -77,6 +77,21 @@ class PhotoGalleryStoreTest {
     private fun List<PhotoGalleryItem>.dates() = map { it.capturedAtMs }
 
     @Test
+    fun aVideosPlaylistPayloadIsNeverTheOneShown() {
+        val file = galleryTestFile(1).let {
+            it.copy(
+                fileMetadata = it.fileMetadata.copy(
+                    payloads = listOf(
+                        PayloadDescriptor(key = "pls_0000", contentType = "application/vnd.apple.mpegurl"),
+                        PayloadDescriptor(key = PhotobaseProtocol.VideoPayloadKey, contentType = "video/mp4"),
+                    ),
+                ),
+            )
+        }
+        assertEquals(PhotobaseProtocol.VideoPayloadKey, file.toGalleryItem()!!.payload.key)
+    }
+
+    @Test
     fun stoppingCancelsAFetchSoItCantWriteAfterTheWipe() = runTest {
         val backend = Backend(
             server = mapOf(

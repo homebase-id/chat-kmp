@@ -240,10 +240,11 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 
 - Images and stickers go through `createMediaImages`; a PDF's first page through the same thumbnail pipeline, rendered by the app (the renderer lives in homebase-common); audio gets its waveform's thumbnails.
 - Videos leave the builder with `k` and `n` only. The encryption step's `VideoPayloadProcessor` transcodes them and, whenever the descriptor content it is handed is in the current format, fills in `w`, `h`, `vd` and `o` and writes a segmented video's playlist as its `pls_` payload.
-- `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable.
+- `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable. Descriptor content already in the current format is sealed whatever the switch says.
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
-- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, Photos' own assembly, and `enqueuePlaintextUpload` for public files.
+- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder with the EXIF read on, then keep their own encrypt-and-hash step and seal the descriptors themselves; videos go through `UploadService`. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content; `PhotoContent`, the file's encrypted header content, keeps what has no other home (GPS, camera make and model, the tiny).
+- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, and `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app
 
@@ -324,7 +325,7 @@ Old files are never rewritten.
 | Chat | files: the raw string; audio: `AudioFile.name`; photos and videos: none | picked MIME, else extension | stripped in the encryption step | plain |
 | Moments, feed | as chat | `file.contentType()` | stripped only when encrypted (#2395) | plain |
 | Stickers | none | caller's | stripped | plain |
-| Photos | `PhotoContent.name`, encrypted | platform MIME, can be `""` | kept | in encrypted content |
+| Photos (before it moved to the current format) | `PhotoContent.name`, encrypted | platform MIME, can be `""` | kept | in encrypted content |
 | Vault | `VaultFileContent.name`, first file only | `PlatformFile.contentType()` | stripped | plain |
 | Filesync | `FilesyncNodeContent.name` | `application/octet-stream` | kept | none |
 | WebDrop | its manifest | `application/octet-stream` | kept | none |

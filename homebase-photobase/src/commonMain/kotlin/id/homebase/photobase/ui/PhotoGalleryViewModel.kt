@@ -247,7 +247,7 @@ internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
     } else {
         FullScreenOverlay.ViewMessageData(
             messageId = fileId,
-            title = name.orEmpty(),
+            title = payload.filename().orEmpty(),
             userDate = Instant.fromEpochMilliseconds(capturedAtMs),
             content = "",
             fileId = fileId,

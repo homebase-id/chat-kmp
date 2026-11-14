@@ -10,6 +10,7 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
@@ -129,11 +130,11 @@ class UploadServiceTest {
 
     // ---------- sealing descriptor content (UPLOADS.md section 2) ----------
 
-    private suspend fun sentAndKept(seal: Boolean, update: Boolean): Pair<String, String?> = coroutineScope {
+    private suspend fun sentAndKept(seal: Boolean, update: Boolean, content: String = "secret-name.pdf"): Pair<String, String?> = coroutineScope {
         val h = buildHarness(this, sealDescriptorContent = seal)
         val uid = Uuid.random()
         val bundle = PayloadBundle(
-            payloads = listOf(PayloadFile(key = "chat_web0", filePath = "src/a", contentType = "application/pdf", descriptorContent = "secret-name.pdf")),
+            payloads = listOf(PayloadFile(key = "chat_web0", filePath = "src/a", contentType = "application/pdf", descriptorContent = content)),
             thumbnails = emptyList(),
             previewThumbs = emptyList(),
         )
@@ -169,6 +170,12 @@ class UploadServiceTest {
     @Test
     fun withTheSwitchOffDescriptorContentGoesOutAsBefore() = runTest {
         assertTrue("secret-name.pdf" in sentAndKept(seal = false, update = false).first)
+    }
+
+    @Test
+    fun theCurrentFormatIsSealedEvenWithTheSwitchOff() = runTest {
+        val content = DescriptorContentV1(kind = DescriptorContentV1.Kind.FILE, name = "secret-name.pdf").encode()
+        assertFalse("secret-name.pdf" in sentAndKept(seal = false, update = false, content = content).first)
     }
 
     // ---------- upload (create) ----------

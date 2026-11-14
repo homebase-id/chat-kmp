@@ -2,6 +2,7 @@ package id.homebase.photobase.ui
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.serialization.Base64Bytes
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -36,9 +37,8 @@ class PhotoGalleryViewModelTest {
         driveId = Uuid.random(),
         capturedAtMs = capturedAtMs,
         keyHeader = KeyHeader.newRandom16(),
-        payload = PayloadDescriptor(key = "photo_main", contentType = contentType),
+        payload = PayloadDescriptor(key = "photo_main", contentType = contentType, descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG.jpg", original = 1).encode()),
         tinyPreview = null,
-        name = "IMG",
     )
 
     private class Pages(val pages: Map<String?, PhotoGalleryPage>) : PhotoGalleryPageSource {
@@ -263,6 +263,7 @@ class PhotoGalleryViewModelTest {
         assertEquals(photo.fileId, viewer.messageId)
         assertEquals(photo.fileId, viewer.fileId)
         assertEquals(photo.payload.key, viewer.selectedPayloadKey)
+        assertEquals("IMG.jpg", viewer.title, "the name comes from the payload's descriptor")
 
         viewModel.onAction(PhotoGalleryUiAction.CloseViewer)
         assertNull(viewModel.uiState.value.openedFileId)

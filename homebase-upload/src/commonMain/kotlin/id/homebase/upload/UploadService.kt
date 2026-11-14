@@ -124,10 +124,12 @@ class UploadService(
     }
 
     // Copies too: the device keeps descriptor content opened, so a forward starts from the readable form.
+    // The current format is sealed whatever the switch says: an app that already writes it (Photos) relies on that.
     private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader, encrypted: Boolean): List<PayloadFile> {
-        if (!sealDescriptorContent || !encrypted) return payloads
+        if (!encrypted) return payloads
         return payloads.map { payload ->
             val content = payload.descriptorContent?.takeIf { it.isNotBlank() } ?: return@map payload
+            if (!sealDescriptorContent && !DescriptorContentV1.isCurrentFormat(content)) return@map payload
             payload.copy(descriptorContent = DescriptorContentSeal.seal(content, keyHeader.aesKey))
         }
     }

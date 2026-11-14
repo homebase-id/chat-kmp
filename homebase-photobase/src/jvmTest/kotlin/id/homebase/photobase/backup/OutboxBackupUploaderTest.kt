@@ -6,7 +6,10 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.DescriptorContentSeal
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.EventBus
@@ -14,6 +17,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -33,7 +37,10 @@ import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
+import javax.imageio.ImageIO
 import kotlin.io.encoding.Base64
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -116,8 +123,11 @@ class OutboxBackupUploaderTest {
         assertContentEquals(digest(bytes), payload.hash!!.plaintextContentHash(payloadKey))
         assertContentEquals(bytes, payloadKey.decrypt(File(payload.filePath).readBytes()))
 
-        val content = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
-        assertEquals("IMG_0001.HEIC", OdinSystemSerializer.deserialize<PhotoContent>(content).name)
+        assertEquals(
+            DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG_0001.HEIC", original = 1, quality = DescriptorContentV1.Quality.ORG),
+            request.opened(payload),
+            "sealed: the Photos drive never shows a name to the server",
+        )
 
         assertEquals(0, writer.writes)
         File(payload.filePath).delete()
@@ -134,6 +144,52 @@ class OutboxBackupUploaderTest {
 
         assertNull(db.outbox.selectByDriveAndUnique(PhotobaseProtocol.DriveAlias, uniqueId))
         assertEquals(stagedBefore, stagedFiles())
+    }
+
+    @Test
+    fun aRealPhotoKeepsItsBytesAndGetsItsSizeTinyAndEncryptedThumbnails() = runTest {
+        val bytes = jpeg(1600, 1200)
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        // The library gave no type: it is still a picture, and its own bytes name the type.
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("IMG_7", bytes), "", false)))
+
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+
+        val (_, request) = queuedRequest(uniqueId)
+        val payload = request.payloads.single()
+        val payloadKey = KeyHeader(payload.iv!!, request.keyHeader.aesKey)
+        assertContentEquals(bytes, payloadKey.decrypt(File(payload.filePath).readBytes()))
+        assertEquals("image/jpeg", payload.contentType)
+        assertFalse(payload.stripMetadata)
+        assertNull(payload.previewThumbnail)
+
+        val descriptor = assertNotNull(request.opened(payload))
+        assertEquals(1600 to 1200, descriptor.pixelWidth to descriptor.pixelHeight)
+        assertEquals(1, descriptor.original)
+        assertEquals("IMG_0001.HEIC", descriptor.name)
+
+        assertTrue(request.thumbnails.isNotEmpty())
+        request.thumbnails.forEach { thumb ->
+            assertEquals(payload.key, thumb.key)
+            assertEquals("image/webp", ImageFormatDetector.detectFormat(payloadKey.decrypt(thumb.thumbnailBytes)), "encrypted with the payload's own IV")
+        }
+
+        val content = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
+        assertFalse("name" in content || "width" in content, content)
+        assertNotNull(OdinSystemSerializer.deserialize<PhotoContent>(content).tiny)
+        File(payload.filePath).delete()
+    }
+
+    private fun jpeg(width: Int, height: Int): ByteArray {
+        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+        for (x in 0 until width) for (y in 0 until height) image.setRGB(x, y, (x * 31 + y * 17) and 0xFFFFFF)
+        return ByteArrayOutputStream().also { ImageIO.write(image, "jpg", it) }.toByteArray()
+    }
+
+    private suspend fun UploadFileRequest.opened(payload: PayloadFile): DescriptorContentV1? {
+        val sealed = assertNotNull(payload.descriptorContent)
+        assertTrue(sealed.startsWith("{\"e\":"), sealed)
+        return DescriptorContentV1.parseOrNull(assertNotNull(DescriptorContentSeal.open(sealed, keyHeader.aesKey)))
     }
 
     private fun stagedFiles(): Set<String> =
@@ -158,6 +214,7 @@ class OutboxBackupUploaderTest {
         assertEquals(listOf(PhotobaseProtocol.ImagePayloadKey, PhotobaseProtocol.LivePhotoVideoPayloadKey), request.payloads.map { it.key })
         assertNotEquals(request.payloads[0].iv!!.toList(), request.payloads[1].iv!!.toList())
         assertContentEquals(digest(motion), request.payloads[1].hash!!.plaintextContentHash(KeyHeader(request.payloads[1].iv!!, request.keyHeader.aesKey)))
+        assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, original = 1), request.opened(request.payloads[1]), "the paired video is the user's file, with no name of its own")
         request.payloads.forEach { File(it.filePath).delete() }
     }
 
@@ -177,6 +234,7 @@ class OutboxBackupUploaderTest {
         assertNull(request.payloads.single().previewThumbnail)
         assertTrue(request.existingFileIsSuccess)
         assertEquals(0, writer.writes)
+        assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, name = "IMG_0001.HEIC"), request.opened(request.payloads.single()))
     }
 
     @Test

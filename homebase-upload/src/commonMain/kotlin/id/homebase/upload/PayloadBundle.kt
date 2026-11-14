@@ -4,13 +4,16 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.image.ImageMetadata
 
 // Aggregated upload payload set, consumed by the shared upload pipeline and every
 // feature sender (Chat, Moments, Vault, …).
 data class PayloadBundle(
     val payloads: List<PayloadFile>,
     val thumbnails: List<ThumbnailFile>,
-    val previewThumbs: List<EmbeddedThumb>
+    val previewThumbs: List<EmbeddedThumb>,
+    /** By payload key, when the builder was asked to read it; never sent. */
+    val imageMetadata: Map<String, ImageMetadata> = emptyMap(),
 )
 
 /**

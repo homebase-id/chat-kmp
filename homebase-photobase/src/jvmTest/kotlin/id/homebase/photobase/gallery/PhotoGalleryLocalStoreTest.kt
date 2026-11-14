@@ -38,14 +38,13 @@ class PhotoGalleryLocalStoreTest {
     @Test
     fun aTinyPreviewSurvivesTheLocalIndex() = runTest {
         val tiny = byteArrayOf(1, 2, 3, 4)
-        val content = OdinSystemSerializer.serialize(PhotoContent(name = "IMG", tiny = Base64Bytes(tiny), tinyWidth = 20, tinyHeight = 15, tinyType = "image/webp"))
+        val content = OdinSystemSerializer.serialize(PhotoContent(tiny = Base64Bytes(tiny), tinyWidth = 20, tinyHeight = 15, tinyType = "image/webp"))
 
         backend.save(listOf(galleryTestFile(500, content)))
 
         val item = backend.localPage(null, null, 10).files.single().toGalleryItem()!!
         assertContentEquals(tiny, item.tinyPreview?.content?.bytes)
         assertEquals(20, item.tinyPreview?.pixelWidth)
-        assertEquals("IMG", item.name)
     }
 
     @Test
