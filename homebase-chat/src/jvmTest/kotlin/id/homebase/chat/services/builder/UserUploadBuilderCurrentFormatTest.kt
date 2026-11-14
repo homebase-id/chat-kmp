@@ -114,6 +114,19 @@ class UserUploadBuilderCurrentFormatTest {
     }
 
     @Test
+    fun appContentIsWrappedAndMustFitOnceSealed() {
+        val preview = """[{"url":"https://example.com"}]"""
+        assertEquals(preview, UserUploadBuilder.appDescriptor(preview, currentFormat = false))
+        val wrapped = DescriptorContentV1.parseOrNull(UserUploadBuilder.appDescriptor(preview, currentFormat = true)!!)!!
+        assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.APP, appContent = preview), wrapped)
+
+        val long = "x".repeat(900)
+        assertEquals(long, UserUploadBuilder.appDescriptor(long, currentFormat = false), "fits the server's 1,024 unsealed")
+        assertNull(UserUploadBuilder.appDescriptor(long, currentFormat = true), "but not once sealed")
+        assertEquals(preview, DescriptorContentV1.parseOrNull(UserUploadBuilder.appDescriptor(long, preview, currentFormat = true)!!)!!.appContent)
+    }
+
+    @Test
     fun theNameIsMadeSafe() = runTest {
         val sent = build(UploadSource(file("c.pdf", "%PDF-1.4".encodeToByteArray()), "application/pdf", pickedName = "../../x/Q3: plan?.pdf"))
         assertEquals(DescriptorContent.File(name = "Q3_ plan_.pdf"), sent.received().descriptorInfo())

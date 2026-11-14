@@ -2,6 +2,7 @@ package id.homebase.upload
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
@@ -61,6 +62,12 @@ typealias PdfPageRenderer = suspend (path: String, width: Int) -> ByteArray?
 object UserUploadBuilder {
 
     private class Built(val payload: PayloadFile, val thumbs: ThumbnailResult?)
+
+    /** An app's own data on a payload: the first of [tries] that fits; null when none does, and the receiver shows a plain link or pin. */
+    fun appDescriptor(vararg tries: String, currentFormat: Boolean = DescriptorContentV1.WRITE): String? =
+        tries.asSequence()
+            .map { if (currentFormat) DescriptorContentV1(kind = DescriptorContentV1.Kind.APP, appContent = it).encode() else it }
+            .firstOrNull { DescriptorContentSeal.fits(it, sealed = currentFormat) }
 
     suspend fun build(
         sources: List<UploadSource>,

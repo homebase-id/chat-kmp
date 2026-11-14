@@ -54,6 +54,47 @@ class ArchitectureTest {
         ) { it.text.contains(wholeFileRead) }
     }
 
+    private companion object {
+        // Production code only (tests build descriptors and thumbnails to check them), parsed once for both upload guards.
+        val productionFiles by lazy {
+            Konsist.scopeFromProject().files.filter { Regex("""/src/[a-zA-Z]*[Mm]ain/""").containsMatchIn(it.path.replace('\\', '/')) }
+        }
+    }
+
+    @Test
+    fun `Only the upload builder writes descriptor content`() {
+        // ServerFile opens sealed descriptors on arrival; the video step learns its facts while transcoding.
+        val writers = setOf("UserUploadBuilder", "DescriptorContentV1", "PayloadDescriptor", "VideoPayloadProcessor", "ServerFile")
+        val builds = Regex("""DescriptorContentV1\s*\(|descriptorContentFrom[A-Z]\w*\s*\(""")
+        val assignment = Regex("""\bdescriptorContent\s*=(?!=)\s*([^\n,)]+)""")
+        val copyThrough = Regex("""^(null|[\w?.!]*\.descriptorContent|(UserUploadBuilder|DescriptorContentSeal)\.\w+\(.*)$""")
+        val others = productionFiles.filter { it.name !in writers }
+        assertTrue(others.size > 100, "guard matched too few files; update the path filter")
+        others.assertFalse(
+            additionalMessage = "Descriptor content is built by UserUploadBuilder (UPLOADS.md section 4); " +
+                "anywhere else may only copy a payload's descriptorContent through.",
+        ) { file ->
+            file.text.contains(builds) ||
+                assignment.findAll(file.text).any { !copyThrough.matches(it.groupValues[1].trim()) }
+        }
+    }
+
+    @Test
+    fun `Only the upload builder makes an upload's thumbnails`() {
+        // Contact and profile photos and the video poster have their own sizes; the previews make a tiny only.
+        val allowed = setOf(
+            "UploadImages", "VideoPayloadProcessor", "ContactsProvider", "ProfileAvatarEditViewModel",
+            "LinkPreviewPayloadBuilder", "LocationPreviewPayloadBuilder",
+        )
+        val pipeline = Regex("""\b(createMediaImages|createThumbnails|createImageThumbnail|createTinyPreview)\s*\(""")
+        productionFiles
+            .filter { it.name !in allowed }
+            .filter { !it.path.replace('\\', '/').contains("/id/homebase/api/image/") }
+            .assertFalse(
+                additionalMessage = "An upload's thumbnails and tiny come from UserUploadBuilder (UPLOADS.md section 4).",
+            ) { it.text.contains(pipeline) }
+    }
+
     @Test
     fun `No hardcoded strings in Composables`() {
         Konsist.scopeFromProject()
