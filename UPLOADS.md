@@ -1,6 +1,8 @@
 # The user upload format
 
-**Status: decided (Michael, 2026-11-13), not built yet.** Built by #911. Thumbnail sizes and the tiny are specified in [`THUMBNAILS.md`](THUMBNAILS.md); this document says where they go.
+**Status: decided (Michael, 2026-11-13) and built** by #911 (layers 1 to 7 and the before-flip list, section 7). The writing switch is still off; it flips together with the odin-js feed. Thumbnail sizes and the tiny are specified in [`THUMBNAILS.md`](THUMBNAILS.md); this document says where they go.
+
+> **This is the agreed design, not a description to update after the fact.** Code that goes against it is either a bug or a design change. A design change is agreed first, written here, then built. If you are about to write code that contradicts this document, stop and ask (see `CLAUDE.md`, "User uploads").
 
 ## What a user upload is
 

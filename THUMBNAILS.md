@@ -1,6 +1,6 @@
 # Thumbnails and media images
 
-How chat-kmp turns a photo into the images people see. Read this before changing anything that creates, sizes, scales, encodes or picks an image, or strips its metadata.
+How chat-kmp turns a photo into the images people see. Read this before changing anything that creates, sizes, scales, encodes or picks an image, or strips its metadata. Code that contradicts it is a bug or a design change: stop and ask before writing it (see `CLAUDE.md`, "User uploads").
 
 > **Status (2026-11-08).** This is the agreed design. `main` still runs the old ladder (320, 640, 1080 and 1600, with byte budgets). Everything not built yet is listed in [To do, and what isn't settled](#to-do-and-what-isnt-settled) at the end.
 >
