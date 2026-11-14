@@ -22,11 +22,12 @@ fun MediaQualityOptions(
     note: StringResource,
     onSelect: (MediaQuality) -> Unit,
     modifier: Modifier = Modifier,
+    testTagPrefix: String = "",
 ) {
     Column(modifier = modifier.selectableGroup()) {
         MediaQuality.entries.forEach { quality ->
             SettingsOptionRow(
-                modifier = Modifier.testTag(quality.code),
+                modifier = Modifier.testTag(testTagPrefix + quality.code),
                 label = stringResource(quality.label),
                 supportingText = stringResource(description(quality)),
                 selected = quality == selected,

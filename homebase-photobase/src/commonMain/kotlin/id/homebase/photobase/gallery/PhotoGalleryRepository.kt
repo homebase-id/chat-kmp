@@ -92,6 +92,6 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         capturedAtMs = appData.userDate ?: fileMetadata.created.milliseconds,
         keyHeader = keyHeader,
         payload = payload,
-        playableCopy = payload.playableCopyKey()?.let { copy -> payloads.firstOrNull { it.key == copy } },
+        playableCopy = payload.takeIf { it.isVideo() }?.playableCopyKey()?.let { copy -> payloads.firstOrNull { it.key == copy } },
     )
 }

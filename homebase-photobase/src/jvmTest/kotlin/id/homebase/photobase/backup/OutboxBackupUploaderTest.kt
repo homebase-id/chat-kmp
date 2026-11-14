@@ -352,7 +352,7 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun aPhotoThatChangedIsNotReencoded() = runTest {
+    fun aPhotoThatChangedIsNotUploaded() = runTest {
         val (row, uniqueId) = rowFor("a", BackupMediaType.Image, jpeg(400, 300))
         val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("p.jpg", jpeg(401, 300)), "image/jpeg", false)), photoQuality = MediaQuality.STANDARD)
 

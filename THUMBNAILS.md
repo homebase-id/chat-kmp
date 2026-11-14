@@ -460,7 +460,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 | Link and location previews | Tiny only, made with `createTinyPreview` |
 | Profile avatars | Their own sizes and budgets, plus the shared tiny rule |
 
-**Photos' two settings** (decided 2026-11-14): photos and videos each Standard, HD or Original, defaulting to Original for photos and HD for videos. At Standard or HD the uploaded bytes aren't the library's file, so Photos checks the source against its hash before re-encoding, and dedupe keeps keying on the source's hash: changing the setting never re-uploads what is already backed up. Under `Keep`, a re-encoded photo carries the source's metadata (section [Metadata](#metadata)).
+**Photos' two settings** (decided 2026-11-14): photos and videos each Standard, HD or Original, defaulting to Original for photos and HD for videos. At Standard or HD the uploaded bytes aren't the library's file, so Photos checks a re-encoded photo's source against its hash and refuses the upload when it changed, and dedupe keeps keying on the source's hash: changing the setting never re-uploads what is already backed up. Under `Keep`, a re-encoded photo carries the source's metadata (section [Metadata](#metadata)).
 
 ## Showing the images
 
@@ -512,7 +512,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 |---|---|
 | Standard | 720p transcode |
 | HD | 1080p transcode |
-| Original | 1080p transcode, as HD, in every app but Photos. In Photos, the file untouched plus a 1080p HLS copy that the apps play |
+| Original | 1080p transcode, as HD, in every app but Photos. In Photos, the file untouched plus a 1080p copy that the apps play |
 
 **Original video is only for Photos** (decided by the team, 2026-11-14). An untouched video may not play on every client (an iPhone's HEVC, often 10-bit HDR) and has to download whole before it plays, so a sent video is always a transcode. A backup that isn't the original isn't a backup, so Photos at Original keeps the user's file and adds a copy to play; download, save and restore get the original (UPLOADS.md section 3.6). Vault videos are HD, with no setting.
 
@@ -635,7 +635,6 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 | iOS: hand pixels from ImageIO over without extra copies | #2236 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
-| Photos at Original video: the file untouched plus a 1080p HLS copy (UPLOADS.md section 3.6) | – |
 | Time, memory and battery measured on a real iPhone and Android phone | #2221, #2236 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |
 | RAW: verify on real phones which formats decode (ProRAW and DNG on iOS; DNG on Android) | – |

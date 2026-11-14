@@ -23,6 +23,7 @@ internal object ExifTiff {
     private const val INTEROP_IFD = 0xA005
     private const val PIXEL_X = 0xA002
     private const val PIXEL_Y = 0xA003
+    private const val SUB_IFDS = 0x014A
 
     /** A copy of [tiff] made right for a re-encoded image, or null when it isn't a TIFF block this reads. */
     fun normalized(tiff: ByteArray, width: Int, height: Int): ByteArray? {
@@ -37,12 +38,14 @@ internal object ExifTiff {
         val ifd0 = t.u32(4)
         val count0 = t.entryCount(ifd0) ?: return null
         var dataEnd = 0
+        var unfollowed = false
         val ifds = ArrayDeque(listOf(ifd0))
         val seen = mutableSetOf<Int>()
         while (ifds.isNotEmpty()) {
             val ifd = ifds.removeFirst()
             if (!seen.add(ifd)) continue
-            val count = t.entryCount(ifd) ?: return null
+            // A pointer that leads nowhere readable loses that directory, not the rest.
+            val count = t.entryCount(ifd) ?: continue
             dataEnd = maxOf(dataEnd, ifd + 2 + count * 12 + 4)
             for (e in 0 until count) {
                 val entry = ifd + 2 + e * 12
@@ -51,15 +54,16 @@ internal object ExifTiff {
                     PIXEL_X -> t.putNumber(entry, width)
                     PIXEL_Y -> t.putNumber(entry, height)
                     EXIF_IFD, GPS_IFD, INTEROP_IFD -> ifds += t.u32(entry + 8)
+                    SUB_IFDS -> unfollowed = true
                 }
-                dataEnd = maxOf(dataEnd, t.valueEnd(entry) ?: return null)
+                dataEnd = maxOf(dataEnd, t.valueEnd(entry))
             }
         }
-        // IFD1 is the camera's embedded thumbnail: unlink it, and cut it off when nothing else lies past it.
+        // IFD1 is the camera's embedded thumbnail: unlink it, and cut it off when nothing this kept lies past it.
         val nextPointer = ifd0 + 2 + count0 * 12
         val ifd1 = t.u32(nextPointer)
         t.put32(nextPointer, 0)
-        return if (ifd1 > 0 && ifd1 >= dataEnd && ifd1 <= t.b.size) t.b.copyOf(ifd1) else t.b
+        return if (!unfollowed && ifd1 > 0 && ifd1 >= dataEnd && ifd1 <= t.b.size) t.b.copyOf(ifd1) else t.b
     }
 
     private class Tiff(val b: ByteArray, val little: Boolean) {
@@ -91,8 +95,8 @@ internal object ExifTiff {
             }
         }
 
-        /** Where the entry's value ends when it lives outside the entry; the entry's own end otherwise. */
-        fun valueEnd(entry: Int): Int? {
+        /** Where the entry's value ends when it lives in the block outside the entry; the entry's own end otherwise. */
+        fun valueEnd(entry: Int): Int {
             val size = when (u16(entry + 2)) {
                 1, 2, 6, 7 -> 1
                 3, 8 -> 2
@@ -104,7 +108,7 @@ internal object ExifTiff {
             if (bytes <= 4) return entry + 12
             val offset = u32(entry + 8).toLong() and 0xFFFFFFFFL
             val end = offset + bytes
-            return if (end <= b.size) end.toInt() else null
+            return if (end <= b.size) end.toInt() else entry + 12
         }
     }
 }

@@ -101,6 +101,16 @@ class ImageMetadataCarryTest {
     }
 
     @Test
+    fun oneBadTagOrPointerDoesntLoseTheRest() {
+        val broken = tiff.copyOf()
+        // The GPS text's offset points far past the block, and the Exif IFD pointer leads nowhere.
+        broken[80 + 2 + 8] = 0x7F; broken[80 + 2 + 9] = 0x7F
+        broken[8 + 2 + 12 + 8] = 0x7F; broken[8 + 2 + 12 + 9] = 0x7F
+        val exif = assertNotNull(ExifTiff.normalized(broken, 640, 480))
+        assertEquals(1, u16(exif, 8 + 2 + 8), "IFD0 is still made right")
+    }
+
+    @Test
     fun aSourceWithNoMetadataLeavesTheFinalImageAlone() {
         val plain = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xDA.toByte(), 0, 2, 0xFF.toByte(), 0xD9.toByte())
         assertSame(lossyWebp, withSourceMetadata(lossyWebp, plain, 640, 480))

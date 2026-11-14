@@ -172,6 +172,7 @@ fun BackupSettingsSection(
             selected = settings.photoQuality,
             description = { photoQualityDescription(it) },
             rowColor = rowColor,
+            testTagPrefix = "photo-",
             onSelect = { onAction(BackupSettingsUiAction.SetPhotoQuality(it)) },
         )
         QualityRow(
@@ -180,6 +181,7 @@ fun BackupSettingsSection(
             selected = settings.videoQuality,
             description = { videoQualityDescription(it) },
             rowColor = rowColor,
+            testTagPrefix = "video-",
             onSelect = { onAction(BackupSettingsUiAction.SetVideoQuality(it)) },
         )
         SettingsRow(
@@ -268,6 +270,7 @@ private fun QualityRow(
     selected: MediaQuality,
     description: (MediaQuality) -> StringResource,
     rowColor: Color,
+    testTagPrefix: String,
     onSelect: (MediaQuality) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -285,6 +288,7 @@ private fun QualityRow(
             note = MR.string.photobase_backup_quality_note,
             onSelect = onSelect,
             modifier = Modifier.fillMaxWidth(),
+            testTagPrefix = testTagPrefix,
         )
     }
 }

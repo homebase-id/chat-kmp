@@ -63,7 +63,8 @@ class BackupRequestBuilder(
                             UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE)
                         }
                     },
-                    options(),
+                    // A Live Photo's video is its own file, encrypted here; it never gets a copy.
+                    options().copy(originalVideo = false),
                     fileOps,
                     onImageMetadata = { _, metadata -> exif = metadata },
                 ) { keyFor(exported.parts[it].role) }

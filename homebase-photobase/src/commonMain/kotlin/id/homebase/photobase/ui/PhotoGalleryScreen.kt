@@ -193,7 +193,7 @@ private fun GalleryViewer(
         pageSpacing = 24.dp,
         // Around the pager, not inside a page: from inside a page the open animation restarts mid-flight and jumps.
         modifier = Modifier.fillMaxSize().fullScreenImageSharedBounds(
-            shown?.let { "image-${it.fileId}-${it.payload.key}" },
+            shown?.let { "image-${it.fileId}-${it.shown.key}" },
             sharedTransitionScope,
             animatedVisibilityScope,
         ),

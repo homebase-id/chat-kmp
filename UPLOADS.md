@@ -246,7 +246,7 @@ Only Photos at Original keeps a video untouched (THUMBNAILS.md, "Video"); every 
 
 ```
 video_main   the user's file, untouched     {"v":1,"k":"v","n":"IMG_0042.MOV","o":1,"vd":{"pc":"vcp_0000"}}
-vcp_0000     a 1080p HLS transcode          {"v":1,"k":"v","o":0,"w":1920,"h":1080,"vd":{"seg":1,"p":"pls_0001",...}}
+vcp_0000     a 1080p transcode              {"v":1,"k":"v","o":0,"w":1920,"h":1080,"vd":{"seg":1,"p":"pls_0001",...}}
 pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 ```
 
@@ -313,7 +313,7 @@ Old files are never rewritten.
 - **Every uploader builds through the builder** or follows its rules (sections 4 and 5).
 - **`ImageFormatDetector` has real signatures** before the bytes decide a type: BMP needs its whole header, GIF its version, and an AVIF reads as `image/avif`, not HEIC.
 - **A file's app content is cut to fit once sealed** (a Vault note's preview).
-- **A video that isn't transcoded:** there is none. Every picked video is re-encoded (the compressor never returns its input) with `-map_metadata -1` on all four platforms, and no public path takes video. The other way round is open: Vault and Photos keep a photo's metadata, but their videos are re-encoded too, so a video's location and date are dropped there.
+- **A video that isn't transcoded:** only Photos at Original keeps one, with a transcoded copy to play (section 3.6). Every other video is re-encoded (the compressor never returns its input), keeping or dropping its metadata as its app says: `-map_metadata 0` for Photos and Vault, `-1` for everyone else, on all four platforms.
 
 **Later, not part of the switch: encrypt the tiny (#2416).** Today the server can see a 20 px preview of every image, video, sticker and PDF page, on zero-knowledge drives (Photos, Vault) too. It can't go in the sealed descriptor content: a tiny is up to 768 bytes and sealing takes it past the 1,024-byte limit. It needs its own home, one for all apps, for example encrypted with the payload's key in the `previewThumbnail` field itself, which both clients and the server's size check must then agree on.
   At the same time, decide whether the header keeps its own tiny (`appData.previewThumbnail`) beside each payload's. It duplicates the first payload's tiny on every file. In chat-kmp only a group conversation's avatar reads it, as a fallback; whether odin-js reads it is unchecked. It may only be needed for a file with no payloads.
