@@ -2,6 +2,9 @@
 
 package id.homebase.core.ui.screens.contactbook
 
+import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.upload.MetadataPolicy
+import id.homebase.upload.imageBytesFor
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactBirthday
@@ -292,13 +295,19 @@ private suspend fun uploadContactPhoto(
         return false
     }
     if (bytes.isEmpty()) return false
-    val contentType = photo.contentType()
+    val (sent, contentType) = contactPhotoToSend(bytes, photo.contentType())
     return repo.setImage(
         uniqueId = uniqueId,
-        bytes = bytes,
+        bytes = sent,
         contentType = contentType,
         versionTag = versionTag,
     )
+}
+
+/** A contact photo is a picture whatever type the platform gives it, and goes out without its EXIF (UPLOADS.md section 5). */
+internal suspend fun contactPhotoToSend(bytes: ByteArray, platformType: String): Pair<ByteArray, String> {
+    val contentType = platformType.takeIf { it.startsWith("image/") } ?: ImageFormatDetector.detectFormat(bytes)
+    return imageBytesFor(MetadataPolicy.STRIP, bytes, contentType) to contentType
 }
 
 // The V2 server merges per-leaf with Coalesce(incoming, existing): a blanked field is "leave

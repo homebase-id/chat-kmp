@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.webdrop
 
+import id.homebase.api.util.safeFileName
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -201,7 +202,7 @@ internal suspend fun buildWebDrop(
 
     val receipt = WebDropReceiptContent(
         v = contentVersion,
-        name = files.first().name,
+        name = safeFileName(files.first().name),
         files = manifest,
         url = url,
         ttl = ttl,
@@ -272,9 +273,10 @@ internal suspend fun stageWebDropPayloads(
                 val jpeg = if (viewOnly && file.isHeif()) {
                     heicToJpeg(fileOps.readFileBytes(resolvedPath))
                 } else null
+                val name = safeFileName(file.name)
                 manifest += WebDropManifestEntry(
                     key = payloadKey,
-                    name = if (jpeg != null) file.name.substringBeforeLast('.', file.name) + ".jpg" else file.name,
+                    name = if (jpeg != null) name.substringBeforeLast('.', name) + ".jpg" else name,
                     contentType = if (jpeg != null) "image/jpeg" else file.contentType,
                     size = jpeg?.size?.toLong() ?: fileOps.getFileSize(resolvedPath),
                 )

@@ -46,6 +46,15 @@ class WebDropStagePayloadsTest {
     }
 
     @Test
+    fun aSentNameIsMadeSafe() = runTest {
+        val fs = StageFakeFileOps(mutableMapOf("/c.pdf" to ByteArray(4)))
+
+        val (manifest, _) = stageWebDropPayloads(fs, listOf(picked("/c.pdf", "../../x/Q3: plan?.pdf")), key, mutableMapOf())
+
+        assertEquals("Q3_ plan_.pdf", manifest.single().name)
+    }
+
+    @Test
     fun anUnreadableSourceAbortsTheWholeDropTypedAndNamed() = runTest {
         val fs = StageFakeFileOps(mutableMapOf("/a.pdf" to ByteArray(3) { 1 }))
         val ivs = mutableMapOf<String, ByteArray>()

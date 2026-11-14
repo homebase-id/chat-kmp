@@ -197,6 +197,7 @@ A name that collides with an existing file when saved becomes `name (1).ext`, `n
 - **Stickers** always null; they save as `StickerFile.<format>`.
 - **Re-encoding keeps the name.** `IMG_1234.HEIC` sent at Standard is stored as `IMG_1234.HEIC`; saving swaps the extension for the saved bytes' type (#2393).
 - **An app's own editable name is separate.** Vault's label and a Filesync rename live in the app's content; saving prefers them.
+- **Filesync keeps a file's name as its computer had it** (`FilesyncNames`: NFC, `/` and NUL replaced, 255 bytes, no collisions). It syncs folders between computers, so a name has to come back exactly as it left: `Q3: plan.pdf` must not become `Q3_ plan.pdf` on the Mac it came from. The rule above is applied where Filesync writes a file to disk.
 
 ### 3.3 Original or copy
 
@@ -263,7 +264,12 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 | Contact photo | none | its own sizes | STRIP | yes | contacts image API |
 | Profile and card photos | none | its own sizes | STRIP | server-side | profile attribute API |
 
-Filesync, WebDrop and the two photo APIs use the builder's rules (content type, name, metadata, tiny) but keep their transport.
+Filesync, WebDrop and the two photo APIs use the builder's rules but keep their transport:
+
+- **Names:** WebDrop cleans the names it sends with `safeFileName`; Filesync keeps its own rule (section 3.2); the photos have none.
+- **Content type:** WebDrop records the platform's type, else the extension's, in its encrypted manifest; its payloads stay `application/octet-stream`. A contact photo is an image whatever the platform says, so with no image type its bytes decide.
+- **Metadata:** contact, profile and card photos strip it through `imageBytesFor(MetadataPolicy.STRIP, …)`, the same scrubber as every other app. A profile photo is re-encoded too, but it is stripped on purpose, so a change of encoder can't bring the metadata back.
+- **Tiny:** profile photos carry one, as before. Filesync and WebDrop make none, and the contact image API has no field for one; all three wait for the encrypted tiny (section 7).
 
 ## 6. Reading old descriptors
 
@@ -290,6 +296,7 @@ Old files are never rewritten.
 - **Strip a video that isn't transcoded.** A clip under the compression threshold goes out as the user's file, container metadata included (`o: 1`). Under STRIP it needs a metadata-only remux (`-map_metadata -1`), on the encrypted and public paths alike (#2395).
 
 **Later, not part of the switch: encrypt the tiny.** Today the server can see a 20 px preview of every image, video, sticker and PDF page, on zero-knowledge drives (Photos, Vault) too. It can't go in the sealed descriptor content: a tiny is up to 768 bytes and sealing takes it past the 1,024-byte limit. It needs its own home, one for all apps, for example encrypted with the payload's key in the `previewThumbnail` field itself, which both clients and the server's size check must then agree on.
+  At the same time, decide whether the header keeps its own tiny (`appData.previewThumbnail`) beside each payload's. It duplicates the first payload's tiny on every file. In chat-kmp only a group conversation's avatar reads it, as a fallback; whether odin-js reads it is unchecked. It may only be needed for a file with no payloads.
 
 **One switch, at once** (decision D): readers and writers for every app and kind, in chat-kmp and odin-js, in the same release. An app that hasn't updated shows a new upload's descriptor as text until it does.
 
@@ -332,9 +339,9 @@ Old files are never rewritten.
 | Photos (before it moved to the current format) | `PhotoContent.name`, encrypted | platform MIME, can be `""` | kept | in encrypted content |
 | Vault | `VaultFileContent.name`, first file only | `PlatformFile.contentType()` | stripped | plain |
 | Filesync | `FilesyncNodeContent.name` | `application/octet-stream` | kept | none |
-| WebDrop | its manifest | `application/octet-stream` | kept | none |
-| Contact photo | none | `PlatformFile.contentType()` | kept | discarded |
-| Profile photos | none | `image/webp` | removed by re-encode | yes |
+| WebDrop | its manifest, raw | in its manifest: platform MIME, else extension; payloads `application/octet-stream` | kept | none |
+| Contact photo | none | `PlatformFile.contentType()` | kept (now stripped) | discarded |
+| Profile photos | none | `image/webp` | removed by re-encode (now also stripped on purpose) | yes |
 
 ## 11. Bugs found while surveying
 
