@@ -242,7 +242,8 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 - Videos leave the builder with `k` and `n` only. The encryption step's `VideoPayloadProcessor` transcodes them and, whenever the descriptor content it is handed is in the current format, fills in `w`, `h`, `vd` and `o` and writes a segmented video's playlist as its `pls_` payload.
 - `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable.
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
-- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, Vault's and Photos' own assembly, and `enqueuePlaintextUpload` for public files.
+- Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
+- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, Photos' own assembly, and `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app
 

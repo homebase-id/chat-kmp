@@ -122,6 +122,40 @@ class UserUploadBuilderCurrentFormatTest {
     }
 
     @Test
+    fun aNotesPreviewIsItsAppContent() = runTest {
+        val note = build(UploadSource(file("n.md", "# Groceries".encodeToByteArray()), "text/markdown", appContent = "# Groceries"))
+        assertEquals(DescriptorContentV1.Kind.APP, note.written().kind)
+        assertEquals(DescriptorContent.NoteFile("# Groceries"), note.received().descriptorInfo())
+
+        val old = UserUploadBuilder.build(listOf(UploadSource(file("o.md", ByteArray(4)), "text/markdown", appContent = "# Old")), UploadOptions(currentFormat = false), fileOps) { "vlt_pg_00" }
+        assertEquals("# Old", old.payloads.single().descriptorContent, "the old format keeps the preview as the whole string")
+    }
+
+    private suspend fun old(source: UploadSource) =
+        UserUploadBuilder.build(listOf(source), UploadOptions(quality = MediaQuality.ORIGINAL, currentFormat = false), fileOps) { "vlt_pg_00" }.payloads.single()
+
+    @Test
+    fun anUnnamedUnmeasuredAudioFileRecordsNothing() = runTest {
+        assertNull(old(UploadSource(file("therapy-session.m4a", ByteArray(8)), "audio/mp4")).descriptorContent, "Vault keeps names in its own content")
+    }
+
+    @Test
+    fun aStickerIsAnImageWhateverTypeItArrivesWith() = runTest {
+        val sticker = old(UploadSource(file("s.bin", image(200, 200, EncodedImageFormat.PNG)), "application/octet-stream", sticker = true))
+        assertEquals(DescriptorContent.descriptorContentFromImage(isSticker = true, format = "image/png"), sticker.descriptorContent)
+    }
+
+    @Test
+    fun anAppMayKeepItsOwnVideoTier() = runTest {
+        val clip = UserUploadBuilder.build(
+            listOf(UploadSource(file("c.mp4", ByteArray(8)), "video/mp4")),
+            UploadOptions(quality = MediaQuality.ORIGINAL, videoQuality = id.homebase.api.video.VideoQuality.STANDARD),
+            fileOps,
+        ) { "vlt_pg_00" }
+        assertEquals(id.homebase.api.video.VideoQuality.STANDARD, clip.payloads.single().videoQuality)
+    }
+
+    @Test
     fun theAppsMetadataPolicyTravelsWithTheImage() = runTest {
         val path = file("p.jpg", image(400, 300))
         assertTrue(build(UploadSource(path, "image/jpeg"), MediaQuality.ORIGINAL, MetadataPolicy.STRIP).payloads.single().stripMetadata)

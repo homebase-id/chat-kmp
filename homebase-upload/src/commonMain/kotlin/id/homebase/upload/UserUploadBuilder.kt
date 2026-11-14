@@ -9,6 +9,7 @@ import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.util.safeFileName
+import id.homebase.api.video.VideoQuality
 import id.homebase.api.video.toVideoQuality
 import kotlinx.coroutines.CancellationException
 
@@ -31,16 +32,20 @@ data class UploadSource(
     val trimEndMs: Long? = null,
     /** Web, video: the picked file's `blob:` URL, so ffmpeg reads it in JS. */
     val inputBlobUrl: String? = null,
+    /** Files only: what the app keeps on the payload for itself, such as a note's preview (`x`). */
+    val appContent: String? = null,
 )
 
 data class UploadOptions(
     val quality: MediaQuality = MediaQuality.STANDARD,
     val metadata: MetadataPolicy = MetadataPolicy.STRIP,
     val currentFormat: Boolean = DescriptorContentV1.WRITE,
+    /** Until an original video can be sent untouched, an app may keep its own transcode tier. */
+    val videoQuality: VideoQuality = quality.toVideoQuality(),
 )
 
-/** Renders a PDF's first page for its thumbnails; the renderer lives above this module. */
-typealias PdfPageRenderer = suspend (path: String) -> ByteArray?
+/** Renders a PDF's first page, [width] px wide, for its thumbnails; the renderer lives above this module. */
+typealias PdfPageRenderer = suspend (path: String, width: Int) -> ByteArray?
 
 /**
  * The payloads, thumbnails and descriptor content of everything a user uploads, the same in every app
@@ -72,6 +77,9 @@ object UserUploadBuilder {
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer?,
     ): Built {
+        require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || source.sticker)) {
+            "appContent is for files; an image or audio payload would drop it"
+        }
         // The bytes decide the type with the current format only: the detector's weaker signatures ("BM", AVIF's
         // mif1 brand) must be tightened before the switch flips (UPLOADS.md section 7).
         val untyped = source.contentType.isBlank() || source.contentType == OCTET_STREAM
@@ -82,7 +90,8 @@ object UserUploadBuilder {
             if (options.currentFormat) current().encode() else old()
 
         return when {
-            contentType.startsWith("image/") -> image(source, contentType, key, name, options, fileOps)
+            // A sticker is an image whatever type it arrives with.
+            contentType.startsWith("image/") || source.sticker -> image(source, contentType, key, name, options, fileOps)
             contentType.startsWith("audio/") -> Built(
                 PayloadFile(
                     key = key,
@@ -90,24 +99,31 @@ object UserUploadBuilder {
                     contentType = contentType,
                     descriptorContent = descriptor(
                         { DescriptorContentV1(kind = DescriptorContentV1.Kind.AUDIO, name = name, lengthSeconds = source.audioLengthSeconds) },
-                        { DescriptorContent.descriptorContentFromAudioFile(safeFileName(source.pickedName ?: source.path), source.audioLengthSeconds ?: 0) },
+                        // Nothing to record for an unnamed, unmeasured file: Vault keeps names in its own content.
+                        { if (source.pickedName == null && source.audioLengthSeconds == null) null else DescriptorContent.descriptorContentFromAudioFile(safeFileName(source.pickedName ?: source.path), source.audioLengthSeconds ?: 0) },
                     ),
                 ),
                 source.waveformPath?.let { UploadImages.generate(it, key, fileOps) },
             )
             else -> {
-                val video = contentType.startsWith("video/")
-                val kind = if (video) DescriptorContentV1.Kind.VIDEO else DescriptorContentV1.Kind.FILE
+                val kind = when {
+                    source.appContent != null -> DescriptorContentV1.Kind.APP
+                    contentType.startsWith("video/") -> DescriptorContentV1.Kind.VIDEO
+                    else -> DescriptorContentV1.Kind.FILE
+                }
                 Built(
                     PayloadFile(
                         key = key,
                         filePath = source.path,
                         contentType = contentType,
-                        descriptorContent = descriptor({ DescriptorContentV1(kind = kind, name = name) }, { oldName }),
+                        descriptorContent = descriptor(
+                            { DescriptorContentV1(kind = kind, name = name, appContent = source.appContent) },
+                            { source.appContent ?: oldName },
+                        ),
                         trimStartMs = source.trimStartMs,
                         trimEndMs = source.trimEndMs,
                         inputBlobUrl = source.inputBlobUrl,
-                        videoQuality = options.quality.toVideoQuality(),
+                        videoQuality = options.videoQuality,
                     ),
                     pdfPageRenderer?.takeIf { contentType == "application/pdf" }?.let { UploadImages.fromPdf(source.path, key, it) },
                 )
@@ -149,7 +165,10 @@ object UserUploadBuilder {
                     else -> null
                 },
             ).encode()
-            source.sticker -> DescriptorContent.descriptorContentFromImage(isSticker = true, format = thumbs.sourceFormat)
+            source.sticker -> DescriptorContent.descriptorContentFromImage(
+                isSticker = true,
+                format = thumbs.sourceFormat ?: ImageFormatDetector.detectFormat(fileOps.readFileHeaderBytes(source.path)),
+            )
             recordedQuality != null || finalSize != null -> DescriptorContent.descriptorContentFromImage(
                 isSticker = false,
                 quality = recordedQuality,

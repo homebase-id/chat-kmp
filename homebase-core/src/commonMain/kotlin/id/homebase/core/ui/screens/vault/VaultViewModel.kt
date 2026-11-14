@@ -504,7 +504,7 @@ class VaultViewModel(
 
         val placeholderDescriptors = fileContentTypes.mapIndexed { index, contentType ->
             PayloadDescriptor(
-                key = "vlt_pg_${index.toString().padStart(2, '0')}",
+                key = VaultEntry.pageKey(index),
                 contentType = contentType,
             )
         }
@@ -647,12 +647,9 @@ class VaultViewModel(
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {
         val contentTypes = action.newFiles.map { it.contentType() }
 
-        val existingMax = action.file.payloadDescriptors
-            .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
-            .maxOrNull() ?: -1
+        val start = action.file.nextPageIndex()
         val placeholders = contentTypes.mapIndexed { i, contentType ->
-            val key = "vlt_pg_${(existingMax + 1 + i).toString().padStart(2, '0')}"
-            PayloadDescriptor(key = key, contentType = contentType)
+            PayloadDescriptor(key = VaultEntry.pageKey(start + i), contentType = contentType)
         }
 
         action.newFiles.forEachIndexed { i, file -> previewPicked(action.file.uniqueId, placeholders[i].key, file) }

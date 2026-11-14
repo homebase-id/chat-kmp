@@ -18,6 +18,9 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "UploadImages"
 
+// Wide enough that the ladder's larger rows exist (THUMBNAILS.md: a PDF preview gets Original's rows).
+private const val PDF_PAGE_RENDER_WIDTH = 1600
+
 data class ThumbnailResult(
     val preview: EmbeddedThumb?,
     val thumbnails: List<ThumbnailFile>,
@@ -69,7 +72,7 @@ object UploadImages {
     suspend fun fromPdf(filePath: String, payloadKey: String, render: PdfPageRenderer): ThumbnailResult? {
         val pageJpeg = withContext(Dispatchers.Default) {
             try {
-                render(filePath)
+                render(filePath, PDF_PAGE_RENDER_WIDTH)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -78,7 +81,14 @@ object UploadImages {
             }
         } ?: return null
 
-        val (_, tinyThumb, thumbnails) = createThumbnails(pageJpeg, payloadKey)
+        val (_, tinyThumb, thumbnails) = try {
+            createThumbnails(pageJpeg, payloadKey)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "PDF preview thumbnails failed; sending the file as it is" }
+            return null
+        }
         return ThumbnailResult(
             preview = tinyThumb,
             thumbnails = thumbnails,
