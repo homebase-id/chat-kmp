@@ -1,7 +1,7 @@
 package id.homebase.chat.widget.preview
 
 import id.homebase.core.pdf.pdfPageViewerAvailable
-import id.homebase.core.util.extensionForMimeType
+import id.homebase.api.file.extensionForMimeType
 import id.homebase.core.util.isWeb
 import kotlin.uuid.Uuid
 

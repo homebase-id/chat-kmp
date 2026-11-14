@@ -22,7 +22,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.AlbumAccessDeniedException
 import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.NetworkMonitor
-import id.homebase.core.util.extensionForMimeType
+import id.homebase.api.file.extensionForMimeType
 import id.homebase.core.util.saveAwait
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex

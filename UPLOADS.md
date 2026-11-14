@@ -166,7 +166,7 @@ Why the whole descriptor content: besides names, it carries location coordinates
 
 ### 3.1 Content type
 
-First match wins:
+Decided in one place, `ContentTypes.kt` in homebase-api: the extension table, the platform-then-name rule, and the bytes (through `ImageFormatDetector`'s signatures, which nothing outside homebase-api calls directly). First match wins:
 
 1. **The bytes:** `ImageFormatDetector.detectFormat`, then the video and audio probes.
 2. **The platform's MIME type,** if not blank and not `application/octet-stream`.
@@ -246,7 +246,7 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 - `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable. An app that writes the current format ahead of the switch asks for the seal on its spec (`MediaUploadSpec.sealDescriptorContent`).
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
-- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and seal the descriptors themselves; videos go through `UploadService`. Until `ImageFormatDetector` is tightened (section 7), Photos keeps the library's content type when it gives one, and the bytes decide only an untyped file. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS.
+- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and seal the descriptors themselves; videos go through `UploadService`. A photo's own bytes decide its content type, the library's type only when they name none. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS.
 - Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, and `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app
@@ -287,14 +287,14 @@ Old files are never rewritten.
 
 ## 7. Rollout
 
-**Before the switch flips:**
+**Before the switch flips:** done.
 
-- **Seal where every encrypted upload passes.** `UploadService` seals today, but chat's re-send (`ChatMessageSenderService.resendAsCreate`/`resendAsUpdate`) and other callers enqueue requests themselves; Photos' `BackupRequestBuilder` seals its own for now, and stops when this lands. Move sealing to the upload providers, where the manifest is built for the server with the file's key at hand, so every encrypted upload is covered.
-- **The guard (section 8) allows `VideoPayloadProcessor`** to write video descriptor content, or the processor hands back facts and the encryption step writes it.
-- **The other uploaders move onto the builder** (sections 4 and 5), so nothing still writes the old format.
-- **Tighten `ImageFormatDetector` before the bytes decide a type.** With the switch on, an untyped file is sniffed and an image's own format replaces its declared type. Today a file starting with "BM" reads as BMP and an AVIF with the `mif1` brand as HEIC; they need real signatures first.
-- **Fit a Vault note's app content once sealed.** The builder size-checks link and location previews (`appDescriptor`), but not a file's own app content: a Vault note's 200-codepoint preview plus its name can pass the server's 1,024 once sealed. Cap it, or check it the same way.
-- **Strip a video that isn't transcoded.** A clip under the compression threshold goes out as the user's file, container metadata included (`o: 1`). Under STRIP it needs a metadata-only remux (`-map_metadata -1`), on the encrypted and public paths alike (#2395).
+- **Sealed where every encrypted upload passes.** The upload providers seal descriptor content while building the server's manifest (new files, updates, and uploads to a peer's drive), so chat's re-send, Photos' background uploads and any other caller are covered. The rule is `DescriptorContentSeal.appliesTo`: an encrypted file, with the switch on or when the request asks (`sealDescriptorContent`, which Photos sets). The outbox keeps the readable form, and the pre-upload size check measures the sealed one.
+- **The guard (section 8) allows `VideoPayloadProcessor`** to write video descriptor content (layer 7).
+- **Every uploader builds through the builder** or follows its rules (sections 4 and 5).
+- **`ImageFormatDetector` has real signatures** before the bytes decide a type: BMP needs its whole header, GIF its version, and an AVIF reads as `image/avif`, not HEIC.
+- **A file's app content is cut to fit once sealed** (a Vault note's preview).
+- **A video that isn't transcoded:** there is none. Every picked video is re-encoded (the compressor never returns its input) with `-map_metadata -1` on all four platforms, and no public path takes video. The other way round is open: Vault and Photos keep a photo's metadata, but their videos are re-encoded too, so a video's location and date are dropped there.
 
 **Later, not part of the switch: encrypt the tiny.** Today the server can see a 20 px preview of every image, video, sticker and PDF page, on zero-knowledge drives (Photos, Vault) too. It can't go in the sealed descriptor content: a tiny is up to 768 bytes and sealing takes it past the 1,024-byte limit. It needs its own home, one for all apps, for example encrypted with the payload's key in the `previewThumbnail` field itself, which both clients and the server's size check must then agree on.
   At the same time, decide whether the header keeps its own tiny (`appData.previewThumbnail`) beside each payload's. It duplicates the first payload's tiny on every file. In chat-kmp only a group conversation's avatar reads it, as a fallback; whether odin-js reads it is unchecked. It may only be needed for a file with no payloads.

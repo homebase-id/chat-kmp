@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.file.contentTypeFromBytes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -16,7 +17,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.JvmFileOperationsProvider
-import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -172,7 +172,7 @@ class OutboxBackupUploaderTest {
         assertTrue(request.thumbnails.isNotEmpty())
         request.thumbnails.forEach { thumb ->
             assertEquals(payload.key, thumb.key)
-            assertEquals("image/webp", ImageFormatDetector.detectFormat(payloadKey.decrypt(thumb.thumbnailBytes)), "encrypted with the payload's own IV")
+            assertEquals("image/webp", contentTypeFromBytes(payloadKey.decrypt(thumb.thumbnailBytes)), "encrypted with the payload's own IV")
         }
 
         val content = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
@@ -214,7 +214,7 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun theLibrarysTypeOutranksTheBytes() = runTest {
+    fun aPhotosOwnBytesDecideItsType() = runTest {
         val bytes = jpeg(64, 48)
         val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
         val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("odd", bytes), "image/x-library-says", false)))
@@ -222,7 +222,7 @@ class OutboxBackupUploaderTest {
         uploader.handOff(row, uniqueId)
 
         val payload = queuedRequest(uniqueId).second.payloads.single()
-        assertEquals("image/x-library-says", payload.contentType)
+        assertEquals("image/jpeg", payload.contentType, "the bytes decide, now that the detector's signatures are exact")
         File(payload.filePath).delete()
     }
 

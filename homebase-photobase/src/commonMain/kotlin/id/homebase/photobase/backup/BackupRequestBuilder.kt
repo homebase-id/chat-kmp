@@ -66,9 +66,7 @@ class BackupRequestBuilder(
             val described = payloads.zip(bundle.payloads).mapIndexed { index, (encrypted, built) ->
                 // The hash above vouches for these bytes, so the builder must not have swapped in a copy.
                 check(built.filePath == exported.parts[index].path) { "the builder replaced ${built.key}" }
-                // The library's type outranks the bytes until ImageFormatDetector is tightened (UPLOADS.md section 7).
-                val contentType = encrypted.contentType.takeUnless { it.isBlank() || it == "application/octet-stream" } ?: built.contentType
-                encrypted.copy(contentType = contentType, descriptorContent = built.descriptorContent, previewThumbnail = built.previewThumbnail)
+                encrypted.copy(contentType = built.contentType, descriptorContent = built.descriptorContent, previewThumbnail = built.previewThumbnail)
             }
             val metadata = photoMetadata(
                 uniqueId,

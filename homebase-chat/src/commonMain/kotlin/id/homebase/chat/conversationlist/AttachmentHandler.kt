@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.file.contentTypeFromBytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
@@ -791,7 +792,7 @@ internal class AttachmentHandler(
  * The bytes themselves are never re-encoded.
  */
 internal fun clipboardImageSuffix(bytes: ByteArray): String =
-    when (ImageFormatDetector.detectFormat(bytes)) {
+    when (contentTypeFromBytes(bytes)) {
         "image/gif" -> ".gif"
         "image/jpeg" -> ".jpg"
         "image/webp" -> ".webp"

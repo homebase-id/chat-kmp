@@ -1,15 +1,36 @@
-package id.homebase.core.util
+package id.homebase.api.file
 
-import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.name
+import co.touchlab.kermit.Logger
+import id.homebase.api.lib.image.ImageFormatDetector
+import kotlinx.coroutines.CancellationException
+
+// The one place a file's content type is decided (UPLOADS.md section 3.1): from its bytes, the platform's type, or its name.
 
 const val CONTENT_TYPE_MARKDOWN = "text/markdown"
+const val OCTET_STREAM = "application/octet-stream"
+
+fun isUntyped(contentType: String?): Boolean = contentType.isNullOrBlank() || contentType == OCTET_STREAM
+
+/** The type the bytes name ([OCTET_STREAM] when they name none): images, by their signatures. */
+fun contentTypeFromBytes(header: ByteArray): String = ImageFormatDetector.detectFormat(header)
+
+/** [contentTypeFromBytes] for the file at [path]; [OCTET_STREAM] when it can't be read. */
+suspend fun contentTypeOfFile(path: String, fileOps: FileOperationsProvider): String {
+    val header = try {
+        fileOps.readFileHeaderBytes(path)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = "ContentTypes", throwable = e) { "Couldn't read $path to check its type" }
+        return OCTET_STREAM
+    }
+    return contentTypeFromBytes(header)
+}
 
 fun detectContentTypeFromExtensionOrHint(nameOrPath: String?): String {
     val ext = nameOrPath?.substringAfterLast('.')?.lowercase()?.takeIf { it.isNotBlank() }
-        ?: return "application/octet-stream"
-    return commonExtToMime[ext] ?: "application/octet-stream"
+        ?: return OCTET_STREAM
+    return commonExtToMime[ext] ?: OCTET_STREAM
 }
 
 fun extensionForMimeType(mimeType: String): String? = commonMimeToExt[mimeType]
@@ -36,26 +57,13 @@ fun resolveContentType(
     platformMimeType: String? = null,
 ): String {
     // 1. Trust platform MIME type if it's specific
-    if (platformMimeType != null && platformMimeType != "application/octet-stream") {
+    if (platformMimeType != null && platformMimeType != OCTET_STREAM) {
         return platformMimeType
     }
 
     // 2. Extension-based lookup
     return detectContentTypeFromExtensionOrHint(fileName)
 }
-
-/**
- * [resolveContentType] over a [PlatformFile]'s own name and platform MIME. Use this instead of
- * spelling the pair out, and never `mimeType()` alone — the raw MIME has no extension fallback.
- *
- * Call it on the **originally picked** handle, before any sandbox copy. Only that handle knows the
- * real type: on Android it is a `content://` URI whose `ContentResolver.getType()` answers
- * `image/jpeg`, while a copy is a plain file that can only be typed from its name — and the system
- * photo picker's names (`photopicker-1000022602`) carry no extension, so a copy resolves to
- * `application/octet-stream` and the message ships as a generic file chip with no thumbnail (#1149).
- */
-fun PlatformFile.contentType(): String =
-    resolveContentType(fileName = name, platformMimeType = mimeType()?.toString())
 
 private val commonExtToMime: Map<String, String> = mapOf(
     // Images

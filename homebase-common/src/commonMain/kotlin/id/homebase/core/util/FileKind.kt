@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 enum class FileKind {
     Archive, Pdf, Word, Spreadsheet, Presentation, Text, Code, Audio, Video, Image, Apk, Generic,
 }

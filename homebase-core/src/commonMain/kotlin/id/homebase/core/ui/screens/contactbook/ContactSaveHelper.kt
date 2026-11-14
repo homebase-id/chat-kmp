@@ -2,7 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook
 
-import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.upload.MetadataPolicy
 import id.homebase.upload.imageBytesFor
 import co.touchlab.kermit.Logger
@@ -306,7 +306,7 @@ private suspend fun uploadContactPhoto(
 
 internal suspend fun contactPhotoToSend(bytes: ByteArray, platformType: String): Pair<ByteArray, String> {
     // Unlike the builder's rule, any non-image type is sniffed: the file is known to be a picture, and only an image type gets stripped.
-    val contentType = platformType.takeIf { it.startsWith("image/") } ?: ImageFormatDetector.detectFormat(bytes)
+    val contentType = platformType.takeIf { it.startsWith("image/") } ?: contentTypeFromBytes(bytes)
     return imageBytesFor(MetadataPolicy.STRIP, bytes, contentType) to contentType
 }
 

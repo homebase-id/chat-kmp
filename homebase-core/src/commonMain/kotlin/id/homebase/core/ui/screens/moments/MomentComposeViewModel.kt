@@ -14,7 +14,7 @@ import id.homebase.core.moments.services.MediaInfo
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.contentType
-import id.homebase.core.util.resolveContentType
+import id.homebase.api.file.resolveContentType
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import io.github.vinceglb.filekit.name

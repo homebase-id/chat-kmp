@@ -28,8 +28,8 @@ import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
-import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
-import id.homebase.core.util.extensionForMimeType
+import id.homebase.api.file.CONTENT_TYPE_MARKDOWN
+import id.homebase.api.file.extensionForMimeType
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope

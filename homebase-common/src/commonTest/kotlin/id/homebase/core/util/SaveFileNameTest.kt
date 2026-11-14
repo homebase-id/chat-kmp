@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.api.file.extensionForContentType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

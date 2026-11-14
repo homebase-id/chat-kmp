@@ -1,6 +1,7 @@
 package id.homebase.upload
 
-import co.touchlab.kermit.Logger
+import id.homebase.api.file.isUntyped
+import id.homebase.api.file.contentTypeOfFile
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
@@ -9,16 +10,12 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
-import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.util.codePointCount
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.api.video.VideoQuality
 import id.homebase.api.video.toVideoQuality
-import kotlinx.coroutines.CancellationException
 
-private const val TAG = "UserUploadBuilder"
-private const val OCTET_STREAM = "application/octet-stream"
 
 enum class MetadataPolicy { KEEP, STRIP }
 
@@ -103,10 +100,8 @@ object UserUploadBuilder {
         require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || knownImage)) {
             "appContent is for files; an image or audio payload would drop it"
         }
-        // The bytes decide the type with the current format only: the detector's weaker signatures ("BM", AVIF's
-        // mif1 brand) must be tightened before the switch flips (UPLOADS.md section 7).
-        val untyped = source.contentType.isBlank() || source.contentType == OCTET_STREAM
-        val contentType = if (options.currentFormat && untyped && source.libraryKind == null) sniffed(source.path, fileOps) else source.contentType
+        // The bytes decide an untyped file's type with the current format only.
+        val contentType = if (options.currentFormat && isUntyped(source.contentType) && source.libraryKind == null) contentTypeOfFile(source.path, fileOps) else source.contentType
         val name = source.pickedName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
         val oldName = source.pickedName?.let { safeFileName(it) }
         fun descriptor(current: () -> DescriptorContentV1, old: () -> String?) =
@@ -167,8 +162,8 @@ object UserUploadBuilder {
         val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker, readMetadata = readImageMetadata)
         val finalPath = UploadImages.finalImagePath(thumbs, fileOps)
         // A library image skipped the read up front: the decode names its type, and only a failed decode needs the header.
-        val untypedLibraryImage = source.libraryKind == LibraryKind.IMAGE && (declaredType.isBlank() || declaredType == OCTET_STREAM)
-        val bytesType = if (!options.currentFormat) null else thumbs.sourceFormat ?: if (untypedLibraryImage) sniffed(source.path, fileOps) else null
+        val untypedLibraryImage = source.libraryKind == LibraryKind.IMAGE && isUntyped(declaredType)
+        val bytesType = if (!options.currentFormat) null else thumbs.sourceFormat ?: if (untypedLibraryImage) contentTypeOfFile(source.path, fileOps) else null
         val sniffedType = bytesType?.takeIf { it.startsWith("image/") }
         val contentType = if (finalPath != null) "image/webp" else sniffedType ?: declaredType
 
@@ -195,7 +190,7 @@ object UserUploadBuilder {
             ).encode()
             source.sticker -> DescriptorContent.descriptorContentFromImage(
                 isSticker = true,
-                format = thumbs.sourceFormat ?: ImageFormatDetector.detectFormat(fileOps.readFileHeaderBytes(source.path)),
+                format = thumbs.sourceFormat ?: contentTypeOfFile(source.path, fileOps),
             )
             recordedQuality != null || finalSize != null -> DescriptorContent.descriptorContentFromImage(
                 isSticker = false,
@@ -225,18 +220,5 @@ object UserUploadBuilder {
             fitting = fitting.truncateToCodePoints(fitting.codePointCount() - 1)
         }
         return copy(appContent = fitting.ifEmpty { null })
-    }
-
-    // Only an untyped file is read for its type up front: it decides which branch the file takes.
-    private suspend fun sniffed(path: String, fileOps: FileOperationsProvider): String {
-        val header = try {
-            fileOps.readFileHeaderBytes(path)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "Couldn't read $path to check its type" }
-            return OCTET_STREAM
-        }
-        return ImageFormatDetector.detectFormat(header)
     }
 }

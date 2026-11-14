@@ -1,7 +1,7 @@
 package id.homebase.api.image
 
+import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
@@ -59,7 +59,7 @@ suspend fun readImageSize(path: String, fileOps: FileOperationsProvider): ImageS
         openImageFile(path, fileOps)?.use { return@withContext it.displayedSize }
         val header = fileOps.readFileHeaderBytes(path)
         // Only a JPEG's turn is read here; decoders also turn other formats (WebP) by their EXIF.
-        if (ImageFormatDetector.detectFormat(header) == "image/jpeg") {
+        if (contentTypeFromBytes(header) == "image/jpeg") {
             ImageHeaderParser.parse(header)?.let { stored ->
                 val turned = readJpegExifOrientation(header)?.let(::jpegOrientationSwapsDimensions) == true
                 return@withContext if (turned) ImageSize(stored.pixelHeight, stored.pixelWidth) else stored

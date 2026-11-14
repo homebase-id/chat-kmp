@@ -2,7 +2,7 @@ package id.homebase.core.ui.screens.moments
 
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.core.util.extensionForContentType
+import id.homebase.api.file.extensionForContentType
 import id.homebase.api.util.safeFileName
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

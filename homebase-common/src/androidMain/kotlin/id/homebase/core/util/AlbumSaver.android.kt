@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection

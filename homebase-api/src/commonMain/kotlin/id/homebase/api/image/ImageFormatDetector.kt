@@ -10,10 +10,8 @@ object ImageFormatDetector {
     val TYPES_EVERY_CLIENT_CAN_DECODE: Set<String> = setOf("image/jpeg", "image/png", "image/webp")
 
 
-    /**
-     * Detects the image format based on magic bytes
-     */
-    fun detectFormat(bytes: ByteArray): String {
+    /** An image's type from its signature; callers outside this module go through contentTypeFromBytes. */
+    internal fun detectFormat(bytes: ByteArray): String {
         if (bytes.size < 4) return "application/octet-stream"
 
         return when {
