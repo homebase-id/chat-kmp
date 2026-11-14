@@ -6,7 +6,10 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.DescriptorContentSeal
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.EventBus
@@ -14,6 +17,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -33,7 +37,13 @@ import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
+import javax.imageio.ImageIO
 import kotlin.io.encoding.Base64
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -106,7 +116,6 @@ class OutboxBackupUploaderTest {
         assertEquals(PhotobaseProtocol.PhotoFileType, request.metadata.appData.fileType)
         assertEquals(PhotobaseProtocol.ImageDataType, request.metadata.appData.dataType)
         assertEquals(12345, request.metadata.appData.userDate)
-        assertNull(request.metadata.appData.previewThumbnail)
 
         val payload = request.payloads.single()
         assertEquals(PhotobaseProtocol.ImagePayloadKey, payload.key)
@@ -116,8 +125,11 @@ class OutboxBackupUploaderTest {
         assertContentEquals(digest(bytes), payload.hash!!.plaintextContentHash(payloadKey))
         assertContentEquals(bytes, payloadKey.decrypt(File(payload.filePath).readBytes()))
 
-        val content = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
-        assertEquals("IMG_0001.HEIC", OdinSystemSerializer.deserialize<PhotoContent>(content).name)
+        assertEquals(
+            DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG_0001.HEIC", original = 1, quality = DescriptorContentV1.Quality.ORG),
+            request.opened(payload),
+            "sealed: the Photos drive never shows a name to the server",
+        )
 
         assertEquals(0, writer.writes)
         File(payload.filePath).delete()
@@ -134,6 +146,97 @@ class OutboxBackupUploaderTest {
 
         assertNull(db.outbox.selectByDriveAndUnique(PhotobaseProtocol.DriveAlias, uniqueId))
         assertEquals(stagedBefore, stagedFiles())
+    }
+
+    @Test
+    fun aRealPhotoKeepsItsBytesAndGetsItsSizeTinyAndEncryptedThumbnails() = runTest {
+        val bytes = jpeg(1600, 1200)
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        // The library gave no type: it is still a picture, and its own bytes name the type.
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("IMG_7", bytes), "", false)))
+
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+
+        val (_, request) = queuedRequest(uniqueId)
+        val payload = request.payloads.single()
+        val payloadKey = KeyHeader(payload.iv!!, request.keyHeader.aesKey)
+        assertContentEquals(bytes, payloadKey.decrypt(File(payload.filePath).readBytes()))
+        assertEquals("image/jpeg", payload.contentType)
+        val tiny = assertNotNull(payload.previewThumbnail, "the tiny is plain on the payload, as in every app")
+        assertEquals(tiny, request.metadata.appData.previewThumbnail)
+
+        val descriptor = assertNotNull(request.opened(payload))
+        assertEquals(1600 to 1200, descriptor.pixelWidth to descriptor.pixelHeight)
+        assertEquals(1, descriptor.original)
+        assertEquals("IMG_0001.HEIC", descriptor.name)
+
+        assertTrue(request.thumbnails.isNotEmpty())
+        request.thumbnails.forEach { thumb ->
+            assertEquals(payload.key, thumb.key)
+            assertEquals("image/webp", ImageFormatDetector.detectFormat(payloadKey.decrypt(thumb.thumbnailBytes)), "encrypted with the payload's own IV")
+        }
+
+        val content = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
+        assertFalse("name" in content || "width" in content || "tiny" in content, content)
+        File(payload.filePath).delete()
+    }
+
+    @Test
+    fun aPhotosOwnCaptureTimeBecomesItsDate() = runTest {
+        val bytes = File("../homebase-api/src/jvmTest/resources/test_images/canon_5d_srgb.jpg").readBytes()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("canon.jpg", bytes), "image/jpeg", false)))
+
+        uploader.handOff(row, uniqueId)
+
+        val (_, request) = queuedRequest(uniqueId)
+        val taken = LocalDateTime(2018, 7, 2, 11, 33, 55).toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds()
+        assertEquals(taken, request.metadata.appData.userDate, "from the photo's EXIF, not the library row's 12345")
+        request.payloads.forEach { File(it.filePath).delete() }
+    }
+
+    @Test
+    fun aVideoTheLibraryGaveNoTypeIsStillRecordedAsAVideo() = runTest {
+        val still = "still".encodeToByteArray()
+        val motion = "motion".encodeToByteArray()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.LivePhoto, still, motion)
+        val uploader = backgroundScope.uploader(
+            listOf(
+                ExportedPart(ExportedPartRole.Primary, file("s.heic", still), "image/heic", false),
+                ExportedPart(ExportedPartRole.PairedVideo, file("m.mov", motion), "application/octet-stream", false),
+            ),
+        )
+
+        uploader.handOff(row, uniqueId)
+
+        val (_, request) = queuedRequest(uniqueId)
+        assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, original = 1), request.opened(request.payloads[1]))
+        request.payloads.forEach { File(it.filePath).delete() }
+    }
+
+    @Test
+    fun theLibrarysTypeOutranksTheBytes() = runTest {
+        val bytes = jpeg(64, 48)
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("odd", bytes), "image/x-library-says", false)))
+
+        uploader.handOff(row, uniqueId)
+
+        val payload = queuedRequest(uniqueId).second.payloads.single()
+        assertEquals("image/x-library-says", payload.contentType)
+        File(payload.filePath).delete()
+    }
+
+    private fun jpeg(width: Int, height: Int): ByteArray {
+        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+        for (x in 0 until width) for (y in 0 until height) image.setRGB(x, y, (x * 31 + y * 17) and 0xFFFFFF)
+        return ByteArrayOutputStream().also { ImageIO.write(image, "jpg", it) }.toByteArray()
+    }
+
+    private suspend fun UploadFileRequest.opened(payload: PayloadFile): DescriptorContentV1? {
+        val sealed = assertNotNull(payload.descriptorContent)
+        assertTrue(sealed.startsWith("{\"e\":"), sealed)
+        return DescriptorContentV1.parseOrNull(assertNotNull(DescriptorContentSeal.open(sealed, keyHeader.aesKey)))
     }
 
     private fun stagedFiles(): Set<String> =
@@ -158,11 +261,12 @@ class OutboxBackupUploaderTest {
         assertEquals(listOf(PhotobaseProtocol.ImagePayloadKey, PhotobaseProtocol.LivePhotoVideoPayloadKey), request.payloads.map { it.key })
         assertNotEquals(request.payloads[0].iv!!.toList(), request.payloads[1].iv!!.toList())
         assertContentEquals(digest(motion), request.payloads[1].hash!!.plaintextContentHash(KeyHeader(request.payloads[1].iv!!, request.keyHeader.aesKey)))
+        assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, original = 1), request.opened(request.payloads[1]), "the paired video is the user's file, with no name of its own")
         request.payloads.forEach { File(it.filePath).delete() }
     }
 
     @Test
-    fun aVideoGoesThroughTheSharedPipelineWithNoLocalRowOrPlaintextPreview() = runTest {
+    fun aVideoGoesThroughTheSharedPipelineWithNoLocalRow() = runTest {
         val bytes = "video bytes".encodeToByteArray()
         val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
         val encryptor = PreviewingEncryptor()
@@ -174,26 +278,10 @@ class OutboxBackupUploaderTest {
         assertEquals(1, encryptor.calls)
         assertEquals(OUTBOX_BULK_PRIORITY, outboxRow.priority)
         assertEquals(PhotobaseProtocol.VideoDataType, request.metadata.appData.dataType)
-        assertNull(request.payloads.single().previewThumbnail)
+        assertNotNull(request.payloads.single().previewThumbnail, "the tiny video processing makes stays on the payload")
         assertTrue(request.existingFileIsSuccess)
         assertEquals(0, writer.writes)
-    }
-
-    @Test
-    fun aVideosTinyPreviewGoesInsideTheEncryptedContent() = runTest {
-        val bytes = "video bytes".encodeToByteArray()
-        val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
-        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("v.mp4", bytes), "video/mp4", false)), PreviewingEncryptor())
-
-        uploader.handOff(row, uniqueId)
-
-        val (_, request) = queuedRequest(uniqueId)
-        assertNull(request.metadata.appData.previewThumbnail)
-        assertNull(request.payloads.single().previewThumbnail)
-        val decrypted = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
-        val read = OdinSystemSerializer.deserialize<PhotoContent>(decrypted)
-        assertNotNull(read.tiny, "The tiny preview should land in the encrypted content")
-        assertEquals("image/webp", read.tinyType)
+        assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, name = "IMG_0001.HEIC"), request.opened(request.payloads.single()))
     }
 
     @Test

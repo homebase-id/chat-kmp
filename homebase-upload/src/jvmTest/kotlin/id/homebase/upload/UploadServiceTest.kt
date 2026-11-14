@@ -129,7 +129,7 @@ class UploadServiceTest {
 
     // ---------- sealing descriptor content (UPLOADS.md section 2) ----------
 
-    private suspend fun sentAndKept(seal: Boolean, update: Boolean): Pair<String, String?> = coroutineScope {
+    private suspend fun sentAndKept(seal: Boolean, update: Boolean, specSeals: Boolean = false): Pair<String, String?> = coroutineScope {
         val h = buildHarness(this, sealDescriptorContent = seal)
         val uid = Uuid.random()
         val bundle = PayloadBundle(
@@ -144,7 +144,7 @@ class UploadServiceTest {
             )
         } else {
             h.service.upload(
-                MediaUploadSpec(driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), bundle = bundle, metadata = metadata(uid), seedCache = false, sendNow = false),
+                MediaUploadSpec(driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), bundle = bundle, metadata = metadata(uid), seedCache = false, sendNow = false, sealDescriptorContent = specSeals),
                 scope = this,
             )
         }
@@ -169,6 +169,11 @@ class UploadServiceTest {
     @Test
     fun withTheSwitchOffDescriptorContentGoesOutAsBefore() = runTest {
         assertTrue("secret-name.pdf" in sentAndKept(seal = false, update = false).first)
+    }
+
+    @Test
+    fun anAppAheadOfTheSwitchSealsWithTheSwitchOff() = runTest {
+        assertFalse("secret-name.pdf" in sentAndKept(seal = false, update = false, specSeals = true).first)
     }
 
     // ---------- upload (create) ----------

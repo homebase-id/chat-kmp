@@ -118,7 +118,7 @@ Words used in this document:
 | Word | Meaning |
 |---|---|
 | **Source** | The file the user picked, at its displayed size after EXIF rotation. |
-| **Tiny** | The 20 px WebP embedded in the file's metadata (`previewThumbnail`), shown blurred while the real image loads. |
+| **Tiny** | The 20 px WebP embedded in the file's metadata (`previewThumbnail`), shown blurred while the real image loads. It is stored plain in every app, on encrypted files too, so the server can see it; encrypting it is a later change (`UPLOADS.md` section 7). |
 | **Thumbnail** | A smaller image stored next to the payload, so clients don't download the whole photo. |
 | **Final image, or "the photo"** | The payload: what the recipient saves or zooms into. |
 | **Row** | One line of the table. |

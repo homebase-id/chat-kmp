@@ -246,7 +246,7 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
         driveId = driveId,
         fileId = fileId,
         descriptor = payload,
-        previewThumbnail = tinyPreview ?: payload.previewThumbnail?.toEmbeddedThumb(),
+        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }

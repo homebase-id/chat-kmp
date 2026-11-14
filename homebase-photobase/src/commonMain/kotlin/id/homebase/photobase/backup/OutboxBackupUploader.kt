@@ -1,19 +1,18 @@
 package id.homebase.photobase.backup
 
-import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.upload.LibraryKind
 import id.homebase.upload.MediaUploadSpec
-import id.homebase.upload.PayloadBundle
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
+import id.homebase.upload.UploadSource
+import id.homebase.upload.UserUploadBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -88,30 +87,22 @@ class OutboxBackupUploader(
     ): HandOffResult {
         val part = exported.parts.single()
         if (!exported.isHashedCopy && !hasher.digest(part.path).contentEquals(expectedDigest)) return HandOffResult.ChangedUnderUs
-        fun videoMetadata(tiny: EmbeddedThumb?) = photoMetadata(
-            uniqueId,
-            PhotobaseProtocol.VideoDataType,
-            row.createdAt,
-            // Inside the encrypted content, because omitPlaintextPreviews keeps it out of the plaintext field.
-            PhotoContent(name = exported.fileName.truncateToCodePoints(MAX_PHOTO_NAME_CODE_POINTS)).withTiny(tiny),
-        )
         val spec = MediaUploadSpec(
             driveId = photosDriveId,
             uniqueId = uniqueId,
             keyHeader = KeyHeader.newRandom16(),
-            bundle = PayloadBundle(
-                payloads = listOf(PayloadFile(key = PhotobaseProtocol.VideoPayloadKey, filePath = part.path, contentType = part.contentType)),
-                thumbnails = emptyList(),
-                previewThumbs = emptyList(),
-            ),
-            metadata = videoMetadata(null),
-            metadataFromBundle = { bundle -> videoMetadata(bundle.payloads.firstNotNullOfOrNull { it.previewThumbnail }) },
+            bundle = UserUploadBuilder.build(
+                listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.VIDEO)),
+                PHOTOS_UPLOAD_OPTIONS,
+                fileOps,
+            ) { PhotobaseProtocol.VideoPayloadKey },
+            metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, PhotoContent()),
             priority = OUTBOX_BULK_PRIORITY,
             sendNow = false,
             writeOptimistic = false,
             seedCache = false,
-            omitPlaintextPreviews = true,
             existingFileIsSuccess = true,
+            sealDescriptorContent = true,
         )
         return when (val outcome = uploadService.upload(spec, scope)) {
             is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued

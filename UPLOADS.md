@@ -175,6 +175,8 @@ First match wins:
 
 Filesync and WebDrop still store `application/octet-stream` payloads (they move bytes), but record the detected type in their own content.
 
+A photo library knows more than the bytes say: a file it calls a picture or a video is that kind (`k`) even when its type is missing or unknown.
+
 ### 3.2 Name
 
 `name = safeFileName(pickedName)`, or null when the picked name is blank. `safeFileName` (homebase-api `id.homebase.api.util`) is the one function for every file name the apps write to a disk or send. The builder, the save paths and the share paths all call it, so a name is cleaned the same way wherever it goes:
@@ -223,7 +225,7 @@ The builder decides it per app and records it on each image payload (`PayloadFil
 |---|---|
 | Who gets them | Every `image`, `video`, `sticker` and PDF `file`. Not `audio` or other files. Link and location previews keep their tiny-only previews |
 | Sizes | `THUMBNAILS.md`, for the app's quality |
-| Tiny location | Plain, in the payload's `previewThumbnail` and the header's `appData.previewThumbnail` (the smallest tiny), encrypted file or not. 20 px leaks nothing meaningful |
+| Tiny location | Plain, in the payload's `previewThumbnail` and the header's `appData.previewThumbnail` (the smallest tiny), encrypted file or not. 20 px leaks nothing meaningful. A video's tiny is made while it is processed, so it is on the payload only |
 | Thumbnails | Encrypted with the payload, as today |
 
 ### 3.6 Payload names
@@ -236,14 +238,15 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 
 ## 4. The builder
 
-`UserUploadBuilder.build(sources, options, fileOps, pdfPageRenderer, payloadKey)` in `homebase-upload` (`UserUploadBuilder.kt`). An `UploadSource` is one file as the app has it (path, the platform's type, the picked name, whether the user made it a sticker, audio length and waveform, video trim); `UploadOptions` holds the app's quality, metadata policy and the format switch. It returns a `PayloadBundle`: payloads with descriptor content filled in, thumbnails and tinies.
+`UserUploadBuilder.build(sources, options, fileOps, pdfPageRenderer, onImageMetadata, payloadKey)` in `homebase-upload` (`UserUploadBuilder.kt`). An `UploadSource` is one file as the app has it (path, the platform's type, the picked name, whether the user made it a sticker, audio length and waveform, video trim, and for a photo library what the library says it is: `libraryKind`, and `untouched` for a video nothing will transcode); `UploadOptions` holds the app's quality, metadata policy and the format switch. It returns a `PayloadBundle`: payloads with descriptor content filled in, thumbnails and tinies.
 
 - Images and stickers go through `createMediaImages`; a PDF's first page through the same thumbnail pipeline, rendered by the app (the renderer lives in homebase-common); audio gets its waveform's thumbnails.
 - Videos leave the builder with `k` and `n` only. The encryption step's `VideoPayloadProcessor` transcodes them and, whenever the descriptor content it is handed is in the current format, fills in `w`, `h`, `vd` and `o` and writes a segmented video's playlist as its `pls_` payload.
-- `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable.
+- `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable. An app that writes the current format ahead of the switch asks for the seal on its spec (`MediaUploadSpec.sealDescriptorContent`).
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
-- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, Photos' own assembly, and `enqueuePlaintextUpload` for public files.
+- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and seal the descriptors themselves; videos go through `UploadService`. Until `ImageFormatDetector` is tightened (section 7), Photos keeps the library's content type when it gives one, and the bytes decide only an untyped file. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS.
+- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, and `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app
 
@@ -280,11 +283,13 @@ Old files are never rewritten.
 
 **Before the switch flips:**
 
-- **Seal where every encrypted upload passes.** `UploadService` seals today, but chat's re-send (`ChatMessageSenderService.resendAsCreate`/`resendAsUpdate`) and other callers enqueue requests themselves. Move sealing to the upload providers, where the manifest is built for the server with the file's key at hand, so every encrypted upload is covered.
+- **Seal where every encrypted upload passes.** `UploadService` seals today, but chat's re-send (`ChatMessageSenderService.resendAsCreate`/`resendAsUpdate`) and other callers enqueue requests themselves; Photos' `BackupRequestBuilder` seals its own for now, and stops when this lands. Move sealing to the upload providers, where the manifest is built for the server with the file's key at hand, so every encrypted upload is covered.
 - **The guard (section 8) allows `VideoPayloadProcessor`** to write video descriptor content, or the processor hands back facts and the encryption step writes it.
 - **The other uploaders move onto the builder** (sections 4 and 5), so nothing still writes the old format.
 - **Tighten `ImageFormatDetector` before the bytes decide a type.** With the switch on, an untyped file is sniffed and an image's own format replaces its declared type. Today a file starting with "BM" reads as BMP and an AVIF with the `mif1` brand as HEIC; they need real signatures first.
 - **Strip a video that isn't transcoded.** A clip under the compression threshold goes out as the user's file, container metadata included (`o: 1`). Under STRIP it needs a metadata-only remux (`-map_metadata -1`), on the encrypted and public paths alike (#2395).
+
+**Later, not part of the switch: encrypt the tiny.** Today the server can see a 20 px preview of every image, video, sticker and PDF page, on zero-knowledge drives (Photos, Vault) too. It can't go in the sealed descriptor content: a tiny is up to 768 bytes and sealing takes it past the 1,024-byte limit. It needs its own home, one for all apps, for example encrypted with the payload's key in the `previewThumbnail` field itself, which both clients and the server's size check must then agree on.
 
 **One switch, at once** (decision D): readers and writers for every app and kind, in chat-kmp and odin-js, in the same release. An app that hasn't updated shows a new upload's descriptor as text until it does.
 
@@ -309,7 +314,7 @@ Old files are never rewritten.
 | | Decision |
 |---|---|
 | **A** | The name lives in the descriptor content; an encrypted HomebaseFile seals its payloads' whole descriptor content with AES-GCM (section 2), in both clients. |
-| **B** | The tiny stays plain on every file. |
+| **B** | The tiny stays plain on every file, Photos included since 2026-11-14 (it used to hide its tiny in `PhotoContent`). Encrypting the tiny, for every app at once, is a later change (section 7). |
 | **C** | Vault keeps metadata. |
 | **D** | One switch, at once, for every kind including plain files. Unencrypted files' descriptors stay plain. |
 | **E** | Descriptor content uses short JSON keys (section 1); the server's own keys stay as they are. |
@@ -324,7 +329,7 @@ Old files are never rewritten.
 | Chat | files: the raw string; audio: `AudioFile.name`; photos and videos: none | picked MIME, else extension | stripped in the encryption step | plain |
 | Moments, feed | as chat | `file.contentType()` | stripped only when encrypted (#2395) | plain |
 | Stickers | none | caller's | stripped | plain |
-| Photos | `PhotoContent.name`, encrypted | platform MIME, can be `""` | kept | in encrypted content |
+| Photos (before it moved to the current format) | `PhotoContent.name`, encrypted | platform MIME, can be `""` | kept | in encrypted content |
 | Vault | `VaultFileContent.name`, first file only | `PlatformFile.contentType()` | stripped | plain |
 | Filesync | `FilesyncNodeContent.name` | `application/octet-stream` | kept | none |
 | WebDrop | its manifest | `application/octet-stream` | kept | none |

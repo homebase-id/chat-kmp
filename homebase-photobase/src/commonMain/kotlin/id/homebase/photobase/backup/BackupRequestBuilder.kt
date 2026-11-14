@@ -1,25 +1,29 @@
 package id.homebase.photobase.backup
 
-import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.SecurityGroupType
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.MediaImages
-import id.homebase.api.image.createMediaImages
-import id.homebase.api.image.readImageMetadata
+import id.homebase.api.image.ImageMetadata
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DeviceBackupAsset
-import id.homebase.api.util.truncateToCodePoints
+import id.homebase.api.video.VideoQuality
 import id.homebase.core.photobase.PhotobaseProtocol
-import kotlinx.coroutines.CancellationException
+import id.homebase.upload.LibraryKind
+import id.homebase.upload.MetadataPolicy
+import id.homebase.upload.UploadOptions
+import id.homebase.upload.UploadSource
+import id.homebase.upload.UserUploadBuilder
+import id.homebase.upload.withSealedDescriptor
 import kotlin.uuid.Uuid
 
 /** One photo as an upload request: original bytes encrypted to staged files, however it's then sent. */
@@ -45,31 +49,43 @@ class BackupRequestBuilder(
                 if (digest == null || !digest.contentEquals(digests[index])) return null
                 payloads[index] = payloads[index].copy(iv = hashed.iv, hash = hashed.hash)
             }
-            val primaryKey = KeyHeader(payloads.first().iv!!, keyHeader.aesKey)
-            val imagePath = exported.parts.first().path
-            val (prepared, exif) = timed(BackupStage.Thumbnails) {
-                val media = prepareImage(imagePath, payloads.first().key)
-                media to if (media != null) media.metadata else readExifSoftly(imagePath)
+            var exif: ImageMetadata? = null
+            val bundle = timed(BackupStage.Thumbnails) {
+                UserUploadBuilder.build(
+                    exported.parts.map { part ->
+                        if (part.role == ExportedPartRole.PairedVideo) {
+                            UploadSource(part.path, part.contentType, libraryKind = LibraryKind.VIDEO, untouched = true)
+                        } else {
+                            UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE)
+                        }
+                    },
+                    PHOTOS_UPLOAD_OPTIONS,
+                    fileOps,
+                    onImageMetadata = { _, metadata -> exif = metadata },
+                ) { payloads[it].key }
+            }
+            val sealed = payloads.zip(bundle.payloads).mapIndexed { index, (encrypted, built) ->
+                // The hash above vouches for these bytes, so the builder must not have swapped in a copy.
+                check(built.filePath == exported.parts[index].path) { "the builder replaced ${built.key}" }
+                // The library's type outranks the bytes until ImageFormatDetector is tightened (UPLOADS.md section 7).
+                val contentType = encrypted.contentType.takeUnless { it.isBlank() || it == "application/octet-stream" } ?: built.contentType
+                encrypted.copy(contentType = contentType, descriptorContent = built.descriptorContent, previewThumbnail = built.previewThumbnail)
+                    .withSealedDescriptor(keyHeader.aesKey)
             }
             val metadata = photoMetadata(
                 uniqueId,
                 if (mediaType == BackupMediaType.LivePhoto) PhotobaseProtocol.LivePhotoDataType else PhotobaseProtocol.ImageDataType,
                 captureTimeMs(exif, row.createdAt),
-                PhotoContent(
-                    name = exported.fileName.truncateToCodePoints(MAX_PHOTO_NAME_CODE_POINTS),
-                    latitude = exif?.latitude,
-                    longitude = exif?.longitude,
-                    altitude = exif?.altitudeMeters,
-                    width = prepared?.displayedSize?.pixelWidth,
-                    height = prepared?.displayedSize?.pixelHeight,
-                ).withTiny(prepared?.tiny),
+                PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
+                bundle.previewThumbs.firstOrNull(),
             )
+            val keyByPayload = sealed.associate { it.key to KeyHeader(it.iv!!, keyHeader.aesKey) }
             val request = UploadFileRequest(
                 driveId = photosDriveId,
                 keyHeader = keyHeader,
                 metadata = metadata.encryptContent(keyHeader),
-                payloads = payloads.toList(),
-                thumbnails = prepared?.thumbnails.orEmpty().map { it.copy(thumbnailBytes = primaryKey.encryptDataAes(it.thumbnailBytes)) },
+                payloads = sealed,
+                thumbnails = bundle.thumbnails.map { it.copy(thumbnailBytes = keyByPayload.getValue(it.key).encryptDataAes(it.thumbnailBytes)) },
                 existingFileIsSuccess = true,
             )
             complete = true
@@ -82,35 +98,22 @@ class BackupRequestBuilder(
     private fun keyFor(role: ExportedPartRole) =
         if (role == ExportedPartRole.PairedVideo) PhotobaseProtocol.LivePhotoVideoPayloadKey else PhotobaseProtocol.ImagePayloadKey
 
-    // A format the decoder can't read is still worth keeping: the bytes back up without previews.
-    private suspend fun prepareImage(path: String, payloadKey: String): MediaImages? = try {
-        createMediaImages(path, fileOps, payloadKey, readMetadata = true)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Logger.w(tag = TAG, throwable = e) { "no thumbnails for $payloadKey" }
-        null
-    }
-
-    private suspend fun readExifSoftly(path: String) = try {
-        readImageMetadata(path, fileOps)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Logger.w(tag = TAG, throwable = e) { "no readable EXIF" }
-        null
-    }
-
-    private companion object {
-        const val TAG = "BackupRequestBuilder"
-    }
 }
+
+// The current format ahead of the switch: only this app has ever read the Photos drive.
+// Videos stay at Standard until Photos has its own video setting.
+internal val PHOTOS_UPLOAD_OPTIONS = UploadOptions(
+    quality = MediaQuality.ORIGINAL,
+    metadata = MetadataPolicy.KEEP,
+    currentFormat = true,
+    videoQuality = VideoQuality.STANDARD,
+)
 
 @OptIn(ExperimentalStdlibApi::class)
 internal fun digestsOf(row: DeviceBackupAsset): List<ByteArray> =
     row.contentHash.orEmpty().split(HashedAsset.CONTENT_HASH_SEPARATOR).map { it.hexToByteArray() }
 
-internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent) = UploadFileMetadata(
+internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent, tiny: EmbeddedThumb? = null) = UploadFileMetadata(
     allowDistribution = false,
     isEncrypted = true,
     accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
@@ -120,5 +123,6 @@ internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, cont
         dataType = dataType,
         userDate = userDateMs,
         content = OdinSystemSerializer.serialize(content),
+        previewThumbnail = tiny,
     ),
 )

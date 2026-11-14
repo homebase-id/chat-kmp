@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.lib.image.ImageFormatDetector
@@ -18,6 +19,9 @@ private const val OCTET_STREAM = "application/octet-stream"
 
 enum class MetadataPolicy { KEEP, STRIP }
 
+/** What a photo library already knows a file is, whatever type it arrives with. */
+enum class LibraryKind { IMAGE, VIDEO }
+
 /** One file a user uploads, as the app has it (UPLOADS.md section 4). */
 data class UploadSource(
     val path: String,
@@ -26,6 +30,9 @@ data class UploadSource(
     val pickedName: String? = null,
     /** The user's choice, never inferred. */
     val sticker: Boolean = false,
+    val libraryKind: LibraryKind? = null,
+    /** Video: nothing will transcode it, so what is sent is the user's own file. */
+    val untouched: Boolean = false,
     val waveformPath: String? = null,
     val audioLengthSeconds: Int? = null,
     val trimStartMs: Long? = null,
@@ -60,9 +67,14 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer? = null,
+        /** Given each image's EXIF, read in the decode that makes its thumbnails; passing it is what asks for the read. */
+        onImageMetadata: ((payloadKey: String, metadata: ImageMetadata) -> Unit)? = null,
         payloadKey: (index: Int) -> String,
     ): PayloadBundle {
-        val built = sources.mapIndexed { index, source -> buildOne(source, payloadKey(index), options, fileOps, pdfPageRenderer) }
+        val built = sources.mapIndexed { index, source ->
+            buildOne(source, payloadKey(index), options, fileOps, pdfPageRenderer, readImageMetadata = onImageMetadata != null)
+        }
+        if (onImageMetadata != null) built.forEach { b -> b.thumbs?.metadata?.let { onImageMetadata(b.payload.key, it) } }
         return PayloadBundle(
             payloads = built.map { it.payload.copy(previewThumbnail = it.thumbs?.preview) },
             thumbnails = built.flatMap { it.thumbs?.thumbnails.orEmpty() },
@@ -76,22 +88,24 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer?,
+        readImageMetadata: Boolean,
     ): Built {
-        require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || source.sticker)) {
+        val knownImage = source.sticker || source.libraryKind == LibraryKind.IMAGE
+        require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || knownImage)) {
             "appContent is for files; an image or audio payload would drop it"
         }
         // The bytes decide the type with the current format only: the detector's weaker signatures ("BM", AVIF's
         // mif1 brand) must be tightened before the switch flips (UPLOADS.md section 7).
         val untyped = source.contentType.isBlank() || source.contentType == OCTET_STREAM
-        val contentType = if (options.currentFormat && untyped) sniffed(source.path, fileOps) else source.contentType
+        val contentType = if (options.currentFormat && untyped && source.libraryKind == null) sniffed(source.path, fileOps) else source.contentType
         val name = source.pickedName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
         val oldName = source.pickedName?.let { safeFileName(it) }
         fun descriptor(current: () -> DescriptorContentV1, old: () -> String?) =
             if (options.currentFormat) current().encode() else old()
 
         return when {
-            // A sticker is an image whatever type it arrives with.
-            contentType.startsWith("image/") || source.sticker -> image(source, contentType, key, name, options, fileOps)
+            // A sticker or a library photo is an image whatever type it arrives with.
+            contentType.startsWith("image/") || knownImage -> image(source, contentType, key, name, options, fileOps, readImageMetadata)
             contentType.startsWith("audio/") -> Built(
                 PayloadFile(
                     key = key,
@@ -108,16 +122,17 @@ object UserUploadBuilder {
             else -> {
                 val kind = when {
                     source.appContent != null -> DescriptorContentV1.Kind.APP
-                    contentType.startsWith("video/") -> DescriptorContentV1.Kind.VIDEO
+                    contentType.startsWith("video/") || source.libraryKind == LibraryKind.VIDEO -> DescriptorContentV1.Kind.VIDEO
                     else -> DescriptorContentV1.Kind.FILE
                 }
+                val original = 1.takeIf { source.untouched && kind == DescriptorContentV1.Kind.VIDEO }
                 Built(
                     PayloadFile(
                         key = key,
                         filePath = source.path,
                         contentType = contentType,
                         descriptorContent = descriptor(
-                            { DescriptorContentV1(kind = kind, name = name, appContent = source.appContent) },
+                            { DescriptorContentV1(kind = kind, name = name, original = original, appContent = source.appContent) },
                             { source.appContent ?: oldName },
                         ),
                         trimStartMs = source.trimStartMs,
@@ -138,10 +153,14 @@ object UserUploadBuilder {
         name: String?,
         options: UploadOptions,
         fileOps: FileOperationsProvider,
+        readImageMetadata: Boolean,
     ): Built {
-        val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker)
+        val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker, readMetadata = readImageMetadata)
         val finalPath = UploadImages.finalImagePath(thumbs, fileOps)
-        val sniffedType = thumbs.sourceFormat?.takeIf { options.currentFormat && it.startsWith("image/") }
+        // A library image skipped the read up front: the decode names its type, and only a failed decode needs the header.
+        val untypedLibraryImage = source.libraryKind == LibraryKind.IMAGE && (declaredType.isBlank() || declaredType == OCTET_STREAM)
+        val bytesType = if (!options.currentFormat) null else thumbs.sourceFormat ?: if (untypedLibraryImage) sniffed(source.path, fileOps) else null
+        val sniffedType = bytesType?.takeIf { it.startsWith("image/") }
         val contentType = if (finalPath != null) "image/webp" else sniffedType ?: declaredType
 
         // Quality is recorded only for an HD or Original photo that really is one, and never for a

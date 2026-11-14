@@ -77,6 +77,21 @@ class PhotoGalleryStoreTest {
     private fun List<PhotoGalleryItem>.dates() = map { it.capturedAtMs }
 
     @Test
+    fun aVideosPlaylistPayloadIsNeverTheOneShown() {
+        val file = galleryTestFile(1).let {
+            it.copy(
+                fileMetadata = it.fileMetadata.copy(
+                    payloads = listOf(
+                        PayloadDescriptor(key = "pls_0000", contentType = "application/vnd.apple.mpegurl"),
+                        PayloadDescriptor(key = PhotobaseProtocol.VideoPayloadKey, contentType = "video/mp4"),
+                    ),
+                ),
+            )
+        }
+        assertEquals(PhotobaseProtocol.VideoPayloadKey, file.toGalleryItem()!!.payload.key)
+    }
+
+    @Test
     fun stoppingCancelsAFetchSoItCantWriteAfterTheWipe() = runTest {
         val backend = Backend(
             server = mapOf(
@@ -262,7 +277,7 @@ class PhotoGalleryStoreTest {
     private fun photo(capturedAtMs: Long) = galleryTestFile(capturedAtMs)
 }
 
-internal fun galleryTestFile(capturedAtMs: Long, content: String? = null, fileId: Uuid = Uuid.random()) = HomebaseFile(
+internal fun galleryTestFile(capturedAtMs: Long, fileId: Uuid = Uuid.random(), payload: PayloadDescriptor = PayloadDescriptor(key = PhotobaseProtocol.ImagePayloadKey, contentType = "image/jpeg")) = HomebaseFile(
     fileId = fileId,
     driveId = PhotobaseProtocol.DriveAlias,
     fileState = FileState.Active,
@@ -273,9 +288,8 @@ internal fun galleryTestFile(capturedAtMs: Long, content: String? = null, fileId
             fileType = PhotobaseProtocol.PhotoFileType,
             dataType = PhotobaseProtocol.ImageDataType,
             userDate = capturedAtMs,
-            content = content,
         ),
-        payloads = listOf(PayloadDescriptor(key = PhotobaseProtocol.ImagePayloadKey, contentType = "image/jpeg")),
+        payloads = listOf(payload),
     ),
     serverMetadata = ServerMetadata(),
 )

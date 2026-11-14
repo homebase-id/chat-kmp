@@ -3,6 +3,7 @@ package id.homebase.upload
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContentSeal
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.serialization.Base64Bytes
@@ -53,12 +54,8 @@ class UploadService(
         } catch (e: SourceUnavailableException) {
             return UploadOutcome.SourceMissing(listOf(e.path))
         }
-        val metadata = spec.metadataFromBundle?.invoke(fullBundle) ?: spec.metadata
-        val encryptedBundle = when {
-            spec.omitThumbnails -> fullBundle.withoutThumbnails()
-            spec.omitPlaintextPreviews -> fullBundle.withoutPlaintextPreviews()
-            else -> fullBundle
-        }
+        val metadata = spec.metadata
+        val encryptedBundle = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
 
         // 2. Build the request with shared-secret-encrypted metadata content.
         val request = UploadFileRequest(
@@ -66,7 +63,7 @@ class UploadService(
             keyHeader = spec.keyHeader,
             metadata = metadata.encryptContent(spec.keyHeader),
             transitOptions = spec.transit,
-            payloads = sealed(encryptedBundle.payloads, spec.keyHeader, metadata.isEncrypted),
+            payloads = sealed(encryptedBundle.payloads, spec.keyHeader, metadata.isEncrypted, spec.sealDescriptorContent),
             thumbnails = encryptedBundle.thumbnails,
             existingFileIsSuccess = spec.existingFileIsSuccess,
             fileSystemType = spec.requestFileSystemType,
@@ -124,12 +121,9 @@ class UploadService(
     }
 
     // Copies too: the device keeps descriptor content opened, so a forward starts from the readable form.
-    private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader, encrypted: Boolean): List<PayloadFile> {
-        if (!sealDescriptorContent || !encrypted) return payloads
-        return payloads.map { payload ->
-            val content = payload.descriptorContent?.takeIf { it.isNotBlank() } ?: return@map payload
-            payload.copy(descriptorContent = DescriptorContentSeal.seal(content, keyHeader.aesKey))
-        }
+    private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader, encrypted: Boolean, always: Boolean = false): List<PayloadFile> {
+        if (!encrypted || !(sealDescriptorContent || always)) return payloads
+        return payloads.map { it.withSealedDescriptor(keyHeader.aesKey) }
     }
 
     /**
@@ -250,3 +244,9 @@ private fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
             },
         )
     }.ifEmpty { null }
+
+/** [this] with its descriptor content sealed for an encrypted file (UPLOADS.md section 2); nothing to seal when it has none. */
+suspend fun PayloadFile.withSealedDescriptor(aesKey: SecureByteArray): PayloadFile {
+    val content = descriptorContent?.takeIf { it.isNotBlank() } ?: return this
+    return copy(descriptorContent = DescriptorContentSeal.seal(content, aesKey))
+}

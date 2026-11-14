@@ -26,11 +26,6 @@ data class MediaUploadSpec(
     val bundle: PayloadBundle?,
     /** Unencrypted metadata; UploadService encrypts a copy for the request. */
     val metadata: UploadFileMetadata,
-    /**
-     * For metadata that carries something only encryption produces, like the tiny preview video
-     * processing makes. Sees the bundle before [omitPlaintextPreviews] drops it, and replaces [metadata].
-     */
-    val metadataFromBundle: ((PayloadBundle) -> UploadFileMetadata)? = null,
     val transit: TransitOptions? = null,
     val dependencyUniqueId: Uuid? = null,
     val priority: Long = 1,
@@ -53,8 +48,8 @@ data class MediaUploadSpec(
     val seedCache: Boolean = true,
     /** Drop every thumbnail and preview, including the ones video processing generates during encryption. */
     val omitThumbnails: Boolean = false,
-    /** Drop the plaintext previews video processing embeds and keep the encrypted thumbnails: the drive stays zero knowledge. */
-    val omitPlaintextPreviews: Boolean = false,
     /** See [UploadFileRequest.existingFileIsSuccess]. */
     val existingFileIsSuccess: Boolean = false,
+    /** For an app that writes the current descriptor format ahead of the switch: seal it whatever the switch says. */
+    val sealDescriptorContent: Boolean = false,
 )
