@@ -119,12 +119,13 @@ data class DescriptorContentV1(
 /** The descriptor content of an encrypted HomebaseFile: `{"e": base64(0x01 ‖ zkLock)}` (UPLOADS.md section 2). */
 object DescriptorContentSeal {
     private const val FORMAT: Byte = 1
+    private const val FORMAT_BYTES = 1
     private val strict = Json
 
     @Serializable
     private class Sealed(val e: String)
 
-    fun sealedLength(plaintextBytes: Int): Int = WRAPPER.length + 4 * ((plaintextBytes + 1 + ZkLock.OVERHEAD + 2) / 3)
+    fun sealedLength(plaintextBytes: Int): Int = WRAPPER.length + 4 * ((plaintextBytes + FORMAT_BYTES + ZkLock.OVERHEAD + 2) / 3)
 
     /** Whether [content] fits the server's limit, as it is or once [sealed]. */
     fun fits(content: String, sealed: Boolean): Boolean {

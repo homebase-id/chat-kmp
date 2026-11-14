@@ -66,7 +66,7 @@ class ArchitectureTest {
         // ServerFile opens sealed descriptors on arrival; the video step learns its facts while transcoding.
         val writers = setOf("UserUploadBuilder", "DescriptorContentV1", "PayloadDescriptor", "VideoPayloadProcessor", "ServerFile")
         val builds = Regex("""DescriptorContentV1\s*\(|descriptorContentFrom[A-Z]\w*\s*\(""")
-        val assignment = Regex("""\bdescriptorContent\s*=\s*([^\n,)]+)""")
+        val assignment = Regex("""\bdescriptorContent\s*=(?!=)\s*([^\n,)]+)""")
         val copyThrough = Regex("""^(null|[\w?.!]*\.descriptorContent|(UserUploadBuilder|DescriptorContentSeal)\.\w+\(.*)$""")
         val others = productionFiles.filter { it.name !in writers }
         assertTrue(others.size > 100, "guard matched too few files; update the path filter")

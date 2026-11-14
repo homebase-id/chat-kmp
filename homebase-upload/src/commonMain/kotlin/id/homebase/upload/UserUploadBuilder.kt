@@ -63,7 +63,7 @@ object UserUploadBuilder {
 
     private class Built(val payload: PayloadFile, val thumbs: ThumbnailResult?)
 
-    /** An app's own data on a payload: the first of [tries] that fits; null when none does, so a preview goes without its text. */
+    /** An app's own data on a payload: the first of [tries] that fits; null when none does, and the receiver shows a plain link or pin. */
     fun appDescriptor(vararg tries: String, currentFormat: Boolean = DescriptorContentV1.WRITE): String? =
         tries.asSequence()
             .map { if (currentFormat) DescriptorContentV1(kind = DescriptorContentV1.Kind.APP, appContent = it).encode() else it }

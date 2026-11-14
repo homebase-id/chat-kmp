@@ -68,10 +68,12 @@ private fun validatePayload(payload: PayloadFile) {
     payload.previewThumbnail?.let { thumb ->
         validateEmbeddedThumb(thumb, where = "payload[${payload.key}].previewThumbnail")
     }
-    payload.descriptorContent?.takeUnless { DescriptorContentSeal.fits(it, sealed = false) }?.let { descriptor ->
-        throw validationFailure(
-            "Payload descriptor size of ${descriptor.encodeToByteArray().size} exceeds ${HomebaseProtocol.MaxPayloadDescriptorBytes}"
-        )
+    payload.descriptorContent?.let { descriptor ->
+        if (!DescriptorContentSeal.fits(descriptor, sealed = false)) {
+            throw validationFailure(
+                "Payload descriptor size of ${descriptor.encodeToByteArray().size} exceeds ${HomebaseProtocol.MaxPayloadDescriptorBytes}"
+            )
+        }
     }
 }
 

@@ -32,7 +32,7 @@ object ZkLock {
     }
 
     suspend fun open(locked: ByteArray, key: ByteArray): ByteArray {
-        if (locked.size <= IV_LENGTH + TAG_LENGTH) throw ZkOpenException("Not a zkLock value")
+        if (locked.size <= OVERHEAD) throw ZkOpenException("Not a zkLock value")
         return opening { AesGcm.decrypt(locked.copyOfRange(IV_LENGTH, locked.size), key, locked.copyOf(IV_LENGTH)) }
     }
 }
