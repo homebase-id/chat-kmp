@@ -8,10 +8,9 @@ import kotlinx.datetime.toInstant
 import kotlinx.serialization.Serializable
 
 /**
- * The header content of a photo file, encrypted with it: what a gallery needs without the payload and
- * that has no other home. The capture date rides in `userDate`, the id in `uniqueId`; the name and pixel
- * size are in the payload's descriptor content (UPLOADS.md). The tiny preview lives here rather than in
- * the plaintext previewThumbnail field, so the drive stays zero knowledge.
+ * The header content of a photo file, encrypted with it. The capture date rides in `userDate`, the
+ * id in `uniqueId`. The tiny preview lives here rather than in the plaintext previewThumbnail
+ * field, so the drive stays zero knowledge.
  */
 @Serializable
 data class PhotoContent(
@@ -19,8 +18,6 @@ data class PhotoContent(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val altitude: Double? = null,
-    val cameraMake: String? = null,
-    val cameraModel: String? = null,
     val tiny: Base64Bytes? = null,
     val tinyWidth: Int? = null,
     val tinyHeight: Int? = null,

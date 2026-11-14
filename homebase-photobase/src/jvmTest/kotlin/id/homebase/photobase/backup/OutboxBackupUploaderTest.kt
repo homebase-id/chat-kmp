@@ -160,7 +160,6 @@ class OutboxBackupUploaderTest {
         val payloadKey = KeyHeader(payload.iv!!, request.keyHeader.aesKey)
         assertContentEquals(bytes, payloadKey.decrypt(File(payload.filePath).readBytes()))
         assertEquals("image/jpeg", payload.contentType)
-        assertFalse(payload.stripMetadata)
         assertNull(payload.previewThumbnail)
 
         val descriptor = assertNotNull(request.opened(payload))

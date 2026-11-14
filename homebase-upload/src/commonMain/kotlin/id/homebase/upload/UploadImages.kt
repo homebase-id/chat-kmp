@@ -31,7 +31,7 @@ data class ThumbnailResult(
     /** What a Standard or HD send should carry instead of the file, made from the same decode. */
     val finalImage: RenderedImage? = null,
     val displayedSize: ImageSize? = null,
-    /** Read only when asked for: GPS, capture time and camera, for an app that keeps them beside the file. */
+    /** Read only when asked for. */
     val metadata: ImageMetadata? = null,
 )
 

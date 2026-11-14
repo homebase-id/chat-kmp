@@ -3,16 +3,12 @@ package id.homebase.photobase.backup
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.MediaQuality
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.video.VideoQuality
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.upload.MediaUploadSpec
-import id.homebase.upload.MetadataPolicy
-import id.homebase.upload.UploadOptions
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
 import id.homebase.upload.UploadSource
@@ -100,7 +96,7 @@ class OutboxBackupUploader(
             keyHeader = KeyHeader.newRandom16(),
             bundle = UserUploadBuilder.build(
                 listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName)),
-                VIDEO_OPTIONS,
+                PHOTOS_UPLOAD_OPTIONS,
                 fileOps,
             ) { PhotobaseProtocol.VideoPayloadKey },
             metadata = videoMetadata(null),
@@ -122,13 +118,5 @@ class OutboxBackupUploader(
 
     private companion object {
         const val BULK_STREAMS = 2
-
-        // The current format ahead of the switch, like the photos. Standard until Photos has its own video setting.
-        val VIDEO_OPTIONS = UploadOptions(
-            quality = MediaQuality.ORIGINAL,
-            metadata = MetadataPolicy.KEEP,
-            currentFormat = true,
-            videoQuality = VideoQuality.STANDARD,
-        )
     }
 }

@@ -243,7 +243,7 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 - `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable. Descriptor content already in the current format is sealed whatever the switch says.
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
-- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder with the EXIF read on, then keep their own encrypt-and-hash step and seal the descriptors themselves; videos go through `UploadService`. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content; `PhotoContent`, the file's encrypted header content, keeps what has no other home (GPS, camera make and model, the tiny).
+- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder with the EXIF read on, then keep their own encrypt-and-hash step and seal the descriptors themselves; videos go through `UploadService`. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content; `PhotoContent`, the file's encrypted header content, keeps what has no other home (GPS, the tiny).
 - Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, and `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app
@@ -281,7 +281,7 @@ Old files are never rewritten.
 
 **Before the switch flips:**
 
-- **Seal where every encrypted upload passes.** `UploadService` seals today, but chat's re-send (`ChatMessageSenderService.resendAsCreate`/`resendAsUpdate`) and other callers enqueue requests themselves. Move sealing to the upload providers, where the manifest is built for the server with the file's key at hand, so every encrypted upload is covered.
+- **Seal where every encrypted upload passes.** `UploadService` seals today, but chat's re-send (`ChatMessageSenderService.resendAsCreate`/`resendAsUpdate`) and other callers enqueue requests themselves; Photos' `BackupRequestBuilder` seals its own for now, and stops when this lands. Move sealing to the upload providers, where the manifest is built for the server with the file's key at hand, so every encrypted upload is covered.
 - **The guard (section 8) allows `VideoPayloadProcessor`** to write video descriptor content, or the processor hands back facts and the encryption step writes it.
 - **The other uploaders move onto the builder** (sections 4 and 5), so nothing still writes the old format.
 - **Tighten `ImageFormatDetector` before the bytes decide a type.** With the switch on, an untyped file is sniffed and an image's own format replaces its declared type. Today a file starting with "BM" reads as BMP and an AVIF with the `mif1` brand as HEIC; they need real signatures first.

@@ -3,6 +3,7 @@ package id.homebase.upload
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContentSeal
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.serialization.Base64Bytes
@@ -128,9 +129,9 @@ class UploadService(
     private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader, encrypted: Boolean): List<PayloadFile> {
         if (!encrypted) return payloads
         return payloads.map { payload ->
-            val content = payload.descriptorContent?.takeIf { it.isNotBlank() } ?: return@map payload
-            if (!sealDescriptorContent && !DescriptorContentV1.isCurrentFormat(content)) return@map payload
-            payload.copy(descriptorContent = DescriptorContentSeal.seal(content, keyHeader.aesKey))
+            val content = payload.descriptorContent
+            if (!sealDescriptorContent && (content == null || !DescriptorContentV1.isCurrentFormat(content))) return@map payload
+            payload.withSealedDescriptor(keyHeader.aesKey)
         }
     }
 
@@ -252,3 +253,9 @@ private fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
             },
         )
     }.ifEmpty { null }
+
+/** [this] with its descriptor content sealed for an encrypted file (UPLOADS.md section 2); nothing to seal when it has none. */
+suspend fun PayloadFile.withSealedDescriptor(aesKey: SecureByteArray): PayloadFile {
+    val content = descriptorContent?.takeIf { it.isNotBlank() } ?: return this
+    return copy(descriptorContent = DescriptorContentSeal.seal(content, aesKey))
+}

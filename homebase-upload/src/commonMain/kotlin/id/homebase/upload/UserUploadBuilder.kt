@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.lib.image.ImageFormatDetector
@@ -44,8 +45,6 @@ data class UploadOptions(
     val currentFormat: Boolean = DescriptorContentV1.WRITE,
     /** Until an original video can be sent untouched, an app may keep its own transcode tier. */
     val videoQuality: VideoQuality = quality.toVideoQuality(),
-    /** Also read each image's EXIF, in the decode that makes its thumbnails ([PayloadBundle.imageMetadata]). */
-    val readImageMetadata: Boolean = false,
 )
 
 /** Renders a PDF's first page, [width] px wide, for its thumbnails; the renderer lives above this module. */
@@ -64,14 +63,18 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer? = null,
+        /** Given each image's EXIF, read in the decode that makes its thumbnails; passing it is what asks for the read. */
+        onImageMetadata: ((payloadKey: String, metadata: ImageMetadata) -> Unit)? = null,
         payloadKey: (index: Int) -> String,
     ): PayloadBundle {
-        val built = sources.mapIndexed { index, source -> buildOne(source, payloadKey(index), options, fileOps, pdfPageRenderer) }
+        val built = sources.mapIndexed { index, source ->
+            buildOne(source, payloadKey(index), options, fileOps, pdfPageRenderer, readImageMetadata = onImageMetadata != null)
+        }
+        if (onImageMetadata != null) built.forEach { b -> b.thumbs?.metadata?.let { onImageMetadata(b.payload.key, it) } }
         return PayloadBundle(
             payloads = built.map { it.payload.copy(previewThumbnail = it.thumbs?.preview) },
             thumbnails = built.flatMap { it.thumbs?.thumbnails.orEmpty() },
             previewThumbs = built.mapNotNull { it.thumbs?.preview },
-            imageMetadata = built.mapNotNull { b -> b.thumbs?.metadata?.let { b.payload.key to it } }.toMap(),
         )
     }
 
@@ -81,6 +84,7 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer?,
+        readImageMetadata: Boolean,
     ): Built {
         val knownImage = source.sticker || source.image
         require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || knownImage)) {
@@ -97,7 +101,7 @@ object UserUploadBuilder {
 
         return when {
             // A sticker or a library photo is an image whatever type it arrives with.
-            contentType.startsWith("image/") || knownImage -> image(source, contentType, key, name, options, fileOps)
+            contentType.startsWith("image/") || knownImage -> image(source, contentType, key, name, options, fileOps, readImageMetadata)
             contentType.startsWith("audio/") -> Built(
                 PayloadFile(
                     key = key,
@@ -144,8 +148,9 @@ object UserUploadBuilder {
         name: String?,
         options: UploadOptions,
         fileOps: FileOperationsProvider,
+        readImageMetadata: Boolean,
     ): Built {
-        val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker, readMetadata = options.readImageMetadata)
+        val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker, readMetadata = readImageMetadata)
         val finalPath = UploadImages.finalImagePath(thumbs, fileOps)
         val sniffedType = thumbs.sourceFormat?.takeIf { options.currentFormat && it.startsWith("image/") }
         val contentType = if (finalPath != null) "image/webp" else sniffedType ?: declaredType
