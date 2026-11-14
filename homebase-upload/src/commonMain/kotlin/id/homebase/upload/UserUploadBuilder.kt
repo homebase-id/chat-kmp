@@ -82,8 +82,7 @@ object UserUploadBuilder {
         payloadKey: (index: Int) -> String,
     ): PayloadBundle {
         val built = sources.mapIndexed { index, source ->
-            buildOne(source, payloadKey(index), options, fileOps, pdfPageRenderer, readImageMetadata = onImageMetadata != null)
-                .let { if (!source.untouched && it.isOriginalVideo(options)) withPlayableCopy(it.payload, index, source, options) else it }
+            buildOne(source, index, payloadKey(index), options, fileOps, pdfPageRenderer, readImageMetadata = onImageMetadata != null)
         }
         if (onImageMetadata != null) built.forEach { b -> b.thumbs?.metadata?.let { onImageMetadata(b.payload.key, it) } }
         return PayloadBundle(
@@ -95,6 +94,7 @@ object UserUploadBuilder {
 
     private suspend fun buildOne(
         source: UploadSource,
+        index: Int,
         key: String,
         options: UploadOptions,
         fileOps: FileOperationsProvider,
@@ -134,23 +134,35 @@ object UserUploadBuilder {
                     contentType.startsWith("video/") || source.libraryKind == LibraryKind.VIDEO -> DescriptorContentV1.Kind.VIDEO
                     else -> DescriptorContentV1.Kind.FILE
                 }
-                val original = 1.takeIf { source.untouched && kind == DescriptorContentV1.Kind.VIDEO }
-                Built(
-                    PayloadFile(
-                        key = key,
-                        filePath = source.path,
-                        contentType = contentType,
-                        descriptorContent = descriptor(
-                            { DescriptorContentV1(kind = kind, name = name, original = original).withFittingAppContent(source.appContent) },
-                            { source.appContent ?: oldName },
-                        ),
-                        trimStartMs = source.trimStartMs,
-                        trimEndMs = source.trimEndMs,
-                        inputBlobUrl = source.inputBlobUrl,
-                        videoQuality = options.videoQuality,
-                        stripMetadata = options.metadata == MetadataPolicy.STRIP,
+                val isVideo = kind == DescriptorContentV1.Kind.VIDEO
+                // The user's file goes untouched with a copy to play, transcoded in the encryption step as any video.
+                val copyKey = HomebaseProtocol.playableCopyPayloadKey(index).takeIf { isVideo && options.originalVideo && !source.untouched }
+                if (copyKey != null) {
+                    require(options.currentFormat && options.metadata == MetadataPolicy.KEEP) { "an untouched original video is for an app that keeps metadata, in the current format" }
+                }
+                val original = 1.takeIf { isVideo && (source.untouched || copyKey != null) }
+                val payload = PayloadFile(
+                    key = key,
+                    filePath = source.path,
+                    contentType = contentType,
+                    descriptorContent = descriptor(
+                        {
+                            DescriptorContentV1(kind = kind, name = name, original = original, video = copyKey?.let { DescriptorContentV1.Video(playableCopyKey = it) })
+                                .withFittingAppContent(source.appContent)
+                        },
+                        { source.appContent ?: oldName },
                     ),
+                    trimStartMs = source.trimStartMs,
+                    trimEndMs = source.trimEndMs,
+                    inputBlobUrl = source.inputBlobUrl,
+                    videoQuality = options.videoQuality,
+                    stripMetadata = options.metadata == MetadataPolicy.STRIP,
+                    skipVideoProcessing = copyKey != null,
+                )
+                Built(
+                    payload,
                     pdfPageRenderer?.takeIf { contentType == "application/pdf" }?.let { UploadImages.fromPdf(source.path, key, it) },
+                    copyKey?.let { payload.copy(key = it, descriptorContent = DescriptorContentV1(kind = kind).encode(), skipVideoProcessing = false) },
                 )
             }
         }
@@ -217,28 +229,6 @@ object UserUploadBuilder {
                 stripMetadata = options.metadata == MetadataPolicy.STRIP,
             ),
             thumbs,
-        )
-    }
-
-    private fun Built.isOriginalVideo(options: UploadOptions) =
-        options.originalVideo && DescriptorContentV1.parseOrNull(payload.descriptorContent.orEmpty())?.kind == DescriptorContentV1.Kind.VIDEO
-
-    // The user's file goes untouched, so nothing transcodes it; the copy is transcoded in the encryption step as any video.
-    private fun withPlayableCopy(original: PayloadFile, index: Int, source: UploadSource, options: UploadOptions): Built {
-        require(options.currentFormat && options.metadata == MetadataPolicy.KEEP) { "an untouched original video is for an app that keeps metadata, in the current format" }
-        val copyKey = HomebaseProtocol.playableCopyPayloadKey(index)
-        val descriptor = DescriptorContentV1.parseOrNull(original.descriptorContent.orEmpty())!!
-        return Built(
-            payload = original.copy(
-                descriptorContent = descriptor.copy(original = 1, video = DescriptorContentV1.Video(playableCopyKey = copyKey)).encode(),
-                skipVideoProcessing = true,
-            ),
-            thumbs = null,
-            playableCopy = original.copy(
-                key = copyKey,
-                descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO).encode(),
-                inputBlobUrl = source.inputBlobUrl,
-            ),
         )
     }
 

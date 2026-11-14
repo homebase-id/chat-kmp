@@ -32,22 +32,22 @@ data class PayloadDescriptor(
             key.startsWith(HomebaseProtocol.PlayableCopyKeyPrefix)
 
     /** The payload to play for this one: its playable copy when it is an untouched original (UPLOADS.md section 3.6). */
-    fun playableCopyKey(): String? =
-        descriptorContent?.takeIf(DescriptorContentV1::isCurrentFormat)?.let(DescriptorContentV1::parseOrNull)?.video?.playableCopyKey
+    fun playableCopyKey(): String? = current?.video?.playableCopyKey
 
     fun keyEquals(otherKey: String): Boolean {
         return key.equals(otherKey, ignoreCase = true)
     }
 
     // Parsed once per payload: bubbles and list rows ask on every recomposition.
+    private val current: DescriptorContentV1? by lazy(LazyThreadSafetyMode.PUBLICATION) { descriptorContent?.let(DescriptorContentV1::parseOrNull) }
     private val info: DescriptorContent by lazy(LazyThreadSafetyMode.PUBLICATION) { parseDescriptorContent() }
 
     fun descriptorInfo(): DescriptorContent = info
 
     private fun parseDescriptorContent(): DescriptorContent {
         // Current format this client can't read: Empty, so the JSON never shows up as a name.
-        descriptorContent?.takeIf(DescriptorContentV1::isCurrentFormat)?.let {
-            return DescriptorContentV1.parseOrNull(it)?.toDescriptorContent() ?: DescriptorContent.Empty
+        if (descriptorContent?.let(DescriptorContentV1::isCurrentFormat) == true) {
+            return current?.toDescriptorContent() ?: DescriptorContent.Empty
         }
         return when {
             descriptorContent == null -> {
@@ -141,7 +141,7 @@ data class PayloadDescriptor(
 
     // Link, location and note previews: `x` in the current format, the whole string in older ones.
     fun appContent(): String? = descriptorContent?.let { content ->
-        if (DescriptorContentV1.isCurrentFormat(content)) DescriptorContentV1.parseOrNull(content)?.appContent else content
+        if (DescriptorContentV1.isCurrentFormat(content)) current?.appContent else content
     }
 
     fun isImage(): Boolean = contentType?.startsWith("image/") == true

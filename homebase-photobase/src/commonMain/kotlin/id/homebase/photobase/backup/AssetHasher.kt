@@ -45,6 +45,10 @@ class AssetHasher(
 
     suspend fun forgetAll() = exports.forgetAll()
 
+    /** Whether [part] still holds the bytes hashed as [expected]; a hashed copy is those very files. */
+    suspend fun matches(exported: ExportedAsset, part: ExportedPart, expected: ByteArray): Boolean =
+        exported.isHashedCopy || digest(part.path).contentEquals(expected)
+
     suspend fun digest(path: String, onBytes: (Int) -> Unit = {}): ByteArray {
         val hasher = Blake3Hasher()
         fileOps.readFileAsFlow(path).onEach {

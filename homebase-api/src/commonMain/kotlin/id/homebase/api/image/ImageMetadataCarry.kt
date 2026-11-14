@@ -36,27 +36,21 @@ internal object ExifTiff {
         if (t.u16(2) != 42) return null
         val ifd0 = t.u32(4)
         val count0 = t.entryCount(ifd0) ?: return null
-        var dataEnd = ifd0 + 2 + count0 * 12 + 4
-        val subIfds = mutableListOf<Int>()
-        for (e in 0 until count0) {
-            val entry = ifd0 + 2 + e * 12
-            when (t.u16(entry)) {
-                ORIENTATION -> t.put16(entry + 8, 1)
-                EXIF_IFD, GPS_IFD -> subIfds += t.u32(entry + 8)
-            }
-            dataEnd = maxOf(dataEnd, t.valueEnd(entry) ?: return null)
-        }
-        var k = 0
-        while (k < subIfds.size) {
-            val ifd = subIfds[k++]
+        var dataEnd = 0
+        val ifds = ArrayDeque(listOf(ifd0))
+        val seen = mutableSetOf<Int>()
+        while (ifds.isNotEmpty()) {
+            val ifd = ifds.removeFirst()
+            if (!seen.add(ifd)) continue
             val count = t.entryCount(ifd) ?: return null
             dataEnd = maxOf(dataEnd, ifd + 2 + count * 12 + 4)
             for (e in 0 until count) {
                 val entry = ifd + 2 + e * 12
                 when (t.u16(entry)) {
+                    ORIENTATION -> t.put16(entry + 8, 1)
                     PIXEL_X -> t.putNumber(entry, width)
                     PIXEL_Y -> t.putNumber(entry, height)
-                    INTEROP_IFD -> subIfds += t.u32(entry + 8)
+                    EXIF_IFD, GPS_IFD, INTEROP_IFD -> ifds += t.u32(entry + 8)
                 }
                 dataEnd = maxOf(dataEnd, t.valueEnd(entry) ?: return null)
             }
@@ -69,17 +63,9 @@ internal object ExifTiff {
     }
 
     private class Tiff(val b: ByteArray, val little: Boolean) {
-        fun u16(at: Int): Int {
-            val a = b[at].toInt() and 0xFF
-            val c = b[at + 1].toInt() and 0xFF
-            return if (little) (c shl 8) or a else (a shl 8) or c
-        }
+        fun u16(at: Int): Int = readU16(b, at, little)
 
-        fun u32(at: Int): Int = if (little) {
-            (u16(at + 2) shl 16) or u16(at)
-        } else {
-            (u16(at) shl 16) or u16(at + 2)
-        }
+        fun u32(at: Int): Int = readU32(b, at, little)
 
         fun put16(at: Int, v: Int) {
             val lo = (v and 0xFF).toByte()
@@ -128,25 +114,36 @@ internal object WebpMetadata {
     private const val FLAG_XMP = 0x04
     private const val FLAG_ALPHA = 0x10
     private const val CHUNKS_START = 12
+    private const val VP8X_CHUNK_SIZE = 18
 
-    /** [webp] with [exif] and [xmp] chunks and the extended header that announces them. */
+    /** [webp] with [exif] and [xmp] chunks and the extended header that announces them, in one allocation. */
     fun embed(webp: ByteArray, exif: ByteArray?, xmp: ByteArray?, width: Int, height: Int): ByteArray {
         if (webp.size <= CHUNKS_START + 8 || fourCc(webp, 0) != "RIFF" || fourCc(webp, 8) != "WEBP") return webp
         val flags = (if (exif != null) FLAG_EXIF else 0) or (if (xmp != null) FLAG_XMP else 0)
-        val tail = (exif?.let { chunk("EXIF", it) } ?: ByteArray(0)) + (xmp?.let { chunk("XMP ", it) } ?: ByteArray(0))
-        val body = webp.copyOfRange(CHUNKS_START, webp.size)
-        val out = if (fourCc(webp, CHUNKS_START) == "VP8X") {
-            body.copyOf().also { it[8] = ((it[8].toInt() and 0xFF) or flags).toByte() } + tail
+        val extended = fourCc(webp, CHUNKS_START) == "VP8X"
+        val exifChunk = exif?.let { webpChunk("EXIF", it) }
+        val xmpChunk = xmp?.let { webpChunk("XMP ", it) }
+        val bodySize = webp.size - CHUNKS_START
+        val out = ByteArray(CHUNKS_START + (if (extended) 0 else VP8X_CHUNK_SIZE) + bodySize + (exifChunk?.size ?: 0) + (xmpChunk?.size ?: 0))
+        webp.copyInto(out, 0, 0, CHUNKS_START)
+        writeLe32(out, 4, out.size - 8)
+        var at = CHUNKS_START
+        if (extended) {
+            webp.copyInto(out, at, CHUNKS_START, webp.size)
+            out[at + 8] = ((out[at + 8].toInt() and 0xFF) or flags).toByte()
         } else {
-            val alpha = if (fourCc(webp, CHUNKS_START) == "VP8L" && hasVp8lAlpha(webp)) FLAG_ALPHA else 0
             val header = ByteArray(10)
-            header[0] = (flags or alpha).toByte()
+            header[0] = (flags or (if (fourCc(webp, CHUNKS_START) == "VP8L" && hasVp8lAlpha(webp)) FLAG_ALPHA else 0)).toByte()
             put24(header, 4, width - 1)
             put24(header, 7, height - 1)
-            chunk("VP8X", header) + body + tail
+            webpChunk("VP8X", header).copyInto(out, at)
+            at += VP8X_CHUNK_SIZE
+            webp.copyInto(out, at, CHUNKS_START, webp.size)
         }
-        val riff = "RIFF".encodeToByteArray() + le32(4 + out.size) + "WEBP".encodeToByteArray()
-        return riff + out
+        at += bodySize
+        exifChunk?.copyInto(out, at)?.also { at += exifChunk.size }
+        xmpChunk?.copyInto(out, at)
+        return out
     }
 
     // The VP8L header's alpha_is_used bit, after the 0x2f signature and two 14-bit sizes.
@@ -156,16 +153,7 @@ internal object WebpMetadata {
         return (webp[at + 3].toInt() and 0x10) != 0
     }
 
-    private fun chunk(type: String, data: ByteArray): ByteArray {
-        val padded = if (data.size % 2 == 1) data + byteArrayOf(0) else data
-        return type.encodeToByteArray() + le32(data.size) + padded
-    }
-
-    private fun le32(v: Int) = ByteArray(4) { (v ushr (8 * it)).toByte() }
-
     private fun put24(b: ByteArray, at: Int, v: Int) {
         for (i in 0..2) b[at + i] = (v ushr (8 * i)).toByte()
     }
-
-    private fun fourCc(b: ByteArray, at: Int) = b.decodeToString(at, at + 4)
 }

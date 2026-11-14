@@ -11,9 +11,8 @@ import id.homebase.resources.photobase_backup_video_quality
 import id.homebase.resources.photobase_backup_photo_quality
 import org.jetbrains.compose.resources.StringResource
 import id.homebase.api.image.MediaQuality
+import id.homebase.core.settings.MediaQualityOptions
 import id.homebase.core.settings.label
-import id.homebase.core.widget.SettingsOptionRow
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.fadeIn
@@ -280,22 +279,13 @@ private fun QualityRow(
         action = SettingsRowAction.Expand(expanded = expanded, onExpandedChange = { expanded = it }),
     )
     AnimatedVisibility(visible = expanded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-        Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
-            MediaQuality.entries.forEach { quality ->
-                SettingsOptionRow(
-                    label = stringResource(quality.label),
-                    supportingText = stringResource(description(quality)),
-                    selected = quality == selected,
-                    onClick = { onSelect(quality) },
-                )
-            }
-            Text(
-                text = stringResource(MR.string.photobase_backup_quality_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
+        MediaQualityOptions(
+            selected = selected,
+            description = description,
+            note = MR.string.photobase_backup_quality_note,
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

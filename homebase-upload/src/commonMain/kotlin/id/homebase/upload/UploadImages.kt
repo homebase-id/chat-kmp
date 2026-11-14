@@ -133,7 +133,8 @@ object UploadImages {
         val keepable = thumbs.sourceFormat in ImageFormatDetector.TYPES_EVERY_CLIENT_CAN_DECODE
         if (sourceFits && !savesEnough && keepable) return null
 
-        val bytes = keepMetadataFrom?.let { withMetadataOf(it, image, fileOperationsProvider) } ?: image.bytes
+        val bytes = keepMetadataFrom?.takeIf { thumbs.sourceFormat in ImageMetadataScrubber.BLOCK_FORMATS }
+            ?.let { withMetadataOf(it, image, fileOperationsProvider) } ?: image.bytes
         return try {
             fileOperationsProvider.writeBytesToTempFile(bytes, "img_final_", ".webp")
         } catch (e: CancellationException) {

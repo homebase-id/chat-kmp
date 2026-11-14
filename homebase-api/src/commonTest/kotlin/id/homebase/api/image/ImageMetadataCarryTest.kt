@@ -44,6 +44,10 @@ class ImageMetadataCarryTest {
     private fun chunk(type: String, data: ByteArray) = type.encodeToByteArray() + le32(data.size) + data + (if (data.size % 2 == 1) byteArrayOf(0) else ByteArray(0))
     private val lossyWebp = riff(chunk("VP8 ", ByteArray(10) { 7 }))
 
+    // Read back the way every JPEG reader does, in either byte order.
+    private fun orientationOf(tiff: ByteArray) =
+        readJpegExifOrientation(byteArrayOf(0xFF.toByte(), 0xD8.toByte()) + app1("Exif".encodeToByteArray() + byteArrayOf(0, 0) + tiff))
+
     private fun ByteArray.contains(needle: ByteArray) = (0..size - needle.size).any { at -> needle.indices.all { this[at + it] == needle[it] } }
     private fun u16(b: ByteArray, at: Int) = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
     private fun u32(b: ByteArray, at: Int) = u16(b, at) or (u16(b, at + 2) shl 16)
@@ -67,7 +71,7 @@ class ImageMetadataCarryTest {
 
         val carried = assertNotNull(ImageMetadataScrubber.readBlocks(out))
         val exif = assertNotNull(carried.exif)
-        assertEquals(1, u16(exif, 8 + 2 + 8), "upright pixels: Orientation 1")
+        assertEquals(1, orientationOf(exif), "upright pixels: Orientation 1")
         assertEquals(640, u32(exif, 50 + 2 + 8))
         assertEquals(480, u32(exif, 50 + 2 + 12 + 8))
         assertTrue(exif.contains("GPS-7749".encodeToByteArray()), "location kept")
@@ -93,14 +97,7 @@ class ImageMetadataCarryTest {
         assertNotNull(blocks.xmp)
 
         val exif = assertNotNull(ImageMetadataScrubber.readBlocks(withSourceMetadata(lossyWebp, heic, 64, 32))?.exif)
-        val little = exif[0] == 'I'.code.toByte()
-        val ifd0 = if (little) u32(exif, 4) else ((exif[4].toInt() and 0xFF) shl 24) or ((exif[5].toInt() and 0xFF) shl 16) or ((exif[6].toInt() and 0xFF) shl 8) or (exif[7].toInt() and 0xFF)
-        val count = if (little) u16(exif, ifd0) else ((exif[ifd0].toInt() and 0xFF) shl 8) or (exif[ifd0 + 1].toInt() and 0xFF)
-        val orientation = (0 until count).map { ifd0 + 2 + it * 12 }.first { e ->
-            val tag = if (little) u16(exif, e) else ((exif[e].toInt() and 0xFF) shl 8) or (exif[e + 1].toInt() and 0xFF)
-            tag == 0x0112
-        }.let { e -> if (little) u16(exif, e + 8) else ((exif[e + 8].toInt() and 0xFF) shl 8) or (exif[e + 9].toInt() and 0xFF) }
-        assertEquals(1, orientation)
+        assertEquals(1, orientationOf(exif), "upright pixels: Orientation 1")
     }
 
     @Test

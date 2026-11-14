@@ -29,18 +29,25 @@ import kotlin.uuid.Uuid
 /** One photo as an upload request: its bytes, at the photo setting's quality, encrypted to staged files, however it's then sent. */
 class BackupRequestBuilder(
     private val fileOps: FileOperationsProvider,
-    /** The source's content hash, to check it before a re-encode, whose bytes the server's hash can't vouch for. */
-    private val digestOf: suspend (path: String) -> ByteArray,
-    private val photoQuality: () -> MediaQuality = { MediaQuality.ORIGINAL },
+    private val hasher: AssetHasher,
+    private val settings: () -> BackupSettings = { BackupSettings() },
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) {
+    /** The current format ahead of the switch: only this app has ever read the Photos drive. Metadata is always kept. */
+    fun options(): UploadOptions = settings().let { s ->
+        UploadOptions(
+            quality = s.photoQuality,
+            metadata = MetadataPolicy.KEEP,
+            currentFormat = true,
+            videoQuality = s.videoQuality.toVideoQuality(),
+            originalVideo = s.videoQuality == MediaQuality.ORIGINAL,
+        )
+    }
+
     /** Null when the bytes no longer match the hash; nothing is left behind then. On success the caller owns the staged files. */
     suspend fun build(row: DeviceBackupAsset, uniqueId: Uuid, mediaType: BackupMediaType, exported: ExportedAsset): UploadFileRequest? {
         val digests = digestsOf(row)
         require(exported.parts.size == digests.size) { "${exported.parts.size} parts against ${digests.size} digests" }
-        val quality = photoQuality()
-        val still = exported.parts.first()
-        if (quality != MediaQuality.ORIGINAL && !exported.isHashedCopy && !digestOf(still.path).contentEquals(digests.first())) return null
         val keyHeader = KeyHeader.newRandom16()
         val payloads = mutableListOf<PayloadFile>()
         val reencoded = mutableListOf<String>()
@@ -56,14 +63,19 @@ class BackupRequestBuilder(
                             UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE)
                         }
                     },
-                    photosUploadOptions(photo = quality),
+                    options(),
                     fileOps,
                     onImageMetadata = { _, metadata -> exif = metadata },
                 ) { keyFor(exported.parts[it].role) }
             }
             for ((index, built) in bundle.payloads.withIndex()) {
-                val untouched = built.filePath == exported.parts[index].path
-                if (!untouched) reencoded += built.filePath
+                val part = exported.parts[index]
+                // A part sent as it is is vouched for by its encrypted hash below; a re-encode by its source's hash.
+                val untouched = built.filePath == part.path
+                if (!untouched) {
+                    reencoded += built.filePath
+                    if (!hasher.matches(exported, part, digests[index])) return null
+                }
                 val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
                 payloads += built.copy(filePath = encryptedPath, isPreEncrypted = true)
                 val hashed = timed(BackupStage.Encrypt) {
@@ -103,15 +115,6 @@ class BackupRequestBuilder(
     private fun keyFor(role: ExportedPartRole) =
         if (role == ExportedPartRole.PairedVideo) PhotobaseProtocol.LivePhotoVideoPayloadKey else PhotobaseProtocol.ImagePayloadKey
 }
-
-// The current format ahead of the switch: only this app has ever read the Photos drive. Metadata is always kept.
-internal fun photosUploadOptions(photo: MediaQuality = MediaQuality.ORIGINAL, video: MediaQuality = MediaQuality.HD) = UploadOptions(
-    quality = photo,
-    metadata = MetadataPolicy.KEEP,
-    currentFormat = true,
-    videoQuality = video.toVideoQuality(),
-    originalVideo = video == MediaQuality.ORIGINAL,
-)
 
 @OptIn(ExperimentalStdlibApi::class)
 internal fun digestsOf(row: DeviceBackupAsset): List<ByteArray> =
