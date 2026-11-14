@@ -175,6 +175,8 @@ First match wins:
 
 Filesync and WebDrop still store `application/octet-stream` payloads (they move bytes), but record the detected type in their own content.
 
+A photo library knows more than the bytes say: a file it calls a picture or a video is that kind (`k`) even when its type is missing or unknown.
+
 ### 3.2 Name
 
 `name = safeFileName(pickedName)`, or null when the picked name is blank. `safeFileName` (homebase-api `id.homebase.api.util`) is the one function for every file name the apps write to a disk or send. The builder, the save paths and the share paths all call it, so a name is cleaned the same way wherever it goes:
@@ -236,14 +238,14 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 
 ## 4. The builder
 
-`UserUploadBuilder.build(sources, options, fileOps, pdfPageRenderer, payloadKey)` in `homebase-upload` (`UserUploadBuilder.kt`). An `UploadSource` is one file as the app has it (path, the platform's type, the picked name, whether the user made it a sticker, audio length and waveform, video trim); `UploadOptions` holds the app's quality, metadata policy and the format switch. It returns a `PayloadBundle`: payloads with descriptor content filled in, thumbnails and tinies.
+`UserUploadBuilder.build(sources, options, fileOps, pdfPageRenderer, onImageMetadata, payloadKey)` in `homebase-upload` (`UserUploadBuilder.kt`). An `UploadSource` is one file as the app has it (path, the platform's type, the picked name, whether the user made it a sticker, audio length and waveform, video trim, and for a photo library what the library says it is: `libraryKind`, and `untouched` for a video nothing will transcode); `UploadOptions` holds the app's quality, metadata policy and the format switch. It returns a `PayloadBundle`: payloads with descriptor content filled in, thumbnails and tinies.
 
 - Images and stickers go through `createMediaImages`; a PDF's first page through the same thumbnail pipeline, rendered by the app (the renderer lives in homebase-common); audio gets its waveform's thumbnails.
 - Videos leave the builder with `k` and `n` only. The encryption step's `VideoPayloadProcessor` transcodes them and, whenever the descriptor content it is handed is in the current format, fills in `w`, `h`, `vd` and `o` and writes a segmented video's playlist as its `pls_` payload.
-- `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable. Descriptor content already in the current format is sealed whatever the switch says.
+- `UploadService` seals the descriptor content of every payload it sends when the switch is on, copies included; the optimistic local copy stays readable. An app that writes the current format ahead of the switch asks for the seal on its spec (`MediaUploadSpec.sealDescriptorContent`).
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
-- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder with the EXIF read on, then keep their own encrypt-and-hash step and seal the descriptors themselves; videos go through `UploadService`. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content; `PhotoContent`, the file's encrypted header content, keeps what has no other home (GPS, the tiny).
+- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and seal the descriptors themselves; videos go through `UploadService`. Until `ImageFormatDetector` is tightened (section 7), Photos keeps the library's content type when it gives one, and the bytes decide only an untyped file. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content; `PhotoContent`, the file's encrypted header content, keeps what has no other home (GPS, the tiny).
 - Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, and `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app

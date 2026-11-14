@@ -19,6 +19,9 @@ private const val OCTET_STREAM = "application/octet-stream"
 
 enum class MetadataPolicy { KEEP, STRIP }
 
+/** What a photo library already knows a file is, whatever type it arrives with. */
+enum class LibraryKind { IMAGE, VIDEO }
+
 /** One file a user uploads, as the app has it (UPLOADS.md section 4). */
 data class UploadSource(
     val path: String,
@@ -27,8 +30,9 @@ data class UploadSource(
     val pickedName: String? = null,
     /** The user's choice, never inferred. */
     val sticker: Boolean = false,
-    /** The app knows it's a picture, as a photo library does, even when [contentType] is missing or unknown. */
-    val image: Boolean = false,
+    val libraryKind: LibraryKind? = null,
+    /** Video: nothing will transcode it, so what is sent is the user's own file. */
+    val untouched: Boolean = false,
     val waveformPath: String? = null,
     val audioLengthSeconds: Int? = null,
     val trimStartMs: Long? = null,
@@ -86,14 +90,14 @@ object UserUploadBuilder {
         pdfPageRenderer: PdfPageRenderer?,
         readImageMetadata: Boolean,
     ): Built {
-        val knownImage = source.sticker || source.image
+        val knownImage = source.sticker || source.libraryKind == LibraryKind.IMAGE
         require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || knownImage)) {
             "appContent is for files; an image or audio payload would drop it"
         }
         // The bytes decide the type with the current format only: the detector's weaker signatures ("BM", AVIF's
         // mif1 brand) must be tightened before the switch flips (UPLOADS.md section 7).
         val untyped = source.contentType.isBlank() || source.contentType == OCTET_STREAM
-        val contentType = if (options.currentFormat && untyped && !knownImage) sniffed(source.path, fileOps) else source.contentType
+        val contentType = if (options.currentFormat && untyped && source.libraryKind == null) sniffed(source.path, fileOps) else source.contentType
         val name = source.pickedName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
         val oldName = source.pickedName?.let { safeFileName(it) }
         fun descriptor(current: () -> DescriptorContentV1, old: () -> String?) =
@@ -118,16 +122,17 @@ object UserUploadBuilder {
             else -> {
                 val kind = when {
                     source.appContent != null -> DescriptorContentV1.Kind.APP
-                    contentType.startsWith("video/") -> DescriptorContentV1.Kind.VIDEO
+                    contentType.startsWith("video/") || source.libraryKind == LibraryKind.VIDEO -> DescriptorContentV1.Kind.VIDEO
                     else -> DescriptorContentV1.Kind.FILE
                 }
+                val original = 1.takeIf { source.untouched && kind == DescriptorContentV1.Kind.VIDEO }
                 Built(
                     PayloadFile(
                         key = key,
                         filePath = source.path,
                         contentType = contentType,
                         descriptorContent = descriptor(
-                            { DescriptorContentV1(kind = kind, name = name, appContent = source.appContent) },
+                            { DescriptorContentV1(kind = kind, name = name, original = original, appContent = source.appContent) },
                             { source.appContent ?: oldName },
                         ),
                         trimStartMs = source.trimStartMs,
@@ -152,7 +157,10 @@ object UserUploadBuilder {
     ): Built {
         val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker, readMetadata = readImageMetadata)
         val finalPath = UploadImages.finalImagePath(thumbs, fileOps)
-        val sniffedType = thumbs.sourceFormat?.takeIf { options.currentFormat && it.startsWith("image/") }
+        // A library image skipped the read up front: the decode names its type, and only a failed decode needs the header.
+        val untypedLibraryImage = source.libraryKind == LibraryKind.IMAGE && (declaredType.isBlank() || declaredType == OCTET_STREAM)
+        val bytesType = if (!options.currentFormat) null else thumbs.sourceFormat ?: if (untypedLibraryImage) sniffed(source.path, fileOps) else null
+        val sniffedType = bytesType?.takeIf { it.startsWith("image/") }
         val contentType = if (finalPath != null) "image/webp" else sniffedType ?: declaredType
 
         // Quality is recorded only for an HD or Original photo that really is one, and never for a

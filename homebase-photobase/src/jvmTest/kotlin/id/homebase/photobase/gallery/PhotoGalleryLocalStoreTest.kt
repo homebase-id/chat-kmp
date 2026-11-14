@@ -10,6 +10,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.photobase.backup.PhotoContent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -40,11 +41,13 @@ class PhotoGalleryLocalStoreTest {
         val tiny = byteArrayOf(1, 2, 3, 4)
         val content = OdinSystemSerializer.serialize(PhotoContent(tiny = Base64Bytes(tiny), tinyWidth = 20, tinyHeight = 15, tinyType = "image/webp"))
 
-        backend.save(listOf(galleryTestFile(500, content)))
+        val descriptor = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG.jpg", original = 1).encode()
+        backend.save(listOf(galleryTestFile(500, content, descriptorContent = descriptor)))
 
         val item = backend.localPage(null, null, 10).files.single().toGalleryItem()!!
         assertContentEquals(tiny, item.tinyPreview?.content?.bytes)
         assertEquals(20, item.tinyPreview?.pixelWidth)
+        assertEquals("IMG.jpg", item.payload.filename())
     }
 
     @Test

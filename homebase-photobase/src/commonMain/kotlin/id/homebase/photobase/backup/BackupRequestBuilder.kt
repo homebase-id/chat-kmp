@@ -2,7 +2,6 @@ package id.homebase.photobase.backup
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
-import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.SecurityGroupType
@@ -18,6 +17,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.video.VideoQuality
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.upload.LibraryKind
 import id.homebase.upload.MetadataPolicy
 import id.homebase.upload.UploadOptions
 import id.homebase.upload.UploadSource
@@ -52,8 +52,11 @@ class BackupRequestBuilder(
             val bundle = timed(BackupStage.Thumbnails) {
                 UserUploadBuilder.build(
                     exported.parts.map { part ->
-                        val primary = part.role != ExportedPartRole.PairedVideo
-                        UploadSource(part.path, part.contentType, pickedName = exported.fileName.takeIf { primary }, image = primary)
+                        if (part.role == ExportedPartRole.PairedVideo) {
+                            UploadSource(part.path, part.contentType, libraryKind = LibraryKind.VIDEO, untouched = true)
+                        } else {
+                            UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE)
+                        }
                     },
                     PHOTOS_UPLOAD_OPTIONS,
                     fileOps,
@@ -63,8 +66,9 @@ class BackupRequestBuilder(
             val sealed = payloads.zip(bundle.payloads).mapIndexed { index, (encrypted, built) ->
                 // The hash above vouches for these bytes, so the builder must not have swapped in a copy.
                 check(built.filePath == exported.parts[index].path) { "the builder replaced ${built.key}" }
-                val untouched = if (exported.parts[index].role == ExportedPartRole.PairedVideo) built.asUntouchedVideo() else built
-                encrypted.copy(contentType = built.contentType, descriptorContent = untouched.descriptorContent).withSealedDescriptor(keyHeader.aesKey)
+                // The library's type outranks the bytes until ImageFormatDetector is tightened (UPLOADS.md section 7).
+                val contentType = encrypted.contentType.takeUnless { it.isBlank() || it == "application/octet-stream" } ?: built.contentType
+                encrypted.copy(contentType = contentType, descriptorContent = built.descriptorContent).withSealedDescriptor(keyHeader.aesKey)
             }
             val metadata = photoMetadata(
                 uniqueId,
@@ -95,9 +99,6 @@ class BackupRequestBuilder(
     private fun keyFor(role: ExportedPartRole) =
         if (role == ExportedPartRole.PairedVideo) PhotobaseProtocol.LivePhotoVideoPayloadKey else PhotobaseProtocol.ImagePayloadKey
 
-    // The builder leaves a video's `o` to the step that transcodes it, and nothing transcodes a Live Photo's video.
-    private fun PayloadFile.asUntouchedVideo(): PayloadFile =
-        copy(descriptorContent = descriptorContent?.let(DescriptorContentV1::parseOrNull)?.copy(original = 1)?.encode())
 }
 
 // The current format ahead of the switch: only this app has ever read the Photos drive.

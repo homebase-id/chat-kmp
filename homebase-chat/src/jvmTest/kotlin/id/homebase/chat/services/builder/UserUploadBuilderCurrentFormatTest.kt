@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.image.MediaQuality
+import id.homebase.upload.LibraryKind
 import id.homebase.upload.MetadataPolicy
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.UploadOptions
@@ -98,6 +99,18 @@ class UserUploadBuilderCurrentFormatTest {
         val untyped = build(UploadSource(png, "application/octet-stream"), MediaQuality.ORIGINAL)
         assertEquals("image/png", untyped.payloads.single().contentType)
         assertTrue(untyped.thumbnails.isNotEmpty(), "an untyped image still goes the image way")
+    }
+
+    @Test
+    fun aLibraryFileIsWhatTheLibrarySaysWhateverItsType() = runTest {
+        val clip = build(UploadSource(file("clip", ByteArray(8)), "application/octet-stream", libraryKind = LibraryKind.VIDEO, untouched = true))
+        assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, original = 1), clip.written())
+
+        val raw = build(UploadSource(file("raw", ByteArray(8)), "", libraryKind = LibraryKind.IMAGE))
+        assertEquals(DescriptorContentV1.Kind.IMAGE, raw.written().kind, "a picture the decoder can't draw is still a picture")
+
+        val png = build(UploadSource(file("untyped", image(64, 64, EncodedImageFormat.PNG)), "", libraryKind = LibraryKind.IMAGE), MediaQuality.ORIGINAL)
+        assertEquals("image/png", png.payloads.single().contentType)
     }
 
     @Test

@@ -277,7 +277,7 @@ class PhotoGalleryStoreTest {
     private fun photo(capturedAtMs: Long) = galleryTestFile(capturedAtMs)
 }
 
-internal fun galleryTestFile(capturedAtMs: Long, content: String? = null, fileId: Uuid = Uuid.random()) = HomebaseFile(
+internal fun galleryTestFile(capturedAtMs: Long, content: String? = null, fileId: Uuid = Uuid.random(), descriptorContent: String? = null) = HomebaseFile(
     fileId = fileId,
     driveId = PhotobaseProtocol.DriveAlias,
     fileState = FileState.Active,
@@ -290,7 +290,7 @@ internal fun galleryTestFile(capturedAtMs: Long, content: String? = null, fileId
             userDate = capturedAtMs,
             content = content,
         ),
-        payloads = listOf(PayloadDescriptor(key = PhotobaseProtocol.ImagePayloadKey, contentType = "image/jpeg")),
+        payloads = listOf(PayloadDescriptor(key = PhotobaseProtocol.ImagePayloadKey, contentType = "image/jpeg", descriptorContent = descriptorContent)),
     ),
     serverMetadata = ServerMetadata(),
 )

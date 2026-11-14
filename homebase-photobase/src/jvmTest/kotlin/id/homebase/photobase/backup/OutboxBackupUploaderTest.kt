@@ -37,6 +37,9 @@ import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -176,6 +179,52 @@ class OutboxBackupUploaderTest {
         val content = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
         assertFalse("name" in content || "width" in content, content)
         assertNotNull(OdinSystemSerializer.deserialize<PhotoContent>(content).tiny)
+        File(payload.filePath).delete()
+    }
+
+    @Test
+    fun aPhotosOwnCaptureTimeBecomesItsDate() = runTest {
+        val bytes = File("../homebase-api/src/jvmTest/resources/test_images/canon_5d_srgb.jpg").readBytes()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("canon.jpg", bytes), "image/jpeg", false)))
+
+        uploader.handOff(row, uniqueId)
+
+        val (_, request) = queuedRequest(uniqueId)
+        val taken = LocalDateTime(2018, 7, 2, 11, 33, 55).toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds()
+        assertEquals(taken, request.metadata.appData.userDate, "from the photo's EXIF, not the library row's 12345")
+        request.payloads.forEach { File(it.filePath).delete() }
+    }
+
+    @Test
+    fun aVideoTheLibraryGaveNoTypeIsStillRecordedAsAVideo() = runTest {
+        val still = "still".encodeToByteArray()
+        val motion = "motion".encodeToByteArray()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.LivePhoto, still, motion)
+        val uploader = backgroundScope.uploader(
+            listOf(
+                ExportedPart(ExportedPartRole.Primary, file("s.heic", still), "image/heic", false),
+                ExportedPart(ExportedPartRole.PairedVideo, file("m.mov", motion), "application/octet-stream", false),
+            ),
+        )
+
+        uploader.handOff(row, uniqueId)
+
+        val (_, request) = queuedRequest(uniqueId)
+        assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, original = 1), request.opened(request.payloads[1]))
+        request.payloads.forEach { File(it.filePath).delete() }
+    }
+
+    @Test
+    fun theLibrarysTypeOutranksTheBytes() = runTest {
+        val bytes = jpeg(64, 48)
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("odd", bytes), "image/x-library-says", false)))
+
+        uploader.handOff(row, uniqueId)
+
+        val payload = queuedRequest(uniqueId).second.payloads.single()
+        assertEquals("image/x-library-says", payload.contentType)
         File(payload.filePath).delete()
     }
 

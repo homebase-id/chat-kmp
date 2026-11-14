@@ -57,4 +57,6 @@ data class MediaUploadSpec(
     val omitPlaintextPreviews: Boolean = false,
     /** See [UploadFileRequest.existingFileIsSuccess]. */
     val existingFileIsSuccess: Boolean = false,
+    /** For an app that writes the current descriptor format ahead of the switch: seal it whatever the switch says. */
+    val sealDescriptorContent: Boolean = false,
 )

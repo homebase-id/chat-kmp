@@ -67,7 +67,7 @@ class UploadService(
             keyHeader = spec.keyHeader,
             metadata = metadata.encryptContent(spec.keyHeader),
             transitOptions = spec.transit,
-            payloads = sealed(encryptedBundle.payloads, spec.keyHeader, metadata.isEncrypted),
+            payloads = sealed(encryptedBundle.payloads, spec.keyHeader, metadata.isEncrypted, spec.sealDescriptorContent),
             thumbnails = encryptedBundle.thumbnails,
             existingFileIsSuccess = spec.existingFileIsSuccess,
             fileSystemType = spec.requestFileSystemType,
@@ -125,14 +125,9 @@ class UploadService(
     }
 
     // Copies too: the device keeps descriptor content opened, so a forward starts from the readable form.
-    // The current format is sealed whatever the switch says: an app that already writes it (Photos) relies on that.
-    private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader, encrypted: Boolean): List<PayloadFile> {
-        if (!encrypted) return payloads
-        return payloads.map { payload ->
-            val content = payload.descriptorContent
-            if (!sealDescriptorContent && (content == null || !DescriptorContentV1.isCurrentFormat(content))) return@map payload
-            payload.withSealedDescriptor(keyHeader.aesKey)
-        }
+    private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader, encrypted: Boolean, always: Boolean = false): List<PayloadFile> {
+        if (!encrypted || !(sealDescriptorContent || always)) return payloads
+        return payloads.map { it.withSealedDescriptor(keyHeader.aesKey) }
     }
 
     /**

@@ -8,6 +8,7 @@ import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.upload.LibraryKind
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
@@ -95,7 +96,7 @@ class OutboxBackupUploader(
             uniqueId = uniqueId,
             keyHeader = KeyHeader.newRandom16(),
             bundle = UserUploadBuilder.build(
-                listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName)),
+                listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.VIDEO)),
                 PHOTOS_UPLOAD_OPTIONS,
                 fileOps,
             ) { PhotobaseProtocol.VideoPayloadKey },
@@ -107,6 +108,7 @@ class OutboxBackupUploader(
             seedCache = false,
             omitPlaintextPreviews = true,
             existingFileIsSuccess = true,
+            sealDescriptorContent = true,
         )
         return when (val outcome = uploadService.upload(spec, scope)) {
             is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
