@@ -1,5 +1,9 @@
 package id.homebase.photobase.backup
 
+import org.junit.Assume.assumeTrue
+import id.homebase.upload.PayloadBundleEncryptionService
+import id.homebase.api.video.VideoPayloadProcessor
+import id.homebase.api.video.FFmpegBinaryManager
 import id.homebase.api.video.VideoQuality
 import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.image.MediaQuality
@@ -248,24 +252,103 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun aPhotoAtHdIsAReencodeThatKeepsItsMetadataAndSaysItIsntTheOriginal() = runTest {
-        val bytes = geotaggedJpeg(5000, 3000)
-        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
-        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("IMG_8.jpg", bytes), "image/jpeg", false)), photoQuality = MediaQuality.HD)
+    fun aPhotoAtStandardOrHdKeepsItsExifInTheFinalImageAndNeverInAThumbnail() = runTest {
+        for ((n, quality) in listOf(MediaQuality.STANDARD, MediaQuality.HD).withIndex()) {
+            // Bytes of their own: the file's id comes from its hash.
+            val bytes = geotaggedJpeg(5000 + n, 3000)
+            val (row, uniqueId) = rowFor("q$n", BackupMediaType.Image, bytes)
+            val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("IMG_$n.jpg", bytes), "image/jpeg", false)), photoQuality = quality)
+
+            assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+
+            val request = queuedRequest(uniqueId).second
+            val payload = request.payloads.single()
+            val key = KeyHeader(payload.iv!!, request.keyHeader.aesKey)
+            val sent = key.decrypt(File(payload.filePath).readBytes())
+            assertEquals("image/webp", payload.contentType, "$quality is a re-encode")
+            assertTrue(sent.size < bytes.size)
+            val exif = assertNotNull(ImageMetadataScrubber.readBlocks(sent)?.exif, "$quality: Photos keeps metadata in the final image")
+            assertTrue("GPS-7749" in exif.decodeToString())
+            assertTrue(request.thumbnails.isNotEmpty())
+            for (thumb in request.thumbnails) {
+                assertNull(ImageMetadataScrubber.readBlocks(key.decrypt(thumb.thumbnailBytes)), "$quality: a ${thumb.pixelWidth}px thumbnail never carries metadata")
+            }
+            val descriptor = assertNotNull(request.opened(payload))
+            assertEquals(0, descriptor.original)
+            assertEquals(DescriptorContentV1.Quality.of(quality), descriptor.quality)
+            File(payload.filePath).delete()
+        }
+    }
+
+    private val filmedAt = "+37.7749-122.4194/"
+
+    private fun ffmpeg(vararg args: String): String {
+        val process = FFmpegBinaryManager.processBuilder(*args).redirectErrorStream(true).start()
+        val out = process.inputStream.bufferedReader().readText()
+        check(process.waitFor() == 0) { out }
+        return out
+    }
+
+    // The 26 KB test clip, tagged as a camera would with where it was filmed; [take] makes its bytes, and so its id, its own.
+    private fun geotaggedClip(take: Int = 0): String {
+        val sample = file("sample.mp4", this::class.java.getResourceAsStream("/test_videos/sample.mp4")!!.readBytes())
+        val tagged = File(workDir, "tagged$take.mov").path
+        ffmpeg(FFmpegBinaryManager.ffmpegPath(), "-y", "-i", sample, "-c", "copy", "-metadata", "location=$filmedAt", "-metadata", "title=take $take", tagged)
+        return tagged
+    }
+
+    private fun locationOf(video: ByteArray): String? {
+        val path = file("probe_${video.size}.mp4", video)
+        return ffmpeg(FFmpegBinaryManager.ffprobePath(), "-v", "error", "-show_entries", "format_tags=location", "-of", "default=noprint_wrappers=1:nokey=1", path)
+            .trim().ifEmpty { null }
+    }
+
+    private fun realEncryption() = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
+
+    @Test
+    fun aVideoAtStandardOrHdIsATranscodeThatKeepsWhereItWasFilmed() = runTest {
+        assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
+        for ((n, quality) in listOf(MediaQuality.STANDARD, MediaQuality.HD).withIndex()) {
+            val clip = geotaggedClip(n)
+            val bytes = File(clip).readBytes()
+            assertEquals(filmedAt, locationOf(bytes), "the fixture carries a location")
+            val (row, uniqueId) = rowFor("v$n", BackupMediaType.Video, bytes)
+            val uploader = backgroundScope.uploader(
+                listOf(ExportedPart(ExportedPartRole.Primary, clip, "video/quicktime", false)),
+                realEncryption(),
+                videoQuality = quality,
+            )
+
+            assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+
+            val request = queuedRequest(uniqueId).second
+            val payload = request.payloads.single { it.key == PhotobaseProtocol.VideoPayloadKey }
+            val sent = KeyHeader(payload.iv!!, request.keyHeader.aesKey).decrypt(File(payload.filePath).readBytes())
+            assertFalse(sent.contentEquals(bytes), "$quality is a transcode")
+            assertEquals(filmedAt, locationOf(sent), "$quality: Photos keeps where it was filmed")
+        }
+    }
+
+    @Test
+    fun aVideoAtOriginalKeepsWhereItWasFilmedInTheFileAndItsCopy() = runTest {
+        assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
+        val clip = geotaggedClip()
+        val bytes = File(clip).readBytes()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
+        val uploader = backgroundScope.uploader(
+            listOf(ExportedPart(ExportedPartRole.Primary, clip, "video/quicktime", false)),
+            realEncryption(),
+            videoQuality = MediaQuality.ORIGINAL,
+        )
 
         assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
 
         val request = queuedRequest(uniqueId).second
-        val payload = request.payloads.single()
-        assertEquals("image/webp", payload.contentType)
-        val sent = KeyHeader(payload.iv!!, request.keyHeader.aesKey).decrypt(File(payload.filePath).readBytes())
-        assertTrue(sent.size < bytes.size)
-        val exif = assertNotNull(ImageMetadataScrubber.readBlocks(sent)?.exif, "Photos keeps metadata through a re-encode")
-        assertTrue("GPS-7749" in exif.decodeToString())
-        val descriptor = assertNotNull(request.opened(payload))
-        assertEquals(0, descriptor.original)
-        assertEquals(DescriptorContentV1.Quality.HD, descriptor.quality)
-        File(payload.filePath).delete()
+        suspend fun sent(key: String) = request.payloads.single { it.key == key }.let { KeyHeader(it.iv!!, request.keyHeader.aesKey).decrypt(File(it.filePath).readBytes()) }
+        assertContentEquals(bytes, sent(PhotobaseProtocol.VideoPayloadKey), "the user's file, untouched")
+        val copy = sent("vcp_0000")
+        assertFalse(copy.contentEquals(bytes), "the copy is a transcode")
+        assertEquals(filmedAt, locationOf(copy), "and keeps where it was filmed")
     }
 
     @Test

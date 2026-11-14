@@ -1,5 +1,6 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.upload.MetadataPolicy
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.MediaQuality
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
@@ -36,7 +37,7 @@ object MessageAttachmentBuilder {
     ): PayloadBundle =
         UserUploadBuilder.build(
             sources = attachments.map { it.toUploadSource() },
-            options = UploadOptions(quality = mediaQuality),
+            options = UploadOptions(quality = mediaQuality, metadata = MetadataPolicy.STRIP),
             fileOps = fileOperationsProvider,
             pdfPageRenderer = { path, width -> generatePdfThumbnailFromFile(path, width)?.thumbnailBytes },
         ) { index -> payloadKeyFactory(index, attachments[index]) }
