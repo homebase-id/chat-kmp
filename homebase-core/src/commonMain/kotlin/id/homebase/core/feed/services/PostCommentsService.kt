@@ -419,6 +419,7 @@ class PostCommentsService(
             enqueuePlaintextUpload(
                 outboxSync = outboxSync,
                 optimisticWriter = optimisticWriter,
+                fileOps = fileOps,
                 request = UploadFileRequest(
                     driveId = uploadDrive,
                     keyHeader = keyHeader,

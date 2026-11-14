@@ -99,7 +99,7 @@ class PayloadBundleEncryptionService(
                     newPayloads += result.payloads
                     newThumbnails += result.thumbnails
                 } else {
-                    val sourcePath = if (payload.stripMetadata) withoutImageMetadata(payload.filePath, payload.contentType, fileOps) else payload.filePath
+                    val sourcePath = withMetadataStripped(payload, fileOps, staged = false).filePath
                     val encryptedFile = encryptFile(sourcePath, keyHeader)
                     if (sourcePath != payload.filePath) {
                         runCatching { fileOps.deleteTempFile(sourcePath) }

@@ -8,7 +8,7 @@ import kotlin.random.Random
 
 /**
  * Shared logic for the DURABLE outbox staging directory (#842) — the one place
- * encrypted, ready-to-transmit upload payloads live while their outbox row is
+ * ready-to-transmit upload payloads (encrypted, or a public upload's plaintext) live while their outbox row is
  * pending. Unlike the cache directory, the staging dir is never reclaimed by
  * the OS under storage pressure and is invisible to [CacheSweeper] (it sits
  * outside `getCacheDirectory()`), so a payload survives restarts, "Clear

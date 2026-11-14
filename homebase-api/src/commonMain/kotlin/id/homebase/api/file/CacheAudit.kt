@@ -51,7 +51,7 @@ object CacheAudit {
      *   Disposable: if one is gone at send time the pipeline fails soft (re-pick). Left "untracked"
      *   so the CacheSweeper reaps it on every startup / "Clear caches" — it self-heals and can't
      *   grow. This is the biggest leak source (picker-resolved inputs).
-     * - [OUTBOX_TEMP_DIR_NAME] — the ENCRYPTED, ready-to-transmit payloads
+     * - [OUTBOX_TEMP_DIR_NAME] — the ready-to-transmit payloads (encrypted, or a public upload's plaintext)
      *   ([writeBytesToOutboxTempFile]), each referenced by an outbox row until the send completes
      *   (a long time when offline). Durable: the CacheSweeper KEEPs it on the startup / "Clear
      *   caches" sweep so an in-flight upload's payload is never deleted mid-flight, and only wipes
@@ -222,7 +222,7 @@ object CacheAudit {
         name.startsWith("hbvid_") -> "decrypted video playback scratch"
         name == "coil3_disk_cache" -> "orphan Coil disk cache"
         name == UPLOAD_TEMP_DIR_NAME -> "raw pre-encryption upload temps (disposable — swept every startup)"
-        name == OUTBOX_TEMP_DIR_NAME -> "encrypted outbox payload temps (kept until sent/dropped to protect pending sends)"
+        name == OUTBOX_TEMP_DIR_NAME -> "outbox payload temps (encrypted, or public plaintext) (kept until sent/dropped to protect pending sends)"
         name == "homebase-payloads" || name == "homebase-thumbs" ||
             name == "homebase-public-profiles" || name == "homebase-public-images" ->
             "legacy kache dir (pre-v2)"

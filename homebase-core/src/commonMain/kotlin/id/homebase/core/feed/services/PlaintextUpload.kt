@@ -6,24 +6,37 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.upload.withMetadataStripped
 import kotlin.uuid.Uuid
 
 // Public feed files ship plaintext payloads, so the request bypasses UploadService's encryptBundle.
 internal suspend fun enqueuePlaintextUpload(
     outboxSync: OutboxSync,
     optimisticWriter: OptimisticWriter,
+    fileOps: FileOperationsProvider,
     request: UploadFileRequest,
     tag: String,
     optimisticFileId: Uuid? = null,
     optimisticMetadata: UploadFileMetadata = request.metadata,
     overPeer: Boolean = false,
 ) {
-    val enqueued = outboxSync.tryEnqueue(request, overPeer = overPeer)
-    if (!enqueued.enqueued) error("Failed to enqueue upload (outbox: $enqueued)")
+    // Staged copies belong to the outbox row once it exists; until then they are ours to delete.
+    val staged = mutableListOf<String>()
+    try {
+        val payloads = request.payloads.map { payload ->
+            withMetadataStripped(payload, fileOps, staged = true).also { if (it.filePath != payload.filePath) staged += it.filePath }
+        }
+        val enqueued = outboxSync.tryEnqueue(request.copy(payloads = payloads), overPeer = overPeer)
+        if (!enqueued.enqueued) error("Failed to enqueue upload (outbox: $enqueued)")
+    } catch (e: Throwable) {
+        staged.forEach { runCatching { fileOps.deleteTempFile(it) } }
+        throw e
+    }
 
     val payloadDescriptors = request.payloads.map { payload ->
         PayloadDescriptor(
