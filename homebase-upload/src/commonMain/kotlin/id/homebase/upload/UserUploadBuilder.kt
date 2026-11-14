@@ -10,7 +10,9 @@ import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.util.codePointCount
 import id.homebase.api.util.safeFileName
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.api.video.VideoQuality
 import id.homebase.api.video.toVideoQuality
 import kotlinx.coroutines.CancellationException
@@ -139,7 +141,7 @@ object UserUploadBuilder {
                         filePath = source.path,
                         contentType = contentType,
                         descriptorContent = descriptor(
-                            { DescriptorContentV1(kind = kind, name = name, original = original, appContent = source.appContent) },
+                            { DescriptorContentV1(kind = kind, name = name, original = original).withFittingAppContent(source.appContent) },
                             { source.appContent ?: oldName },
                         ),
                         trimStartMs = source.trimStartMs,
@@ -214,6 +216,15 @@ object UserUploadBuilder {
             ),
             thumbs,
         )
+    }
+
+    // A file's app content is plain text (a note's preview), so it is cut a character at a time until it fits once sealed.
+    private fun DescriptorContentV1.withFittingAppContent(text: String?): DescriptorContentV1 {
+        var fitting = text ?: return this
+        while (fitting.isNotEmpty() && !DescriptorContentSeal.fits(copy(appContent = fitting).encode(), sealed = true)) {
+            fitting = fitting.truncateToCodePoints(fitting.codePointCount() - 1)
+        }
+        return copy(appContent = fitting.ifEmpty { null })
     }
 
     // Only an untyped file is read for its type up front: it decides which branch the file takes.

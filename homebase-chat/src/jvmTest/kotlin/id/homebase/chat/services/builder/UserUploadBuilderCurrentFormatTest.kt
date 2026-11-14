@@ -1,6 +1,7 @@
 package id.homebase.chat.services.builder
 
 import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.JvmFileOperationsProvider
@@ -111,6 +112,24 @@ class UserUploadBuilderCurrentFormatTest {
 
         val png = build(UploadSource(file("untyped", image(64, 64, EncodedImageFormat.PNG)), "", libraryKind = LibraryKind.IMAGE), MediaQuality.ORIGINAL)
         assertEquals("image/png", png.payloads.single().contentType)
+    }
+
+    @Test
+    fun aNotesPreviewIsCutToFitOnceSealed() = runTest {
+        suspend fun note(preview: String) = UserUploadBuilder.build(
+            listOf(UploadSource(file("n.md", "# hi".encodeToByteArray()), "text/markdown", appContent = preview)),
+            UploadOptions(currentFormat = true),
+            fileOps,
+        ) { "vlt_pg_00" }.payloads.single().descriptorContent!!
+
+        val emoji = "\uD83D\uDE00".repeat(200)
+        val cut = note(emoji)
+        assertTrue(DescriptorContentSeal.fits(cut, sealed = true), "sealed, it fits the server's 1,024")
+        val kept = DescriptorContentV1.parseOrNull(cut)!!.appContent!!
+        assertTrue(kept.isNotEmpty() && emoji.startsWith(kept))
+
+        val short = "Shopping: milk, eggs"
+        assertEquals(short, DescriptorContentV1.parseOrNull(note(short))!!.appContent, "a preview that fits is left alone")
     }
 
     @Test
