@@ -248,6 +248,21 @@ JPEG by sample size only. A plain full decode peaks at the "after" figure in eve
 1-pixel stripes from the 28 MP PNG straight out of the guard's decode had a spread of about 74,
 full contrast, so the aliasing happened before any resampler ran.
 
+### 2026-11-12, Lanczos for the last 2–4× (#2369), desktop JVM (macOS), test fixtures
+
+`ThumbnailPerfBench`, as above, against unmodified main. Halving only while 4× too big means the
+Kotlin Lanczos runs on bigger images with wider windows; Pillow and libvips pay the same.
+
+| Fixture | Before | After (two runs) | Why |
+|---|---|---|---|
+| 5760x4320 JPEG | 608 ms | 1480–2061 ms | 2048 from 5760 is 2.81×: Lanczos with 19 taps on 25 MP, instead of a halving and 11 taps on 6 MP |
+| waterhouse.jpg | 443 ms | 395–421 ms | No change in the chain's expensive steps |
+| 800x600 JPEG | 94 ms | 88–106 ms | |
+| dice.png | 128 ms | 125–141 ms | |
+
+Thumbnail bytes are unchanged to the KB. Phones resize natively and weren't measured. Folding the
+horizontal pass's four channel loops into one gained about 10%, within noise, so it wasn't kept.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
