@@ -51,6 +51,25 @@ the baselines, and what has already been tried. Record new results and failed id
 display or stripped of metadata, read [`THUMBNAILS.md`](THUMBNAILS.md): the settings, the size
 table, the rules and why, and the tests that pin them. Keep it true when the behaviour changes.
 
+**User uploads.** Before changing how anything a user uploads is built or sent (payloads,
+thumbnails, descriptor content, content type, file name, metadata, sealing), read
+[`UPLOADS.md`](UPLOADS.md). The design keeps one of each:
+
+- `UserUploadBuilder` (homebase-upload) builds every upload's payloads, thumbnails and descriptor
+  content. Apps with their own transport (Photos, Filesync, WebDrop, contact and profile photos)
+  follow its rules, listed in UPLOADS.md section 5.
+- `ContentTypes.kt` (homebase-api) decides every content type, from bytes, platform type or name.
+- `safeFileName` cleans every name written or sent; Filesync's own rule is the one exception.
+- The upload providers seal descriptor content; nothing else does.
+- The metadata scrubber strips per the app's `MetadataPolicy`, never by side effect.
+
+**Stop and ask before writing code that goes against this or against `THUMBNAILS.md`**: a
+second builder, detector, name rule or sealing step; an upload that bypasses the builder; a
+format change the documents don't describe; a new entry on a guard's allowed list in
+`ArchitectureTest` (homebase-common). Say which part of the design it breaks and why it seems
+needed. If it's agreed, the document changes first, then the code. Never widen a guard to make
+a test pass.
+
 **Web (WASM) crashes.** A production web trace is only `wasm-function[N]:0xOFF` frames. Resolve
 the first error to Kotlin source lines before reasoning about the cause: see
 [`WASM_CRASH_SYMBOLS.md`](WASM_CRASH_SYMBOLS.md).
