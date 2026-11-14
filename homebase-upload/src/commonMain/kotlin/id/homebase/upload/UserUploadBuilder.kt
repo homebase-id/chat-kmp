@@ -1,5 +1,6 @@
 package id.homebase.upload
 
+import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.file.isUntyped
 import id.homebase.api.file.contentTypeOfFile
 import id.homebase.api.client.drives.files.DescriptorContent
@@ -190,7 +191,8 @@ object UserUploadBuilder {
             ).encode()
             source.sticker -> DescriptorContent.descriptorContentFromImage(
                 isSticker = true,
-                format = thumbs.sourceFormat ?: contentTypeOfFile(source.path, fileOps),
+                // Read directly: a sticker that can't be read fails its build, as it always has.
+                format = thumbs.sourceFormat ?: contentTypeFromBytes(fileOps.readFileHeaderBytes(source.path)),
             )
             recordedQuality != null || finalSize != null -> DescriptorContent.descriptorContentFromImage(
                 isSticker = false,
@@ -219,6 +221,6 @@ object UserUploadBuilder {
         while (fitting.isNotEmpty() && !DescriptorContentSeal.fits(copy(appContent = fitting).encode(), sealed = true)) {
             fitting = fitting.truncateToCodePoints(fitting.codePointCount() - 1)
         }
-        return copy(appContent = fitting.ifEmpty { null })
+        return copy(appContent = fitting)
     }
 }

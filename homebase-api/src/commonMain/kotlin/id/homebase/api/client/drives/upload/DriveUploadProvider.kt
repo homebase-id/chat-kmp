@@ -381,6 +381,8 @@ class DriveUploadProvider(
         onProgress: UploadProgress? = null,
     ): UpdateFileResult {
         preflightStagedPayloads(payloads, "updateFileOverPeerByGlobalTransitId gtid=$globalTransitId")
+        // Only the encrypted key header is at hand here, so descriptor content couldn't be sealed: refuse it rather than leak it.
+        require(payloads.all { it.descriptorContent == null }) { "a peer update carries no descriptor content" }
         val sharedSecret = requireCreds().secret.unsafeBytes
         val transferIv = ByteArrayUtil.getRndByteArray(16)
         val descriptor = buildSharedSecretEncryptedUpdateDescriptor(encryptedKeyHeader, metadata, sharedSecret, transferIv)

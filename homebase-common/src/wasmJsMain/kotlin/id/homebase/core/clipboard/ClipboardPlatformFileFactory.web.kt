@@ -1,5 +1,6 @@
 package id.homebase.core.clipboard
 
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.api.file.readWebFileBytes
 import id.homebase.api.util.toJsBlob
 import io.github.vinceglb.filekit.BrowserFile
@@ -21,16 +22,8 @@ actual fun platformFileFromPath(path: String): PlatformFile {
     val bytes = readWebFileBytes(path)
         ?: error("No file at $path on the web filesystem")
     val name = path.substringAfterLast('/')
-    val mimeType = mimeTypeForExtension(name.substringAfterLast('.', ""))
+    val mimeType = detectContentTypeFromExtensionOrHint(name)
     return PlatformFile(WebFile.FileWrapper(makeJsFile(bytes.toJsBlob(mimeType), name, mimeType)))
-}
-
-private fun mimeTypeForExtension(extension: String): String = when (extension.lowercase()) {
-    "gif" -> "image/gif"
-    "jpg", "jpeg" -> "image/jpeg"
-    "webp" -> "image/webp"
-    "png" -> "image/png"
-    else -> "application/octet-stream"
 }
 
 private fun makeJsFile(blob: JsAny, fileName: String, mimeType: String): BrowserFile =

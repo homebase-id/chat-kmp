@@ -1,5 +1,9 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.crypto.EncryptedKeyHeader
+import io.ktor.client.engine.mock.toByteArray
+import id.homebase.api.client.peer.PeerDriveUploadProvider
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -74,6 +78,68 @@ class SealDescriptorContentTest {
     @Test
     fun aFileThatIsntEncryptedIsNeverSealed() = withDir { dir ->
         assertTrue(name in sentBody(request(dir, encrypted = false), dir))
+    }
+
+    // Sent through the provider's HTTP path; the bytes it would have put on the wire.
+    private suspend fun captured(send: suspend (HttpClient, CredentialsManager) -> Unit): String {
+        var body = ""
+        val http = HttpClient(MockEngine { request -> body = request.body.toByteArray().decodeToString(); respondError(HttpStatusCode.InternalServerError) })
+        val credentials = CredentialsManager()
+        credentials.setActiveCredentials(ApiCredentials.create(OdinId("owner.test"), "t", SecureByteArray(ByteArray(16))))
+        runCatching { send(http, credentials) }
+        return body
+    }
+
+    private fun update(dir: File, asks: Boolean): UpdateFileByUniqueIdRequest {
+        val create = request(dir, asks = asks)
+        return UpdateFileByUniqueIdRequest(
+            driveId = create.driveId,
+            uniqueId = Uuid.random(),
+            keyHeader = create.keyHeader,
+            instructions = FileUpdateInstructionSet(
+                transferIv = ByteArray(16),
+                locale = UpdateLocale.Local,
+                recipients = emptyList(),
+                manifest = UpdateManifest.build(payloads = create.payloads),
+            ),
+            metadata = create.metadata,
+            payloads = create.payloads,
+            sealDescriptorContent = asks,
+        )
+    }
+
+    @Test
+    fun anUpdateIsSealedOnTheWayOut() = withDir { dir ->
+        val sealed = captured { http, creds -> DriveUploadProvider(http, creds, JvmFileOperationsProvider()).updateFileByUniqueId(update(dir, asks = true)) }
+        assertTrue(sealed.isNotEmpty() && name !in sealed, "the update's manifest carries the sealed form")
+        val plain = captured { http, creds -> DriveUploadProvider(http, creds, JvmFileOperationsProvider()).updateFileByUniqueId(update(dir, asks = false)) }
+        assertTrue(name in plain, "with the switch off and no ask, as before")
+    }
+
+    @Test
+    fun anUploadToAPeersDriveIsSealedOnTheWayOut() = withDir { dir ->
+        val toPeer = request(dir).copy(
+            transitOptions = TransitOptions(recipients = listOf(OdinId("owner.peer")), remoteTargetDrive = TargetDrive(Uuid.random(), Uuid.random())),
+        )
+        val sent = captured { http, creds -> PeerDriveUploadProvider(http, creds, JvmFileOperationsProvider()).uploadFileOverPeer(toPeer) }
+        assertTrue(sent.isNotEmpty() && name !in sent)
+    }
+
+    @Test
+    fun aPeerUpdateRefusesDescriptorContentItCouldNotSeal() = withDir { dir ->
+        val payload = request(dir).payloads.single()
+        val error = assertFailsWith<IllegalArgumentException> {
+            DriveUploadProvider(HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }), CredentialsManager(), JvmFileOperationsProvider())
+                .updateFileOverPeerByGlobalTransitId(OdinId("owner.peer"), Uuid.random(), Uuid.random(), EncryptedKeyHeader.empty(), request(dir).metadata, listOf(payload))
+        }
+        assertTrue("descriptor" in error.message.orEmpty())
+    }
+
+    @Test
+    fun onlyTheRealSealedFormCountsAsSealed() = runTest {
+        val key = KeyHeader.newRandom16().aesKey
+        val lookalike = PayloadFile(key = "chat_web0", filePath = "x", contentType = "a/b", descriptorContent = "{\"e\":plan.pdf")
+        assertFalse(lookalike.withSealedDescriptor(key).descriptorContent!!.contains("plan.pdf"), "a name that starts like a seal is still sealed")
     }
 
     @Test

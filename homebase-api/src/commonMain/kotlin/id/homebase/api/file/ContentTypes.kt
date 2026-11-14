@@ -51,7 +51,7 @@ fun extensionForContentType(contentType: String?): String {
 fun resolveContentType(fileName: String?, platformMimeType: String? = null): String =
     platformMimeType?.takeUnless(::isUntyped) ?: detectContentTypeFromExtensionOrHint(fileName)
 
-// On the originally picked handle only: a sandbox copy has lost the platform's type and often the extension too (#1149).
+// On the originally picked handle only: a sandbox copy has lost the platform's type and often the extension too.
 fun PlatformFile.contentType(): String = resolveContentType(fileName = name, platformMimeType = mimeType()?.toString())
 
 private val commonExtToMime: Map<String, String> = mapOf(
