@@ -55,6 +55,16 @@ class WebDropStagePayloadsTest {
     }
 
     @Test
+    fun aViewOnlyHeicIsNamedJpgFromItsCleanedName() = runTest {
+        val fs = StageFakeFileOps(mutableMapOf("/h" to ByteArray(4)))
+        val heic = PickedDropFile(path = "/h", name = "../a.b/IMG_1.HEIC", contentType = "image/heic", size = 4)
+
+        val (manifest, _) = stageWebDropPayloads(fs, listOf(heic), key, mutableMapOf(), viewOnly = true, heicToJpeg = { byteArrayOf(1) })
+
+        assertEquals("IMG_1.jpg", manifest.single().name)
+    }
+
+    @Test
     fun anUnreadableSourceAbortsTheWholeDropTypedAndNamed() = runTest {
         val fs = StageFakeFileOps(mutableMapOf("/a.pdf" to ByteArray(3) { 1 }))
         val ivs = mutableMapOf<String, ByteArray>()

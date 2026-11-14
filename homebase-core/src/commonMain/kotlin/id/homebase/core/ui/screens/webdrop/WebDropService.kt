@@ -203,7 +203,7 @@ internal suspend fun buildWebDrop(
 
     val receipt = WebDropReceiptContent(
         v = contentVersion,
-        name = safeFileName(files.first().name),
+        name = manifest.first().name,
         files = manifest,
         url = url,
         ttl = ttl,
@@ -276,7 +276,7 @@ internal suspend fun stageWebDropPayloads(
                 } else null
                 manifest += WebDropManifestEntry(
                     key = payloadKey,
-                    name = if (jpeg != null) safeFileName(splitExtension(file.name).first, extension = "jpg") else safeFileName(file.name),
+                    name = safeFileName(file.name).let { if (jpeg != null) safeFileName(splitExtension(it).first, extension = "jpg") else it },
                     contentType = if (jpeg != null) "image/jpeg" else file.contentType,
                     size = jpeg?.size?.toLong() ?: fileOps.getFileSize(resolvedPath),
                 )

@@ -44,6 +44,14 @@ class PhotoMetadataStripTest {
     }
 
     @Test
+    fun aContactPhotoWithANonImageTypeIsStillTypedAndStripped() = runTest {
+        val (sent, type) = contactPhotoToSend(geotaggedJpeg(), "binary/octet-stream")
+
+        assertEquals("image/jpeg", type)
+        assertFalse(sent.contains(gpsMarker))
+    }
+
+    @Test
     fun aContactPhotoWithNoTypeIsTypedFromItsBytes() = runTest {
         assertEquals("image/png", contactPhotoToSend(image("png"), "application/octet-stream").second)
     }

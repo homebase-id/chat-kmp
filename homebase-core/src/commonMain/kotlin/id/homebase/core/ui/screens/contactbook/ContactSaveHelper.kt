@@ -305,8 +305,8 @@ private suspend fun uploadContactPhoto(
 }
 
 internal suspend fun contactPhotoToSend(bytes: ByteArray, platformType: String): Pair<ByteArray, String> {
-    val untyped = platformType.isBlank() || platformType == "application/octet-stream"
-    val contentType = if (untyped) ImageFormatDetector.detectFormat(bytes) else platformType
+    // Unlike the builder's rule, any non-image type is sniffed: the file is known to be a picture, and only an image type gets stripped.
+    val contentType = platformType.takeIf { it.startsWith("image/") } ?: ImageFormatDetector.detectFormat(bytes)
     return imageBytesFor(MetadataPolicy.STRIP, bytes, contentType) to contentType
 }
 
