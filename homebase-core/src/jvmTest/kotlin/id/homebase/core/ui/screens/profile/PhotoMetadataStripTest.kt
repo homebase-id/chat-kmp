@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.profile
 
+import id.homebase.core.contains
 import id.homebase.core.ui.screens.contactbook.contactPhotoToSend
 import kotlinx.coroutines.test.runTest
 import java.awt.image.BufferedImage
@@ -31,9 +32,6 @@ class PhotoMetadataStripTest {
         return jpeg.copyOfRange(0, 2) + app1 + jpeg.copyOfRange(2, jpeg.size)
     }
 
-    private fun ByteArray.contains(needle: ByteArray) =
-        (0..size - needle.size).any { i -> needle.indices.all { this[i + it] == needle[it] } }
-
     @Test
     fun aContactPhotoGoesOutWithoutItsExif() = runTest {
         val picked = geotaggedJpeg()
@@ -56,5 +54,6 @@ class PhotoMetadataStripTest {
 
         assertFalse(photo.content.contains(gpsMarker))
         assertFalse(photo.thumbnails.single().thumbnailBytes.contains(gpsMarker))
+        assertFalse(photo.tiny.bytes.contains(gpsMarker))
     }
 }

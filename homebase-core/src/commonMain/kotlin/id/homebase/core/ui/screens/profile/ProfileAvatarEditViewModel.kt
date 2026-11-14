@@ -397,17 +397,20 @@ class ProfileAvatarEditViewModel(
 
 internal class AvatarPhoto(val contentType: String, val content: ByteArray, val thumbnails: List<ThumbnailFile>, val tiny: PreviewThumbnail)
 
-/** A profile or card photo as it is sent: re-encoded, and stripped of metadata on purpose (UPLOADS.md section 5). */
+// Stripped although re-encoded, so a change of encoder can't bring the metadata back.
 internal suspend fun avatarPhoto(cropped: ByteArray): AvatarPhoto {
-    val fullSize = createImageThumbnail(cropped, "avatar_full", AVATAR_FULL_SIZE_INSTRUCTION)
-    val thumbnail = createImageThumbnail(cropped, "avatar_thumb", AVATAR_THUMBNAIL_INSTRUCTION)
+    suspend fun rendition(key: String, instruction: ThumbnailInstruction, tiny: Boolean = false) =
+        createImageThumbnail(cropped, key, instruction, isTinyThumb = tiny).let {
+            it.copy(thumbnailBytes = imageBytesFor(MetadataPolicy.STRIP, it.thumbnailBytes, it.contentType))
+        }
+    val fullSize = rendition("avatar_full", AVATAR_FULL_SIZE_INSTRUCTION)
     // The tiny is reported at the source's natural size, not its own ~20 px; see PreviewThumbnail.
     val naturalSize = ImageUtils.getNaturalSize(cropped)
-    val tiny = createImageThumbnail(cropped, "avatar_tiny", tinyThumbSize, isTinyThumb = true)
+    val tiny = rendition("avatar_tiny", tinyThumbSize, tiny = true)
     return AvatarPhoto(
         contentType = fullSize.contentType,
-        content = imageBytesFor(MetadataPolicy.STRIP, fullSize.thumbnailBytes, fullSize.contentType),
-        thumbnails = listOf(thumbnail),
+        content = fullSize.thumbnailBytes,
+        thumbnails = listOf(rendition("avatar_thumb", AVATAR_THUMBNAIL_INSTRUCTION)),
         tiny = PreviewThumbnail(bytes = tiny.thumbnailBytes, naturalPixelWidth = naturalSize.pixelWidth, naturalPixelHeight = naturalSize.pixelHeight),
     )
 }

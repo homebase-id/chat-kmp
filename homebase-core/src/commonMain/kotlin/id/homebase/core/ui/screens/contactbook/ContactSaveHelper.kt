@@ -304,9 +304,9 @@ private suspend fun uploadContactPhoto(
     )
 }
 
-/** A contact photo is a picture whatever type the platform gives it, and goes out without its EXIF (UPLOADS.md section 5). */
 internal suspend fun contactPhotoToSend(bytes: ByteArray, platformType: String): Pair<ByteArray, String> {
-    val contentType = platformType.takeIf { it.startsWith("image/") } ?: ImageFormatDetector.detectFormat(bytes)
+    val untyped = platformType.isBlank() || platformType == "application/octet-stream"
+    val contentType = if (untyped) ImageFormatDetector.detectFormat(bytes) else platformType
     return imageBytesFor(MetadataPolicy.STRIP, bytes, contentType) to contentType
 }
 

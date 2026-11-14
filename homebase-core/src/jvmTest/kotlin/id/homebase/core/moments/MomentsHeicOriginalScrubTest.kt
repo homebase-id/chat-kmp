@@ -1,5 +1,6 @@
 package id.homebase.core.moments
 
+import id.homebase.core.contains
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
@@ -103,7 +104,4 @@ class MomentsHeicOriginalScrubTest {
 
     // homebase-api's HeicFixtures puts the Exif item at 572..824; that object isn't visible from here.
     private fun ByteArray.exifItem() = copyOfRange(572, 824)
-
-    private fun ByteArray.contains(needle: ByteArray): Boolean =
-        (0..size - needle.size).any { at -> needle.indices.all { this[at + it] == needle[it] } }
 }

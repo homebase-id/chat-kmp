@@ -153,13 +153,9 @@ suspend fun withMetadataStripped(payload: PayloadFile, fileOps: FileOperationsPr
     return payload.copy(filePath = path)
 }
 
-/**
- * [bytes] as an app's [policy] says to send them, for a sender that holds the image in memory (contact and
- * profile photos). Stripped even when the bytes are a fresh re-encode, so a later change of encoder can't
- * bring the metadata back.
- */
+/** The in-memory twin of [withMetadataStripped]. */
 suspend fun imageBytesFor(policy: MetadataPolicy, bytes: ByteArray, contentType: String): ByteArray =
-    if (policy == MetadataPolicy.STRIP) bytesWithoutMetadata(bytes, contentType) ?: bytes else bytes
+    if (policy == MetadataPolicy.STRIP && contentType.startsWith("image/")) bytesWithoutMetadata(bytes, contentType) ?: bytes else bytes
 
 /**
  * The image at [path] with its EXIF/XMP removed, or null when there was nothing to strip. The pixel data
@@ -182,7 +178,6 @@ private suspend fun imageWithoutMetadata(path: String, contentType: String, file
 }
 
 private suspend fun bytesWithoutMetadata(original: ByteArray, contentType: String): ByteArray? {
-    if (!contentType.startsWith("image/")) return null
     val why = when (val outcome = withContext(Dispatchers.Default) { ImageMetadataScrubber.scrubWithOutcome(original) }) {
         is ImageMetadataScrubber.Outcome.Scrubbed -> return outcome.bytes
         ImageMetadataScrubber.Outcome.NothingToStrip -> return null
