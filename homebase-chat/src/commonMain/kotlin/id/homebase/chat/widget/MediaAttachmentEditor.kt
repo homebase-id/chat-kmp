@@ -102,7 +102,7 @@ import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.pdf.generatePdfThumbnail
 import id.homebase.core.ui.assets.HdOff
 import id.homebase.core.ui.assets.HomebaseIcons
-import id.homebase.core.util.resolveContentType
+import id.homebase.api.file.resolveContentType
 import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber

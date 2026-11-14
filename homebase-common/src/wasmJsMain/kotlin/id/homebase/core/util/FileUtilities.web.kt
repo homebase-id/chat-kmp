@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import androidx.compose.runtime.Composable
 import id.homebase.api.file.readWebFileBytes
 import id.homebase.api.util.safeFileName

@@ -33,12 +33,12 @@ private val PAYLOAD_KEY_PATTERN = Regex(PAYLOAD_KEY_PATTERN_RAW)
 
 fun UploadFileRequest.validateForUpload() {
     validateMetadata(metadata)
-    payloads.forEach { validatePayload(it) }
+    payloads.forEach { validatePayload(it, sealsDescriptors) }
 }
 
 fun UpdateFileByUniqueIdRequest.validateForUpload() {
     validateMetadata(metadata)
-    payloads?.forEach { validatePayload(it) }
+    payloads?.forEach { validatePayload(it, sealsDescriptors) }
 }
 
 private fun validateMetadata(metadata: UploadFileMetadata) {
@@ -56,7 +56,8 @@ private fun validateMetadata(metadata: UploadFileMetadata) {
     }
 }
 
-private fun validatePayload(payload: PayloadFile) {
+// [sealed]: the provider seals descriptor content on the way out, so it is measured as it will be sent.
+private fun validatePayload(payload: PayloadFile, sealed: Boolean) {
     if (!PAYLOAD_KEY_PATTERN.matches(payload.key)) {
         // Server returns 400 with this exact shape; producing it
         // verbatim means callers debugging the log get the same string
@@ -69,10 +70,11 @@ private fun validatePayload(payload: PayloadFile) {
         validateEmbeddedThumb(thumb, where = "payload[${payload.key}].previewThumbnail")
     }
     payload.descriptorContent?.let { descriptor ->
-        if (!DescriptorContentSeal.fits(descriptor, sealed = false)) {
-            throw validationFailure(
-                "Payload descriptor size of ${descriptor.encodeToByteArray().size} exceeds ${HomebaseProtocol.MaxPayloadDescriptorBytes}"
-            )
+        val willSeal = sealed && !DescriptorContentSeal.isSealed(descriptor)
+        if (!DescriptorContentSeal.fits(descriptor, sealed = willSeal)) {
+            val bytes = descriptor.encodeToByteArray().size
+            val size = if (willSeal) DescriptorContentSeal.sealedLength(bytes) else bytes
+            throw validationFailure("Payload descriptor size of $size exceeds ${HomebaseProtocol.MaxPayloadDescriptorBytes}")
         }
     }
 }

@@ -1,7 +1,7 @@
 package id.homebase.core.util
 
+import id.homebase.api.file.contentTypeFromBytes
 import co.touchlab.kermit.Logger
-import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.util.freeFileName
 import id.homebase.api.util.safeFileName
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -173,7 +173,7 @@ object IosAlbumSaver : AlbumSaver {
     @OptIn(ExperimentalForeignApi::class)
     private fun jpegForUnsupportedPhotoFormat(fileUrl: NSURL): NSData? {
         val data = NSData.dataWithContentsOfURL(fileUrl) ?: return null
-        val format = ImageFormatDetector.detectFormat(data.headerBytes(16))
+        val format = contentTypeFromBytes(data.headerBytes(16))
         val importsDirectly = format in setOf(
             "image/jpeg", "image/png", "image/gif", "image/heic", "image/heif",
         )

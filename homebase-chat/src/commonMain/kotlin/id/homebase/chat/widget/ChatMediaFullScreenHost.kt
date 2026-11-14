@@ -1,6 +1,6 @@
 package id.homebase.chat.widget
 
-import id.homebase.core.util.extensionForContentType
+import id.homebase.api.file.extensionForContentType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi

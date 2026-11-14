@@ -113,9 +113,26 @@ class ImageFormatDetectorTest {
     }
 
     @Test
-    fun detectFormat_syntheticBmpHeader() {
-        val bytes = byteArrayOf(0x42, 0x4D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
-        assertEquals("image/bmp", ImageFormatDetector.detectFormat(bytes))
+    fun detectFormat_aBmpNeedsItsWholeHeader() {
+        val header = "BM".encodeToByteArray() + byteArrayOf(0x46, 0, 0, 0) + ByteArray(4) + byteArrayOf(0x36, 0, 0, 0) + byteArrayOf(40, 0, 0, 0)
+        assertEquals("image/bmp", ImageFormatDetector.detectFormat(header))
+        assertEquals("application/octet-stream", ImageFormatDetector.detectFormat("BMW 320i service log, 2019".encodeToByteArray()))
+        assertEquals("application/octet-stream", ImageFormatDetector.detectFormat(byteArrayOf(0x42, 0x4D, 0, 0, 0, 0, 0, 0)))
+    }
+
+    @Test
+    fun detectFormat_aGifNeedsItsVersion() {
+        assertEquals("application/octet-stream", ImageFormatDetector.detectFormat("GIFT LIST: socks".encodeToByteArray()))
+    }
+
+    @Test
+    fun detectFormat_anAvifIsNotAHeic() {
+        assertEquals("image/avif", ImageFormatDetector.detectFormat(ftyp("avif", "mif1", "miaf")))
+        assertEquals("image/avif", ImageFormatDetector.detectFormat(ftyp("mif1", "avif", "miaf")), "the generic HEIF brand, AVIF among the compatible ones")
+        assertEquals("image/avif", ImageFormatDetector.detectFormat(ftyp("avis", "msf1")))
+        assertEquals("image/heic", ImageFormatDetector.detectFormat(ftyp("heic", "mif1", "heic")))
+        assertEquals("image/heic", ImageFormatDetector.detectFormat(ftyp("mif1", "heic")))
+        assertTrue(ImageFormatDetector.isHeic(ftyp("mif1", "avif")), "still a HEIF for decoding and stripping")
     }
 
     // =========================================================

@@ -1,5 +1,6 @@
 package id.homebase.api.image
 
+import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -77,7 +78,7 @@ private suspend fun mediaImagesFrom(
     allowFinalImage: Boolean,
     readMetadata: Boolean,
 ): MediaImages {
-    val format = ImageFormatDetector.detectFormat(header)
+    val format = contentTypeFromBytes(header)
     val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
     val media = renderPlanned(source, payloadKey, displayedSize = null) { size ->

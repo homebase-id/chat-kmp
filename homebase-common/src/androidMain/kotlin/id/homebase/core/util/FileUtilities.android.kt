@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import android.content.ComponentName
 import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent

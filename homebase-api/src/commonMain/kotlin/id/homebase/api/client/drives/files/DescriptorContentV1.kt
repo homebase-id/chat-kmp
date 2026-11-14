@@ -138,11 +138,23 @@ object DescriptorContentSeal {
     suspend fun seal(plaintext: String, key: SecureByteArray): String =
         strict.encodeToString(Sealed.serializer(), Sealed(Base64Encoder.encode(byteArrayOf(FORMAT) + ZkLock.lock(plaintext.encodeToByteArray(), key.unsafeBytes))))
 
+    // The whole sealed form, not just its start: a name may begin with {"e": too.
+    internal fun isSealed(content: String): Boolean = sealedBytes(content)?.firstOrNull() == FORMAT
+
+    private fun sealedBytes(content: String): ByteArray? =
+        if (!content.startsWith("{\"e\":")) null
+        else runCatching { Base64Encoder.decode(strict.decodeFromString(Sealed.serializer(), content).e) }.getOrNull()
+
+    /** Whether an upload seals its descriptor content: an encrypted file, with the switch on or when its app asks ahead of it. */
+    internal fun appliesTo(isEncrypted: Boolean, asked: Boolean): Boolean = isEncrypted && (DescriptorContentV1.WRITE || asked)
+
+    /** [content] sealed; as it is when there is nothing to seal or it already is. */
+    internal suspend fun sealIfPlain(content: String?, key: SecureByteArray): String? =
+        if (content.isNullOrBlank() || isSealed(content)) content else seal(content, key)
+
     /** [content] itself when it isn't sealed; its plaintext when it is; null when it doesn't open. */
     suspend fun open(content: String, key: SecureByteArray): String? {
-        if (!content.startsWith("{\"e\":")) return content
-        val sealed = runCatching { Base64Encoder.decode(strict.decodeFromString(Sealed.serializer(), content).e) }.getOrNull()
-            ?: return content
+        val sealed = sealedBytes(content) ?: return content
         if (sealed.firstOrNull() != FORMAT) return null
         return try {
             ZkLock.open(sealed.copyOfRange(1, sealed.size), key.unsafeBytes).decodeToString()
@@ -152,3 +164,6 @@ object DescriptorContentSeal {
         }
     }
 }
+
+internal suspend fun PayloadFile.withSealedDescriptor(aesKey: SecureByteArray): PayloadFile =
+    copy(descriptorContent = DescriptorContentSeal.sealIfPlain(descriptorContent, aesKey))

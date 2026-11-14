@@ -1,15 +1,39 @@
-package id.homebase.core.util
+package id.homebase.api.file
 
-import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.mimeType
+import io.github.vinceglb.filekit.PlatformFile
+import co.touchlab.kermit.Logger
+import id.homebase.api.lib.image.ImageFormatDetector
+import kotlinx.coroutines.CancellationException
+
+// The one place a file's content type is decided (UPLOADS.md section 3.1): from its bytes, the platform's type, or its name.
 
 const val CONTENT_TYPE_MARKDOWN = "text/markdown"
+const val OCTET_STREAM = "application/octet-stream"
+
+fun isUntyped(contentType: String?): Boolean = contentType.isNullOrBlank() || contentType == OCTET_STREAM
+
+/** The type the bytes name ([OCTET_STREAM] when they name none): images, by their signatures. */
+fun contentTypeFromBytes(header: ByteArray): String = ImageFormatDetector.detectFormat(header)
+
+/** [contentTypeFromBytes] for the file at [path]; [OCTET_STREAM] when it can't be read. */
+suspend fun contentTypeOfFile(path: String, fileOps: FileOperationsProvider): String {
+    val header = try {
+        fileOps.readFileHeaderBytes(path)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = "ContentTypes", throwable = e) { "Couldn't read $path to check its type" }
+        return OCTET_STREAM
+    }
+    return contentTypeFromBytes(header)
+}
 
 fun detectContentTypeFromExtensionOrHint(nameOrPath: String?): String {
     val ext = nameOrPath?.substringAfterLast('.')?.lowercase()?.takeIf { it.isNotBlank() }
-        ?: return "application/octet-stream"
-    return commonExtToMime[ext] ?: "application/octet-stream"
+        ?: return OCTET_STREAM
+    return commonExtToMime[ext] ?: OCTET_STREAM
 }
 
 fun extensionForMimeType(mimeType: String): String? = commonMimeToExt[mimeType]
@@ -23,39 +47,12 @@ fun extensionForContentType(contentType: String?): String {
         ?: "bin"
 }
 
-/**
- * Resolves the best content type for a file:
- * 1. Platform-provided MIME type (if specific, i.e. not octet-stream)
- * 2. Extension-based lookup from the filename (140+ extensions)
- * Falls back to "application/octet-stream" if both fail.
- *
- * [platformMimeType] is the optional result from PlatformFile.mimeType().
- */
-fun resolveContentType(
-    fileName: String?,
-    platformMimeType: String? = null,
-): String {
-    // 1. Trust platform MIME type if it's specific
-    if (platformMimeType != null && platformMimeType != "application/octet-stream") {
-        return platformMimeType
-    }
+/** The platform's type when it gives one, else the name's. */
+fun resolveContentType(fileName: String?, platformMimeType: String? = null): String =
+    platformMimeType?.takeUnless(::isUntyped) ?: detectContentTypeFromExtensionOrHint(fileName)
 
-    // 2. Extension-based lookup
-    return detectContentTypeFromExtensionOrHint(fileName)
-}
-
-/**
- * [resolveContentType] over a [PlatformFile]'s own name and platform MIME. Use this instead of
- * spelling the pair out, and never `mimeType()` alone — the raw MIME has no extension fallback.
- *
- * Call it on the **originally picked** handle, before any sandbox copy. Only that handle knows the
- * real type: on Android it is a `content://` URI whose `ContentResolver.getType()` answers
- * `image/jpeg`, while a copy is a plain file that can only be typed from its name — and the system
- * photo picker's names (`photopicker-1000022602`) carry no extension, so a copy resolves to
- * `application/octet-stream` and the message ships as a generic file chip with no thumbnail (#1149).
- */
-fun PlatformFile.contentType(): String =
-    resolveContentType(fileName = name, platformMimeType = mimeType()?.toString())
+// On the originally picked handle only: a sandbox copy has lost the platform's type and often the extension too.
+fun PlatformFile.contentType(): String = resolveContentType(fileName = name, platformMimeType = mimeType()?.toString())
 
 private val commonExtToMime: Map<String, String> = mapOf(
     // Images
@@ -233,7 +230,6 @@ private val commonMimeToExt: Map<String, String> by lazy {
         "rb", "css", "sql", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
         "apk", "gz", "rar", "7z",
     )
-    // First pass: add all entries
     for ((ext, mime) in commonExtToMime) {
         if (!reverse.containsKey(mime) || ext in preferred) {
             reverse[mime] = ext

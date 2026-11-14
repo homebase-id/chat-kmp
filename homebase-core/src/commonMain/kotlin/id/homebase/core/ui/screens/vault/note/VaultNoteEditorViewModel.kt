@@ -11,7 +11,7 @@ import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.model.VaultEntry
-import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import id.homebase.api.file.CONTENT_TYPE_MARKDOWN
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow

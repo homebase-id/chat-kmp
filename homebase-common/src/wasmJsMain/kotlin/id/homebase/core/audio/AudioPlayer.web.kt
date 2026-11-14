@@ -4,7 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.file.readWebFileBytes
 import id.homebase.api.util.toBlobObjectUrl
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 
 /*
  * `filePath` here is a path into the in-memory FakeFileSystem the decrypt-on-demand flow wrote to

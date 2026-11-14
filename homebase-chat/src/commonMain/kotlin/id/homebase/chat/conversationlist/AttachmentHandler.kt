@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.file.contentTypeFromBytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
@@ -10,7 +11,7 @@ import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.clipboard.platformFileFromPath
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.removeBackground
 import id.homebase.chat.services.image.warmUpBackgroundRemoval
@@ -778,20 +779,9 @@ internal class AttachmentHandler(
     }
 }
 
-/**
- * Picks the temp-file extension for a pasted clipboard image by sniffing the magic
- * bytes (via [ImageFormatDetector.detectFormat]) rather than trusting the source.
- *
- * The extension matters because the send path derives the wire content-type from the
- * file name (extension fallback in `resolveContentType`). An animated GIF must keep a
- * ".gif" suffix so it is sent as image/gif — that type is THUMBLESS, so receivers load
- * the full payload and the GIF animates. JPEG keeps ".jpg"; everything else (PNG,
- * unknown raster) defaults to ".png", which matches the previous hardcoded behavior.
- *
- * The bytes themselves are never re-encoded.
- */
+// The send path types a pasted file by its extension, so a GIF must keep ".gif" to be sent as one and animate.
 internal fun clipboardImageSuffix(bytes: ByteArray): String =
-    when (ImageFormatDetector.detectFormat(bytes)) {
+    when (contentTypeFromBytes(bytes)) {
         "image/gif" -> ".gif"
         "image/jpeg" -> ".jpg"
         "image/webp" -> ".webp"

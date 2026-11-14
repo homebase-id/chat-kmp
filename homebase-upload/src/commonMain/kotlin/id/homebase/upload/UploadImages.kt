@@ -1,5 +1,6 @@
 package id.homebase.upload
 
+import id.homebase.api.file.contentTypeFromBytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -109,7 +110,7 @@ object UploadImages {
         return ThumbnailResult(
             preview = tinyThumb,
             thumbnails = thumbnails,
-            sourceFormat = ImageFormatDetector.detectFormat(pageJpeg),
+            sourceFormat = contentTypeFromBytes(pageJpeg),
             sourceByteCount = pageJpeg.size.toLong(),
         )
     }
@@ -185,7 +186,7 @@ private suspend fun bytesWithoutMetadata(original: ByteArray, contentType: Strin
         ImageMetadataScrubber.Outcome.Unparseable -> "couldn't be parsed"
     }
     Logger.w(tag = TAG) {
-        "metadata scrub skipped — $contentType (sniffed ${ImageFormatDetector.detectFormat(original)}) $why; any EXIF/XMP goes out intact"
+        "metadata scrub skipped — $contentType (sniffed ${contentTypeFromBytes(original)}) $why; any EXIF/XMP goes out intact"
     }
     return null
 }

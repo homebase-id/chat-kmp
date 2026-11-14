@@ -1,9 +1,9 @@
-package id.homebase.core.util
+package id.homebase.api.file
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class ContentTypeUtilTest {
+class ContentTypesTest {
 
     // Issue #905: a gallery pick whose filename lacks a usable extension must still
     // resolve to its real image type when the platform MIME type is available,

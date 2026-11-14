@@ -53,7 +53,7 @@ import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.pdf.PdfPageViewer
 import id.homebase.core.pdf.pdfPageViewerAvailable
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.core.util.isWeb
 import id.homebase.api.util.trimToUtf8Boundary
 import id.homebase.resources.MR

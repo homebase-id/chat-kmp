@@ -13,7 +13,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
-import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import id.homebase.api.file.CONTENT_TYPE_MARKDOWN
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid

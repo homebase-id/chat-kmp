@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.file.contentTypeFromBytes
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,7 +18,6 @@ import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.compareStringUuId
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.ui.screens.contactbook.isPresentedByThisApp
@@ -1106,5 +1106,5 @@ internal fun decodeCardPng(base64: String): ByteArray? {
     } catch (e: IllegalArgumentException) {
         return null
     }
-    return bytes.takeIf { ImageFormatDetector.detectFormat(it) == "image/png" }
+    return bytes.takeIf { contentTypeFromBytes(it) == "image/png" }
 }

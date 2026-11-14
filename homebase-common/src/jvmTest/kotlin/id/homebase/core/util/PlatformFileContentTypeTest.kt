@@ -1,5 +1,7 @@
 package id.homebase.core.util
 
+import id.homebase.api.file.contentType
+import id.homebase.api.file.resolveContentType
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.test.Test
 import kotlin.test.assertEquals

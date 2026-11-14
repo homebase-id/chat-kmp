@@ -1,12 +1,12 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.file.contentTypeFromBytes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
@@ -17,8 +17,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.JvmFileOperationsProvider
-import id.homebase.api.lib.image.ImageFormatDetector
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
@@ -173,7 +171,7 @@ class OutboxBackupUploaderTest {
         assertTrue(request.thumbnails.isNotEmpty())
         request.thumbnails.forEach { thumb ->
             assertEquals(payload.key, thumb.key)
-            assertEquals("image/webp", ImageFormatDetector.detectFormat(payloadKey.decrypt(thumb.thumbnailBytes)), "encrypted with the payload's own IV")
+            assertEquals("image/webp", contentTypeFromBytes(payloadKey.decrypt(thumb.thumbnailBytes)), "encrypted with the payload's own IV")
         }
 
         val content = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
@@ -215,7 +213,7 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun theLibrarysTypeOutranksTheBytes() = runTest {
+    fun aPhotosOwnBytesDecideItsType() = runTest {
         val bytes = jpeg(64, 48)
         val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
         val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("odd", bytes), "image/x-library-says", false)))
@@ -223,7 +221,7 @@ class OutboxBackupUploaderTest {
         uploader.handOff(row, uniqueId)
 
         val payload = queuedRequest(uniqueId).second.payloads.single()
-        assertEquals("image/x-library-says", payload.contentType)
+        assertEquals("image/jpeg", payload.contentType, "the bytes decide, now that the detector's signatures are exact")
         File(payload.filePath).delete()
     }
 
@@ -233,10 +231,10 @@ class OutboxBackupUploaderTest {
         return ByteArrayOutputStream().also { ImageIO.write(image, "jpg", it) }.toByteArray()
     }
 
-    private suspend fun UploadFileRequest.opened(payload: PayloadFile): DescriptorContentV1? {
-        val sealed = assertNotNull(payload.descriptorContent)
-        assertTrue(sealed.startsWith("{\"e\":"), sealed)
-        return DescriptorContentV1.parseOrNull(assertNotNull(DescriptorContentSeal.open(sealed, keyHeader.aesKey)))
+    // Queued readable, with the provider asked to seal it on the way out.
+    private fun UploadFileRequest.opened(payload: PayloadFile): DescriptorContentV1? {
+        assertTrue(sealDescriptorContent, "Photos writes the current format ahead of the switch, so it asks for the seal")
+        return DescriptorContentV1.parseOrNull(assertNotNull(payload.descriptorContent))
     }
 
     private fun stagedFiles(): Set<String> =

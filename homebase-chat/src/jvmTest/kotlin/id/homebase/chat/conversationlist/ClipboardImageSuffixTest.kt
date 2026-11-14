@@ -1,6 +1,6 @@
 package id.homebase.chat.conversationlist
 
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
