@@ -66,7 +66,7 @@ object LocationPreviewPayloadBuilder {
                     filePath = tempPath,
                     contentType = mimeType,
                     descriptorContent = UserUploadBuilder.appDescriptor(
-                        buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = null),
+                        buildDescriptorJson(locationPreview, actualHasImage),
                         buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = 200),
                         buildDescriptorJson(locationPreview, actualHasImage, maxAddrLen = 0),
                     ),
@@ -100,16 +100,12 @@ object LocationPreviewPayloadBuilder {
     private fun buildDescriptorJson(
         locationPreview: LocationPreview,
         hasImage: Boolean,
-        maxAddrLen: Int?,
+        maxAddrLen: Int = Int.MAX_VALUE,
     ): String {
         val descriptor = LocationPreviewDescriptor(
             lat = locationPreview.lat,
             lon = locationPreview.lon,
-            address = if (maxAddrLen != null) {
-                locationPreview.address.truncateToCodePoints(maxAddrLen)
-            } else {
-                locationPreview.address
-            },
+            address = locationPreview.address.truncateToCodePoints(maxAddrLen),
             hasImage = hasImage,
             imageWidth = if (hasImage) locationPreview.imageWidth else null,
             imageHeight = if (hasImage) locationPreview.imageHeight else null,

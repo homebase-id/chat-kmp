@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.HomebaseProtocol
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.Base64Encoder
@@ -123,11 +124,15 @@ object DescriptorContentSeal {
     @Serializable
     private class Sealed(val e: String)
 
-    /** The length of [plaintextBytes] of descriptor content once sealed: 29 bytes of format, IV and tag, base64, wrapped. */
-    fun sealedLength(plaintextBytes: Int): Int = WRAPPER_CHARS + 4 * ((plaintextBytes + OVERHEAD_BYTES + 2) / 3)
+    fun sealedLength(plaintextBytes: Int): Int = WRAPPER.length + 4 * ((plaintextBytes + 1 + ZkLock.OVERHEAD + 2) / 3)
 
-    private const val OVERHEAD_BYTES = 29
-    private const val WRAPPER_CHARS = 8
+    /** Whether [content] fits the server's limit, as it is or once [sealed]. */
+    fun fits(content: String, sealed: Boolean): Boolean {
+        val bytes = content.encodeToByteArray().size
+        return (if (sealed) sealedLength(bytes) else bytes) <= HomebaseProtocol.MaxPayloadDescriptorBytes
+    }
+
+    private const val WRAPPER = """{"e":""}"""
 
     suspend fun seal(plaintext: String, key: SecureByteArray): String =
         strict.encodeToString(Sealed.serializer(), Sealed(Base64Encoder.encode(byteArrayOf(FORMAT) + ZkLock.lock(plaintext.encodeToByteArray(), key.unsafeBytes))))

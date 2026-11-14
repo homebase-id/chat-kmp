@@ -72,7 +72,7 @@ object LinkPreviewPayloadBuilder {
                     filePath = tempPath,
                     contentType = mimeType,
                     descriptorContent = UserUploadBuilder.appDescriptor(
-                        buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = null),
+                        buildDescriptorJson(linkPreview, actualHasImage),
                         buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = 100),
                         buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = 0),
                     ),
@@ -83,23 +83,15 @@ object LinkPreviewPayloadBuilder {
     }
 
     private fun buildDescriptorJson(
-        linkPreview: LinkPreview, hasImage: Boolean, maxTextLen: Int?
+        linkPreview: LinkPreview, hasImage: Boolean, maxTextLen: Int = Int.MAX_VALUE
     ): String {
         val descriptor = LinkPreviewDescriptor(
             url = linkPreview.url,
             hasImage = hasImage,
             imageWidth = if (hasImage) linkPreview.imageWidth else null,
             imageHeight = if (hasImage) linkPreview.imageHeight else null,
-            description = if (maxTextLen != null) {
-                linkPreview.description.truncateToCodePoints(maxTextLen)
-            } else {
-                linkPreview.description
-            },
-            title = if (maxTextLen != null) {
-                linkPreview.title.truncateToCodePoints(maxTextLen)
-            } else {
-                linkPreview.title
-            }
+            description = linkPreview.description.truncateToCodePoints(maxTextLen),
+            title = linkPreview.title.truncateToCodePoints(maxTextLen),
         )
         return OdinSystemSerializer.serialize(listOf(descriptor))
     }

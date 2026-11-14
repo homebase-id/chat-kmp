@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
@@ -67,13 +68,10 @@ private fun validatePayload(payload: PayloadFile) {
     payload.previewThumbnail?.let { thumb ->
         validateEmbeddedThumb(thumb, where = "payload[${payload.key}].previewThumbnail")
     }
-    payload.descriptorContent?.let { descriptor ->
-        val size = descriptor.encodeToByteArray().size
-        if (size > HomebaseProtocol.MaxPayloadDescriptorBytes) {
-            throw validationFailure(
-                "Payload descriptor size of $size exceeds ${HomebaseProtocol.MaxPayloadDescriptorBytes}"
-            )
-        }
+    payload.descriptorContent?.takeUnless { DescriptorContentSeal.fits(it, sealed = false) }?.let { descriptor ->
+        throw validationFailure(
+            "Payload descriptor size of ${descriptor.encodeToByteArray().size} exceeds ${HomebaseProtocol.MaxPayloadDescriptorBytes}"
+        )
     }
 }
 
