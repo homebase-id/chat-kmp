@@ -77,7 +77,6 @@ class UploadServiceTest {
     private suspend fun buildHarness(
         scope: CoroutineScope,
         encryptor: RecordingEncryptor = RecordingEncryptor(),
-        sealDescriptorContent: Boolean = false,
     ): Harness {
         val db = DatabaseManager({
             val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -109,7 +108,7 @@ class UploadServiceTest {
             outboxSync = outbox,
             optimisticWriter = writer,
             payloadCacheSeeder = seeder,
-        ).also { it.sealDescriptorContent = sealDescriptorContent }
+        )
         return Harness(service, db, encryptor, writer, seeder)
     }
 
@@ -127,10 +126,10 @@ class UploadServiceTest {
     private fun bundleOf(vararg keys: String) =
         PayloadBundle(payloads = keys.map { payload(it) }, thumbnails = emptyList(), previewThumbs = emptyList())
 
-    // ---------- sealing descriptor content (UPLOADS.md section 2) ----------
+    // ---------- descriptor content: sealed by the upload provider (UPLOADS.md section 2) ----------
 
-    private suspend fun sentAndKept(seal: Boolean, update: Boolean, specSeals: Boolean = false): Pair<String, String?> = coroutineScope {
-        val h = buildHarness(this, sealDescriptorContent = seal)
+    private suspend fun queuedAndKept(update: Boolean, appAsks: Boolean = false): Pair<String, String?> = coroutineScope {
+        val h = buildHarness(this)
         val uid = Uuid.random()
         val bundle = PayloadBundle(
             payloads = listOf(PayloadFile(key = "chat_web0", filePath = "src/a", contentType = "application/pdf", descriptorContent = "secret-name.pdf")),
@@ -144,7 +143,7 @@ class UploadServiceTest {
             )
         } else {
             h.service.upload(
-                MediaUploadSpec(driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), bundle = bundle, metadata = metadata(uid), seedCache = false, sendNow = false, sealDescriptorContent = specSeals),
+                MediaUploadSpec(driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), bundle = bundle, metadata = metadata(uid), seedCache = false, sendNow = false, sealDescriptorContent = appAsks),
                 scope = this,
             )
         }
@@ -155,25 +154,17 @@ class UploadServiceTest {
     }
 
     @Test
-    fun anEncryptedFileSendsItsDescriptorContentSealedAndKeepsItReadable() = runTest {
-        val (sent, kept) = sentAndKept(seal = true, update = false)
-        assertFalse("secret-name.pdf" in sent, "the name must not reach the server readable")
+    fun theOutboxKeepsDescriptorContentReadableForTheProviderToSeal() = runTest {
+        val (queued, kept) = queuedAndKept(update = false)
+        assertTrue("secret-name.pdf" in queued)
         assertEquals("secret-name.pdf", kept, "the optimistic copy stays readable, like everything opened on arrival")
+        assertTrue("secret-name.pdf" in queuedAndKept(update = true).first)
     }
 
     @Test
-    fun anUpdateSealsItsPayloadsToo() = runTest {
-        assertFalse("secret-name.pdf" in sentAndKept(seal = true, update = true).first)
-    }
-
-    @Test
-    fun withTheSwitchOffDescriptorContentGoesOutAsBefore() = runTest {
-        assertTrue("secret-name.pdf" in sentAndKept(seal = false, update = false).first)
-    }
-
-    @Test
-    fun anAppAheadOfTheSwitchSealsWithTheSwitchOff() = runTest {
-        assertFalse("secret-name.pdf" in sentAndKept(seal = false, update = false, specSeals = true).first)
+    fun anAppAheadOfTheSwitchAsksTheProviderToSeal() = runTest {
+        assertTrue("\"sealDescriptorContent\":true" in queuedAndKept(update = false, appAsks = true).first)
+        assertFalse("\"sealDescriptorContent\":true" in queuedAndKept(update = false).first)
     }
 
     // ---------- upload (create) ----------

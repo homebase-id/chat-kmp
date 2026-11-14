@@ -23,7 +23,6 @@ import id.homebase.upload.MetadataPolicy
 import id.homebase.upload.UploadOptions
 import id.homebase.upload.UploadSource
 import id.homebase.upload.UserUploadBuilder
-import id.homebase.upload.withSealedDescriptor
 import kotlin.uuid.Uuid
 
 /** One photo as an upload request: original bytes encrypted to staged files, however it's then sent. */
@@ -64,13 +63,12 @@ class BackupRequestBuilder(
                     onImageMetadata = { _, metadata -> exif = metadata },
                 ) { payloads[it].key }
             }
-            val sealed = payloads.zip(bundle.payloads).mapIndexed { index, (encrypted, built) ->
+            val described = payloads.zip(bundle.payloads).mapIndexed { index, (encrypted, built) ->
                 // The hash above vouches for these bytes, so the builder must not have swapped in a copy.
                 check(built.filePath == exported.parts[index].path) { "the builder replaced ${built.key}" }
                 // The library's type outranks the bytes until ImageFormatDetector is tightened (UPLOADS.md section 7).
                 val contentType = encrypted.contentType.takeUnless { it.isBlank() || it == "application/octet-stream" } ?: built.contentType
                 encrypted.copy(contentType = contentType, descriptorContent = built.descriptorContent, previewThumbnail = built.previewThumbnail)
-                    .withSealedDescriptor(keyHeader.aesKey)
             }
             val metadata = photoMetadata(
                 uniqueId,
@@ -79,14 +77,15 @@ class BackupRequestBuilder(
                 PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
                 bundle.previewThumbs.firstOrNull(),
             )
-            val keyByPayload = sealed.associate { it.key to KeyHeader(it.iv!!, keyHeader.aesKey) }
+            val keyByPayload = described.associate { it.key to KeyHeader(it.iv!!, keyHeader.aesKey) }
             val request = UploadFileRequest(
                 driveId = photosDriveId,
                 keyHeader = keyHeader,
                 metadata = metadata.encryptContent(keyHeader),
-                payloads = sealed,
+                payloads = described,
                 thumbnails = bundle.thumbnails.map { it.copy(thumbnailBytes = keyByPayload.getValue(it.key).encryptDataAes(it.thumbnailBytes)) },
                 existingFileIsSuccess = true,
+                sealDescriptorContent = true,
             )
             complete = true
             return request

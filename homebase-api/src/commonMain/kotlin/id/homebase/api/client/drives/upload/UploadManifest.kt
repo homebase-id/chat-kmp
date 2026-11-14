@@ -1,5 +1,7 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.crypto.ByteArrayUtil
@@ -249,3 +251,11 @@ private fun requireHashesBoundToIvs(payloads: List<PayloadFile>?) {
 
 /** Helper class for specifying payloads to delete. */
 data class PayloadDeleteKey(val key: String)
+
+/** The append instructions' descriptor content, sealed like a new file's (UPLOADS.md section 2). */
+suspend fun UpdateManifest.withSealedDescriptors(aesKey: SecureByteArray): UpdateManifest = copy(
+    payloadDescriptors = payloadDescriptors?.map { d ->
+        val content = d.descriptorContent?.takeIf { it.isNotBlank() && !DescriptorContentSeal.isSealed(it) } ?: return@map d
+        d.copy(descriptorContent = DescriptorContentSeal.seal(content, aesKey))
+    },
+)

@@ -138,9 +138,14 @@ object DescriptorContentSeal {
     suspend fun seal(plaintext: String, key: SecureByteArray): String =
         strict.encodeToString(Sealed.serializer(), Sealed(Base64Encoder.encode(byteArrayOf(FORMAT) + ZkLock.lock(plaintext.encodeToByteArray(), key.unsafeBytes))))
 
+    fun isSealed(content: String): Boolean = content.startsWith("{\"e\":")
+
+    /** Whether an upload seals its descriptor content: an encrypted file, with the switch on or when its app asks ahead of it. */
+    fun appliesTo(isEncrypted: Boolean, asked: Boolean): Boolean = isEncrypted && (DescriptorContentV1.WRITE || asked)
+
     /** [content] itself when it isn't sealed; its plaintext when it is; null when it doesn't open. */
     suspend fun open(content: String, key: SecureByteArray): String? {
-        if (!content.startsWith("{\"e\":")) return content
+        if (!isSealed(content)) return content
         val sealed = runCatching { Base64Encoder.decode(strict.decodeFromString(Sealed.serializer(), content).e) }.getOrNull()
             ?: return content
         if (sealed.firstOrNull() != FORMAT) return null
@@ -151,4 +156,10 @@ object DescriptorContentSeal {
             null
         }
     }
+}
+
+/** [this] with its descriptor content sealed (UPLOADS.md section 2): nothing to seal when it has none or it already is. */
+suspend fun PayloadFile.withSealedDescriptor(aesKey: SecureByteArray): PayloadFile {
+    val content = descriptorContent?.takeIf { it.isNotBlank() && !DescriptorContentSeal.isSealed(it) } ?: return this
+    return copy(descriptorContent = DescriptorContentSeal.seal(content, aesKey))
 }

@@ -6,7 +6,6 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
@@ -233,10 +232,10 @@ class OutboxBackupUploaderTest {
         return ByteArrayOutputStream().also { ImageIO.write(image, "jpg", it) }.toByteArray()
     }
 
-    private suspend fun UploadFileRequest.opened(payload: PayloadFile): DescriptorContentV1? {
-        val sealed = assertNotNull(payload.descriptorContent)
-        assertTrue(sealed.startsWith("{\"e\":"), sealed)
-        return DescriptorContentV1.parseOrNull(assertNotNull(DescriptorContentSeal.open(sealed, keyHeader.aesKey)))
+    // Queued readable, with the provider asked to seal it on the way out.
+    private fun UploadFileRequest.opened(payload: PayloadFile): DescriptorContentV1? {
+        assertTrue(sealDescriptorContent, "Photos writes the current format ahead of the switch, so it asks for the seal")
+        return DescriptorContentV1.parseOrNull(assertNotNull(payload.descriptorContent))
     }
 
     private fun stagedFiles(): Set<String> =

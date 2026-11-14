@@ -340,7 +340,8 @@ class DriveOutboxUploader(
             ),
             metadata = original.metadata.copy(versionTag = versionTag),
             payloads = original.payloads,
-            thumbnails = original.thumbnails
+            thumbnails = original.thumbnails,
+            sealDescriptorContent = original.sealDescriptorContent,
         )
 
         Logger.d("$TAG retryAsUpdate: sending update for uniqueId=$uniqueId versionTag=$versionTag")

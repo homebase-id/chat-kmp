@@ -1,10 +1,6 @@
 package id.homebase.upload
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DescriptorContentSeal
-import id.homebase.api.common.SecureByteArray
-import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.PayloadFile
@@ -38,9 +34,6 @@ class UploadService(
     private val optimisticWriter: OptimisticLocalWriter,
     private val payloadCacheSeeder: PayloadCacheSeeder,
 ) {
-    // Not a constructor parameter: Koin builds this with singleOf, which can't fill one (or use its default).
-    internal var sealDescriptorContent: Boolean = DescriptorContentV1.WRITE
-
     /**
      * Encrypt + enqueue [spec] and (best-effort) seed the cache and write the optimistic row.
      * Returns a typed [UploadOutcome]; never throws for an expected failure (a missing source
@@ -63,10 +56,11 @@ class UploadService(
             keyHeader = spec.keyHeader,
             metadata = metadata.encryptContent(spec.keyHeader),
             transitOptions = spec.transit,
-            payloads = sealed(encryptedBundle.payloads, spec.keyHeader, metadata.isEncrypted, spec.sealDescriptorContent),
+            payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails,
             existingFileIsSuccess = spec.existingFileIsSuccess,
             fileSystemType = spec.requestFileSystemType,
+            sealDescriptorContent = spec.sealDescriptorContent,
         )
 
         // 3. Outbox enqueue — the durable success gate. Once accepted, delivery is guaranteed.
@@ -120,12 +114,6 @@ class UploadService(
         )
     }
 
-    // Copies too: the device keeps descriptor content opened, so a forward starts from the readable form.
-    private suspend fun sealed(payloads: List<PayloadFile>, keyHeader: KeyHeader, encrypted: Boolean, always: Boolean = false): List<PayloadFile> {
-        if (!encrypted || !(sealDescriptorContent || always)) return payloads
-        return payloads.map { it.withSealedDescriptor(keyHeader.aesKey) }
-    }
-
     /**
      * Update an existing file (`UpdateFileByUniqueIdRequest`). The shared counterpart to [upload]
      * for the non-create paths: header-only edits, appending/overwriting payloads, delete-only
@@ -156,7 +144,6 @@ class UploadService(
             freshlyEncrypted = encrypted
         }
 
-        val sent = sealed(payloads, spec.keyHeader, spec.metadata.isEncrypted)
         val request = UpdateFileByUniqueIdRequest(
             driveId = spec.driveId,
             uniqueId = spec.uniqueId,
@@ -166,7 +153,7 @@ class UploadService(
                 locale = spec.locale,
                 recipients = spec.recipients,
                 manifest = UpdateManifest.build(
-                    payloads = sent.ifEmpty { null },
+                    payloads = payloads.ifEmpty { null },
                     toDeletePayloads = spec.toDeletePayloads,
                     thumbnails = thumbnails.ifEmpty { null },
                     generatePayloadIv = spec.generatePayloadIv,
@@ -175,7 +162,7 @@ class UploadService(
                 appNotificationOptions = spec.appNotificationOptions,
             ),
             metadata = spec.metadata.encryptContent(spec.keyHeader),
-            payloads = sent.ifEmpty { null },
+            payloads = payloads.ifEmpty { null },
             thumbnails = thumbnails.ifEmpty { null },
         )
 
@@ -244,9 +231,3 @@ private fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
             },
         )
     }.ifEmpty { null }
-
-/** [this] with its descriptor content sealed for an encrypted file (UPLOADS.md section 2); nothing to seal when it has none. */
-suspend fun PayloadFile.withSealedDescriptor(aesKey: SecureByteArray): PayloadFile {
-    val content = descriptorContent?.takeIf { it.isNotBlank() } ?: return this
-    return copy(descriptorContent = DescriptorContentSeal.seal(content, aesKey))
-}
