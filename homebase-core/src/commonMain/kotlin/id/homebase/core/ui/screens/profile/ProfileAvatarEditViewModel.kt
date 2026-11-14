@@ -22,6 +22,9 @@ import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.ThumbnailInstruction
 import id.homebase.api.image.createImageThumbnail
 import id.homebase.api.image.tinyThumbSize
+import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.upload.MetadataPolicy
+import id.homebase.upload.imageBytesFor
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.ui.screens.card.CardAudience
@@ -281,23 +284,13 @@ class ProfileAvatarEditViewModel(
 
         viewModelScope.launch {
             try {
-                val fullSize = createImageThumbnail(bytes, "avatar_full", AVATAR_FULL_SIZE_INSTRUCTION)
-                val thumbnail = createImageThumbnail(bytes, "avatar_thumb", AVATAR_THUMBNAIL_INSTRUCTION)
-                // Blur-up placeholder for instant paint (HomebaseImage's previewThumbnail bridge
-                // frame) — reported at the source's natural size, not this tiny rendition's own
-                // ~20x20 resized size; see PreviewThumbnail's doc for why.
-                val naturalSize = ImageUtils.getNaturalSize(bytes)
-                val tinyThumb = createImageThumbnail(bytes, "avatar_tiny", tinyThumbSize, isTinyThumb = true)
+                val photo = avatarPhoto(bytes)
                 val written = profileRepository.uploadPhoto(
-                    contentType = fullSize.contentType,
-                    content = fullSize.thumbnailBytes,
-                    thumbnails = listOf(thumbnail),
+                    contentType = photo.contentType,
+                    content = photo.content,
+                    thumbnails = photo.thumbnails,
                     visibility = slot.visibility,
-                    previewThumbnail = PreviewThumbnail(
-                        bytes = tinyThumb.thumbnailBytes,
-                        naturalPixelWidth = naturalSize.pixelWidth,
-                        naturalPixelHeight = naturalSize.pixelHeight,
-                    ),
+                    previewThumbnail = photo.tiny,
                     circleId = slot.circleId,
                 )
 
@@ -400,4 +393,24 @@ class ProfileAvatarEditViewModel(
         updateTier(slot) { it.copy(existing = fresh) }
         return loaded
     }
+}
+
+internal class AvatarPhoto(val contentType: String, val content: ByteArray, val thumbnails: List<ThumbnailFile>, val tiny: PreviewThumbnail)
+
+// Stripped although re-encoded, so a change of encoder can't bring the metadata back.
+internal suspend fun avatarPhoto(cropped: ByteArray): AvatarPhoto {
+    suspend fun rendition(key: String, instruction: ThumbnailInstruction, tiny: Boolean = false) =
+        createImageThumbnail(cropped, key, instruction, isTinyThumb = tiny).let {
+            it.copy(thumbnailBytes = imageBytesFor(MetadataPolicy.STRIP, it.thumbnailBytes, it.contentType))
+        }
+    val fullSize = rendition("avatar_full", AVATAR_FULL_SIZE_INSTRUCTION)
+    // The tiny is reported at the source's natural size, not its own ~20 px; see PreviewThumbnail.
+    val naturalSize = ImageUtils.getNaturalSize(cropped)
+    val tiny = rendition("avatar_tiny", tinyThumbSize, tiny = true)
+    return AvatarPhoto(
+        contentType = fullSize.contentType,
+        content = fullSize.thumbnailBytes,
+        thumbnails = listOf(rendition("avatar_thumb", AVATAR_THUMBNAIL_INSTRUCTION)),
+        tiny = PreviewThumbnail(bytes = tiny.thumbnailBytes, naturalPixelWidth = naturalSize.pixelWidth, naturalPixelHeight = naturalSize.pixelHeight),
+    )
 }

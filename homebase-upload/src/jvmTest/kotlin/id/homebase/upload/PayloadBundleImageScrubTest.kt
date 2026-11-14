@@ -288,6 +288,15 @@ class PayloadBundleImageScrubTest {
         assertTrue("image/gif" in warning && "intact" in warning, warning)
     }
 
+    @Test
+    fun anImageHeldInMemoryIsStrippedOnlyWhenItsAppStrips() = runTest {
+        val jpeg = geotaggedJpeg()
+        assertFalse(indexOfSub(imageBytesFor(MetadataPolicy.STRIP, jpeg, "image/jpeg"), gpsMarker) >= 0)
+        assertContentEquals(jpeg, imageBytesFor(MetadataPolicy.KEEP, jpeg, "image/jpeg"))
+        val pdf = "%PDF-1.4".encodeToByteArray()
+        assertContentEquals(pdf, imageBytesFor(MetadataPolicy.STRIP, pdf, "application/pdf"))
+    }
+
     private fun indexOfSub(haystack: ByteArray, needle: ByteArray): Int {
         if (needle.isEmpty() || needle.size > haystack.size) return -1
         outer@ for (i in 0..haystack.size - needle.size) {
