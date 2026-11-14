@@ -193,7 +193,7 @@ private fun GalleryViewer(
         pageSpacing = 24.dp,
         // Around the pager, not inside a page: from inside a page the open animation restarts mid-flight and jumps.
         modifier = Modifier.fillMaxSize().fullScreenImageSharedBounds(
-            shown?.let { "image-${it.fileId}-${it.payload.key}" },
+            shown?.let { "image-${it.fileId}-${it.shown.key}" },
             sharedTransitionScope,
             animatedVisibilityScope,
         ),
@@ -241,12 +241,12 @@ private fun VideoStill(item: PhotoGalleryItem) {
 }
 
 private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
-    val iv = payload.iv?.bytes ?: return null
+    val iv = shown.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
-        descriptor = payload,
-        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+        descriptor = shown,
+        previewThumbnail = shown.previewThumbnail?.toEmbeddedThumb(),
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }

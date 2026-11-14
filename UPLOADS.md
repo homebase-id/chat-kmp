@@ -104,7 +104,7 @@ data class DescriptorContent(
 | `w`, `h` | payload data's pixels, upright | `i`, `v`, `s` | |
 | `q` | quality it was sent with | `i`, `v` | `sd`, `hd`, `org` |
 | `l` | length in seconds | `a` | |
-| `vd` | video details: `d` duration ms, `c` codec, `seg`, `p` the playlist payload's name, `sz` size before encryption, `bd` bit depth, `hdr`, `br` bitrate | `v` | width and height are `w`/`h` above, not repeated |
+| `vd` | video details: `d` duration ms, `c` codec, `seg`, `p` the playlist payload's name, `pc` the playable copy's name (section 3.6), `sz` size before encryption, `bd` bit depth, `hdr`, `br` bitrate | `v` | width and height are `w`/`h` above, not repeated |
 | `x` | app content | `x` | app-defined string |
 
 Encoding rules:
@@ -237,7 +237,26 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 
 - **User uploads:** `<prefix><index>`, prefix per app (section 5). Existing prefixes keep their format, because receivers look payloads up by key.
 - **HLS playlists:** `pls_<4-digit index>`, the index of the video it belongs to.
+- **A video's playable copy:** `vcp_<4-digit index>`, the index of the original it belongs to (section 3.6).
 - **Old overflow payloads** `pld_desc<index>` are read, never written.
+
+### 3.6 An original video and its playable copy
+
+Only Photos at Original keeps a video untouched (THUMBNAILS.md, "Video"); every other upload sends a transcode. An untouched video may not play everywhere and must download whole before it plays, so it travels with a copy to play:
+
+```
+video_main   the user's file, untouched     {"v":1,"k":"v","n":"IMG_0042.MOV","o":1,"vd":{"pc":"vcp_0000"}}
+vcp_0000     a 1080p transcode              {"v":1,"k":"v","o":0,"w":1920,"h":1080,"vd":{"seg":1,"p":"pls_0001",...}}
+pls_0001     the copy's playlist (named by the copy's place in the file, 1)
+```
+
+- **The original names its copy** in `vd.pc`. A reader plays the copy, and downloads, saves and restores the original.
+- **Photos encrypts the original itself,** checking its hash on the same read, and the encryption step passes a payload its caller encrypted through as it is.
+- **When no copy can be made** (ffmpeg can't transcode the file), the original is backed up alone, with no `vd.pc`: a backup that isn't the original isn't a backup.
+- **`vcp_` and `pls_` payloads are never shown** as attachments of their own, like `pld_desc` (`PayloadDescriptor.isInternalDescriptor`).
+- **The copy is made in the encryption step** from the original, encrypted with the file's key and its own IV, and has its own descriptor content like any transcoded video.
+- The original isn't probed, so it has no `w`, `h` or duration; the copy has them.
+- A video with no `vd.pc` is played as it is, as before.
 
 ## 4. The builder
 
@@ -248,8 +267,8 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 - The upload providers seal the descriptor content of every encrypted upload they send when the switch is on (section 7); the outbox and the optimistic local copy stay readable. An app that writes the current format ahead of the switch asks for the seal on its spec (`MediaUploadSpec.sealDescriptorContent`), which reaches the create request; updates follow the switch.
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
-- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and ask the provider to seal; videos go through `UploadService`. A photo's own bytes decide its content type, the library's type only when they name none. Each part is the user's file (`o: 1`), a Live Photo's paired video included. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS.
-- Still to fold in: `LinkPreviewPayloadBuilder`, `LocationPreviewPayloadBuilder`, and `enqueuePlaintextUpload` for public files.
+- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and ask the provider to seal; videos go through `UploadService`. A photo's own bytes decide its content type, the library's type only when they name none. At Original each part is the user's file (`o: 1`), a Live Photo's paired video included; at Standard or HD a photo or video is a re-encode that keeps the source's metadata. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS, a video's included, read from the source because an HLS stream can't hold it.
+- Link and location previews take their descriptor from `appDescriptor` (layer 7). Still to fold in: `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app
 
@@ -259,8 +278,8 @@ The server accepts only `^[a-z0-9_]{8,10}$`: 8 to 10 characters of lowercase let
 | Moments posts / comments | `mmt_` / `mmc_` (existing 4-digit index) | user setting | STRIP (GPS opt-in kept) | per audience | `UploadService` or public |
 | Feed posts / comments | `pst_mdi_` / `cmmnt_md` | user setting | STRIP | per audience | `UploadService` or public |
 | Stickers (saved) | `sticker_` | ORIGINAL | STRIP | yes | `UploadService` |
-| Photos | `photo_main`, `photo_live`, `video_main` | ORIGINAL (photos), app setting (videos, #2386) | KEEP | yes | its own outbox path (keeps hashing, dedupe, `uniqueId`) |
-| Vault | `vlt_pg_` (existing 2-digit index) | ORIGINAL | KEEP | yes | `UploadService` |
+| Photos | `photo_main`, `photo_live`, `video_main` (+ `vcp_0000` at Original) | its photo setting (default ORIGINAL) and video setting (default HD), each STANDARD, HD or ORIGINAL | KEEP | yes | its own outbox path (keeps hashing, dedupe, `uniqueId`) |
+| Vault | `vlt_pg_` (existing 2-digit index) | ORIGINAL (photos), HD (videos) | KEEP | yes | `UploadService` |
 | Filesync | `sync_data` | none (bytes unchanged) | KEEP | yes | its own direct upload |
 | WebDrop | existing | none | KEEP | link key | its own outbox path |
 | Contact photo | none | its own sizes | STRIP | yes | contacts image API |
@@ -296,9 +315,9 @@ Old files are never rewritten.
 - **Every uploader builds through the builder** or follows its rules (sections 4 and 5).
 - **`ImageFormatDetector` has real signatures** before the bytes decide a type: BMP needs its whole header, GIF its version, and an AVIF reads as `image/avif`, not HEIC.
 - **A file's app content is cut to fit once sealed** (a Vault note's preview).
-- **A video that isn't transcoded:** there is none. Every picked video is re-encoded (the compressor never returns its input) with `-map_metadata -1` on all four platforms, and no public path takes video. The other way round is open: Vault and Photos keep a photo's metadata, but their videos are re-encoded too, so a video's location and date are dropped there.
+- **A video that isn't transcoded:** only Photos at Original keeps one, with a transcoded copy to play (section 3.6). Every other video is re-encoded (the compressor never returns its input), keeping or dropping its metadata as its app says: `-map_metadata 0` for Photos and Vault, `-1` for everyone else, on all four platforms.
 
-**Later, not part of the switch: encrypt the tiny.** Today the server can see a 20 px preview of every image, video, sticker and PDF page, on zero-knowledge drives (Photos, Vault) too. It can't go in the sealed descriptor content: a tiny is up to 768 bytes and sealing takes it past the 1,024-byte limit. It needs its own home, one for all apps, for example encrypted with the payload's key in the `previewThumbnail` field itself, which both clients and the server's size check must then agree on.
+**Later, not part of the switch: encrypt the tiny (#2416).** Today the server can see a 20 px preview of every image, video, sticker and PDF page, on zero-knowledge drives (Photos, Vault) too. It can't go in the sealed descriptor content: a tiny is up to 768 bytes and sealing takes it past the 1,024-byte limit. It needs its own home, one for all apps, for example encrypted with the payload's key in the `previewThumbnail` field itself, which both clients and the server's size check must then agree on.
   At the same time, decide whether the header keeps its own tiny (`appData.previewThumbnail`) beside each payload's. It duplicates the first payload's tiny on every file. In chat-kmp only a group conversation's avatar reads it, as a fallback; whether odin-js reads it is unchecked. It may only be needed for a file with no payloads.
 
 **One switch, at once** (decision D): readers and writers for every app and kind, in chat-kmp and odin-js, in the same release. An app that hasn't updated shows a new upload's descriptor as text until it does.

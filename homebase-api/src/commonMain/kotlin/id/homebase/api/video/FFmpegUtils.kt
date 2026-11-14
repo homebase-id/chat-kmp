@@ -65,6 +65,7 @@ expect object FFmpegUtils {
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         quality: VideoQuality = VideoQuality.STANDARD,
+        keepMetadata: Boolean = false,
     ): String
 
     /** Duration in milliseconds, or 0 when it cannot be determined, including a missing file. */

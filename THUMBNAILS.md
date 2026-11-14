@@ -93,7 +93,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 |---|---|---|---|
 | **Standard** (default) | Looks good, quick to send, screenshots readable | 2048 px, WebP q60 | 720p |
 | **HD** | Stays sharp when zoomed | 4096 px, WebP q80 | 1080p |
-| **Original** | The exact file | The file, untouched | The file, untouched (see [Video](#video)) |
+| **Original** | The exact file | The file, untouched | 1080p, as HD; in Photos only, the file untouched plus a 1080p copy for playback (see [Video](#video)) |
 
 **Names.** Every screen uses exactly these names: chat, Moments, the share sheet, settings, badges and Photos. They're **Standard**, **HD** and **Original**, in every language, all from one place (`MediaQualityLabels.kt`). Descriptions quote this table's numbers, for example "Photos up to 2048 pixels". Change the table, and its names and descriptions change with it.
 
@@ -435,7 +435,7 @@ The scrubber handles JPEG, PNG, WebP and HEIC. Any other image format (GIF, BMP,
 
 When `Keep` applies to a re-encoded image, the pipeline has to copy the metadata itself, because neither Android's nor Skia's encoders carry it over:
 
-- copy the source's EXIF, XMP and GPS across;
+- copy the source's EXIF (GPS included) across, but not its XMP: on phones it describes the source file's structure (a Motion Photo's video, an Ultra HDR gain map, the orientation), which the re-encode makes false;
 - set Orientation to 1, because the pixels are already upright;
 - update the pixel-size tags;
 - never copy the camera's embedded EXIF thumbnail.
@@ -452,13 +452,15 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 | Caller | Rows |
 |---|---|
-| Photobase backup | Original's rows; the file is uploaded untouched |
+| Photobase backup | Its photo setting (default Original) and its video setting (default HD), each Standard, HD or Original |
 | Chat photos, Moments, share sheet, view-once | The sender's setting |
 | Group avatars and other incidental images through `MessageAttachmentBuilder` | Standard |
 | Stickers | The sender's setting for thumbnails; the file stays the final image, and no quality is recorded |
-| PDF previews, audio, Vault, contacts, video posters, saved stickers | Original's rows, as thumbnails only |
+| PDF previews, audio, Vault, contacts, video posters, saved stickers | Original's rows, as thumbnails only (Vault videos are HD) |
 | Link and location previews | Tiny only, made with `createTinyPreview` |
 | Profile avatars | Their own sizes and budgets, plus the shared tiny rule |
+
+**Photos' two settings** (decided 2026-11-14): photos and videos each Standard, HD or Original, defaulting to Original for photos and HD for videos. At Standard or HD the uploaded bytes aren't the library's file, so Photos checks a re-encoded photo's source against its hash and refuses the upload when it changed, and dedupe keeps keying on the source's hash: changing the setting never re-uploads what is already backed up. Under `Keep`, a re-encoded photo carries the source's EXIF but not its XMP (section [Metadata](#metadata)).
 
 ## Showing the images
 
@@ -510,9 +512,13 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 |---|---|
 | Standard | 720p transcode |
 | HD | 1080p transcode |
-| Original | Untouched |
+| Original | 1080p transcode, as HD, in every app but Photos. In Photos, the file untouched plus a 1080p copy that the apps play |
 
-**Metadata is the caller's choice, as for images.** The video path takes the same required keep-or-strip parameter, with no default. With `Keep`, a re-encode copies the source's location, capture time and other metadata, and Original uploads the file untouched. With `Strip`, a re-encode drops them (`-map_metadata -1`), and Original is remuxed without re-encoding to remove them. The library never decides; each app does.
+**Original video is only for Photos** (decided by the team, 2026-11-14). An untouched video may not play on every client (an iPhone's HEVC, often 10-bit HDR) and has to download whole before it plays, so a sent video is always a transcode. A backup that isn't the original isn't a backup, so Photos at Original keeps the user's file and adds a copy to play; download, save and restore get the original (UPLOADS.md section 3.6). Vault videos are HD, with no setting.
+
+**Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata (`-map_metadata 0`), and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them (`-map_metadata -1`). The library never decides; each app does.
+
+A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source as it checks the file's hash (`VideoLocationReader`, common code: Apple's ISO 6709 key and the `©xyz` atom Android writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
 
 ## How others do it
 
@@ -631,7 +637,6 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 | iOS: hand pixels from ImageIO over without extra copies | #2236 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
-| Original video untouched, with chat's copy stripped by a remux | #2235 |
 | Time, memory and battery measured on a real iPhone and Android phone | #2221, #2236 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |
 | RAW: verify on real phones which formats decode (ProRAW and DNG on iOS; DNG on Android) | – |
@@ -640,7 +645,6 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 - **Whether vImage beats `stb_image_resize2` on iOS.** vImage ships now because it's a system library; swap only if the phone measurements say so.
 - **Reading from the file instead of a byte array** on phones (`ImageDecoder.createSource(File)`, `CGImageSourceCreateWithURL`), so the encoded file isn't held in memory as well. Measure whether it's worth it for Photobase.
-- **Does Photos offer HD?** Today it backs up only the untouched file, and an HD backup would need `BackupRequestBuilder.kt` changed, because it requires the uploaded bytes to match the device file's hash.
 - **Final qualities.** q60 and q70 are pending the real-photo test, especially on faces.
 - **Judgement calls to check on real photos:** the 10% band, the q60 floor and the shrink estimate follow common practice. Adjust them if real photos say otherwise.
 - **RAW+JPEG pairs on iOS.** Back up the RAW too, as part of the same photo? Today it's skipped. Android backs up both as separate photos; should they be linked?

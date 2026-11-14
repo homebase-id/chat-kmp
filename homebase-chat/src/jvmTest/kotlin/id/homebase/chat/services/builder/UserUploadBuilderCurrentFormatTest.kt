@@ -1,5 +1,7 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.api.image.readJpegExifOrientation
+import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
@@ -200,10 +202,50 @@ class UserUploadBuilderCurrentFormatTest {
         assertEquals(id.homebase.api.video.VideoQuality.STANDARD, clip.payloads.single().videoQuality)
     }
 
+    // A camera JPEG: an EXIF block whose GPS IFD holds a latitude ref marker and whose Orientation is 6.
+    private fun geotagged(w: Int, h: Int): ByteArray {
+        fun le16(v: Int) = byteArrayOf(v.toByte(), (v shr 8).toByte())
+        fun le32(v: Int) = ByteArray(4) { (v ushr (8 * it)).toByte() }
+        fun entry(tag: Int, type: Int, count: Int, value: ByteArray) = le16(tag) + le16(type) + le32(count) + value.copyOf(4)
+        val ifd0 = le16(2) + entry(0x0112, 3, 1, le16(6)) + entry(0x8825, 4, 1, le32(38)) + le32(0)
+        val gps = le16(1) + entry(0x0002, 2, 8, le32(56)) + le32(0)
+        val tiff = "II".encodeToByteArray() + le16(42) + le32(8) + ifd0 + gps + "GPS-7749".encodeToByteArray()
+        val payload = "Exif".encodeToByteArray() + byteArrayOf(0, 0) + tiff
+        val app1 = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), ((payload.size + 2) shr 8).toByte(), (payload.size + 2).toByte()) + payload
+        val plain = image(w, h)
+        return plain.copyOfRange(0, 2) + app1 + plain.copyOfRange(2, plain.size)
+    }
+
+    @Test
+    fun aReencodedPhotoKeepsItsExifOnlyWhenTheAppKeepsMetadata() = runTest {
+        val source = file("geo.jpg", geotagged(5000, 3000))
+        for (quality in listOf(MediaQuality.STANDARD, MediaQuality.HD)) {
+            val kept = build(UploadSource(source, "image/jpeg"), quality, MetadataPolicy.KEEP).payloads.single()
+            val keptBytes = File(kept.filePath).readBytes()
+            assertEquals("image/webp", kept.contentType, "$quality is a re-encode")
+            val exif = ImageMetadataScrubber.readBlocks(keptBytes)?.exif
+            assertTrue(exif != null && "GPS-7749" in exif.decodeToString(), "$quality keeps the location when the app keeps metadata")
+            assertEquals(1, readJpegExifOrientation(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE1.toByte(), ((exif.size + 8) shr 8).toByte(), (exif.size + 8).toByte()) + "Exif".encodeToByteArray() + byteArrayOf(0, 0) + exif), "$quality: its pixels are upright")
+
+            val stripped = build(UploadSource(source, "image/jpeg"), quality, MetadataPolicy.STRIP).payloads.single()
+            assertEquals("image/webp", stripped.contentType)
+            assertNull(ImageMetadataScrubber.readBlocks(File(stripped.filePath).readBytes()), "$quality carries nothing when the app strips")
+        }
+    }
+
     @Test
     fun theAppsMetadataPolicyTravelsWithTheImage() = runTest {
         val path = file("p.jpg", image(400, 300))
         assertTrue(build(UploadSource(path, "image/jpeg"), MediaQuality.ORIGINAL, MetadataPolicy.STRIP).payloads.single().stripMetadata)
         assertFalse(build(UploadSource(path, "image/jpeg"), MediaQuality.ORIGINAL, MetadataPolicy.KEEP).payloads.single().stripMetadata)
+    }
+
+    @Test
+    fun theAppsMetadataPolicyTravelsWithTheVideo() = runTest {
+        val path = file("v.mp4", "video".encodeToByteArray())
+        for (quality in MediaQuality.entries) {
+            assertTrue(build(UploadSource(path, "video/mp4"), quality, MetadataPolicy.STRIP).payloads.single().stripMetadata)
+            assertFalse(build(UploadSource(path, "video/mp4"), quality, MetadataPolicy.KEEP).payloads.single().stripMetadata, "$quality: the transcode keeps it")
+        }
     }
 }

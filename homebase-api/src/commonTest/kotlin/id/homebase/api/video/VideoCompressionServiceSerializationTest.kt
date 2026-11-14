@@ -53,6 +53,7 @@ class VideoCompressionServiceSerializationTest {
                 trimStartMs: Long?,
                 trimEndMs: Long?,
                 quality: VideoQuality,
+                keepMetadata: Boolean,
             ): String {
                 active++
                 totalEntries++
@@ -102,6 +103,7 @@ class VideoCompressionServiceSerializationTest {
                 trimStartMs: Long?,
                 trimEndMs: Long?,
                 quality: VideoQuality,
+                keepMetadata: Boolean,
             ): String {
                 compressEntered.complete(Unit)
                 gate.await()
@@ -135,6 +137,7 @@ class VideoCompressionServiceSerializationTest {
             trimStartMs: Long?,
             trimEndMs: Long?,
             quality: VideoQuality,
+            keepMetadata: Boolean,
         ): String {
             entered += inputPath
             if (inputPath != "background") return "out_$inputPath"
@@ -222,6 +225,7 @@ private open class NoopVideoCompressor : VideoCompressor {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String = "out_$inputPath"
 
     override suspend fun segment(

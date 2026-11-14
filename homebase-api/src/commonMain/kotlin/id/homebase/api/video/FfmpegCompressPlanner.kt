@@ -90,6 +90,7 @@ object FfmpegCompressPlanner {
         probedHeightPx: Int,
         rotationDegrees: Int = 0,
         encoder: String = "libx264",
+        keepMetadata: Boolean = false,
     ): FfmpegCompressPlan {
         // Reason in display dims from here on — FFmpeg auto-rotate has already
         // swapped them by the time the scale filter sees the frames.
@@ -117,14 +118,10 @@ object FfmpegCompressPlanner {
                 add("-ss"); add(formatSeconds(trimStartMs))
                 add("-to"); add(formatSeconds(trimEndMs))
             }
-            // Drop the source's global metadata. ffmpeg's default is -map_metadata 0, which
-            // copies the camera's `location` atom (and creation_time) straight into the
-            // output — a sent clip carried the sender's GPS coordinates to the recipient.
-            //
-            // Rotation is unaffected: it rides the display matrix (stream side data), not
-            // the metadata dictionary this operates on. Verified — a rotation=90 source
-            // still decodes to the correct display dims with this set.
-            add("-map_metadata"); add("-1")
+            // The app's policy (THUMBNAILS.md, "Video"): stripping drops the camera's location and
+            // creation time, which a sent clip would otherwise carry to the recipient; keeping (an
+            // owner's own library) copies them. Rotation rides the display matrix either way.
+            add("-map_metadata"); add(if (keepMetadata) "0" else "-1")
             add("-c:v"); add(encoder)
             // -preset is a libx264 option. h264_videotoolbox ignores it with a
             // warning — skip on non-libx264 to keep stderr clean.
@@ -154,7 +151,8 @@ object FfmpegCompressPlanner {
             add("-color_trc"); add("bt709")
             add("-c:a"); add("aac")
             add("-b:a"); add("${targets.audioBitrateBps / 1000}k")
-            add("-movflags"); add("+faststart")
+            // use_metadata_tags writes the source's own keys, such as Apple's location, which mp4 would drop.
+            add("-movflags"); add(if (keepMetadata) "+faststart+use_metadata_tags" else "+faststart")
             add(outputPath)
         }
 

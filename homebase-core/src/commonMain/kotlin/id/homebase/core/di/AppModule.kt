@@ -1145,7 +1145,7 @@ val appModule = module {
             // Nor on web, where the cache is gone at the next reload.
             mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
             ensureThumbnail = { item, size ->
-                files.ensureThumbCached(item.driveId, item.fileId, item.payload.key, size.pixelWidth, size.pixelHeight, item.payload.lastModified)
+                files.ensureThumbCached(item.driveId, item.fileId, item.shown.key, size.pixelWidth, size.pixelHeight, item.shown.lastModified)
             },
         )
     }
@@ -1735,7 +1735,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         }
         val exports = HashedExports(backup.source, get())
         val hasher = AssetHasher(exports, get())
-        val requests = BackupRequestBuilder(get())
+        val requests = BackupRequestBuilder(get(), hasher, settings = { settings.settings.value })
         val outbox = OutboxBackupUploader(get(), exports, hasher, requests, get(), get(), scope)
         val uploader = backup.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get()) { settings.settings.value.wifiOnly }) ?: outbox
         val storageQuota = get<StorageQuota>()

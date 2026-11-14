@@ -205,6 +205,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
         if (!fileManager.fileExistsAtPath(inputPath)) {
@@ -255,6 +256,7 @@ actual object FFmpegUtils {
                 inputPath = inputPath,
                 outputPath = outputPath,
                 quality = quality,
+                keepMetadata = keepMetadata,
                 trimStartMs = effectiveTrimStart,
                 trimEndMs = effectiveTrimEnd,
                 probedWidthPx = widthPx,

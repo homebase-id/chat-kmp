@@ -1,5 +1,13 @@
 package id.homebase.photobase.backup
 
+import id.homebase.upload.UploadOptions
+import id.homebase.upload.PayloadBundle
+import id.homebase.api.video.VideoLocationReader
+import id.homebase.api.video.VideoCompressionFailedException
+import id.homebase.api.crypto.plaintextContentHash
+import id.homebase.api.crypto.encryptWithPayloadHash
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
@@ -78,7 +86,8 @@ class OutboxBackupUploader(
         }
     }
 
-    // HLS re-encodes, so the server's hash can't vouch for the original: check the bytes about to be encoded instead.
+    // A transcode's bytes aren't the library's file, so the source is checked as it's read for its location,
+    // which an HLS stream has no place for. An untouched original is checked again as it's encrypted.
     private suspend fun handOffVideo(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
@@ -86,17 +95,48 @@ class OutboxBackupUploader(
         expectedDigest: ByteArray,
     ): HandOffResult {
         val part = exported.parts.single()
-        if (!exported.isHashedCopy && !hasher.digest(part.path).contentEquals(expectedDigest)) return HandOffResult.ChangedUnderUs
+        val reader = VideoLocationReader()
+        if (!hasher.matches(exported, part, expectedDigest, reader::feed)) return HandOffResult.ChangedUnderUs
+        val location = reader.location
+        val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
+        val options = requests.options()
+        return try {
+            upload(row, uniqueId, exported, expectedDigest, content, options, untouched = false)
+        } catch (e: VideoCompressionFailedException) {
+            if (!options.originalVideo) throw e
+            // A backup that isn't the original isn't a backup: keep the file even when no copy can be made to play.
+            Logger.w(tag = TAG, throwable = e) { "no playable copy for $uniqueId; backing up the original alone" }
+            upload(row, uniqueId, exported, expectedDigest, content, options.copy(originalVideo = false), untouched = true)
+        }
+    }
+
+    private suspend fun upload(
+        row: DeviceBackupAsset,
+        uniqueId: Uuid,
+        exported: ExportedAsset,
+        expectedDigest: ByteArray,
+        content: PhotoContent,
+        options: UploadOptions,
+        untouched: Boolean,
+    ): HandOffResult {
+        val part = exported.parts.single()
+        val keyHeader = KeyHeader.newRandom16()
+        val built = UserUploadBuilder.build(
+            listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.VIDEO, untouched = untouched)),
+            options,
+            fileOps,
+        ) { PhotobaseProtocol.VideoPayloadKey }
+        val bundle = if (untouched || options.originalVideo) {
+            built.withOriginalEncrypted(part.path, keyHeader, expectedDigest) ?: return HandOffResult.ChangedUnderUs
+        } else {
+            built
+        }
         val spec = MediaUploadSpec(
             driveId = photosDriveId,
             uniqueId = uniqueId,
-            keyHeader = KeyHeader.newRandom16(),
-            bundle = UserUploadBuilder.build(
-                listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.VIDEO)),
-                PHOTOS_UPLOAD_OPTIONS,
-                fileOps,
-            ) { PhotobaseProtocol.VideoPayloadKey },
-            metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, PhotoContent()),
+            keyHeader = keyHeader,
+            bundle = bundle,
+            metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content),
             priority = OUTBOX_BULK_PRIORITY,
             sendNow = false,
             writeOptimistic = false,
@@ -112,7 +152,23 @@ class OutboxBackupUploader(
         }
     }
 
+    // The untouched original, encrypted here so its hash is checked on the same read; null when it changed.
+    private suspend fun PayloadBundle.withOriginalEncrypted(path: String, keyHeader: KeyHeader, expectedDigest: ByteArray): PayloadBundle? {
+        val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
+        val hashed = fileOps.encryptWithPayloadHash(path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
+        val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
+        if (digest == null || !digest.contentEquals(expectedDigest)) {
+            runCatching { fileOps.deleteTempFile(encryptedPath) }
+            return null
+        }
+        return copy(payloads = payloads.map {
+            if (it.key != PhotobaseProtocol.VideoPayloadKey) it
+            else it.copy(filePath = encryptedPath, iv = hashed.iv, hash = hashed.hash, isPreEncrypted = true)
+        })
+    }
+
     private companion object {
         const val BULK_STREAMS = 2
+        const val TAG = "PhotoBackup"
     }
 }

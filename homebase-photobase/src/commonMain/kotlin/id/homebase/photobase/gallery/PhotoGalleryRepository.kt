@@ -24,7 +24,12 @@ data class PhotoGalleryItem(
     val keyHeader: KeyHeader,
     /** The still, or the video. A Live Photo's paired video stays out of the gallery until playback is built. */
     val payload: PayloadDescriptor,
-)
+    /** An untouched original video's copy to play (UPLOADS.md section 3.6). */
+    val playableCopy: PayloadDescriptor? = null,
+) {
+    /** What the gallery shows and plays. */
+    val shown: PayloadDescriptor get() = playableCopy ?: payload
+}
 
 data class PhotoGalleryPage(val items: List<PhotoGalleryItem>, val nextCursor: String?)
 
@@ -79,13 +84,14 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
     val appData = fileMetadata.appData
     if (appData.fileType != PhotobaseProtocol.PhotoFileType) return null
     // A video's playlist is a payload of its own, and not one to show.
-    val payload = fileMetadata.payloads.orEmpty()
-        .firstOrNull { !it.isInternalDescriptor() && it.key != PhotobaseProtocol.LivePhotoVideoPayloadKey } ?: return null
+    val payloads = fileMetadata.payloads.orEmpty()
+    val payload = payloads.firstOrNull { !it.isInternalDescriptor() && it.key != PhotobaseProtocol.LivePhotoVideoPayloadKey } ?: return null
     return PhotoGalleryItem(
         fileId = fileId,
         driveId = driveId,
         capturedAtMs = appData.userDate ?: fileMetadata.created.milliseconds,
         keyHeader = keyHeader,
         payload = payload,
+        playableCopy = payload.takeIf { it.isVideo() }?.playableCopyKey()?.let { copy -> payloads.firstOrNull { it.key == copy } },
     )
 }

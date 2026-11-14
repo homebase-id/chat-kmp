@@ -63,6 +63,20 @@ class FfmpegCompressPlannerTest {
     }
 
     @Test
+    fun plan_keepsOrDropsTheSourcesMetadataAsTheAppSays() {
+        fun plan(keep: Boolean) = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mov", outputPath = "/out.mp4", quality = VideoQuality.HIGH,
+            trimStartMs = null, trimEndMs = null, probedWidthPx = 1920, probedHeightPx = 1080, keepMetadata = keep,
+        ).args
+        fun List<String>.after(flag: String) = this[indexOf(flag) + 1]
+
+        assertEquals("-1", plan(keep = false).after("-map_metadata"), "sent clips lose the camera's location")
+        assertEquals("+faststart", plan(keep = false).after("-movflags"))
+        assertEquals("0", plan(keep = true).after("-map_metadata"), "an owner's library keeps it")
+        assertEquals("+faststart+use_metadata_tags", plan(keep = true).after("-movflags"), "Apple's location key survives the mp4 muxer")
+    }
+
+    @Test
     fun outputDims_landscape_1080_to_720_downscale() {
         // 1920x1080 → STANDARD 720p target. Long edge auto-scaled.
         val dims = FfmpegCompressPlanner.computeOutputDims(1920, 1080, shortEdgePx = 720)

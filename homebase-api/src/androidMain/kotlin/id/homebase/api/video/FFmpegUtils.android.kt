@@ -137,6 +137,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String = withContext(Dispatchers.IO) {
         val context = ActivityProvider.requireApplicationContext()
         val inFile = File(inputPath)
@@ -172,6 +173,7 @@ actual object FFmpegUtils {
             inputPath = inputPath,
             outputPath = outFile.absolutePath,
             quality = quality,
+            keepMetadata = keepMetadata,
             trimStartMs = effectiveTrimStart,
             trimEndMs = effectiveTrimEnd,
             probedWidthPx = probe.widthPx,
