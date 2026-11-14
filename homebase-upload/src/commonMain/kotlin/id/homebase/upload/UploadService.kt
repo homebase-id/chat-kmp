@@ -54,12 +54,8 @@ class UploadService(
         } catch (e: SourceUnavailableException) {
             return UploadOutcome.SourceMissing(listOf(e.path))
         }
-        val metadata = spec.metadataFromBundle?.invoke(fullBundle) ?: spec.metadata
-        val encryptedBundle = when {
-            spec.omitThumbnails -> fullBundle.withoutThumbnails()
-            spec.omitPlaintextPreviews -> fullBundle.withoutPlaintextPreviews()
-            else -> fullBundle
-        }
+        val metadata = spec.metadata
+        val encryptedBundle = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
 
         // 2. Build the request with shared-secret-encrypted metadata content.
         val request = UploadFileRequest(

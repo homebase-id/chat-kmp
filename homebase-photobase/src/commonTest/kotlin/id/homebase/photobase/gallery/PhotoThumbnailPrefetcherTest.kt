@@ -19,7 +19,6 @@ class PhotoThumbnailPrefetcherTest {
         capturedAtMs = 1,
         keyHeader = KeyHeader.newRandom16(),
         payload = PayloadDescriptor(key = "k", contentType = "image/jpeg", thumbnails = thumbnails),
-        tinyPreview = null,
     )
 
     /** Pages of 100, forever. */

@@ -6,12 +6,12 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.Base64Bytes
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.api.client.drives.files.DescriptorContentV1
-import id.homebase.photobase.backup.PhotoContent
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
@@ -37,16 +37,19 @@ class PhotoGalleryLocalStoreTest {
     fun close() = db.close()
 
     @Test
-    fun aTinyPreviewSurvivesTheLocalIndex() = runTest {
+    fun theTinyPreviewAndTheNameSurviveTheLocalIndex() = runTest {
         val tiny = byteArrayOf(1, 2, 3, 4)
-        val content = OdinSystemSerializer.serialize(PhotoContent(tiny = Base64Bytes(tiny), tinyWidth = 20, tinyHeight = 15, tinyType = "image/webp"))
-
-        val descriptor = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG.jpg", original = 1).encode()
-        backend.save(listOf(galleryTestFile(500, content, descriptorContent = descriptor)))
+        val payload = PayloadDescriptor(
+            key = PhotobaseProtocol.ImagePayloadKey,
+            contentType = "image/jpeg",
+            descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG.jpg", original = 1).encode(),
+            previewThumbnail = ThumbnailDescriptor(pixelWidth = 20, pixelHeight = 15, contentType = "image/webp", content = Base64Bytes(tiny)),
+        )
+        backend.save(listOf(galleryTestFile(500, payload = payload)))
 
         val item = backend.localPage(null, null, 10).files.single().toGalleryItem()!!
-        assertContentEquals(tiny, item.tinyPreview?.content?.bytes)
-        assertEquals(20, item.tinyPreview?.pixelWidth)
+        assertContentEquals(tiny, item.payload.previewThumbnail?.content?.bytes)
+        assertEquals(20, item.payload.previewThumbnail?.pixelWidth)
         assertEquals("IMG.jpg", item.payload.filename())
     }
 

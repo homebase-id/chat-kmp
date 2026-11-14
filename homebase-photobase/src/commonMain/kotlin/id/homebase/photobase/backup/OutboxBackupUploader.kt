@@ -1,6 +1,5 @@
 package id.homebase.photobase.backup
 
-import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
@@ -88,9 +87,6 @@ class OutboxBackupUploader(
     ): HandOffResult {
         val part = exported.parts.single()
         if (!exported.isHashedCopy && !hasher.digest(part.path).contentEquals(expectedDigest)) return HandOffResult.ChangedUnderUs
-        // Inside the encrypted content, because omitPlaintextPreviews keeps the tiny out of the plaintext field.
-        fun videoMetadata(tiny: EmbeddedThumb?) =
-            photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, PhotoContent().withTiny(tiny))
         val spec = MediaUploadSpec(
             driveId = photosDriveId,
             uniqueId = uniqueId,
@@ -100,13 +96,11 @@ class OutboxBackupUploader(
                 PHOTOS_UPLOAD_OPTIONS,
                 fileOps,
             ) { PhotobaseProtocol.VideoPayloadKey },
-            metadata = videoMetadata(null),
-            metadataFromBundle = { bundle -> videoMetadata(bundle.payloads.firstNotNullOfOrNull { it.previewThumbnail }) },
+            metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, PhotoContent()),
             priority = OUTBOX_BULK_PRIORITY,
             sendNow = false,
             writeOptimistic = false,
             seedCache = false,
-            omitPlaintextPreviews = true,
             existingFileIsSuccess = true,
             sealDescriptorContent = true,
         )

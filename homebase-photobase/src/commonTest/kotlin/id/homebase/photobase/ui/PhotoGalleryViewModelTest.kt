@@ -38,7 +38,6 @@ class PhotoGalleryViewModelTest {
         capturedAtMs = capturedAtMs,
         keyHeader = KeyHeader.newRandom16(),
         payload = PayloadDescriptor(key = "photo_main", contentType = contentType, descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG.jpg", original = 1).encode()),
-        tinyPreview = null,
     )
 
     private class Pages(val pages: Map<String?, PhotoGalleryPage>) : PhotoGalleryPageSource {

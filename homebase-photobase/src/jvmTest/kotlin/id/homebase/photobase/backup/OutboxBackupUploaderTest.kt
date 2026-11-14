@@ -116,7 +116,6 @@ class OutboxBackupUploaderTest {
         assertEquals(PhotobaseProtocol.PhotoFileType, request.metadata.appData.fileType)
         assertEquals(PhotobaseProtocol.ImageDataType, request.metadata.appData.dataType)
         assertEquals(12345, request.metadata.appData.userDate)
-        assertNull(request.metadata.appData.previewThumbnail)
 
         val payload = request.payloads.single()
         assertEquals(PhotobaseProtocol.ImagePayloadKey, payload.key)
@@ -163,7 +162,8 @@ class OutboxBackupUploaderTest {
         val payloadKey = KeyHeader(payload.iv!!, request.keyHeader.aesKey)
         assertContentEquals(bytes, payloadKey.decrypt(File(payload.filePath).readBytes()))
         assertEquals("image/jpeg", payload.contentType)
-        assertNull(payload.previewThumbnail)
+        val tiny = assertNotNull(payload.previewThumbnail, "the tiny is plain on the payload, as in every app")
+        assertEquals(tiny, request.metadata.appData.previewThumbnail)
 
         val descriptor = assertNotNull(request.opened(payload))
         assertEquals(1600 to 1200, descriptor.pixelWidth to descriptor.pixelHeight)
@@ -177,8 +177,7 @@ class OutboxBackupUploaderTest {
         }
 
         val content = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
-        assertFalse("name" in content || "width" in content, content)
-        assertNotNull(OdinSystemSerializer.deserialize<PhotoContent>(content).tiny)
+        assertFalse("name" in content || "width" in content || "tiny" in content, content)
         File(payload.filePath).delete()
     }
 
@@ -267,7 +266,7 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun aVideoGoesThroughTheSharedPipelineWithNoLocalRowOrPlaintextPreview() = runTest {
+    fun aVideoGoesThroughTheSharedPipelineWithNoLocalRow() = runTest {
         val bytes = "video bytes".encodeToByteArray()
         val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
         val encryptor = PreviewingEncryptor()
@@ -279,27 +278,10 @@ class OutboxBackupUploaderTest {
         assertEquals(1, encryptor.calls)
         assertEquals(OUTBOX_BULK_PRIORITY, outboxRow.priority)
         assertEquals(PhotobaseProtocol.VideoDataType, request.metadata.appData.dataType)
-        assertNull(request.payloads.single().previewThumbnail)
+        assertNotNull(request.payloads.single().previewThumbnail, "the tiny video processing makes stays on the payload")
         assertTrue(request.existingFileIsSuccess)
         assertEquals(0, writer.writes)
         assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, name = "IMG_0001.HEIC"), request.opened(request.payloads.single()))
-    }
-
-    @Test
-    fun aVideosTinyPreviewGoesInsideTheEncryptedContent() = runTest {
-        val bytes = "video bytes".encodeToByteArray()
-        val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
-        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("v.mp4", bytes), "video/mp4", false)), PreviewingEncryptor())
-
-        uploader.handOff(row, uniqueId)
-
-        val (_, request) = queuedRequest(uniqueId)
-        assertNull(request.metadata.appData.previewThumbnail)
-        assertNull(request.payloads.single().previewThumbnail)
-        val decrypted = request.keyHeader.decrypt(Base64.decode(request.metadata.appData.content!!)).decodeToString()
-        val read = OdinSystemSerializer.deserialize<PhotoContent>(decrypted)
-        assertNotNull(read.tiny, "The tiny preview should land in the encrypted content")
-        assertEquals("image/webp", read.tinyType)
     }
 
     @Test

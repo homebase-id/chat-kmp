@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.SecurityGroupType
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
@@ -68,17 +69,15 @@ class BackupRequestBuilder(
                 check(built.filePath == exported.parts[index].path) { "the builder replaced ${built.key}" }
                 // The library's type outranks the bytes until ImageFormatDetector is tightened (UPLOADS.md section 7).
                 val contentType = encrypted.contentType.takeUnless { it.isBlank() || it == "application/octet-stream" } ?: built.contentType
-                encrypted.copy(contentType = contentType, descriptorContent = built.descriptorContent).withSealedDescriptor(keyHeader.aesKey)
+                encrypted.copy(contentType = contentType, descriptorContent = built.descriptorContent, previewThumbnail = built.previewThumbnail)
+                    .withSealedDescriptor(keyHeader.aesKey)
             }
             val metadata = photoMetadata(
                 uniqueId,
                 if (mediaType == BackupMediaType.LivePhoto) PhotobaseProtocol.LivePhotoDataType else PhotobaseProtocol.ImageDataType,
                 captureTimeMs(exif, row.createdAt),
-                PhotoContent(
-                    latitude = exif?.latitude,
-                    longitude = exif?.longitude,
-                    altitude = exif?.altitudeMeters,
-                ).withTiny(bundle.previewThumbs.firstOrNull()),
+                PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
+                bundle.previewThumbs.firstOrNull(),
             )
             val keyByPayload = sealed.associate { it.key to KeyHeader(it.iv!!, keyHeader.aesKey) }
             val request = UploadFileRequest(
@@ -114,7 +113,7 @@ internal val PHOTOS_UPLOAD_OPTIONS = UploadOptions(
 internal fun digestsOf(row: DeviceBackupAsset): List<ByteArray> =
     row.contentHash.orEmpty().split(HashedAsset.CONTENT_HASH_SEPARATOR).map { it.hexToByteArray() }
 
-internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent) = UploadFileMetadata(
+internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent, tiny: EmbeddedThumb? = null) = UploadFileMetadata(
     allowDistribution = false,
     isEncrypted = true,
     accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
@@ -124,5 +123,6 @@ internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, cont
         dataType = dataType,
         userDate = userDateMs,
         content = OdinSystemSerializer.serialize(content),
+        previewThumbnail = tiny,
     ),
 )

@@ -11,10 +11,7 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
-import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.photobase.PhotobaseProtocol
-import id.homebase.photobase.backup.PhotoContent
 import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,7 +24,6 @@ data class PhotoGalleryItem(
     val keyHeader: KeyHeader,
     /** The still, or the video. A Live Photo's paired video stays out of the gallery until playback is built. */
     val payload: PayloadDescriptor,
-    val tinyPreview: EmbeddedThumb?,
 )
 
 data class PhotoGalleryPage(val items: List<PhotoGalleryItem>, val nextCursor: String?)
@@ -85,13 +81,11 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
     // A video's playlist is a payload of its own, and not one to show.
     val payload = fileMetadata.payloads.orEmpty()
         .firstOrNull { !it.isInternalDescriptor() && it.key != PhotobaseProtocol.LivePhotoVideoPayloadKey } ?: return null
-    val content = appData.content?.let { raw -> runCatching { OdinSystemSerializer.deserialize<PhotoContent>(raw) }.getOrNull() }
     return PhotoGalleryItem(
         fileId = fileId,
         driveId = driveId,
         capturedAtMs = appData.userDate ?: fileMetadata.created.milliseconds,
         keyHeader = keyHeader,
         payload = payload,
-        tinyPreview = content?.tiny?.let { EmbeddedThumb(content.tinyWidth ?: 0, content.tinyHeight ?: 0, content.tinyType, it) },
     )
 }

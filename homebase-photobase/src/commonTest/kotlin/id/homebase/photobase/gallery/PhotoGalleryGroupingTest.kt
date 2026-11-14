@@ -15,7 +15,6 @@ class PhotoGalleryGroupingTest {
         capturedAtMs = capturedAtMs,
         keyHeader = KeyHeader.newRandom16(),
         payload = PayloadDescriptor(key = "photo_main"),
-        tinyPreview = null,
     )
 
     private val day1 = 1_767_225_600_000 // 2026-01-01T00:00Z
