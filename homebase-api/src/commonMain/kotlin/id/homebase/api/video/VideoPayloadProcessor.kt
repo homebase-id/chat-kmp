@@ -162,6 +162,7 @@ class VideoPayloadProcessor(
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
                     quality = videoQuality,
+                    keepMetadata = !payload.stripMetadata,
                     onProgress = {
                         if (compressGate.admit(it * 100f) != null) {
                             onProgress?.invoke(

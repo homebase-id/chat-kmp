@@ -79,6 +79,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String {
         // Input read strategy:
         //  - blob: URL (web editor's picked File) → probe + writeFile happen entirely in JS
@@ -103,6 +104,7 @@ actual object FFmpegUtils {
             inputPath = MEMFS_INPUT,
             outputPath = MEMFS_OUTPUT,
             quality = quality,
+            keepMetadata = keepMetadata,
             trimStartMs = effTrimStart,
             trimEndMs = effTrimEnd,
             probedWidthPx = probe?.widthPx ?: 0,

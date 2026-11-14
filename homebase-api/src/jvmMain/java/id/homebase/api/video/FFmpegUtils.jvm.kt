@@ -137,6 +137,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String = withContext(Dispatchers.IO) {
         if (!FFmpegBinaryManager.isAvailable()) {
             throw VideoCompressionFailedException(inputPath, "no bundled ffmpeg for this platform")
@@ -169,6 +170,7 @@ actual object FFmpegUtils {
             inputPath = inputPath,
             outputPath = outputPath,
             quality = quality,
+            keepMetadata = keepMetadata,
             trimStartMs = effectiveTrimStart,
             trimEndMs = effectiveTrimEnd,
             probedWidthPx = probe.widthPx,

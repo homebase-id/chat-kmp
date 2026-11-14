@@ -46,6 +46,105 @@ object ImageMetadataScrubber {
         else -> Outcome.UnsupportedFormat
     }
 
+    /** A source's EXIF (its TIFF block) and XMP packet, read for a re-encode that keeps them. */
+    class Blocks(val exif: ByteArray?, val xmp: ByteArray?)
+
+    /** [bytes]' metadata, or null when it has none or isn't a format read here (JPEG, WebP, HEIF). */
+    fun readBlocks(bytes: ByteArray): Blocks? = when {
+        isJpeg(bytes) -> jpegBlocks(bytes)
+        isWebp(bytes) -> webpBlocks(bytes)
+        ImageFormatDetector.isHeic(bytes) -> heifBlocks(bytes)
+        else -> null
+    }?.takeIf { it.exif != null || it.xmp != null }
+
+    private fun jpegBlocks(src: ByteArray): Blocks? {
+        var exif: ByteArray? = null
+        var xmp: ByteArray? = null
+        var i = 2
+        while (i + 3 < src.size) {
+            if (src[i] != 0xFF.toByte()) return null
+            var j = i
+            while (j < src.size && src[j] == 0xFF.toByte()) j++
+            if (j >= src.size) break
+            val marker = src[j].toInt() and 0xFF
+            i = j + 1
+            if (marker == MARKER_SOS || marker == MARKER_EOI) break
+            if (marker == 0x01 || marker in 0xD0..0xD7) continue
+            if (i + 1 >= src.size) break
+            val length = ((src[i].toInt() and 0xFF) shl 8) or (src[i + 1].toInt() and 0xFF)
+            if (length < 2) return null
+            val payload = i + 2
+            val end = i + length
+            if (end > src.size) break
+            if (marker == MARKER_APP1) {
+                if (exif == null && isExifHeader(src, payload, end)) exif = src.copyOfRange(payload + 6, end)
+                if (xmp == null && startsWith(src, payload, end, XMP_JPEG_HEADER)) xmp = src.copyOfRange(payload + XMP_JPEG_HEADER.size, end)
+            }
+            i = end
+        }
+        return Blocks(exif, xmp)
+    }
+
+    private fun webpBlocks(src: ByteArray): Blocks? {
+        var exif: ByteArray? = null
+        var xmp: ByteArray? = null
+        var at = 12
+        while (at + 8 <= src.size) {
+            val size = u32(src, at + 4, little = true)
+            if (size < 0 || at + 8 + size > src.size) return null
+            when (fourCc(src, at)) {
+                "EXIF" -> exif = src.copyOfRange(at + 8, at + 8 + size).let { if (isExifHeader(it, 0, it.size)) it.copyOfRange(6, it.size) else it }
+                "XMP " -> xmp = src.copyOfRange(at + 8, at + 8 + size)
+            }
+            at += 8 + size + (size and 1)
+        }
+        return Blocks(exif, xmp)
+    }
+
+    private fun heifBlocks(src: ByteArray): Blocks? {
+        val meta = topLevelBox(src, "meta") ?: return null
+        val items = HashMap<Long, HeifItem>()
+        val locations = HashMap<Long, List<Extent>>()
+        var idatData: Long = -1
+        var i = meta.first + 4
+        while (i + 8 <= meta.second) {
+            val box = boxAt(src, i, meta.second) ?: return null
+            when (box.type) {
+                "iinf" -> if (!readIinf(src, box.dataStart, box.end, items)) return null
+                "iloc" -> if (!readIloc(src, box.dataStart, box.end, locations)) return null
+                "idat" -> idatData = box.dataStart.toLong()
+            }
+            i = box.end
+        }
+        fun data(id: Long): ByteArray? {
+            val extents = locations[id] ?: return null
+            val parts = extents.map { extent ->
+                if (extent.inIdat && idatData < 0) return null
+                val start = extent.offset + if (extent.inIdat) idatData else 0
+                if (start < 0 || extent.length <= 0 || start + extent.length > src.size) return null
+                src.copyOfRange(start.toInt(), (start + extent.length).toInt())
+            }
+            return parts.fold(ByteArray(0)) { all, part -> all + part }
+        }
+        var exif: ByteArray? = null
+        var xmp: ByteArray? = null
+        for ((id, item) in items) {
+            when {
+                item.type == "Exif" -> data(id)?.takeIf { it.size >= 4 }?.let { d ->
+                    val tiff = 4 + u32(d, 0, little = false)
+                    if (tiff in 4 until d.size) exif = d.copyOfRange(tiff, d.size)
+                }
+                item.type == "mime" && item.contentType?.substringBefore(';')?.trim() == XMP_CONTENT_TYPE -> xmp = data(id)
+            }
+        }
+        return Blocks(exif, xmp)
+    }
+
+    private val XMP_JPEG_HEADER = "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray()
+
+    private fun startsWith(b: ByteArray, from: Int, until: Int, prefix: ByteArray): Boolean =
+        until - from >= prefix.size && prefix.indices.all { b[from + it] == prefix[it] }
+
     private fun isJpeg(b: ByteArray) =
         b.size >= 4 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte()
 

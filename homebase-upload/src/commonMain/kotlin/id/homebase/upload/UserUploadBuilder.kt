@@ -144,6 +144,7 @@ object UserUploadBuilder {
                         trimEndMs = source.trimEndMs,
                         inputBlobUrl = source.inputBlobUrl,
                         videoQuality = options.videoQuality,
+                        stripMetadata = options.metadata == MetadataPolicy.STRIP,
                     ),
                     pdfPageRenderer?.takeIf { contentType == "application/pdf" }?.let { UploadImages.fromPdf(source.path, key, it) },
                 )
@@ -161,7 +162,7 @@ object UserUploadBuilder {
         readImageMetadata: Boolean,
     ): Built {
         val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker, readMetadata = readImageMetadata)
-        val finalPath = UploadImages.finalImagePath(thumbs, fileOps)
+        val finalPath = UploadImages.finalImagePath(thumbs, fileOps, keepMetadataFrom = source.path.takeIf { options.metadata == MetadataPolicy.KEEP })
         // A library image skipped the read up front: the decode names its type, and only a failed decode needs the header.
         val untypedLibraryImage = source.libraryKind == LibraryKind.IMAGE && isUntyped(declaredType)
         val bytesType = if (!options.currentFormat) null else thumbs.sourceFormat ?: if (untypedLibraryImage) contentTypeOfFile(source.path, fileOps) else null

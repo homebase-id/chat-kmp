@@ -41,6 +41,7 @@ internal object FFmpegVideoCompressor : VideoCompressor {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String =
         FFmpegUtils.compressVideo(
             inputPath = inputPath,
@@ -48,6 +49,7 @@ internal object FFmpegVideoCompressor : VideoCompressor {
             trimStartMs = trimStartMs,
             trimEndMs = trimEndMs,
             quality = quality,
+            keepMetadata = keepMetadata,
         ).also { onProgress?.invoke(1f) }
 
     override suspend fun segment(

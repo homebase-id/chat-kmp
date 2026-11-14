@@ -335,7 +335,7 @@ class VaultUploaderService(
         sources = files.map { (path, type) ->
             UploadSource(path, type, appContent = notePreview?.takeIf { type == CONTENT_TYPE_MARKDOWN })
         },
-        options = UploadOptions(quality = MediaQuality.ORIGINAL, metadata = MetadataPolicy.KEEP, videoQuality = VideoQuality.STANDARD),
+        options = UploadOptions(quality = MediaQuality.ORIGINAL, metadata = MetadataPolicy.KEEP, videoQuality = VideoQuality.HIGH),
         fileOps = fileOperationsProvider,
         pdfPageRenderer = { path, width ->
             generatePdfThumbnailFromFile(path, width)

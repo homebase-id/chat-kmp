@@ -107,9 +107,10 @@ object VideoCompressionService : VideoCompressor, VideoProber {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String =
         heavy {
-            compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality)
+            compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, keepMetadata)
         }
 
     override suspend fun segment(
