@@ -444,7 +444,7 @@ class PhotoBackupRunTest {
     }
 
     @Test
-    fun aVideoThatEndedTheAppTwiceWhilePreparingWaitsForBackUpNow() = runTest {
+    fun aVideoThatEndedTheAppTwiceWhilePreparingWaitsForRetry() = runTest {
         source.next = fullListing(asset("photo"), asset("clip", mediaType = BackupMediaType.Video))
         repeat(2) { ledger.prepareStarting(idOf("clip")) }
         val uploader = uploader()
@@ -456,13 +456,16 @@ class PhotoBackupRunTest {
         assertEquals(BackupState.Failed.code, state("clip"))
         assertEquals(BackupLedger.CRASHED_PREPARING, ledger.row("clip")!!.lastError)
 
-        // Opening the app requeues failures; this one still isn't touched.
+        // Opening the app and Back up now leave it failed: the OS reruns an interrupted Back up now by itself.
         run.run(request(trigger = BackupTrigger.Foreground))
+        run.run(request(trigger = BackupTrigger.UserRequested))
         advanceUntilIdle()
         assertEquals(listOf("photo"), uploader.handedOff)
         assertEquals(BackupState.Failed.code, state("clip"))
+        assertEquals(2L, ledger.unfinishedPrepares(idOf("clip")))
 
-        run.run(request(trigger = BackupTrigger.UserRequested))
+        run.retryFailures()
+        run.run(request())
         advanceUntilIdle()
         assertEquals(BackupState.Done.code, state("clip"))
     }
@@ -477,7 +480,7 @@ class PhotoBackupRunTest {
         advanceUntilIdle()
 
         assertEquals(BackupState.Done.code, state("clip"))
-        assertEquals(1L, ledger.prepareStarting(idOf("clip")))
+        assertEquals(0L, ledger.unfinishedPrepares(idOf("clip")))
     }
 
     @Test
@@ -495,8 +498,36 @@ class PhotoBackupRunTest {
         runCurrent()
 
         assertFalse(outcome.isCompleted)
-        assertEquals(1L, ledger.prepareStarting(idOf("clip")))
+        assertEquals(0L, ledger.unfinishedPrepares(idOf("clip")))
         transcode.complete(Unit)
+    }
+
+    @Test
+    fun onlyVideosAreHeldAfterTheAppEndedWhilePreparingThem() = runTest {
+        source.next = fullListing(asset("photo"))
+        repeat(3) { ledger.prepareStarting(idOf("photo")) }
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("photo"))
+    }
+
+    @Test
+    fun aVideoWaitingForAnotherIsNotCountedWhenTheAppEnds() = runTest {
+        source.next = fullListing(asset("a", mediaType = BackupMediaType.Video), asset("b", mediaType = BackupMediaType.Video))
+        val uploader = uploader()
+        uploader.handOffGate = CompletableDeferred()
+        val (run, _) = newRun(uploader)
+
+        backgroundScope.launch { run.run(request()) }
+        advanceTimeBy(1.seconds)
+
+        assertEquals(1, uploader.handedOff.size)
+        assertEquals(1L, ledger.unfinishedPrepares(idOf(uploader.handedOff.single())))
+        assertEquals(0L, ledger.unfinishedPrepares(idOf(if (uploader.handedOff.single() == "a") "b" else "a")))
+        uploader.handOffGate!!.complete(Unit)
     }
 
     @Test

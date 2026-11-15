@@ -25,7 +25,7 @@ class BackupLedgerTest {
         val id = Uuid.random()
         repeat(2) { ledger.prepareStarting(id) }
         ledger.clear()
-        assertEquals(1L, ledger.prepareStarting(id))
+        assertEquals(0L, ledger.unfinishedPrepares(id))
     }
 
     @Test
