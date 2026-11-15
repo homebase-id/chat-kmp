@@ -21,6 +21,14 @@ class BackupLedgerTest {
     private suspend fun stateOf(id: String) = ledger.row(id)?.state
 
     @Test
+    fun forgettingStartsTheCrashCountsAgain() = runTest {
+        val id = Uuid.random()
+        repeat(2) { ledger.prepareStarting(id) }
+        ledger.clear()
+        assertEquals(0L, ledger.unfinishedPrepares(id))
+    }
+
+    @Test
     fun reapplyingTheSameListingChangesNothing() = runTest {
         ledger.apply(fullListing(asset("a")), null)
         ledger.markHashed("a", "ff", Uuid.random(), 10)

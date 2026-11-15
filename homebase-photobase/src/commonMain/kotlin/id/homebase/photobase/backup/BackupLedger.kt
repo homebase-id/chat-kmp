@@ -206,6 +206,19 @@ class BackupLedger(
         changed()
     }
 
+    /** Prepares of [uniqueId] that started and never ended: the process died in them. */
+    suspend fun unfinishedPrepares(uniqueId: Uuid): Long = store.prepareStarts(uniqueId.toString())
+
+    suspend fun prepareStarting(uniqueId: Uuid) = store.countPrepareStart(uniqueId.toString())
+
+    suspend fun prepareEnded(uniqueId: Uuid) = store.clearPrepareStart(uniqueId.toString())
+
+    /** Opening the app leaves it failed; only Retry on the status screen tries it again. */
+    suspend fun markCrashedPreparing(id: String) {
+        store.setState(id, BackupState.Failed.code, CRASHED_PREPARING, MAX_ATTEMPTS.toLong(), 0)
+        changed()
+    }
+
     /** The bytes changed between hashing and encrypting: start over, never upload new bytes under the old id. */
     suspend fun markChangedUnderUs(id: String) {
         store.setState(id, BackupState.New.code, "changed while backing up", 0, 0)
@@ -312,8 +325,11 @@ class BackupLedger(
         changed()
     }
 
-    suspend fun requeueFailed() {
-        store.requeueFailed(BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code)
+    /** [alsoCrashed]: the user asked, so what ended the app gets another go too, with its count reset. */
+    suspend fun requeueFailed(alsoCrashed: Boolean = false) {
+        if (alsoCrashed) store.clearAllPrepareStarts()
+        val keep = if (alsoCrashed) emptyList() else listOf(CRASHED_PREPARING)
+        store.requeueFailed(BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code, keep)
         changed()
     }
 
@@ -353,6 +369,7 @@ class BackupLedger(
         private const val SINGLE_READ_LIMIT = 500
         const val MAX_ATTEMPTS = 10
         private const val NOT_ON_DEVICE = "not on this device"
+        const val CRASHED_PREPARING = "the app stopped while preparing it"
         private val NOT_ON_DEVICE_RETRY = 6.hours
         private val VIDEO_YIELD_RETRY = 1.minutes
         private val OUTAGE_RETRY = 5.minutes

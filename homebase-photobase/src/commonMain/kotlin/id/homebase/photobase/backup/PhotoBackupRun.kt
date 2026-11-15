@@ -7,9 +7,11 @@ import id.homebase.api.client.ServerException
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -69,6 +71,7 @@ class PhotoBackupRun(
     private val isStorageFull: suspend (interactive: Boolean) -> Boolean,
 ) {
     private val mutex = Mutex()
+    private val videoPrepare = Mutex()
 
     private val _status = MutableStateFlow(BackupStatus())
     val status: StateFlow<BackupStatus> = _status.asStateFlow()
@@ -158,7 +161,7 @@ class PhotoBackupRun(
     }
 
     suspend fun retryFailures() {
-        ledger.requeueFailed()
+        ledger.requeueFailed(alsoCrashed = true)
         refreshStatus()
     }
 
@@ -510,27 +513,66 @@ class PhotoBackupRun(
     }
 
     private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid) {
-        results.onPreparing(uniqueId, isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video)
+        val isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video
+        results.onPreparing(uniqueId, isVideo)
         try {
             guarded(row) {
-                val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
-                // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
-                withContext(NonCancellable) {
-                    when (handedOff) {
-                        HandOffResult.Queued -> {
-                            // Tracked first: a verdict landing between the two calls must find it to settle.
-                            results.onHandedOff(uniqueId)
-                            if (ledger.markQueued(row.deviceAssetId)) results.onSettledBeforeHandOff(uniqueId)
-                        }
-                        is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
-                        HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
-                    }
+                if (isVideo) {
+                    // One at a time, so a process death points at the video being transcoded and no other.
+                    videoPrepare.withLock { crashGuarded(row, uniqueId) { handOff(row, uniqueId) } }
+                } else {
+                    handOff(row, uniqueId)
                 }
-                if (handedOff == HandOffResult.Queued) uploader.kick()
             }
         } finally {
             results.onPrepareEnded(uniqueId)
         }
+    }
+
+    private suspend fun crashGuarded(row: DeviceBackupAsset, uniqueId: Uuid, block: suspend () -> Unit) = coroutineScope {
+        val unfinished = ledger.unfinishedPrepares(uniqueId)
+        if (unfinished >= MAX_UNFINISHED_PREPARES) {
+            Logger.w(tag = TAG) { "asset ${row.deviceAssetId}: $unfinished prepares never ended; holding it for Retry" }
+            ledger.markCrashedPreparing(row.deviceAssetId)
+            return@coroutineScope
+        }
+        ledger.prepareStarting(uniqueId)
+        // Ended on cancel, not on return: a cancelled ffmpeg can take 30 s to stop, and the app being killed then is no crash.
+        val ended = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) {
+                    try {
+                        ledger.prepareEnded(uniqueId)
+                    } catch (e: Exception) {
+                        Logger.w(tag = TAG, throwable = e) { "couldn't clear the prepare count of ${row.deviceAssetId}" }
+                    }
+                }
+            }
+        }
+        try {
+            block()
+        } finally {
+            ended.cancel()
+        }
+    }
+
+    private suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid) {
+        val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
+        // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
+        withContext(NonCancellable) {
+            when (handedOff) {
+                HandOffResult.Queued -> {
+                    // Tracked first: a verdict landing between the two calls must find it to settle.
+                    results.onHandedOff(uniqueId)
+                    if (ledger.markQueued(row.deviceAssetId)) results.onSettledBeforeHandOff(uniqueId)
+                }
+                is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
+                HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
+            }
+        }
+        if (handedOff == HandOffResult.Queued) uploader.kick()
     }
 
     private suspend inline fun guarded(row: DeviceBackupAsset, block: () -> Unit) {
@@ -588,6 +630,7 @@ class PhotoBackupRun(
         private const val HASH_BATCH = 16
         private const val DEDUPE_BATCH = 20
         private const val PREPARE_PARALLELISM = 2
+        private const val MAX_UNFINISHED_PREPARES = 2
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
         private val STATUS_REFRESH_GAP: Duration = 1.seconds
