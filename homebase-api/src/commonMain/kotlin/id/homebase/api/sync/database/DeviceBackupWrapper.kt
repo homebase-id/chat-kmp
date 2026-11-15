@@ -34,6 +34,9 @@ class DeviceBackupWrapper(
             }
         }
 
+    suspend fun anyPhotoDue(states: Collection<Long>, now: Long): Boolean =
+        databaseManager.readValue("deviceBackup.anyPhotoDue") { assets.anyPhotoDue(states, now).executeAsOne() }
+
     suspend fun selectByUnique(uniqueId: String): List<DeviceBackupAsset> =
         databaseManager.readValue("deviceBackup.selectByUnique") { assets.selectByUnique(uniqueId).executeAsList() }
 

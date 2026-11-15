@@ -907,6 +907,7 @@ class PhotoBackupRunTest {
         run.run(request())
         advanceUntilIdle()
         assertEquals(listOf("photo"), uploader.handedOff)
+        assertEquals(1, continuations, "the videos left behind come in a run of their own")
 
         run.run(request())
         advanceUntilIdle()
@@ -918,18 +919,28 @@ class PhotoBackupRunTest {
     }
 
     @Test
-    fun aBackgroundRunLeavesAVideoOfUnknownSizeUnread() = runTest {
+    fun aBackgroundRunLearnsAVideosSizeByHashingIt() = runTest {
         source.next = fullListing(DeviceAsset("clip", BackupMediaType.Video, 1000, 1000, sizeBytes = null))
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("clip"))
+    }
+
+    @Test
+    fun aBackgroundRunHashesOnlyTheOneVideoItTakes() = runTest {
+        source.next = fullListing(*List(5) { asset("v$it", mediaType = BackupMediaType.Video) }.toTypedArray())
         val uploader = uploader()
         val (run, _) = newRun(uploader)
 
         run.run(request())
         advanceUntilIdle()
-        assertEquals(BackupState.New.code, state("clip"))
 
-        run.run(request(trigger = BackupTrigger.Foreground))
-        advanceUntilIdle()
-        assertEquals(BackupState.Done.code, state("clip"))
+        assertEquals(1, uploader.handedOff.size)
+        assertEquals(4, (0 until 5).count { ledger.row("v$it")!!.state == BackupState.New.code }, "never read")
+        assertEquals(1, continuations)
     }
 
     @Test
