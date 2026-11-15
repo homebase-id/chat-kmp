@@ -234,6 +234,7 @@ class DatabaseManager(
             "CircleMembershipCache",
             "ConnectionCache",
             "DeviceBackupAsset",
+            "DeviceBackupPrepareStart",
             "DriveLocalTagIndex",
             "DriveMainIndex",
             "DriveTagIndex",

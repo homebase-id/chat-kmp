@@ -99,6 +99,17 @@ class DeviceBackupWrapper(
         databaseManager.withWriteValue { assets.recheckDone(newState, hashedState, doneState) }
     }
 
+    /** Counts a start of [uniqueId]'s prepare, and returns the starts that never ended, this one included. */
+    suspend fun countPrepareStart(uniqueId: String): Long =
+        databaseManager.withWriteValue {
+            assets.countPrepareStart(uniqueId)
+            assets.prepareStarts(uniqueId).executeAsOne()
+        }
+
+    suspend fun clearPrepareStart(uniqueId: String) {
+        databaseManager.withWriteValue { assets.clearPrepareStart(uniqueId) }
+    }
+
     suspend fun deleteAll() {
         databaseManager.withWriteTransaction {
             assets.deleteAll()

@@ -444,6 +444,62 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aVideoThatEndedTheAppTwiceWhilePreparingWaitsForBackUpNow() = runTest {
+        source.next = fullListing(asset("photo"), asset("clip", mediaType = BackupMediaType.Video))
+        repeat(2) { ledger.prepareStarting(idOf("clip")) }
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(listOf("photo"), uploader.handedOff)
+        assertEquals(BackupState.Failed.code, state("clip"))
+        assertEquals(BackupLedger.CRASHED_PREPARING, ledger.row("clip")!!.lastError)
+
+        // Opening the app requeues failures; this one still isn't touched.
+        run.run(request(trigger = BackupTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(listOf("photo"), uploader.handedOff)
+        assertEquals(BackupState.Failed.code, state("clip"))
+
+        run.run(request(trigger = BackupTrigger.UserRequested))
+        advanceUntilIdle()
+        assertEquals(BackupState.Done.code, state("clip"))
+    }
+
+    @Test
+    fun aVideoThatEndedTheAppOnceIsTriedAgainAndItsCountCleared() = runTest {
+        source.next = fullListing(asset("clip", mediaType = BackupMediaType.Video))
+        ledger.prepareStarting(idOf("clip"))
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("clip"))
+        assertEquals(1L, ledger.prepareStarting(idOf("clip")))
+    }
+
+    @Test
+    fun aCancelledPrepareIsNotCountedAsACrashEvenBeforeItStops() = runTest {
+        source.next = fullListing(asset("clip", mediaType = BackupMediaType.Video))
+        val uploader = uploader()
+        val transcode = CompletableDeferred<Unit>()
+        uploader.handOffGate = transcode
+        val (run, _) = newRun(uploader)
+
+        val outcome = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        assertEquals(listOf("clip"), uploader.handedOff)
+        outcome.cancel()
+        runCurrent()
+
+        assertFalse(outcome.isCompleted)
+        assertEquals(1L, ledger.prepareStarting(idOf("clip")))
+        transcode.complete(Unit)
+    }
+
+    @Test
     fun aRunWaitingForTheLockGivesWayToForget() = runTest {
         hashGates["slow"] = CompletableDeferred()
         source.next = fullListing(asset("slow"))

@@ -206,6 +206,17 @@ class BackupLedger(
         changed()
     }
 
+    /** How many prepares of [uniqueId] have started without ending, this one included. */
+    suspend fun prepareStarting(uniqueId: Uuid): Long = store.countPrepareStart(uniqueId.toString())
+
+    suspend fun prepareEnded(uniqueId: Uuid) = store.clearPrepareStart(uniqueId.toString())
+
+    /** Only Back up now tries it again; opening the app requeues it, and it fails again untouched. */
+    suspend fun markCrashedPreparing(id: String) {
+        store.setState(id, BackupState.Failed.code, CRASHED_PREPARING, MAX_ATTEMPTS.toLong(), 0)
+        changed()
+    }
+
     /** The bytes changed between hashing and encrypting: start over, never upload new bytes under the old id. */
     suspend fun markChangedUnderUs(id: String) {
         store.setState(id, BackupState.New.code, "changed while backing up", 0, 0)
@@ -353,6 +364,7 @@ class BackupLedger(
         private const val SINGLE_READ_LIMIT = 500
         const val MAX_ATTEMPTS = 10
         private const val NOT_ON_DEVICE = "not on this device"
+        const val CRASHED_PREPARING = "the app stopped while preparing it; Back up now tries again"
         private val NOT_ON_DEVICE_RETRY = 6.hours
         private val VIDEO_YIELD_RETRY = 1.minutes
         private val OUTAGE_RETRY = 5.minutes

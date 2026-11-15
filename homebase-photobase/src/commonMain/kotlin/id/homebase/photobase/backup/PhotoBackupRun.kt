@@ -7,9 +7,11 @@ import id.homebase.api.client.ServerException
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -415,7 +417,7 @@ class PhotoBackupRun(
                         toPrepare.cancel()
                         return@launch
                     }
-                    prepare(row, uniqueId)
+                    prepare(row, uniqueId, retryAfterCrashes = request.trigger == BackupTrigger.UserRequested)
                 }
             }
         }
@@ -507,22 +509,40 @@ class PhotoBackupRun(
         }
     }
 
-    private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid) {
-        guarded(row) {
-            val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
-            // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
-            withContext(NonCancellable) {
-                when (handedOff) {
-                    HandOffResult.Queued -> {
-                        // Tracked first: a verdict landing between the two calls must find it to settle.
-                        results.onHandedOff(uniqueId)
-                        if (ledger.markQueued(row.deviceAssetId)) results.onSettledBeforeHandOff(uniqueId)
-                    }
-                    is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
-                    HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
-                }
+    /** [retryAfterCrashes]: the user asked; a crash in ffmpeg isn't always the same file every time. */
+    private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid, retryAfterCrashes: Boolean) = coroutineScope {
+        if (ledger.prepareStarting(uniqueId) > MAX_UNFINISHED_PREPARES && !retryAfterCrashes) {
+            Logger.w(tag = TAG) { "asset ${row.deviceAssetId} ended the app $MAX_UNFINISHED_PREPARES times while preparing; waiting for Back up now" }
+            ledger.markCrashedPreparing(row.deviceAssetId)
+            return@coroutineScope
+        }
+        // Ended on cancel, not on return: a cancelled ffmpeg can take 30 s to stop, and the app being killed then is no crash.
+        val ended = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) { ledger.prepareEnded(uniqueId) }
             }
-            if (handedOff == HandOffResult.Queued) uploader.kick()
+        }
+        try {
+            guarded(row) {
+                val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
+                // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
+                withContext(NonCancellable) {
+                    when (handedOff) {
+                        HandOffResult.Queued -> {
+                            // Tracked first: a verdict landing between the two calls must find it to settle.
+                            results.onHandedOff(uniqueId)
+                            if (ledger.markQueued(row.deviceAssetId)) results.onSettledBeforeHandOff(uniqueId)
+                        }
+                        is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
+                        HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
+                    }
+                }
+                if (handedOff == HandOffResult.Queued) uploader.kick()
+            }
+        } finally {
+            ended.cancel()
         }
     }
 
@@ -581,6 +601,7 @@ class PhotoBackupRun(
         private const val HASH_BATCH = 16
         private const val DEDUPE_BATCH = 20
         private const val PREPARE_PARALLELISM = 2
+        private const val MAX_UNFINISHED_PREPARES = 2
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
         private val STATUS_REFRESH_GAP: Duration = 1.seconds
