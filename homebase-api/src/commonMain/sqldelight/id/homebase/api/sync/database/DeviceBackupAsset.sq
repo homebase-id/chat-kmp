@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS DeviceBackupAsset(
 CREATE INDEX IF NOT EXISTS idx_device_backup_due ON DeviceBackupAsset(state, nextAttemptAt);
 CREATE INDEX IF NOT EXISTS idx_device_backup_unique ON DeviceBackupAsset(uniqueId);
 
+-- A prepare that started and never ended: the process died in it, most likely in native code.
+CREATE TABLE IF NOT EXISTS DeviceBackupPrepareStart(
+  uniqueId TEXT NOT NULL PRIMARY KEY,
+  starts INTEGER NOT NULL
+);
+
 insertOrIgnore:
 INSERT OR IGNORE INTO DeviceBackupAsset(deviceAssetId, albumIds, mediaType, createdAt, modifiedAt, size, state, attempts, nextAttemptAt)
 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0);
@@ -105,7 +111,7 @@ SELECT deviceAssetId, lastError FROM DeviceBackupAsset WHERE state = :state ORDE
 requeueFailed:
 UPDATE DeviceBackupAsset
 SET state = CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END, attempts = 0, nextAttemptAt = 0, lastError = NULL
-WHERE state = :failedState;
+WHERE state = :failedState AND (lastError IS NULL OR lastError NOT IN :keep);
 
 recheckDone:
 UPDATE DeviceBackupAsset
@@ -114,3 +120,16 @@ WHERE state = :doneState;
 
 deleteAll:
 DELETE FROM DeviceBackupAsset;
+
+countPrepareStart:
+INSERT INTO DeviceBackupPrepareStart(uniqueId, starts) VALUES (?, 1)
+ON CONFLICT(uniqueId) DO UPDATE SET starts = starts + 1;
+
+prepareStarts:
+SELECT starts FROM DeviceBackupPrepareStart WHERE uniqueId = ?;
+
+clearPrepareStart:
+DELETE FROM DeviceBackupPrepareStart WHERE uniqueId = ?;
+
+clearAllPrepareStarts:
+DELETE FROM DeviceBackupPrepareStart;

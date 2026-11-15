@@ -91,17 +91,34 @@ class DeviceBackupWrapper(
         databaseManager.withWriteValue { assets.setUploadTask(state, uploadTaskId, uniqueId) }
     }
 
-    suspend fun requeueFailed(failedState: Long, newState: Long, hashedState: Long) {
-        databaseManager.withWriteValue { assets.requeueFailed(newState, hashedState, failedState) }
+    /** Rows whose lastError is in [keep] stay failed. */
+    suspend fun requeueFailed(failedState: Long, newState: Long, hashedState: Long, keep: Collection<String>) {
+        databaseManager.withWriteValue { assets.requeueFailed(newState, hashedState, failedState, keep) }
     }
 
     suspend fun recheckDone(doneState: Long, newState: Long, hashedState: Long) {
         databaseManager.withWriteValue { assets.recheckDone(newState, hashedState, doneState) }
     }
 
+    suspend fun prepareStarts(uniqueId: String): Long =
+        databaseManager.readValue("deviceBackup.prepareStarts") { assets.prepareStarts(uniqueId).executeAsOneOrNull() ?: 0 }
+
+    suspend fun countPrepareStart(uniqueId: String) {
+        databaseManager.withWriteValue { assets.countPrepareStart(uniqueId) }
+    }
+
+    suspend fun clearAllPrepareStarts() {
+        databaseManager.withWriteValue { assets.clearAllPrepareStarts() }
+    }
+
+    suspend fun clearPrepareStart(uniqueId: String) {
+        databaseManager.withWriteValue { assets.clearPrepareStart(uniqueId) }
+    }
+
     suspend fun deleteAll() {
         databaseManager.withWriteTransaction {
             assets.deleteAll()
+            assets.clearAllPrepareStarts()
             checkpoints.deleteAll()
         }
     }

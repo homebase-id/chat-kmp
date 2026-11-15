@@ -6,7 +6,10 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.core.photobase.PhotobaseProtocol
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -74,12 +77,15 @@ internal class FakeUploader(
     /** Answers before handOff returns, as a busy Outbox can for a small photo. */
     var answersBeforeReturning = false
     var kicks = 0
+    /** Holds every hand-off until completed, like a long transcode; one that ignores cancel, like a stuck ffmpeg. */
+    var handOffGate: CompletableDeferred<Unit>? = null
     var markedBackground = false
     override var outlivesProcess = false
     override var maxHandedOff = 6
 
     override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
         handedOff += row.deviceAssetId
+        handOffGate?.let { gate -> withContext(NonCancellable) { gate.await() } }
         markedBackground = currentCoroutineContext()[id.homebase.api.video.BackgroundVideoWork.Key] != null
         val outcome = result(row)
         if (outcome == HandOffResult.Queued && sendsComplete && answersBeforeReturning) {
