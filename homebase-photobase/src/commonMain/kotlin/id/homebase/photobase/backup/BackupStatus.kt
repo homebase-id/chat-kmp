@@ -20,8 +20,8 @@ data class BackupFailure(val deviceAssetId: String, val reason: String)
 
 enum class BackupWorkStage { Preparing, Uploading }
 
-/** A photo or video this process is preparing or has handed to the Outbox; [fraction] is null until it reports progress. */
-data class BackupWork(val isVideo: Boolean, val stage: BackupWorkStage, val fraction: Float? = null)
+/** A photo or video this process is preparing or has handed to the Outbox; [percent] is null until it reports progress. */
+data class BackupWork(val isVideo: Boolean, val stage: BackupWorkStage, val percent: Int? = null)
 
 data class BackupStatus(
     val isRunning: Boolean = false,

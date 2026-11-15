@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -31,6 +34,8 @@ import id.homebase.photobase.backup.BackupIndicator
 import id.homebase.photobase.backup.BackupPauseReason
 import id.homebase.photobase.backup.backupIndicatorOf
 import id.homebase.photobase.backup.BackupStatus
+import id.homebase.photobase.backup.BackupWork
+import id.homebase.photobase.backup.BackupWorkStage
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
@@ -65,12 +70,6 @@ import id.homebase.resources.photobase_status_preparing_video
 import id.homebase.resources.photobase_status_uploading_photo
 import id.homebase.resources.photobase_status_uploading_video
 import id.homebase.resources.moments_detail_shared_with_more
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Videocam
-import id.homebase.photobase.backup.BackupWork
-import id.homebase.photobase.backup.BackupWorkStage
-import kotlin.math.roundToInt
 import kotlin.time.Instant
 import org.jetbrains.compose.resources.stringResource
 
@@ -192,6 +191,7 @@ private fun WorkSection(working: List<BackupWork>) {
 
 @Composable
 private fun WorkRow(work: BackupWork) {
+    val percent = work.percent
     val label = when (work.stage) {
         BackupWorkStage.Preparing ->
             if (work.isVideo) MR.string.photobase_status_preparing_video else MR.string.photobase_status_preparing_photo
@@ -208,19 +208,18 @@ private fun WorkRow(work: BackupWork) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                work.fraction?.let {
+                if (percent != null) {
                     Text(
-                        stringResource(MR.string.photobase_status_percent, (it * 100).roundToInt()),
+                        stringResource(MR.string.photobase_status_percent, percent),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            val fraction = work.fraction
-            if (fraction == null) {
+            if (percent == null) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else {
-                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { percent / 100f }, modifier = Modifier.fillMaxWidth())
             }
         }
     }

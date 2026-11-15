@@ -29,7 +29,7 @@ class BackupWorkTrackingTest {
 
         eventBus.emit(BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(video, "v", VideoProcessingPhase.COMPRESSING, 0.5f))
         runCurrent()
-        assertEquals(0.45f, results.work()?.fraction)
+        assertEquals(45, results.work()?.percent)
 
         results.onHandedOff(video)
         results.onPrepareEnded(video)
@@ -39,7 +39,7 @@ class BackupWorkTrackingTest {
         eventBus.emit(BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(video, "v", VideoProcessingPhase.COMPRESSING, 0.9f))
         eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 25f))
         runCurrent()
-        assertEquals(BackupWork(isVideo = true, stage = BackupWorkStage.Uploading, fraction = 0.25f), results.work())
+        assertEquals(BackupWork(isVideo = true, stage = BackupWorkStage.Uploading, percent = 25), results.work())
 
         eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(drive, video))
         runCurrent()
@@ -63,7 +63,7 @@ class BackupWorkTrackingTest {
         eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(Uuid.random(), video, 50f))
         eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 50f, isCreate = false))
         runCurrent()
-        assertNull(results.work()?.fraction)
+        assertNull(results.work()?.percent)
     }
 
     @Test

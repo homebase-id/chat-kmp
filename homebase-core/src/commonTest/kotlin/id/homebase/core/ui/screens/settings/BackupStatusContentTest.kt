@@ -53,7 +53,7 @@ class BackupStatusContentTest {
 
     @Test
     fun aVideoBeingPreparedShowsWhatAndHowFar() = runComposeUiTest {
-        content(BackupStatus(isRunning = true, pendingCount = 1, working = listOf(BackupWork(true, BackupWorkStage.Preparing, 0.37f))))
+        content(BackupStatus(isRunning = true, pendingCount = 1, working = listOf(BackupWork(true, BackupWorkStage.Preparing, 37))))
         waitUntilExactlyOneExists(hasText("Preparing a video"))
         waitUntilExactlyOneExists(hasText("37%"))
     }

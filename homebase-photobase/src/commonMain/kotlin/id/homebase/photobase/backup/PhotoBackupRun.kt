@@ -512,28 +512,24 @@ class PhotoBackupRun(
     private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid) {
         results.onPreparing(uniqueId, isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video)
         try {
-            prepareTracked(row, uniqueId)
+            guarded(row) {
+                val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
+                // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
+                withContext(NonCancellable) {
+                    when (handedOff) {
+                        HandOffResult.Queued -> {
+                            // Tracked first: a verdict landing between the two calls must find it to settle.
+                            results.onHandedOff(uniqueId)
+                            if (ledger.markQueued(row.deviceAssetId)) results.onSettledBeforeHandOff(uniqueId)
+                        }
+                        is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
+                        HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
+                    }
+                }
+                if (handedOff == HandOffResult.Queued) uploader.kick()
+            }
         } finally {
             results.onPrepareEnded(uniqueId)
-        }
-    }
-
-    private suspend fun prepareTracked(row: DeviceBackupAsset, uniqueId: Uuid) {
-        guarded(row) {
-            val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
-            // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
-            withContext(NonCancellable) {
-                when (handedOff) {
-                    HandOffResult.Queued -> {
-                        // Tracked first: a verdict landing between the two calls must find it to settle.
-                        results.onHandedOff(uniqueId)
-                        if (ledger.markQueued(row.deviceAssetId)) results.onSettledBeforeHandOff(uniqueId)
-                    }
-                    is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
-                    HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
-                }
-            }
-            if (handedOff == HandOffResult.Queued) uploader.kick()
         }
     }
 

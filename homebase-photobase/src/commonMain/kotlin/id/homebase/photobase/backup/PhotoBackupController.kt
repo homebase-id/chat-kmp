@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
@@ -88,7 +89,7 @@ class PhotoBackupController(
         val inApp: suspend () -> Unit = {
             run.run(BackupRunRequest(BackupTrigger.UserRequested, BackupBudget(null)))
         }
-        val progress = run.status.map { it.progress }
+        val progress = run.status.map { it.progress }.distinctUntilChanged()
         if (triggers?.startUserRequestedRun(settingsStore.settings.value, progress, inApp) != true) {
             foregroundJob = scope.launch { inApp() }
         }

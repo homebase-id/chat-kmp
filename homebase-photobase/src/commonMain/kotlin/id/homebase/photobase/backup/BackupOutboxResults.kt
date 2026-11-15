@@ -84,13 +84,12 @@ class BackupOutboxResults(
         }
     }
 
-    // Whole percents only: a transcode reports many times a second, and each update redraws the status.
+    // An equal map doesn't re-emit: a squeezed video phase repeats the same percent many times.
     private fun advance(uniqueId: Uuid, stage: BackupWorkStage, fraction: Float) {
         val percent = (fraction.coerceIn(0f, 1f) * 100).toInt()
         _working.update { work ->
             val current = work[uniqueId]?.takeIf { it.stage == stage } ?: return@update work
-            if (current.fraction?.let { (it * 100).toInt() } == percent) work
-            else work + (uniqueId to current.copy(fraction = percent / 100f))
+            work + (uniqueId to current.copy(percent = percent))
         }
     }
 
