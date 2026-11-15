@@ -50,6 +50,7 @@ data class BackupStatus(
     val waitingCount: Long
         get() = (pendingCount - queuedCount - preparingCount).coerceAtLeast(0)
 
+    /** Started: preparing counts too, so a transcode doesn't look like nothing is happening. */
     val inProgressCount: Long
         get() = uploadingCount + queuedCount + preparingCount
 

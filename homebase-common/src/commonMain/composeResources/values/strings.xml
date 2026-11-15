@@ -3442,7 +3442,7 @@
     <string name="photobase_status_progress">%1$d of %2$d backed up</string>
     <string name="photobase_status_size_backed_up">Size backed up</string>
     <string name="photobase_status_size_left">Left to back up</string>
-    <string name="photobase_status_in_progress">In progress</string>
+    <string name="photobase_status_uploading">Uploading now</string>
     <string name="photobase_status_preparing_photo">Preparing a photo</string>
     <string name="photobase_status_preparing_video">Preparing a video</string>
     <string name="photobase_status_uploading_photo">Uploading a photo</string>

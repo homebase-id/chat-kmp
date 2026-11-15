@@ -58,7 +58,7 @@ import id.homebase.resources.photobase_status_running
 import id.homebase.resources.photobase_status_title
 import id.homebase.resources.photobase_status_all_backed_up
 import id.homebase.resources.photobase_status_up_to_date
-import id.homebase.resources.photobase_status_in_progress
+import id.homebase.resources.photobase_status_uploading
 import id.homebase.resources.photobase_status_percent
 import id.homebase.resources.photobase_status_preparing_photo
 import id.homebase.resources.photobase_status_preparing_video
@@ -106,7 +106,7 @@ fun BackupStatusContent(status: BackupStatus, backupEnabled: Boolean, onRetry: (
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile(status.backedUpCount, stringResource(MR.string.photobase_status_backed_up), Modifier.weight(1f))
             StatTile(status.waitingCount, stringResource(MR.string.photobase_status_pending), Modifier.weight(1f))
-            StatTile(status.inProgressCount, stringResource(MR.string.photobase_status_in_progress), Modifier.weight(1f))
+            StatTile(status.inProgressCount, stringResource(MR.string.photobase_status_uploading), Modifier.weight(1f))
         }
         if (status.working.isNotEmpty()) WorkSection(status.working)
         Surface(
