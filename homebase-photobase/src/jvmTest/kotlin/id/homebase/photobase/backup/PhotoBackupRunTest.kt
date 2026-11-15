@@ -969,6 +969,80 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aBackgroundRunLeavesALargeVideoForWhenTheAppIsOpen() = runTest {
+        val large = DeviceAsset("large", BackupMediaType.Video, 1000, 1000, sizeBytes = MAX_BACKGROUND_VIDEO_BYTES + 1)
+        source.next = fullListing(asset("clip", mediaType = BackupMediaType.Video), large)
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(listOf("clip"), uploader.handedOff)
+        assertEquals(BackupState.New.code, state("large"))
+
+        run.run(request(trigger = BackupTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(BackupState.Done.code, state("large"))
+    }
+
+    @Test
+    fun aBackgroundRunTakesAVideoOnlyAsTheFirstThingItPrepares() = runTest {
+        source.next = fullListing(asset("photo"), asset("clip", mediaType = BackupMediaType.Video), asset("clip2", mediaType = BackupMediaType.Video))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(listOf("photo"), uploader.handedOff)
+        assertEquals(1, continuations, "the videos left behind come in a run of their own")
+
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(2, uploader.handedOff.size, "one video, then the run leaves the other")
+
+        run.run(request(trigger = BackupTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(setOf("photo", "clip", "clip2"), uploader.handedOff.toSet())
+    }
+
+    @Test
+    fun aBackgroundRunLearnsAVideosSizeByHashingIt() = runTest {
+        source.next = fullListing(DeviceAsset("clip", BackupMediaType.Video, 1000, 1000, sizeBytes = null))
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("clip"))
+    }
+
+    @Test
+    fun aBackgroundRunHashesOnlyTheOneVideoItTakes() = runTest {
+        source.next = fullListing(*List(5) { asset("v$it", mediaType = BackupMediaType.Video) }.toTypedArray())
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(1, uploader.handedOff.size)
+        assertEquals(4, (0 until 5).count { ledger.row("v$it")!!.state == BackupState.New.code }, "never read")
+        assertEquals(1, continuations)
+    }
+
+    @Test
+    fun backUpNowTakesALargeVideo() = runTest {
+        source.next = fullListing(DeviceAsset("large", BackupMediaType.Video, 1000, 1000, sizeBytes = MAX_BACKGROUND_VIDEO_BYTES + 1))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request(trigger = BackupTrigger.UserRequested))
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("large"))
+    }
+
+    @Test
     fun aRowWhoseSendVanishedIsSettledByDedupe() = runTest {
         val id = idOf("a")
         ledger.apply(fullListing(asset("a")), null)

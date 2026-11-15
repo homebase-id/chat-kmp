@@ -24,15 +24,18 @@ class DeviceBackupWrapper(
     suspend fun selectAllIdsExcept(state: Long): List<String> =
         databaseManager.readValue("deviceBackup.selectAllIds") { assets.selectAllIdsExcept(state).executeAsList() }
 
-    suspend fun selectDue(state: Long, now: Long, includeVideos: Boolean, limit: Long, newestFirst: Boolean): List<DeviceBackupAsset> =
+    suspend fun selectDue(state: Long, now: Long, maxVideoBytes: Long?, limit: Long, newestFirst: Boolean): List<DeviceBackupAsset> =
         databaseManager.readValue("deviceBackup.selectDue") {
-            val videos = if (includeVideos) 1L else 0L
+            val videos = maxVideoBytes ?: -1L
             if (newestFirst) {
                 assets.selectDueNewestFirst(state, now, videos, limit).executeAsList()
             } else {
                 assets.selectDueOldestFirst(state, now, videos, limit).executeAsList()
             }
         }
+
+    suspend fun anyPhotoDue(states: Collection<Long>, now: Long): Boolean =
+        databaseManager.readValue("deviceBackup.anyPhotoDue") { assets.anyPhotoDue(states, now).executeAsOne() }
 
     suspend fun selectByUnique(uniqueId: String): List<DeviceBackupAsset> =
         databaseManager.readValue("deviceBackup.selectByUnique") { assets.selectByUnique(uniqueId).executeAsList() }

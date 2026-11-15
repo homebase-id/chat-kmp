@@ -47,17 +47,21 @@ WHERE deviceAssetId = :deviceAssetId;
 updateAlbums:
 UPDATE DeviceBackupAsset SET albumIds = ? WHERE deviceAssetId = ?;
 
+-- :maxVideoBytes -1 leaves videos out. Size 0 is not yet known (iOS lists none): hashing learns it.
 selectDueOldestFirst:
 SELECT * FROM DeviceBackupAsset
-WHERE state = :state AND nextAttemptAt <= :now AND (mediaType != 1 OR :includeVideos = 1)
+WHERE state = :state AND nextAttemptAt <= :now AND (mediaType != 1 OR size <= :maxVideoBytes)
 ORDER BY CASE WHEN mediaType = 1 THEN 1 ELSE 0 END ASC, createdAt ASC
 LIMIT :limit;
 
 selectDueNewestFirst:
 SELECT * FROM DeviceBackupAsset
-WHERE state = :state AND nextAttemptAt <= :now AND (mediaType != 1 OR :includeVideos = 1)
+WHERE state = :state AND nextAttemptAt <= :now AND (mediaType != 1 OR size <= :maxVideoBytes)
 ORDER BY CASE WHEN mediaType = 1 THEN 1 ELSE 0 END ASC, createdAt DESC
 LIMIT :limit;
+
+anyPhotoDue:
+SELECT EXISTS(SELECT 1 FROM DeviceBackupAsset WHERE state IN :states AND nextAttemptAt <= :now AND mediaType != 1);
 
 clearBackoffForReason:
 UPDATE DeviceBackupAsset
