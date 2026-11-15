@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
@@ -329,7 +328,8 @@ class PhotoBackupRun(
         if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
         val before = ledger.counts()
 
-        val maxVideoBytes = largestVideoBytes(current, deviceState, interactive)
+        // A background run is often stopped within minutes, and a stopped transcode starts over: a video goes only first.
+        val maxVideoBytes = largestVideoBytes(current, deviceState, interactive)?.takeUnless { !interactive && ledger.hasPhotosDue() }
         val initialBackupDone = ledger.isInitialBackupDone()
         val newestFirst = current.newestFirst || initialBackupDone
         val hashing = launch {
@@ -408,7 +408,6 @@ class PhotoBackupRun(
                 toPrepare.close()
             }
         }
-        val started = MutableStateFlow(0)
         repeat(PREPARE_PARALLELISM) {
             // On the worker, not withContext around the hand-off: that would throw away a result if cancelled on the way out.
             launch(BackgroundVideoWork) {
@@ -417,9 +416,6 @@ class PhotoBackupRun(
                         toPrepare.cancel()
                         return@launch
                     }
-                    val first = started.getAndUpdate { it + 1 } == 0
-                    // A background run is often stopped within minutes, and a stopped transcode starts over.
-                    if (!request.isInteractive && !first && BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video) continue
                     prepare(row, uniqueId)
                 }
             }
@@ -470,11 +466,12 @@ class PhotoBackupRun(
         toPrepare: Channel<Pair<DeviceBackupAsset, Uuid>>,
     ) {
         val checked = mutableSetOf<String>()
+        var videoBytes = maxVideoBytes
         while (!request.budget.isExpired) {
             // Read before the query: a hash landing just after it must not look like the last word.
             val hashingDone = hashing.isCompleted
             val seen = ledger.changes.value
-            val batch = ledger.dueExcept(BackupState.Hashed, maxVideoBytes, DEDUPE_BATCH, newestFirst, checked)
+            val batch = ledger.dueExcept(BackupState.Hashed, videoBytes, DEDUPE_BATCH, newestFirst, checked)
             if (batch.isEmpty()) {
                 if (hashingDone) return
                 coroutineScope {
@@ -505,8 +502,9 @@ class PhotoBackupRun(
                 if (uniqueId in existing) {
                     ledger.markDone(row.deviceAssetId)
                     hasher.forget(row.deviceAssetId)
-                } else {
+                } else if (row.mediaType != BackupMediaType.Video.code || videoBytes != null) {
                     toPrepare.send(row to uniqueId)
+                    if (row.mediaType == BackupMediaType.Video.code && !request.isInteractive) videoBytes = null
                 }
             }
         }

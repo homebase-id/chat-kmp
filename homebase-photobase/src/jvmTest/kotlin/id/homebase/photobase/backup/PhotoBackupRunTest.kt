@@ -918,6 +918,21 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aBackgroundRunLeavesAVideoOfUnknownSizeUnread() = runTest {
+        source.next = fullListing(DeviceAsset("clip", BackupMediaType.Video, 1000, 1000, sizeBytes = null))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(BackupState.New.code, state("clip"))
+
+        run.run(request(trigger = BackupTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(BackupState.Done.code, state("clip"))
+    }
+
+    @Test
     fun backUpNowTakesALargeVideo() = runTest {
         source.next = fullListing(DeviceAsset("large", BackupMediaType.Video, 1000, 1000, sizeBytes = MAX_BACKGROUND_VIDEO_BYTES + 1))
         val uploader = uploader()

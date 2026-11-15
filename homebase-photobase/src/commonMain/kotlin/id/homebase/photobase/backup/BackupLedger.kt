@@ -165,9 +165,11 @@ class BackupLedger(
         return true
     }
 
-    /** Videos only up to [maxVideoBytes], and none when it's null; a size not yet known counts as small. */
     suspend fun due(state: BackupState, maxVideoBytes: Long?, limit: Int, newestFirst: Boolean): List<DeviceBackupAsset> =
         store.selectDue(state.code, nowMs(), maxVideoBytes, limit.toLong(), newestFirst)
+
+    suspend fun hasPhotosDue(): Boolean =
+        due(BackupState.New, null, 1, newestFirst = false).isNotEmpty() || due(BackupState.Hashed, null, 1, newestFirst = false).isNotEmpty()
 
     /** Up to [batch] due rows not in [seen]. Reads past only the seen rows still due, not every row seen this run. */
     suspend fun dueExcept(state: BackupState, maxVideoBytes: Long?, batch: Int, newestFirst: Boolean, seen: Set<String>): List<DeviceBackupAsset> {
