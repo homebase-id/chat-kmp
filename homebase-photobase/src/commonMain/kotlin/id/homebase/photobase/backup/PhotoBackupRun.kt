@@ -511,8 +511,9 @@ class PhotoBackupRun(
 
     /** [retryAfterCrashes]: the user asked; a crash in ffmpeg isn't always the same file every time. */
     private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid, retryAfterCrashes: Boolean) = coroutineScope {
-        if (ledger.prepareStarting(uniqueId) > MAX_UNFINISHED_PREPARES && !retryAfterCrashes) {
-            Logger.w(tag = TAG) { "asset ${row.deviceAssetId} ended the app $MAX_UNFINISHED_PREPARES times while preparing; waiting for Back up now" }
+        val starts = ledger.prepareStarting(uniqueId)
+        if (starts > MAX_UNFINISHED_PREPARES && !retryAfterCrashes) {
+            Logger.w(tag = TAG) { "asset ${row.deviceAssetId}: ${starts - 1} prepares never ended; waiting for Back up now" }
             ledger.markCrashedPreparing(row.deviceAssetId)
             return@coroutineScope
         }

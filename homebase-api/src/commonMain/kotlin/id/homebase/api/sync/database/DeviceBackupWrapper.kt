@@ -113,6 +113,7 @@ class DeviceBackupWrapper(
     suspend fun deleteAll() {
         databaseManager.withWriteTransaction {
             assets.deleteAll()
+            assets.clearAllPrepareStarts()
             checkpoints.deleteAll()
         }
     }

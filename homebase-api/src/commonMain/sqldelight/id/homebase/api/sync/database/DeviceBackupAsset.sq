@@ -130,3 +130,6 @@ SELECT starts FROM DeviceBackupPrepareStart WHERE uniqueId = ?;
 
 clearPrepareStart:
 DELETE FROM DeviceBackupPrepareStart WHERE uniqueId = ?;
+
+clearAllPrepareStarts:
+DELETE FROM DeviceBackupPrepareStart;
