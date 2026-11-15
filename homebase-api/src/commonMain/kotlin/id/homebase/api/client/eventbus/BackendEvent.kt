@@ -155,7 +155,7 @@ sealed interface BackendEvent {
         data class ItemProgress(
             val driveId: Uuid,
             val uniqueId: Uuid,
-            val progress: Float,  // 0.0 to 1.0
+            val progress: Float,  // 0 to 100
             val bytesSent: Long? = null,
             // True when the outbox row is a file *create*, which carries the item's
             // payloads. False for a header-only update (an edit): the bytes moving

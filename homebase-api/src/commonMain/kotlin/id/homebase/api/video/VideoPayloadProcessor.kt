@@ -45,7 +45,7 @@ class VideoPayloadProcessor(
         val assertion =
             beginBackgroundExecutionAssertion("video-bundle", continuedProcessingTitle = "Preparing video")
         val reportingProgress: (VideoPayloadProgressPhase) -> Unit = { phase ->
-            assertion.reportProgress(overallFraction(phase))
+            assertion.reportProgress(videoOverallFraction(phase.phase, phase.progress))
             onProgress?.invoke(phase)
         }
         return try {
@@ -72,15 +72,6 @@ class VideoPayloadProcessor(
             assertion.end()
         }
     }
-
-    private fun overallFraction(phase: VideoPayloadProgressPhase): Float =
-        when (phase.phase) {
-            VideoProcessingPhase.THUMBNAIL -> 0f
-            VideoProcessingPhase.COMPRESSING -> 0.9f * phase.progress
-            VideoProcessingPhase.SEGMENTING -> 0.9f + 0.1f * phase.progress
-            VideoProcessingPhase.ENCRYPTING -> 0.9f
-            VideoProcessingPhase.COMPLETE -> 1f
-        }
 
     private suspend fun processResolved(
         payload: PayloadFile,

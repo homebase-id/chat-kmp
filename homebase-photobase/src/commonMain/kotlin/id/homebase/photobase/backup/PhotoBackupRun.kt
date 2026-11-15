@@ -109,7 +109,8 @@ class PhotoBackupRun(
     }
 
     /** Keeps the counts live for whoever is watching, including results that land with no run going. At most one refresh a second: a run ticks per row. */
-    suspend fun followLedger() {
+    suspend fun followLedger(): Unit = coroutineScope {
+        launch { results.working.collect { work -> _status.update { it.copy(working = work.values.toList()) } } }
         ledger.changes.collect {
             if (_status.subscriptionCount.value > 0) refreshStatus()
             delay(STATUS_REFRESH_GAP)
@@ -135,6 +136,7 @@ class PhotoBackupRun(
         _status.update {
             it.copy(
                 pendingCount = counts.pending + counts.inOutbox,
+                queuedCount = (ledger.sendingCount() - counts.uploading).coerceAtLeast(0),
                 uploadingCount = counts.uploading,
                 backedUpCount = counts.done,
                 backedUpBytes = counts.doneBytes,
@@ -522,13 +524,19 @@ class PhotoBackupRun(
     }
 
     private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid) {
-        guarded(row) {
-            if (BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video) {
-                // One at a time, so a process death points at the video being transcoded and no other.
-                videoPrepare.withLock { crashGuarded(row, uniqueId) { handOff(row, uniqueId) } }
-            } else {
-                handOff(row, uniqueId)
+        val isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video
+        results.onPreparing(uniqueId, isVideo)
+        try {
+            guarded(row) {
+                if (isVideo) {
+                    // One at a time, so a process death points at the video being transcoded and no other.
+                    videoPrepare.withLock { crashGuarded(row, uniqueId) { handOff(row, uniqueId) } }
+                } else {
+                    handOff(row, uniqueId)
+                }
             }
+        } finally {
+            results.onPrepareEnded(uniqueId)
         }
     }
 
