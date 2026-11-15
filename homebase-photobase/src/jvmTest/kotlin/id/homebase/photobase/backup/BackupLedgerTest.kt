@@ -275,7 +275,7 @@ class BackupLedgerTest {
         val seen = mutableSetOf<String>()
         val batches = mutableListOf<List<String>>()
         while (true) {
-            val batch = ledger.dueExcept(BackupState.New, includeVideos = true, batch = 10, newestFirst = false, seen = seen)
+            val batch = ledger.dueExcept(BackupState.New, maxVideoBytes = Long.MAX_VALUE, batch = 10, newestFirst = false, seen = seen)
             if (batch.isEmpty()) break
             batches += batch.map { it.deviceAssetId }
             seen += batches.last()

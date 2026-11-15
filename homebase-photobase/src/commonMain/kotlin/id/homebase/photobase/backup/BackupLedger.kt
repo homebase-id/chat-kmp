@@ -165,14 +165,15 @@ class BackupLedger(
         return true
     }
 
-    suspend fun due(state: BackupState, includeVideos: Boolean, limit: Int, newestFirst: Boolean): List<DeviceBackupAsset> =
-        store.selectDue(state.code, nowMs(), includeVideos, limit.toLong(), newestFirst)
+    /** Videos only up to [maxVideoBytes], and none when it's null; a size not yet known counts as small. */
+    suspend fun due(state: BackupState, maxVideoBytes: Long?, limit: Int, newestFirst: Boolean): List<DeviceBackupAsset> =
+        store.selectDue(state.code, nowMs(), maxVideoBytes, limit.toLong(), newestFirst)
 
     /** Up to [batch] due rows not in [seen]. Reads past only the seen rows still due, not every row seen this run. */
-    suspend fun dueExcept(state: BackupState, includeVideos: Boolean, batch: Int, newestFirst: Boolean, seen: Set<String>): List<DeviceBackupAsset> {
+    suspend fun dueExcept(state: BackupState, maxVideoBytes: Long?, batch: Int, newestFirst: Boolean, seen: Set<String>): List<DeviceBackupAsset> {
         var limit = batch
         while (true) {
-            val due = due(state, includeVideos, limit, newestFirst)
+            val due = due(state, maxVideoBytes, limit, newestFirst)
             val unseen = due.filter { it.deviceAssetId !in seen }
             if (unseen.size >= batch || due.size < limit) return unseen.take(batch)
             limit = batch + due.size - unseen.size

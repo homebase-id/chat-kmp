@@ -123,3 +123,13 @@ fun networkAllowsVideos(settings: BackupSettings, state: DeviceState): Boolean =
 fun backupVideosAllowed(settings: BackupSettings, state: DeviceState, interactive: Boolean): Boolean {
     return networkAllowsVideos(settings, state) && (interactive || state.isCharging)
 }
+
+// About a minute of 1080p from a phone camera: the transcode a background run can finish before the OS stops it.
+const val MAX_BACKGROUND_VIDEO_BYTES = 100L * 1024 * 1024
+
+/** The largest video, by source size, a run may start; null for no videos. A stopped transcode starts again from zero. */
+fun largestVideoBytes(settings: BackupSettings, state: DeviceState, interactive: Boolean): Long? = when {
+    !backupVideosAllowed(settings, state, interactive) -> null
+    interactive -> Long.MAX_VALUE
+    else -> MAX_BACKGROUND_VIDEO_BYTES
+}

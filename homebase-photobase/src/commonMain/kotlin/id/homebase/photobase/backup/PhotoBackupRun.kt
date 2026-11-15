@@ -328,11 +328,11 @@ class PhotoBackupRun(
         if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
         val before = ledger.counts()
 
-        val includeVideos = backupVideosAllowed(current, deviceState, interactive)
+        val maxVideoBytes = largestVideoBytes(current, deviceState, interactive)
         val initialBackupDone = ledger.isInitialBackupDone()
         val newestFirst = current.newestFirst || initialBackupDone
         val hashing = launch {
-            withTimeoutOrNull(request.budget.remaining) { hashStage(request, includeVideos, newestFirst) }
+            withTimeoutOrNull(request.budget.remaining) { hashStage(request, maxVideoBytes, newestFirst) }
         }
 
         if (!signedIn.await()) {
@@ -351,7 +351,7 @@ class PhotoBackupRun(
         refreshStatus()
 
         val finished = withTimeoutOrNull(request.budget.remaining) {
-            pipeline(request, includeVideos, newestFirst, hashing)
+            pipeline(request, maxVideoBytes, newestFirst, hashing)
             true
         } ?: false
         uploader.kick()
@@ -395,14 +395,14 @@ class PhotoBackupRun(
 
     private suspend fun pipeline(
         request: BackupRunRequest,
-        includeVideos: Boolean,
+        maxVideoBytes: Long?,
         newestFirst: Boolean,
         hashing: Job,
     ) = coroutineScope {
         val toPrepare = Channel<Pair<DeviceBackupAsset, Uuid>>()
         launch {
             try {
-                dedupeStage(request, includeVideos, newestFirst, hashing, toPrepare)
+                dedupeStage(request, maxVideoBytes, newestFirst, hashing, toPrepare)
             } finally {
                 toPrepare.close()
             }
@@ -422,7 +422,7 @@ class PhotoBackupRun(
         hashing.join()
     }
 
-    private suspend fun hashStage(request: BackupRunRequest, includeVideos: Boolean, newestFirst: Boolean) {
+    private suspend fun hashStage(request: BackupRunRequest, maxVideoBytes: Long?, newestFirst: Boolean) {
         val claimed = mutableSetOf<String>()
         var waitForExportRoom = true
         coroutineScope {
@@ -433,7 +433,7 @@ class PhotoBackupRun(
                 }
             }
             while (!request.budget.isExpired) {
-                val batch = ledger.dueExcept(BackupState.New, includeVideos, HASH_BATCH, newestFirst, claimed)
+                val batch = ledger.dueExcept(BackupState.New, maxVideoBytes, HASH_BATCH, newestFirst, claimed)
                 if (batch.isEmpty()) break
                 for (row in batch) {
                     claimed += row.deviceAssetId
@@ -459,7 +459,7 @@ class PhotoBackupRun(
 
     private suspend fun dedupeStage(
         request: BackupRunRequest,
-        includeVideos: Boolean,
+        maxVideoBytes: Long?,
         newestFirst: Boolean,
         hashing: Job,
         toPrepare: Channel<Pair<DeviceBackupAsset, Uuid>>,
@@ -469,7 +469,7 @@ class PhotoBackupRun(
             // Read before the query: a hash landing just after it must not look like the last word.
             val hashingDone = hashing.isCompleted
             val seen = ledger.changes.value
-            val batch = ledger.dueExcept(BackupState.Hashed, includeVideos, DEDUPE_BATCH, newestFirst, checked)
+            val batch = ledger.dueExcept(BackupState.Hashed, maxVideoBytes, DEDUPE_BATCH, newestFirst, checked)
             if (batch.isEmpty()) {
                 if (hashingDone) return
                 coroutineScope {

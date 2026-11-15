@@ -882,6 +882,35 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aBackgroundRunLeavesALargeVideoForWhenTheAppIsOpen() = runTest {
+        val large = DeviceAsset("large", BackupMediaType.Video, 1000, 1000, sizeBytes = MAX_BACKGROUND_VIDEO_BYTES + 1)
+        source.next = fullListing(asset("photo"), asset("clip", mediaType = BackupMediaType.Video), large)
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(setOf("photo", "clip"), uploader.handedOff.toSet())
+        assertEquals(BackupState.New.code, state("large"))
+
+        run.run(request(trigger = BackupTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(BackupState.Done.code, state("large"))
+    }
+
+    @Test
+    fun backUpNowTakesALargeVideo() = runTest {
+        source.next = fullListing(DeviceAsset("large", BackupMediaType.Video, 1000, 1000, sizeBytes = MAX_BACKGROUND_VIDEO_BYTES + 1))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request(trigger = BackupTrigger.UserRequested))
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Done.code, state("large"))
+    }
+
+    @Test
     fun aRowWhoseSendVanishedIsSettledByDedupe() = runTest {
         val id = idOf("a")
         ledger.apply(fullListing(asset("a")), null)
