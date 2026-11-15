@@ -37,7 +37,7 @@ class BackupWorkTrackingTest {
 
         // A transcode tick arriving late doesn't pull it back to preparing.
         eventBus.emit(BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(video, "v", VideoProcessingPhase.COMPRESSING, 0.9f))
-        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 0.25f))
+        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 25f))
         runCurrent()
         assertEquals(BackupWork(isVideo = true, stage = BackupWorkStage.Uploading, fraction = 0.25f), results.work())
 
@@ -60,8 +60,8 @@ class BackupWorkTrackingTest {
         results.start()
         runCurrent()
         results.onHandedOff(video)
-        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(Uuid.random(), video, 0.5f))
-        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 0.5f, isCreate = false))
+        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(Uuid.random(), video, 50f))
+        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 50f, isCreate = false))
         runCurrent()
         assertNull(results.work()?.fraction)
     }

@@ -76,7 +76,7 @@ class BackupOutboxResults(
         when (event) {
             is BackendEvent.OutboxEvent.ItemProgress -> if (event.driveId == photosDriveId) {
                 _progress.update { it + 1 }
-                if (event.isCreate) advance(event.uniqueId, BackupWorkStage.Uploading, event.progress)
+                if (event.isCreate) advance(event.uniqueId, BackupWorkStage.Uploading, event.progress / 100f)
             }
             is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress ->
                 advance(event.uniqueId, BackupWorkStage.Preparing, videoOverallFraction(event.phase, event.progress))
