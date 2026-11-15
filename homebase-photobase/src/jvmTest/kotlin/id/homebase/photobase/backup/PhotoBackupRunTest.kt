@@ -884,18 +884,37 @@ class PhotoBackupRunTest {
     @Test
     fun aBackgroundRunLeavesALargeVideoForWhenTheAppIsOpen() = runTest {
         val large = DeviceAsset("large", BackupMediaType.Video, 1000, 1000, sizeBytes = MAX_BACKGROUND_VIDEO_BYTES + 1)
-        source.next = fullListing(asset("photo"), asset("clip", mediaType = BackupMediaType.Video), large)
+        source.next = fullListing(asset("clip", mediaType = BackupMediaType.Video), large)
         val uploader = uploader()
         val (run, _) = newRun(uploader)
 
         run.run(request())
         advanceUntilIdle()
-        assertEquals(setOf("photo", "clip"), uploader.handedOff.toSet())
+        assertEquals(listOf("clip"), uploader.handedOff)
         assertEquals(BackupState.New.code, state("large"))
 
         run.run(request(trigger = BackupTrigger.Foreground))
         advanceUntilIdle()
         assertEquals(BackupState.Done.code, state("large"))
+    }
+
+    @Test
+    fun aBackgroundRunTakesAVideoOnlyAsTheFirstThingItPrepares() = runTest {
+        source.next = fullListing(asset("photo"), asset("clip", mediaType = BackupMediaType.Video), asset("clip2", mediaType = BackupMediaType.Video))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(listOf("photo"), uploader.handedOff)
+
+        run.run(request())
+        advanceUntilIdle()
+        assertEquals(2, uploader.handedOff.size, "one video, then the run leaves the other")
+
+        run.run(request(trigger = BackupTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(setOf("photo", "clip", "clip2"), uploader.handedOff.toSet())
     }
 
     @Test

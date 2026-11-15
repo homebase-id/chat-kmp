@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
@@ -407,6 +408,7 @@ class PhotoBackupRun(
                 toPrepare.close()
             }
         }
+        val started = MutableStateFlow(0)
         repeat(PREPARE_PARALLELISM) {
             // On the worker, not withContext around the hand-off: that would throw away a result if cancelled on the way out.
             launch(BackgroundVideoWork) {
@@ -415,6 +417,9 @@ class PhotoBackupRun(
                         toPrepare.cancel()
                         return@launch
                     }
+                    val first = started.getAndUpdate { it + 1 } == 0
+                    // A background run is often stopped within minutes, and a stopped transcode starts over.
+                    if (!request.isInteractive && !first && BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video) continue
                     prepare(row, uniqueId)
                 }
             }
