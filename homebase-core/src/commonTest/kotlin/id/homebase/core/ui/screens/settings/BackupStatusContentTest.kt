@@ -11,6 +11,8 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.waitUntilExactlyOneExists
 import id.homebase.photobase.backup.BackupFailure
 import id.homebase.photobase.backup.BackupStatus
+import id.homebase.photobase.backup.BackupWork
+import id.homebase.photobase.backup.BackupWorkStage
 import id.homebase.photobase.ui.BackupStatusContent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,6 +49,19 @@ class BackupStatusContentTest {
     fun workLeftShowsTheProgressBar() = runComposeUiTest {
         content(BackupStatus(backedUpCount = 3, pendingCount = 2))
         onNodeWithTag("backupStatusProgress", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun aVideoBeingPreparedShowsWhatAndHowFar() = runComposeUiTest {
+        content(BackupStatus(isRunning = true, pendingCount = 1, working = listOf(BackupWork(true, BackupWorkStage.Preparing, 0.37f))))
+        waitUntilExactlyOneExists(hasText("Preparing a video"))
+        waitUntilExactlyOneExists(hasText("37%"))
+    }
+
+    @Test
+    fun nothingStartedHasNoWorkSection() = runComposeUiTest {
+        content(BackupStatus(pendingCount = 2))
+        onNodeWithTag("backupStatusWork").assertDoesNotExist()
     }
 
     @Test

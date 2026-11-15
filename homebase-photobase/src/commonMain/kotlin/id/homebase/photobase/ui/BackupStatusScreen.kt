@@ -58,7 +58,19 @@ import id.homebase.resources.photobase_status_running
 import id.homebase.resources.photobase_status_title
 import id.homebase.resources.photobase_status_all_backed_up
 import id.homebase.resources.photobase_status_up_to_date
-import id.homebase.resources.photobase_status_uploading
+import id.homebase.resources.photobase_status_in_progress
+import id.homebase.resources.photobase_status_percent
+import id.homebase.resources.photobase_status_preparing_photo
+import id.homebase.resources.photobase_status_preparing_video
+import id.homebase.resources.photobase_status_uploading_photo
+import id.homebase.resources.photobase_status_uploading_video
+import id.homebase.resources.moments_detail_shared_with_more
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Videocam
+import id.homebase.photobase.backup.BackupWork
+import id.homebase.photobase.backup.BackupWorkStage
+import kotlin.math.roundToInt
 import kotlin.time.Instant
 import org.jetbrains.compose.resources.stringResource
 
@@ -93,9 +105,10 @@ fun BackupStatusContent(status: BackupStatus, backupEnabled: Boolean, onRetry: (
         StatusHero(status, backupEnabled)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile(status.backedUpCount, stringResource(MR.string.photobase_status_backed_up), Modifier.weight(1f))
-            StatTile(status.pendingCount, stringResource(MR.string.photobase_status_pending), Modifier.weight(1f))
-            StatTile(status.uploadingCount, stringResource(MR.string.photobase_status_uploading), Modifier.weight(1f))
+            StatTile(status.waitingCount, stringResource(MR.string.photobase_status_pending), Modifier.weight(1f))
+            StatTile(status.inProgressCount, stringResource(MR.string.photobase_status_in_progress), Modifier.weight(1f))
         }
+        if (status.working.isNotEmpty()) WorkSection(status.working)
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.large,
@@ -157,6 +170,65 @@ private fun StatTile(value: Long, label: String, modifier: Modifier) {
 }
 
 @Composable
+private fun WorkSection(working: List<BackupWork>) {
+    val shown = working.take(MAX_WORK_SHOWN)
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth().testTag("backupStatusWork"),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            shown.forEach { WorkRow(it) }
+            if (working.size > shown.size) {
+                Text(
+                    stringResource(MR.string.moments_detail_shared_with_more, working.size - shown.size),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkRow(work: BackupWork) {
+    val label = when (work.stage) {
+        BackupWorkStage.Preparing ->
+            if (work.isVideo) MR.string.photobase_status_preparing_video else MR.string.photobase_status_preparing_photo
+        BackupWorkStage.Uploading ->
+            if (work.isVideo) MR.string.photobase_status_uploading_video else MR.string.photobase_status_uploading_photo
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // The label beside it says photo or video.
+        Icon(
+            if (work.isVideo) Icons.Outlined.Videocam else Icons.Outlined.Image,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(label), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                work.fraction?.let {
+                    Text(
+                        stringResource(MR.string.photobase_status_percent, (it * 100).roundToInt()),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            val fraction = work.fraction
+            if (fraction == null) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+private const val MAX_WORK_SHOWN = 3
+
+@Composable
 private fun DetailRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -215,6 +287,7 @@ internal fun backupStatusSummary(status: BackupStatus, backupEnabled: Boolean): 
         },
     )
     status.backgroundRefreshOff -> stringResource(MR.string.photobase_status_paused_background_refresh)
+    status.working.isNotEmpty() -> stringResource(MR.string.photobase_status_running)
     status.isAllBackedUp -> stringResource(MR.string.photobase_status_all_backed_up)
     else -> stringResource(MR.string.photobase_status_up_to_date)
 }

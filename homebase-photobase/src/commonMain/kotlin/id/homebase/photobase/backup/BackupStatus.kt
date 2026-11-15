@@ -18,11 +18,19 @@ enum class LibraryAccess { None, Limited, Full }
 
 data class BackupFailure(val deviceAssetId: String, val reason: String)
 
+enum class BackupWorkStage { Preparing, Uploading }
+
+/** A photo or video this process is preparing or has handed to the Outbox; [fraction] is null until it reports progress. */
+data class BackupWork(val isVideo: Boolean, val stage: BackupWorkStage, val fraction: Float? = null)
+
 data class BackupStatus(
     val isRunning: Boolean = false,
     val pauseReason: BackupPauseReason? = null,
     val lastSuccessMs: Long? = null,
+    /** Not yet backed up, including [queuedCount]. */
     val pendingCount: Long = 0,
+    /** Handed to the Outbox and not yet confirmed. */
+    val queuedCount: Long = 0,
     val uploadingCount: Long = 0,
     val backedUpCount: Long = 0,
     /** Null when some photos' sizes aren't known yet: iOS learns a size only by reading the photo. */
@@ -33,7 +41,18 @@ data class BackupStatus(
     val libraryAccess: LibraryAccess = LibraryAccess.None,
     val photoLocationsWithheld: Boolean = false,
     val backgroundRefreshOff: Boolean = false,
+    val working: List<BackupWork> = emptyList(),
 ) {
+    private val preparingCount: Long
+        get() = working.count { it.stage == BackupWorkStage.Preparing }.toLong()
+
+    /** Nothing has started on these yet. */
+    val waitingCount: Long
+        get() = (pendingCount - queuedCount - preparingCount).coerceAtLeast(0)
+
+    val inProgressCount: Long
+        get() = uploadingCount + queuedCount + preparingCount
+
     val totalCount: Long
         get() = backedUpCount + pendingCount + uploadingCount
 
@@ -58,6 +77,8 @@ fun backupIndicatorOf(status: BackupStatus, backupEnabled: Boolean): BackupIndic
     status.failedCount > 0 -> BackupIndicator.NeedsAttention
     status.pauseReason == BackupPauseReason.BackupOff || status.pauseReason == BackupPauseReason.SignedOut -> null
     status.pauseReason != null -> BackupIndicator.Paused
+    // The Outbox carries on with what it was handed after the run ends.
+    status.working.isNotEmpty() -> BackupIndicator.Working
     status.isAllBackedUp -> BackupIndicator.UpToDate
     status.pendingCount > 0 -> BackupIndicator.Paused
     else -> null

@@ -104,7 +104,8 @@ class PhotoBackupRun(
     }
 
     /** Keeps the counts live for whoever is watching, including results that land with no run going. At most one refresh a second: a run ticks per row. */
-    suspend fun followLedger() {
+    suspend fun followLedger(): Unit = coroutineScope {
+        launch { results.working.collect { work -> _status.update { it.copy(working = work.values.toList()) } } }
         ledger.changes.collect {
             if (_status.subscriptionCount.value > 0) refreshStatus()
             delay(STATUS_REFRESH_GAP)
@@ -130,6 +131,7 @@ class PhotoBackupRun(
         _status.update {
             it.copy(
                 pendingCount = counts.pending + counts.inOutbox,
+                queuedCount = counts.inOutbox,
                 uploadingCount = counts.uploading,
                 backedUpCount = counts.done,
                 backedUpBytes = counts.doneBytes,
@@ -508,6 +510,15 @@ class PhotoBackupRun(
     }
 
     private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid) {
+        results.onPreparing(uniqueId, isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video)
+        try {
+            prepareTracked(row, uniqueId)
+        } finally {
+            results.onPrepareEnded(uniqueId)
+        }
+    }
+
+    private suspend fun prepareTracked(row: DeviceBackupAsset, uniqueId: Uuid) {
         guarded(row) {
             val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
             // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
