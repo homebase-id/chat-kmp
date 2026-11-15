@@ -131,7 +131,7 @@ class PhotoBackupRun(
         _status.update {
             it.copy(
                 pendingCount = counts.pending + counts.inOutbox,
-                queuedCount = counts.inOutbox,
+                queuedCount = (ledger.sendingCount() - counts.uploading).coerceAtLeast(0),
                 uploadingCount = counts.uploading,
                 backedUpCount = counts.done,
                 backedUpBytes = counts.doneBytes,

@@ -25,7 +25,7 @@ class BackupWorkTrackingTest {
         runCurrent()
 
         results.onPreparing(video, isVideo = true)
-        assertEquals(BackupWork(isVideo = true, stage = BackupWorkStage.Preparing), results.work())
+        assertNull(results.work(), "waiting its turn behind another video")
 
         eventBus.emit(BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(video, "v", VideoProcessingPhase.COMPRESSING, 0.5f))
         runCurrent()
@@ -59,11 +59,51 @@ class BackupWorkTrackingTest {
         val results = BackupOutboxResults(BackupLedger(testDatabase().deviceBackup) { 0L }, eventBus, drive, backgroundScope)
         results.start()
         runCurrent()
+        results.onPreparing(video, isVideo = true)
         results.onHandedOff(video)
         eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(Uuid.random(), video, 50f))
         eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 50f, isCreate = false))
         runCurrent()
         assertNull(results.work()?.percent)
+    }
+
+    @Test
+    fun anOutboxRetryShowsAgainFromItsOwnStart() = runTest {
+        val results = BackupOutboxResults(BackupLedger(testDatabase().deviceBackup) { 0L }, eventBus, drive, backgroundScope)
+        results.start()
+        runCurrent()
+        results.onPreparing(video, isVideo = true)
+        results.onHandedOff(video)
+        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 60f))
+        eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(drive, video))
+        runCurrent()
+        assertNull(results.work())
+
+        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 5f))
+        runCurrent()
+        assertEquals(BackupWork(isVideo = true, stage = BackupWorkStage.Uploading, percent = 5), results.work())
+    }
+
+    @Test
+    fun progressNeverGoesBackwardsAndRoundsToTheNearestPercent() = runTest {
+        val results = BackupOutboxResults(BackupLedger(testDatabase().deviceBackup) { 0L }, eventBus, drive, backgroundScope)
+        results.start()
+        runCurrent()
+        results.onPreparing(video, isVideo = true)
+        results.onHandedOff(video)
+        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 53f))
+        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(drive, video, 52f))
+        runCurrent()
+        assertEquals(53, results.work()?.percent)
+    }
+
+    @Test
+    fun aHandOffAfterAResetLeavesNothingBehind() = runTest {
+        val results = BackupOutboxResults(BackupLedger(testDatabase().deviceBackup) { 0L }, eventBus, drive, backgroundScope)
+        results.onPreparing(video, isVideo = true)
+        results.reset()
+        results.onHandedOff(video)
+        assertNull(results.work())
     }
 
     @Test

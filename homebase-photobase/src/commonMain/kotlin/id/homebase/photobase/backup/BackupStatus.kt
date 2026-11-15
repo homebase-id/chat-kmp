@@ -29,7 +29,7 @@ data class BackupStatus(
     val lastSuccessMs: Long? = null,
     /** Not yet backed up, including [queuedCount]. */
     val pendingCount: Long = 0,
-    /** Handed to the Outbox and not yet confirmed. */
+    /** Handed to the Outbox and not yet confirmed, leaving out what the Outbox waits to retry. */
     val queuedCount: Long = 0,
     val uploadingCount: Long = 0,
     val backedUpCount: Long = 0,
