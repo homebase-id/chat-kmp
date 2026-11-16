@@ -63,6 +63,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -2358,17 +2361,17 @@ internal fun JumpToMentionButton(
         exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()) + shrinkVertically(motion.fastSpatialSpec()),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            SmallFloatingActionButton(
+            FloatingActionButton(
                 onClick = onClick,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
                     imageVector = Icons.Outlined.AlternateEmail,
                     contentDescription = stringResource(MR.string.chat_jump_to_mention),
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
@@ -2386,47 +2389,42 @@ internal fun ScrollToBottomButton(
         enter = fadeIn() + scaleIn(),
         exit = fadeOut() + scaleOut(),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            androidx.compose.animation.AnimatedVisibility(
-                visible = unreadCount > 0,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                val badgeScale = remember { Animatable(1f) }
-                var previousCount by remember { mutableIntStateOf(unreadCount) }
-                LaunchedEffect(unreadCount) {
-                    if (unreadCount > previousCount) {
-                        badgeScale.animateTo(
-                            targetValue = 1f,
-                            animationSpec = keyframes {
-                                durationMillis = 300
-                                1.25f at 100
-                                0.95f at 200
-                                1f at 300
-                            },
-                        )
+        BadgedBox(
+            badge = {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = unreadCount > 0,
+                    enter = fadeIn() + scaleIn(),
+                    exit = fadeOut() + scaleOut(),
+                ) {
+                    val badgeScale = remember { Animatable(1f) }
+                    var previousCount by remember { mutableIntStateOf(unreadCount) }
+                    LaunchedEffect(unreadCount) {
+                        if (unreadCount > previousCount) {
+                            badgeScale.animateTo(
+                                targetValue = 1f,
+                                animationSpec = keyframes {
+                                    durationMillis = 300
+                                    1.25f at 100
+                                    0.95f at 200
+                                    1f at 300
+                                },
+                            )
+                        }
+                        previousCount = unreadCount
                     }
-                    previousCount = unreadCount
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(
+                    Badge(
                         modifier = Modifier.graphicsLayer {
                             scaleX = badgeScale.value
                             scaleY = badgeScale.value
                         },
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primary,
+                        containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
                     ) {
-                        Text(
-                            text = if (unreadCount > 999) "999+" else unreadCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
+                        Text(text = if (unreadCount > 999) "999+" else unreadCount.toString())
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
                 }
-            }
+            },
+        ) {
             SmallFloatingActionButton(
                 onClick = onClick,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

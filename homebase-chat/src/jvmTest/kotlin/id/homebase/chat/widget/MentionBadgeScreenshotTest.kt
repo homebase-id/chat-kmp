@@ -2,10 +2,13 @@ package id.homebase.chat.widget
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toAwtImage
@@ -55,26 +58,30 @@ class MentionBadgeScreenshotTest {
         missingConnections = emptyList(),
     )
 
-    private fun ComposeUiTest.show(dark: Boolean) = setContent {
+    private fun ComposeUiTest.show(dark: Boolean, wide: Boolean) = setContent {
         KoinIsolatedContext(OfflineAvatarKoin) {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                 Surface(color = MaterialTheme.colorScheme.background) {
+                    // Wide windows show the list as the scaffold's 360dp list pane beside the chat.
                     Box(Modifier.fillMaxSize()) {
-                        Column {
-                            listOf(
-                                row("Fellowship", unread = 4, mentions = 2),
-                                row("Shire Council", unread = 1, mentions = 1),
-                                row("Green Dragon", unread = 3, mentions = 0),
-                                row("Rivendell", unread = 0, mentions = 0),
-                            ).forEach {
-                                ConversationItem(
-                                    enrichedData = it,
-                                    onClick = {},
-                                    onArchiveClick = {},
-                                    onContactClick = {},
-                                    isSelected = false,
-                                )
+                        Row(Modifier.fillMaxSize()) {
+                            Column(if (wide) Modifier.width(360.dp) else Modifier.weight(1f)) {
+                                listOf(
+                                    row("Fellowship", unread = 4, mentions = 2),
+                                    row("Shire Council", unread = 1, mentions = 1),
+                                    row("Green Dragon", unread = 3, mentions = 0),
+                                    row("Rivendell", unread = 0, mentions = 0),
+                                ).forEach {
+                                    ConversationItem(
+                                        enrichedData = it,
+                                        onClick = {},
+                                        onArchiveClick = {},
+                                        onContactClick = {},
+                                        isSelected = false,
+                                    )
+                                }
                             }
+                            if (wide) VerticalDivider()
                         }
                         Column(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
@@ -102,9 +109,9 @@ class MentionBadgeScreenshotTest {
 
     @Test
     fun rendersEveryWidthAndTheme() {
-        runDesktopComposeUiTest(411, 860) { show(dark = false); save("mention-phone-light") }
-        runDesktopComposeUiTest(411, 860) { show(dark = true); save("mention-phone-dark") }
-        runDesktopComposeUiTest(1280, 800) { show(dark = false); save("mention-wide-light") }
-        runDesktopComposeUiTest(1280, 800) { show(dark = true); save("mention-wide-dark") }
+        runDesktopComposeUiTest(411, 860) { show(dark = false, wide = false); save("mention-phone-light") }
+        runDesktopComposeUiTest(411, 860) { show(dark = true, wide = false); save("mention-phone-dark") }
+        runDesktopComposeUiTest(1280, 800) { show(dark = false, wide = true); save("mention-wide-light") }
+        runDesktopComposeUiTest(1280, 800) { show(dark = true, wide = true); save("mention-wide-dark") }
     }
 }
