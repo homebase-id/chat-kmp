@@ -76,6 +76,17 @@ On the Pixel 5 at the last row: reading 0.06 s (0.64 s before the read-chunk fix
 | 2026-11-16 | Pixel 5 | **453–933 MB/s** (Kotlin 44 MB/s) | native: the official C BLAKE3 1.8.7 with NEON, `-O3`; `Blake3NativeDeviceTest.throughput` with `-e hashBench true`. Which core the scheduler picks moves it |
 | 2026-11-16 | Pixel 5, as a 32-bit app | **603 MB/s** (Kotlin 36 MB/s) | NEON on `armeabi-v7a` too; installed with `adb install --abi armeabi-v7a` |
 
+## End to end: sending a video
+
+`Media3VideoCompressorTest#benchmarkEndToEnd` runs a send as `VideoPayloadProcessor` does: compress at Standard, then HLS (segment, encrypt, hash) at 5 MB or more, else encrypt the MP4 in one pass. "Ours" is Media3, our segmenter and the payload hash; "ffmpeg" is ffmpeg for both steps without a hash, as Android was before. Two rounds each, alternating order, with a cool-down between runs. Inputs are generated 1080p H.264 at 20 Mbps with AAC.
+
+| Date | Device | Input | Path | Ours | ffmpeg |
+|---|---|---|---|---|---|
+| 2026-11-16 | Pixel 5 | 10 s, 25 MB → 3.7 MB (ffmpeg 3.3 MB) | MP4 | **2.5–3.5 s** (compress 2.3–3.1 s, encrypt and hash 0.19–0.40 s) | 6.6–6.8 s (compress 6.4–6.6 s, encrypt 0.12 s) |
+| 2026-11-16 | Pixel 5 | 83 s, 210 MB → 27.9 MB (ffmpeg 27.4 MB) | HLS | **16.5–17.0 s** (compress 15.8–16.0 s, HLS 0.62–0.93 s) | 51.0–51.2 s (compress 50.0–50.2 s, HLS 0.99–1.03 s) |
+
+Compressing is almost all of a send. Open question: the small MP4's encrypt-and-hash step (0.19–0.40 s) is slower than ffmpeg's plain encrypt (0.12 s), though two native hashes of 3.7 MB cost about 15 ms. The 0.40 s run also loaded the library. To profile with the read-buffer fixes.
+
 ## Images
 
 `ImagePipelinePerfBench`: `createMediaImages` on generated 12 MP (4000×3000) and 48 MP (8000×6000) photos, and the bare Lanczos step. Median of 3, with peak native memory. OPTIMIZE.md, "Image pipeline on an Android phone", says how to run it; with `run-as`, the results are in the test app's `cache/image-bench.txt`.

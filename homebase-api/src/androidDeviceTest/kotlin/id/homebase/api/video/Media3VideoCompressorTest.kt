@@ -9,6 +9,10 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import id.homebase.api.ActivityProvider
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import id.homebase.api.crypto.encryptFileStreaming
+import id.homebase.api.crypto.encryptWithPayloadHash
+import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.image.MediaQuality
@@ -332,6 +336,56 @@ class Media3VideoCompressorTest {
                     val out = segment()
                     Log.i("Media3Benchmark", "${input.name} ${input.length() / 1_000_000}MB as is, segment+encrypt $name: ${System.currentTimeMillis() - started}ms hash=${out?.hash != null}")
                     out?.let { File(it.segmentsPath).parentFile?.deleteRecursively() }
+                }
+            }
+        }
+    }
+
+    /**
+     * Not a check: what sending a video costs end to end, as VideoPayloadProcessor runs it. Compress, then
+     * HLS (segment and encrypt) at 5 MB or more, else encrypt the MP4 in one pass. Ours is Media3, our
+     * segmenter and the payload hash; ffmpeg's is ffmpeg for both steps and no hash, as Android had before.
+     */
+    @Test
+    fun benchmarkEndToEnd() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val fileOps = AndroidFileOperationsProvider(context)
+        for (input in benchInputs()) {
+            for (round in 0..1) {
+                val backends = listOf("ours", "ffmpeg").let { if (round == 0) it else it.reversed() }
+                for (backend in backends) {
+                    delay(COOL_DOWN_MS)
+                    val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
+                    val started = System.currentTimeMillis()
+                    val compressed = if (backend == "ours") {
+                        AndroidVideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, false)
+                    } else {
+                        FFmpegVideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, false)
+                    }
+                    val compressMs = System.currentTimeMillis() - started
+                    val compressedBytes = File(compressed).length()
+                    val hls = compressedBytes >= 5L * 1024 * 1024
+                    val second = System.currentTimeMillis()
+                    val output = if (hls) {
+                        val segmented = if (backend == "ours") AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) else FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null)
+                        File(segmented!!.segmentsPath).parentFile!!
+                    } else {
+                        val out = File(context.cacheDir, "encrypted_$backend.bin")
+                        if (backend == "ours") {
+                            fileOps.encryptWithPayloadHash(compressed, out.absolutePath, key, PayloadHashAlgorithm.Blake3)
+                        } else {
+                            fileOps.encryptFileStreaming(compressed, out.absolutePath, key)
+                        }
+                        out
+                    }
+                    val now = System.currentTimeMillis()
+                    Log.i(
+                        "Media3Benchmark",
+                        "${input.name} ${input.length() / 1_000_000}MB end to end $backend: ${now - started}ms " +
+                            "(compress ${compressMs}ms to ${compressedBytes / 1000}kB, ${if (hls) "HLS" else "MP4 encrypt"} ${now - second}ms)",
+                    )
+                    output.deleteRecursively()
+                    File(compressed).delete()
                 }
             }
         }
