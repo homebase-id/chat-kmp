@@ -520,6 +520,25 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source as it checks the file's hash (`VideoLocationReader`, common code: Apple's ISO 6709 key and the `©xyz` atom Android writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
 
+### Android: Media3, and why AAC audio is copied
+
+Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS, desktop and web use ffmpeg. Both read the same rules from `VideoQualityTargets.kt`. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend.
+
+**AAC audio is copied, not re-encoded, on Android.** Android has no hardware AAC encoder (a Pixel 8 lists only `c2.android.aac.encoder`). Its software AAC codecs run in a separate media process, with a round trip for every 1024-sample frame. On the video's critical path, they set the pace of the whole export. Audio in any other codec is still re-encoded to AAC at the quality's bitrate. The cost is that a copied track keeps the source's bitrate: 192 kbps from a Pixel against Standard's 128 kbps, about 0.6 MB on an 83 s video (2%). This was decided on 2026-11-16: the speed matters more than the 2%.
+
+Measured on a Pixel 8 with a 226 MB, 83 s HEVC HLG video, on a cool phone, alternating which backend went first:
+
+| | Time |
+|---|---|
+| ffmpeg (libx264), Standard / HD | 63.3 s / 156.1 s |
+| Media3, AAC re-encoded with Android's codecs | about 20–45 s, depending on heat |
+| Media3, AAC copied, Standard / HD | 13.9 s / 11.7 s |
+| Video only, no audio track | 8–13 s |
+| AAC decode + re-encode alone, Android's codecs | 15 s |
+| AAC encode alone, ffmpeg's encoder | 4.5 s |
+
+**Reopen this when** Android's AAC re-encode of a long video takes well under its video path, that is, at about 20× real time or faster, or when a hardware AAC encoder appears. Then re-encoding to the target bitrate costs nothing noticeable. To re-measure, push a long phone video to `/sdcard/Android/data/id.homebase.api.test/files/bench/`, install the device tests and run `Media3VideoCompressorTest#benchmarkAgainstFfmpeg`. It logs, under `Media3Benchmark`, each backend's times and the audio-only times of both AAC encoders.
+
 ## How others do it
 
 | App | Standard | High | Original |

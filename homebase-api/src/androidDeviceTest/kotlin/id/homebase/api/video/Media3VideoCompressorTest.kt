@@ -78,6 +78,16 @@ class Media3VideoCompressorTest {
     }
 
     @Test
+    fun aSmallVideoGetsABitrateForItsSize() = runBlocking {
+        val out = compress("sample.mp4", VideoQuality.STANDARD, keepMetadata = false)
+        val bytes = File(out).length()
+        probe(out)
+        // 320x180 for 6 s. A Pixel 8 gave 912 kB at Standard's full 2.5 Mbps and 519 kB with the
+        // bitrate scaled (its encoder doesn't go lower on so small a picture); ffmpeg gave 426 kB.
+        assertTrue(bytes < 700_000, "$bytes bytes")
+    }
+
+    @Test
     fun aPortraitVideoStaysPortrait() = runBlocking {
         val out = compress("portrait_1080p.mp4", VideoQuality.STANDARD, keepMetadata = false)
         assertEquals(720 to 1280, probe(out).displaySize)
@@ -158,7 +168,83 @@ class Media3VideoCompressorTest {
             val session = executeFfmpeg(arrayOf("-y", "-i", input.absolutePath, "-vn", "-c:a", "aac", "-b:a", "128k", audio.absolutePath))
             Log.i("Media3Benchmark", "${input.name} ffmpeg audio only: ${System.currentTimeMillis() - started}ms rc=${session.returnCode} thermal=${power.currentThermalStatus}")
             audio.delete()
+            delay(COOL_DOWN_MS)
+            androidAacReencodeMs(input)?.let { ms ->
+                Log.i("Media3Benchmark", "${input.name} Android AAC re-encode only: ${ms}ms thermal=${power.currentThermalStatus}")
+            }
         }
+    }
+
+    /** Decodes and re-encodes [input]'s audio with Android's own AAC codecs, the step Media3 avoids by copying. */
+    private fun androidAacReencodeMs(input: File): Long? {
+        val extractor = MediaExtractor().apply { setDataSource(input.absolutePath) }
+        val track = (0 until extractor.trackCount).firstOrNull { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME) == MediaFormat.MIMETYPE_AUDIO_AAC }
+            ?: return null.also { extractor.release() }
+        extractor.selectTrack(track)
+        val source = extractor.getTrackFormat(track)
+        val decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply { configure(source, null, null, 0); start() }
+        val target = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, source.getInteger(MediaFormat.KEY_SAMPLE_RATE), source.getInteger(MediaFormat.KEY_CHANNEL_COUNT)).apply {
+            setInteger(MediaFormat.KEY_BIT_RATE, 128_000)
+            setInteger(MediaFormat.KEY_AAC_PROFILE, 2)
+            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1 shl 16)
+        }
+        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply { configure(target, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE); start() }
+        val info = MediaCodec.BufferInfo()
+        val pcm = ArrayDeque<Pair<ByteArray, Long>>()
+        var inputDone = false
+        var decoded = false
+        var encoderEos = false
+        val started = System.currentTimeMillis()
+        while (true) {
+            if (!inputDone) {
+                val i = decoder.dequeueInputBuffer(0)
+                if (i >= 0) {
+                    val n = extractor.readSampleData(decoder.getInputBuffer(i)!!, 0)
+                    if (n < 0) {
+                        decoder.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        inputDone = true
+                    } else {
+                        decoder.queueInputBuffer(i, 0, n, extractor.sampleTime, 0)
+                        extractor.advance()
+                    }
+                }
+            }
+            if (!decoded) {
+                val o = decoder.dequeueOutputBuffer(info, 0)
+                if (o >= 0) {
+                    val bytes = ByteArray(info.size).also { decoder.getOutputBuffer(o)!!.get(it) }
+                    pcm.addLast(bytes to info.presentationTimeUs)
+                    decoder.releaseOutputBuffer(o, false)
+                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) decoded = true
+                }
+            }
+            if (pcm.isNotEmpty() || (decoded && !encoderEos)) {
+                val i = encoder.dequeueInputBuffer(0)
+                if (i >= 0) {
+                    if (pcm.isEmpty()) {
+                        encoder.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        encoderEos = true
+                    } else {
+                        val buffer = encoder.getInputBuffer(i)!!
+                        val (bytes, timeUs) = pcm.removeFirst()
+                        val n = minOf(bytes.size, buffer.remaining())
+                        buffer.put(bytes, 0, n)
+                        if (n < bytes.size) pcm.addFirst(bytes.copyOfRange(n, bytes.size) to timeUs)
+                        encoder.queueInputBuffer(i, 0, n, timeUs, 0)
+                    }
+                }
+            }
+            val o = encoder.dequeueOutputBuffer(info, 0)
+            if (o >= 0) {
+                encoder.releaseOutputBuffer(o, false)
+                if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
+            }
+        }
+        val ms = System.currentTimeMillis() - started
+        decoder.release()
+        encoder.release()
+        extractor.release()
+        return ms
     }
 
     private suspend fun executeFfmpeg(args: Array<String>): com.arthenica.ffmpegkit.FFmpegSession =
