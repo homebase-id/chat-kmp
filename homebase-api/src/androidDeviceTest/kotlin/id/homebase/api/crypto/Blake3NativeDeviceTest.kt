@@ -2,6 +2,7 @@ package id.homebase.api.crypto
 
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import kotlin.random.Random
 import kotlin.test.assertContentEquals
 import kotlin.test.assertNotNull
@@ -32,8 +33,10 @@ class Blake3NativeDeviceTest {
         }
     }
 
+    /** Not a check: run with `-e hashBench true`; the numbers go to MEDIA_BENCHMARKS.md. */
     @Test
     fun throughput() {
+        if (InstrumentationRegistry.getArguments().getString("hashBench") != "true") return
         val chunk = ByteArray(1024 * 1024) { it.toByte() }
         for ((name, make) in listOf<Pair<String, () -> IncrementalHasher>>("native" to ::Blake3Hasher, "kotlin" to ::PortableBlake3)) {
             make().apply { update(chunk) }.digest()

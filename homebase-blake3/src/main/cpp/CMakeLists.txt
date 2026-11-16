@@ -10,7 +10,8 @@ add_library(homebase_blake3 SHARED
 target_compile_options(homebase_blake3 PRIVATE -O3)
 # x86 builds are emulators only: the portable code, without BLAKE3's x86 assembly.
 target_compile_definitions(homebase_blake3 PRIVATE BLAKE3_NO_SSE2 BLAKE3_NO_SSE41 BLAKE3_NO_AVX2 BLAKE3_NO_AVX512)
-if(ANDROID_ABI STREQUAL "arm64-v8a")
+# The NDK builds armeabi-v7a with NEON on, as every 32-bit phone Android 9 runs on has it.
+if(ANDROID_ABI MATCHES "arm64-v8a|armeabi-v7a")
     target_sources(homebase_blake3 PRIVATE blake3/blake3_neon.c)
     target_compile_definitions(homebase_blake3 PRIVATE BLAKE3_USE_NEON=1)
 else()

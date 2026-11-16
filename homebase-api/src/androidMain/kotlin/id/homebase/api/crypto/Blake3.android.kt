@@ -1,16 +1,21 @@
 package id.homebase.api.crypto
 
+import co.touchlab.kermit.Logger
 import id.homebase.blake3.NativeBlake3
 import java.nio.ByteBuffer
 
-internal actual fun platformBlake3Hasher(): IncrementalHasher? = if (nativeLoads) NativeBlake3Hasher() else null
+internal actual fun platformBlake3Hasher(): IncrementalHasher? = stateSize?.let(::NativeBlake3Hasher)
 
-// Robolectric host tests run the Android code on a desktop JVM, without the library.
-private val nativeLoads: Boolean by lazy { runCatching { NativeBlake3.stateSize() }.isSuccess }
+// Null where the library doesn't load: Robolectric host tests run the Android code on a desktop JVM.
+private val stateSize: Int? by lazy {
+    runCatching { NativeBlake3.stateSize() }
+        .onFailure { Logger.w(tag = "Blake3", throwable = it) { "native BLAKE3 didn't load; hashing in Kotlin, about 20x slower" } }
+        .getOrNull()
+}
 
 /** The official C BLAKE3, NEON on 64-bit ARM: many times faster than the Kotlin port on a phone. */
-private class NativeBlake3Hasher : IncrementalHasher {
-    private val state = ByteBuffer.allocateDirect(STATE_SIZE).also(NativeBlake3::init)
+private class NativeBlake3Hasher(stateSize: Int) : IncrementalHasher {
+    private val state = ByteBuffer.allocateDirect(stateSize).also(NativeBlake3::init)
     private var finished = false
 
     override fun update(input: ByteArray, offset: Int, length: Int) {
@@ -23,9 +28,5 @@ private class NativeBlake3Hasher : IncrementalHasher {
         check(!finished) { "digest() was already called" }
         finished = true
         return ByteArray(32).also { NativeBlake3.finish(state, it) }
-    }
-
-    private companion object {
-        val STATE_SIZE = NativeBlake3.stateSize()
     }
 }

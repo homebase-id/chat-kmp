@@ -161,7 +161,7 @@ reuses what chat-kmp already has:
 
 | Piece | Where |
 |---|---|
-| BLAKE3 (commonMain, all four platforms, official test vectors) | `homebase-api/.../crypto/Blake3Hasher.kt`, `IncrementalHasherTest.kt` |
+| BLAKE3 (one `Blake3Hasher` on all four platforms, native C on Android; official test vectors, on a phone too) | `homebase-api/.../crypto/Blake3Hasher.kt`, `IncrementalHasherTest.kt` |
 | Encrypt + hash in one streaming pass → `PayloadHash(storedHash, contentHash)`; the server verifies the upload | `homebase-api/.../crypto/PayloadHashing.kt` (`encryptWithPayloadHash`) |
 | Download verification against the same hash | `PayloadDownloadService.streamVerified` |
 | Precedent: BLAKE3 payload hashes, 4105 treated as success | `homebase-core/.../filesync/FilesyncUploader.kt:76`, `FilesyncUploaderTest.kt:38` |
@@ -198,14 +198,9 @@ derived from both parts. Video is hashed from the original file, before HLS.
 **Edits.** Rows edited on the device (iOS "updated", Android `GENERATION_MODIFIED`) get re-hashed;
 a new hash is saved as a separate photo in v1. How to handle edits properly is reconsidered in v2.
 
-**Throughput is v2.** v1 ships on the existing Kotlin `Blake3Hasher`, a port of BLAKE3's
-`reference_impl` (no SIMD, single thread), with no speed testing or gate.
-
-> **v2: BLAKE3 optimization.** Measure MB/s on a mid-range Android phone and a real iPhone, recorded
-> in `OPTIMIZE.md`. If needed, replace the port with a fast implementation (with an ARM NEON path)
-> behind the same `IncrementalHasher` contract and test vectors. Candidates: the official C library
-> (Recommended: NEON, cinterop on iOS, JNI on Android/desktop) or the official Rust crate (fastest,
-> matches filesync, but adds a Rust toolchain).
+**Throughput.** Android runs the official BLAKE3 C library with NEON through JNI (`homebase-blake3`), behind the same
+`Blake3Hasher` and test vectors: 933 MB/s against 44 MB/s for the Kotlin port on a Pixel 5. Desktop, web and iOS
+still run the port. iOS could take the same C library through cinterop. Numbers per device: `MEDIA_BENCHMARKS.md`.
 
 ### 3.3 Entry from a push wake
 
@@ -527,7 +522,7 @@ and for "N items keep failing".
 - [ ] One-week soak test on real phones
 
 ### v2
-- [ ] Measure BLAKE3 speed on real phones and replace the port with a fast implementation if needed
+- [x] Measure BLAKE3 speed on real phones and replace the port with a fast implementation if needed (Android, native; `MEDIA_BENCHMARKS.md`)
 - [ ] Resume huge videos mid-upload (client and odin-core)
 - [ ] Compression options
 - [ ] Storage management

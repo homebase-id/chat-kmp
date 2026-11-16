@@ -3,7 +3,7 @@ package id.homebase.api.crypto
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onEach
 
-/** Pure Kotlin because wasmJs WebCrypto can only hash a whole buffer, asynchronously. */
+/** Fed in pieces, so a file is hashed as it streams; wasmJs WebCrypto can only hash a whole buffer, asynchronously. */
 interface IncrementalHasher {
     fun update(input: ByteArray, offset: Int = 0, length: Int = input.size - offset)
 
