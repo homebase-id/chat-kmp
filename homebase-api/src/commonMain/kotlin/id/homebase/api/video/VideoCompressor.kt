@@ -7,11 +7,9 @@ import id.homebase.api.client.KeyHeader
  * replaced with a fake in `commonTest` and so a future non-ffmpeg backend can be
  * slotted in without touching callers.
  *
- * The production implementation is [FFmpegVideoCompressor], reached through the
- * [VideoCompressionService] singleton — the symmetric counterpart to
- * [VideoThumbnailService] on the thumbnail side. Both delegate to the low-level
- * [FFmpegUtils] `expect object`, which still owns the per-platform ffmpeg
- * dispatch.
+ * Callers reach it through the [VideoCompressionService] singleton, the counterpart
+ * to [VideoThumbnailService] on the thumbnail side. Each platform picks its
+ * implementation ([platformVideoCompressor]): Media3 on Android, ffmpeg elsewhere.
  *
  * Paths are platform-specific `String`s for the same reason the thumbnail seam
  * uses them — see the KDoc on [VideoThumbnailService].

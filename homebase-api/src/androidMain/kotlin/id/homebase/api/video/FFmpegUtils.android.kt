@@ -392,7 +392,7 @@ actual object FFmpegUtils {
     }
 
     // (probeDimensions + Int.toEven removed — output-dim math + even-rounding
-    // now live in FfmpegCompressPlanner.computeOutputDims in commonMain.)
+    // now live in computeOutputDims in commonMain.)
 
     /**
      * Async FFmpegKit bridged to a suspending coroutine. Returns the completed

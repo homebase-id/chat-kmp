@@ -14,11 +14,11 @@ internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompresso
         quality: VideoQuality,
         keepMetadata: Boolean,
     ): String {
-        val clamped = onProgress?.let { report -> { fraction: Float -> report(fraction.coerceIn(0f, 1f)) } }
         val output = try {
-            Media3VideoCompressor.compress(inputPath, clamped, trimStartMs, trimEndMs, quality, keepMetadata)
+            Media3VideoCompressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, keepMetadata)
         } catch (e: VideoCompressionFailedException) {
-            // Until ffmpeg leaves Android: a Media3 failure is logged loudly, and ffmpeg still delivers.
+            // Until ffmpeg leaves Android: a Media3 failure is logged loudly, and ffmpeg still delivers,
+            // at the cost of a second pass over the source.
             Logger.e(tag = "AndroidVideoCompressor", throwable = e) { "Media3 compress failed; using ffmpeg" }
             return FFmpegVideoCompressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, keepMetadata)
         }

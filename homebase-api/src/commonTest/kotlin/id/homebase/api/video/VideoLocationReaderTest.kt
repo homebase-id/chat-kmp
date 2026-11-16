@@ -2,6 +2,7 @@ package id.homebase.api.video
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 class VideoLocationReaderTest {
@@ -38,6 +39,23 @@ class VideoLocationReaderTest {
         for (chunk in listOf(1, 7, 65_536, bytes.size)) {
             assertEquals(VideoLocation(37.7749, -122.4194), read(bytes, chunk), "chunks of $chunk")
         }
+    }
+
+    @Test
+    fun aCallerThatSeeksPastTheMediaReadsOnlyTheHeadersAndTheMoov() {
+        val bytes = file(androidMoov("+37.7749-122.4194/"), mdatBytes = 10_000_000)
+        val reader = VideoLocationReader()
+        var at = 0
+        var fed = 0
+        while (!reader.finished && at < bytes.size) {
+            at += reader.takeSkip().toInt()
+            val chunk = bytes.copyOfRange(at, minOf(at + 4096, bytes.size))
+            reader.feed(chunk)
+            fed += chunk.size
+            at += chunk.size
+        }
+        assertEquals(VideoLocation(37.7749, -122.4194), reader.location)
+        assertTrue(fed < 3 * 4096, "fed $fed bytes of ${bytes.size}")
     }
 
     @Test

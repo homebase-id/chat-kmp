@@ -2,8 +2,8 @@ package id.homebase.api.video
 
 import android.media.MediaExtractor
 import android.media.MediaFormat
-import android.media.MediaMetadataRetriever
-import android.os.Looper
+import android.os.Handler
+import android.os.HandlerThread
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Metadata
@@ -29,30 +29,34 @@ import id.homebase.api.ActivityProvider
 import id.homebase.api.file.AppCacheDirs
 import java.io.File
 import java.io.RandomAccessFile
-import java.nio.ByteBuffer
 import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.android.asCoroutineDispatcher
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.coroutineScope
 
 /**
  * Compresses on the phone's hardware with Media3 Transformer: MediaCodec decode, GL scale, MediaCodec
- * encode. Output matches [FfmpegCompressPlanner]'s: H.264 + AAC at [VideoQuality.targets], short edge
- * scaled down only, 8-bit SDR (HDR is tone-mapped), and the source's metadata kept or dropped.
+ * encode. The video follows the same rules as ffmpeg's: H.264 at [VideoQuality.targets], short edge
+ * scaled down only ([computeOutputDims]), 8-bit SDR (HDR is tone-mapped), and the source's metadata kept or dropped.
+ * AAC audio is copied, not re-encoded: see THUMBNAILS.md, "Android: Media3, and why AAC audio is copied".
  */
 @OptIn(UnstableApi::class)
 internal object Media3VideoCompressor {
     private const val TAG = "Media3VideoCompressor"
     private const val PROGRESS_POLL_MS = 250L
-    private const val MAX_MOOV_BYTES = 64L * 1024 * 1024
+
+    // Transformer's calls, callbacks and blocking cancel stay off the main thread.
+    private val looper by lazy { HandlerThread("Media3Transformer").apply { start() }.looper }
+    private val transformerThread by lazy { Handler(looper).asCoroutineDispatcher() }
 
     suspend fun compress(
         inputPath: String,
@@ -62,13 +66,14 @@ internal object Media3VideoCompressor {
         quality: VideoQuality,
         keepMetadata: Boolean,
     ): String {
-        val context = ActivityProvider.requireApplicationContext()
         val input = File(inputPath)
-        if (!input.exists()) throw VideoCompressionFailedException(inputPath, "input file not found")
-        val trim = if (trimStartMs != null && trimEndMs != null) trimStartMs to trimEndMs else null
         val targets = quality.targets()
-        val source = probeSource(inputPath)
-        val output = File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, AppCacheDirs.MEDIA_WORK), "compressed_${UUID.randomUUID()}.mp4")
+        val trim = if (trimStartMs != null && trimEndMs != null) trimStartMs to trimEndMs else null
+        val (source, output) = withContext(Dispatchers.IO) {
+            if (!input.exists()) throw VideoCompressionFailedException(inputPath, "input file not found")
+            val cacheDir = ActivityProvider.requireApplicationContext().cacheDir.absolutePath
+            probeSource(input, keepMetadata) to File(AppCacheDirs.scratchDir(cacheDir, AppCacheDirs.MEDIA_WORK), "compressed_${UUID.randomUUID()}.mp4")
+        }
 
         val mediaItem = MediaItem.Builder().setUri(input.toURI().toString()).apply {
             if (trim != null) {
@@ -80,8 +85,7 @@ internal object Media3VideoCompressor {
                 )
             }
         }.build()
-        // Short side only, so portrait and landscape scale alike; never up.
-        val scale = if (minOf(source.width, source.height) > targets.shortEdgePx) {
+        val scale = if (computeOutputDims(source.width, source.height, targets.shortEdgePx) != null) {
             listOf(Presentation.createForShortSide(targets.shortEdgePx).copyWithUnsetSideRoundedTo(2))
         } else {
             emptyList()
@@ -92,7 +96,6 @@ internal object Media3VideoCompressor {
             ).build(),
         ).setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL).build()
 
-        val durationMs = trim?.let { it.second - it.first } ?: 0L
         val started = System.currentTimeMillis()
         try {
             export(composition, output, targets, source, keepMetadata, onProgress)
@@ -105,7 +108,7 @@ internal object Media3VideoCompressor {
         }
         Logger.i(tag = TAG) {
             "compress: ${System.currentTimeMillis() - started}ms in=${input.length()}B ${source.width}x${source.height} " +
-                "out=${output.length()}B trimMs=$durationMs quality=$quality"
+                "out=${output.length()}B trimMs=${trim?.let { it.second - it.first } ?: 0} quality=$quality"
         }
         return output.absolutePath
     }
@@ -117,19 +120,18 @@ internal object Media3VideoCompressor {
         source: Source,
         keepMetadata: Boolean,
         onProgress: VideoProgressListener?,
-    ) = withContext(Dispatchers.Main) {
+    ) = withContext(transformerThread) {
         val context = ActivityProvider.requireApplicationContext()
         val encoders = DefaultEncoderFactory.Builder(context)
             .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(targets.videoBitrateBps).build())
             .apply {
-                // Android's AAC codecs are software and run about 5x real time, slower than the
-                // hardware video path; AAC audio is copied instead, and only other audio re-encoded.
+                // With no audio settings asked for, Transformer copies AAC as it is.
                 if (!source.aacAudio) setRequestedAudioEncoderSettings(AudioEncoderSettings.Builder().setBitrate(targets.audioBitrateBps).build())
             }
             .build()
         val muxer = InAppMp4Muxer.Factory { entries -> withMetadata(entries, source.takeIf { keepMetadata }) }
         val transformer = Transformer.Builder(context)
-            .setLooper(Looper.getMainLooper())
+            .setLooper(looper)
             .setVideoMimeType(MimeTypes.VIDEO_H264)
             .setAudioMimeType(MimeTypes.AUDIO_AAC)
             .setEncoderFactory(encoders)
@@ -167,7 +169,7 @@ internal object Media3VideoCompressor {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     Logger.i(tag = TAG) {
                         "export: ${exportResult.videoFrameCount} frames ${exportResult.width}x${exportResult.height} " +
-                            "video=${exportResult.videoEncoderName} audio=${exportResult.audioEncoderName}"
+                            "video=${exportResult.videoEncoderName} audio=${exportResult.audioEncoderName ?: "not re-encoded"}"
                     }
                     cont.resume(Unit)
                 }
@@ -191,59 +193,38 @@ internal object Media3VideoCompressor {
 
     private class Source(val width: Int, val height: Int, val aacAudio: Boolean, val location: VideoLocation?)
 
-    private fun probeSource(path: String): Source {
-        val retriever = MediaMetadataRetriever()
-        val (width, height) = try {
-            retriever.setDataSource(path)
-            fun read(key: Int) = retriever.extractMetadata(key)?.toIntOrNull() ?: 0
-            read(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH) to read(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-        } catch (e: Exception) {
-            0 to 0
-        } finally {
-            retriever.release()
-        }
-        return Source(width, height, hasAacAudio(path), moovLocation(File(path)))
-    }
-
-    private fun hasAacAudio(path: String): Boolean {
+    // Headers only: Transformer's export is the one pass over the media.
+    private fun probeSource(file: File, keepMetadata: Boolean): Source {
         val extractor = MediaExtractor()
-        return try {
-            extractor.setDataSource(path)
-            (0 until extractor.trackCount).any { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME) == MimeTypes.AUDIO_AAC }
+        val formats = try {
+            extractor.setDataSource(file.absolutePath)
+            (0 until extractor.trackCount).map { extractor.getTrackFormat(it) }
         } catch (e: Exception) {
-            false
+            emptyList()
         } finally {
             extractor.release()
         }
+        val video = formats.firstOrNull { it.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+        return Source(
+            width = video?.getInteger(MediaFormat.KEY_WIDTH) ?: 0,
+            height = video?.getInteger(MediaFormat.KEY_HEIGHT) ?: 0,
+            aacAudio = formats.any { it.getString(MediaFormat.KEY_MIME) == MimeTypes.AUDIO_AAC },
+            location = if (keepMetadata) moovLocation(file) else null,
+        )
     }
 
-    // Reads only the moov box, so the location costs no pass over the media.
+    // Seeks past the media, so only the box headers and the moov are read.
     private fun moovLocation(file: File): VideoLocation? = try {
         RandomAccessFile(file, "r").use { raf ->
-            val header = ByteBuffer.allocate(16)
-            var at = 0L
-            while (at + 8 <= raf.length()) {
-                raf.seek(at)
-                raf.readFully(header.array(), 0, 8)
-                var size = header.getInt(0).toLong() and 0xFFFFFFFFL
-                val type = String(header.array(), 4, 4, Charsets.ISO_8859_1)
-                if (size == 1L) {
-                    raf.readFully(header.array(), 8, 8)
-                    size = header.getLong(8)
-                } else if (size == 0L) {
-                    size = raf.length() - at
-                }
-                if (size < 8) return@use null
-                if (type == "moov") {
-                    if (size > MAX_MOOV_BYTES) return@use null
-                    val moov = ByteArray(size.toInt())
-                    raf.seek(at)
-                    raf.readFully(moov)
-                    return@use VideoLocationReader().apply { feed(moov) }.location
-                }
-                at += size
+            val reader = VideoLocationReader()
+            val chunk = ByteArray(64 * 1024)
+            while (!reader.finished) {
+                raf.seek(raf.filePointer + reader.takeSkip())
+                val n = raf.read(chunk)
+                if (n <= 0) break
+                reader.feed(if (n == chunk.size) chunk else chunk.copyOf(n))
             }
-            null
+            reader.location
         }
     } catch (e: Exception) {
         Logger.w(tag = TAG, throwable = e) { "Couldn't read ${file.name}'s location" }
