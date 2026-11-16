@@ -15,7 +15,7 @@ internal actual fun platformVideoCompressor(): VideoCompressor = AndroidVideoCom
 internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompressor {
     private const val TAG = "AndroidVideoCompressor"
 
-    private val fileOps get() = AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext())
+    private val fileOps by lazy { AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext()) }
 
     override fun readsInPlace(path: String): Boolean = fileOps.isContentUri(path)
 
@@ -45,7 +45,6 @@ internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompresso
         keyHeader: KeyHeader,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? {
-        val fileOps = AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext())
         val segmented = try {
             HlsSegmenter.segmentAndEncrypt(fileOps, inputPath, keyHeader, onProgress)
         } catch (e: CancellationException) {

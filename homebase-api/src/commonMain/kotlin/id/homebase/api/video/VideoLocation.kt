@@ -45,18 +45,19 @@ class VideoLocationReader {
     /** The bytes [feed] would only count past next. A caller that can seek skips them instead. */
     fun takeSkip(): Long = skipping.also { skipping = 0 }
 
-    fun feed(chunk: ByteArray) {
-        var at = 0
-        while (at < chunk.size && !done) {
+    fun feed(chunk: ByteArray, offset: Int = 0, length: Int = chunk.size - offset) {
+        val end = offset + length
+        var at = offset
+        while (at < end && !done) {
             val moovBuffer = moov
             when {
                 skipping > 0 -> {
-                    val n = minOf(skipping, (chunk.size - at).toLong()).toInt()
+                    val n = minOf(skipping, (end - at).toLong()).toInt()
                     skipping -= n
                     at += n
                 }
                 moovBuffer != null -> {
-                    val n = minOf(moovBuffer.size - moovFill, chunk.size - at)
+                    val n = minOf(moovBuffer.size - moovFill, end - at)
                     chunk.copyInto(moovBuffer, moovFill, at, at + n)
                     moovFill += n
                     at += n
@@ -95,7 +96,7 @@ class VideoLocationReader {
         }
     }
 
-    private fun locationInMoov(moov: ByteArray): VideoLocation? {
+    internal fun locationInMoov(moov: ByteArray): VideoLocation? {
         val top = mp4Boxes(moov, 0, moov.size)
         top.firstOrNull { it.type == "meta" }?.let { metadataKeyLocation(moov, it) }?.let { return it }
         val udta = top.firstOrNull { it.type == "udta" } ?: return null

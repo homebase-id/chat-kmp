@@ -96,15 +96,15 @@ class OutboxBackupUploader(
     ): HandOffResult {
         val part = exported.parts.single()
         val options = requests.options()
-        val reader = if (options.originalVideo) null else VideoLocationReader()
-        if (reader != null && !hasher.matches(exported, part, expectedDigest, reader::feed)) return HandOffResult.ChangedUnderUs
+        val reader = VideoLocationReader()
+        if (!options.originalVideo && !hasher.matches(exported, part, expectedDigest) { reader.feed(it) }) return HandOffResult.ChangedUnderUs
         return try {
             upload(row, uniqueId, exported, expectedDigest, reader, options, untouched = false)
         } catch (e: VideoCompressionFailedException) {
             if (!options.originalVideo) throw e
             // A backup that isn't the original isn't a backup: keep the file even when no copy can be made to play.
             Logger.w(tag = TAG, throwable = e) { "no playable copy for $uniqueId; backing up the original alone" }
-            upload(row, uniqueId, exported, expectedDigest, null, options.copy(originalVideo = false), untouched = true)
+            upload(row, uniqueId, exported, expectedDigest, VideoLocationReader(), options.copy(originalVideo = false), untouched = true)
         }
     }
 
@@ -113,13 +113,12 @@ class OutboxBackupUploader(
         uniqueId: Uuid,
         exported: ExportedAsset,
         expectedDigest: ByteArray,
-        checkedReader: VideoLocationReader?,
+        reader: VideoLocationReader,
         options: UploadOptions,
         untouched: Boolean,
     ): HandOffResult {
         val part = exported.parts.single()
         val keyHeader = KeyHeader.newRandom16()
-        val reader = checkedReader ?: VideoLocationReader()
         val built = UserUploadBuilder.build(
             listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.VIDEO, untouched = untouched)),
             options,
@@ -157,7 +156,7 @@ class OutboxBackupUploader(
     private suspend fun PayloadBundle.withOriginalEncrypted(path: String, keyHeader: KeyHeader, expectedDigest: ByteArray, reader: VideoLocationReader): PayloadBundle? {
         val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
         val hashed = fileOps.encryptWithPayloadHash(path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3) { chunk, offset, length ->
-            if (!reader.finished) reader.feed(if (offset == 0 && length == chunk.size) chunk else chunk.copyOfRange(offset, offset + length))
+            reader.feed(chunk, offset, length)
         }
         val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
         if (digest == null || !digest.contentEquals(expectedDigest)) {

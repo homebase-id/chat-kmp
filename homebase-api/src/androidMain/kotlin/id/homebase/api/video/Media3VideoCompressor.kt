@@ -56,6 +56,7 @@ import kotlinx.coroutines.withContext
 internal object Media3VideoCompressor {
     private const val TAG = "Media3VideoCompressor"
     private const val PROGRESS_POLL_MS = 250L
+    private val fileOps by lazy { AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext()) }
 
     // Transformer's calls, callbacks and blocking cancel stay off the main thread.
     private val looper by lazy { HandlerThread("Media3Transformer").apply { start() }.looper }
@@ -69,16 +70,13 @@ internal object Media3VideoCompressor {
         quality: VideoQuality,
         keepMetadata: Boolean,
     ): String {
-        val context = ActivityProvider.requireApplicationContext()
-        val fileOps = AndroidFileOperationsProvider(context)
-        // A content:// pick is read where it is, with no copy into the cache first.
         val uri = if (fileOps.isContentUri(inputPath)) Uri.parse(inputPath) else File(inputPath).toUri()
         val targets = quality.targets()
         val trim = if (trimStartMs != null && trimEndMs != null) trimStartMs to trimEndMs else null
         val (source, output) = withContext(Dispatchers.IO) {
             if (!fileOps.sourceExists(inputPath)) throw VideoCompressionFailedException(inputPath, "input file not found")
-            val cacheDir = ActivityProvider.requireApplicationContext().cacheDir.absolutePath
-            probeSource(fileOps, inputPath, uri, keepMetadata) to File(AppCacheDirs.scratchDir(cacheDir, AppCacheDirs.MEDIA_WORK), "compressed_${UUID.randomUUID()}.mp4")
+            val cacheDir = fileOps.context.cacheDir.absolutePath
+            probeSource(inputPath, uri, keepMetadata) to File(AppCacheDirs.scratchDir(cacheDir, AppCacheDirs.MEDIA_WORK), "compressed_${UUID.randomUUID()}.mp4")
         }
 
         val mediaItem = MediaItem.Builder().setUri(uri).apply {
@@ -114,7 +112,7 @@ internal object Media3VideoCompressor {
             throw VideoCompressionFailedException(inputPath, "Media3 export failed: $reason", e)
         }
         Logger.i(tag = TAG) {
-            "compress: ${System.currentTimeMillis() - started}ms in=${fileOps.getFileSize(inputPath)}B ${source.width}x${source.height} " +
+            "compress: ${System.currentTimeMillis() - started}ms ${source.width}x${source.height} " +
                 "out=${output.length()}B trimMs=${trim?.let { it.second - it.first } ?: 0} quality=$quality"
         }
         return output.absolutePath
@@ -128,7 +126,7 @@ internal object Media3VideoCompressor {
         keepMetadata: Boolean,
         onProgress: VideoProgressListener?,
     ) = withContext(transformerThread) {
-        val context = ActivityProvider.requireApplicationContext()
+        val context = fileOps.context
         val encoders = DefaultEncoderFactory.Builder(context)
             .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(videoBitrate(targets, source)).build())
             .apply {
@@ -218,10 +216,10 @@ internal object Media3VideoCompressor {
     private class Source(val width: Int, val height: Int, val videoBitrateBps: Int?, val copyableAudio: Boolean, val location: VideoLocation?)
 
     // Headers only: Transformer's export is the one pass over the media.
-    private suspend fun probeSource(fileOps: AndroidFileOperationsProvider, path: String, uri: Uri, keepMetadata: Boolean): Source {
+    private suspend fun probeSource(path: String, uri: Uri, keepMetadata: Boolean): Source {
         val extractor = MediaExtractor()
         val formats = try {
-            extractor.setDataSource(ActivityProvider.requireApplicationContext(), uri, null)
+            extractor.setDataSource(fileOps.context, uri, null)
             (0 until extractor.trackCount).map { extractor.getTrackFormat(it) }
         } catch (e: Exception) {
             emptyList()
@@ -240,7 +238,7 @@ internal object Media3VideoCompressor {
                     it.int(MediaFormat.KEY_AAC_PROFILE) == MediaCodecInfo.CodecProfileLevel.AACObjectLC &&
                     (it.int(MediaFormat.KEY_CHANNEL_COUNT) ?: 0) in 1..2
             },
-            location = if (keepMetadata) moovLocation(fileOps, path) else null,
+            location = if (keepMetadata) moovLocation(path) else null,
         )
     }
 
@@ -248,17 +246,8 @@ internal object Media3VideoCompressor {
 
 
     // Seeks past the media, so only the box headers and the moov are read.
-    private suspend fun moovLocation(fileOps: AndroidFileOperationsProvider, path: String): VideoLocation? = try {
-        val reader = VideoLocationReader()
-        var at = 0L
-        while (!reader.finished) {
-            at += reader.takeSkip()
-            val chunk = fileOps.readFileRange(path, at, 64 * 1024)
-            if (chunk.isEmpty()) break
-            at += chunk.size
-            reader.feed(chunk)
-        }
-        reader.location
+    private suspend fun moovLocation(path: String): VideoLocation? = try {
+        readMoov(fileOps, path)?.let { VideoLocationReader().locationInMoov(it) }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
