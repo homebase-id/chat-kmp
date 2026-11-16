@@ -59,7 +59,6 @@ import id.homebase.chat.widget.fileDropTarget
 import id.homebase.resources.chat_drop_files_title
 import id.homebase.resources.chat_drop_folders_title
 import io.github.vinceglb.filekit.PlatformFile
-import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -94,62 +93,59 @@ fun VaultSectionCard(
         ),
     ) {
         Box {
-        Column(
-            modifier = Modifier
-                .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // Header row: title + add button + 3-dot menu
-            SectionHeader(
-                title = section.title,
-                isFirst = section.isFirst,
-                isLast = section.isLast,
-                onAddEntry = onAddEntry,
-                onMoveUp = onMoveUp,
-                onMoveDown = onMoveDown,
-                onRenameSection = onRenameSection,
-                onDeleteSection = onDeleteSection,
-            )
-
-            // Empty hint when no entries
-            if (section.entries.isEmpty()) {
-                Text(
-                    text = stringResource(MR.string.vault_section_empty_hint, section.title),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp),
+            Column(
+                modifier = Modifier
+                    .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // Header row: title + add button + 3-dot menu
+                SectionHeader(
+                    title = section.title,
+                    isFirst = section.isFirst,
+                    isLast = section.isLast,
+                    onAddEntry = onAddEntry,
+                    onMoveUp = onMoveUp,
+                    onMoveDown = onMoveDown,
+                    onRenameSection = onRenameSection,
+                    onDeleteSection = onDeleteSection,
                 )
-            }
 
-            // Entry cards row
-            if (section.entries.isNotEmpty()) {
-                LazyRow(
-                    state = rowState,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(end = 4.dp),
-                ) {
-                    items(section.entries, key = { it.uniqueId }) { entry ->
-                        VaultEntryCard(
-                            modifier = Modifier.animateItem(),
-                            file = entry,
-                            sectionTitle = section.title,
-                            localAttachmentStore = localAttachmentStore,
-                            onClick = { onEntryClick(entry) },
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
+                // Empty hint when no entries
+                if (section.entries.isEmpty()) {
+                    Text(
+                        text = stringResource(MR.string.vault_section_empty_hint, section.title),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+
+                // Entry cards row
+                if (section.entries.isNotEmpty()) {
+                    LazyRow(
+                        state = rowState,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(end = 4.dp),
+                    ) {
+                        items(section.entries, key = { it.uniqueId }) { entry ->
+                            VaultEntryCard(
+                                modifier = Modifier.animateItem(),
+                                file = entry,
+                                sectionTitle = section.title,
+                                localAttachmentStore = localAttachmentStore,
+                                onClick = { onEntryClick(entry) },
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                            )
+                        }
                     }
                 }
             }
-        }
-        dropPreview?.let { SectionDropOverlay(it, Modifier.matchParentSize()) }
+            dropPreview?.let { SectionDropOverlay(it, Modifier.matchParentSize()) }
         }
     }
 }
-
-internal fun vaultSectionDropAction(sectionId: Uuid, files: List<PlatformFile>): VaultUiAction? =
-    if (files.isEmpty()) null else VaultUiAction.AddEntryToSection(sectionId, files)
 
 @Composable
 private fun SectionDropOverlay(preview: FileDropPreview, modifier: Modifier = Modifier) {
