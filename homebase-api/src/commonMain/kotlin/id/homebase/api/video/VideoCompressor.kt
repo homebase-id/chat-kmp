@@ -31,6 +31,13 @@ interface VideoCompressor {
         keepMetadata: Boolean = false,
     ): String
 
+    /**
+     * Whether [path] can be processed where it is, with no copy into the cache first: by [compress], and by the
+     * platform's poster decoder and file size, which get the same path. False means the caller resolves it to a
+     * file first (`FileOperationsProvider.resolveToFilePath`).
+     */
+    fun readsInPlace(path: String): Boolean = false
+
     /** Segments [inputPath] into an unencrypted HLS playlist + `.ts` segments. */
     suspend fun segment(
         inputPath: String,

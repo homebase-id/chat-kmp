@@ -42,8 +42,12 @@ data class IndexedFrame(
  * `FFmpegUtils` video pipeline.
  */
 interface VideoDecoder {
-    /** Extract a poster frame. Returns JPEG bytes or null if extraction failed. */
-    suspend fun extractPosterFrame(videoPath: String): ByteArray?
+    /**
+     * Extract a poster frame. Returns JPEG bytes or null if extraction failed. With [fullSize] it's the frame at
+     * the video's own size, as the source of an upload's thumbnails; without, any size from 640 px up that comes
+     * fastest, for a preview.
+     */
+    suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean = false): ByteArray?
 
     /**
      * Extract [frameCount] thumbnails evenly spaced across `[0, durationMs]`. Frames are

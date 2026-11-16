@@ -102,7 +102,10 @@ class VideoPayloadProcessorCompressionSeamTest {
         // When true, segmentAndEncrypt returns null to simulate a failed HLS segmentation —
         // the path where the processor throws "segmentAndEncryptVideo failed".
         private val segmentReturnsNull: Boolean = false,
+        private val readsContentUris: Boolean = false,
     ) : VideoCompressor {
+        override fun readsInPlace(path: String) = readsContentUris && path.startsWith("content://")
+
         var compressInput: String? = null
         var compressQuality: VideoQuality? = null
         var compressTrim: Pair<Long?, Long?>? = null
@@ -221,6 +224,35 @@ class VideoPayloadProcessorCompressionSeamTest {
         assertEquals(resolvedPath, compressor.compressInput)
         assertFalse(store.containsKey(resolvedPath), "resolved copy must be reaped by withResolvedFile")
         assertTrue(store.containsKey(contentUri), "the caller-owned source must not be reaped")
+    }
+
+    @Test
+    fun aCompressorThatReadsAContentUriInPlaceGetsItWithNoCacheCopy() = runTest {
+        val contentUri = "content://media/external/video/media/1000041257"
+        val resolvedPath = "$cacheDir/resolved_copy.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val store = mutableMapOf(contentUri to ByteArray(1024), compressedPath to ByteArray(1024))
+        val fileOps = FakeFileOperationsProvider(store, resolveMap = mapOf(contentUri to resolvedPath))
+        val compressor = FakeVideoCompressor(
+            compressedPath = compressedPath,
+            segmented = SegmentedVideo("$cacheDir/playlist.m3u8", "$cacheDir/segments.ts"),
+            readsContentUris = true,
+        )
+        var copied = false
+        val watching = object : FileOperationsProvider by fileOps {
+            override suspend fun resolveToFilePath(path: String) = fileOps.resolveToFilePath(path).also { copied = copied || it != path }
+        }
+
+        VideoPayloadProcessor(watching, compressor, FakeVideoProbe(1_000L)).process(
+            payload = PayloadFile(key = "vid", filePath = contentUri),
+            keyHeader = KeyHeader.newRandom16(),
+            onProgress = null,
+            descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
+        )
+
+        assertEquals(contentUri, compressor.compressInput)
+        assertFalse(copied, "no cache copy of the pick")
     }
 
     @Test

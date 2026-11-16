@@ -204,13 +204,15 @@ fun FileOperationsProvider.uploadTempDirectory(): String =
  * `resolveToFilePath` is a no-op the path is unchanged and nothing is deleted.
  *
  * The reap runs in `finally`, so it also covers the failure path; the startup
- * sweep stays as the backstop if even that delete fails.
+ * sweep stays as the backstop if even that delete fails. With [resolve] false, [block]
+ * gets [path] itself and nothing is copied.
  */
 suspend fun <T> FileOperationsProvider.withResolvedFile(
     path: String,
+    resolve: Boolean = true,
     block: suspend (resolvedPath: String) -> T,
 ): T {
-    val resolved = resolveToFilePath(path)
+    val resolved = if (resolve) resolveToFilePath(path) else path
     return try {
         block(resolved)
     } finally {

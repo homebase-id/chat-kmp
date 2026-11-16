@@ -1,9 +1,14 @@
 package id.homebase.api.video
 
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.OkioFileOperationsProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertNull
+import kotlinx.coroutines.test.runTest
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
 
 class VideoLocationReaderTest {
 
@@ -42,20 +47,37 @@ class VideoLocationReaderTest {
     }
 
     @Test
-    fun aCallerThatSeeksPastTheMediaReadsOnlyTheHeadersAndTheMoov() {
+    fun aMoovAfterTheMediaIsFoundByItsHeadersAlone() = runTest {
         val bytes = file(androidMoov("+37.7749-122.4194/"), mdatBytes = 10_000_000)
+        var read = 0L
+        val okio = OkioFileOperationsProvider(FakeFileSystem().also { it.write("/v.mp4".toPath()) { write(bytes) } }, "/cache")
+        val files = object : FileOperationsProvider by okio {
+            override suspend fun readFileRange(path: String, offset: Long, length: Int) =
+                okio.readFileRange(path, offset, length).also { read += it.size }
+        }
+        assertEquals(VideoLocation(37.7749, -122.4194), readMoov(files, "/v.mp4")?.let(::locationInMoov))
+        assertTrue(read < 64 * 1024, "read $read bytes of ${bytes.size}")
+    }
+
+    @Test
+    fun aMoovIsFoundWhenTheFileSizeIsntKnown() = runTest {
+        val bytes = file(androidMoov("+37.7749-122.4194/"))
+        val fake = FakeFileSystem().also { it.write("/v.mp4".toPath()) { write(bytes) } }
+        val files = object : FileOperationsProvider by OkioFileOperationsProvider(fake, "/cache") {
+            override fun getFileSize(path: String) = 0L
+        }
+        assertEquals(VideoLocation(37.7749, -122.4194), readMoov(files, "/v.mp4")?.let(::locationInMoov))
+    }
+
+    @Test
+    fun chunksFedAtAnOffsetReadTheSameAsWholeChunks() {
+        val bytes = file(androidMoov("+37.7749-122.4194/"))
         val reader = VideoLocationReader()
-        var at = 0
-        var fed = 0
-        while (!reader.finished && at < bytes.size) {
-            at += reader.takeSkip().toInt()
-            val chunk = bytes.copyOfRange(at, minOf(at + 4096, bytes.size))
-            reader.feed(chunk)
-            fed += chunk.size
-            at += chunk.size
+        for (at in bytes.indices step 1000) {
+            val padded = ByteArray(7) + bytes.copyOfRange(at, minOf(at + 1000, bytes.size)) + ByteArray(5)
+            reader.feed(padded, 7, padded.size - 12)
         }
         assertEquals(VideoLocation(37.7749, -122.4194), reader.location)
-        assertTrue(fed < 3 * 4096, "fed $fed bytes of ${bytes.size}")
     }
 
     @Test

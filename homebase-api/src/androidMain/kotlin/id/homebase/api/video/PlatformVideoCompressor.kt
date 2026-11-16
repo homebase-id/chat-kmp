@@ -1,9 +1,8 @@
 package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.file.AndroidFileOperationsProvider
+import id.homebase.api.file.withResolvedFile
 import id.homebase.api.video.hls.HlsSegmenter
 import java.io.File
 import kotlinx.coroutines.CancellationException
@@ -13,6 +12,12 @@ internal actual fun platformVideoCompressor(): VideoCompressor = AndroidVideoCom
 /** Media3 compresses and our segmenter cuts HLS; the rest stays on ffmpeg for now. */
 internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompressor {
     private const val TAG = "AndroidVideoCompressor"
+
+    private val fileOps get() = Media3VideoCompressor.fileOps
+
+    // The media library's URIs only: the app's own media permission covers them for as long as it lasts. A
+    // picker's grant can end with its screen, before a queued compress reads the file, so that pick is copied.
+    override fun readsInPlace(path: String): Boolean = path.startsWith("content://media/")
 
     override suspend fun compress(
         inputPath: String,
@@ -25,11 +30,11 @@ internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompresso
         val output = try {
             Media3VideoCompressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, keepMetadata)
         } catch (e: VideoCompressionFailedException) {
-            if (!File(inputPath).exists()) throw e
+            if (!fileOps.sourceExists(inputPath)) throw e
             // Until ffmpeg leaves Android: a Media3 failure is logged loudly, and ffmpeg still delivers,
-            // at the cost of a second pass over the source.
+            // at the cost of a second pass over the source, and of a cache copy of a content:// pick.
             Logger.e(tag = TAG, throwable = e) { "Media3 compress failed; using ffmpeg" }
-            return FFmpegVideoCompressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, keepMetadata)
+            return fileOps.withResolvedFile(inputPath) { FFmpegVideoCompressor.compress(it, onProgress, trimStartMs, trimEndMs, quality, keepMetadata) }
         }
         onProgress?.invoke(1f)
         return output
@@ -40,7 +45,6 @@ internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompresso
         keyHeader: KeyHeader,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? {
-        val fileOps = AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext())
         val segmented = try {
             HlsSegmenter.segmentAndEncrypt(fileOps, inputPath, keyHeader, onProgress)
         } catch (e: CancellationException) {

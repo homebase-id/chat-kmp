@@ -112,6 +112,8 @@ object VideoCompressionService : VideoCompressor, VideoProber {
             compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, keepMetadata)
         }
 
+    override fun readsInPlace(path: String): Boolean = compressor.readsInPlace(path)
+
     override suspend fun segment(
         inputPath: String,
         onProgress: VideoProgressListener?,

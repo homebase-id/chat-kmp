@@ -1,10 +1,13 @@
 package id.homebase.api.video
 
+import android.content.ContentValues
+import android.graphics.BitmapFactory
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
+import android.provider.MediaStore
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -21,6 +24,7 @@ import java.nio.ByteBuffer
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -54,6 +58,38 @@ class Media3VideoCompressorTest {
         assertEquals(1280 to 720, info.displaySize)
         assertTrue(abs(info.durationMs - 3_000) < 200, "duration ${info.durationMs}")
         assertNull(info.location, "a stripped video must not carry its location")
+    }
+
+    @Test
+    fun aGalleryPickIsCompressedWhereItIsWithItsLocation() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val camera = withCameraLocation(fixture("landscape_1080p_gps.mp4"))
+        val resolver = context.contentResolver
+        val uri = resolver.insert(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, "in_place_${System.nanoTime()}.mp4")
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            },
+        )!!
+        try {
+            resolver.openOutputStream(uri)!!.use { out -> camera.inputStream().use { it.copyTo(out) } }
+            camera.delete()
+            assertTrue(AndroidVideoCompressor.readsInPlace(uri.toString()), "no cache copy is made for it")
+            val before = context.cacheDir.walk().filter { it.name.startsWith("resolved_") }.count()
+            val poster = assertNotNull(VideoThumbnailService.extractPosterFrame(uri.toString(), fullSize = true))
+            val posterSize = BitmapFactory.decodeByteArray(poster, 0, poster.size).let { maxOf(it.width, it.height) }
+            assertEquals(1920, posterSize, "an upload's poster is the frame at the video's own size")
+
+            val info = probe(AndroidVideoCompressor.compress(uri.toString(), null, null, null, VideoQuality.STANDARD, keepMetadata = true))
+
+            assertEquals(1280 to 720, info.displaySize)
+            val location = info.location?.let(VideoLocation::parse)
+            assertTrue(location != null && abs(location.latitude - 59.9139) < 1e-4 && abs(location.longitude - 10.7522) < 1e-4, "location ${info.location}")
+            assertEquals(before, context.cacheDir.walk().filter { it.name.startsWith("resolved_") }.count(), "nothing was copied")
+        } finally {
+            resolver.delete(uri, null, null)
+        }
     }
 
     @Test
