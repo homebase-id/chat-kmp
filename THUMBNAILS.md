@@ -436,7 +436,11 @@ There's no HDR setting (decided 2026-11-16). Original already promises the exact
 **Photos: HDR wherever the file is kept as it is.** An HDR photo (Android's Ultra HDR, iPhone HDR) is an ordinary SDR image plus a gain map, so it shows correctly everywhere, and an HDR screen brightens it. It has none of video's playback problem.
 
 - **Kept as it is:** Photos at Original, and any app at Standard or HD when the source already fits (see [Rules for edge cases](#rules-for-edge-cases)). The gain map stays.
-- **Kept, metadata stripped** (chat and Moments): an Ultra HDR JPEG declares its gain map in its XMP, so the scrubber rebuilds that XMP with only the gain-map fields and drops the rest. The gain map survives; location and camera data don't. An iPhone HDR HEIC probably loses its HDR: the scrubber blanks the gain-map image's XMP too, and drops the EXIF MakerNote that holds its headroom. To check on an iPhone.
+- **Kept, metadata stripped** (chat and Moments): the scrubber keeps the gain map.
+  - **Ultra HDR JPEG:** its gain map is declared in the main image's XMP, so the scrubber rebuilds that XMP with only the gain-map fields and drops the rest of it. A directory listing anything but the main image and the gain map, such as a motion photo's video, is left out too; decoders then find the gain map through the MPF index, whose offsets the scrubber moves when segments before the gain map change size.
+  - **ISO 21496-1 gain maps** sit in APP2, which was always kept.
+  - **Not scrubbed:** everything after the main image passes unchanged. That includes the gain-map image's own segments and a motion photo's embedded video with its metadata.
+  - **iPhone HDR HEIC probably loses its HDR:** the scrubber blanks the gain-map image's XMP too, and drops the EXIF MakerNote that holds its headroom. To check on an iPhone.
 - **Re-encoded:** thumbnails, the tiny, and a resized final image are WebP, which has no gain map. They keep the SDR image, so they look right but not HDR-bright.
 - **Tests:** `GainmapDeviceTest` (Android 14 and later) and `ImageMetadataScrubberTest` (every platform).
 

@@ -53,4 +53,65 @@ class GainmapDeviceTest {
         val scrubbed = ImageMetadataScrubber.scrub(source)
         assertTrue(BitmapFactory.decodeByteArray(scrubbed, 0, scrubbed.size)!!.hasGainmap())
     }
+
+    private fun ByteArray.indexOfSub(needle: ByteArray): Int =
+        (0..size - needle.size).first { at -> needle.indices.all { this[at + it] == needle[it] } }
+
+    private fun segmentAt(bytes: ByteArray, payload: ByteArray): IntRange {
+        val start = bytes.indexOfSub(payload) - 4
+        val length = ((bytes[start + 2].toInt() and 0xFF) shl 8) or (bytes[start + 3].toInt() and 0xFF)
+        return start until start + 2 + length
+    }
+
+    private fun u32(b: ByteArray, at: Int) = ((b[at].toInt() and 0xFF) shl 24) or ((b[at + 1].toInt() and 0xFF) shl 16) or ((b[at + 2].toInt() and 0xFF) shl 8) or (b[at + 3].toInt() and 0xFF)
+
+    private fun putU32(b: ByteArray, at: Int, v: Int) {
+        for (k in 0 until 4) b[at + k] = (v ushr (24 - 8 * k)).toByte()
+    }
+
+    private val xmpHeader = "http://ns.adobe.com/xap/1.0/".encodeToByteArray()
+    private val mpfHeader = "MPF".encodeToByteArray() + byteArrayOf(0)
+
+    // The XMP's directory gains a motion photo's video, which the scrubber leaves out, so only MPF points at the gain map.
+    private fun withMotionPhoto(source: ByteArray): ByteArray {
+        val xmp = segmentAt(source, xmpHeader)
+        val payload = source.copyOfRange(xmp.first + 4, xmp.last + 1).decodeToString().replace(
+            "</rdf:Seq>",
+            "<rdf:li rdf:parseType=\"Resource\"><Container:Item Item:Semantic=\"MotionPhoto\" Item:Mime=\"video/mp4\" Item:Length=\"0\"/></rdf:li></rdf:Seq>",
+        ).encodeToByteArray()
+        val length = payload.size + 2
+        return source.copyOfRange(0, xmp.first) + byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (length shr 8).toByte(), length.toByte()) + payload +
+            source.copyOfRange(xmp.last + 1, source.size)
+    }
+
+    @Test
+    fun aMotionPhotoDirectoryIsLeftOutAndTheGainmapIsFoundThroughMpf() {
+        assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        val scrubbed = ImageMetadataScrubber.scrub(withMotionPhoto(ultraHdrJpeg(1600, 1200)))
+        assertFalse("Container:Directory" in scrubbed.copyOfRange(0, scrubbed.indexOfSub(mpfHeader)).decodeToString())
+        assertTrue(BitmapFactory.decodeByteArray(scrubbed, 0, scrubbed.size)!!.hasGainmap())
+    }
+
+    @Test
+    fun anMpfIndexBeforeTheXmpStillFindsTheGainmapAfterScrubbing() {
+        assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        val source = withMotionPhoto(ultraHdrJpeg(1600, 1200))
+        val xmp = segmentAt(source, xmpHeader)
+        val mpf = segmentAt(source, mpfHeader)
+        assertTrue(xmp.first < mpf.first, "Android writes the XMP first")
+        // Move the index in front of the XMP; the gain map is then as much further from it as the index moved.
+        val moved = source.copyOfRange(mpf.first, mpf.last + 1)
+        val tiff = 8
+        val ifd = tiff + u32(moved, tiff + 4)
+        val entries = (0 until (((moved[ifd].toInt() and 0xFF) shl 8) or (moved[ifd + 1].toInt() and 0xFF))).map { ifd + 2 + it * 12 }
+            .first { ((moved[it].toInt() and 0xFF) shl 8) or (moved[it + 1].toInt() and 0xFF) == 0xB002 }
+        val first = tiff + u32(moved, entries + 8)
+        putU32(moved, first + 16 + 8, u32(moved, first + 16 + 8) + (mpf.first - xmp.first))
+        val reordered = source.copyOfRange(0, xmp.first) + moved + source.copyOfRange(xmp.first, mpf.first) + source.copyOfRange(mpf.last + 1, source.size)
+        assertTrue(BitmapFactory.decodeByteArray(reordered, 0, reordered.size)!!.hasGainmap(), "the reordered file is still Ultra HDR")
+
+        val scrubbed = ImageMetadataScrubber.scrub(reordered)
+        assertTrue(scrubbed.size < reordered.size, "the XMP shrank after the index")
+        assertTrue(BitmapFactory.decodeByteArray(scrubbed, 0, scrubbed.size)!!.hasGainmap())
+    }
 }

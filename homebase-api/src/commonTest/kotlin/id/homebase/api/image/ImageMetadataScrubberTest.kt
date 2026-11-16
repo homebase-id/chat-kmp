@@ -56,8 +56,8 @@ class ImageMetadataScrubberTest {
         xmp: String? = null,
     ): ByteArray {
         var out = byteArrayOf(0xFF.toByte(), 0xD8.toByte()) // SOI
-        if (xmp != null) out += seg(0xE1, "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray() + xmp.encodeToByteArray())
         if (withJfif) out += seg(0xE0, "JFIF".encodeToByteArray() + byteArrayOf(1, 1, 0, 0, 1, 0, 1, 0, 0))
+        if (xmp != null) out += xmpSeg(xmp)
         if (withExif) out += seg(0xE1, exifPayload(orientation))
         if (withComment) out += seg(0xFE, "Shot on SecretCamera by Jane".encodeToByteArray())
         if (withIcc) out += seg(0xE2, "ICC_PROFILE".encodeToByteArray() + ByteArray(8) { 9 })
@@ -68,6 +68,11 @@ class ImageMetadataScrubberTest {
         out += byteArrayOf(0xFF.toByte(), 0xD9.toByte())   // EOI
         return out
     }
+
+    private fun xmpSeg(xmp: String) = seg(0xE1, "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray() + xmp.encodeToByteArray())
+
+    private fun ByteArray.indexOfSub(needle: ByteArray, from: Int = 0): Int =
+        (from..size - needle.size).firstOrNull { at -> needle.indices.all { this[at + it] == needle[it] } } ?: -1
 
     private fun pngChunk(type: String, data: ByteArray): ByteArray {
         val len = data.size
@@ -133,6 +138,82 @@ class ImageMetadataScrubberTest {
         assertTrue("Item:Semantic=\"Primary\" Item:Mime=\"image/jpeg\"" in out, out)
         assertTrue("Item:Semantic=\"GainMap\" Item:Mime=\"image/jpeg\" Item:Length=\"2047\"" in out, out)
         for (gone in listOf("51,30.1N", "Jane Secret", "evil")) assertFalse(gone in out, "$gone survived")
+    }
+
+    @Test
+    fun jpeg_keepsNoDirectoryWhenItHoldsAnythingButThePrimaryAndGainmap() {
+        val motionPhoto = ultraHdrXmp.replace(
+            "</rdf:Seq>",
+            "<rdf:li rdf:parseType=\"Resource\"><Container:Item Item:Semantic=\"MotionPhoto\" Item:Mime=\"video/mp4\" Item:Length=\"900\"/></rdf:li></rdf:Seq>",
+        )
+        val hidden = ultraHdrXmp.replace("<rdf:Seq>", "<rdf:Seq><!-- <Container:Item Item:Semantic=\"Primary\" Item:Mime=\"image/jpeg\" Item:Length=\"1\"/> -->")
+        val elementForm = ultraHdrXmp.replace(
+            "<Container:Item Item:Semantic=\"Primary\" Item:Mime=\"image/jpeg\"/>",
+            "<Container:Item><Item:Semantic>Primary</Item:Semantic></Container:Item>",
+        )
+        val oddValue = ultraHdrXmp.replace("Item:Length=\"2047\"", "Item:Length=\"SN4XK29\"")
+        for (xmp in listOf(motionPhoto, hidden, elementForm, oddValue)) {
+            val out = ImageMetadataScrubber.scrub(jpeg(xmp = xmp)).decodeToString()
+            assertTrue("hdrgm:Version=\"1.0\"" in out, out)
+            assertFalse("Container:Directory" in out, out)
+            for (gone in listOf("video/mp4", "SN4XK29", "51,30.1N")) assertFalse(gone in out, "$gone survived")
+        }
+    }
+
+    @Test
+    fun jpeg_readsASingleQuotedVersion() {
+        val out = ImageMetadataScrubber.scrub(jpeg(xmp = ultraHdrXmp.replace("hdrgm:Version=\"1.0\"", "hdrgm:Version='1.0'"))).decodeToString()
+        assertTrue("hdrgm:Version=\"1.0\"" in out, out)
+    }
+
+    @Test
+    fun jpeg_dropsAGainmapXmpWhoseRebuildWouldNotFitASegment() {
+        val many = (1..1000).joinToString("") { "<Container:Item Item:Semantic='Primary' Item:Mime='image/jpeg'/>" }
+        val xmp = "<x:xmpmeta hdrgm:Version=\"1.0\" xmlns:hdrgm=\"http://ns.adobe.com/hdr-gain-map/1.0/\"><Container:Directory>$many</Container:Directory></x:xmpmeta>"
+        val out = ImageMetadataScrubber.scrub(jpeg(xmp = xmp))
+        assertFalse("xmpmeta" in out.decodeToString())
+        assertTrue(out.containsSub(scanData))
+    }
+
+    @Test
+    fun jpeg_scrubbingAGainmapJpegTwiceChangesNothing() {
+        val once = ImageMetadataScrubber.scrub(jpeg(withExif = false, xmp = ultraHdrXmp))
+        assertSame(once, ImageMetadataScrubber.scrub(once))
+    }
+
+    @Test
+    fun jpeg_reEmitsOrientationBeforeTheGainmapXmp() {
+        val out = ImageMetadataScrubber.scrub(jpeg(orientation = 6, xmp = ultraHdrXmp))
+        val exif = out.indexOfSub("Exif".encodeToByteArray() + byteArrayOf(0, 0))
+        assertTrue(exif in 0 until out.indexOfSub("xmpmeta".encodeToByteArray()), "orientation EXIF before the XMP")
+    }
+
+    // A writer that puts the MPF index before the XMP: the XMP shrinks, so the index's offsets must move with it.
+    @Test
+    fun jpeg_movesTheMpfIndexWithWhatItPointsAt() {
+        val secondary = byteArrayOf(0xFF.toByte(), 0xD8.toByte()) + ByteArray(40) { 7 } + byteArrayOf(0xFF.toByte(), 0xD9.toByte())
+        fun build(primarySize: Int, offset: Int): ByteArray {
+            val tiff = byteArrayOf(0x4D, 0x4D, 0, 0x2A, 0, 0, 0, 8, 0, 1, 0xB0.toByte(), 0x02, 0, 7, 0, 0, 0, 32, 0, 0, 0, 26, 0, 0, 0, 0)
+            fun u32(v: Int) = byteArrayOf((v ushr 24).toByte(), (v ushr 16).toByte(), (v ushr 8).toByte(), v.toByte())
+            val entries = u32(0x00030000) + u32(primarySize) + u32(0) + ByteArray(4) + u32(0) + u32(secondary.size) + u32(offset) + ByteArray(4)
+            var out = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
+            out += seg(0xE2, "MPF".encodeToByteArray() + byteArrayOf(0) + tiff + entries)
+            out += xmpSeg(ultraHdrXmp)
+            out += seg(0xDB, ByteArray(65) { 3 }) + seg(0xC0, byteArrayOf(8, 0, 16, 0, 16, 1, 0x11, 0))
+            out += byteArrayOf(0xFF.toByte(), 0xDA.toByte(), 0x00, 0x08, 1, 1, 0, 0, 0x3F, 0) + scanData + byteArrayOf(0xFF.toByte(), 0xD9.toByte())
+            return out
+        }
+        val tiffAt = 2 + 4 + 4
+        val primary = build(0, 0).size
+        val src = build(primary, primary - tiffAt) + secondary
+
+        val out = ImageMetadataScrubber.scrub(src)
+        fun u32(at: Int) = ((out[at].toInt() and 0xFF) shl 24) or ((out[at + 1].toInt() and 0xFF) shl 16) or ((out[at + 2].toInt() and 0xFF) shl 8) or (out[at + 3].toInt() and 0xFF)
+        val entries = tiffAt + 26
+        val newPrimary = out.size - secondary.size
+        assertTrue(newPrimary < primary, "the XMP shrank")
+        assertEquals(newPrimary, u32(entries + 4), "the primary image's size")
+        assertEquals(newPrimary, tiffAt + u32(entries + 16 + 8), "the gain map's offset lands on its SOI")
     }
 
     @Test
