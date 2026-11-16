@@ -22,8 +22,7 @@ import org.junit.Ignore
  * short-edge threshold and produces sub-second wall times dominated by
  * subprocess startup.
  *
- * The fixture lives at `archive/transcoder_v2/test-fixtures/bbb_1080p_2mb.mp4`
- * (already committed there for the dormant v2 transcoder's own benchmarks).
+ * The fixture lives at `test-fixtures/video/bbb_1080p_2mb.mp4`.
  * `findArchiveFixture` below walks up from the JVM-test cwd to locate it,
  * so the test runs out-of-the-box without bundling a 2 MB binary into
  * `jvmTest/resources/`.
@@ -137,7 +136,7 @@ class FFmpegCompressBaselineJvmTest {
 
         val fixtureSrc = findArchiveFixture("bbb_1080p_2mb.mp4")
         assumeTrue(
-            "bbb_1080p_2mb.mp4 fixture missing from archive/transcoder_v2/test-fixtures/",
+            "bbb_1080p_2mb.mp4 fixture missing from test-fixtures/video/",
             fixtureSrc != null,
         )
 
@@ -178,16 +177,11 @@ class FFmpegCompressBaselineJvmTest {
         }
     }
 
-    /**
-     * Walk up from the JVM-test working directory until we find the archived
-     * v2 test-fixtures folder, which already ships the 1080p Big Buck Bunny
-     * clip the baseline test needs. Keeps us from having to bundle a 2 MB
-     * binary into `jvmTest/resources/`.
-     */
+    /** Walks up from the JVM-test working directory to the repo's test-fixtures/video. */
     private fun findArchiveFixture(name: String): File? {
         var dir: File? = File(System.getProperty("user.dir")).absoluteFile
         while (dir != null) {
-            val candidate = File(dir, "archive/transcoder_v2/test-fixtures/$name")
+            val candidate = File(dir, "test-fixtures/video/$name")
             if (candidate.isFile) return candidate
             dir = dir.parentFile
         }
