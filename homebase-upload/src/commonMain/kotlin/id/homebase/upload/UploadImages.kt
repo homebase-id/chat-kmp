@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.image.ImageSize
@@ -136,7 +137,7 @@ object UploadImages {
         val bytes = keepMetadataFrom?.takeIf { thumbs.sourceFormat in ImageMetadataScrubber.BLOCK_FORMATS }
             ?.let { withMetadataOf(it, image, fileOperationsProvider) } ?: image.bytes
         return try {
-            fileOperationsProvider.writeBytesToTempFile(bytes, "img_final_", ".webp")
+            fileOperationsProvider.writeBytesToTempFile(bytes, "img_final_", if (image.format == ImageFormat.JPEG) ".jpg" else ".webp")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

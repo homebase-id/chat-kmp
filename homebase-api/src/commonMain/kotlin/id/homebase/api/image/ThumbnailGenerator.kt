@@ -124,12 +124,14 @@ private suspend fun renderPlanned(
     )
 }
 
-// The plan's order, which renderPlanned reads back by position: thumbnails, final image, tiny.
+// The plan's order, which renderPlanned reads back by position: thumbnails, final image, tiny. The image people
+// look at keeps HDR: the final image, or at Original, where viewers never step up to the file, the largest thumbnail.
 private fun MediaImagePlan.toOutputs(): List<ImageOutput> = buildList {
+    val viewed = if (finalImage == null) thumbnails.maxByOrNull { it.width * it.height } else null
     thumbnails.forEach {
-        add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES, overLimit = OverLimit.SHRINK, rowSize = it.rowSize))
+        add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES, overLimit = OverLimit.SHRINK, rowSize = it.rowSize, keepsHdr = it === viewed))
     }
-    finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE)) }
+    finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE, keepsHdr = true)) }
     add(tinyOutput(tiny.width, tiny.height))
 }
 
@@ -185,13 +187,7 @@ private fun RenderedImage.toThumbnailFile(payloadKey: String) = ThumbnailFile(
     pixelHeight = height,
     thumbnailBytes = bytes,
     key = payloadKey,
-    contentType = when (format) {
-        ImageFormat.WEBP -> "image/webp"
-        ImageFormat.JPEG -> "image/jpeg"
-        ImageFormat.PNG -> "image/png"
-        ImageFormat.BMP -> "image/bmp"
-        ImageFormat.GIF -> "image/gif"
-    },
+    contentType = format.contentType,
     quality = quality,
 )
 

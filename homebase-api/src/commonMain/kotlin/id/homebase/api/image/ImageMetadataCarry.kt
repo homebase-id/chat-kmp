@@ -3,7 +3,7 @@ package id.homebase.api.image
 import co.touchlab.kermit.Logger
 
 /**
- * A re-encoded WebP [finalImage] carrying [source]'s EXIF, for an app that keeps metadata (THUMBNAILS.md,
+ * A re-encoded WebP or JPEG [finalImage] carrying [source]'s EXIF, for an app that keeps metadata (THUMBNAILS.md,
  * "Metadata"): Orientation 1, because the pixels are already upright; the pixel-size tags set to the new
  * size; the camera's embedded EXIF thumbnail left out. Neither Android's nor Skia's encoder carries
  * metadata over. [finalImage] comes back unchanged when the source has none.
@@ -18,7 +18,24 @@ fun withSourceMetadata(finalImage: ByteArray, source: ByteArray, width: Int, hei
         Logger.w(tag = "ImageMetadataCarry") { "source EXIF couldn't be read; the final image goes without" }
         return finalImage
     }
-    return WebpMetadata.embed(finalImage, exif, width, height)
+    return if (isJpeg(finalImage)) JpegMetadata.embed(finalImage, exif) else WebpMetadata.embed(finalImage, exif, width, height)
+}
+
+private fun isJpeg(b: ByteArray) = b.size > 2 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte()
+
+internal object JpegMetadata {
+    private val EXIF_HEADER = byteArrayOf(0x45, 0x78, 0x69, 0x66, 0, 0)
+
+    /**
+     * [jpeg] with an APP1 Exif segment holding [tiff] right after SOI. In front of everything, so an Ultra HDR
+     * file's MPF offsets, which count from the MPF segment itself, still find the gain map.
+     */
+    fun embed(jpeg: ByteArray, tiff: ByteArray): ByteArray {
+        val length = 2 + EXIF_HEADER.size + tiff.size
+        if (length > 0xFFFF) return jpeg
+        val segment = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (length shr 8).toByte(), length.toByte()) + EXIF_HEADER + tiff
+        return jpeg.copyOfRange(0, 2) + segment + jpeg.copyOfRange(2, jpeg.size)
+    }
 }
 
 internal object ExifTiff {

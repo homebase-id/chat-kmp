@@ -25,6 +25,8 @@ class ImagePipelineTest {
 
         override val isSrgb = true
 
+        override val hasGainmap get() = log.gainmap
+
         override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
 
         override fun inSrgb(): PipelineBitmap = this
@@ -39,6 +41,7 @@ class ImagePipelineTest {
         var failScalesAfter: Int? = null
         val scales = mutableListOf<Pair<Pair<Int, Int>, Pair<Int, Int>>>()
         val encodedQualities = mutableListOf<Int>()
+        var gainmap = false
     }
 
     private class FakeSource(val width: Int, val height: Int, val log: Log) : ImageSource {
@@ -57,6 +60,17 @@ class ImagePipelineTest {
 
     private fun output(width: Int, height: Int, quality: Int = 80, maxBytes: Int = 1000, minQuality: Int = 40) =
         ImageOutput(width, height, quality, maxBytes, minQuality = minQuality)
+
+    @Test
+    fun onlyTheImagePeopleLookAtBecomesAJpegWithTheGainmap() = runTest {
+        val plan = { _: ImageSize -> listOf(output(1600, 1200).copy(keepsHdr = true), output(320, 240), output(20, 15)) }
+
+        val hdr = renderFrom(FakeSource(4000, 3000, Log().apply { gainmap = true }), plan = plan).images
+        assertEquals(listOf(ImageFormat.JPEG, ImageFormat.WEBP, ImageFormat.WEBP), hdr.map { it.format })
+
+        val sdr = renderFrom(FakeSource(4000, 3000, Log()), plan = plan).images
+        assertEquals(listOf(ImageFormat.WEBP, ImageFormat.WEBP, ImageFormat.WEBP), sdr.map { it.format }, "no gain map, no JPEG")
+    }
 
     @Test
     fun manySizesDecodeOnceAtTheLargestSize() = runTest {
