@@ -65,14 +65,15 @@ class MediaPageSourcePlaintextTest {
     }
 
     @Test
-    fun `a local original still wins on an unencrypted file`() {
+    fun `an unencrypted file shows the sent copy even with a local original`() {
+        // Its seeded cache entry is plain bytes, readable from the moment it's sent.
         val result = resolveMediaPageSource(
             localContext = imageContext("/tmp/photo.jpg"),
             rawIvPresent = false,
             decodedIv = null,
             isEncrypted = false,
         )
-        assertIs<MediaPageSource.LocalFile>(result)
-        assertEquals("/tmp/photo.jpg", result.path)
+        assertIs<MediaPageSource.Remote>(result)
+        assertEquals(null, result.iv)
     }
 }

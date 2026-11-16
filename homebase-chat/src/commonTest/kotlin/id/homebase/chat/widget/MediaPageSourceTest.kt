@@ -14,14 +14,14 @@ class MediaPageSourceTest {
         LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
 
     @Test
-    fun `local image is preferred over the remote payload`() {
+    fun `the sent payload is preferred over the local original once it has its iv`() {
         val result = resolveMediaPageSource(imageContext("/tmp/photo.jpg"), rawIvPresent = true, decodedIv = iv)
-        assertIs<MediaPageSource.LocalFile>(result)
-        assertEquals("/tmp/photo.jpg", result.path)
+        assertIs<MediaPageSource.Remote>(result)
+        assertContentEquals(iv, result.iv)
     }
 
     @Test
-    fun `local image is used even when the iv is absent`() {
+    fun `the local image stands in while the send is still uploading`() {
         val result = resolveMediaPageSource(imageContext("/tmp/photo.jpg"), rawIvPresent = false, decodedIv = null)
         assertIs<MediaPageSource.LocalFile>(result)
         assertEquals("/tmp/photo.jpg", result.path)

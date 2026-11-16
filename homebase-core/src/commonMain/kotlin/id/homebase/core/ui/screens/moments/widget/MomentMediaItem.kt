@@ -199,9 +199,11 @@ fun MomentMediaItem(
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
                 imageLocalContext?.localFilePath,
-                driveId, fileId, payload.key, payload.lastModified,
+                driveId, fileId, payload.key, payload.lastModified, payload.iv != null,
             ) {
-                val localPath = imageLocalContext?.localFilePath
+                // The sent copy once the payload has its IV (seeded in the cache, so no download), as everyone else
+                // sees it; the local file only stands in while the post is still uploading.
+                val localPath = imageLocalContext?.localFilePath?.takeIf { payload.iv == null }
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {

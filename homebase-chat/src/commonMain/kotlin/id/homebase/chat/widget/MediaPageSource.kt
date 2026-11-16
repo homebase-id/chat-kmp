@@ -5,14 +5,11 @@ import id.homebase.chat.services.LocalAttachmentContext
 /**
  * Which image source the full-screen viewer should use for a page.
  *
- * A locally-available original (an image sent this session, held by
- * [LocalAttachmentContext]) is preferred over the remote payload: it renders
- * full-resolution straight from disk with no drive fetch and no decrypt. The
- * remote payload is used when there is no local file but the payload IV decodes,
- * and for an unencrypted file (a public feed post) whose payloads carry no IV at
- * all. On an *encrypted* file a missing IV means the payload isn't ready yet
- * ([Pending], like a still-uploading attachment); an IV that is present but won't
- * decode means the payload is corrupt ([Unavailable]).
+ * The payload, as sent, whenever it can be had: once its IV decodes, or for an unencrypted file (a public feed
+ * post) whose payloads carry no IV at all. The sender's own copy is in the payload cache already (seeded at send),
+ * so it shows what everyone else gets, with no download. Only while a send is still uploading does the local file
+ * picked for it ([LocalAttachmentContext]) stand in. On an *encrypted* file with no local file, a missing IV means
+ * the payload isn't ready yet ([Pending]); an IV that is present but won't decode means it's corrupt ([Unavailable]).
  */
 internal sealed interface MediaPageSource {
     data class LocalFile(val path: String) : MediaPageSource
@@ -25,7 +22,7 @@ internal sealed interface MediaPageSource {
 
 /**
  * Pure decision for [MediaPageSource], extracted from the composable so the
- * local-over-remote precedence (and the pending-vs-corrupt distinction) is
+ * sent-over-local precedence (and the pending-vs-corrupt distinction) is
  * unit-testable.
  *
  * A [LocalAttachmentContext.Video] is intentionally ignored here — only an
@@ -45,9 +42,9 @@ internal fun resolveMediaPageSource(
 ): MediaPageSource {
     val localPath = (localContext as? LocalAttachmentContext.Image)?.localFilePath
     return when {
-        localPath != null -> MediaPageSource.LocalFile(localPath)
         decodedIv != null -> MediaPageSource.Remote(decodedIv)
         !isEncrypted -> MediaPageSource.Remote(iv = null) // plaintext post → no IV, not pending
+        localPath != null -> MediaPageSource.LocalFile(localPath)
         rawIvPresent -> MediaPageSource.Unavailable // IV present but won't decode → corrupt
         else -> MediaPageSource.Pending // no IV yet → still uploading / not ready
     }
