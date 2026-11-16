@@ -32,7 +32,7 @@ class GainmapDeviceTest {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.hasGainmap() == true || bytes.decodeToString().contains("hdrgm")
 
     @Test
-    fun theImagePeopleLookAtKeepsTheGainmapAndNothingElseDoes() = runTest {
+    fun atHdAndOriginalTheImagePeopleLookAtKeepsTheGainmapAndNothingElseDoes() = runTest {
         assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
         // Smaller than every final image, so the final is encoded at the source's own size; and one that is resized.
         for ((width, height) in listOf(1600 to 1200, 4000 to 3000)) {
@@ -44,6 +44,12 @@ class GainmapDeviceTest {
                 val viewed = images.finalImage?.bytes ?: images.thumbnails.maxBy { it.pixelWidth }.thumbnailBytes
                 val label = "${width}x$height $setting"
                 val decoded = assertNotNull(BitmapFactory.decodeByteArray(viewed, 0, viewed.size))
+                if (setting == MediaQuality.STANDARD) {
+                    // Standard is for small and fast: everything stays SDR WebP.
+                    assertFalse(decoded.hasGainmap(), "$label: Standard stays SDR")
+                    assertEquals("image/webp", contentTypeFromBytes(viewed), label)
+                    continue
+                }
                 assertTrue(decoded.hasGainmap(), "$label: the viewed image keeps the gain map")
                 assertEquals("image/jpeg", contentTypeFromBytes(viewed), label)
                 // Scaled with the image: a quarter of its size, as the fixture's is.

@@ -81,7 +81,7 @@ private suspend fun mediaImagesFrom(
     val format = contentTypeFromBytes(header)
     val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
-    val media = renderPlanned(source, payloadKey, displayedSize = null) { size ->
+    val media = renderPlanned(source, payloadKey, displayedSize = null, keepsHdr = setting.keepsHdr) { size ->
         val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)
         if (gif) plan.copy(thumbnails = emptyList()) else plan
     }
@@ -99,7 +99,7 @@ private suspend fun createSvgImages(bytes: ByteArray, payloadKey: String, settin
     return try {
         val raster = ImageUtils.rasterizeSvg(bytes, largestThumbnailLongEdge(setting), ImageFormat.PNG, 100)
         openImageSource(raster.bytes).use { source ->
-            renderPlanned(source, payloadKey, natural) { planMediaImages(it, setting, makesFinalImage = false) }
+            renderPlanned(source, payloadKey, natural, keepsHdr = false) { planMediaImages(it, setting, makesFinalImage = false) }
         }
     } catch (e: Exception) {
         if (e is CancellationException) throw e
@@ -111,10 +111,11 @@ private suspend fun renderPlanned(
     source: ImageSource,
     payloadKey: String,
     displayedSize: ImageSize?,
+    keepsHdr: Boolean,
     planFor: (ImageSize) -> MediaImagePlan,
 ): MediaImages {
     var plan: MediaImagePlan? = null
-    val result = renderImages(source) { size -> planFor(size).also { plan = it }.toOutputs() }
+    val result = renderImages(source) { size -> planFor(size).also { plan = it }.toOutputs(keepsHdr) }
     val thumbnailCount = plan!!.thumbnails.size
     return MediaImages(
         displayedSize = displayedSize ?: result.displayedSize,
@@ -124,14 +125,15 @@ private suspend fun renderPlanned(
     )
 }
 
-// The plan's order, which renderPlanned reads back by position: thumbnails, final image, tiny. The image people
-// look at keeps HDR: the final image, or at Original, where viewers never step up to the file, the largest thumbnail.
-private fun MediaImagePlan.toOutputs(): List<ImageOutput> = buildList {
-    val viewed = if (finalImage == null) thumbnails.maxByOrNull { it.width * it.height } else null
+// The plan's order, which renderPlanned reads back by position: thumbnails, final image, tiny. With [keepsHdr], the
+// image people look at keeps HDR: the final image, or at Original, where viewers never step up to the file, the
+// largest thumbnail.
+private fun MediaImagePlan.toOutputs(keepsHdr: Boolean): List<ImageOutput> = buildList {
+    val viewed = if (keepsHdr && finalImage == null) thumbnails.maxByOrNull { it.width * it.height } else null
     thumbnails.forEach {
         add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES, overLimit = OverLimit.SHRINK, rowSize = it.rowSize, keepsHdr = it === viewed))
     }
-    finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE, keepsHdr = true)) }
+    finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE, keepsHdr = keepsHdr)) }
     add(tinyOutput(tiny.width, tiny.height))
 }
 
@@ -220,3 +222,6 @@ private fun getSvgDimensions(svgData: ByteArray): ImageSize? {
         null
     }
 }
+
+// Standard is for small and fast: an HDR copy is 1.5-2x the bytes (MEDIA_BENCHMARKS.md, "HDR photos").
+private val MediaQuality.keepsHdr get() = this != MediaQuality.STANDARD
