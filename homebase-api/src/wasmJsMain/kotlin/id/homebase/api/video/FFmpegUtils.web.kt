@@ -127,9 +127,6 @@ actual object FFmpegUtils {
         return writeCacheBytes("compressed_${inputPath.substringAfterLast('/')}", outBytes)
     }
 
-    actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-        writeCacheBytes("input_$fileName", data)
-
     // ────────────────────────────────────────────────────────────────────────────
     // HLS segmentation + remux.
     //
@@ -230,59 +227,6 @@ actual object FFmpegUtils {
         return playlistPath to segmentPath
     }
 
-    /**
-     * Stream-copy remux of a local (already-decrypted) HLS playlist + its .ts segment(s) into an
-     * MP4. [playlistPath]/[outputPath] are okio paths; the playlist's segment references are
-     * staged into MEMFS under the same names so they resolve there.
-     */
-    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean {
-        val playlistText = readOkioBytes(playlistPath)?.decodeToString() ?: return false
-        val playlistDir = playlistPath.toPath().parent ?: return false
-        val segNames = playlistText.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() && !it.startsWith("#") }
-            .distinct()
-            .toList()
-        if (segNames.isEmpty()) return false
-
-        FFmpegBridge.writeText(MEMFS_REMUX_PLAYLIST, playlistText)
-        for (seg in segNames) {
-            val bytes = readOkioBytes((playlistDir / seg).toString())
-            if (bytes == null) {
-                FFmpegBridge.deleteFile(MEMFS_REMUX_PLAYLIST)
-                for (s in segNames) FFmpegBridge.deleteFile(s)
-                return false
-            }
-            FFmpegBridge.writeFile(seg, bytes)
-        }
-
-        val args = listOf(
-            "-y",
-            "-allowed_extensions", "ALL",
-            "-i", MEMFS_REMUX_PLAYLIST,
-            "-c", "copy",
-            "-bsf:a", "aac_adtstoasc",
-            "-movflags", "+faststart",
-            MEMFS_REMUX_OUTPUT,
-        )
-        val status = FFmpegBridge.exec(args)
-
-        FFmpegBridge.deleteFile(MEMFS_REMUX_PLAYLIST)
-        for (seg in segNames) FFmpegBridge.deleteFile(seg)
-        if (status != 0) {
-            FFmpegBridge.deleteFile(MEMFS_REMUX_OUTPUT)
-            return false
-        }
-
-        val outBytes = FFmpegBridge.readFile(MEMFS_REMUX_OUTPUT)
-        FFmpegBridge.deleteFile(MEMFS_REMUX_OUTPUT)
-        return runCatching {
-            val outPath = outputPath.toPath()
-            outPath.parent?.let { systemFileSystem.createDirectories(it) }
-            systemFileSystem.write(outPath) { write(outBytes) }
-        }.isSuccess
-    }
-
     private var cachedVersion: String? = null
     private var versionProbed = false
 
@@ -332,8 +276,6 @@ actual object FFmpegUtils {
     private const val MEMFS_OUTPUT = "output.mp4"
     private const val MEMFS_HLS_PLAYLIST = "index.m3u8"
     private const val MEMFS_HLS_SEGMENT = "index.ts"
-    private const val MEMFS_REMUX_PLAYLIST = "remux_input.m3u8"
-    private const val MEMFS_REMUX_OUTPUT = "remux_output.mp4"
 }
 
 /**

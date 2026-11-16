@@ -167,11 +167,6 @@ class FFmpegCompressionCommonTest {
         if (input == null) return
         val produced = mutableListOf<String>()
         try {
-            VideoCompressionService.segment(input, onProgress = null)?.let { seg ->
-                produced += seg.playlistPath
-                produced += seg.segmentsPath
-                assertSegmentedVideoMapping("segment", seg)
-            }
             VideoCompressionService.segmentAndEncrypt(
                 inputPath = input,
                 keyHeader = KeyHeader.newRandom16(),

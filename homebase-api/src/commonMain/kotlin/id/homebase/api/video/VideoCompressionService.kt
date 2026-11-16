@@ -1,6 +1,9 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.hls.TsToMp4
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlinx.atomicfu.atomic
@@ -28,7 +31,7 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * Consumers see one generic shape ([VideoCompressor] + [VideoProber]) instead of
  * the low-level [FFmpegUtils] `expect object`. The compressor is per platform
  * ([platformVideoCompressor]): Android compresses with Media3, everything else with
- * [FFmpegVideoCompressor]; probes go to [FFmpegVideoProber].
+ * [FFmpegVideoCompressor]; probes go to [platformVideoProber].
  *
  * `FFmpegUtils` remains the low-level backend and still owns the thumbnail-grab
  * helper (`grabThumbnail`) and the actuals' internal probes.
@@ -41,16 +44,16 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * - **iOS (FFmpegKit):** a job's coroutine-cancellation tears down its own session; if two
  *   heavy jobs overlap, the bookkeeping and scratch dirs (`compressed_<id>.mp4`,
  *   `hls_<id>/`) can collide.
- * - **Android (FFmpegKit):** the engine isn't reentrant, so overlapping sessions can crash the
- *   process. A cancelled session counts until it has really stopped.
+ * - **Android (Media3):** two exports at once compete for the hardware codecs. A cancelled export
+ *   counts until its codecs are released.
  * - **JVM:** parallel transcodes just thrash CPU/memory for no throughput gain.
  *
  * Rather than rely on every caller (the full-screen attachment editor, multi-video send,
- * Moments, Chat) to remember to serialize, this service guards the heavy ops — [compress],
- * [segment], [segmentAndEncrypt], [remuxHlsToMp4] — behind a single [Mutex]: a second call
+ * Moments, Chat) to remember to serialize, this service guards the heavy ops — [compress]
+ * and [segmentAndEncrypt] — behind a single [Mutex]: a second call
  * waits until the first completes (and `withLock` is cancellation-aware, so a waiter that's
  * cancelled unblocks the queue cleanly). The cheap probes ([getDurationMs],
- * [getFfmpegVersion]) and [cacheInputVideo] are unguarded — they're fine to call freely.
+ * [getFfmpegVersion]) are unguarded — they're fine to call freely.
  *
  * Note: this mutex serializes heavy compress/segment ops against *each other*. It does NOT
  * cover [VideoThumbnailService]'s FFmpegKit sessions, which may still run concurrently —
@@ -61,7 +64,7 @@ object VideoCompressionService : VideoCompressor, VideoProber {
 
     // Delegates are `var` only so tests can substitute fakes; production never reassigns them.
     internal var compressor: VideoCompressor = platformVideoCompressor()
-    internal var probe: VideoProber = FFmpegVideoProber
+    internal var probe: VideoProber = platformVideoProber()
 
     /** Serializes the heavy ffmpeg ops so two never run on the shared backend at once. */
     private val heavyOpLock = Mutex()
@@ -114,14 +117,6 @@ object VideoCompressionService : VideoCompressor, VideoProber {
 
     override fun readsInPlace(path: String): Boolean = compressor.readsInPlace(path)
 
-    override suspend fun segment(
-        inputPath: String,
-        onProgress: VideoProgressListener?,
-    ): SegmentedVideo? =
-        heavy {
-            compressor.segment(inputPath, onProgress)
-        }
-
     override suspend fun segmentAndEncrypt(
         inputPath: String,
         keyHeader: KeyHeader,
@@ -131,13 +126,21 @@ object VideoCompressionService : VideoCompressor, VideoProber {
             compressor.segmentAndEncrypt(inputPath, keyHeader, onProgress)
         }
 
-    override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-        heavy {
-            compressor.remuxHlsToMp4(playlistPath, outputPath)
-        }
-
-    override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-        compressor.cacheInputVideo(fileName, data)
+    /**
+     * Copies a decrypted HLS video's `.ts` into an MP4 at [outputPath], without re-encoding, the same way on every
+     * platform. False, logged, when [tsPath] isn't H.264 (and AAC) in MPEG-TS; nothing is left at [outputPath] then.
+     */
+    suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, tsPath: String, outputPath: String): Boolean = try {
+        TsToMp4.remux(fileOps, tsPath, outputPath)
+        true
+    } catch (e: CancellationException) {
+        fileOps.deleteTempFile(outputPath)
+        throw e
+    } catch (e: Exception) {
+        Logger.e(tag = "VideoCompressionService", throwable = e) { "remux of $tsPath failed" }
+        fileOps.deleteTempFile(outputPath)
+        false
+    }
 
     override suspend fun getDurationMs(inputPath: String): Long =
         probe.getDurationMs(inputPath)
@@ -152,3 +155,6 @@ object VideoCompressionService : VideoCompressor, VideoProber {
 
 /** ffmpeg everywhere, except where the platform's own media APIs do the work: Android compresses with Media3. */
 internal expect fun platformVideoCompressor(): VideoCompressor
+
+/** ffmpeg everywhere but Android, which reads headers with its own extractor. */
+internal expect fun platformVideoProber(): VideoProber

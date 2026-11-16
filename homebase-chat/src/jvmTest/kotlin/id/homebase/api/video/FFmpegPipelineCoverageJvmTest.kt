@@ -102,12 +102,12 @@ class FFmpegPipelineCoverageJvmTest {
             )
             assertTrue(File(segmentPath).length() > 0L, "segment .ts must have bytes")
 
-            // 7. Round-trip remuxHlsToMp4 → duration matches input ±500ms.
+            // 7. ffmpeg's own TS (as older messages carry) back to MP4 with the shared remux: duration matches ±500ms.
             val remuxedFile = File.createTempFile("remuxed_", ".mp4").also { it.delete() }
             val remuxedPath = remuxedFile.absolutePath
             cleanup += remuxedPath
-            val remuxResult = FFmpegUtils.remuxHlsToMp4(playlistPath, remuxedPath)
-            assertTrue(remuxResult, "remuxHlsToMp4 must succeed on the segmented fixture")
+            val fileOps = id.homebase.api.file.OkioFileOperationsProvider(okio.FileSystem.SYSTEM, remuxedFile.parent)
+            assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, segmentPath, remuxedPath), "ffmpeg's TS must remux")
             val remuxDuration = FFmpegUtils.getDurationMs(remuxedPath)
             assertTrue(
                 abs(remuxDuration - inputDuration) <= 500L,

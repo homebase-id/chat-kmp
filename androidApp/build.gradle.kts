@@ -158,7 +158,6 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.sqldelight.android.driver)
-    implementation(libs.smart.exception.java)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.filekit.dialogs.compose)
     implementation(libs.richeditor.compose)

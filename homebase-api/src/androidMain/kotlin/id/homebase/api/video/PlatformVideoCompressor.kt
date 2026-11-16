@@ -2,15 +2,13 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.file.withResolvedFile
 import id.homebase.api.video.hls.HlsSegmenter
-import java.io.File
 import kotlinx.coroutines.CancellationException
 
 internal actual fun platformVideoCompressor(): VideoCompressor = AndroidVideoCompressor
 
-/** Media3 compresses and our segmenter cuts HLS; the rest stays on ffmpeg for now. */
-internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompressor {
+/** Media3 compresses and our segmenter cuts HLS. A failure fails the send: there is no second engine. */
+internal object AndroidVideoCompressor : VideoCompressor {
     private const val TAG = "AndroidVideoCompressor"
 
     private val fileOps get() = Media3VideoCompressor.fileOps
@@ -30,11 +28,8 @@ internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompresso
         val output = try {
             Media3VideoCompressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, keepMetadata)
         } catch (e: VideoCompressionFailedException) {
-            if (!fileOps.sourceExists(inputPath)) throw e
-            // Until ffmpeg leaves Android: a Media3 failure is logged loudly, and ffmpeg still delivers,
-            // at the cost of a second pass over the source, and of a cache copy of a content:// pick.
-            Logger.e(tag = TAG, throwable = e) { "Media3 compress failed; using ffmpeg" }
-            return fileOps.withResolvedFile(inputPath) { FFmpegVideoCompressor.compress(it, onProgress, trimStartMs, trimEndMs, quality, keepMetadata) }
+            Logger.e(tag = TAG, throwable = e) { "Media3 compress failed: ${e.message}" }
+            throw e
         }
         onProgress?.invoke(1f)
         return output
@@ -50,14 +45,14 @@ internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompresso
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.e(tag = TAG, throwable = e) { "HLS segmenting failed; using ffmpeg" }
-            null
+            Logger.e(tag = TAG, throwable = e) { "HLS segmenting failed" }
+            throw e
         }
-        if (segmented != null) {
-            onProgress?.invoke(1f)
-            return segmented
+        if (segmented == null) {
+            Logger.e(tag = TAG) { "HLS segmenting: $inputPath isn't an MP4 of H.264 and AAC" }
+            return null
         }
-        // A rotated video (from the ffmpeg fallback), or one that isn't H.264 and AAC: ffmpeg turns and cuts it.
-        return FFmpegVideoCompressor.segmentAndEncrypt(inputPath, keyHeader, onProgress)
+        onProgress?.invoke(1f)
+        return segmented
     }
 }
