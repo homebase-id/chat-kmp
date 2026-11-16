@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 
 private val secureHolds = WindowHolds(
-    apply = { (attributes.flags and FLAG_SECURE != 0).also { addFlags(FLAG_SECURE) } },
+    set = { (attributes.flags and FLAG_SECURE != 0).also { addFlags(FLAG_SECURE) } },
     restore = { wasSecure -> if (!wasSecure) clearFlags(FLAG_SECURE) },
 )
 

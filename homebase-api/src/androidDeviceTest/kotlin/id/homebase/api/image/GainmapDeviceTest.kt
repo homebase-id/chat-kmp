@@ -39,7 +39,7 @@ class GainmapDeviceTest {
             val source = ultraHdrJpeg(width, height)
             assertTrue(hasGainmap(source), "the fixture is Ultra HDR")
             for (setting in listOf(MediaQuality.STANDARD, MediaQuality.HD, MediaQuality.ORIGINAL)) {
-                val images = createMediaImages(source, "k", setting)
+                val images = createMediaImages(source, "k", setting, hdr = true)
                 // The final image, or at Original, where viewers never step up to the file, the largest thumbnail.
                 val viewed = images.finalImage?.bytes ?: images.thumbnails.maxBy { it.pixelWidth }.thumbnailBytes
                 val label = "${width}x$height $setting"
@@ -57,7 +57,19 @@ class GainmapDeviceTest {
                 val others = images.thumbnails.map { it.thumbnailBytes }.filter { it !== viewed }
                 for (bytes in others) assertFalse(hasGainmap(bytes), "$label: a smaller thumbnail stays SDR WebP")
             }
+            val sticker = createMediaImages(source, "k", MediaQuality.HD, allowFinalImage = false, hdr = true)
+            assertTrue(sticker.thumbnails.none { hasGainmap(it.thumbnailBytes) }, "a sticker stays SDR")
+            // Contact photos, video posters and PDF pages: not the photo people view.
+            assertTrue(createThumbnails(source, "k").third.none { hasGainmap(it.thumbnailBytes) }, "other thumbnails stay SDR")
         }
+    }
+
+    @Test
+    fun addingExifToAnUltraHdrJpegKeepsItsGainmap() {
+        assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        val tiff = byteArrayOf(0x4D, 0x4D, 0, 0x2A, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0)
+        val withExif = ImageMetadataScrubber.withExif(ultraHdrJpeg(1600, 1200), tiff)
+        assertTrue(BitmapFactory.decodeByteArray(withExif, 0, withExif.size)!!.hasGainmap())
     }
 
     @Test

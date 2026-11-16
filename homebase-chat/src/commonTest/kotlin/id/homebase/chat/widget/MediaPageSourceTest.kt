@@ -18,6 +18,7 @@ class MediaPageSourceTest {
         val result = resolveMediaPageSource(imageContext("/tmp/photo.jpg"), rawIvPresent = true, decodedIv = iv)
         assertIs<MediaPageSource.Remote>(result)
         assertContentEquals(iv, result.iv)
+        assertEquals("/tmp/photo.jpg", result.standIn, "shown if the sent copy can't be loaded yet")
     }
 
     @Test

@@ -148,8 +148,7 @@ internal suspend fun renderFrom(
             val scaled = scaleDown(current, output.width, output.height)
             if (scaled !== current) current.close()
             current = scaled
-            rendered[index] = when {
-                output.keepsHdr && current.hasGainmap -> encodeWithin(current, output.copy(format = ImageFormat.JPEG))
+            rendered[index] = hdrWithinLimit(current, output) ?: when {
                 output.keepColorProfile -> encodeWithin(current, output)
                 else -> encodeInSrgb(current, output)
             }
@@ -199,6 +198,13 @@ private suspend fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): R
     } finally {
         if (srgb !== bitmap) srgb.close()
     }
+}
+
+// HDR never costs pixels: a gain-map JPEG over the output's limit makes it the SDR image at full size instead.
+private fun hdrWithinLimit(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage? {
+    if (!output.keepsHdr || !bitmap.hasGainmap) return null
+    val bytes = bitmap.encode(ImageFormat.JPEG, output.quality)
+    return RenderedImage(bytes, bitmap.width, bitmap.height, output.quality, ImageFormat.JPEG).takeIf { bytes.size <= output.maxBytes }
 }
 
 private suspend fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage = when (output.overLimit) {

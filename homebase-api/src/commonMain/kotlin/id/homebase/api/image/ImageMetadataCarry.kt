@@ -18,23 +18,7 @@ fun withSourceMetadata(finalImage: ByteArray, format: ImageFormat, source: ByteA
         Logger.w(tag = "ImageMetadataCarry") { "source EXIF couldn't be read; the final image goes without" }
         return finalImage
     }
-    return if (format == ImageFormat.JPEG) JpegMetadata.embed(finalImage, exif) else WebpMetadata.embed(finalImage, exif, width, height)
-}
-
-internal object JpegMetadata {
-    /**
-     * [jpeg] with an APP1 Exif segment holding [tiff] right after SOI. In front of everything, so an Ultra HDR
-     * file's MPF offsets, which count from the MPF segment itself, still find the gain map.
-     */
-    fun embed(jpeg: ByteArray, tiff: ByteArray): ByteArray {
-        if (tiff.size + 8 > 0xFFFF) return jpeg
-        val segment = ImageMetadataScrubber.exifApp1(tiff)
-        return ByteArray(jpeg.size + segment.size).also { out ->
-            jpeg.copyInto(out, 0, 0, 2)
-            segment.copyInto(out, 2)
-            jpeg.copyInto(out, 2 + segment.size, 2)
-        }
-    }
+    return if (format == ImageFormat.JPEG) ImageMetadataScrubber.withExif(finalImage, exif) else WebpMetadata.embed(finalImage, exif, width, height)
 }
 
 internal object ExifTiff {

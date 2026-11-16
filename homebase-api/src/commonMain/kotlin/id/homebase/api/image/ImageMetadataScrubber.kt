@@ -366,8 +366,33 @@ object ImageMetadataScrubber {
 
     private fun minimalExifApp1(orientation: Int): ByteArray = exifApp1(minimalExifTiff(orientation))
 
-    /** [tiff] wrapped as a JPEG APP1 segment, with the Exif identifier prefix. */
-    internal fun exifApp1(tiff: ByteArray): ByteArray = app1(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + tiff)
+    /**
+     * [jpeg] with an Exif APP1 holding [tiff] after SOI and any JFIF, and its MPF index (an Ultra HDR file's) told the
+     * primary image grew. Unchanged when it isn't a JPEG or [tiff] can't fit one segment.
+     */
+    internal fun withExif(jpeg: ByteArray, tiff: ByteArray): ByteArray {
+        if (!isJpeg(jpeg) || tiff.size + 8 > 0xFFFF) return jpeg
+        val exif = exifApp1(tiff)
+        var at = 2
+        var mpf: Piece.Span? = null
+        walkJpegSegments(jpeg) { marker, payload, end ->
+            if (marker == MARKER_APP0 && payload == 6) at = end
+            if (marker == MARKER_APP2 && startsWith(jpeg, payload, end, MPF_HEADER)) mpf = Piece.Span(payload - 4, end)
+            mpf == null
+        }
+        val index = mpf?.takeIf { it.from >= at }
+        val pieces = if (index == null) {
+            listOf(Piece.Span(0, at), Piece.Literal(exif), Piece.Span(at, jpeg.size))
+        } else {
+            listOf(
+                Piece.Span(0, at), Piece.Literal(exif), Piece.Span(at, index.from),
+                Piece.Literal(movedMpf(jpeg, index, resized = exif.size, resizedAfter = 0)), Piece.Span(index.until, jpeg.size),
+            )
+        }
+        return assemble(pieces, jpeg)
+    }
+
+    private fun exifApp1(tiff: ByteArray): ByteArray = app1(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + tiff)
 
     private fun app1(payload: ByteArray): ByteArray {
         val length = payload.size + 2

@@ -204,8 +204,8 @@ fun MomentMediaItem(
                 imageLocalContext?.localFilePath,
                 driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted,
             ) {
-                // The sent copy whenever it can be read from the cache (seeded at send, so no download), as everyone
-                // else sees it; the local file only stands in while an encrypted post is still uploading.
+                // The sent copy, as everyone else sees it; the local file only while an encrypted post has no IV
+                // yet, or as the stand-in if the sent copy can't be loaded.
                 val localPath = imageLocalContext?.localFilePath?.takeIf { isEncrypted && payload.iv == null }
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
@@ -228,7 +228,7 @@ fun MomentMediaItem(
                         // pinched photo shows real detail, not an upscaled thumb.
                         loadFullPayload = true,
                     )
-                    SubSamplingImageSource.Remote(imageData)
+                    SubSamplingImageSource.Remote(imageData, standIn = imageLocalContext?.localFilePath)
                 }
             }
             ZoomableSubSamplingImage(
@@ -285,7 +285,7 @@ fun MomentMediaItem(
                 )
             } else {
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, isEncrypted) {
+                    remember(driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted) {
                         // A public post's payloads carry no IV: request the plain bytes, never an empty Box.
                         val payloadIv = payload.iv?.bytes
                         HomebaseImageData.from(
@@ -353,7 +353,7 @@ fun MomentMediaItem(
                     onProgress = { preloadProgress = it },
                 )
             }
-            val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
+            val imageData = remember(driveId, fileId, payload.key, payload.lastModified, perPayloadKeyHeader, isEncrypted) {
                 HomebaseImageData.from(
                     driveId = driveId,
                     fileId = fileId,

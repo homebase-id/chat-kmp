@@ -9,10 +9,10 @@ import androidx.compose.ui.window.DialogWindowProvider
 import java.util.WeakHashMap
 
 /**
- * A window setting several composables can hold at once: the first hold applies it and keeps what [apply] returns
+ * A window setting several composables can hold at once: the first hold applies it and keeps what [set] returns
  * (the state before), and the last release hands that to [restore].
  */
-internal class WindowHolds<T>(private val apply: Window.() -> T, private val restore: Window.(T) -> Unit) {
+internal class WindowHolds<T>(private val set: Window.() -> T, private val restore: Window.(T) -> Unit) {
     private class Hold<T>(val before: T) {
         var holders = 0
     }
@@ -21,7 +21,7 @@ internal class WindowHolds<T>(private val apply: Window.() -> T, private val res
     private val holds = WeakHashMap<Window, Hold<T>>()
 
     fun hold(window: Window) {
-        holds.getOrPut(window) { Hold(window.apply()) }.holders++
+        holds.getOrPut(window) { Hold(window.set()) }.holders++
     }
 
     fun release(window: Window) {

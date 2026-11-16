@@ -116,10 +116,11 @@ fun ZoomableSubSamplingImage(
 
     val platformContext = LocalPlatformContext.current
     val windowSize = LocalWindowInfo.current.containerSize
+    var remoteFailed by remember(source) { mutableStateOf(false) }
     val model: Any? = when (source) {
         is SubSamplingImageSource.Remote -> {
             val imageData = source.imageData
-            remember(imageData, platformContext, windowSize) {
+            val request = remember(imageData, platformContext, windowSize) {
                 if (windowSize.width > 0 && windowSize.height > 0) {
                     // Pin the base decode to the window size so a press-time
                     // prefetch and this request share one Coil memory-cache entry
@@ -131,6 +132,7 @@ fun ZoomableSubSamplingImage(
                     imageData
                 }
             }
+            source.standIn?.takeIf { remoteFailed } ?: request
         }
         is SubSamplingImageSource.LocalFile -> source.filePath
         is SubSamplingImageSource.Avatar -> rememberPublicAvatarUrl(source.odinId)
@@ -201,7 +203,13 @@ fun ZoomableSubSamplingImage(
                 imageLoaded = true
                 onLoaded?.invoke()
             },
-            onError = onError?.let { callback -> { _ -> callback() } },
+            onError = { _ ->
+                if (source is SubSamplingImageSource.Remote && source.standIn != null && !remoteFailed) {
+                    remoteFailed = true
+                } else {
+                    onError?.invoke()
+                }
+            },
             onTap = onTap?.let { callback ->
                 { _: Offset ->
                     if (onDoubleTap == null) {

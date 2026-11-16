@@ -66,7 +66,6 @@ class MediaPageSourcePlaintextTest {
 
     @Test
     fun `an unencrypted file shows the sent copy even with a local original`() {
-        // Its seeded cache entry is plain bytes, readable from the moment it's sent.
         val result = resolveMediaPageSource(
             localContext = imageContext("/tmp/photo.jpg"),
             rawIvPresent = false,
@@ -75,5 +74,6 @@ class MediaPageSourcePlaintextTest {
         )
         assertIs<MediaPageSource.Remote>(result)
         assertEquals(null, result.iv)
+        assertEquals("/tmp/photo.jpg", result.standIn, "a plaintext upload isn't cached, so this shows until it's on the server")
     }
 }

@@ -56,7 +56,7 @@ object UploadImages {
         readMetadata: Boolean = false,
     ): ThumbnailResult {
         val media = try {
-            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker, readMetadata = readMetadata)
+            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker, readMetadata = readMetadata, hdr = true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

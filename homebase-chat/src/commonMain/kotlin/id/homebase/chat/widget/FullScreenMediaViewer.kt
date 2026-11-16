@@ -169,8 +169,6 @@ fun FullScreenMediaViewer(
                 payload.iv?.bytes
             }
 
-            // Prefer a locally-available original (an image sent this session)
-            // over a remote fetch + decrypt — same as VaultZoomableImage.
             val localContext by localAttachmentStore.collectContext(data.messageId, payload.key)
 
             when (
@@ -197,7 +195,7 @@ fun FullScreenMediaViewer(
                 }
 
                 is MediaPageSource.Remote -> {
-                    val source = remember(data.driveId, data.fileId, payload.key, resolved.iv) {
+                    val source = remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn) {
                         val imageData = HomebaseImageData.from(
                             driveId = data.driveId,
                             fileId = data.fileId,
@@ -210,7 +208,7 @@ fun FullScreenMediaViewer(
                             remoteOdinId = data.remoteOdinId,
                             globalTransitId = data.globalTransitId,
                         )
-                        SubSamplingImageSource.Remote(imageData)
+                        SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
                     }
                     ZoomableSubSamplingImage(
                         source = source,

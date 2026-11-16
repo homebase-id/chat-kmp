@@ -34,6 +34,9 @@ private fun isSvg(bytes: ByteArray): Boolean {
  *
  * Throws on a raster image the platform can't decode; only a bad SVG returns empty, because
  * receivers gate the image block on a `hasImage` flag and no thumb is better than a stuck outbox.
+ *
+ * With [hdr] (a photo sent as media, not a sticker), the image people look at keeps an HDR gain map at HD and
+ * Original (THUMBNAILS.md, "HDR"). Thumbnails made for anything else stay SDR.
  */
 suspend fun createMediaImages(
     imageBytes: ByteArray,
@@ -41,10 +44,11 @@ suspend fun createMediaImages(
     setting: MediaQuality = MediaQuality.ORIGINAL,
     allowFinalImage: Boolean = true,
     readMetadata: Boolean = false,
+    hdr: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
     if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
     openImageSource(imageBytes).use {
-        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata)
+        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata, hdr)
     }
 }
 
@@ -56,15 +60,16 @@ suspend fun createMediaImages(
     setting: MediaQuality = MediaQuality.ORIGINAL,
     allowFinalImage: Boolean = true,
     readMetadata: Boolean = false,
+    hdr: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
-    suspend fun fromBytes() = createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata)
+    suspend fun fromBytes() = createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata, hdr)
     // Opened first: where it can't be, the header read would cost a whole read of its own (a Photos-library asset).
     val file = openImageFile(path, fileOps) ?: return@withContext fromBytes()
     file.use {
         val header = fileOps.readFileHeaderBytes(path)
         if (isSvg(header) || !ImageFormatDetector.answersIsAnimated(header)) return@withContext fromBytes()
         val byteCount = fileOps.getFileSize(path).takeIf { it > 0 }
-        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, readMetadata)
+        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, readMetadata, hdr)
     }
 }
 
@@ -77,11 +82,13 @@ private suspend fun mediaImagesFrom(
     setting: MediaQuality,
     allowFinalImage: Boolean,
     readMetadata: Boolean,
+    hdr: Boolean,
 ): MediaImages {
     val format = contentTypeFromBytes(header)
     val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
-    val media = renderPlanned(source, payloadKey, displayedSize = null, keepsHdr = setting.keepsHdr) { size ->
+    val keepsHdr = hdr && setting.keepsHdr && !keepsItsFile
+    val media = renderPlanned(source, payloadKey, displayedSize = null, keepsHdr) { size ->
         val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)
         if (gif) plan.copy(thumbnails = emptyList()) else plan
     }

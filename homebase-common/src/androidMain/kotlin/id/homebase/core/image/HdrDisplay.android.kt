@@ -12,7 +12,7 @@ internal actual fun carriesGainmap(image: Image): Boolean =
     Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && (image as? BitmapImage)?.bitmap?.hasGainmap() == true
 
 private val hdrHolds = WindowHolds(
-    apply = { colorMode.also { colorMode = ActivityInfo.COLOR_MODE_HDR } },
+    set = { colorMode.also { colorMode = ActivityInfo.COLOR_MODE_HDR } },
     restore = { modeBefore -> colorMode = modeBefore },
 )
 

@@ -21,7 +21,7 @@ class ImagePipelineTest {
 
         override fun encode(format: ImageFormat, quality: Int): ByteArray {
             log.encodedQualities += quality
-            return ByteArray(log.bytesFor(width, height, quality))
+            return ByteArray(log.bytesFor(width, height, quality) * if (format == ImageFormat.JPEG) log.jpegFactor else 1)
         }
 
         override val isSrgb = true
@@ -47,6 +47,7 @@ class ImagePipelineTest {
         val scales = mutableListOf<Pair<Pair<Int, Int>, Pair<Int, Int>>>()
         val encodedQualities = mutableListOf<Int>()
         var gainmap = false
+        var jpegFactor = 1
     }
 
     private class FakeSource(val width: Int, val height: Int, val log: Log) : ImageSource {
@@ -78,6 +79,11 @@ class ImagePipelineTest {
         val standardLog = Log().apply { gainmap = true }
         renderFrom(FakeSource(4000, 3000, standardLog)) { listOf(output(1600, 1200), output(320, 240)) }
         assertFalse(standardLog.gainmap, "with no HDR output, the gain map goes at decode")
+
+        val overLimit = Log().apply { gainmap = true; jpegFactor = 2 }
+        val capped = renderFrom(FakeSource(4000, 3000, overLimit)) { listOf(output(1600, 1200).copy(keepsHdr = true, maxBytes = 15)) }
+        assertEquals(ImageFormat.WEBP, capped.images.single().format, "an HDR JPEG over the limit becomes the SDR image")
+        assertEquals(1600, capped.images.single().width, "at full size, not shrunk to fit HDR")
 
         val sdr = renderFrom(FakeSource(4000, 3000, Log()), plan = plan).images
         assertEquals(listOf(ImageFormat.WEBP, ImageFormat.WEBP, ImageFormat.WEBP), sdr.map { it.format }, "no gain map, no JPEG")
