@@ -29,17 +29,18 @@ How chat-kmp turns a photo into the images people see. Read this before changing
 12. [Byte limits](#byte-limits)
 13. [Making the pixels](#making-the-pixels)
 14. [Colour](#colour)
-15. [Metadata](#metadata)
-16. [Formats](#formats)
-17. [Where each caller lands](#where-each-caller-lands)
-18. [Showing the images](#showing-the-images)
-19. [Wire format and older clients](#wire-format-and-older-clients)
-20. [Video](#video)
-21. [How others do it](#how-others-do-it)
-22. [Testing](#testing)
-23. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
-24. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
-25. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
+15. [HDR](#hdr)
+16. [Metadata](#metadata)
+17. [Formats](#formats)
+18. [Where each caller lands](#where-each-caller-lands)
+19. [Showing the images](#showing-the-images)
+20. [Wire format and older clients](#wire-format-and-older-clients)
+21. [Video](#video)
+22. [How others do it](#how-others-do-it)
+23. [Testing](#testing)
+24. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
+25. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
+26. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
 
 ## The goal
 
@@ -434,12 +435,10 @@ There's no HDR setting (decided 2026-11-16). Original already promises the exact
 
 **Photos: HDR wherever the file is kept as it is.** An HDR photo (Android's Ultra HDR, iPhone HDR) is an ordinary SDR image plus a gain map, so it shows correctly everywhere, and an HDR screen brightens it. It has none of video's playback problem.
 
-- **Kept as it is:** Photos at Original, and any app at Standard or HD when the source already fits and re-encoding wouldn't save a quarter. The gain map stays.
-- **Kept, metadata stripped** (chat and Moments): an Ultra HDR JPEG declares its gain map in its XMP, so the scrubber rebuilds that XMP with only the gain-map fields (`hdrgm:Version` and the container directory's type, MIME type, length and padding) and drops the rest. The gain map survives; location and camera data don't. iPhone HEIC gain maps are untested.
+- **Kept as it is:** Photos at Original, and any app at Standard or HD when the source already fits (see [Rules for edge cases](#rules-for-edge-cases)). The gain map stays.
+- **Kept, metadata stripped** (chat and Moments): an Ultra HDR JPEG declares its gain map in its XMP, so the scrubber rebuilds that XMP with only the gain-map fields and drops the rest. The gain map survives; location and camera data don't. An iPhone HDR HEIC probably loses its HDR: the scrubber blanks the gain-map image's XMP too, and drops the EXIF MakerNote that holds its headroom. To check on an iPhone.
 - **Re-encoded:** thumbnails, the tiny, and a resized final image are WebP, which has no gain map. They keep the SDR image, so they look right but not HDR-bright.
-- **Tests:**
-  - `GainmapDeviceTest` (Android 14 and later): no thumbnail or final image encoded from an Ultra HDR photo carries a gain map, including a final image made at the source's own size; and a scrubbed Ultra HDR JPEG still decodes with its gain map.
-  - `ImageMetadataScrubberTest`: on every platform, the rebuilt XMP keeps the gain-map declaration and nothing else of the XMP, such as GPS, owner or unknown attributes.
+- **Tests:** `GainmapDeviceTest` (Android 14 and later) and `ImageMetadataScrubberTest` (every platform).
 
 ## Metadata
 

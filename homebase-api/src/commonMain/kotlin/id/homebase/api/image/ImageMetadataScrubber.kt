@@ -212,16 +212,12 @@ object ImageMetadataScrubber {
             }
 
             val gainmapXmp = if (marker == MARKER_APP1) gainmapXmpApp1(src, i + 2, segmentEnd) else null
-            if (gainmapXmp != null) {
-                droppedAnything = true
-                emitOrientation()
-                pieces += Piece.Literal(gainmapXmp)
-            } else if (shouldDropSegment(marker)) {
+            if (gainmapXmp == null && shouldDropSegment(marker)) {
                 droppedAnything = true
             } else {
                 // Re-emitted EXIF belongs after JFIF but before everything else.
                 if (marker != MARKER_APP0) emitOrientation()
-                pieces += Piece.Span(segmentStart, segmentEnd)
+                pieces += if (gainmapXmp != null) Piece.Literal(gainmapXmp).also { droppedAnything = true } else Piece.Span(segmentStart, segmentEnd)
             }
             i = segmentEnd
         }
@@ -306,14 +302,11 @@ object ImageMetadataScrubber {
     )
 
     /** [minimalExifTiff] wrapped as a JPEG APP1 segment, with the Exif identifier prefix. */
-    private fun minimalExifApp1(orientation: Int): ByteArray {
-        val payload =
-            byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + minimalExifTiff(orientation)
+    private fun minimalExifApp1(orientation: Int): ByteArray = app1(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + minimalExifTiff(orientation))
+
+    private fun app1(payload: ByteArray): ByteArray {
         val length = payload.size + 2
-        return byteArrayOf(
-            0xFF.toByte(), MARKER_APP1.toByte(),
-            ((length shr 8) and 0xFF).toByte(), (length and 0xFF).toByte(),
-        ) + payload
+        return byteArrayOf(0xFF.toByte(), MARKER_APP1.toByte(), ((length shr 8) and 0xFF).toByte(), (length and 0xFF).toByte()) + payload
     }
 
     private const val HDRGM_NS = "http://ns.adobe.com/hdr-gain-map/1.0/"
@@ -340,9 +333,7 @@ object ImageMetadataScrubber {
         val xmp = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
             "<rdf:Description rdf:about=\"\" xmlns:hdrgm=\"$HDRGM_NS\" xmlns:Container=\"http://ns.google.com/photos/1.0/container/\" " +
             "xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\" hdrgm:Version=\"$version\">$directory</rdf:Description></rdf:RDF></x:xmpmeta>"
-        val payload = XMP_JPEG_HEADER + xmp.encodeToByteArray()
-        val length = payload.size + 2
-        return byteArrayOf(0xFF.toByte(), MARKER_APP1.toByte(), (length shr 8).toByte(), length.toByte()) + payload
+        return app1(XMP_JPEG_HEADER + xmp.encodeToByteArray())
     }
 
     /* ---------------- WebP ---------------- */

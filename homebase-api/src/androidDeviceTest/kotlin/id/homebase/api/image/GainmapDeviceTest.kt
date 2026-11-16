@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Gainmap
 import android.os.Build
-import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.ByteArrayOutputStream
 import kotlin.test.assertFalse
@@ -14,17 +13,13 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * THUMBNAILS.md, "HDR": every image the pipeline encodes from an Ultra HDR photo is WebP with no gain map. A source
- * kept as its own final image is the file itself, so it keeps its gain map; that choice is made at upload.
- */
+/** THUMBNAILS.md, "HDR". */
 @RunWith(AndroidJUnit4::class)
 class GainmapDeviceTest {
 
-    // Android 14 is where Bitmap carries a gain map and JPEG encoding writes one (Ultra HDR).
     private fun ultraHdrJpeg(width: Int, height: Int): ByteArray {
-        val base = Bitmap.createBitmap(IntArray(width * height) { i -> (0xFF shl 24) or ((i % width) * 255 / width shl 16) or ((i / width) * 255 / height shl 8) or 80 }, width, height, Bitmap.Config.ARGB_8888)
-        val map = Bitmap.createBitmap(IntArray((width / 4) * (height / 4)) { 0xFF808080.toInt() }, width / 4, height / 4, Bitmap.Config.ARGB_8888)
+        val base = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF6699CC.toInt()) }
+        val map = Bitmap.createBitmap(width / 4, height / 4, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF808080.toInt()) }
         base.gainmap = Gainmap(map).apply { setRatioMax(4f, 4f, 4f); setDisplayRatioForFullHdr(4f) }
         return ByteArrayOutputStream().also { base.compress(Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
     }
@@ -44,14 +39,12 @@ class GainmapDeviceTest {
                 val outputs = images.thumbnails.map { "thumbnail ${it.pixelWidth}" to it.thumbnailBytes } +
                     listOfNotNull(images.finalImage?.let { "final image" to it.bytes })
                 for ((name, bytes) in outputs) {
-                    Log.i("Gainmap", "${width}x$height $setting $name: gain map ${hasGainmap(bytes)}")
                     assertFalse(hasGainmap(bytes), "${width}x$height $setting $name")
                 }
             }
         }
     }
 
-    // Chat's Original strips metadata; the gain map must survive it.
     @Test
     fun scrubbingAnUltraHdrJpegKeepsItsGainmap() {
         assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
