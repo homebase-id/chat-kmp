@@ -61,6 +61,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_agent_ui_action_failed
 import id.homebase.resources.chat_agent_ui_action_other
 import id.homebase.resources.chat_agent_ui_action_you
+import id.homebase.resources.chat_agent_ui_choice_at
 import id.homebase.resources.chat_agent_ui_choices_more
 import id.homebase.resources.chat_agent_ui_open_card
 import id.homebase.resources.chat_agent_ui_unparseable
@@ -285,7 +286,7 @@ private fun AgentUiChoicesLine(choices: AgentUiChoices) {
                 stringResource(MR.string.chat_agent_ui_action_other, a.name, a.label)
             }
             Text(
-                "$chose · ${formatMessageTimestamp(a.at)}",
+                stringResource(MR.string.chat_agent_ui_choice_at, chose, formatMessageTimestamp(a.at)),
                 style = MaterialTheme.typography.labelMedium,
                 color = muted,
                 maxLines = 1,
