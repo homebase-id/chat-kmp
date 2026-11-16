@@ -6,6 +6,7 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -17,11 +18,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
-import kotlinx.coroutines.launch
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 @Composable
 fun MediaPager(
@@ -59,7 +59,7 @@ fun Modifier.pagerArrowKeys(state: PagerState): Modifier {
     val layoutDirection = LocalLayoutDirection.current
     return onKeyEvent { event ->
         val step = event.pagerArrowStep(layoutDirection)
-        val target = state.currentPage + step
+        val target = state.targetPage + step
         if (step == 0 || target !in 0 until state.pageCount) return@onKeyEvent false
         scope.launch { state.animateScrollToPage(target) }
         true
