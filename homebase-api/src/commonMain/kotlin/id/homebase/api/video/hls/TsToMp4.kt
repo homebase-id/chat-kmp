@@ -1,7 +1,16 @@
 package id.homebase.api.video.hls
 
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.readU16
 import id.homebase.api.util.ByteBuilder
+import id.homebase.api.video.hls.MpegTs.AAC_FRAME
+import id.homebase.api.video.hls.MpegTs.NAL_AUD
+import id.homebase.api.video.hls.MpegTs.NAL_IDR
+import id.homebase.api.video.hls.MpegTs.NAL_PPS
+import id.homebase.api.video.hls.MpegTs.NAL_SPS
+import id.homebase.api.video.hls.MpegTs.PACKET
+import id.homebase.api.video.hls.MpegTs.STREAM_AAC_ADTS
+import id.homebase.api.video.hls.MpegTs.STREAM_H264
 import kotlinx.coroutines.flow.flow
 
 /**
@@ -17,16 +26,11 @@ internal object TsToMp4 {
         fileOps.writeStream(outputPath, flow {
             emit(header)
             val out = ByteBuilder(CHUNK)
-            var held = 0
             demux(fileOps, tsPath, withData = true) { sample ->
                 out.add(sample.data)
-                held += sample.data.size
-                if (held >= CHUNK) {
-                    emit(out.take())
-                    held = 0
-                }
+                if (out.size >= CHUNK) emit(out.take())
             }
-            if (held > 0) emit(out.take())
+            if (out.size > 0) emit(out.take())
         })
     }
 
@@ -59,6 +63,7 @@ internal class TsDemuxer(private val withData: Boolean = true) {
     private val audioPes = ByteBuilder(64 * 1024)
     private var videoPesOpen = false
     private var audioPesOpen = false
+    private val sample = ByteBuilder(1024 * 1024)
     private val carry = ByteArray(PACKET)
     private var carried = 0
     private val ready = mutableListOf<TsSample>()
@@ -84,8 +89,8 @@ internal class TsDemuxer(private val withData: Boolean = true) {
     }
 
     fun finish(): List<TsSample> {
-        if (videoPesOpen) video(videoPes.take())
-        if (audioPesOpen) audio(audioPes.take())
+        if (videoPesOpen) videoPes.drain(::video)
+        if (audioPesOpen) audioPes.drain(::audio)
         videoPesOpen = false
         audioPesOpen = false
         return take()
@@ -96,25 +101,25 @@ internal class TsDemuxer(private val withData: Boolean = true) {
     private fun packet(b: ByteArray, at: Int) {
         check(b[at].toInt() == 0x47) { "lost TS sync" }
         val start = b[at + 1].toInt() and 0x40 != 0
-        val pid = ((b[at + 1].toInt() and 0x1F) shl 8) or (b[at + 2].toInt() and 0xFF)
+        val pid = readU16(b, at + 1, little = false) and 0x1FFF
         val control = (b[at + 3].toInt() shr 4) and 3
         var p = at + 4
         if (control == 2 || control == 3) p += 1 + (b[p].toInt() and 0xFF)
-        if (control == 0 || control == 2 || p >= at + PACKET) return
         val end = at + PACKET
+        if (control == 0 || control == 2 || p >= end) return
         when (pid) {
             0 -> if (start) pat(b, p + 1 + (b[p].toInt() and 0xFF), end)
             pmtPid -> if (start) pmt(b, p + 1 + (b[p].toInt() and 0xFF), end)
             videoPid -> {
                 if (start) {
-                    if (videoPesOpen) video(videoPes.take())
+                    if (videoPesOpen) videoPes.drain(::video)
                     videoPesOpen = true
                 }
                 if (videoPesOpen) videoPes.add(b, p, end - p)
             }
             audioPid -> {
                 if (start) {
-                    if (audioPesOpen) audio(audioPes.take())
+                    if (audioPesOpen) audioPes.drain(::audio)
                     audioPesOpen = true
                 }
                 if (audioPesOpen) audioPes.add(b, p, end - p)
@@ -122,13 +127,14 @@ internal class TsDemuxer(private val withData: Boolean = true) {
         }
     }
 
+    private fun sectionEnd(b: ByteArray, s: Int, end: Int) = minOf(end, s + 3 + (readU16(b, s + 1, little = false) and 0x0FFF)) - 4
+
     private fun pat(b: ByteArray, s: Int, end: Int) {
-        val sectionEnd = minOf(end, s + 3 + (((b[s + 1].toInt() and 0x0F) shl 8) or (b[s + 2].toInt() and 0xFF))) - 4
+        val last = sectionEnd(b, s, end)
         var p = s + 8
-        while (p + 4 <= sectionEnd) {
-            val program = ((b[p].toInt() and 0xFF) shl 8) or (b[p + 1].toInt() and 0xFF)
-            if (program != 0) {
-                pmtPid = ((b[p + 2].toInt() and 0x1F) shl 8) or (b[p + 3].toInt() and 0xFF)
+        while (p + 4 <= last) {
+            if (readU16(b, p, little = false) != 0) {
+                pmtPid = readU16(b, p + 2, little = false) and 0x1FFF
                 return
             }
             p += 4
@@ -136,24 +142,24 @@ internal class TsDemuxer(private val withData: Boolean = true) {
     }
 
     private fun pmt(b: ByteArray, s: Int, end: Int) {
-        val sectionEnd = minOf(end, s + 3 + (((b[s + 1].toInt() and 0x0F) shl 8) or (b[s + 2].toInt() and 0xFF))) - 4
-        var p = s + 12 + (((b[s + 10].toInt() and 0x0F) shl 8) or (b[s + 11].toInt() and 0xFF))
-        while (p + 5 <= sectionEnd) {
+        val last = sectionEnd(b, s, end)
+        var p = s + 12 + (readU16(b, s + 10, little = false) and 0x0FFF)
+        while (p + 5 <= last) {
             val type = b[p].toInt() and 0xFF
-            val pid = ((b[p + 1].toInt() and 0x1F) shl 8) or (b[p + 2].toInt() and 0xFF)
+            val pid = readU16(b, p + 1, little = false) and 0x1FFF
             if (type == STREAM_H264 && videoPid < 0) videoPid = pid
             if (type == STREAM_AAC_ADTS && audioPid < 0) audioPid = pid
-            p += 5 + (((b[p + 3].toInt() and 0x0F) shl 8) or (b[p + 4].toInt() and 0xFF))
+            p += 5 + (readU16(b, p + 3, little = false) and 0x0FFF)
         }
     }
 
     /** The PES header's timestamps and where its payload starts; null when it isn't a PES with a PTS. */
-    private fun pesHeader(pes: ByteArray): Triple<Long, Long, Int>? {
-        if (pes.size < 14 || pes[0].toInt() != 0 || pes[1].toInt() != 0 || pes[2].toInt() != 1) return null
+    private fun pesHeader(pes: ByteArray, size: Int): Triple<Long, Long, Int>? {
+        if (size < 14 || pes[0].toInt() != 0 || pes[1].toInt() != 0 || pes[2].toInt() != 1) return null
         val flags = (pes[7].toInt() shr 6) and 3
         if (flags and 2 == 0) return null
         val pts = timestamp(pes, 9)
-        val dts = if (flags == 3 && pes.size >= 19) timestamp(pes, 14) else pts
+        val dts = if (flags == 3 && size >= 19) timestamp(pes, 14) else pts
         return Triple(pts, dts, 9 + (pes[8].toInt() and 0xFF))
     }
 
@@ -161,42 +167,41 @@ internal class TsDemuxer(private val withData: Boolean = true) {
         (((b[at].toLong() shr 1) and 7) shl 30) or ((b[at + 1].toLong() and 0xFF) shl 22) or
             (((b[at + 2].toLong() and 0xFF) shr 1) shl 15) or ((b[at + 3].toLong() and 0xFF) shl 7) or ((b[at + 4].toLong() and 0xFF) shr 1)
 
-    private fun video(pes: ByteArray) {
-        val (pts, dts, from) = pesHeader(pes) ?: return
-        val out = if (withData) ByteBuilder(pes.size + 64) else null
+    private fun video(pes: ByteArray, end: Int) {
+        val (pts, dts, from) = pesHeader(pes, end) ?: return
         var size = 0
         var isKey = false
         var slices = 0
         var sps: ByteArray? = null
         var pps: ByteArray? = null
-        forEachNal(pes, from) { nalStart, nalEnd ->
-            when (pes[nalStart].toInt() and 0x1F) {
+        forEachNal(pes, from, end) { nalStart, nalEnd ->
+            when (val type = pes[nalStart].toInt() and 0x1F) {
                 NAL_SPS -> if (sps == null) sps = pes.copyOfRange(nalStart, nalEnd)
                 NAL_PPS -> if (pps == null) pps = pes.copyOfRange(nalStart, nalEnd)
                 NAL_AUD -> Unit
                 else -> {
-                    val type = pes[nalStart].toInt() and 0x1F
                     if (type == NAL_IDR) isKey = true
                     if (type in 1..5) slices++
                     val length = nalEnd - nalStart
                     size += 4 + length
-                    if (out != null) {
-                        out.addByte(length ushr 24); out.addByte(length ushr 16); out.addByte(length ushr 8); out.addByte(length)
-                        out.add(pes, nalStart, length)
+                    if (withData) {
+                        sample.addU32(length.toLong())
+                        sample.add(pes, nalStart, length)
                     }
                 }
             }
         }
         if (avc == null && sps != null && pps != null) avc = Mp4Track.Avc(4, listOf(sps!!), listOf(pps!!))
-        if (slices > 0 && avc != null) ready += TsSample(true, dts, pts, isKey, size, out?.take() ?: EMPTY)
+        val data = if (withData) sample.take() else EMPTY
+        if (slices > 0 && avc != null) ready += TsSample(true, dts, pts, isKey, size, data)
     }
 
     // Annex B: NALs after 00 00 01 start codes; the zero before a 4-byte start code belongs to no NAL. A byte over 1
     // can't end a start code at any of the three positions it would sit in, so the scan steps three at a time past it.
-    private inline fun forEachNal(b: ByteArray, from: Int, block: (start: Int, end: Int) -> Unit) {
+    private inline fun forEachNal(b: ByteArray, from: Int, end: Int, block: (start: Int, end: Int) -> Unit) {
         var start = -1
         var i = from
-        while (i + 2 < b.size) {
+        while (i + 2 < end) {
             val c = b[i + 2].toInt() and 0xFF
             if (c > 1) {
                 i += 3
@@ -208,7 +213,7 @@ internal class TsDemuxer(private val withData: Boolean = true) {
                 i++
             }
         }
-        if (start in 0 until b.size) block(start, trimZeros(b, start, b.size))
+        if (start in 0 until end) block(start, trimZeros(b, start, end))
     }
 
     private fun trimZeros(b: ByteArray, start: Int, end: Int): Int {
@@ -217,37 +222,29 @@ internal class TsDemuxer(private val withData: Boolean = true) {
         return e
     }
 
-    private fun audio(pes: ByteArray) {
-        val (pts, _, from) = pesHeader(pes) ?: return
+    private fun audio(pes: ByteArray, end: Int) {
+        val (pts, _, from) = pesHeader(pes, end) ?: return
         var at = from
         var frame = 0
-        while (at + 7 <= pes.size) {
+        while (at + 7 <= end) {
             if ((pes[at].toInt() and 0xFF) != 0xFF || (pes[at + 1].toInt() and 0xF0) != 0xF0) return
             val headerSize = if (pes[at + 1].toInt() and 1 != 0) 7 else 9
             val length = ((pes[at + 3].toInt() and 3) shl 11) or ((pes[at + 4].toInt() and 0xFF) shl 3) or ((pes[at + 5].toInt() and 0xFF) shr 5)
-            if (length < headerSize || at + length > pes.size) return
+            if (length < headerSize || at + length > end) return
             val track = aac ?: Mp4Track.Aac(
                 profile = (pes[at + 2].toInt() shr 6) and 3,
                 sampleRateIndex = (pes[at + 2].toInt() shr 2) and 0xF,
                 channels = ((pes[at + 2].toInt() and 1) shl 2) or ((pes[at + 3].toInt() shr 6) and 3),
-            ).also { aac = it }
-            val t = pts + frame * AAC_FRAME * 90_000L / SAMPLE_RATES[track.sampleRateIndex]
-            ready += TsSample(false, t, t, true, length - headerSize, if (withData) pes.copyOfRange(at + headerSize, at + length) else EMPTY)
+            ).takeIf { it.sampleRateIndex < Mp4Track.Aac.SAMPLE_RATES.size }?.also { aac = it } ?: return
+            val t = pts + frame * AAC_FRAME * 90_000L / track.sampleRate
+            val data = if (withData) pes.copyOfRange(at + headerSize, at + length) else EMPTY
+            ready += TsSample(false, t, t, true, length - headerSize, data)
             frame++
             at += length
         }
     }
 
-    companion object {
-        const val PACKET = 188
-        private val EMPTY = ByteArray(0)
-        const val AAC_FRAME = 1024
-        val SAMPLE_RATES = intArrayOf(96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350, 48000, 48000, 48000)
-        private const val STREAM_H264 = 0x1B
-        private const val STREAM_AAC_ADTS = 0x0F
-        private const val NAL_IDR = 5
-        private const val NAL_SPS = 7
-        private const val NAL_PPS = 8
-        private const val NAL_AUD = 9
+    private companion object {
+        val EMPTY = ByteArray(0)
     }
 }

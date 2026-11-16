@@ -1,18 +1,19 @@
 package id.homebase.api.video.hls
 
-/** The samples [TsToMp4] will write, in order, and the `ftyp` + `moov` + `mdat` header that indexes them. */
-internal class SampleTable {
-    private class Entry(val video: Boolean, val size: Int, val dts: Long, val pts: Long, val isKey: Boolean)
+import id.homebase.api.util.ByteBuilder
+import id.homebase.api.video.hls.MpegTs.AAC_FRAME
 
-    private val entries = ArrayList<Entry>()
+/** The samples [TsToMp4] will write, in order (sizes only), and the `ftyp` + `moov` + `mdat` header that indexes them. */
+internal class SampleTable {
+    private val entries = ArrayList<TsSample>()
 
     fun add(sample: TsSample) {
-        entries += Entry(sample.video, sample.size, sample.dts, sample.pts, sample.isKey)
+        entries += sample
     }
 
     fun header(avc: Mp4Track.Avc, aac: Mp4Track.Aac?): ByteArray {
         val video = entries.filter { it.video }
-        val audio = if (aac == null) emptyList() else entries.filter { !it.video }
+        val audio = entries.filter { !it.video }
         check(video.isNotEmpty()) { "no H.264 frames" }
         // Tracks line up by when their first sample shows, not when it decodes.
         val base = minOf(video.first().pts, audio.firstOrNull()?.pts ?: Long.MAX_VALUE)
@@ -20,23 +21,22 @@ internal class SampleTable {
         val ftyp = Boxes().apply {
             box("ftyp") { type("isom"); u32(0x200); type("isom"); type("iso2"); type("avc1"); type("mp41") }
         }.bytes()
-        val mdatBytes = entries.sumOf { if (it.video || aac != null) it.size.toLong() else 0L }
+        val mdatBytes = entries.sumOf { it.size.toLong() }
         val mdatHeader = if (mdatBytes + 8 > 0xFFFFFFFFL) 16 else 8
         // The offsets depend on the moov's size, which doesn't depend on their values: build it twice.
-        var moov = moov(video, audio, avc, aac, width, height, base, LongArray(video.size), LongArray(audio.size), wide = false)
-        val wide = ftyp.size + moov.size + mdatHeader + mdatBytes > 0xFFFFFFFFL
-        repeat(2) {
-            var at = (ftyp.size + moov.size + mdatHeader).toLong()
-            val videoOffsets = LongArray(video.size)
-            val audioOffsets = LongArray(audio.size)
-            var v = 0
-            var a = 0
-            for (e in entries) {
-                if (e.video) videoOffsets[v++] = at else if (aac != null) audioOffsets[a++] = at else continue
-                at += e.size
-            }
-            moov = moov(video, audio, avc, aac, width, height, base, videoOffsets, audioOffsets, wide)
+        val placeholder = moov(video, audio, avc, aac, width, height, base, LongArray(video.size), LongArray(audio.size), wide = false)
+        val wide = ftyp.size + placeholder.size + mdatHeader + mdatBytes > 0xFFFFFFFFL
+        val first = ftyp.size + placeholder.size + (if (wide) 4L * entries.size else 0L) + mdatHeader
+        val videoOffsets = LongArray(video.size)
+        val audioOffsets = LongArray(audio.size)
+        var at = first
+        var v = 0
+        var a = 0
+        for (e in entries) {
+            if (e.video) videoOffsets[v++] = at else audioOffsets[a++] = at
+            at += e.size
         }
+        val moov = moov(video, audio, avc, aac, width, height, base, videoOffsets, audioOffsets, wide)
         val mdat = Boxes().apply {
             if (mdatHeader == 16) { u32(1); type("mdat"); u64(mdatBytes + 16) } else { u32(mdatBytes + 8); type("mdat") }
         }.bytes()
@@ -44,7 +44,7 @@ internal class SampleTable {
     }
 
     private fun moov(
-        video: List<Entry>, audio: List<Entry>, avc: Mp4Track.Avc, aac: Mp4Track.Aac?, width: Int, height: Int,
+        video: List<TsSample>, audio: List<TsSample>, avc: Mp4Track.Avc, aac: Mp4Track.Aac?, width: Int, height: Int,
         base: Long, videoOffsets: LongArray, audioOffsets: LongArray, wide: Boolean,
     ): ByteArray = Boxes().apply {
         val videoDurations = LongArray(video.size) { i ->
@@ -52,8 +52,8 @@ internal class SampleTable {
         }
         val videoTicks = videoDurations.sum()
         val videoStartMs = (video.first().pts - base) / 90
-        val rate = aac?.let { TsDemuxer.SAMPLE_RATES[it.sampleRateIndex] } ?: 1
-        val audioTicks = audio.size.toLong() * TsDemuxer.AAC_FRAME
+        val rate = aac?.sampleRate ?: 1
+        val audioTicks = audio.size.toLong() * AAC_FRAME
         val audioStartMs = audio.firstOrNull()?.let { (it.pts - base) / 90 } ?: 0
         val movieMs = maxOf(videoStartMs + videoTicks / 90, if (audio.isEmpty()) 0 else audioStartMs + audioTicks * 1000 / rate)
         box("moov") {
@@ -99,7 +99,7 @@ internal class SampleTable {
                             }
                         }
                     }
-                    runs("stts", audio.size) { TsDemuxer.AAC_FRAME.toLong() }
+                    runs("stts", audio.size) { AAC_FRAME.toLong() }
                     chunks(audio.map { it.size }, audioOffsets, wide)
                 }
             }
@@ -159,33 +159,27 @@ internal class SampleTable {
 
 /** A big-endian box writer: [box] patches each box's size in after its body. */
 internal class Boxes {
-    private var b = ByteArray(4096)
-    private var n = 0
+    private val out = ByteBuilder(4096)
 
-    private fun room(k: Int) {
-        if (n + k > b.size) b = b.copyOf(maxOf(b.size * 2, n + k))
-    }
-
-    fun u8(v: Int) { room(1); b[n++] = v.toByte() }
-    fun u16(v: Int) { u8(v shr 8); u8(v) }
+    fun u8(v: Int) = out.addByte(v)
+    fun u16(v: Int) { out.addByte(v shr 8); out.addByte(v) }
     fun u32(v: Int) = u32(v.toLong())
-    fun u32(v: Long) { u8((v shr 24).toInt()); u8((v shr 16).toInt()); u8((v shr 8).toInt()); u8(v.toInt()) }
+    fun u32(v: Long) = out.addU32(v)
     fun u64(v: Long) { u32(v ushr 32); u32(v and 0xFFFFFFFFL) }
-    fun bytes(x: ByteArray) { room(x.size); x.copyInto(b, n); n += x.size }
+    fun bytes(x: ByteArray) = out.add(x)
     fun type(t: String) = t.forEach { u8(it.code) }
 
     fun box(type: String, body: Boxes.() -> Unit) {
-        val at = n
+        val at = out.size
         u32(0)
         type(type)
         body()
-        val size = n - at
-        b[at] = (size shr 24).toByte(); b[at + 1] = (size shr 16).toByte(); b[at + 2] = (size shr 8).toByte(); b[at + 3] = size.toByte()
+        out.setU32(at, (out.size - at).toLong())
     }
 
     fun full(type: String, version: Int, flags: Int, body: Boxes.() -> Unit) = box(type) { u32((version shl 24) or flags); body() }
 
-    fun bytes(): ByteArray = b.copyOf(n)
+    fun bytes(): ByteArray = out.take()
 }
 
 /** The coded frame size an H.264 SPS declares, after cropping; null when it can't be read. */

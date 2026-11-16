@@ -836,10 +836,8 @@ class MomentDetailViewModel(
     }
 
     /**
-     * Decrypt the HLS segment payload, synthesize a local playlist pointing at
-     * it, and remux into an MP4 via stream-copy (no re-encode). Returns
-     * (mp4Path, suggestedName) or null on failure. Mirrors
-     * `MediaDownloadHandler.downloadAndRemuxHlsToMp4`.
+     * Decrypts the HLS segments and copies them into an MP4. Returns (mp4Path, suggestedName) or null on failure.
+     * Mirrors `MediaDownloadHandler.downloadAndRemuxHlsToMp4`.
      */
     private suspend fun downloadAndRemuxHlsToMp4(
         driveId: Uuid,

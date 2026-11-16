@@ -4,6 +4,7 @@ import android.media.MediaCodecInfo.CodecProfileLevel
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.os.Build
 import co.touchlab.kermit.Logger
 import id.homebase.api.ActivityProvider
@@ -16,15 +17,12 @@ internal actual fun platformVideoProber(): VideoProber = AndroidVideoProber
 internal object AndroidVideoProber : VideoProber {
     private const val TAG = "AndroidVideoProber"
 
-    private val fileOps get() = Media3VideoCompressor.fileOps
-
     override suspend fun getDurationMs(inputPath: String): Long = withContext(Dispatchers.IO) {
         val retriever = MediaMetadataRetriever()
         try {
-            if (fileOps.isContentUri(inputPath)) {
-                retriever.setDataSource(ActivityProvider.requireApplicationContext(), android.net.Uri.parse(inputPath))
-            } else {
-                retriever.setDataSource(inputPath)
+            when (val source = inputPath.toAndroidVideoSource()) {
+                is AndroidVideoSource.ContentUri -> retriever.setDataSource(ActivityProvider.requireApplicationContext(), Uri.parse(source.uriString))
+                is AndroidVideoSource.Path -> retriever.setDataSource(source.path)
             }
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
         } catch (e: Exception) {
@@ -41,7 +39,10 @@ internal object AndroidVideoProber : VideoProber {
     override suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
         val extractor = MediaExtractor()
         try {
-            extractor.setDataSource(inputPath)
+            when (val source = inputPath.toAndroidVideoSource()) {
+                is AndroidVideoSource.ContentUri -> extractor.setDataSource(ActivityProvider.requireApplicationContext(), Uri.parse(source.uriString), null)
+                is AndroidVideoSource.Path -> extractor.setDataSource(source.path)
+            }
             val format = (0 until extractor.trackCount).map(extractor::getTrackFormat)
                 .firstOrNull { it.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
                 ?: return@withContext null

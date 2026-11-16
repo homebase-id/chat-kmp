@@ -122,7 +122,7 @@ Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4.
 |---|---|---|---|---|---|
 | Desktop JVM | **ours** (`TsToMp4`, shared Kotlin) | **90 ms** | 27.5 MB | all | 2026-11-16 |
 | Desktop | ffmpeg `-c copy -movflags +faststart` | 90 ms | 27.6 MB | all | 2026-11-16 |
-| Pixel 5 (debuggable test app) | **ours** | 865–889 ms | 27.5 MB | **2490 / 2490** | 2026-11-16 |
+| Pixel 5 (debuggable test app) | **ours** | 558–982 ms (first run cold) | 27.5 MB | **2490 / 2490** | 2026-11-16 |
 | Pixel 5 | ffmpeg-kit | 235–349 ms | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | Media3 Transformer, transmux | 5.4 s | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | MediaExtractor + MediaMuxer | 3.4 s | 27.6 MB | 2489 / 2490 | 2026-11-16 |

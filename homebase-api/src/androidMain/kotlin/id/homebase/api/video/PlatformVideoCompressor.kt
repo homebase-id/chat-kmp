@@ -2,17 +2,12 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.video.hls.HlsSegmenter
-import id.homebase.api.video.hls.TsToMp4
-import java.io.File
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 internal actual fun platformVideoCompressor(): VideoCompressor = AndroidVideoCompressor
 
-/** Media3 compresses; our own code cuts HLS and puts a saved video back into an MP4. A failure fails the send: there is no second engine. */
+/** Media3 compresses and our segmenter cuts HLS. A failure fails the send: there is no second engine. */
 internal object AndroidVideoCompressor : VideoCompressor {
     private const val TAG = "AndroidVideoCompressor"
 
@@ -60,5 +55,4 @@ internal object AndroidVideoCompressor : VideoCompressor {
         onProgress?.invoke(1f)
         return segmented
     }
-
 }

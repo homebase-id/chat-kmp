@@ -4,6 +4,8 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.OkioFileOperationsProvider
+import id.homebase.api.video.mp4Boxes
+import id.homebase.api.video.readMoov
 import java.io.File
 import java.nio.file.Files
 import kotlin.random.Random
@@ -48,9 +50,9 @@ class TsToMp4Test {
         TsToMp4.remux(fileOps, ts.absolutePath, out.absolutePath)
 
         val written = out.readBytes()
-        assertEquals(listOf("ftyp", "moov", "mdat"), topLevel(written).map { it.first }, "index up front")
-        val ours = assertNotNull(Mp4Movie.parse(moov(written)))
-        val theirs = assertNotNull(Mp4Movie.parse(moov(source.readBytes())))
+        assertEquals(listOf("ftyp", "moov", "mdat"), mp4Boxes(written, 0, written.size).map { it.type }, "index up front")
+        val ours = assertNotNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, out.absolutePath))))
+        val theirs = assertNotNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, source.absolutePath))))
         val original = source.readBytes()
         for (video in listOf(true, false)) {
             val a = theirs.samples.filter { (it.track is Mp4Track.Avc) == video }
@@ -63,25 +65,6 @@ class TsToMp4Test {
             }
         }
         decodesInFfmpeg(source, out)
-    }
-
-    private fun topLevel(b: ByteArray): List<Pair<String, Long>> = buildList {
-        var at = 0L
-        while (at + 8 <= b.size) {
-            var size = (0..3).fold(0L) { s, i -> (s shl 8) or (b[(at + i).toInt()].toLong() and 0xFF) }
-            if (size == 1L) size = (0..7).fold(0L) { s, i -> (s shl 8) or (b[(at + 8 + i).toInt()].toLong() and 0xFF) }
-            add(b.decodeToString((at + 4).toInt(), (at + 8).toInt()) to size)
-            at += size
-        }
-    }
-
-    private fun moov(b: ByteArray): ByteArray {
-        var at = 0
-        for ((type, size) in topLevel(b)) {
-            if (type == "moov") return b.copyOfRange(at + 8, at + size.toInt())
-            at += size.toInt()
-        }
-        error("no moov")
     }
 
     /** With an ffmpeg on the machine: every decoded frame and every audio packet the same as the source's. */

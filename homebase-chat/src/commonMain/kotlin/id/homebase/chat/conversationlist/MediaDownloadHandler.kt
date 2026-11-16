@@ -642,10 +642,7 @@ internal class MediaDownloadHandler(
         return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
     }
 
-    /**
-     * Decrypts the HLS segment payload + synthesizes a local playlist, then remuxes into an MP4
-     * using stream copy (no re-encoding). Returns (mp4Path, suggestedName) or null on failure.
-     */
+    /** Decrypts the HLS segments and copies them into an MP4. Returns (mp4Path, suggestedName) or null on failure. */
     private suspend fun downloadAndRemuxHlsToMp4(
         fileId: Uuid,
         payloadKey: String,
