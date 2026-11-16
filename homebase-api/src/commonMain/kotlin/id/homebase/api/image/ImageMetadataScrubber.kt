@@ -390,7 +390,7 @@ object ImageMetadataScrubber {
         if (items.isEmpty() || items.size != Regex("<Container:Item\\b").findAll(body).count()) return ""
         val rebuilt = items.map { item ->
             val attributes = LinkedHashMap<String, String>()
-            ITEM_ATTRIBUTE.findAll(item.groupValues[1]).forEach { attributes.putIfAbsent(it.groupValues[1], it.groupValues[3]) }
+            ITEM_ATTRIBUTE.findAll(item.groupValues[1]).forEach { attributes.getOrPut(it.groupValues[1]) { it.groupValues[3] } }
             val semantic = attributes["Semantic"]?.takeIf { it == "Primary" || it == "GainMap" } ?: return ""
             val mime = attributes["Mime"]?.takeIf { it == "image/jpeg" } ?: return ""
             val sizes = listOf("Length", "Padding").mapNotNull { name ->
