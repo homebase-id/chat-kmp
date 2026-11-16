@@ -392,6 +392,12 @@ object ImageMetadataScrubber {
         return assemble(pieces, jpeg)
     }
 
+    /** A JPEG's EXIF orientation (1..8) from as much of its start as holds the EXIF; null when it has none. */
+    internal fun jpegOrientation(header: ByteArray): Int? = if (isJpeg(header)) readJpegOrientation(header) else null
+
+    /** [jpeg] tagged with [orientation], so decoders turn it upright the way they turn its source. */
+    internal fun withOrientation(jpeg: ByteArray, orientation: Int): ByteArray = withExif(jpeg, minimalExifTiff(orientation))
+
     private fun exifApp1(tiff: ByteArray): ByteArray = app1(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + tiff)
 
     private fun app1(payload: ByteArray): ByteArray {

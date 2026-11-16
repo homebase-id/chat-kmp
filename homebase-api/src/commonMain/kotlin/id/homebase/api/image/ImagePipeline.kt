@@ -24,8 +24,8 @@ data class ImageOutput(
     /** The size to fall back to first when over the limit, if this output was enlarged past its row. */
     val rowSize: ImageSize? = null,
     /**
-     * The image people look at: when the source carries an HDR gain map this platform can write, it's a JPEG
-     * with the gain map (Ultra HDR) whatever [format] says, so it shows bright on an HDR screen and as itself elsewhere.
+     * The image people look at: when the run has a source gain map, it's an Ultra HDR JPEG whatever [format] says,
+     * so it shows bright on an HDR screen and as itself elsewhere.
      */
     val keepsHdr: Boolean = false,
 ) {
@@ -82,14 +82,6 @@ internal interface PipelineBitmap : AutoCloseable {
     /** True for sRGB and untagged pixels, whose files need no colour profile. */
     val isSrgb: Boolean
 
-    /**
-     * True when the pixels carry an HDR gain map that [encode] writes into a JPEG. [scaledTo] and [resampledTo]
-     * keep it, scaled with the image; [inSrgb] drops it. False where the platform can't write one.
-     */
-    val hasGainmap: Boolean get() = false
-
-    /** Lets go of the gain map, so the steps after the last HDR output don't scale it. */
-    fun dropGainmap() = Unit
 
     /**
      * A new bitmap at the given size, filtered at least bilinearly, leaving this one open.
@@ -104,6 +96,7 @@ internal interface PipelineBitmap : AutoCloseable {
      */
     suspend fun resampledTo(width: Int, height: Int): PipelineBitmap
 
+    /** The SDR pixels only: a gain map the platform decoder kept is never written (see [HdrGainmap]). */
     fun encode(format: ImageFormat, quality: Int): ByteArray
 
     /** This bitmap's pixels in sRGB: itself if they already are, otherwise a new bitmap, leaving this one open. */
@@ -121,16 +114,36 @@ internal expect fun openImageFile(path: String, fileOps: FileOperationsProvider)
  * keeps the plan's order.
  */
 suspend fun renderImages(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput>): RenderedImages =
-    withContext(Dispatchers.Default) { openImageSource(bytes).use { renderImages(it, plan) } }
+    withContext(Dispatchers.Default) { openImageSource(bytes).use { renderImages(it, plan = plan) } }
 
-internal suspend fun renderImages(source: ImageSource, plan: (ImageSize) -> List<ImageOutput>): RenderedImages {
+internal suspend fun renderImages(source: ImageSource, gainmap: HdrGainmap? = null, plan: (ImageSize) -> List<ImageOutput>): RenderedImages {
     val context = currentCoroutineContext()
-    return renderFrom(source, { context.ensureActive() }, plan)
+    return renderFrom(source, { context.ensureActive() }, gainmap, plan)
+}
+
+/**
+ * The source's HDR gain map, decoded like any image (upright as the source is) and rendered with the output that
+ * [ImageOutput.keepsHdr], then joined to it by [UltraHdr]. Closed with the run.
+ */
+internal class HdrGainmap(val image: ImageSource, val metadata: GainmapMetadata) : AutoCloseable {
+    override fun close() = image.close()
 }
 
 internal suspend fun renderFrom(
     source: ImageSource,
     checkCancelled: () -> Unit = {},
+    gainmap: HdrGainmap? = null,
+    plan: (ImageSize) -> List<ImageOutput>,
+): RenderedImages = try {
+    renderAll(source, checkCancelled, gainmap, plan)
+} finally {
+    gainmap?.close()
+}
+
+private suspend fun renderAll(
+    source: ImageSource,
+    checkCancelled: () -> Unit,
+    gainmap: HdrGainmap?,
     plan: (ImageSize) -> List<ImageOutput>,
 ): RenderedImages {
     val size = source.displayedSize
@@ -139,20 +152,17 @@ internal suspend fun renderFrom(
 
     val largestFirst = outputs.withIndex().sortedByDescending { longEdge(it.value) }
     val rendered = arrayOfNulls<RenderedImage>(outputs.size)
-    var hdrOutputsLeft = outputs.count { it.keepsHdr }
     var current = source.decode(longEdge(largestFirst.first().value))
-    if (hdrOutputsLeft == 0) current.dropGainmap()
     try {
         for ((index, output) in largestFirst) {
             checkCancelled()
             val scaled = scaleDown(current, output.width, output.height)
             if (scaled !== current) current.close()
             current = scaled
-            rendered[index] = hdrWithinLimit(current, output) ?: when {
+            rendered[index] = gainmap?.takeIf { output.keepsHdr }?.let { hdrWithinLimit(current, output, it, size) } ?: when {
                 output.keepColorProfile -> encodeWithin(current, output)
                 else -> encodeInSrgb(current, output)
             }
-            if (output.keepsHdr && --hdrOutputsLeft == 0) current.dropGainmap()
         }
     } finally {
         current.close()
@@ -200,10 +210,17 @@ private suspend fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): R
     }
 }
 
-// HDR never costs pixels: a gain-map JPEG over the output's limit makes it the SDR image at full size instead.
-private fun hdrWithinLimit(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage? {
-    if (!output.keepsHdr || !bitmap.hasGainmap) return null
-    val bytes = bitmap.encode(ImageFormat.JPEG, output.quality)
+// HDR never costs pixels: an Ultra HDR JPEG over the output's limit makes it the SDR image at full size instead.
+// The gain map keeps its share of the source's size, as the camera made it.
+private suspend fun hdrWithinLimit(bitmap: PipelineBitmap, output: ImageOutput, gainmap: HdrGainmap, source: ImageSize): RenderedImage? {
+    val map = gainmap.image.displayedSize
+    val width = max(1, (map.pixelWidth.toLong() * bitmap.width / source.pixelWidth).toInt())
+    val height = max(1, (map.pixelHeight.toLong() * bitmap.height / source.pixelHeight).toInt())
+    val decoded = gainmap.image.decode(max(width, height))
+    val scaled = scaleDown(decoded, width, height)
+    if (scaled !== decoded) decoded.close()
+    val mapJpeg = scaled.use { it.encode(ImageFormat.JPEG, output.quality) }
+    val bytes = UltraHdr.join(bitmap.encode(ImageFormat.JPEG, output.quality), mapJpeg, gainmap.metadata)
     return RenderedImage(bytes, bitmap.width, bitmap.height, output.quality, ImageFormat.JPEG).takeIf { bytes.size <= output.maxBytes }
 }
 

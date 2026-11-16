@@ -37,7 +37,7 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 
 ## How many times a file is read
 
-Full reads of the video per operation, with the code that ships. Header reads (duration, probe, finding the `moov`) and the one frame a poster decodes aren't counted. Keep this table current whenever a change adds or removes a pass.
+Full reads of the file per operation, with the code that ships. Header reads (duration, probe, finding the `moov`) and the one frame a poster decodes aren't counted. Keep this table current whenever a change adds or removes a pass.
 
 | Operation | Android | iOS | Desktop | Web |
 |---|---|---|---|---|
@@ -48,6 +48,7 @@ Full reads of the video per operation, with the code that ships. Header reads (d
 | **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
 | Photos backup at Original | **1** (read once at hand-off) | | | |
 | Saving a received video to the gallery | **2** of the decrypted `.ts` (`TsToMp4`: size the samples, then copy them behind the index) | **2** | **2** | **2** |
+| An HDR photo at HD or Original | the photo is decoded as before; its gain map, the file's tail (a few percent of it), is read **1** more time on its own | same | same | same |
 | Shrinking a GIF sticker | the file is read **1** time into memory, then decoded **2** times per ladder step (palette, then encode), at most 3 steps | same | same | same |
 
 ## Sending a video, end to end

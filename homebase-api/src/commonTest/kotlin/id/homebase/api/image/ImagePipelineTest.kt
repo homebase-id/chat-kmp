@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -21,16 +22,13 @@ class ImagePipelineTest {
 
         override fun encode(format: ImageFormat, quality: Int): ByteArray {
             log.encodedQualities += quality
-            return ByteArray(log.bytesFor(width, height, quality) * if (format == ImageFormat.JPEG) log.jpegFactor else 1)
+            val size = log.bytesFor(width, height, quality)
+            if (format != ImageFormat.JPEG) return ByteArray(size)
+            // Just enough of a JPEG for the Ultra HDR join: SOI, a scan, EOI.
+            return byteArrayOf(-1, -40, -1, -38, 0, 4, 0, 0) + ByteArray(size * log.jpegFactor) + byteArrayOf(-1, -39)
         }
 
         override val isSrgb = true
-
-        override val hasGainmap get() = log.gainmap
-
-        override fun dropGainmap() {
-            log.gainmap = false
-        }
 
         override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
 
@@ -46,8 +44,8 @@ class ImagePipelineTest {
         var failScalesAfter: Int? = null
         val scales = mutableListOf<Pair<Pair<Int, Int>, Pair<Int, Int>>>()
         val encodedQualities = mutableListOf<Int>()
-        var gainmap = false
         var jpegFactor = 1
+        var sourceClosed = false
     }
 
     private class FakeSource(val width: Int, val height: Int, val log: Log) : ImageSource {
@@ -61,32 +59,44 @@ class ImagePipelineTest {
 
         override fun metadata(): ImageMetadata? = null
 
-        override fun close() = Unit
+        override fun close() { log.sourceClosed = true }
     }
 
     private fun output(width: Int, height: Int, quality: Int = 80, maxBytes: Int = 1000, minQuality: Int = 40) =
         ImageOutput(width, height, quality, maxBytes, minQuality = minQuality)
 
+    private val hdrMetadata = GainmapMetadata(listOf(0.0), listOf(2.0), listOf(1.0), listOf(1.0 / 64), listOf(1.0 / 64), 0.0, 2.0)
+
     @Test
-    fun onlyTheImagePeopleLookAtBecomesAJpegWithTheGainmap() = runTest {
-        val plan = { _: ImageSize -> listOf(output(1600, 1200).copy(keepsHdr = true), output(320, 240), output(20, 15)) }
+    fun onlyTheImagePeopleLookAtBecomesUltraHdrWithItsGainmapScaledAlong() = runTest {
+        val plan = { _: ImageSize -> listOf(output(1600, 1200, maxBytes = 10_000).copy(keepsHdr = true), output(320, 240), output(20, 15)) }
+        val mapLog = Log()
 
-        val hdrLog = Log().apply { gainmap = true }
-        val hdr = renderFrom(FakeSource(4000, 3000, hdrLog), plan = plan).images
+        val hdr = renderFrom(FakeSource(4000, 3000, Log()), gainmap = HdrGainmap(FakeSource(1000, 750, mapLog), hdrMetadata), plan = plan).images
+
         assertEquals(listOf(ImageFormat.JPEG, ImageFormat.WEBP, ImageFormat.WEBP), hdr.map { it.format })
-        assertFalse(hdrLog.gainmap, "the smaller steps don't scale a gain map nothing keeps")
+        assertEquals(hdrMetadata, assertNotNull(UltraHdr.gainmapOf(hdr[0].bytes)).metadata)
+        assertEquals(400 to 300, mapLog.scales.last().second, "the gain map keeps its quarter of the image's size")
+        assertTrue(mapLog.sourceClosed)
 
-        val standardLog = Log().apply { gainmap = true }
-        renderFrom(FakeSource(4000, 3000, standardLog)) { listOf(output(1600, 1200), output(320, 240)) }
-        assertFalse(standardLog.gainmap, "with no HDR output, the gain map goes at decode")
+        val noGainmap = renderFrom(FakeSource(4000, 3000, Log()), plan = plan).images
+        assertEquals(listOf(ImageFormat.WEBP, ImageFormat.WEBP, ImageFormat.WEBP), noGainmap.map { it.format }, "no gain map, no JPEG")
+    }
 
-        val overLimit = Log().apply { gainmap = true; jpegFactor = 2 }
-        val capped = renderFrom(FakeSource(4000, 3000, overLimit)) { listOf(output(1600, 1200).copy(keepsHdr = true, maxBytes = 15)) }
-        assertEquals(ImageFormat.WEBP, capped.images.single().format, "an HDR JPEG over the limit becomes the SDR image")
-        assertEquals(1600, capped.images.single().width, "at full size, not shrunk to fit HDR")
+    @Test
+    fun hdrThatGoesOverTheLimitIsTheSdrImageAtFullSize() = runTest {
+        val capped = renderFrom(FakeSource(4000, 3000, Log()), gainmap = HdrGainmap(FakeSource(1000, 750, Log()), hdrMetadata)) {
+            listOf(output(1600, 1200).copy(keepsHdr = true, maxBytes = 15))
+        }.images.single()
+        assertEquals(ImageFormat.WEBP, capped.format)
+        assertEquals(1600, capped.width, "not shrunk to fit HDR")
+    }
 
-        val sdr = renderFrom(FakeSource(4000, 3000, Log()), plan = plan).images
-        assertEquals(listOf(ImageFormat.WEBP, ImageFormat.WEBP, ImageFormat.WEBP), sdr.map { it.format }, "no gain map, no JPEG")
+    @Test
+    fun theGainmapIsClosedEvenWhenNothingIsPlanned() = runTest {
+        val mapLog = Log()
+        renderFrom(FakeSource(4000, 3000, Log()), gainmap = HdrGainmap(FakeSource(1000, 750, mapLog), hdrMetadata)) { emptyList() }
+        assertTrue(mapLog.sourceClosed)
     }
 
     @Test
