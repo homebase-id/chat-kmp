@@ -26,6 +26,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToNewCo
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.ConversationState
+import id.homebase.chat.agentui.foldAgentUiReplies
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.viewonce.ViewOnceActions
@@ -1357,6 +1358,7 @@ class ConversationListViewModel(
                 _messagesUiState.update {
                     it.closeMediaViewer().copy(
                         messages = persistentListOf(),
+                        agentUiReplies = persistentListOf(),
                         isLoadingMessages = false,
                         pinnedMessages = persistentListOf(),
                         currentPinIndex = 0,
@@ -2071,6 +2073,7 @@ class ConversationListViewModel(
 
                             val window = messageState.window
                             val windowMessages = window.messages
+                            var agentUiReplies: List<MessageUiModel> = emptyList()
                             val messagesModels = withContext(Dispatchers.Default) {
                                 // Soft-delete display lives at the SQL layer now (see
                                 // ChatMessageStream.fetchMessages): note-to-self filters
@@ -2079,7 +2082,9 @@ class ConversationListViewModel(
                                 // a just-deleted note-to-self message remains visible as a
                                 // "Deleted File" tombstone briefly and disappears on the
                                 // next visit. Single source of truth.
-                                val messages = windowMessages.filterNot { it.isHiddenByExit(exitedAt) }
+                                // Replies to a loaded agent card show on the card, so they neither take a row nor split the agent's cluster.
+                                val (messages, folded) = foldAgentUiReplies(windowMessages.filterNot { it.isHiddenByExit(exitedAt) })
+                                agentUiReplies = folded
                                 val timezone = TimeZone.currentSystemDefault()
                                 val groupedMessages =
                                     messages.sortedBy { it.userDate }.groupBy { message ->
@@ -2242,6 +2247,7 @@ class ConversationListViewModel(
                                 it.copy(
                                     isLoadingMessages = false,
                                     messages = messagesModels.toPersistentList(),
+                                    agentUiReplies = agentUiReplies.toPersistentList(),
                                     scrollPosition = newScroll
                                         ?: it.scrollPosition?.takeIf { pos -> pos.triggerScroll },
                                     hasOlderMessages = window.hasOlderMessages,
