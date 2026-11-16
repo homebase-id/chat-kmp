@@ -16,6 +16,14 @@ class AgentUiTreeTest {
         assertIs<AgentUiTreeResult.Invalid>(decode(bytes, keys))
     }
 
+    private fun reason(bytes: ByteArray, keys: Set<String> = AgentUiFixtures.imageKeys): String =
+        assertIs<AgentUiTreeResult.Invalid>(decode(bytes, keys)).reason
+
+    private fun assertReason(expected: String, bytes: ByteArray, keys: Set<String> = AgentUiFixtures.imageKeys) {
+        val r = reason(bytes, keys)
+        assertTrue(expected in r, "expected \"$expected\" in \"$r\"")
+    }
+
     private fun col(id: String, vararg kids: String) =
         """{"id":"$id","type":"column","children":[${kids.joinToString(",") { "\"$it\"" }}]}"""
 
@@ -376,5 +384,77 @@ class AgentUiTreeTest {
         assertEquals("", wide.inputs["nets"])
         assertEquals(listOf("send"), wide.overBudgetActions())
         assertTrue(countTree(""","max":3""", opts).overBudgetActions().isEmpty())
+    }
+
+    // Agents fix a refused tree from the reason alone, so it names the node and the field.
+    @Test fun refusal_reasons_name_the_node_and_field() {
+        assertReason(
+            "text node 't1' has no markdown (it has \"text\"; put it in \"markdown\")",
+            tree(col("root", "t1"), """{"id":"t1","type":"text","text":"Networks picked"}"""),
+        )
+        assertReason("unknown node type 'link' (n3) has no fallback", tree(col("root", "n3"), """{"id":"n3","type":"link","url":"x"}"""))
+        assertReason("node 'n3' has no type", tree(col("root", "n3"), """{"id":"n3","label":"x"}"""))
+        assertReason("child 'ghost' of 'root' is not in nodes", tree(col("root", "ghost")))
+        assertReason("card 'root' has no children", tree("""{"id":"root","type":"card","children":[]}"""))
+        assertReason("chip 'c' has no label", tree("""{"id":"c","type":"chip"}""", root = "c"))
+        assertReason("button 'b1' has no label", tree(col("root", "t", "b1"), """{"id":"t","type":"text","markdown":"hi"}""", """{"id":"b1","type":"button","action":{"id":"go"}}"""))
+        assertReason("root 'root' is not in nodes", tree(col("a"), root = "root"))
+        assertReason("nodes[0] has no usable id", tree("""{"type":"text","markdown":"hi"}"""))
+        assertReason("duplicate node id 'a'", tree(col("root", "a"), """{"id":"a","type":"divider"}""", """{"id":"a","type":"divider"}"""))
+        assertReason("node 'c' is referenced twice", tree(col("root", "a", "b"), col("a", "c"), col("b", "c"), """{"id":"c","type":"divider"}"""))
+        assertReason("column 'root' has 51 children, limit 50", tree(col("root", *(1..51).map { "n$it" }.toTypedArray())))
+        assertReason("no root id", """{"nodes":[]}""".encodeToByteArray())
+        assertReason("image 'i0' has no alt", tree(col("root", "i0"), """{"id":"i0","type":"image","payloadKey":"chat_web0"}"""))
+    }
+
+    @Test fun more_than_ten_images_names_the_eleventh() {
+        val keys = (0..9).map { "chat_web$it" }.toSet()
+        val ids = (0..10).map { "i$it" }
+        val bytes = tree(
+            col("root", *ids.toTypedArray()),
+            *ids.mapIndexed { i, id -> """{"id":"$id","type":"image","payloadKey":"chat_web${i % 10}","alt":"a"}""" }.toTypedArray(),
+        )
+        assertReason("image 'i10' is image 11, limit 10", bytes, keys)
+    }
+
+    @Test fun nothing_to_show_lists_at_most_five_problems() {
+        val ids = (1..8).map { "t$it" }
+        val r = reason(tree(col("root", *ids.toTypedArray()), *ids.map { """{"id":"$it","type":"text"}""" }.toTypedArray()))
+        assertTrue(r.startsWith("nothing to show"), r)
+        assertTrue("text node 't5' has no markdown" in r && "t6" !in r && "3 more" in r, r)
+    }
+
+    // Unknown props stay tolerated: older apps must keep showing cards that carry props from a newer schema.
+    @Test fun unknown_props_do_not_refuse_a_tree_that_shows_something() {
+        valid(tree(col("root", "t"), """{"id":"t","type":"text","markdown":"hi","text":"extra","glow":true}"""))
+    }
+
+    @Test fun copy_button_decodes_without_an_action() {
+        val t = valid(tree("""{"id":"root","type":"button","label":"Copy code","style":"tonal","copy":"ABC-123"}"""))
+        val b = assertIs<AgentUiNode.Button>(t.root)
+        assertEquals("ABC-123", b.copy)
+        assertNull(b.action)
+        assertEquals(emptyList(), t.overBudgetActions())
+    }
+
+    @Test fun json_null_copy_or_action_counts_as_absent() {
+        val withNullCopy = assertIs<AgentUiNode.Button>(valid(tree("""{"id":"root","type":"button","label":"Go","copy":null,"action":{"id":"go"}}""")).root)
+        assertNull(withNullCopy.copy)
+        assertEquals("go", withNullCopy.action?.id)
+        val withNullAction = assertIs<AgentUiNode.Button>(valid(tree("""{"id":"root","type":"button","label":"Copy","copy":"x","action":null}""")).root)
+        assertEquals("x", withNullAction.copy)
+        assertNull(withNullAction.action)
+    }
+
+    @Test fun copy_is_capped_and_must_be_a_lone_non_blank_string() {
+        val emoji = "😀"
+        valid(tree("""{"id":"root","type":"button","label":"Copy","copy":"${emoji.repeat(AgentUiLimits.MAX_COPY_CP)}"}"""))
+        assertReason(
+            "button 'root' copy is 2001 code points, limit 2000",
+            tree("""{"id":"root","type":"button","label":"Copy","copy":"${emoji.repeat(AgentUiLimits.MAX_COPY_CP + 1)}"}"""),
+        )
+        assertReason("button 'root' copy must be a non-blank string", tree("""{"id":"root","type":"button","label":"Copy","copy":"  "}"""))
+        assertReason("button 'root' copy must be a non-blank string", tree("""{"id":"root","type":"button","label":"Copy","copy":5}"""))
+        assertReason("button 'root' has both copy and action", tree("""{"id":"root","type":"button","label":"Copy","copy":"x","action":{"id":"go"}}"""))
     }
 }

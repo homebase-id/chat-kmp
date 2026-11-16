@@ -33,7 +33,7 @@ Every number below comes from `AgentUiLimits`, `AgentUiDescriptor`, `AgentUiActi
 | `divider` | Splitting two sections that spacing alone does not separate. | A divider between every block. |
 | `table` | Small tabular data. A column whose cells all look numeric is right-aligned and narrower. | Wide tables: 8 columns is the cap, but 3 or 4 is what fits on a phone. |
 | `progress` | A running job. `value` 0..1, or null while you cannot say. | Progress you never update. Edit the card (bump `rev`) as the job moves. |
-| `button` | Actions. One `filled` primary action, `tonal` or `outlined` secondaries, `destructive` for discard or delete, `text` for minor ones. | Two `filled` buttons. More than three buttons in a row. |
+| `button` | Actions. One `filled` primary action, `tonal` or `outlined` secondaries, `destructive` for discard or delete, `text` for minor ones. A `label` is required. With `copy` instead of `action` it copies text on the device (see below). | Two `filled` buttons. More than three buttons in a row. |
 | `toggle` | An on/off setting, sent with a button (`include`) or on its own (`action`). | A toggle with an `action` for something the person will flip twice: it can be sent once per `rev`. |
 | `textInput` | Short free text (`multiline` for a few lines). Set `maxLength` to what you will accept. | Long documents. A single-line input with an `action` sends on the keyboard's send key. |
 | `select` | One choice out of a few options, shown as chips. With an `action` the pick is sent at once; picking the current option again sends nothing. | Dozens of options (50 is the cap; ten is already a lot of chips). |
@@ -64,6 +64,30 @@ schema a `fallback`.
 
 Tapping Post sends `{"nets":"x,li"}`; with no network picked the button is disabled.
 
+- While a send is in flight the control shows a spinner. Once it is sent, the button settles on a
+  check with its own label, stays disabled for this `rev`, and the card's other actions keep their
+  own once-per-`rev` state. The app also reads your earlier replies in the loaded chat, so a
+  reopened chat still shows the check and never sends the same action twice at one `rev`. You do
+  not need to edit the card just to stop a spinner; reply with a message if that is all you need.
+- The reply shows under the card as a quiet line naming the card ("You chose Keep on “Post plan”",
+  from the header `title`, else the card's first text, else its `fallback`), plus its values when
+  they are short. Tapping it scrolls to the card. Give every card a `title` so replies read well.
+
+### Copy buttons
+
+A button with `copy` copies that text to the reader's clipboard and briefly shows "Copied". It
+never sends an action and never reaches you, and it stays usable after other actions are sent
+and on the sender's own card (but not on a display-only preview). Use it for codes, links and commands the person will paste
+elsewhere.
+
+```json
+{"id":"cp","type":"button","label":"Copy code","style":"tonal","copy":"ABC-123"}
+```
+
+`copy` is a non-blank string of at most 2000 code points, and a button has either `copy` or
+`action`, never both; anything else refuses the tree (copied text is never silently cut).
+Older apps that do not know `copy` show the button disabled.
+
 ## Limits
 
 | What | Limit | Over it |
@@ -83,6 +107,16 @@ Tapping Post sends `{"nets":"x,li"}`; with no network picked the button is disab
 | Select and multiSelect options | 50 | clamped |
 | multiSelect `min`/`max` | 0 to the option count, `min` at most `max` | clamped |
 | Input value, `maxLength` | 1000 code points | clamped |
+| Button `copy` | 2000 code points, non-blank, no `action` | tree invalid |
+
+## When a tree is refused
+
+`AgentUiTree.decode` returns `Invalid(reason)`, and the reason names the node and the field, so you
+can fix the tree from it alone: `text node 't0' has no markdown (it has "text"; put it in
+"markdown")`, `button 'b1' has no label`, `image 'i10' is image 11, limit 10`, `unknown node type
+'link' (n3) has no fallback`, `child 'ghost' of 'root' is not in nodes`. "nothing to show" lists up
+to five such problems. Props the decoder does not know are ignored, never refused, so newer cards
+keep rendering on older apps; a misplaced prop only shows up in a reason when it leaves the node empty.
 
 Inline is better: the card renders on the first frame with no fetch. A short card with a title,
 a paragraph, a few chips and three buttons fits inline with room to spare; long reports and big

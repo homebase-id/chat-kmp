@@ -1,15 +1,23 @@
 package id.homebase.chat.agentui
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
+import id.homebase.api.common.SecureByteArray
+import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -117,5 +125,82 @@ class AgentUiDescriptorTest {
 
     @Test fun an_unreserved_future_kind_is_still_unknown() {
         assertIs<MessageContent.Unknown>(MessageContentParser.parse(999, """{"x":1}"""))
+    }
+
+    @Test fun a_reply_names_its_card_by_title_then_first_text_then_fallback() {
+        assertEquals("Draft", MessageContent.AgentUi(ui()).subject())
+        val tree = AgentUiTree.decode(AgentUiFixtures.draftPostCardBytes(), AgentUiFixtures.imageKeys)
+        assertEquals("Draft post", MessageContent.AgentUi(ui(fallback = "fb", title = null), tree).subject())
+        assertEquals("Post plan for Monday", MessageContent.AgentUi(ui(fallback = "**Post plan** for Monday\nmore", title = null)).subject())
+        assertEquals("x".repeat(60) + "…", MessageContent.AgentUi(ui(fallback = "x".repeat(200), title = null)).subject())
+    }
+
+    @Test fun reply_values_are_shown_only_when_short() {
+        assertNull(action().shortValues())
+        assertEquals("nets: x,li", action(values = mapOf("nets" to "x,li")).shortValues())
+        assertNull(action(values = mapOf("caption" to "y".repeat(80))).shortValues())
+    }
+
+    @Test fun answered_by_you_counts_only_your_replies_at_the_current_rev() {
+        val card = Uuid.random()
+        val c = AgentUiConversation(
+            emptyMap(),
+            mapOf(card to listOf(AgentUiAnswer(1, "keep", byYou = true), AgentUiAnswer(0, "drop", byYou = true), AgentUiAnswer(1, "drop", byYou = false))),
+        )
+        assertEquals(setOf("keep"), c.answeredByYou(card, 1))
+        assertEquals(setOf("drop"), c.answeredByYou(card, 0))
+        assertEquals(emptySet(), c.answeredByYou(Uuid.random(), 1))
+    }
+
+    private fun reply(target: Uuid, actionId: String, status: ChatDeliveryStatus = ChatDeliveryStatus.Sent) = MessageUiModel(
+        id = Uuid.random(),
+        globalTransitId = null,
+        fileId = Uuid.random(),
+        conversationId = Uuid.random(),
+        content = "",
+        userDate = Instant.fromEpochMilliseconds(0),
+        modified = null,
+        created = Instant.fromEpochMilliseconds(0),
+        originalAuthor = OdinId("me.example.com"),
+        sender = OdinId("me.example.com"),
+        displayName = "Me",
+        messageAppData = MessageAppData(deliveryStatus = status.value),
+        reactionPreview = null,
+        previewThumbnail = null,
+        payloads = null,
+        keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
+        versionTag = Uuid.random(),
+        isPendingSend = false,
+        hasMore = false,
+        messageContent = MessageContent.AgentUiAction(
+            AgentUiActionDescriptor(target = target, rev = 1, actionId = actionId, label = actionId),
+        ),
+    )
+
+    // A failed reply un-checks its button, so the action can be sent again.
+    @Test fun a_failed_reply_does_not_count_as_answered() {
+        val card = Uuid.random()
+        val c = agentUiConversation(listOf(reply(card, "keep"), reply(card, "drop", ChatDeliveryStatus.Failed))) { true }
+        assertEquals(setOf("keep"), c.answeredByYou(card, 1))
+    }
+
+    @Test fun conversations_with_the_same_cards_and_replies_are_equal() {
+        val card = Uuid.random()
+        val replies = listOf(reply(card, "keep"))
+        assertEquals(agentUiConversation(replies) { true }, agentUiConversation(replies + reply(Uuid.random(), "x", ChatDeliveryStatus.Failed)) { true })
+        assertNotEquals(agentUiConversation(replies) { true }, agentUiConversation(replies) { false })
+    }
+
+    // Copy on a card copies its text and table rows, not the 80-character summary.
+    @Test fun a_card_copies_as_its_text_and_table_rows() {
+        assertEquals("Draft post\nSpring is here. **Meet** the new release.", AgentUiFixtures.decodeDraftPostCard().plainText())
+        val table = AgentUiFixtures.valid(
+            AgentUiFixtures.tree(
+                """{"id":"root","type":"column","children":["t","tb"]}""",
+                """{"id":"t","type":"text","markdown":"Totals"}""",
+                """{"id":"tb","type":"table","header":["Net","Posts"],"rows":[["X","3"],["LinkedIn","1"]]}""",
+            ),
+        )
+        assertEquals("Totals\nNet\tPosts\nX\t3\nLinkedIn\t1", table.plainText())
     }
 }
