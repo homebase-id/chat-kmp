@@ -29,17 +29,18 @@ How chat-kmp turns a photo into the images people see. Read this before changing
 12. [Byte limits](#byte-limits)
 13. [Making the pixels](#making-the-pixels)
 14. [Colour](#colour)
-15. [Metadata](#metadata)
-16. [Formats](#formats)
-17. [Where each caller lands](#where-each-caller-lands)
-18. [Showing the images](#showing-the-images)
-19. [Wire format and older clients](#wire-format-and-older-clients)
-20. [Video](#video)
-21. [How others do it](#how-others-do-it)
-22. [Testing](#testing)
-23. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
-24. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
-25. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
+15. [HDR](#hdr)
+16. [Metadata](#metadata)
+17. [Formats](#formats)
+18. [Where each caller lands](#where-each-caller-lands)
+19. [Showing the images](#showing-the-images)
+20. [Wire format and older clients](#wire-format-and-older-clients)
+21. [Video](#video)
+22. [How others do it](#how-others-do-it)
+23. [Testing](#testing)
+24. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
+25. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
+26. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
 
 ## The goal
 
@@ -83,6 +84,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 - **Only three byte limits:** the tiny's 768 bytes, 1 MiB per thumbnail (the server's), and none on the final image. Over 1 MiB, a thumbnail shrinks at the same quality.
 - **Pixels:** decode once, scale from largest to smallest, halve while the image is at least 2× too big, then a Lanczos-class resampler for the last step.
 - **Colour:** keep wide-gamut colour, and put no colour profile on sRGB images or the tiny.
+- **HDR:** videos keep it at Original only, because only the untouched file can be HDR and still play everywhere. Photos keep it wherever the file is kept as it is; a re-encoded photo is WebP, which has no gain map. See [HDR](#hdr).
 - **Metadata:** the calling app decides whether a final image or video keeps its location and other metadata, through a required keep-or-strip parameter. The library never decides. Thumbnails never carry metadata.
 - **Display:** every view shows the smallest image that covers the area it's drawn in, allowing 10% of stretch (40% for grid tiles), and never loads an untouched file in place of a thumbnail. See [Showing the images](#showing-the-images).
 - **Wire codes:** Standard records nothing, HD records `"hd"`, and Original records `"high"`.
@@ -417,6 +419,30 @@ Every platform has one interface, `ImageSource` plus `PipelineBitmap`, whose KDo
 - **Wide-gamut photos keep their colour.** A Display P3 photo either keeps its profile or is converted properly; it's never just relabelled as sRGB, which makes it look washed out.
 - **sRGB images carry no profile.** An image with no profile is read as sRGB everywhere, and Skia's sRGB profile alone is 456 bytes.
 - **The tiny never carries a profile.** In #2231's draft, the profile made up 456 of a 594-byte tiny, and the picture was 92 bytes.
+
+## HDR
+
+There's no HDR setting (decided 2026-11-16). Original already promises the exact file, so an HDR photo or video stays HDR there, as its resolution and metadata do. Most people can't judge an HDR choice, and Google Photos and iCloud keep originals without one.
+
+**Video: HDR at Original only; Standard and HD are SDR.** HDR video is always 10-bit (HDR10, HLG, Dolby Vision), and 10-bit HEVC fails or shows wrong colours on many Android phones and some browsers, so the copy everyone plays has to be SDR.
+
+- **HDR is tone-mapped to SDR,** never just relabelled, which makes it look washed out.
+  - **Android (Media3):** tone-maps properly.
+  - **ffmpeg, so iOS, desktop and web for now:** only relabels. That's why an iPhone video sent from the iPhone app looks washed out; compressing natively on iOS fixes it.
+- **Chat and Moments videos are always SDR,** because they always transcode, Original included.
+- **Others do the same:** Immich keeps the original and transcodes HDR to an SDR H.264 copy to play. Ente's streams are 720p H.264.
+- **Test:** `Media3VideoCompressorTest.anHdrVideoComesOutAsSdrH264`.
+
+**Photos: HDR wherever the file is kept as it is.** An HDR photo (Android's Ultra HDR, iPhone HDR) is an ordinary SDR image plus a gain map, so it shows correctly everywhere, and an HDR screen brightens it. It has none of video's playback problem.
+
+- **Kept as it is:** Photos at Original, and any app at Standard or HD when the source already fits (see [Rules for edge cases](#rules-for-edge-cases)). The gain map stays.
+- **Kept, metadata stripped** (chat and Moments): the scrubber keeps the gain map.
+  - **Ultra HDR JPEG:** its gain map is declared in the main image's XMP, so the scrubber rebuilds that XMP with only the gain-map fields and drops the rest of it. A directory listing anything but the main image and the gain map, such as a motion photo's video, is left out too; decoders then find the gain map through the MPF index, whose offsets the scrubber moves when segments before the gain map change size.
+  - **ISO 21496-1 gain maps** sit in APP2, which was always kept.
+  - **Not scrubbed:** everything after the main image passes unchanged. That includes the gain-map image's own segments and a motion photo's embedded video with its metadata.
+  - **iPhone HDR HEIC probably loses its HDR:** the scrubber blanks the gain-map image's XMP too, and drops the EXIF MakerNote that holds its headroom. To check on an iPhone.
+- **Re-encoded:** thumbnails, the tiny, and a resized final image are WebP, which has no gain map. They keep the SDR image, so they look right but not HDR-bright.
+- **Tests:** `GainmapDeviceTest` (Android 14 and later) and `ImageMetadataScrubberTest` (every platform).
 
 ## Metadata
 
