@@ -1,19 +1,32 @@
 # Media benchmarks
 
-How fast we resize images, compress and segment video, and hash, per device, so a regression or an improvement shows. THUMBNAILS.md has the rules; this file has the numbers and the decisions they led to. Add a row whenever you measure.
+How fast we resize images, compress and segment video, and hash, per device, so a regression or an improvement shows. THUMBNAILS.md has the rules; this file has the numbers and the decisions they led to.
+
+**How to read the tables.** Each section starts with a **Now** table: one row per device and input, measured with the code that ships, where a range like `13.9–15.6 s` is the spread across runs. A **How we got here** log follows where the numbers changed because the code did: each row is the code after one more change, on the same device and input. When you re-measure, replace the **Now** row (with its date); when a code change moves a number, also add a row to the log.
 
 ## How to measure
 
-- **Device tests:** `homebase-api` `Media3VideoCompressorTest`. Install them with `./gradlew :homebase-api:installAndroidDeviceTest`, then run one with `adb shell am instrument -w -e class 'id.homebase.api.video.Media3VideoCompressorTest#<test>' id.homebase.api.test/androidx.test.runner.AndroidJUnitRunner`. Results are logged under the `Media3Benchmark` tag (`adb logcat -s Media3Benchmark`).
+- **Device tests** are in `homebase-api`. Install them with `./gradlew :homebase-api:installAndroidDeviceTest`, then run one with `adb shell am instrument -w -e class 'id.homebase.api.video.Media3VideoCompressorTest#<test>' id.homebase.api.test/androidx.test.runner.AndroidJUnitRunner`. Results are logged under the `Media3Benchmark` tag (`adb logcat -s Media3Benchmark`).
   - `benchmarkAgainstFfmpeg`: Media3 against ffmpeg compression at Standard and HD, then segmenting and the AAC timings.
   - `benchmarkSegmenting`: compresses once with Media3, then times our segmenter against ffmpeg's.
   - `benchmarkSegmentingAsIs`: segments the file as it is.
-- **Inputs:** the tests read every `.mp4`/`.mov` in the test app's own folder, `/sdcard/Android/data/id.homebase.api.test/files/bench/`. Copy a phone video there with `adb shell cp`, or push one, and delete it afterwards. Uninstalling the test package also removes it.
-- **The stand-in:** a 27 MB file shaped like a compressed phone video, so no one's own video is needed. Make it with `ffmpeg -f lavfi -i testsrc2=size=720x1280:rate=30 -f lavfi -i sine=frequency=440:sample_rate=48000 -t 83 -c:v libx264 -preset veryfast -g 30 -b:v 2500k -maxrate 2500k -bufsize 5M -c:a aac -b:a 192k -movflags +faststart stand_in_720p.mp4`.
+  - `benchmarkEndToEnd`: a whole send, as `VideoPayloadProcessor` runs it.
+  - BLAKE3 speed: `id.homebase.api.crypto.Blake3NativeDeviceTest#throughput` with `-e hashBench true`.
+- **Inputs:** the tests read every `.mp4`/`.mov` in the test app's `files/bench/` folder. On Android 14 and later, only the app itself can see that folder, so copy a file in with `adb push <file> /data/local/tmp/`, then `adb shell run-as id.homebase.api.test sh -c 'mkdir -p files/bench && cp /data/local/tmp/<file> files/bench/'`. Delete it afterwards: `adb shell run-as id.homebase.api.test rm -rf files/bench`. Uninstalling the test package also removes it.
 - **Fair runs:**
   - The phone must be cool: throttling moved one compress from 20 s to 45 s. The tests pause between runs, alternate which backend goes first, and log `thermal=` (0 means none).
   - Plug in and keep the screen on.
   - With several phones attached, set `ANDROID_SERIAL`.
+
+## Inputs
+
+| Name | What | Make it with |
+|---|---|---|
+| **HDR phone video** | 226 MB, 83 s, 1080p HEVC HLG (10-bit HDR) from a Pixel 8's camera. Someone's own video, never checked in | — |
+| **HDR phone video, compressed** | The above after Media3 at Standard: 27 MB, 720p H.264 | `benchmarkSegmenting` makes it |
+| **Stand-in** | 27 MB, 83 s, 720×1280 H.264 at 2.5 Mbps with AAC; shaped like the above, so no one's video is needed | `ffmpeg -f lavfi -i testsrc2=size=720x1280:rate=30 -f lavfi -i sine=frequency=440:sample_rate=48000 -t 83 -c:v libx264 -preset veryfast -g 30 -b:v 2500k -maxrate 2500k -bufsize 5M -c:a aac -b:a 192k -movflags +faststart stand_in_720p.mp4` |
+| **Synthetic 1080p, 83 s** | 210 MB, 1080×1920 H.264 at 20 Mbps with AAC | as the stand-in, with `size=1080x1920`, `-b:v 20M -maxrate 20M -bufsize 40M` |
+| **Synthetic 1080p, 10 s** | 25 MB, the same settings for 10 s; compresses to under 5 MB, so it's sent as an MP4, not HLS | as above, with `-t 10` |
 
 ## Devices
 
@@ -23,69 +36,108 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 | Pixel 5 | 14 | Snapdragon 765G | Qualcomm hardware; AAC `c2.android.*` software. Also runs 32-bit apps |
 | Galaxy S23+ | 17 | Snapdragon 8 Gen 2 | |
 
+## Sending a video, end to end
+
+`benchmarkEndToEnd`: compress at Standard, then HLS (segment, encrypt, hash) at 5 MB or more, else encrypt the MP4 in one pass. "Ours" is Media3, our segmenter and the payload hash. "ffmpeg" is ffmpeg for both steps without a hash, as Android was before.
+
+**Now**
+
+| Device | Input | Sent as | Ours | ffmpeg | Measured |
+|---|---|---|---|---|---|
+| Pixel 5 | Synthetic 1080p, 10 s → 3.7 MB (ffmpeg 3.3 MB) | MP4 | **2.5–3.5 s**: compress 2.3–3.1 s, encrypt and hash 0.19–0.40 s | 6.6–6.8 s: compress 6.4–6.6 s, encrypt 0.12 s | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 83 s → 27.9 MB (ffmpeg 27.4 MB) | HLS | **16.5–17.0 s**: compress 15.8–16.0 s, HLS 0.62–0.93 s | 51.0–51.2 s: compress 50.0–50.2 s, HLS 0.99–1.03 s | 2026-11-16 |
+
+Compressing is almost all of a send. **Open question:** the small MP4's encrypt-and-hash step (0.19–0.40 s) is slower than ffmpeg's plain encrypt (0.12 s), though two native hashes of 3.7 MB cost about 15 ms. The 0.40 s run also loaded the library. To profile with the read-buffer fixes.
+
 ## Compression: Media3 against ffmpeg
 
-The source is a 226 MB, 83 s, 1080p HEVC HLG (10-bit HDR) video from a Pixel 8. Media3 tone-maps it to SDR; ffmpeg only relabels the colours.
+The compress step alone. On the HDR phone video, Media3 tone-maps to SDR; ffmpeg only relabels the colours.
 
-| Date | Device | Standard: Media3 / ffmpeg | HD: Media3 / ffmpeg | Note |
+**Now**
+
+| Device | Input | Standard: Media3 / ffmpeg | HD: Media3 / ffmpeg | Measured |
 |---|---|---|---|---|
-| 2026-11-16 | Pixel 8 | 13.9 s / 63.3 s | 11.7 s / 156.1 s | AAC copied |
-| 2026-11-16 | Pixel 8 | 15.6 s / 64.4 s | 14.0 s / 163.2 s | AAC copied |
-| 2026-11-16 | Pixel 8 | about 38–45 s / – | – | AAC re-encoded by Android's codecs, phone warm |
+| Pixel 8 | HDR phone video | **13.9–15.6 s** / 63.3–64.4 s | **11.7–14.0 s** / 156–163 s | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 83 s | **15.8–16.0 s** / 50.0–50.2 s | not measured | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 10 s | **2.3–3.1 s** / 6.4–6.6 s | not measured | 2026-11-16 |
 
 Output sizes match ffmpeg's within a few percent on camera footage. On hard synthetic content (a 1440p60 animation), the hardware encoder runs 20–40% over its bitrate and libx264 about 16% under. See THUMBNAILS.md, "Android: Media3".
 
+**How we got here** (Pixel 8, HDR phone video, Standard)
+
+| Change | Media3 |
+|---|---|
+| First version: AAC re-encoded by Android's codecs (phone warm) | about 38–45 s |
+| AAC copied (see Audio) | 13.9–15.6 s |
+
 ## Segmenting: ours against ffmpeg
 
-This is segment and encrypt, with ffmpeg's `-hls_flags single_file` as the reference. Ours also takes both BLAKE3 payload hashes; ffmpeg takes none.
+Segment and encrypt, with ffmpeg's `-hls_flags single_file` as the reference. Ours also takes both BLAKE3 payload hashes; ffmpeg takes none.
 
-| Date | Device | Input | Ours | ffmpeg | Version |
-|---|---|---|---|---|---|
-| 2026-11-16 | Pixel 8 | the 226 MB video compressed (27 MB) | 9.6 s | 1.9 s | first version, 64 KB buffer per TS packet |
-| 2026-11-16 | Pixel 8 | the same | 2.2–2.8 s | 1.7–2.4 s | packets written straight to the output |
-| 2026-11-16 | Pixel 8 | stand-in (27 MB) | 1.6–2.1 s | 1.8 s | BLAKE3 unrolled |
-| 2026-11-16 | Pixel 8 | stand-in (27 MB) | 0.92–0.96 s | 1.87–2.03 s | both hashes on their own cores |
-| 2026-11-16 | Pixel 8 | the 226 MB video compressed (27 MB) | 0.78–1.18 s | 1.50–2.08 s | both hashes on their own cores |
+**Now**
 
-| 2026-11-16 | Pixel 5 | stand-in (27 MB) | 23.8 s | 1.0 s | fully unrolled BLAKE3: Android 14 left the huge method interpreted |
-| 2026-11-16 | Pixel 5 | stand-in (27 MB) | 1.9–2.5 s | 0.9–1.1 s | BLAKE3 rounds looped over locals |
-| 2026-11-16 | Pixel 5 | stand-in (27 MB) | 1.4–1.8 s | 1.0–1.1 s | primitive decode-order sort, pipelined reading and writing, full read chunks |
-| 2026-11-16 | Pixel 5 | stand-in (27 MB) | 0.89–0.91 s | 0.89–1.12 s | native BLAKE3 |
-| 2026-11-16 | Pixel 5 | stand-in (27 MB) | 0.77–0.90 s | 0.87–1.03 s | hashing inline and on the writing thread instead of separate threads |
+| Device | Input | Ours | ffmpeg | Measured |
+|---|---|---|---|---|
+| Pixel 5 | Stand-in | **0.77–0.90 s** | 0.87–1.03 s | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 83 s, compressed | **0.62–0.93 s** | 0.99–1.03 s | 2026-11-16, in `benchmarkEndToEnd` |
+| Pixel 8 | HDR phone video, compressed | **0.78–1.18 s** | 1.50–2.08 s | 2026-11-16, before native BLAKE3: re-measure |
+| Pixel 8 | Stand-in | **0.92–0.96 s** | 1.87–2.03 s | 2026-11-16, before native BLAKE3: re-measure |
 
-Where the time went before the hashes ran in parallel (stand-in, Pixel 8): BLAKE3 1.6–1.9 s, TS writing 0.1–0.25 s, AES 0.03–0.07 s.
+On the Pixel 5, what's left is TS writing (about 0.3 s) and parsing the moov (0.1–0.2 s).
 
-On the Pixel 5 at the last row: reading 0.06 s (0.64 s before the read-chunk fix), TS writing 0.3–0.44 s, AES 0.07–0.1 s, parsing the moov 0.1–0.2 s, and waiting on hashing 0.4–0.7 s. Hashing was the limit there; with native BLAKE3 it no longer is. What's left on the Pixel 5 is TS writing (about 0.3 s) and parsing the moov (0.1–0.2 s).
+**How we got here, Pixel 8**
+
+| Change | Input | Ours | ffmpeg |
+|---|---|---|---|
+| First version: a 64 KB buffer per 188-byte TS packet | HDR phone video, compressed | 9.6 s | 1.9 s |
+| Packets written straight to the output | HDR phone video, compressed | 2.2–2.8 s | 1.7–2.4 s |
+| Kotlin BLAKE3 fully unrolled | Stand-in | 1.6–2.1 s | 1.8 s |
+| Both hashes on their own cores | Stand-in | 0.92–0.96 s | 1.87–2.03 s |
+
+Before the hashes ran in parallel, the stand-in's time went to BLAKE3 1.6–1.9 s, TS writing 0.1–0.25 s and AES 0.03–0.07 s.
+
+**How we got here, Pixel 5** (stand-in)
+
+| Change | Ours | ffmpeg |
+|---|---|---|
+| Kotlin BLAKE3 fully unrolled: Android 14 left the huge method interpreted | 23.8 s | 1.0 s |
+| Kotlin BLAKE3's rounds looped over local variables | 1.9–2.5 s | 0.9–1.1 s |
+| Primitive decode-order sort, reading and writing pipelined, full read chunks | 1.4–1.8 s | 1.0–1.1 s |
+| Native BLAKE3 | 0.89–0.91 s | 0.89–1.12 s |
+| Hashing inline and on the writing thread, instead of separate threads | 0.77–0.90 s | 0.87–1.03 s |
+
+The full-read-chunks fix cut reading 27 MB from 0.64 s to 0.06 s.
 
 ## Audio
 
-| Date | Device | 83 s of 48 kHz stereo AAC | Time |
+Why AAC is copied (see the decisions below). 83 s of 48 kHz stereo AAC, Pixel 8, 2026-11-16:
+
+| What | Time |
+|---|---|
+| Android's codecs, decode and re-encode (`c2.android.aac.*`) | 15–27 s |
+| ffmpeg's AAC encoder | 3.3–4.5 s |
+| Media3 export of the video with no audio track | 8–13 s |
+
+## Hashing: BLAKE3
+
+**Now**
+
+| Where | Ships | Speed | Kotlin port on the same | Measured |
+|---|---|---|---|---|
+| Pixel 5, 64-bit app | native C, NEON | **453–933 MB/s** (which core the scheduler picks moves it) | 44 MB/s | 2026-11-16 |
+| Pixel 5, 32-bit app | native C, NEON | **603 MB/s** | 36 MB/s | 2026-11-16 |
+| Pixel 8 | native C, NEON | not measured | about 55 MB/s | |
+| Desktop JVM | Kotlin port | 141 MB/s | — | 2026-11-16 |
+
+For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed with `adb install --abi armeabi-v7a`.
+
+**How we got here** (the Kotlin port)
+
+| Change | Desktop JVM | Pixel 8 | Pixel 5 |
 |---|---|---|---|
-| 2026-11-16 | Pixel 8 | Android's codecs, decode and re-encode (`c2.android.aac.*`) | 15–27 s |
-| 2026-11-16 | Pixel 8 | ffmpeg's AAC encoder | 3.3–4.5 s |
-| 2026-11-16 | Pixel 8 | Media3 export with no audio track | 8–13 s |
-
-## Hashing
-
-| Date | Where | BLAKE3 | Note |
-|---|---|---|---|
-| 2026-11-16 | desktop JVM | 97 → 120 MB/s | `compress` unrolled over local variables |
-| 2026-11-16 | Pixel 8 | about 34 → 55 MB/s | the same change; measured inside the segmenter |
-| 2026-11-16 | desktop JVM | 141 MB/s | rounds looped over locals instead of unrolled |
-| 2026-11-16 | Pixel 5 | 45 MB/s | rounds looped over locals; AES-CBC on the same phone runs at 681 MB/s |
-| 2026-11-16 | Pixel 5 | **453–933 MB/s** (Kotlin 44 MB/s) | native: the official C BLAKE3 1.8.7 with NEON, `-O3`; `Blake3NativeDeviceTest.throughput` with `-e hashBench true`. Which core the scheduler picks moves it |
-| 2026-11-16 | Pixel 5, as a 32-bit app | **603 MB/s** (Kotlin 36 MB/s) | NEON on `armeabi-v7a` too; installed with `adb install --abi armeabi-v7a` |
-
-## End to end: sending a video
-
-`Media3VideoCompressorTest#benchmarkEndToEnd` runs a send as `VideoPayloadProcessor` does: compress at Standard, then HLS (segment, encrypt, hash) at 5 MB or more, else encrypt the MP4 in one pass. "Ours" is Media3, our segmenter and the payload hash; "ffmpeg" is ffmpeg for both steps without a hash, as Android was before. Two rounds each, alternating order, with a cool-down between runs. Inputs are generated 1080p H.264 at 20 Mbps with AAC.
-
-| Date | Device | Input | Path | Ours | ffmpeg |
-|---|---|---|---|---|---|
-| 2026-11-16 | Pixel 5 | 10 s, 25 MB → 3.7 MB (ffmpeg 3.3 MB) | MP4 | **2.5–3.5 s** (compress 2.3–3.1 s, encrypt and hash 0.19–0.40 s) | 6.6–6.8 s (compress 6.4–6.6 s, encrypt 0.12 s) |
-| 2026-11-16 | Pixel 5 | 83 s, 210 MB → 27.9 MB (ffmpeg 27.4 MB) | HLS | **16.5–17.0 s** (compress 15.8–16.0 s, HLS 0.62–0.93 s) | 51.0–51.2 s (compress 50.0–50.2 s, HLS 0.99–1.03 s) |
-
-Compressing is almost all of a send. Open question: the small MP4's encrypt-and-hash step (0.19–0.40 s) is slower than ffmpeg's plain encrypt (0.12 s), though two native hashes of 3.7 MB cost about 15 ms. The 0.40 s run also loaded the library. To profile with the read-buffer fixes.
+| Port of the reference implementation | 97 MB/s | about 34 MB/s | not measured |
+| `compress` fully unrolled over local variables | 120 MB/s | about 55 MB/s | about 20× slower: interpreted (segmenting took 23.8 s) |
+| Rounds looped over local variables | 141 MB/s | not measured | 44 MB/s |
 
 ## Images
 
