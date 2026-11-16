@@ -45,7 +45,6 @@ class ImagePipelineTest {
         val scales = mutableListOf<Pair<Pair<Int, Int>, Pair<Int, Int>>>()
         val encodedQualities = mutableListOf<Int>()
         var jpegFactor = 1
-        var sourceClosed = false
     }
 
     private class FakeSource(val width: Int, val height: Int, val log: Log) : ImageSource {
@@ -59,7 +58,7 @@ class ImagePipelineTest {
 
         override fun metadata(): ImageMetadata? = null
 
-        override fun close() { log.sourceClosed = true }
+        override fun close() = Unit
     }
 
     private fun output(width: Int, height: Int, quality: Int = 80, maxBytes: Int = 1000, minQuality: Int = 40) =
@@ -77,7 +76,6 @@ class ImagePipelineTest {
         assertEquals(listOf(ImageFormat.JPEG, ImageFormat.WEBP, ImageFormat.WEBP), hdr.map { it.format })
         assertEquals(hdrMetadata, assertNotNull(UltraHdr.gainmapOf(hdr[0].bytes)).metadata)
         assertEquals(400 to 300, mapLog.scales.last().second, "the gain map keeps its quarter of the image's size")
-        assertTrue(mapLog.sourceClosed)
 
         val noGainmap = renderFrom(FakeSource(4000, 3000, Log()), plan = plan).images
         assertEquals(listOf(ImageFormat.WEBP, ImageFormat.WEBP, ImageFormat.WEBP), noGainmap.map { it.format }, "no gain map, no JPEG")
@@ -90,13 +88,6 @@ class ImagePipelineTest {
         }.images.single()
         assertEquals(ImageFormat.WEBP, capped.format)
         assertEquals(1600, capped.width, "not shrunk to fit HDR")
-    }
-
-    @Test
-    fun theGainmapIsClosedEvenWhenNothingIsPlanned() = runTest {
-        val mapLog = Log()
-        renderFrom(FakeSource(4000, 3000, Log()), gainmap = HdrGainmap(FakeSource(1000, 750, mapLog), hdrMetadata)) { emptyList() }
-        assertTrue(mapLog.sourceClosed)
     }
 
     @Test

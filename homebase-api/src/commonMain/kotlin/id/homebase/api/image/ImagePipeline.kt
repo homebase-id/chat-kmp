@@ -82,7 +82,6 @@ internal interface PipelineBitmap : AutoCloseable {
     /** True for sRGB and untagged pixels, whose files need no colour profile. */
     val isSrgb: Boolean
 
-
     /**
      * A new bitmap at the given size, filtered at least bilinearly, leaving this one open.
      * Only asked for exact halvings, where bilinear averages every pixel.
@@ -123,27 +122,38 @@ internal suspend fun renderImages(source: ImageSource, gainmap: HdrGainmap? = nu
 
 /**
  * The source's HDR gain map, decoded like any image (upright as the source is) and rendered with the output that
- * [ImageOutput.keepsHdr], then joined to it by [UltraHdr]. Closed with the run.
+ * [ImageOutput.keepsHdr], then joined to it by [UltraHdr].
  */
 internal class HdrGainmap(val image: ImageSource, val metadata: GainmapMetadata) : AutoCloseable {
     override fun close() = image.close()
+
+    companion object {
+        /**
+         * The gain map of the Ultra HDR JPEG whose start is [header], read on its own through [readRange] (it's the
+         * file's tail, a fraction of its size) and tagged with the source's orientation so it turns upright with it.
+         * Null for anything else.
+         */
+        suspend fun of(header: ByteArray, readRange: suspend (LongRange) -> ByteArray): HdrGainmap? {
+            val range = UltraHdr.gainmapRange(header)
+                ?: if (UltraHdr.mayHaveMpfBeyond(header)) UltraHdr.gainmapRange(readRange(0L until LONG_HEADER_BYTES)) else null
+            if (range == null || range.last - range.first >= MAX_GAINMAP_BYTES) return null
+            val jpeg = readRange(range)
+            val metadata = UltraHdr.metadataOf(jpeg) ?: return null
+            val orientation = readJpegExifOrientation(header) ?: 1
+            val upright = if (orientation == 1) jpeg else ImageMetadataScrubber.withOrientation(jpeg, orientation)
+            return HdrGainmap(openImageSource(upright), metadata)
+        }
+
+        // MPF sits after EXIF (with its thumbnail), XMP and ICC, which can outgrow a 64 KB header read.
+        private const val LONG_HEADER_BYTES = 256L * 1024
+        private const val MAX_GAINMAP_BYTES = 16L * 1024 * 1024
+    }
 }
 
 internal suspend fun renderFrom(
     source: ImageSource,
     checkCancelled: () -> Unit = {},
     gainmap: HdrGainmap? = null,
-    plan: (ImageSize) -> List<ImageOutput>,
-): RenderedImages = try {
-    renderAll(source, checkCancelled, gainmap, plan)
-} finally {
-    gainmap?.close()
-}
-
-private suspend fun renderAll(
-    source: ImageSource,
-    checkCancelled: () -> Unit,
-    gainmap: HdrGainmap?,
     plan: (ImageSize) -> List<ImageOutput>,
 ): RenderedImages {
     val size = source.displayedSize
@@ -213,6 +223,8 @@ private suspend fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): R
 // HDR never costs pixels: an Ultra HDR JPEG over the output's limit makes it the SDR image at full size instead.
 // The gain map keeps its share of the source's size, as the camera made it.
 private suspend fun hdrWithinLimit(bitmap: PipelineBitmap, output: ImageOutput, gainmap: HdrGainmap, source: ImageSize): RenderedImage? {
+    val primary = bitmap.encode(ImageFormat.JPEG, output.quality)
+    if (primary.size >= output.maxBytes) return null
     val map = gainmap.image.displayedSize
     val width = max(1, (map.pixelWidth.toLong() * bitmap.width / source.pixelWidth).toInt())
     val height = max(1, (map.pixelHeight.toLong() * bitmap.height / source.pixelHeight).toInt())
@@ -220,7 +232,7 @@ private suspend fun hdrWithinLimit(bitmap: PipelineBitmap, output: ImageOutput, 
     val scaled = scaleDown(decoded, width, height)
     if (scaled !== decoded) decoded.close()
     val mapJpeg = scaled.use { it.encode(ImageFormat.JPEG, output.quality) }
-    val bytes = UltraHdr.join(bitmap.encode(ImageFormat.JPEG, output.quality), mapJpeg, gainmap.metadata)
+    val bytes = UltraHdr.join(primary, mapJpeg, gainmap.metadata)
     return RenderedImage(bytes, bitmap.width, bitmap.height, output.quality, ImageFormat.JPEG).takeIf { bytes.size <= output.maxBytes }
 }
 

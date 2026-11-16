@@ -1,5 +1,6 @@
 package id.homebase.api.image
 
+import id.homebase.api.util.ByteBuilder
 import kotlin.math.roundToLong
 
 /**
@@ -21,21 +22,22 @@ data class GainmapMetadata(
 }
 
 /** A gain map as its own JPEG, and how to apply it. */
-class Gainmap(val jpeg: ByteArray, val metadata: GainmapMetadata)
+internal class Gainmap(val jpeg: ByteArray, val metadata: GainmapMetadata)
 
 /**
  * Ultra HDR JPEGs: an SDR primary image, then a gain-map JPEG, joined by an MPF index (CIPA DC-007), with the gain
  * map's metadata in both the `hdrgm` XMP Android 14 reads and the ISO 21496-1 block Android 15+, iOS 18+ and browsers
  * read. One implementation for every platform; each platform only decodes, scales and encodes plain images.
+ * Layouts follow Google's libultrahdr.
  */
-object UltraHdr {
+internal object UltraHdr {
     /** The gain map's byte range in [jpeg], from the primary image's MPF index; [jpeg] needs only reach past that. */
     fun gainmapRange(jpeg: ByteArray): LongRange? {
         if (!isJpeg(jpeg)) return null
         var range: LongRange? = null
-        segments(jpeg) { marker, payload, end ->
-            if (marker == APP2 && jpeg.startsWith(payload, MPF_SIGNATURE)) {
-                range = mpfSecondImage(jpeg, payload + MPF_SIGNATURE.size, end)
+        walkJpegSegments(jpeg) { marker, payload, end ->
+            if (marker == MARKER_APP2 && startsWith(jpeg, payload, end, MPF_HEADER)) {
+                range = secondImage(jpeg, payload + MPF_HEADER.size, end)
                 false
             } else {
                 true
@@ -44,7 +46,18 @@ object UltraHdr {
         return range
     }
 
-    /** [jpeg]'s gain map, or null when it has none this reads. */
+    /**
+     * Whether [header], the start of a JPEG, ends before its scan without having shown an MPF index: a longer read
+     * may still find one behind large EXIF, XMP or ICC segments.
+     */
+    fun mayHaveMpfBeyond(header: ByteArray): Boolean {
+        if (!isJpeg(header)) return false
+        var end = 2
+        walkJpegSegments(header) { _, _, segmentEnd -> end = segmentEnd; true }
+        // A walk that reached the scan stops at its SOS marker; one cut off by the header's end doesn't.
+        return !(end + 1 < header.size && (header[end + 1].toInt() and 0xFF) == MARKER_SOS)
+    }
+
     fun gainmapOf(jpeg: ByteArray): Gainmap? {
         val range = gainmapRange(jpeg) ?: return null
         if (range.last >= jpeg.size) return null
@@ -56,17 +69,17 @@ object UltraHdr {
     fun metadataOf(gainmapJpeg: ByteArray): GainmapMetadata? {
         if (!isJpeg(gainmapJpeg)) return null
         var iso: GainmapMetadata? = null
-        var xmp: GainmapMetadata? = null
-        segments(gainmapJpeg) { marker, payload, end ->
+        var xmp: IntRange? = null
+        walkJpegSegments(gainmapJpeg) { marker, payload, end ->
             when {
-                marker == APP2 && gainmapJpeg.startsWith(payload, ISO_NAMESPACE) ->
+                marker == MARKER_APP2 && startsWith(gainmapJpeg, payload, end, ISO_NAMESPACE) ->
                     iso = IsoGainmapMetadata.decode(gainmapJpeg.copyOfRange(payload + ISO_NAMESPACE.size, end))
-                marker == APP1 && gainmapJpeg.startsWith(payload, XMP_NAMESPACE) ->
-                    xmp = HdrgmXmp.decode(gainmapJpeg.decodeToString(payload + XMP_NAMESPACE.size, end))
+                marker == MARKER_APP1 && startsWith(gainmapJpeg, payload, end, XMP_JPEG_HEADER) ->
+                    xmp = payload + XMP_JPEG_HEADER.size until end
             }
             iso == null
         }
-        return iso ?: xmp
+        return iso ?: xmp?.let { HdrgmXmp.decode(gainmapJpeg.decodeToString(it.first, it.last + 1)) }
     }
 
     /**
@@ -76,130 +89,70 @@ object UltraHdr {
      */
     fun join(primary: ByteArray, gainmap: ByteArray, metadata: GainmapMetadata): ByteArray {
         require(isJpeg(primary) && isJpeg(gainmap)) { "both images must be JPEGs" }
-        val gainmapOut = withSegments(gainmap, listOf(app1(XMP_NAMESPACE + HdrgmXmp.encodeGainmap(metadata)), app2(ISO_NAMESPACE + IsoGainmapMetadata.encode(metadata))))
-        val head = withSegments(primary, listOf(app1(XMP_NAMESPACE + HdrgmXmp.encodePrimary(gainmapOut.size)), app2(ISO_NAMESPACE + ISO_VERSION)))
-        val scan = scanStart(head)
-        val primarySize = head.size + MPF_SEGMENT_SIZE
-        // MPF offsets count from the byte after "MPF\0".
-        val mpf = mpfSegment(primarySize, gainmapOut.size, gainmapOffset = primarySize - (scan + 8))
-        return listOf(head.copyOfRange(0, scan), mpf, head.copyOfRange(scan, head.size), gainmapOut).concat()
+        val gainmapPieces = withSegments(gainmap, listOf(
+            jpegSegment(MARKER_APP1, XMP_JPEG_HEADER + HdrgmXmp.encodeGainmap(metadata)),
+            jpegSegment(MARKER_APP2, ISO_NAMESPACE + IsoGainmapMetadata.encode(metadata)),
+        ))
+        val primaryPieces = withSegments(primary, listOf(
+            jpegSegment(MARKER_APP1, XMP_JPEG_HEADER + HdrgmXmp.encodePrimary(gainmapPieces.sumOf { it.size })),
+            jpegSegment(MARKER_APP2, ISO_NAMESPACE + ISO_VERSION),
+        ))
+        // The last piece is the scan; the MPF index goes right before it, and its offsets count from after "MPF\0".
+        val scan = primaryPieces.size - 1
+        val mpfAt = primaryPieces.subList(0, scan).sumOf { it.size }
+        val primarySize = primaryPieces.sumOf { it.size } + MPF_SEGMENT_SIZE
+        val mpf = mpfSegment(primarySize, gainmapPieces.sumOf { it.size }, gainmapOffset = primarySize - (mpfAt + 8))
+        return assemble(primaryPieces.subList(0, scan) + Piece.Literal(mpf) + primaryPieces[scan] + gainmapPieces)
     }
 
-    // [jpeg] with [added] after SOI and any JFIF, and without the XMP, ISO and MPF segments the join writes itself.
-    private fun withSegments(jpeg: ByteArray, added: List<ByteArray>): ByteArray {
-        var jfif = ByteArray(0)
-        val kept = ArrayList<ByteArray>()
+    // [jpeg] as pieces: SOI, any JFIF, [added], its other segments without the XMP, ISO and MPF ones the join writes
+    // itself, and last its scan to the end.
+    private fun withSegments(jpeg: ByteArray, added: List<ByteArray>): List<Piece> {
+        val head = mutableListOf<Piece>(Piece.Span(jpeg, 0, 2))
+        val kept = mutableListOf<Piece>()
         var at = 2
-        segments(jpeg) { marker, payload, end ->
+        walkJpegSegments(jpeg) { marker, payload, end ->
             val start = payload - 4
-            val ours = (marker == APP1 && jpeg.startsWith(payload, XMP_NAMESPACE)) ||
-                (marker == APP2 && (jpeg.startsWith(payload, ISO_NAMESPACE) || jpeg.startsWith(payload, MPF_SIGNATURE)))
+            val ours = (marker == MARKER_APP1 && startsWith(jpeg, payload, end, XMP_JPEG_HEADER)) ||
+                (marker == MARKER_APP2 && (startsWith(jpeg, payload, end, ISO_NAMESPACE) || startsWith(jpeg, payload, end, MPF_HEADER)))
             when {
-                marker == APP0 && start == 2 -> jfif = jpeg.copyOfRange(start, end)
-                !ours -> kept += jpeg.copyOfRange(start, end)
+                marker == MARKER_APP0 && start == 2 -> head += Piece.Span(jpeg, start, end)
+                !ours -> kept += Piece.Span(jpeg, start, end)
             }
             at = end
             true
         }
-        return (listOf(jpeg.copyOfRange(0, 2), jfif) + added + kept + listOf(jpeg.copyOfRange(at, jpeg.size))).concat()
-    }
-
-    private fun List<ByteArray>.concat(): ByteArray {
-        val out = ByteArray(sumOf { it.size })
-        var at = 0
-        for (part in this) { part.copyInto(out, at); at += part.size }
-        return out
-    }
-
-    private fun scanStart(jpeg: ByteArray): Int {
-        var end = 2
-        segments(jpeg) { _, _, segmentEnd -> end = segmentEnd; true }
-        return end
+        return head + added.map { Piece.Literal(it) } + kept + Piece.Span(jpeg, at, jpeg.size)
     }
 
     private fun mpfSegment(primarySize: Int, gainmapSize: Int, gainmapOffset: Int): ByteArray {
-        val out = ArrayList<Byte>(MPF_SEGMENT_SIZE)
-        fun u16(v: Int) { out += (v ushr 8).toByte(); out += v.toByte() }
-        fun u32(v: Int) { u16(v ushr 16); u16(v and 0xFFFF) }
-        u16(0xFFE2); u16(MPF_SEGMENT_SIZE - 2)
-        MPF_SIGNATURE.forEach { out += it }
-        u16(0x4D4D); u16(0x002A); u32(8) // big-endian TIFF header, IFD right after it
-        u16(3)
-        u16(0xB000); u16(7); u32(4); "0100".encodeToByteArray().forEach { out += it }
-        u16(0xB001); u16(4); u32(1); u32(2)
-        u16(0xB002); u16(7); u32(32); u32(MP_ENTRIES_OFFSET)
-        u32(0) // no attribute IFD
-        u32(0x030000); u32(primarySize); u32(0); u16(0); u16(0)
-        u32(0); u32(gainmapSize); u32(gainmapOffset); u16(0); u16(0)
-        check(out.size == MPF_SEGMENT_SIZE)
-        return out.toByteArray()
+        val out = ByteBuilder(MPF_SEGMENT_SIZE)
+        out.addU16(0xFFE2); out.addU16(MPF_SEGMENT_SIZE - 2)
+        out.add(MPF_HEADER)
+        out.addU16(0x4D4D); out.addU16(0x002A); out.addU32(8) // big-endian TIFF header, IFD right after it
+        out.addU16(3)
+        out.addU16(0xB000); out.addU16(7); out.addU32(4); out.add("0100".encodeToByteArray())
+        out.addU16(0xB001); out.addU16(4); out.addU32(1); out.addU32(2)
+        out.addU16(0xB002); out.addU16(7); out.addU32(32); out.addU32(MP_ENTRIES_OFFSET.toLong())
+        out.addU32(0) // no attribute IFD
+        out.addU32(0x030000); out.addU32(primarySize.toLong()); out.addU32(0); out.addU32(0)
+        out.addU32(0); out.addU32(gainmapSize.toLong()); out.addU32(gainmapOffset.toLong()); out.addU32(0)
+        return out.take().also { check(it.size == MPF_SEGMENT_SIZE) }
     }
 
-    // The second entry of an MPF index whose TIFF header starts at [tiff], as a byte range of the whole file.
-    private fun mpfSecondImage(b: ByteArray, tiff: Int, end: Int): LongRange? {
-        if (tiff + 8 > end) return null
-        val little = when {
-            b[tiff] == 'I'.code.toByte() && b[tiff + 1] == 'I'.code.toByte() -> true
-            b[tiff] == 'M'.code.toByte() && b[tiff + 1] == 'M'.code.toByte() -> false
-            else -> return null
-        }
-        fun u16(at: Int) = if (little) (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
-        else ((b[at].toInt() and 0xFF) shl 8) or (b[at + 1].toInt() and 0xFF)
-        fun u32(at: Int): Long = if (little) (u16(at).toLong() or (u16(at + 2).toLong() shl 16)) else ((u16(at).toLong() shl 16) or u16(at + 2).toLong())
-        val ifd = tiff + u32(tiff + 4).toInt()
-        if (ifd < tiff || ifd + 2 > end) return null
-        for (e in 0 until u16(ifd)) {
-            val entry = ifd + 2 + e * 12
-            if (entry + 12 > end) return null
-            if (u16(entry) != 0xB002) continue
-            if (u32(entry + 4) < 32) return null
-            val second = tiff + u32(entry + 8).toInt() + 16
-            if (second < tiff || second + 16 > end) return null
-            val size = u32(second + 4)
-            val offset = u32(second + 8)
-            if (size <= 0 || offset <= 0) return null
-            val start = tiff + offset
-            return start until start + size
-        }
-        return null
+    // The second MPF entry, as a byte range of the whole file.
+    private fun secondImage(b: ByteArray, tiff: Int, end: Int): LongRange? {
+        val index = mpfEntries(b, tiff, end)?.takeIf { it.count >= 2 } ?: return null
+        val size = readU32(b, index.list + 16 + 4, index.little).toLong() and 0xFFFFFFFFL
+        val offset = readU32(b, index.list + 16 + 8, index.little).toLong() and 0xFFFFFFFFL
+        if (size <= 0 || offset <= 0) return null
+        val start = tiff + offset
+        return start until start + size
     }
 
-    private inline fun segments(b: ByteArray, visit: (marker: Int, payload: Int, end: Int) -> Boolean) {
-        var i = 2
-        while (i + 4 <= b.size && b[i] == 0xFF.toByte()) {
-            val marker = b[i + 1].toInt() and 0xFF
-            if (marker == SOS || marker == EOI || marker == 0xFF) return
-            val length = ((b[i + 2].toInt() and 0xFF) shl 8) or (b[i + 3].toInt() and 0xFF)
-            val end = i + 2 + length
-            if (length < 2 || end > b.size || !visit(marker, i + 4, end)) return
-            i = end
-        }
-    }
-
-    private fun ByteArray.startsWith(at: Int, prefix: ByteArray) =
-        at + prefix.size <= size && prefix.indices.all { this[at + it] == prefix[it] }
-
-    private fun isJpeg(b: ByteArray) = b.size > 4 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte()
-
-    private fun app1(payload: ByteArray) = segment(APP1, payload)
-    private fun app2(payload: ByteArray) = segment(APP2, payload)
-
-    private fun segment(marker: Int, payload: ByteArray): ByteArray {
-        val length = payload.size + 2
-        require(length <= 0xFFFF) { "segment too long" }
-        return byteArrayOf(0xFF.toByte(), marker.toByte(), (length ushr 8).toByte(), length.toByte()) + payload
-    }
-
-    private const val APP0 = 0xE0
-    private const val APP1 = 0xE1
-    private const val APP2 = 0xE2
-    private const val SOS = 0xDA
-    private const val EOI = 0xD9
     private const val MP_ENTRIES_OFFSET = 8 + 2 + 3 * 12 + 4
     private const val MPF_SEGMENT_SIZE = 4 + 4 + MP_ENTRIES_OFFSET + 2 * 16
-    private val MPF_SIGNATURE = byteArrayOf(0x4D, 0x50, 0x46, 0x00)
-    private val XMP_NAMESPACE = "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray()
-    internal val ISO_NAMESPACE = "urn:iso:std:iso:ts:21496:-1\u0000".encodeToByteArray()
+    private val ISO_NAMESPACE = "urn:iso:std:iso:ts:21496:-1\u0000".encodeToByteArray()
     private val ISO_VERSION = byteArrayOf(0, 0, 0, 0)
 }
 
@@ -212,13 +165,11 @@ internal object IsoGainmapMetadata {
     private const val DENOMINATOR = 1 shl 20
 
     fun encode(m: GainmapMetadata): ByteArray {
-        val out = ArrayList<Byte>()
-        fun u16(v: Int) { out += (v ushr 8).toByte(); out += v.toByte() }
-        fun u32(v: Long) { u16((v ushr 16).toInt() and 0xFFFF); u16((v and 0xFFFF).toInt()) }
-        fun fraction(v: Double) { u32((v * DENOMINATOR).roundToLong() and 0xFFFFFFFFL); u32(DENOMINATOR.toLong()) }
+        val out = ByteBuilder(141)
+        fun fraction(v: Double) { out.addU32((v * DENOMINATOR).roundToLong() and 0xFFFFFFFFL); out.addU32(DENOMINATOR.toLong()) }
         val multi = m.channels == 3 && listOf(m.gainMapMin, m.gainMapMax, m.gamma, m.offsetSdr, m.offsetHdr).any { it.distinct().size > 1 }
-        u16(0); u16(0)
-        out += ((if (multi) MULTI_CHANNEL else 0) or (if (m.useBaseColorSpace) BASE_COLOR_SPACE else 0)).toByte()
+        out.addU16(0); out.addU16(0)
+        out.addByte((if (multi) MULTI_CHANNEL else 0) or (if (m.useBaseColorSpace) BASE_COLOR_SPACE else 0))
         fraction(m.hdrCapacityMin)
         fraction(m.hdrCapacityMax)
         for (c in 0 until if (multi) 3 else 1) {
@@ -228,15 +179,15 @@ internal object IsoGainmapMetadata {
             fraction(m.offsetSdr.channel(c))
             fraction(m.offsetHdr.channel(c))
         }
-        return out.toByteArray()
+        return out.take()
     }
 
     /** Null for a version this doesn't read, an HDR base image, or a block cut short. */
     fun decode(b: ByteArray): GainmapMetadata? {
         var at = 0
         fun has(n: Int) = at + n <= b.size
-        fun u16(): Int = (((b[at].toInt() and 0xFF) shl 8) or (b[at + 1].toInt() and 0xFF)).also { at += 2 }
-        fun u32(): Long = ((u16().toLong() shl 16) or u16().toLong())
+        fun u16(): Int = readU16(b, at, little = false).also { at += 2 }
+        fun u32(): Long = (readU32(b, at, little = false).toLong() and 0xFFFFFFFFL).also { at += 4 }
         if (!has(5)) return null
         if (u16() != 0) return null
         u16()
@@ -269,14 +220,13 @@ internal object IsoGainmapMetadata {
 
 /** Ultra HDR v1's XMP: the primary image's container directory, and the gain map's `hdrgm` values. */
 internal object HdrgmXmp {
-    private const val HDRGM = "http://ns.adobe.com/hdr-gain-map/1.0/"
     private const val HEAD = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"Adobe XMP Core 5.1.2\">" +
         "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">"
     private const val TAIL = "</rdf:RDF></x:xmpmeta>"
 
     fun encodePrimary(gainmapLength: Int): ByteArray = (
         HEAD + "<rdf:Description rdf:about=\"\" xmlns:Container=\"http://ns.google.com/photos/1.0/container/\" " +
-            "xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\" xmlns:hdrgm=\"$HDRGM\" hdrgm:Version=\"1.0\">" +
+            "xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\" xmlns:hdrgm=\"$HDRGM_NS\" hdrgm:Version=\"1.0\">" +
             "<Container:Directory><rdf:Seq>" +
             "<rdf:li rdf:parseType=\"Resource\"><Container:Item Item:Semantic=\"Primary\" Item:Mime=\"image/jpeg\"/></rdf:li>" +
             "<rdf:li rdf:parseType=\"Resource\"><Container:Item Item:Semantic=\"GainMap\" Item:Mime=\"image/jpeg\" Item:Length=\"$gainmapLength\"/></rdf:li>" +
@@ -285,7 +235,7 @@ internal object HdrgmXmp {
 
     // Android 14 reads one value per field, so a three-channel map writes its first channel here; the ISO block has all.
     fun encodeGainmap(m: GainmapMetadata): ByteArray = (
-        HEAD + "<rdf:Description rdf:about=\"\" xmlns:hdrgm=\"$HDRGM\" hdrgm:Version=\"1.0\"" +
+        HEAD + "<rdf:Description rdf:about=\"\" xmlns:hdrgm=\"$HDRGM_NS\" hdrgm:Version=\"1.0\"" +
             " hdrgm:GainMapMin=\"${m.gainMapMin.channel(0)}\" hdrgm:GainMapMax=\"${m.gainMapMax.channel(0)}\"" +
             " hdrgm:Gamma=\"${m.gamma.channel(0)}\" hdrgm:OffsetSDR=\"${m.offsetSdr.channel(0)}\"" +
             " hdrgm:OffsetHDR=\"${m.offsetHdr.channel(0)}\" hdrgm:HDRCapacityMin=\"${m.hdrCapacityMin}\"" +
@@ -294,7 +244,7 @@ internal object HdrgmXmp {
 
     /** Null without `hdrgm` values, or for an HDR base image. Missing optional fields take the format's defaults. */
     fun decode(xml: String): GainmapMetadata? {
-        if (HDRGM !in xml) return null
+        if (HDRGM_NS !in xml) return null
         if (field(xml, "BaseRenditionIsHDR")?.singleOrNull()?.equals("true", ignoreCase = true) == true) return null
         fun numbers(name: String, default: Double?): List<Double>? {
             val values = field(xml, name) ?: return default?.let { listOf(it) }
@@ -311,11 +261,13 @@ internal object HdrgmXmp {
         )
     }
 
+    private val LIST_ITEM = Regex("""<rdf:li>([^<]*)</rdf:li>""")
+
     // An attribute, a simple element, or an element holding an rdf:Seq of one value per channel.
     private fun field(xml: String, name: String): List<String>? {
         Regex("""hdrgm:$name\s*=\s*(["'])([^"']*)\1""").find(xml)?.let { return listOf(it.groupValues[2]) }
         val body = Regex("""<hdrgm:$name>(.*?)</hdrgm:$name>""", RegexOption.DOT_MATCHES_ALL).find(xml)?.groupValues?.get(1) ?: return null
-        val items = Regex("""<rdf:li>([^<]*)</rdf:li>""").findAll(body).map { it.groupValues[1] }.toList()
+        val items = LIST_ITEM.findAll(body).map { it.groupValues[1] }.toList()
         return items.ifEmpty { listOf(body) }
     }
 }

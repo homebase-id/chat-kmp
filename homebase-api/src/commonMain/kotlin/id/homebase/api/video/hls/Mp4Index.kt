@@ -168,7 +168,7 @@ internal class Boxes {
     private val out = ByteBuilder(4096)
 
     fun u8(v: Int) = out.addByte(v)
-    fun u16(v: Int) { out.addByte(v shr 8); out.addByte(v) }
+    fun u16(v: Int) = out.addU16(v)
     fun u32(v: Int) = u32(v.toLong())
     fun u32(v: Long) = out.addU32(v)
     fun u64(v: Long) { u32(v ushr 32); u32(v and 0xFFFFFFFFL) }

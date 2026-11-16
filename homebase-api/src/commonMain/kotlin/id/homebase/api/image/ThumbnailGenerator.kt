@@ -92,10 +92,12 @@ private suspend fun mediaImagesFrom(
     val format = contentTypeFromBytes(header)
     val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
-    val gainmap = if (hdr && setting.keepsHdr && !keepsItsFile) hdrGainmapOf(header, readRange) else null
-    val media = renderPlanned(source, payloadKey, displayedSize = null, gainmap) { size ->
-        val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)
-        if (gif) plan.copy(thumbnails = emptyList()) else plan
+    val gainmap = if (hdr && setting.keepsHdr && !keepsItsFile) HdrGainmap.of(header, readRange) else null
+    val media = gainmap.use {
+        renderPlanned(source, payloadKey, displayedSize = null, gainmap) { size ->
+            val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)
+            if (gif) plan.copy(thumbnails = emptyList()) else plan
+        }
     }
     // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
     val natural = media.displayedSize
@@ -111,7 +113,7 @@ private suspend fun createSvgImages(bytes: ByteArray, payloadKey: String, settin
     return try {
         val raster = ImageUtils.rasterizeSvg(bytes, largestThumbnailLongEdge(setting), ImageFormat.PNG, 100)
         openImageSource(raster.bytes).use { source ->
-            renderPlanned(source, payloadKey, natural, gainmap = null) { planMediaImages(it, setting, makesFinalImage = false) }
+            renderPlanned(source, payloadKey, natural) { planMediaImages(it, setting, makesFinalImage = false) }
         }
     } catch (e: Exception) {
         if (e is CancellationException) throw e
@@ -123,7 +125,7 @@ private suspend fun renderPlanned(
     source: ImageSource,
     payloadKey: String,
     displayedSize: ImageSize?,
-    gainmap: HdrGainmap?,
+    gainmap: HdrGainmap? = null,
     planFor: (ImageSize) -> MediaImagePlan,
 ): MediaImages {
     var plan: MediaImagePlan? = null
@@ -237,17 +239,3 @@ private fun getSvgDimensions(svgData: ByteArray): ImageSize? {
 
 // Standard is for small and fast: an HDR copy is 1.5-2x the bytes (MEDIA_BENCHMARKS.md, "HDR photos").
 private val MediaQuality.keepsHdr get() = this != MediaQuality.STANDARD
-
-// The source's gain map from its MPF index, read on its own (it's the file's tail, a fraction of its size) and tagged
-// with the source's orientation so it turns upright with it. Null for anything but a readable Ultra HDR JPEG.
-private suspend fun hdrGainmapOf(header: ByteArray, readRange: suspend (LongRange) -> ByteArray): HdrGainmap? {
-    val range = UltraHdr.gainmapRange(header) ?: return null
-    if (range.last - range.first >= MAX_GAINMAP_BYTES) return null
-    val jpeg = readRange(range)
-    val metadata = UltraHdr.metadataOf(jpeg) ?: return null
-    val orientation = ImageMetadataScrubber.jpegOrientation(header)
-    val upright = if (orientation == null || orientation == 1) jpeg else ImageMetadataScrubber.withOrientation(jpeg, orientation)
-    return HdrGainmap(openImageSource(upright), metadata)
-}
-
-private const val MAX_GAINMAP_BYTES = 16L * 1024 * 1024

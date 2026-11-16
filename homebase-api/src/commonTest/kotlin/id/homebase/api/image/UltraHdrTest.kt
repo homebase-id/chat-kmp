@@ -4,6 +4,7 @@ import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -100,6 +101,13 @@ class UltraHdrTest {
         val joined = UltraHdr.join(jpeg(1), jpeg(2), metadata)
         val scrubbed = ImageMetadataScrubber.scrub(joined)
         assertClose(metadata, assertNotNull(UltraHdr.gainmapOf(scrubbed)).metadata)
+    }
+
+    @Test
+    fun aHeaderCutOffBeforeTheScanMayStillHaveAnMpfIndex() {
+        val joined = UltraHdr.join(jpeg(1), jpeg(2), metadata)
+        assertTrue(UltraHdr.mayHaveMpfBeyond(joined.copyOf(40)), "cut inside the XMP")
+        assertFalse(UltraHdr.mayHaveMpfBeyond(jpeg(1, 2)), "the whole header was there, scan reached")
     }
 
     @Test
