@@ -1,9 +1,7 @@
 package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.withResolvedFile
 import id.homebase.api.video.hls.HlsSegmenter
 import java.io.File
@@ -15,9 +13,11 @@ internal actual fun platformVideoCompressor(): VideoCompressor = AndroidVideoCom
 internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompressor {
     private const val TAG = "AndroidVideoCompressor"
 
-    private val fileOps by lazy { AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext()) }
+    private val fileOps get() = Media3VideoCompressor.fileOps
 
-    override fun readsInPlace(path: String): Boolean = fileOps.isContentUri(path)
+    // The media library's URIs only: the app's own media permission covers them for as long as it lasts. A
+    // picker's grant can end with its screen, before a queued compress reads the file, so that pick is copied.
+    override fun readsInPlace(path: String): Boolean = path.startsWith("content://media/")
 
     override suspend fun compress(
         inputPath: String,

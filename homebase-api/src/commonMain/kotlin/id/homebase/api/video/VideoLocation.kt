@@ -39,12 +39,6 @@ class VideoLocationReader {
     var location: VideoLocation? = null
         private set
 
-    /** Nothing more to learn: the location is found, or the file can't hold one where it's looked for. */
-    val finished: Boolean get() = done
-
-    /** The bytes [feed] would only count past next. A caller that can seek skips them instead. */
-    fun takeSkip(): Long = skipping.also { skipping = 0 }
-
     fun feed(chunk: ByteArray, offset: Int = 0, length: Int = chunk.size - offset) {
         val end = offset + length
         var at = offset
@@ -96,48 +90,48 @@ class VideoLocationReader {
         }
     }
 
-    internal fun locationInMoov(moov: ByteArray): VideoLocation? {
-        val top = mp4Boxes(moov, 0, moov.size)
-        top.firstOrNull { it.type == "meta" }?.let { metadataKeyLocation(moov, it) }?.let { return it }
-        val udta = top.firstOrNull { it.type == "udta" } ?: return null
-        val xyz = mp4Boxes(moov, udta.start, udta.end).firstOrNull { it.type == "©xyz" } ?: return null
-        // A 16-bit text length and a 16-bit language code, then the text.
-        if (xyz.start + 4 > xyz.end) return null
-        val length = readU16(moov, xyz.start, little = false)
-        val textEnd = minOf(xyz.start + 4 + length, xyz.end)
-        return VideoLocation.parse(moov.decodeToString(xyz.start + 4, textEnd))
-    }
+}
 
-    // QuickTime metadata: `keys` names each entry, and `ilst` holds the values under 1-based key indexes.
-    private fun metadataKeyLocation(b: ByteArray, meta: Mp4Box): VideoLocation? {
-        // ISO's meta is a full box with 4 bytes of version and flags; QuickTime's isn't.
-        val first = if (meta.start + 8 <= meta.end && fourCc(b, meta.start + 4) in setOf("hdlr", "keys", "ilst")) meta.start else meta.start + 4
-        val boxes = mp4Boxes(b, first, meta.end)
-        val keys = boxes.firstOrNull { it.type == "keys" } ?: return null
-        val ilst = boxes.firstOrNull { it.type == "ilst" } ?: return null
-        if (keys.start + 8 > keys.end) return null
-        val count = readU32(b, keys.start + 4, little = false)
-        var i = keys.start + 8
-        var index = 0
-        for (k in 1..count) {
-            if (i + 8 > keys.end) return null
-            val size = readU32(b, i, little = false)
-            if (size < 8 || i + size > keys.end) return null
-            if (b.decodeToString(i + 8, i + size) == APPLE_LOCATION_KEY) {
-                index = k
-                break
-            }
-            i += size
+private const val APPLE_LOCATION_KEY = "com.apple.quicktime.location.ISO6709"
+
+/** The location recorded in a `moov` box's bytes, its header excluded. */
+internal fun locationInMoov(moov: ByteArray): VideoLocation? {
+    val top = mp4Boxes(moov, 0, moov.size)
+    top.firstOrNull { it.type == "meta" }?.let { metadataKeyLocation(moov, it) }?.let { return it }
+    val udta = top.firstOrNull { it.type == "udta" } ?: return null
+    val xyz = mp4Boxes(moov, udta.start, udta.end).firstOrNull { it.type == "©xyz" } ?: return null
+    // A 16-bit text length and a 16-bit language code, then the text.
+    if (xyz.start + 4 > xyz.end) return null
+    val length = readU16(moov, xyz.start, little = false)
+    val textEnd = minOf(xyz.start + 4 + length, xyz.end)
+    return VideoLocation.parse(moov.decodeToString(xyz.start + 4, textEnd))
+}
+
+// QuickTime metadata: `keys` names each entry, and `ilst` holds the values under 1-based key indexes.
+private fun metadataKeyLocation(b: ByteArray, meta: Mp4Box): VideoLocation? {
+    // ISO's meta is a full box with 4 bytes of version and flags; QuickTime's isn't.
+    val first = if (meta.start + 8 <= meta.end && fourCc(b, meta.start + 4) in setOf("hdlr", "keys", "ilst")) meta.start else meta.start + 4
+    val boxes = mp4Boxes(b, first, meta.end)
+    val keys = boxes.firstOrNull { it.type == "keys" } ?: return null
+    val ilst = boxes.firstOrNull { it.type == "ilst" } ?: return null
+    if (keys.start + 8 > keys.end) return null
+    val count = readU32(b, keys.start + 4, little = false)
+    var i = keys.start + 8
+    var index = 0
+    for (k in 1..count) {
+        if (i + 8 > keys.end) return null
+        val size = readU32(b, i, little = false)
+        if (size < 8 || i + size > keys.end) return null
+        if (b.decodeToString(i + 8, i + size) == APPLE_LOCATION_KEY) {
+            index = k
+            break
         }
-        if (index == 0) return null
-        val item = mp4Boxes(b, ilst.start, ilst.end).firstOrNull { readU32(b, it.start - 4, little = false) == index } ?: return null
-        val data = mp4Boxes(b, item.start, item.end).firstOrNull { it.type == "data" } ?: return null
-        // A 4-byte type and a 4-byte locale, then the value.
-        if (data.start + 8 > data.end) return null
-        return VideoLocation.parse(b.decodeToString(data.start + 8, data.end))
+        i += size
     }
-
-    private companion object {
-        const val APPLE_LOCATION_KEY = "com.apple.quicktime.location.ISO6709"
-    }
+    if (index == 0) return null
+    val item = mp4Boxes(b, ilst.start, ilst.end).firstOrNull { readU32(b, it.start - 4, little = false) == index } ?: return null
+    val data = mp4Boxes(b, item.start, item.end).firstOrNull { it.type == "data" } ?: return null
+    // A 4-byte type and a 4-byte locale, then the value.
+    if (data.start + 8 > data.end) return null
+    return VideoLocation.parse(b.decodeToString(data.start + 8, data.end))
 }

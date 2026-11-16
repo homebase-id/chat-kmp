@@ -29,9 +29,10 @@ internal fun mp4Boxes(b: ByteArray, from: Int, until: Int): List<Mp4Box> {
 /** A long recording's sample tables run to a few MB; past this the file isn't one a camera or encoder wrote. */
 internal const val MAX_MOOV_BYTES = 64L * 1024 * 1024
 
-// Walks the top-level boxes by their headers alone, so a moov after the media costs no pass over it.
+// Walks the top-level boxes by their headers alone, so a moov after the media costs no pass over it. Reads to
+// the end of the file rather than trusting its reported size, which a content:// provider may give as 0.
 internal suspend fun readMoov(fileOps: FileOperationsProvider, path: String): ByteArray? {
-    val size = fileOps.getFileSize(path)
+    val size = fileOps.getFileSize(path).takeIf { it > 0 } ?: Long.MAX_VALUE
     var at = 0L
     while (at + 8 <= size) {
         val header = fileOps.readFileRange(path, at, 16)

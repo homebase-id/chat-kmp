@@ -32,8 +32,9 @@ interface VideoCompressor {
     ): String
 
     /**
-     * Whether [compress] reads [path] where it is: an Android `content://` pick with no copy into the cache
-     * first. False means the caller resolves it to a file (`FileOperationsProvider.resolveToFilePath`).
+     * Whether [path] can be processed where it is, with no copy into the cache first: by [compress], and by the
+     * platform's poster decoder and file size, which get the same path. False means the caller resolves it to a
+     * file first (`FileOperationsProvider.resolveToFilePath`).
      */
     fun readsInPlace(path: String): Boolean = false
 

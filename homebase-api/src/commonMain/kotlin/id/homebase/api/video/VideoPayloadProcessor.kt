@@ -87,8 +87,7 @@ class VideoPayloadProcessor(
     ): VideoProcessResult {
         // The okio path stays the source of truth for size, the compress-skip fallback, and the
         // non-HLS encrypt of an uncompressed clip; inputBlobUrl only short-circuits the INPUT reads.
-        // Only a real blob: handle may bypass the resolved path — a raw content:// or PHAsset id
-        // here is unreadable by native ffmpeg.
+        // Only a real blob: handle replaces the path: a content:// or PHAsset id there would skip the resolve.
         val ffmpegInputPath = inputBlobUrl?.takeIf { it.isBlobUrl() } ?: payload.filePath
         val inputSize = fileOperationsProvider.getFileSize(payload.filePath)
         Logger.i(tag = "VideoProcessing") {

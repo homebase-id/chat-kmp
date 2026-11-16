@@ -56,7 +56,7 @@ import kotlinx.coroutines.withContext
 internal object Media3VideoCompressor {
     private const val TAG = "Media3VideoCompressor"
     private const val PROGRESS_POLL_MS = 250L
-    private val fileOps by lazy { AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext()) }
+    internal val fileOps by lazy { AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext()) }
 
     // Transformer's calls, callbacks and blocking cancel stay off the main thread.
     private val looper by lazy { HandlerThread("Media3Transformer").apply { start() }.looper }
@@ -247,7 +247,7 @@ internal object Media3VideoCompressor {
 
     // Seeks past the media, so only the box headers and the moov are read.
     private suspend fun moovLocation(path: String): VideoLocation? = try {
-        readMoov(fileOps, path)?.let { VideoLocationReader().locationInMoov(it) }
+        readMoov(fileOps, path)?.let(::locationInMoov)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
