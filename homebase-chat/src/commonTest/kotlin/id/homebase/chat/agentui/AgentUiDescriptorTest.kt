@@ -118,4 +118,42 @@ class AgentUiDescriptorTest {
     @Test fun an_unreserved_future_kind_is_still_unknown() {
         assertIs<MessageContent.Unknown>(MessageContentParser.parse(999, """{"x":1}"""))
     }
+
+    @Test fun a_reply_names_its_card_by_title_then_first_text_then_fallback() {
+        assertEquals("Draft", MessageContent.AgentUi(ui()).subject())
+        val tree = AgentUiTree.decode(AgentUiFixtures.draftPostCardBytes(), AgentUiFixtures.imageKeys)
+        assertEquals("Draft post", MessageContent.AgentUi(ui(fallback = "fb", title = null), tree).subject())
+        assertEquals("Post plan for Monday", MessageContent.AgentUi(ui(fallback = "**Post plan** for Monday\nmore", title = null)).subject())
+        assertEquals("x".repeat(60) + "…", MessageContent.AgentUi(ui(fallback = "x".repeat(200), title = null)).subject())
+    }
+
+    @Test fun reply_values_are_shown_only_when_short() {
+        assertNull(action().shortValues())
+        assertEquals("nets: x,li", action(values = mapOf("nets" to "x,li")).shortValues())
+        assertNull(action(values = mapOf("caption" to "y".repeat(80))).shortValues())
+    }
+
+    @Test fun answered_by_you_counts_only_your_replies_at_the_current_rev() {
+        val card = Uuid.random()
+        val c = AgentUiConversation(
+            emptyMap(),
+            mapOf(card to listOf(AgentUiAnswer(1, "keep", byYou = true), AgentUiAnswer(0, "drop", byYou = true), AgentUiAnswer(1, "drop", byYou = false))),
+        )
+        assertEquals(setOf("keep"), c.answeredByYou(card, 1))
+        assertEquals(setOf("drop"), c.answeredByYou(card, 0))
+        assertEquals(emptySet(), c.answeredByYou(Uuid.random(), 1))
+    }
+
+    // Copy on a card copies its text and table rows, not the 80-character summary.
+    @Test fun a_card_copies_as_its_text_and_table_rows() {
+        assertEquals("Draft post\nSpring is here. **Meet** the new release.", AgentUiFixtures.decodeDraftPostCard().plainText())
+        val table = AgentUiFixtures.valid(
+            AgentUiFixtures.tree(
+                """{"id":"root","type":"column","children":["t","tb"]}""",
+                """{"id":"t","type":"text","markdown":"Totals"}""",
+                """{"id":"tb","type":"table","header":["Net","Posts"],"rows":[["X","3"],["LinkedIn","1"]]}""",
+            ),
+        )
+        assertEquals("Totals\nNet\tPosts\nX\t3\nLinkedIn\t1", table.plainText())
+    }
 }

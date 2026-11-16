@@ -30,6 +30,7 @@ object AgentUiLimits {
     const val MAX_OPTIONS = 50
     const val MAX_VALUES = 20
     const val MAX_VALUE_CP = 1000
+    const val MAX_COPY_CP = 2000
     const val MAX_ID_LENGTH = 64
     const val MAX_JSON_NESTING = 8
     val ACTION_ID = Regex("^[a-z0-9_.-]{1,64}$")
@@ -65,7 +66,14 @@ sealed interface AgentUiNode {
     data class ListNode(override val id: String, val children: List<AgentUiNode>, val direction: ListDirection) : AgentUiNode
     data class Table(override val id: String, val header: List<String>, val rows: List<List<String>>) : AgentUiNode
     data class Progress(override val id: String, val value: Float?, val label: String?) : AgentUiNode
-    data class Button(override val id: String, val label: String, val style: ButtonStyle, val action: AgentUiNodeAction?) : AgentUiNode
+    /** With [copy] set the button copies it on the device and never sends an action; [action] is then null. */
+    data class Button(
+        override val id: String,
+        val label: String,
+        val style: ButtonStyle,
+        val action: AgentUiNodeAction?,
+        val copy: String? = null,
+    ) : AgentUiNode
     data class Toggle(override val id: String, val label: String, val value: Boolean, val action: AgentUiNodeAction?) : AgentUiNode
     data class TextInput(
         override val id: String,
@@ -190,7 +198,7 @@ data class AgentUiTree(
             if (element.nestingExceeds(AgentUiLimits.MAX_JSON_NESTING)) AgentUiTreeResult.Invalid("json nested too deeply")
             else Decoder(availableImageKeys).decode(element)
         } catch (e: Exception) {
-            AgentUiTreeResult.Invalid("decode failed")
+            AgentUiTreeResult.Invalid("decode failed: ${e::class.simpleName}")
         }
 
         private fun JsonElement.nestingExceeds(max: Int): Boolean {
@@ -209,6 +217,8 @@ data class AgentUiTree(
             return false
         }
 
+        private const val MAX_NOTES = 5
+
         private fun jsonBytes(s: String): Int = OdinSystemSerializer.serialize(s).encodeToByteArray().size
     }
 
@@ -221,21 +231,39 @@ data class AgentUiTree(
         private var failure: String? = null
 
         fun decode(element: JsonElement): AgentUiTreeResult {
-            val obj = element as? JsonObject ?: return AgentUiTreeResult.Invalid("root is not an object")
-            val rootId = obj.strictString("root") ?: return AgentUiTreeResult.Invalid("no root id")
-            val list = obj["nodes"] as? JsonArray ?: return AgentUiTreeResult.Invalid("no nodes")
-            if (list.size > AgentUiLimits.MAX_NODES) return AgentUiTreeResult.Invalid("too many nodes")
-            for (item in list) {
-                val n = item as? JsonObject ?: continue
-                val id = n.strictString("id")?.takeIf { it.isNotBlank() && it.length <= AgentUiLimits.MAX_ID_LENGTH } ?: continue
-                if (nodes.put(id, n) != null) return AgentUiTreeResult.Invalid("duplicate id")
+            val obj = element as? JsonObject ?: return AgentUiTreeResult.Invalid("tree is not a JSON object")
+            val rootId = obj.strictString("root") ?: return AgentUiTreeResult.Invalid("no root id: \"root\" must be the id of the top node")
+            val list = obj["nodes"] as? JsonArray ?: return AgentUiTreeResult.Invalid("no nodes: \"nodes\" must be an array of node objects")
+            if (list.size > AgentUiLimits.MAX_NODES) return AgentUiTreeResult.Invalid("too many nodes: ${list.size}, limit ${AgentUiLimits.MAX_NODES}")
+            list.forEachIndexed { i, item ->
+                val n = item as? JsonObject ?: return@forEachIndexed note("nodes[$i] is not an object")
+                val id = n.strictString("id")?.takeIf { it.isNotBlank() && it.length <= AgentUiLimits.MAX_ID_LENGTH }
+                    ?: return@forEachIndexed note("nodes[$i] has no usable id (a non-blank string of at most ${AgentUiLimits.MAX_ID_LENGTH} characters)")
+                if (nodes.put(id, n) != null) return AgentUiTreeResult.Invalid("duplicate node id '$id'")
             }
-            val root = build(rootId, 1)
+            val root = build(rootId, 1, parent = null)
             failure?.let { return AgentUiTreeResult.Invalid(it) }
-            if (root == null) return AgentUiTreeResult.Invalid("root missing")
+            if (root == null) return AgentUiTreeResult.Invalid(withNotes("root '$rootId' is not in nodes"))
             // A card that would draw nothing must show its fallback instead.
-            if (!root.showsSomething()) return AgentUiTreeResult.Invalid("nothing to show")
+            if (!root.showsSomething()) {
+                return AgentUiTreeResult.Invalid(
+                    withNotes("nothing to show: no non-blank text, labelled chip, table, image, input, button or fallback"),
+                )
+            }
             return AgentUiTreeResult.Valid(AgentUiTree(root, inputs, multiSelects))
+        }
+
+        // Things the decoder dropped or left empty without refusing; they explain a tree that ends up with nothing to show.
+        private val notes = ArrayList<String>()
+
+        private fun note(s: String) {
+            notes += s
+        }
+
+        private fun withNotes(reason: String): String = when {
+            notes.isEmpty() -> reason
+            notes.size <= MAX_NOTES -> "$reason (${notes.joinToString("; ")})"
+            else -> "$reason (${notes.take(MAX_NOTES).joinToString("; ")}; ${notes.size - MAX_NOTES} more)"
         }
 
         private fun fail(reason: String): AgentUiNode? {
@@ -243,64 +271,110 @@ data class AgentUiTree(
             return null
         }
 
-        private fun build(id: String, depth: Int): AgentUiNode? {
+        private fun build(id: String, depth: Int, parent: String?): AgentUiNode? {
             if (failure != null) return null
-            val obj = nodes[id] ?: return null
-            if (depth > AgentUiLimits.MAX_DEPTH) return fail("too deep")
-            if (!visited.add(id)) return fail("node referenced twice")
+            val obj = nodes[id] ?: run {
+                if (parent != null) note("child '$id' of '$parent' is not in nodes")
+                return null
+            }
+            if (depth > AgentUiLimits.MAX_DEPTH) return fail("node '$id' is nested $depth deep, limit ${AgentUiLimits.MAX_DEPTH}")
+            if (!visited.add(id)) return fail("node '$id' is referenced twice (a cycle, or a child of two parents)")
             val fallback = obj.text("fallback", AgentUiLimits.MAX_TEXT_CP)?.takeIf { it.isNotBlank() }
-            return when (obj.strictString("type")) {
-                "column" -> children(obj, depth)?.let { AgentUiNode.Column(id, it, spacing(obj)) }
-                "row" -> children(obj, depth)?.let { AgentUiNode.Row(id, it, spacing(obj)) }
-                "card" -> children(obj, depth)?.let { AgentUiNode.Card(id, it, tone(obj.strictString("tone"))) }
-                "list" -> children(obj, depth)?.let {
+            val type = obj.strictString("type")
+            return when (type) {
+                "column" -> children(id, "column", obj, depth)?.let { AgentUiNode.Column(id, it, spacing(obj)) }
+                "row" -> children(id, "row", obj, depth)?.let { AgentUiNode.Row(id, it, spacing(obj)) }
+                "card" -> children(id, "card", obj, depth)?.let { AgentUiNode.Card(id, it, tone(obj.strictString("tone"))) }
+                "list" -> children(id, "list", obj, depth)?.let {
                     AgentUiNode.ListNode(id, it, if (obj.strictString("direction") == "horizontal") ListDirection.Horizontal else ListDirection.Vertical)
                 }
-                "text" -> AgentUiNode.Text(id, obj.text("markdown", AgentUiLimits.MAX_TEXT_CP) ?: "", textStyle(obj.strictString("style")), tone(obj.strictString("tone")))
+                "text" -> {
+                    val markdown = obj.text("markdown", AgentUiLimits.MAX_TEXT_CP) ?: ""
+                    if (markdown.isBlank()) note(missing("text node '$id' has no markdown", obj, "markdown", "text", "content", "value", "label", "body"))
+                    AgentUiNode.Text(id, markdown, textStyle(obj.strictString("style")), tone(obj.strictString("tone")))
+                }
                 "image" -> image(id, obj, fallback)
-                "chip" -> AgentUiNode.Chip(id, obj.label("label") ?: "", obj.strictBoolean("selected") ?: false)
+                "chip" -> {
+                    val label = obj.label("label") ?: ""
+                    if (label.isBlank()) note(missing("chip '$id' has no label", obj, "label", "text", "markdown", "value"))
+                    AgentUiNode.Chip(id, label, obj.strictBoolean("selected") ?: false)
+                }
                 "divider" -> AgentUiNode.Divider(id)
                 "table" -> table(id, obj)
                 "progress" -> AgentUiNode.Progress(id, progressValue(obj["value"]), obj.label("label"))
-                "button" -> AgentUiNode.Button(id, obj.label("label") ?: "", buttonStyle(obj.strictString("style")), action(obj["action"]))
+                "button" -> button(id, obj)
                 "toggle" -> {
                     val v = obj.strictBoolean("value") ?: false
                     inputs[id] = v.toString()
-                    AgentUiNode.Toggle(id, obj.label("label") ?: "", v, action(obj["action"]))
+                    AgentUiNode.Toggle(id, obj.label("label") ?: "", v, action(id, obj["action"]))
                 }
                 "textInput" -> {
                     val max = (obj.strictInt("maxLength") ?: AgentUiLimits.MAX_VALUE_CP).coerceIn(1, AgentUiLimits.MAX_VALUE_CP)
                     val v = (obj.strictString("value") ?: "").truncateToCodePoints(max)
                     inputs[id] = v
-                    AgentUiNode.TextInput(id, obj.label("label") ?: "", v, obj.strictBoolean("multiline") ?: false, max, action(obj["action"]))
+                    AgentUiNode.TextInput(id, obj.label("label") ?: "", v, obj.strictBoolean("multiline") ?: false, max, action(id, obj["action"]))
                 }
                 "select" -> select(id, obj)
                 "multiSelect" -> multiSelect(id, obj)
-                else -> AgentUiNode.Unknown(id, fallback)
+                else -> {
+                    if (fallback == null) note(if (type == null) "node '$id' has no type" else "unknown node type '$type' ($id) has no fallback")
+                    AgentUiNode.Unknown(id, fallback)
+                }
             }
         }
 
-        private fun children(obj: JsonObject, depth: Int): List<AgentUiNode>? {
-            val ids = (obj["children"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: return emptyList()
+        // "text node 't0' has no markdown (it has \"text\"; put it in \"markdown\")" when the content went under another key.
+        private fun missing(what: String, obj: JsonObject, field: String, vararg likely: String): String {
+            val misplaced = likely.firstOrNull { it != field && obj.strictString(it)?.isNotBlank() == true } ?: return what
+            return "$what (it has \"$misplaced\"; put it in \"$field\")"
+        }
+
+        private fun children(id: String, type: String, obj: JsonObject, depth: Int): List<AgentUiNode>? {
+            val ids = (obj["children"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            if (ids.isNullOrEmpty()) {
+                note("$type '$id' has no children")
+                return emptyList()
+            }
             if (ids.size > AgentUiLimits.MAX_CHILDREN) {
-                fail("too many children")
+                fail("$type '$id' has ${ids.size} children, limit ${AgentUiLimits.MAX_CHILDREN}")
                 return null
             }
             val out = ArrayList<AgentUiNode>(ids.size)
             for (child in ids) {
-                build(child, depth + 1)?.let(out::add)
+                build(child, depth + 1, parent = id)?.let(out::add)
                 if (failure != null) return null
             }
             return out
+        }
+
+        private fun button(id: String, obj: JsonObject): AgentUiNode? {
+            val label = obj.label("label") ?: ""
+            if (label.isBlank()) return fail(missing("button '$id' has no label", obj, "label", "text", "markdown", "title"))
+            val copyField = obj["copy"]
+            val copy = if (copyField == null) null else {
+                val s = obj.strictString("copy")?.takeIf { it.isNotBlank() } ?: return fail("button '$id' copy must be a non-blank string")
+                val cp = s.codePointCount()
+                if (cp > AgentUiLimits.MAX_COPY_CP) return fail("button '$id' copy is $cp code points, limit ${AgentUiLimits.MAX_COPY_CP}")
+                if (obj["action"] != null) return fail("button '$id' has both copy and action; a copy button sends nothing")
+                s
+            }
+            return AgentUiNode.Button(id, label, buttonStyle(obj.strictString("style")), if (copy == null) action(id, obj["action"]) else null, copy)
         }
 
         private fun image(id: String, obj: JsonObject, fallback: String?): AgentUiNode? {
             val alt = obj.text("alt", AgentUiLimits.MAX_LABEL_CP)?.takeIf { it.isNotBlank() }
             val key = obj.strictString("payloadKey")
             if (alt == null || key == null || !AgentUiLimits.IMAGE_KEY.matches(key) || key !in imageKeys) {
+                note(
+                    when {
+                        alt == null -> "image '$id' has no alt"
+                        key == null -> "image '$id' has no payloadKey"
+                        else -> "image '$id' payloadKey '$key' is not an image payload of this message"
+                    },
+                )
                 return AgentUiNode.Unknown(id, alt ?: fallback)
             }
-            if (++images > AgentUiLimits.MAX_IMAGES) return fail("too many images")
+            if (++images > AgentUiLimits.MAX_IMAGES) return fail("image '$id' is image $images, limit ${AgentUiLimits.MAX_IMAGES}")
             return AgentUiNode.Image(id, key, alt)
         }
 
@@ -310,7 +384,9 @@ data class AgentUiTree(
                     (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.truncateToCodePoints(AgentUiLimits.MAX_LABEL_CP) ?: ""
                 }
             val rows = (obj["rows"] as? JsonArray).orEmpty().take(AgentUiLimits.MAX_TABLE_ROWS).map { cells(it) }
-            return AgentUiNode.Table(id, cells(obj["header"]), rows)
+            val header = cells(obj["header"])
+            if (header.isEmpty() && rows.isEmpty()) note("table '$id' has no header or rows")
+            return AgentUiNode.Table(id, header, rows)
         }
 
         private fun options(obj: JsonObject, idOk: (String) -> Boolean = { true }): List<SelectOption> {
@@ -326,7 +402,7 @@ data class AgentUiTree(
             val options = options(obj)
             val value = obj.strictString("value")?.takeIf { v -> options.any { it.id == v } } ?: ""
             inputs[id] = value
-            return AgentUiNode.Select(id, obj.label("label") ?: "", options, value, action(obj["action"]))
+            return AgentUiNode.Select(id, obj.label("label") ?: "", options, value, action(id, obj["action"]))
         }
 
         private fun multiSelect(id: String, obj: JsonObject): AgentUiNode {
@@ -341,9 +417,10 @@ data class AgentUiTree(
             return node
         }
 
-        private fun action(e: JsonElement?): AgentUiNodeAction? {
+        private fun action(nodeId: String, e: JsonElement?): AgentUiNodeAction? {
             val o = e as? JsonObject ?: return null
-            val id = o.strictString("id")?.takeIf { AgentUiLimits.ACTION_ID.matches(it) } ?: return null
+            val id = o.strictString("id")?.takeIf { AgentUiLimits.ACTION_ID.matches(it) }
+                ?: return null.also { note("action of '$nodeId' has no id matching ${AgentUiLimits.ACTION_ID.pattern}, so it is dropped") }
             val include = (o["include"] as? JsonArray).orEmpty()
                 .mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.takeIf { s -> s.isNotBlank() && s.length <= AgentUiLimits.MAX_ID_LENGTH } }
                 .distinct()
