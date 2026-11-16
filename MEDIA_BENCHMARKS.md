@@ -7,10 +7,9 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 ## How to measure
 
 - **Device tests** are in `homebase-api`. Install them with `./gradlew :homebase-api:installAndroidDeviceTest`, then run one with `adb shell am instrument -w -e class 'id.homebase.api.video.Media3VideoCompressorTest#<test>' id.homebase.api.test/androidx.test.runner.AndroidJUnitRunner`. Results are logged under the `Media3Benchmark` tag (`adb logcat -s Media3Benchmark`).
-  - `benchmarkAgainstFfmpeg`: Media3 against ffmpeg compression at Standard and HD, then segmenting and the AAC timings.
-  - `benchmarkSegmenting`: compresses once with Media3, then times our segmenter against ffmpeg's.
-  - `benchmarkSegmentingAsIs`: segments the file as it is.
   - `benchmarkEndToEnd`: a whole send, as `VideoPayloadProcessor` runs it.
+  - `RemuxHlsToMp4DeviceTest#benchmark` with `-e remuxBench true`: saving a received video.
+  - The comparisons against ffmpeg on Android (`benchmarkAgainstFfmpeg`, `benchmarkSegmenting`, `benchmarkSegmentingAsIs`, the ffmpeg legs of `benchmarkEndToEnd`, `GifShrinkBenchmark` and the remux) were removed with ffmpeg-kit; their numbers below stand, and the tests are in git history before ffmpeg left Android.
   - BLAKE3 speed: `id.homebase.api.crypto.Blake3NativeDeviceTest#throughput` with `-e hashBench true`.
 - **Inputs:** the tests read every `.mp4`/`.mov` in the test app's `files/bench/` folder. On Android 14 and later, only the app itself can see that folder, so copy a file in with `adb push <file> /data/local/tmp/`, then `adb shell run-as id.homebase.api.test sh -c 'mkdir -p files/bench && cp /data/local/tmp/<file> files/bench/'`. Delete it afterwards: `adb shell run-as id.homebase.api.test rm -rf files/bench`. Uninstalling the test package also removes it.
 - **Fair runs:**
@@ -104,6 +103,17 @@ Why AAC is copied (see the decisions below). 83 s of 48 kHz stereo AAC, Pixel 8,
 | ffmpeg's AAC encoder | 3.3–4.5 s |
 | Media3 export of the video with no audio track | 8–13 s |
 
+## App size without ffmpeg on Android
+
+Release APKs built locally the same way (`./gradlew :androidApp:assembleRelease`, all four ABIs in one APK). Native libraries are stored uncompressed, so they count in full on the phone.
+
+| Build | Whole APK | arm64-v8a libs | armeabi-v7a libs | x86_64 libs | Measured |
+|---|---|---|---|---|---|
+| With ffmpeg-kit (main a5396a08b) | 182.5 MB | 37.9 MB (ffmpeg 17.3) | 29.2 MB (ffmpeg 16.4) | 43.8 MB (ffmpeg 21.1) | 2026-11-16 |
+| **Without** | **108.1 MB** | **20.7 MB** | **12.8 MB** | **22.6 MB** | 2026-11-16 |
+
+A Play Store install downloads one ABI: the CI bundle before this was about 53 MB for arm64, ffmpeg 8.6 MB of it compressed.
+
 ## Saving a received video: TS back to MP4
 
 Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4. `RemuxHlsToMp4DeviceTest` (`-e remuxBench true` for videos in the test app's `files/bench/`) times it on the phone, and `TsToMp4Test` checks every sample against the source on the desktop. The video is an 83 s, 27.7 MB 720×1280 H.264 + AAC stand-in.
@@ -121,7 +131,7 @@ Ours is a little smaller because it keeps parameter sets in the index rather tha
 
 ## GIF stickers: our codec against ffmpeg
 
-`id.homebase.api.image.gif.GifShrinkBenchmark` with `-e gifBench true` re-encodes every GIF in the test app's `files/bench/` at each of `GifShrinker`'s three steps, with our codec (`Gif.kt`) and with ffmpeg given the filters `GifShrinker` used to use. Two rounds, alternating order. The device test app is debuggable, so Android runs our Kotlin less optimised there than in the app; ffmpeg is native either way.
+`id.homebase.api.image.gif.GifShrinkBenchmark` with `-e gifBench true` re-encodes every GIF in the test app's `files/bench/` at each of `GifShrinker`'s three steps, with our codec (`Gif.kt`) and, while Android still had it, with ffmpeg given the filters `GifShrinker` used to use. Two rounds, alternating order. The device test app is debuggable, so Android runs our Kotlin less optimised there than in the app; ffmpeg is native either way.
 
 | Device | GIF | Step | Ours | ffmpeg | Output: ours / ffmpeg | Measured |
 |---|---|---|---|---|---|---|

@@ -63,21 +63,15 @@ class RemuxHlsToMp4DeviceTest {
                     .joinToString("\n") { if (it.isNotBlank() && !it.startsWith("#")) ts.name else it })
             }
             val ours = File(dir, "ours.mp4")
-            var started = System.currentTimeMillis()
+            val started = System.currentTimeMillis()
             assertTrue(AndroidVideoCompressor.remuxHlsToMp4(playlist.absolutePath, ours.absolutePath))
             val oursMs = System.currentTimeMillis() - started
-            val ffmpeg = File(dir, "ffmpeg.mp4")
-            started = System.currentTimeMillis()
-            val ffmpegOk = FFmpegUtils.remuxHlsToMp4(playlist.absolutePath, ffmpeg.absolutePath)
-            val ffmpegMs = System.currentTimeMillis() - started
 
             val expected = tracks(compressed)
             val got = tracks(ours)
-            Log.i("RemuxBenchmark", "boxes: compressed ${boxes(compressed)}, ours ${boxes(ours)}, ffmpeg ${boxes(ffmpeg)}")
             Log.i(
                 "RemuxBenchmark",
-                "${source.name} ${source.length() / 1000} kB: ours ${oursMs} ms ${ours.length() / 1000} kB $got, " +
-                    "ffmpeg ${if (ffmpegOk) "$ffmpegMs ms ${ffmpeg.length() / 1000} kB ${tracks(ffmpeg)}" else "failed"}; source $expected",
+                "${source.name} ${source.length() / 1000} kB: ${oursMs} ms ${ours.length() / 1000} kB $got; source $expected",
             )
             assertEquals(expected.size, got.size, "same frame size")
             assertEquals(expected.audio, got.audio, "audio kept")
@@ -98,20 +92,6 @@ class RemuxHlsToMp4DeviceTest {
             val (length, offset) = m.destructured
             AesCbc.decrypt(stored.copyOfRange(offset.toInt(), offset.toInt() + length.toInt()), keyHeader.aesKey, keyHeader.iv)
         }.reduce(ByteArray::plus)
-    }
-
-    private fun boxes(file: File): String {
-        if (!file.exists()) return "-"
-        val b = file.readBytes()
-        var at = 0
-        return buildList {
-            while (at + 8 <= b.size) {
-                val size = ByteBuffer.wrap(b, at, 4).int.toLong() and 0xFFFFFFFFL
-                add("${String(b, at + 4, 4)}=$size")
-                if (size < 8) break
-                at += size.toInt()
-            }
-        }.joinToString(" ")
     }
 
     private data class Tracks(val size: Pair<Int, Int>, val frames: Int, val audio: Boolean, val videoBytes: Long)
