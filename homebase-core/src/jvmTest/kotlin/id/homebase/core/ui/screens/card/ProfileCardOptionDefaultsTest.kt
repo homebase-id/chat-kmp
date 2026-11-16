@@ -47,7 +47,7 @@ class ProfileCardOptionDefaultsTest {
         previewDesign = design,
     )
 
-    private fun panel(design: String, check: ComposeUiTest.() -> Unit) =
+    private fun panel(design: String, onOption: (CardOption, String?) -> Unit = { _, _ -> }, check: ComposeUiTest.() -> Unit) =
         runDesktopComposeUiTest(width = 780, height = 1688) {
             setContent {
                 CompositionLocalProvider(LocalDensity provides Density(2f, 1f)) {
@@ -60,7 +60,7 @@ class ProfileCardOptionDefaultsTest {
                                 onStep = {},
                                 onBack = {},
                                 onSelect = {},
-                                onOption = { _, _ -> },
+                                onOption = onOption,
                                 onBlockOrder = {},
                                 onSave = {},
                                 snackbarHostState = remember { SnackbarHostState() },
@@ -177,5 +177,59 @@ class ProfileCardOptionDefaultsTest {
         val cy = height / 2
         val ink = getRGB(cx, cy)
         return (cy - 20 until cy + 20).flatMap { y -> (cx - 20 until cx + 20).map { x -> if (getRGB(x, y) == ink) 1 else 0 } }
+    }
+
+    private val isRadio = SemanticsMatcher("is a radio") { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
+
+    @Test
+    fun designTabsRunPaletteThenPortraitBackgroundStyleAndNoneIsCalledPresets() {
+        panel(CardDesign.BOARD) {
+            val tabs = tabNames()
+            assertEquals(listOf("Ready-made styles", "Portrait shape", "Background pattern", "Content style"), tabs.take(4))
+            assertTrue(tabs.none { it.contains("Presets", ignoreCase = true) })
+        }
+    }
+
+    @Test
+    fun backgroundOffersOnlyWhatTheWebOverrideListAcceptsBesideThePreset() {
+        val web = setOf("none", "circles", "blobs", "dots", "waves", "lines", "rings", "grid", "checker", "zigzag", "confetti", "contours", "halftone", "sparkles")
+        for (design in listOf(CardDesign.BOARD, CardDesign.COLLAGE, CardDesign.POSTER, CardDesign.DOSSIER, CardDesign.LINKS)) {
+            val extra = CardBackgrounds.variantsFor(design).toSet() - CardBackgrounds.presetFor(design)
+            assertTrue(web.containsAll(extra), "$design offers non-web backgrounds: ${extra - web}")
+        }
+        assertEquals(null, CardBackgrounds.known("speckle"))
+    }
+
+    @Test
+    fun backgroundTilesSendNullForThePresetAndTheIdOtherwise() {
+        for ((design, presetLabel, other, otherId) in listOf(
+            listOf(CardDesign.BOARD, "Circles", "Dots", "dots"),
+            listOf(CardDesign.COLLAGE, "Speckle", "Blobs", "blobs"),
+        )) {
+            val calls = mutableListOf<Pair<CardOption, String?>>()
+            panel(design, onOption = { o, v -> calls += o to v }) {
+                pickTab("Background pattern")
+                onNodeWithContentDescription(presetLabel).performClick()
+                onNodeWithContentDescription(other).performClick()
+                assertEquals(listOf(CardOption.BACKGROUND to null, CardOption.BACKGROUND to otherId), calls, design)
+            }
+        }
+    }
+
+    @Test
+    fun accentSwatchesSendNullForThePresetAndTheHexOtherwise() {
+        for ((design, preset) in listOf(CardDesign.BOARD to "#4FD1C5", CardDesign.COLLAGE to "#B4553A")) {
+            val calls = mutableListOf<Pair<CardOption, String?>>()
+            panel(design, onOption = { o, v -> calls += o to v }) {
+                pickTab("Accent colour")
+                val descriptions = onAllNodes(isRadio).fetchSemanticsNodes().map { it.config.getOrNull(SemanticsProperties.ContentDescription)!!.joinToString() }
+                val presetDesc = descriptions.single { it.contains(preset, ignoreCase = true) }
+                val otherDesc = descriptions.first { it != presetDesc }
+                onNodeWithContentDescription(presetDesc).performClick()
+                onNodeWithContentDescription(otherDesc).performClick()
+                val hex = Regex("#[0-9A-Fa-f]{6}").find(otherDesc)!!.value
+                assertEquals(listOf(CardOption.ACCENT to null, CardOption.ACCENT to hex), calls, design)
+            }
+        }
     }
 }

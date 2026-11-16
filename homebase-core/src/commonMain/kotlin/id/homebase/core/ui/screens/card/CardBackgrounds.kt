@@ -58,10 +58,10 @@ object CardBackgrounds {
 
     /** The patterns a design offers, the preset's own first. */
     fun variantsFor(design: String): List<String> =
-        (listOf(presetFor(design)) + listOfNotNull(EXTRA[design]) + SHARED + "speckle" + NONE).distinct()
+        (listOf(presetFor(design)) + listOfNotNull(EXTRA[design]) + SHARED + NONE).distinct()
 
     /** An unknown value falls back to the preset's pattern. */
-    internal fun known(value: String?): String? = value?.takeIf { v -> v == NONE || v == "speckle" || v in SHARED || v in EXTRA.values }
+    internal fun known(value: String?): String? = value?.takeIf { v -> v == NONE || v in SHARED || v in EXTRA.values }
 }
 
 internal fun backgroundLabel(id: String): StringResource = when (id) {

@@ -541,7 +541,6 @@ private fun fontPreviewStyle(font: String?): TextStyle {
     return base.copy(fontFamily = family, lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both))
 }
 
-// Each swatch is the scheme in small: its ground with an ink dot, so the pairing is judged before it is picked.
 @Composable
 private fun InkDot(ink: Color, size: Dp = INK_DOT_SIZE, edge: Color = Color.Transparent) {
     Box(Modifier.size(size).background(ink, CircleShape).border(1.dp, edge, CircleShape))

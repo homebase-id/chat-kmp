@@ -216,7 +216,7 @@ internal val WIDE_SHEET_MAX_WIDTH = 480.dp
 private val DESKTOP_PAGE_MAX_WIDTH = 1024.dp
 
 private val TOP_BAND_HEIGHT = 56.dp
-// The share FAB plus its vertical margins.
+// Height reserved for the share toolbar and the pencil FAB.
 private val FAB_BAND_HEIGHT = 88.dp
 private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
@@ -607,7 +607,7 @@ internal fun ProfileCardPager(
     }
 }
 
-// A lighter companion to the share FAB: its accent washed 30% over white, or over the card's ground when that is dark.
+// Its accent washed 30% over white, or over the card's ground when that is dark.
 private fun pencilContainer(card: ProfileCard): Color {
     val ground = Color(card.overrides.palette?.ground?.let(::hexToArgb) ?: CardDesign.baseArgb(card.design))
     return lerp(if (ground.luminance() < 0.5f) ground else Color.White, Color(cardAccentArgb(card.design, card.overrides)), 0.3f)
