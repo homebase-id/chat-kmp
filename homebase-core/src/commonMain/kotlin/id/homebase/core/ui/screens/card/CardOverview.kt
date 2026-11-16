@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -130,30 +131,18 @@ private class OverviewCells(private val minSize: Dp, private val maxSize: Dp, pr
 @Composable
 private fun OverviewTile(card: ProfileCard, emoji: String?, still: ImageBitmap?, onClick: () -> Unit) {
     val title = audienceLabel(card.audience)
-    val open = stringResource(MR.string.profile_card_intro_open, title)
-    val shape = RoundedCornerShape(OVERVIEW_TILE_CORNER)
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .clip(shape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .handCursor()
-            .semantics(mergeDescendants = true) { contentDescription = open }
-            .padding(4.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    TileShell(
+        title = title,
+        description = stringResource(MR.string.profile_card_intro_open, title),
+        onClick = onClick,
+        icon = {
             AudienceGlyph(
                 icon = audienceIcon(card.audience),
                 emoji = emoji,
                 size = with(LocalDensity.current) { TILE_ICON_SIZE.toDp() },
             )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        },
+    ) { shape ->
         CardStill(
             card = card,
             still = still,
@@ -169,29 +158,18 @@ private fun OverviewTile(card: ProfileCard, emoji: String?, still: ImageBitmap?,
 @Composable
 private fun NewCardTile(onClick: () -> Unit) {
     val title = stringResource(MR.string.profile_card_new)
-    val shape = RoundedCornerShape(OVERVIEW_TILE_CORNER)
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .clip(shape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .handCursor()
-            .semantics(mergeDescendants = true) { contentDescription = title }
-            .padding(4.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    TileShell(
+        title = title,
+        description = title,
+        onClick = onClick,
+        icon = {
             Icon(
                 Icons.Outlined.Add,
                 contentDescription = null,
                 modifier = Modifier.size(with(LocalDensity.current) { TILE_ICON_SIZE.toDp() }),
             )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        },
+    ) { shape ->
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -209,5 +187,36 @@ private fun NewCardTile(onClick: () -> Unit) {
                 iconSize = 28.dp,
             )
         }
+    }
+}
+
+@Composable
+private fun TileShell(
+    title: String,
+    description: String,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+    preview: @Composable (Shape) -> Unit,
+) {
+    val shape = RoundedCornerShape(OVERVIEW_TILE_CORNER)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .clip(shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .handCursor()
+            .semantics(mergeDescendants = true) { contentDescription = description }
+            .padding(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            icon()
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        preview(shape)
     }
 }

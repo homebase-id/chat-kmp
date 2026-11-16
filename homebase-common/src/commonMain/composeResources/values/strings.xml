@@ -2647,7 +2647,6 @@
     <string name="profile_card_background_speckle">Speckle</string>
     <string name="profile_card_background_none">No pattern</string>
     <string name="profile_card_option_colours">Colours</string>
-    <string name="profile_card_option_colours_swatch">%1$s colours</string>
     <string name="profile_card_colours_midnight">Midnight</string>
     <string name="profile_card_colours_wine">Wine</string>
     <string name="profile_card_colours_pine">Pine</string>
