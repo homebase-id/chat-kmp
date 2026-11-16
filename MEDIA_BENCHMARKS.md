@@ -35,6 +35,21 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 | Pixel 5 | 14 | Snapdragon 765G | Qualcomm hardware; AAC `c2.android.*` software. Also runs 32-bit apps |
 | Galaxy S23+ | 17 | Snapdragon 8 Gen 2 | |
 
+## How many times a file is read
+
+Full reads of the video per operation, with the code that ships. Header reads (duration, probe, finding the `moov`) and the one frame a poster decodes aren't counted. Keep this table current whenever a change adds or removes a pass.
+
+| Operation | Android | iOS | Desktop | Web |
+|---|---|---|---|---|
+| Before compressing a pick | 0 from the media library (read in place); **1** for any other picked or shared file (copied to the cache) | **1** from the Photos library (copied out first); 0 for a file | 0 | 0 |
+| Compress | **1** of the source (Media3) | **1** (ffmpeg) | **1** (ffmpeg) | **1** (ffmpeg.wasm) |
+| HLS, compressed 5 MB or more | **1** of the compressed file: cut, encrypt and both payload hashes in one pass | **1** (ffmpeg cuts and encrypts; no payload hash) | **1** (as iOS) | **1** (as iOS) |
+| Plain MP4, under 5 MB | **1** of the compressed file: encrypt and hash in one pass | **1** | **1** | **1** |
+| **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
+| Photos backup at Original | **1** (read once at hand-off) | | | |
+| Saving a received video to the gallery | **2** of the decrypted `.ts` (`TsToMp4`: size the samples, then copy them behind the index) | **2** | **2** | **2** |
+| Shrinking a GIF sticker | the file is read **1** time into memory, then decoded **2** times per ladder step (palette, then encode), at most 3 steps | same | same | same |
+
 ## Sending a video, end to end
 
 `benchmarkEndToEnd`: compress at Standard and at HD (Original video is HD's transcode outside Photos), then HLS (segment, encrypt, hash) at 5 MB or more, else encrypt the MP4 in one pass. "Ours" is Media3, our segmenter and the payload hash. "ffmpeg" is ffmpeg for both steps without a hash, as Android was before.
