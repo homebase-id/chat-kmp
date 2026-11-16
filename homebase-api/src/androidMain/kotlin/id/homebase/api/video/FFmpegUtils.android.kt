@@ -391,9 +391,6 @@ actual object FFmpegUtils {
         }
     }
 
-    // (probeDimensions + Int.toEven removed — output-dim math + even-rounding
-    // now live in computeOutputDims in commonMain.)
-
     /**
      * Async FFmpegKit bridged to a suspending coroutine. Returns the completed
      * [FFmpegSession] so the caller can inspect `returnCode` and friends.

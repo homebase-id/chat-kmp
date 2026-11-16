@@ -405,7 +405,7 @@ final class FFmpegPipelineTests: XCTestCase {
 
     /// PRE-FIX degenerate command repro — the smoking gun. This is what the pipeline
     /// built BEFORE the AVFoundation probe fallback: FFmpegKit ffprobe returned nothing
-    /// → probe width=0 → FfmpegCompressPlanner.computeOutputDims returned null → NO
+    /// → probe width=0 → computeOutputDims returned null → NO
     /// `-vf scale` → h264_videotoolbox was handed the FULL-4K spatial file, with the
     /// statistics callback installed (the production async path). This reproduces that
     /// exact command. A SIGSEGV here (runner crash) confirms the original cause and

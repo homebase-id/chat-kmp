@@ -522,9 +522,13 @@ A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place
 
 ### Android: Media3, and why AAC audio is copied
 
-Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS, desktop and web use ffmpeg. Both read the same rules from `VideoQualityTargets.kt`. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend.
+Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS, desktop and web use ffmpeg. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend. Both take the sizes and bitrates from `VideoQualityTargets.kt`. Media3 differs from ffmpeg in a few ways:
 
-**AAC audio is copied, not re-encoded, on Android.** Android has no hardware AAC encoder (a Pixel 8 lists only `c2.android.aac.encoder`). Its software AAC codecs run in a separate media process, with a round trip for every 1024-sample frame. On the video's critical path, they set the pace of the whole export. Audio in any other codec is still re-encoded to AAC at the quality's bitrate. The cost is that a copied track keeps the source's bitrate: 192 kbps from a Pixel against Standard's 128 kbps, about 0.6 MB on an 83 s video (2%). This was decided on 2026-11-16: the speed matters more than the 2%.
+- **Bitrate.** A hardware encoder spends the whole bitrate it's given, where libx264 spends less on simple content. So Media3 asks for less when the source is smaller than the target, in proportion to its area, and never more than the source's own bitrate. Android also enforces a minimum quality: on hard content it raises the bitrate itself. A 3 s 1440p60 animation came out 20–40% over target, with libx264 about 16% under. Real camera footage lands on target with both.
+- **Location.** A kept location loses its altitude: Media3's `Mp4LocationData` holds latitude and longitude only.
+- **Audio.** Plain AAC-LC audio with up to two channels is copied rather than re-encoded. HE-AAC, xHE-AAC, surround and every other codec are re-encoded to AAC-LC at the quality's bitrate. Why:
+
+Android has no hardware AAC encoder (a Pixel 8 lists only `c2.android.aac.encoder`). Its software AAC codecs run in a separate media process, with a round trip for every 1024-sample frame. On the video's critical path, they set the pace of the whole export. The cost is that a copied track keeps the source's bitrate: 192 kbps from a Pixel against Standard's 128 kbps, about 0.6 MB on an 83 s video (2%). This was decided on 2026-11-16: the speed matters more than the 2%.
 
 Measured on a Pixel 8 with a 226 MB, 83 s HEVC HLG video, on a cool phone, alternating which backend went first:
 

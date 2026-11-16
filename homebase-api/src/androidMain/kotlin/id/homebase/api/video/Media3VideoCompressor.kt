@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.os.Handler
@@ -102,9 +103,10 @@ internal object Media3VideoCompressor {
         } catch (e: CancellationException) {
             output.delete()
             throw e
-        } catch (e: ExportException) {
+        } catch (e: Exception) {
             output.delete()
-            throw VideoCompressionFailedException(inputPath, "Media3 export failed: ${e.errorCodeName}", e)
+            val reason = (e as? ExportException)?.errorCodeName ?: e.toString()
+            throw VideoCompressionFailedException(inputPath, "Media3 export failed: $reason", e)
         }
         Logger.i(tag = TAG) {
             "compress: ${System.currentTimeMillis() - started}ms in=${input.length()}B ${source.width}x${source.height} " +
@@ -126,7 +128,7 @@ internal object Media3VideoCompressor {
             .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(videoBitrate(targets, source)).build())
             .apply {
                 // With no audio settings asked for, Transformer copies AAC as it is.
-                if (!source.aacAudio) setRequestedAudioEncoderSettings(AudioEncoderSettings.Builder().setBitrate(targets.audioBitrateBps).build())
+                if (!source.copyableAudio) setRequestedAudioEncoderSettings(AudioEncoderSettings.Builder().setBitrate(targets.audioBitrateBps).build())
             }
             .build()
         val muxer = InAppMp4Muxer.Factory { entries -> withMetadata(entries, source.takeIf { keepMetadata }) }
@@ -137,6 +139,7 @@ internal object Media3VideoCompressor {
             .setEncoderFactory(encoders)
             .setMuxerFactory(muxer)
             .build()
+        var completed = false
         try {
             coroutineScope {
                 val progress = onProgress?.let { report ->
@@ -152,14 +155,14 @@ internal object Media3VideoCompressor {
                 }
                 try {
                     awaitExport(transformer, composition, output)
+                    completed = true
                 } finally {
                     progress?.cancel()
                 }
             }
-        } catch (e: CancellationException) {
+        } finally {
             // Returns once the codecs are released, so the caller's lock outlasts the work.
-            withContext(NonCancellable) { transformer.cancel() }
-            throw e
+            if (!completed) withContext(NonCancellable) { transformer.cancel() }
         }
     }
 
@@ -181,13 +184,18 @@ internal object Media3VideoCompressor {
             transformer.start(composition, output.absolutePath)
         }
 
-    // Hardware encoders fill the bitrate they're given, where libx264 undershoots on a small picture:
-    // a source under the target size gets the bitrate in proportion to its area.
+    // Hardware encoders fill the bitrate they're given, where libx264 undershoots on simple
+    // content: a source under the target size gets the bitrate in proportion to its area, and
+    // no source gets more than its own.
     private fun videoBitrate(targets: QualityTargets, source: Source): Int {
         val shortSide = minOf(source.width, source.height)
-        if (shortSide <= 0 || shortSide >= targets.shortEdgePx) return targets.videoBitrateBps
-        val area = shortSide.toDouble() / targets.shortEdgePx
-        return (targets.videoBitrateBps * area * area).toInt()
+        val forSize = if (shortSide in 1 until targets.shortEdgePx) {
+            val side = shortSide.toDouble() / targets.shortEdgePx
+            (targets.videoBitrateBps * side * side).toInt()
+        } else {
+            targets.videoBitrateBps
+        }
+        return source.videoBitrateBps?.let { minOf(forSize, it) } ?: forSize
     }
 
     // Transformer passes on rotation and capture time but not the location: a kept video gets it
@@ -200,7 +208,7 @@ internal object Media3VideoCompressor {
         }
     }
 
-    private class Source(val width: Int, val height: Int, val aacAudio: Boolean, val location: VideoLocation?)
+    private class Source(val width: Int, val height: Int, val videoBitrateBps: Int?, val copyableAudio: Boolean, val location: VideoLocation?)
 
     // Headers only: Transformer's export is the one pass over the media.
     private fun probeSource(file: File, keepMetadata: Boolean): Source {
@@ -214,13 +222,23 @@ internal object Media3VideoCompressor {
             extractor.release()
         }
         val video = formats.firstOrNull { it.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+        val audio = formats.filter { it.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
         return Source(
-            width = video?.getInteger(MediaFormat.KEY_WIDTH) ?: 0,
-            height = video?.getInteger(MediaFormat.KEY_HEIGHT) ?: 0,
-            aacAudio = formats.any { it.getString(MediaFormat.KEY_MIME) == MimeTypes.AUDIO_AAC },
+            width = video?.int(MediaFormat.KEY_WIDTH) ?: 0,
+            height = video?.int(MediaFormat.KEY_HEIGHT) ?: 0,
+            videoBitrateBps = video?.int(MediaFormat.KEY_BIT_RATE)?.takeIf { it > 0 },
+            // Plain stereo AAC-LC plays everywhere; HE-AAC, xHE-AAC and surround are re-encoded.
+            copyableAudio = audio.size == 1 && audio[0].let {
+                it.getString(MediaFormat.KEY_MIME) == MimeTypes.AUDIO_AAC &&
+                    it.int(MediaFormat.KEY_AAC_PROFILE) == MediaCodecInfo.CodecProfileLevel.AACObjectLC &&
+                    (it.int(MediaFormat.KEY_CHANNEL_COUNT) ?: 0) in 1..2
+            },
             location = if (keepMetadata) moovLocation(file) else null,
         )
     }
+
+    private fun MediaFormat.int(key: String): Int? = if (containsKey(key)) getInteger(key) else null
+
 
     // Seeks past the media, so only the box headers and the moov are read.
     private fun moovLocation(file: File): VideoLocation? = try {

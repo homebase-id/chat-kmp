@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import id.homebase.api.ActivityProvider
+import id.homebase.api.image.MediaQuality
 import java.io.File
 import java.nio.ByteBuffer
 import kotlin.math.abs
@@ -78,12 +79,37 @@ class Media3VideoCompressorTest {
     }
 
     @Test
+    fun eachQualitySettingGivesItsSizeAndAboutFfmpegsBytes() = runBlocking {
+        // A 3 s 1440p60 clip without audio, so the file is the video stream alone. On content this
+        // hard the hardware encoder overshoots and libx264 undershoots, hence the wide band.
+        val expected = mapOf(
+            MediaQuality.STANDARD to (1280 to 720),
+            MediaQuality.HD to (1920 to 1080),
+            MediaQuality.ORIGINAL to (1920 to 1080),
+        )
+        for ((setting, size) in expected) {
+            val quality = setting.toVideoQuality()
+            val source = fixture("landscape_1440p.mp4")
+            val media3 = Media3VideoCompressor.compress(source.absolutePath, null, null, null, quality, false)
+            val ffmpeg = FFmpegUtils.compressVideo(source.absolutePath, null, null, null, quality, false)
+            source.delete()
+            val media3Bytes = File(media3).length()
+            val ffmpegBytes = File(ffmpeg).length()
+            val media3Size = probe(media3).displaySize
+            val ffmpegSize = probe(ffmpeg).displaySize
+            Log.i("Media3Quality", "$setting -> $quality: media3 $media3Size ${media3Bytes / 1000} kB, ffmpeg $ffmpegSize ${ffmpegBytes / 1000} kB, target ${quality.targets().videoBitrateBps / 1000} kbps")
+            assertEquals(size, media3Size, "$setting media3")
+            assertEquals(size, ffmpegSize, "$setting ffmpeg")
+            assertTrue(media3Bytes in ffmpegBytes / 2..ffmpegBytes * 2, "$setting: media3 $media3Bytes bytes against ffmpeg's $ffmpegBytes")
+        }
+    }
+
+    @Test
     fun aSmallVideoGetsABitrateForItsSize() = runBlocking {
         val out = compress("sample.mp4", VideoQuality.STANDARD, keepMetadata = false)
         val bytes = File(out).length()
         probe(out)
-        // 320x180 for 6 s. A Pixel 8 gave 912 kB at Standard's full 2.5 Mbps and 519 kB with the
-        // bitrate scaled (its encoder doesn't go lower on so small a picture); ffmpeg gave 426 kB.
+        // Standard's full 2.5 Mbps for these 6 s would be about 1.9 MB.
         assertTrue(bytes < 700_000, "$bytes bytes")
     }
 
