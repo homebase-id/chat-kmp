@@ -552,7 +552,7 @@ internal fun ProfileCardPager(
                 ) {
                     SheetTopChrome(
                         uiState = uiState,
-                        onClose = leave.takeIf { !sheeted },
+                        onClose = leave.takeIf { !sheeted || !overview },
                         overview = overview,
                         onSelect = { index -> cards.getOrNull(index)?.let { viewModel.onCardSelected(it.audience) } },
                         onNewCard = onNewCard.takeIf { uiState.circleCardsSupported },
@@ -767,7 +767,7 @@ private fun SheetTopChrome(
                             }
                         }
                     }
-                    // No sheet handle in a pane, so it keeps a visible way out.
+                    // A pane has no sheet handle and a sheet rises from the bottom, so both keep a visible way out.
                     onClose?.let { close ->
                         val closeLabel = stringResource(MR.string.close)
                         WithTooltip(closeLabel) {

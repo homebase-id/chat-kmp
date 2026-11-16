@@ -116,6 +116,13 @@ class ProfileCardOverviewFlowTest {
         assertTrue(hasText("Open Friends card"))
         assertEquals(0, rig.backs)
 
+        onNodeWithContentDescription("Open Friends card").performClick()
+        waitUntil(timeoutMillis = 10_000) { hasText("Edit") }
+        onNodeWithContentDescription("Close").performClick()
+        waitUntil(timeoutMillis = 10_000) { !hasText("Edit") }
+        assertTrue(hasText("Open Friends card"))
+        assertEquals(0, rig.backs)
+
         runOnIdle { rig.system.backCompleted() }
         waitUntil(timeoutMillis = 10_000) { rig.backs == 1 }
     }
