@@ -34,11 +34,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.LineHeightStyle
 import id.homebase.resources.profile_card_colours_blue
-import id.homebase.resources.profile_card_option_photo_size
-import id.homebase.resources.profile_card_photo_size_large
-import id.homebase.resources.profile_card_photo_size_medium
-import id.homebase.resources.profile_card_photo_size_small
-import id.homebase.resources.profile_card_tool_photo_size
 import id.homebase.resources.profile_card_colours_blueprint
 import id.homebase.resources.profile_card_colours_blush
 import id.homebase.resources.profile_card_colours_butter
@@ -101,7 +96,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.PhotoSizeSelectLarge
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Style
@@ -316,15 +310,6 @@ private fun OptionControl(
             onSelect = { onOption(option, it.takeIf { v -> v != preset }) },
         ) { shape ->
             ShapeGlyph(shape.orEmpty())
-        }
-        CardOption.PHOTO_SIZE -> SegmentedChoices(
-            values = CardDesignSpecs.PHOTO_SIZES,
-            selected = overrides.valueOf(option) ?: CardDesignSpecs.MEDIUM_PHOTO,
-            enabled = enabled,
-            chipHeight = chipHeight,
-            onSelect = { onOption(option, it.takeIf { v -> v != CardDesignSpecs.MEDIUM_PHOTO }) },
-        ) { size ->
-            SegmentLabel(stringResource(photoSizeLabel(size.orEmpty())))
         }
         CardOption.BLOCK_STYLE -> SegmentedChoices(
             values = CardDesignSpecs.presetFirst(design, option, CardDesignSpecs.PRESENTATIONS),
@@ -809,8 +794,8 @@ private data class PanelTool(val key: String, val icon: ImageVector, val label: 
 
 private val PALETTE_TOOL = PanelTool("presets", Icons.Outlined.Palette, MR.string.profile_card_tool_palette, MR.string.profile_card_option_presets)
 
-// After Palette: Photo size, Portrait, Background, Style, then the rest in their usual order.
-private val TAB_ORDER = listOf(CardOption.PHOTO_SIZE, CardOption.PORTRAIT_SHAPE, CardOption.BACKGROUND, CardOption.BLOCK_STYLE)
+// After Palette: Portrait, Background, Style, then the rest in their usual order.
+private val TAB_ORDER = listOf(CardOption.PORTRAIT_SHAPE, CardOption.BACKGROUND, CardOption.BLOCK_STYLE)
 
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
@@ -819,7 +804,6 @@ private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.DISPLAY_FONT -> MR.string.profile_card_option_display_font
     CardOption.TEXT_FONT -> MR.string.profile_card_option_text_font
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_option_portrait_shape
-    CardOption.PHOTO_SIZE -> MR.string.profile_card_option_photo_size
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_option_socials_style
     CardOption.BLOCK_ORDER -> MR.string.profile_card_option_block_order
     CardOption.BLOCK_STYLE -> MR.string.profile_card_option_block_style
@@ -832,7 +816,6 @@ private fun toolLabel(option: CardOption): StringResource = when (option) {
     CardOption.DISPLAY_FONT -> MR.string.profile_card_tool_heading
     CardOption.TEXT_FONT -> MR.string.profile_card_tool_body
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_tool_portrait
-    CardOption.PHOTO_SIZE -> MR.string.profile_card_tool_photo_size
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_tool_socials
     CardOption.BLOCK_ORDER -> MR.string.profile_card_tool_order
     CardOption.BLOCK_STYLE -> MR.string.profile_card_tool_style
@@ -845,7 +828,6 @@ private fun optionIcon(option: CardOption): ImageVector = when (option) {
     CardOption.DISPLAY_FONT -> Icons.Outlined.Title
     CardOption.TEXT_FONT -> Icons.Outlined.FormatSize
     CardOption.PORTRAIT_SHAPE -> Icons.Outlined.AccountCircle
-    CardOption.PHOTO_SIZE -> Icons.Outlined.PhotoSizeSelectLarge
     CardOption.SOCIALS_STYLE -> Icons.Outlined.AlternateEmail
     CardOption.BLOCK_ORDER -> Icons.Outlined.ViewAgenda
     CardOption.BLOCK_STYLE -> Icons.Outlined.Style
@@ -860,11 +842,6 @@ private fun fontLabel(font: String): StringResource = when (font) {
     else -> MR.string.profile_card_font_montserrat
 }
 
-private fun photoSizeLabel(size: String): StringResource = when (size) {
-    "small" -> MR.string.profile_card_photo_size_small
-    "large" -> MR.string.profile_card_photo_size_large
-    else -> MR.string.profile_card_photo_size_medium
-}
 
 private fun shapeLabel(shape: String): StringResource = when (shape) {
     "square" -> MR.string.profile_card_shape_square

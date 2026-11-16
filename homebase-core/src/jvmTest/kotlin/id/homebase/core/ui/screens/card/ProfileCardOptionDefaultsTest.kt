@@ -98,11 +98,11 @@ class ProfileCardOptionDefaultsTest {
 
     // The labels each open design's preset draws with, from odin-js cards/presets.ts.
     private val presetChips = mapOf(
-        CardDesign.BOARD to setOf("Ocean", "Medium", "Circle", "Boxed", "Bar", "Alternates", "Montserrat"),
-        CardDesign.DOSSIER to setOf("Onyx", "Medium", "Square", "Rows", "Handles", "Archivo Black", "Space Mono"),
-        CardDesign.COLLAGE to setOf("Linen", "Medium", "Square", "Wordmarks", "Caveat", "Montserrat"),
+        CardDesign.BOARD to setOf("Ocean", "Circle", "Boxed", "Bar", "Alternates", "Montserrat"),
+        CardDesign.DOSSIER to setOf("Onyx", "Square", "Rows", "Handles", "Archivo Black", "Space Mono"),
+        CardDesign.COLLAGE to setOf("Linen", "Square", "Wordmarks", "Caveat", "Montserrat"),
         CardDesign.POSTER to setOf("Espresso", "Plain", "Icons", "Newsreader"),
-        CardDesign.LINKS to setOf("Frost", "Medium", "Circle", "Icons", "Montserrat"),
+        CardDesign.LINKS to setOf("Frost", "Circle", "Icons", "Montserrat"),
     )
 
     @Test
@@ -180,10 +180,10 @@ class ProfileCardOptionDefaultsTest {
     private val isRadio = SemanticsMatcher("is a radio") { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
 
     @Test
-    fun designTabsRunPalettePhotoSizePortraitBackgroundStyleAndNoneIsCalledPresets() {
+    fun designTabsRunPalettePortraitBackgroundStyleAndNoneIsCalledPresets() {
         panel(CardDesign.BOARD) {
             val tabs = tabNames()
-            assertEquals(listOf("Ready-made styles", "Photo size", "Portrait shape", "Background pattern", "Content style"), tabs.take(5))
+            assertEquals(listOf("Ready-made styles", "Portrait shape", "Background pattern", "Content style"), tabs.take(4))
             assertTrue(tabs.none { it.contains("Presets", ignoreCase = true) })
         }
     }
@@ -243,7 +243,7 @@ class ProfileCardOptionDefaultsTest {
                 if (chips.isEmpty()) continue
                 rows++
                 val states = chips.map { it.config.getOrNull(SemanticsProperties.ToggleableState) }
-                if (tab != "Photo size") assertEquals(ToggleableState.On, states.first(), "$design/$tab: first chip is not the selected one")
+                assertEquals(ToggleableState.On, states.first(), "$design/$tab: first chip is not the selected one")
                 assertEquals(1, states.count { it == ToggleableState.On }, "$design/$tab: exactly one chip is selected")
             }
             assertTrue(rows >= 3, "$design checked only $rows segmented rows")
@@ -259,26 +259,5 @@ class ProfileCardOptionDefaultsTest {
             onNodeWithContentDescription("Square").performClick()
             assertEquals(listOf(CardOption.PORTRAIT_SHAPE to "circle", CardOption.PORTRAIT_SHAPE to null), calls)
         }
-    }
-
-    @Test
-    fun photoSizeIsASmallMediumLargeScaleWithMediumSelectedAndSendsNoSizeForIt() {
-        val calls = mutableListOf<Pair<CardOption, String?>>()
-        panel(CardDesign.BOARD, onOption = { o, v -> calls += o to v }) {
-            pickTab("Photo size")
-            val labels = onAllNodes(isToggle).fetchSemanticsNodes().map { n -> n.config.getOrNull(SemanticsProperties.Text)!!.joinToString("") { it.text } }
-            assertEquals(listOf("Small", "Medium", "Large"), labels)
-            val states = onAllNodes(isToggle).fetchSemanticsNodes().map { it.config.getOrNull(SemanticsProperties.ToggleableState) }
-            assertEquals(listOf(ToggleableState.Off, ToggleableState.On, ToggleableState.Off), states)
-            onNodeWithText("Large").performClick()
-            onNodeWithText("Small").performClick()
-            onNodeWithText("Medium").performClick()
-            assertEquals(listOf(CardOption.PHOTO_SIZE to "large", CardOption.PHOTO_SIZE to "small", CardOption.PHOTO_SIZE to null), calls)
-        }
-    }
-
-    @Test
-    fun posterHasNoPhotoSizeTab() {
-        panel(CardDesign.POSTER) { assertTrue(tabNames().none { it == "Photo size" }) }
     }
 }

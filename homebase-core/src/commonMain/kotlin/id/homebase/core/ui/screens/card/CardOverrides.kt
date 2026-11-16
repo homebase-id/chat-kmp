@@ -49,7 +49,7 @@ data class CardOverrides(
                 portraits = (json["portraits"] as? JsonArray)?.mapNotNull { el ->
                     (el as? JsonObject)?.let { o ->
                         CardPortrait(
-                            source = o.strictString("source"), shape = o.strictString("shape"), size = o.strictString("size"), ring = o.strictDouble("ring"),
+                            source = o.strictString("source"), shape = o.strictString("shape"), ring = o.strictDouble("ring"),
                             shadow = o.strictString("shadow"), tilt = o.strictDouble("tilt"), tape = o.strictBoolean("tape"), mono = o.strictBoolean("mono"),
                         )
                     }
@@ -109,7 +109,6 @@ data class CardTypeface(
 data class CardPortrait(
     val source: String? = null,
     val shape: String? = null,
-    val size: String? = null,
     @Serializable(with = CardNumberSerializer::class) val ring: Double? = null,
     val shadow: String? = null,
     @Serializable(with = CardNumberSerializer::class) val tilt: Double? = null,
