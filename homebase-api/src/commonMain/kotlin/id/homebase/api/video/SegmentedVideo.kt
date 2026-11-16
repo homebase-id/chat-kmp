@@ -1,5 +1,7 @@
 package id.homebase.api.video
 
+import id.homebase.api.client.drives.files.PayloadHash
+
 /**
  * Result of an HLS segmentation pass: the generated `.m3u8` playlist plus the
  * directory/path holding the `.ts` segments it references.
@@ -11,4 +13,6 @@ package id.homebase.api.video
 data class SegmentedVideo(
     val playlistPath: String,
     val segmentsPath: String,
+    /** The `.ts` payload's hash, when the segmenter took it in its pass; bound to the key header's IV. */
+    val hash: PayloadHash? = null,
 )

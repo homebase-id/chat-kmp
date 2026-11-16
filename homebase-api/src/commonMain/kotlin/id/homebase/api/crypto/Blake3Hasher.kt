@@ -1,7 +1,16 @@
 package id.homebase.api.crypto
 
-/** BLAKE3, plain hashing mode with the default 32-byte output, ported from the official `reference_impl`. */
-class Blake3Hasher : IncrementalHasher {
+/**
+ * BLAKE3, plain hashing mode with the default 32-byte output. Every platform uses this one class; where the
+ * platform has a native BLAKE3 (Android) it runs that, else [PortableBlake3]. The output is the same either way.
+ */
+class Blake3Hasher : IncrementalHasher by (platformBlake3Hasher() ?: PortableBlake3())
+
+/** Null where only [PortableBlake3] runs. */
+internal expect fun platformBlake3Hasher(): IncrementalHasher?
+
+/** BLAKE3 in Kotlin, ported from the official `reference_impl`. */
+internal class PortableBlake3 : IncrementalHasher {
 
     private companion object {
         const val BLOCK_LEN = 64
@@ -13,48 +22,86 @@ class Blake3Hasher : IncrementalHasher {
 
         val IV = SHA256_INITIAL_STATE
 
-        private val MSG_PERMUTATION = intArrayOf(2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8)
-
-        // The message word each round reads at each position, instead of permuting the message between rounds.
-        val SCHEDULE: Array<IntArray> = Array(7) { IntArray(16) }.also { rounds ->
-            for (i in 0 until 16) rounds[0][i] = i
-            for (r in 1 until 7) {
-                for (i in 0 until 16) rounds[r][i] = rounds[r - 1][MSG_PERMUTATION[i]]
-            }
-        }
-
-        fun g(v: IntArray, a: Int, b: Int, c: Int, d: Int, mx: Int, my: Int) {
-            v[a] = v[a] + v[b] + mx
-            v[d] = (v[d] xor v[a]).rotateRight(16)
-            v[c] = v[c] + v[d]
-            v[b] = (v[b] xor v[c]).rotateRight(12)
-            v[a] = v[a] + v[b] + my
-            v[d] = (v[d] xor v[a]).rotateRight(8)
-            v[c] = v[c] + v[d]
-            v[b] = (v[b] xor v[c]).rotateRight(7)
-        }
-
+        // State and message in locals, one round per loop pass: no array access in the rounds, and a method small
+        // enough for older ART to compile (fully unrolled, Android 14 left it interpreted, about 20x slower).
         fun compress(cv: IntArray, m: IntArray, counter: Long, blockLen: Int, flags: Int, out: IntArray) {
-            cv.copyInto(out, 0, 0, 8)
-            IV.copyInto(out, 8, 0, 4)
-            out[12] = counter.toInt()
-            out[13] = (counter ushr 32).toInt()
-            out[14] = blockLen
-            out[15] = flags
-            for (s in SCHEDULE) {
-                g(out, 0, 4, 8, 12, m[s[0]], m[s[1]])
-                g(out, 1, 5, 9, 13, m[s[2]], m[s[3]])
-                g(out, 2, 6, 10, 14, m[s[4]], m[s[5]])
-                g(out, 3, 7, 11, 15, m[s[6]], m[s[7]])
-                g(out, 0, 5, 10, 15, m[s[8]], m[s[9]])
-                g(out, 1, 6, 11, 12, m[s[10]], m[s[11]])
-                g(out, 2, 7, 8, 13, m[s[12]], m[s[13]])
-                g(out, 3, 4, 9, 14, m[s[14]], m[s[15]])
+            var v0 = cv[0]; var v1 = cv[1]; var v2 = cv[2]; var v3 = cv[3]
+            var v4 = cv[4]; var v5 = cv[5]; var v6 = cv[6]; var v7 = cv[7]
+            var v8 = IV[0]; var v9 = IV[1]; var v10 = IV[2]; var v11 = IV[3]
+            var v12 = counter.toInt(); var v13 = (counter ushr 32).toInt(); var v14 = blockLen; var v15 = flags
+            var m0 = m[0]; var m1 = m[1]; var m2 = m[2]; var m3 = m[3]; var m4 = m[4]; var m5 = m[5]; var m6 = m[6]; var m7 = m[7]
+            var m8 = m[8]; var m9 = m[9]; var m10 = m[10]; var m11 = m[11]; var m12 = m[12]; var m13 = m[13]; var m14 = m[14]; var m15 = m[15]
+            for (round in 0 until 7) {
+                v0 += v4 + m0; v12 = (v12 xor v0).rotateRight(16)
+                v8 += v12; v4 = (v4 xor v8).rotateRight(12)
+                v0 += v4 + m1; v12 = (v12 xor v0).rotateRight(8)
+                v8 += v12; v4 = (v4 xor v8).rotateRight(7)
+                v1 += v5 + m2; v13 = (v13 xor v1).rotateRight(16)
+                v9 += v13; v5 = (v5 xor v9).rotateRight(12)
+                v1 += v5 + m3; v13 = (v13 xor v1).rotateRight(8)
+                v9 += v13; v5 = (v5 xor v9).rotateRight(7)
+                v2 += v6 + m4; v14 = (v14 xor v2).rotateRight(16)
+                v10 += v14; v6 = (v6 xor v10).rotateRight(12)
+                v2 += v6 + m5; v14 = (v14 xor v2).rotateRight(8)
+                v10 += v14; v6 = (v6 xor v10).rotateRight(7)
+                v3 += v7 + m6; v15 = (v15 xor v3).rotateRight(16)
+                v11 += v15; v7 = (v7 xor v11).rotateRight(12)
+                v3 += v7 + m7; v15 = (v15 xor v3).rotateRight(8)
+                v11 += v15; v7 = (v7 xor v11).rotateRight(7)
+                v0 += v5 + m8; v15 = (v15 xor v0).rotateRight(16)
+                v10 += v15; v5 = (v5 xor v10).rotateRight(12)
+                v0 += v5 + m9; v15 = (v15 xor v0).rotateRight(8)
+                v10 += v15; v5 = (v5 xor v10).rotateRight(7)
+                v1 += v6 + m10; v12 = (v12 xor v1).rotateRight(16)
+                v11 += v12; v6 = (v6 xor v11).rotateRight(12)
+                v1 += v6 + m11; v12 = (v12 xor v1).rotateRight(8)
+                v11 += v12; v6 = (v6 xor v11).rotateRight(7)
+                v2 += v7 + m12; v13 = (v13 xor v2).rotateRight(16)
+                v8 += v13; v7 = (v7 xor v8).rotateRight(12)
+                v2 += v7 + m13; v13 = (v13 xor v2).rotateRight(8)
+                v8 += v13; v7 = (v7 xor v8).rotateRight(7)
+                v3 += v4 + m14; v14 = (v14 xor v3).rotateRight(16)
+                v9 += v14; v4 = (v4 xor v9).rotateRight(12)
+                v3 += v4 + m15; v14 = (v14 xor v3).rotateRight(8)
+                v9 += v14; v4 = (v4 xor v9).rotateRight(7)
+                if (round == 6) break
+                val p0 = m2
+                val p1 = m6
+                val p2 = m3
+                val p3 = m10
+                val p4 = m7
+                val p5 = m0
+                val p6 = m4
+                val p7 = m13
+                val p8 = m1
+                val p9 = m11
+                val p10 = m12
+                val p11 = m5
+                val p12 = m9
+                val p13 = m14
+                val p14 = m15
+                val p15 = m8
+                m0 = p0
+                m1 = p1
+                m2 = p2
+                m3 = p3
+                m4 = p4
+                m5 = p5
+                m6 = p6
+                m7 = p7
+                m8 = p8
+                m9 = p9
+                m10 = p10
+                m11 = p11
+                m12 = p12
+                m13 = p13
+                m14 = p14
+                m15 = p15
             }
-            for (i in 0 until 8) {
-                out[i] = out[i] xor out[i + 8]
-                out[i + 8] = out[i + 8] xor cv[i]
-            }
+            out[0] = v0 xor v8; out[1] = v1 xor v9; out[2] = v2 xor v10; out[3] = v3 xor v11
+            out[4] = v4 xor v12; out[5] = v5 xor v13; out[6] = v6 xor v14; out[7] = v7 xor v15
+            out[8] = v8 xor cv[0]; out[9] = v9 xor cv[1]; out[10] = v10 xor cv[2]; out[11] = v11 xor cv[3]
+            out[12] = v12 xor cv[4]; out[13] = v13 xor cv[5]; out[14] = v14 xor cv[6]; out[15] = v15 xor cv[7]
         }
 
         fun wordsFromLittleEndian(bytes: ByteArray, offset: Int, out: IntArray) {
@@ -84,6 +131,7 @@ class Blake3Hasher : IncrementalHasher {
 
     override fun update(input: ByteArray, offset: Int, length: Int) {
         check(!finished) { "digest() was already called" }
+        checkRange(input, offset, length)
         var off = offset
         var len = length
         while (len > 0) {

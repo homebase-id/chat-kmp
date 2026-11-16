@@ -522,26 +522,17 @@ A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place
 
 ### Android: Media3, and why AAC audio is copied
 
+Numbers per device: MEDIA_BENCHMARKS.md.
+
 Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS, desktop and web use ffmpeg. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend. Both take the sizes and bitrates from `VideoQualityTargets.kt`. Media3 differs from ffmpeg in a few ways:
 
 - **Bitrate.** A hardware encoder spends the whole bitrate it's given, where libx264 spends less on simple content. So Media3 asks for less when the source is smaller than the target, in proportion to its area, and never more than the source's own bitrate. Android also enforces a minimum quality: on hard content it raises the bitrate itself. A 3 s 1440p60 animation came out 20–40% over target, with libx264 about 16% under. Real camera footage lands on target with both.
+- **Portrait.** Media3 writes portrait frames rather than a rotation flag, because MPEG-TS has no rotation.
+- **HLS.** Our own segmenter (`HlsSegmenter`, common code) cuts the compressed MP4 into the same encrypted HLS as ffmpeg's `single_file` output: one `index.ts` of byte ranges about 6 s long, each encrypted on its own under the payload IV. It reads the file once and takes the payload hash (BLAKE3, odin-core `docs/payload-hashes.md`) in the same pass. A video under 5 MB gets its hash from its single encryption pass. A rotated input, or anything that isn't H.264 and AAC, is left to ffmpeg.
 - **Location.** A kept location loses its altitude: Media3's `Mp4LocationData` holds latitude and longitude only.
 - **Audio.** Plain AAC-LC audio with up to two channels is copied rather than re-encoded. HE-AAC, xHE-AAC, surround and every other codec are re-encoded to AAC-LC at the quality's bitrate. Why:
 
-Android has no hardware AAC encoder (a Pixel 8 lists only `c2.android.aac.encoder`). Its software AAC codecs run in a separate media process, with a round trip for every 1024-sample frame. On the video's critical path, they set the pace of the whole export. The cost is that a copied track keeps the source's bitrate: 192 kbps from a Pixel against Standard's 128 kbps, about 0.6 MB on an 83 s video (2%). This was decided on 2026-11-16: the speed matters more than the 2%.
-
-Measured on a Pixel 8 with a 226 MB, 83 s HEVC HLG video, on a cool phone, alternating which backend went first:
-
-| | Time |
-|---|---|
-| ffmpeg (libx264), Standard / HD | 63.3 s / 156.1 s |
-| Media3, AAC re-encoded with Android's codecs | about 20–45 s, depending on heat |
-| Media3, AAC copied, Standard / HD | 13.9 s / 11.7 s |
-| Video only, no audio track | 8–13 s |
-| AAC decode + re-encode alone, Android's codecs | 15 s |
-| AAC encode alone, ffmpeg's encoder | 4.5 s |
-
-**Reopen this when** Android's AAC re-encode of a long video takes well under its video path, that is, at about 20× real time or faster, or when a hardware AAC encoder appears. Then re-encoding to the target bitrate costs nothing noticeable. To re-measure, push a long phone video to `/sdcard/Android/data/id.homebase.api.test/files/bench/`, install the device tests and run `Media3VideoCompressorTest#benchmarkAgainstFfmpeg`. It logs, under `Media3Benchmark`, each backend's times and the audio-only times of both AAC encoders.
+Android's AAC codecs are software and much slower than the hardware video path, so re-encoding the audio set the pace of every export. A copied track keeps the source's bitrate, about 2% of a file. **MEDIA_BENCHMARKS.md** has the measurements per device, this decision and when to reopen it, and how to re-measure.
 
 ## How others do it
 

@@ -3,6 +3,7 @@ package id.homebase.api.video
 import id.homebase.api.image.fourCc
 import id.homebase.api.image.readU16
 import id.homebase.api.image.readU32
+import id.homebase.api.image.readU64
 
 /** Where a video was filmed, in degrees and metres, as its camera recorded it. */
 data class VideoLocation(val latitude: Double, val longitude: Double, val altitude: Double? = null) {
@@ -78,11 +79,7 @@ class VideoLocationReader {
         val size32 = readU32(header, 0, little = false).toLong() and 0xFFFFFFFFL
         val headerSize = if (size32 == 1L) 16 else 8
         if (headerFill < headerSize) return
-        val size = if (size32 == 1L) {
-            ((readU32(header, 8, little = false).toLong() and 0xFFFFFFFFL) shl 32) or (readU32(header, 12, little = false).toLong() and 0xFFFFFFFFL)
-        } else {
-            size32
-        }
+        val size = if (size32 == 1L) readU64(header, 8) else size32
         val type = fourCc(header, 4)
         headerFill = 0
         // Size 0 runs to the end of the file: nothing after it to find.
@@ -98,25 +95,11 @@ class VideoLocationReader {
         }
     }
 
-    private class Box(val type: String, val start: Int, val end: Int)
-
-    private fun children(b: ByteArray, from: Int, until: Int): List<Box> {
-        val boxes = mutableListOf<Box>()
-        var i = from
-        while (i + 8 <= until) {
-            val size = readU32(b, i, little = false)
-            if (size < 8 || i + size > until) break
-            boxes += Box(fourCc(b, i + 4), i + 8, i + size)
-            i += size
-        }
-        return boxes
-    }
-
     private fun locationInMoov(moov: ByteArray): VideoLocation? {
-        val top = children(moov, 0, moov.size)
+        val top = mp4Boxes(moov, 0, moov.size)
         top.firstOrNull { it.type == "meta" }?.let { metadataKeyLocation(moov, it) }?.let { return it }
         val udta = top.firstOrNull { it.type == "udta" } ?: return null
-        val xyz = children(moov, udta.start, udta.end).firstOrNull { it.type == "©xyz" } ?: return null
+        val xyz = mp4Boxes(moov, udta.start, udta.end).firstOrNull { it.type == "©xyz" } ?: return null
         // A 16-bit text length and a 16-bit language code, then the text.
         if (xyz.start + 4 > xyz.end) return null
         val length = readU16(moov, xyz.start, little = false)
@@ -125,10 +108,10 @@ class VideoLocationReader {
     }
 
     // QuickTime metadata: `keys` names each entry, and `ilst` holds the values under 1-based key indexes.
-    private fun metadataKeyLocation(b: ByteArray, meta: Box): VideoLocation? {
+    private fun metadataKeyLocation(b: ByteArray, meta: Mp4Box): VideoLocation? {
         // ISO's meta is a full box with 4 bytes of version and flags; QuickTime's isn't.
         val first = if (meta.start + 8 <= meta.end && fourCc(b, meta.start + 4) in setOf("hdlr", "keys", "ilst")) meta.start else meta.start + 4
-        val boxes = children(b, first, meta.end)
+        val boxes = mp4Boxes(b, first, meta.end)
         val keys = boxes.firstOrNull { it.type == "keys" } ?: return null
         val ilst = boxes.firstOrNull { it.type == "ilst" } ?: return null
         if (keys.start + 8 > keys.end) return null
@@ -146,8 +129,8 @@ class VideoLocationReader {
             i += size
         }
         if (index == 0) return null
-        val item = children(b, ilst.start, ilst.end).firstOrNull { readU32(b, it.start - 4, little = false) == index } ?: return null
-        val data = children(b, item.start, item.end).firstOrNull { it.type == "data" } ?: return null
+        val item = mp4Boxes(b, ilst.start, ilst.end).firstOrNull { readU32(b, it.start - 4, little = false) == index } ?: return null
+        val data = mp4Boxes(b, item.start, item.end).firstOrNull { it.type == "data" } ?: return null
         // A 4-byte type and a 4-byte locale, then the value.
         if (data.start + 8 > data.end) return null
         return VideoLocation.parse(b.decodeToString(data.start + 8, data.end))
@@ -155,7 +138,5 @@ class VideoLocationReader {
 
     private companion object {
         const val APPLE_LOCATION_KEY = "com.apple.quicktime.location.ISO6709"
-        // A long recording's sample tables run to a few MB; past this the file isn't one a camera wrote.
-        const val MAX_MOOV_BYTES = 64L * 1024 * 1024
     }
 }

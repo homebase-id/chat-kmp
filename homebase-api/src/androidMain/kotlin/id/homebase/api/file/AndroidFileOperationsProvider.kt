@@ -44,6 +44,28 @@ class AndroidFileOperationsProvider(
             }.flowOn(Dispatchers.IO)
         } else super.readFileAsFlow(path, chunkSize)
 
+    override suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray =
+        if (isContentUri(path)) {
+            withContext(Dispatchers.IO) {
+                val descriptor = context.contentResolver.openFileDescriptor(path.toUri(), "r")
+                    ?: throw IllegalArgumentException("Unable to open content URI: $path")
+                descriptor.use { fd ->
+                    java.io.FileInputStream(fd.fileDescriptor).channel.use { channel ->
+                        val buffer = java.nio.ByteBuffer.allocate(length)
+                        var position = offset
+                        while (buffer.hasRemaining()) {
+                            val n = channel.read(buffer, position)
+                            if (n <= 0) break
+                            position += n
+                        }
+                        buffer.array().copyOf(buffer.position())
+                    }
+                }
+            }
+        } else {
+            super.readFileRange(path, offset, length)
+        }
+
     override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray =
         if (isContentUri(path)) {
             withContext(Dispatchers.IO) {

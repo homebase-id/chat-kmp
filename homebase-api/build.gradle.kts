@@ -331,8 +331,12 @@ kotlin {
         // Image sources from a path, on the real decoders; a phone must never read the file whole.
         listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/imageFileContractTest/kotlin") }
         getByName("androidDeviceTest").kotlin.srcDir("src/imageFileContractTest/kotlin")
+        // The official hash vectors, also on a phone: Android's BLAKE3 is native there.
+        commonTest.get().kotlin.srcDir("src/hasherContractTest/kotlin")
+        getByName("androidDeviceTest").kotlin.srcDir("src/hasherContractTest/kotlin")
         androidMain.dependencies {
             implementation(project(":homebase-imageresize"))
+            implementation(project(":homebase-blake3"))
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)
