@@ -15,7 +15,8 @@ import id.homebase.api.lib.image.ImageFormatDetector
  * `Orientation` is re-emitted when the source had a non-default value.
  *
  * Kept because they affect how the image decodes rather than who took it: JFIF (APP0),
- * ICC colour profiles (APP2) and the Adobe colour-transform marker (APP14).
+ * ICC colour profiles (APP2) and the Adobe colour-transform marker (APP14). An HDR JPEG's
+ * gain map is declared in its XMP, so that XMP is rebuilt with only the gain-map fields.
  *
  * Unknown or malformed input is returned unchanged — this must never be able to corrupt a
  * send. JPEG, PNG, WebP and HEIF/HEIC are handled; every other format passes through untouched.
@@ -166,10 +167,21 @@ object ImageMetadataScrubber {
         val pieces = mutableListOf<Piece>()
         pieces += Piece.Span(0, 2) // SOI
 
+        // How much the primary image grew (negative: shrank), in all and after an MPF index, whose entries count from it.
+        var resized = 0
+        var resizedAfterMpf = 0
+        var mpf: Piece.Span? = null
+        fun resize(by: Int) {
+            resized += by
+            if (mpf != null) resizedAfterMpf += by
+        }
+
         var orientationEmitted = orientation == null || orientation == 1
         fun emitOrientation() {
             if (!orientationEmitted) {
-                pieces += Piece.Literal(minimalExifApp1(orientation!!))
+                val exif = minimalExifApp1(orientation!!)
+                pieces += Piece.Literal(exif)
+                resize(exif.size)
                 orientationEmitted = true
             }
         }
@@ -210,18 +222,71 @@ object ImageMetadataScrubber {
                 break
             }
 
-            if (shouldDropSegment(marker)) {
+            val rebuiltXmp = if (marker == MARKER_APP1) gainmapXmpApp1(src, i + 2, segmentEnd) else null
+            // Already rebuilt, so scrubbing twice changes nothing.
+            val unchanged = rebuiltXmp != null && rebuiltXmp.contentEquals(src.copyOfRange(j - 1, segmentEnd))
+            val gainmapXmp = rebuiltXmp.takeUnless { unchanged }
+            if (gainmapXmp == null && !unchanged && shouldDropSegment(marker)) {
                 droppedAnything = true
+                resize(segmentStart - segmentEnd)
             } else {
                 // Re-emitted EXIF belongs after JFIF but before everything else.
                 if (marker != MARKER_APP0) emitOrientation()
-                pieces += Piece.Span(segmentStart, segmentEnd)
+                if (gainmapXmp != null) {
+                    droppedAnything = true
+                    pieces += Piece.Literal(gainmapXmp)
+                    resize(gainmapXmp.size - (segmentEnd - segmentStart))
+                } else {
+                    val span = Piece.Span(segmentStart, segmentEnd)
+                    if (marker == MARKER_APP2 && mpf == null && startsWith(src, i + 2, segmentEnd, MPF_HEADER)) mpf = span
+                    pieces += span
+                }
             }
             i = segmentEnd
         }
 
         if (!droppedAnything) return Outcome.NothingToStrip
+        mpf?.let { span ->
+            if (resized != 0) pieces[pieces.indexOf(span)] = Piece.Literal(movedMpf(src, span, resized, resizedAfterMpf))
+        }
         return Outcome.Scrubbed(assemble(pieces, src))
+    }
+
+    private val MPF_HEADER = byteArrayOf(0x4D, 0x50, 0x46, 0x00)
+
+    /**
+     * The MPF index (CIPA DC-007) after the primary image changed size: its first entry's size, and every later
+     * entry's offset, which counts from the index itself. Unchanged when it can't be read.
+     */
+    private fun movedMpf(src: ByteArray, span: Piece.Span, resized: Int, resizedAfter: Int): ByteArray {
+        val out = src.copyOfRange(span.from, span.until)
+        val tiff = 4 + 4 // FF E2, length, then "MPF\0"
+        if (tiff + 8 > out.size) return out
+        val little = when {
+            out[tiff] == 'I'.code.toByte() && out[tiff + 1] == 'I'.code.toByte() -> true
+            out[tiff] == 'M'.code.toByte() && out[tiff + 1] == 'M'.code.toByte() -> false
+            else -> return out
+        }
+        val ifd = tiff + readU32(out, tiff + 4, little)
+        if (ifd < tiff || ifd + 2 > out.size) return out
+        for (e in 0 until readU16(out, ifd, little)) {
+            val entry = ifd + 2 + e * 12
+            if (entry + 12 > out.size) return out
+            if (readU16(out, entry, little) != 0xB002) continue
+            val count = readU32(out, entry + 4, little) / 16
+            val list = tiff + readU32(out, entry + 8, little)
+            if (list < tiff || list + count * 16 > out.size) return out
+            for (k in 0 until count) {
+                val at = list + k * 16
+                if (k == 0) writeU32(out, at + 4, readU32(out, at + 4, little) + resized, little)
+                else readU32(out, at + 8, little).takeIf { it != 0 }?.let { writeU32(out, at + 8, it + resizedAfter, little) }
+            }
+        }
+        return out
+    }
+
+    private fun writeU32(b: ByteArray, at: Int, value: Int, little: Boolean) {
+        for (k in 0 until 4) b[at + if (little) k else 3 - k] = (value ushr (8 * k)).toByte()
     }
 
     /** EXIF `Orientation` (1..8), or null when absent/unparseable. */
@@ -300,14 +365,58 @@ object ImageMetadataScrubber {
     )
 
     /** [minimalExifTiff] wrapped as a JPEG APP1 segment, with the Exif identifier prefix. */
-    private fun minimalExifApp1(orientation: Int): ByteArray {
-        val payload =
-            byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + minimalExifTiff(orientation)
+    private fun minimalExifApp1(orientation: Int): ByteArray = app1(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + minimalExifTiff(orientation))
+
+    private fun app1(payload: ByteArray): ByteArray {
         val length = payload.size + 2
-        return byteArrayOf(
-            0xFF.toByte(), MARKER_APP1.toByte(),
-            ((length shr 8) and 0xFF).toByte(), (length and 0xFF).toByte(),
-        ) + payload
+        return byteArrayOf(0xFF.toByte(), MARKER_APP1.toByte(), ((length shr 8) and 0xFF).toByte(), (length and 0xFF).toByte()) + payload
+    }
+
+    private const val HDRGM_NS = "http://ns.adobe.com/hdr-gain-map/1.0/"
+    private val HDRGM_VERSION = Regex("""hdrgm:Version\s*=\s*(["'])([0-9]{1,3}\.[0-9]{1,3})\1|<hdrgm:Version>([0-9]{1,3}\.[0-9]{1,3})</hdrgm:Version>""")
+    private val CONTAINER_DIRECTORY = Regex("""<Container:Directory>(.*?)</Container:Directory>""", RegexOption.DOT_MATCHES_ALL)
+    private val CONTAINER_ITEM = Regex("""<Container:Item\s([^<>]*?)/>""")
+    private val ITEM_ATTRIBUTE = Regex("""Item:(\w+)\s*=\s*(["'])([^"'<>]*)\2""")
+
+    /**
+     * The Container directory's items, each Primary or GainMap with an image MIME type and numeric sizes, or ""
+     * when anything else is there: another item (a motion photo's video, a depth map), element-form items, a
+     * comment. Decoders then find the gain map through the MPF index alone.
+     */
+    private fun gainmapDirectory(xml: String): String {
+        val body = CONTAINER_DIRECTORY.find(xml)?.groupValues?.get(1) ?: return ""
+        if ("<!--" in body || "CDATA" in body) return ""
+        val items = CONTAINER_ITEM.findAll(body).toList()
+        if (items.isEmpty() || items.size != Regex("<Container:Item\\b").findAll(body).count()) return ""
+        val rebuilt = items.map { item ->
+            val attributes = LinkedHashMap<String, String>()
+            ITEM_ATTRIBUTE.findAll(item.groupValues[1]).forEach { attributes.getOrPut(it.groupValues[1]) { it.groupValues[3] } }
+            val semantic = attributes["Semantic"]?.takeIf { it == "Primary" || it == "GainMap" } ?: return ""
+            val mime = attributes["Mime"]?.takeIf { it == "image/jpeg" } ?: return ""
+            val sizes = listOf("Length", "Padding").mapNotNull { name ->
+                attributes[name]?.let { value -> if (value.length in 1..10 && value.all(Char::isDigit)) " Item:$name=\"$value\"" else return "" }
+            }
+            "<rdf:li rdf:parseType=\"Resource\"><Container:Item Item:Semantic=\"$semantic\" Item:Mime=\"$mime\"${sizes.joinToString("")}/></rdf:li>"
+        }
+        return "<Container:Directory><rdf:Seq>${rebuilt.joinToString("")}</rdf:Seq></Container:Directory>"
+    }
+
+    /**
+     * An Ultra HDR JPEG declares its gain map in the primary image's XMP (`hdrgm:Version`, and the
+     * Container directory that says where the gain-map image is). Without it, decoders show the SDR
+     * image only. Null when this APP1 isn't such an XMP; otherwise the same declaration rebuilt from
+     * an allowlist, so anything else the XMP held (location, camera, dates) is still dropped.
+     */
+    private fun gainmapXmpApp1(b: ByteArray, from: Int, until: Int): ByteArray? {
+        if (!startsWith(b, from, until, XMP_JPEG_HEADER)) return null
+        val xml = b.decodeToString(from + XMP_JPEG_HEADER.size, until)
+        if (HDRGM_NS !in xml) return null
+        val version = HDRGM_VERSION.find(xml)?.groupValues?.let { it[2].ifEmpty { it[3] } } ?: return null
+        val directory = gainmapDirectory(xml)
+        val xmp = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
+            "<rdf:Description rdf:about=\"\" xmlns:hdrgm=\"$HDRGM_NS\" xmlns:Container=\"http://ns.google.com/photos/1.0/container/\" " +
+            "xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\" hdrgm:Version=\"$version\">$directory</rdf:Description></rdf:RDF></x:xmpmeta>"
+        return (XMP_JPEG_HEADER + xmp.encodeToByteArray()).takeIf { it.size + 2 <= 0xFFFF }?.let(::app1)
     }
 
     /* ---------------- WebP ---------------- */

@@ -1,6 +1,5 @@
 package id.homebase.core.util
 
-import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
@@ -10,10 +9,12 @@ import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
+import id.homebase.api.file.copyInLargeChunks
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.api.util.freeFileName
 import id.homebase.api.util.safeFileName
-import kotlinx.io.files.Path
 import java.io.File
+import kotlinx.io.files.Path
 
 private const val TAG = "AndroidAlbumSaver"
 private const val ALBUM_FOLDER = "Homebase"
@@ -78,7 +79,7 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
 
                     try {
                         resolver.openOutputStream(uri)?.use { outputStream ->
-                            openSource().use { it.copyTo(outputStream) }
+                            openSource().use { it.copyInLargeChunks(outputStream) }
                         } ?: throw Exception("Failed to open output stream")
 
                         values.clear()
@@ -117,7 +118,7 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                     destDir.mkdirs()
                     val destFile = File(destDir, freeFileName(safeName) { File(destDir, it).exists() })
                     destFile.outputStream().use { out ->
-                        openSource().use { it.copyTo(out) }
+                        openSource().use { it.copyInLargeChunks(out) }
                     }
 
                     MediaScannerConnection.scanFile(

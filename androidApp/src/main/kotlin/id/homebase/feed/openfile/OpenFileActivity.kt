@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.copyInLargeChunks
 import id.homebase.core.ui.screens.openedfile.OpenedFileInbox
 import id.homebase.core.ui.screens.openedfile.OpenedFileRequest
 import id.homebase.core.ui.screens.openedfile.discardStaged
@@ -27,13 +28,13 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.feed.MainActivity
 import id.homebase.resources.MR
 import id.homebase.resources.openedfile_open_failed
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import java.io.File
 
 private const val TAG = "OpenFileActivity"
 
@@ -96,7 +97,7 @@ class OpenFileActivity : ComponentActivity(), KoinComponent {
                 discardStaged(path)
                 return@withContext null
             }
-            input.use { source -> File(path).outputStream().use { source.copyTo(it) } }
+            input.use { source -> File(path).outputStream().use { source.copyInLargeChunks(it) } }
             val type = (intent?.type ?: contentResolver.getType(uri))?.takeIf { it != "application/octet-stream" }
             OpenedFileRequest(path, File(path).name, type, File(path).length())
         } catch (e: Exception) {
