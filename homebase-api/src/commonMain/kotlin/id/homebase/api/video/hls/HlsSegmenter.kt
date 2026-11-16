@@ -17,7 +17,12 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 
 /**
  * Cuts an H.264 + AAC MP4 into encrypted HLS in one read of the file, as ffmpeg's
@@ -28,6 +33,7 @@ import kotlinx.coroutines.flow.flow
  */
 internal object HlsSegmenter {
     private const val SEGMENT_SECONDS = 6.0
+    private const val HASH_QUEUE = 2
 
     @OptIn(ExperimentalUuidApi::class)
     suspend fun segmentAndEncrypt(
@@ -45,62 +51,73 @@ internal object HlsSegmenter {
         val contentHasher = PayloadHashAlgorithm.Blake3.newHasher()
         val segments = mutableListOf<Segment>()
 
-        fileOps.writeStream(segmentsPath, flow {
-            val ts = MpegTsWriter(movie.video, movie.audio)
-            var segmentStart = movie.start90k
-            var written = 0L
-            suspend fun finish(end90k: Long) {
-                val plain = ts.drain()
-                if (plain.isEmpty()) return
-                contentHasher.update(plain)
-                val cipher = AesCbc.encrypt(plain, keyHeader.aesKey, keyHeader.iv)
-                storedHasher.update(cipher)
-                segments += Segment((end90k - segmentStart) / 90_000.0, cipher.size.toLong(), written)
-                written += cipher.size
-                emit(cipher)
+        // Each hash runs on its own core, fed segment by segment, so hashing overlaps cutting and encrypting.
+        coroutineScope {
+            val toContentHash = Channel<ByteArray>(HASH_QUEUE)
+            val toStoredHash = Channel<ByteArray>(HASH_QUEUE)
+            val hashing = listOf(contentHasher to toContentHash, storedHasher to toStoredHash).map { (hasher, queue) ->
+                launch(Dispatchers.Default) { for (bytes in queue) hasher.update(bytes) }
             }
-
-            ts.writeTables()
-            var next = 0
-            var position = 0L
-            var pending: ByteArray? = null
-            var pendingFill = 0
-            val total = movie.samples.size
-            fileOps.readFileAsFlow(inputPath, CHUNK).collect { chunk ->
-                var at = 0
-                while (at < chunk.size && next < total) {
-                    val sample = movie.samples[next]
-                    if (pending == null) {
-                        val skip = sample.offset - (position + at)
-                        if (skip > 0) {
-                            at += minOf(skip, (chunk.size - at).toLong()).toInt()
-                            continue
-                        }
-                        pending = ByteArray(sample.size)
-                        pendingFill = 0
-                    }
-                    val buffer = pending!!
-                    val n = minOf(buffer.size - pendingFill, chunk.size - at)
-                    chunk.copyInto(buffer, pendingFill, at, at + n)
-                    pendingFill += n
-                    at += n
-                    if (pendingFill < buffer.size) continue
-                    // Segments start on a keyframe, as players seek to them.
-                    if (sample.track is Mp4Track.Avc && sample.isKey && (sample.pts90k - segmentStart) / 90_000.0 >= SEGMENT_SECONDS) {
-                        finish(sample.pts90k)
-                        segmentStart = sample.pts90k
-                        ts.writeTables()
-                    }
-                    ts.write(sample, buffer)
-                    pending = null
-                    next++
-                    if (next % PROGRESS_EVERY == 0) onProgress?.invoke(next.toFloat() / total)
+            fileOps.writeStream(segmentsPath, flow {
+                val ts = MpegTsWriter(movie.video, movie.audio)
+                var segmentStart = movie.start90k
+                var written = 0L
+                suspend fun finish(end90k: Long) {
+                    val plain = ts.drain()
+                    if (plain.isEmpty()) return
+                    toContentHash.send(plain)
+                    val cipher = AesCbc.encrypt(plain, keyHeader.aesKey, keyHeader.iv)
+                    toStoredHash.send(cipher)
+                    segments += Segment((end90k - segmentStart) / 90_000.0, cipher.size.toLong(), written)
+                    written += cipher.size
+                    emit(cipher)
                 }
-                position += chunk.size
-            }
-            check(next == total) { "the file ended after $next of $total samples" }
-            finish(movie.end90k)
-        })
+
+                ts.writeTables()
+                var next = 0
+                var position = 0L
+                var pending: ByteArray? = null
+                var pendingFill = 0
+                val total = movie.samples.size
+                fileOps.readFileAsFlow(inputPath, CHUNK).collect { chunk ->
+                    var at = 0
+                    while (at < chunk.size && next < total) {
+                        val sample = movie.samples[next]
+                        if (pending == null) {
+                            val skip = sample.offset - (position + at)
+                            if (skip > 0) {
+                                at += minOf(skip, (chunk.size - at).toLong()).toInt()
+                                continue
+                            }
+                            pending = ByteArray(sample.size)
+                            pendingFill = 0
+                        }
+                        val buffer = pending!!
+                        val n = minOf(buffer.size - pendingFill, chunk.size - at)
+                        chunk.copyInto(buffer, pendingFill, at, at + n)
+                        pendingFill += n
+                        at += n
+                        if (pendingFill < buffer.size) continue
+                        // Segments start on a keyframe, as players seek to them.
+                        if (sample.track is Mp4Track.Avc && sample.isKey && (sample.pts90k - segmentStart) / 90_000.0 >= SEGMENT_SECONDS) {
+                            finish(sample.pts90k)
+                            segmentStart = sample.pts90k
+                            ts.writeTables()
+                        }
+                        ts.write(sample, buffer)
+                        pending = null
+                        next++
+                        if (next % PROGRESS_EVERY == 0) onProgress?.invoke(next.toFloat() / total)
+                    }
+                    position += chunk.size
+                }
+                check(next == total) { "the file ended after $next of $total samples" }
+                finish(movie.end90k)
+            })
+            toContentHash.close()
+            toStoredHash.close()
+            hashing.joinAll()
+        }
 
         fileOps.writeStream(playlistPath, flow { emit(playlist(segments, keyHeader.iv).encodeToByteArray()) })
         return SegmentedVideo(
