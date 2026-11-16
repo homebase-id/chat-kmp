@@ -2,6 +2,7 @@ package id.homebase.upload
 
 import id.homebase.api.image.withSourceMetadata
 import id.homebase.api.file.contentTypeFromBytes
+import id.homebase.api.file.extensionForContentType
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -55,7 +56,7 @@ object UploadImages {
         readMetadata: Boolean = false,
     ): ThumbnailResult {
         val media = try {
-            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker, readMetadata = readMetadata)
+            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker, readMetadata = readMetadata, hdr = true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -136,7 +137,7 @@ object UploadImages {
         val bytes = keepMetadataFrom?.takeIf { thumbs.sourceFormat in ImageMetadataScrubber.BLOCK_FORMATS }
             ?.let { withMetadataOf(it, image, fileOperationsProvider) } ?: image.bytes
         return try {
-            fileOperationsProvider.writeBytesToTempFile(bytes, "img_final_", ".webp")
+            fileOperationsProvider.writeBytesToTempFile(bytes, "img_final_", ".${extensionForContentType(image.format.contentType)}")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -149,7 +150,7 @@ object UploadImages {
 // Fail-soft like the strip: a source that can't be read leaves the final image without metadata, loudly.
 private suspend fun withMetadataOf(source: String, image: RenderedImage, fileOps: FileOperationsProvider): ByteArray? = try {
     val original = fileOps.readFileBytes(source)
-    withContext(Dispatchers.Default) { withSourceMetadata(image.bytes, original, image.width, image.height) }
+    withContext(Dispatchers.Default) { withSourceMetadata(image.bytes, image.format, original, image.width, image.height) }
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {

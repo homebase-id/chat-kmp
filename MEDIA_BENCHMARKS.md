@@ -172,6 +172,21 @@ Where the time goes without scaling, desktop: decoding 85 ms (done twice: palett
 
 For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed with `adb install --abi armeabi-v7a`.
 
+## HDR photos: Ultra HDR JPEG against today's WebP
+
+`HdrDisplayDeviceTest#benchmarkHdrFinalImages` with `-e hdrBench true`: each photo in the test app's `files/bench/` re-encoded as the final image at Standard and HD, as SDR WebP (what sends today) and as an Ultra HDR JPEG with the gain map (what an HDR photo sends now on Android 14+), twice each in alternating order. Two real Pixel 8 camera photos (Ultra HDR, 2268×4032, 1.25 and 2.04 MB), measured on the Pixel 8.
+
+| Photo | Setting | Size | SDR WebP | Ultra HDR JPEG | Encode: WebP / JPEG | Measured |
+|---|---|---|---|---|---|---|
+| 1 (1.25 MB) | Standard | 1152×2048 | 72 kB | 135 kB (+88%) | 432–599 / 204–257 ms | 2026-11-16 |
+| 1 | HD | 2268×4032 | 279 kB | 618 kB (+122%) | 1010–1012 / 139–150 ms | 2026-11-16 |
+| 2 (2.04 MB) | Standard | 1152×2048 | 141 kB | 215 kB (+52%) | 434–453 / 167 ms | 2026-11-16 |
+| 2 | HD | 2268×4032 | 614 kB | 1073 kB (+75%) | 1185–1199 / 169–171 ms | 2026-11-16 |
+
+Same quality number for both (60 at Standard, 80 at HD); a JPEG at the same number is not the same picture quality as WebP, which this doesn't measure. For scale: Signal's Ultra HDR copy of a Pixel 8 photo in #2390 was 243 kB at 900×1600. The JPEG encodes 2–7× faster than WebP here.
+
+**Decided 2026-11-16: no HDR at Standard.** Standard is for small and fast; HD and Original keep HDR. Reopen if a quality-matched comparison (JPEG quality chosen to look like today's WebP) shows the gap is much smaller.
+
 ## Images
 
 `ImagePipelinePerfBench`: `createMediaImages` on generated 12 MP (4000×3000) and 48 MP (8000×6000) photos, and the bare Lanczos step. Median of 3, with peak native memory. OPTIMIZE.md, "Image pipeline on an Android phone", says how to run it; with `run-as`, the results are in the test app's `cache/image-bench.txt`.

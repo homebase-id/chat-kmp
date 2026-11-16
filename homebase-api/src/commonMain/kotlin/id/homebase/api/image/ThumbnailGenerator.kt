@@ -34,6 +34,9 @@ private fun isSvg(bytes: ByteArray): Boolean {
  *
  * Throws on a raster image the platform can't decode; only a bad SVG returns empty, because
  * receivers gate the image block on a `hasImage` flag and no thumb is better than a stuck outbox.
+ *
+ * With [hdr] (a photo sent as media, not a sticker), the image people look at keeps an HDR gain map at HD and
+ * Original (THUMBNAILS.md, "HDR"). Thumbnails made for anything else stay SDR.
  */
 suspend fun createMediaImages(
     imageBytes: ByteArray,
@@ -41,10 +44,11 @@ suspend fun createMediaImages(
     setting: MediaQuality = MediaQuality.ORIGINAL,
     allowFinalImage: Boolean = true,
     readMetadata: Boolean = false,
+    hdr: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
     if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
     openImageSource(imageBytes).use {
-        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata)
+        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata, hdr)
     }
 }
 
@@ -56,15 +60,16 @@ suspend fun createMediaImages(
     setting: MediaQuality = MediaQuality.ORIGINAL,
     allowFinalImage: Boolean = true,
     readMetadata: Boolean = false,
+    hdr: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
-    suspend fun fromBytes() = createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata)
+    suspend fun fromBytes() = createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata, hdr)
     // Opened first: where it can't be, the header read would cost a whole read of its own (a Photos-library asset).
     val file = openImageFile(path, fileOps) ?: return@withContext fromBytes()
     file.use {
         val header = fileOps.readFileHeaderBytes(path)
         if (isSvg(header) || !ImageFormatDetector.answersIsAnimated(header)) return@withContext fromBytes()
         val byteCount = fileOps.getFileSize(path).takeIf { it > 0 }
-        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, readMetadata)
+        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, readMetadata, hdr)
     }
 }
 
@@ -77,11 +82,13 @@ private suspend fun mediaImagesFrom(
     setting: MediaQuality,
     allowFinalImage: Boolean,
     readMetadata: Boolean,
+    hdr: Boolean,
 ): MediaImages {
     val format = contentTypeFromBytes(header)
     val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
-    val media = renderPlanned(source, payloadKey, displayedSize = null) { size ->
+    val keepsHdr = hdr && setting.keepsHdr && !keepsItsFile
+    val media = renderPlanned(source, payloadKey, displayedSize = null, keepsHdr) { size ->
         val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)
         if (gif) plan.copy(thumbnails = emptyList()) else plan
     }
@@ -99,7 +106,7 @@ private suspend fun createSvgImages(bytes: ByteArray, payloadKey: String, settin
     return try {
         val raster = ImageUtils.rasterizeSvg(bytes, largestThumbnailLongEdge(setting), ImageFormat.PNG, 100)
         openImageSource(raster.bytes).use { source ->
-            renderPlanned(source, payloadKey, natural) { planMediaImages(it, setting, makesFinalImage = false) }
+            renderPlanned(source, payloadKey, natural, keepsHdr = false) { planMediaImages(it, setting, makesFinalImage = false) }
         }
     } catch (e: Exception) {
         if (e is CancellationException) throw e
@@ -111,10 +118,11 @@ private suspend fun renderPlanned(
     source: ImageSource,
     payloadKey: String,
     displayedSize: ImageSize?,
+    keepsHdr: Boolean,
     planFor: (ImageSize) -> MediaImagePlan,
 ): MediaImages {
     var plan: MediaImagePlan? = null
-    val result = renderImages(source) { size -> planFor(size).also { plan = it }.toOutputs() }
+    val result = renderImages(source) { size -> planFor(size).also { plan = it }.toOutputs(keepsHdr) }
     val thumbnailCount = plan!!.thumbnails.size
     return MediaImages(
         displayedSize = displayedSize ?: result.displayedSize,
@@ -124,12 +132,15 @@ private suspend fun renderPlanned(
     )
 }
 
-// The plan's order, which renderPlanned reads back by position: thumbnails, final image, tiny.
-private fun MediaImagePlan.toOutputs(): List<ImageOutput> = buildList {
+// The plan's order, which renderPlanned reads back by position: thumbnails, final image, tiny. With [keepsHdr], the
+// image people look at keeps HDR: the final image, or at Original, where viewers never step up to the file, the
+// largest thumbnail.
+private fun MediaImagePlan.toOutputs(keepsHdr: Boolean): List<ImageOutput> = buildList {
+    val viewed = if (keepsHdr && finalImage == null) thumbnails.maxByOrNull { it.width * it.height } else null
     thumbnails.forEach {
-        add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES, overLimit = OverLimit.SHRINK, rowSize = it.rowSize))
+        add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES, overLimit = OverLimit.SHRINK, rowSize = it.rowSize, keepsHdr = it === viewed))
     }
-    finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE)) }
+    finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE, keepsHdr = keepsHdr)) }
     add(tinyOutput(tiny.width, tiny.height))
 }
 
@@ -185,13 +196,7 @@ private fun RenderedImage.toThumbnailFile(payloadKey: String) = ThumbnailFile(
     pixelHeight = height,
     thumbnailBytes = bytes,
     key = payloadKey,
-    contentType = when (format) {
-        ImageFormat.WEBP -> "image/webp"
-        ImageFormat.JPEG -> "image/jpeg"
-        ImageFormat.PNG -> "image/png"
-        ImageFormat.BMP -> "image/bmp"
-        ImageFormat.GIF -> "image/gif"
-    },
+    contentType = format.contentType,
     quality = quality,
 )
 
@@ -224,3 +229,6 @@ private fun getSvgDimensions(svgData: ByteArray): ImageSize? {
         null
     }
 }
+
+// Standard is for small and fast: an HDR copy is 1.5-2x the bytes (MEDIA_BENCHMARKS.md, "HDR photos").
+private val MediaQuality.keepsHdr get() = this != MediaQuality.STANDARD

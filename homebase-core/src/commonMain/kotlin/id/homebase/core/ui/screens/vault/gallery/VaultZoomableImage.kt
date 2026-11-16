@@ -33,6 +33,7 @@ fun VaultZoomableImage(
     onToggleUI: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    showsHdr: Boolean = false,
 ) {
     val localImage by localAttachmentStore.collectContext(file.uniqueId, descriptor.key)
     val localFilePath = (localImage as? LocalAttachmentContext.Image)?.localFilePath
@@ -71,6 +72,7 @@ fun VaultZoomableImage(
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
                 heroContentAspect = heroAspect,
+                showsHdr = showsHdr,
             )
             if (isPending) {
                 MediaPendingOverlay(onTap = onToggleUI)
@@ -98,6 +100,7 @@ fun VaultZoomableImage(
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
                 heroContentAspect = heroAspect,
+                showsHdr = showsHdr,
             )
         } else {
             MediaUnavailablePlaceholder(

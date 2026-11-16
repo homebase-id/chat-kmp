@@ -10,6 +10,8 @@ sealed interface SubSamplingImageSource {
     @Immutable
     class Remote(
         val imageData: HomebaseImageData,
+        /** The sender's own file, shown when the sent copy can't be loaded yet: not uploaded, not in the cache. */
+        val standIn: String? = null,
     ) : SubSamplingImageSource
 
     class LocalFile(

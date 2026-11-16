@@ -183,11 +183,11 @@ object UserUploadBuilder {
         val untypedLibraryImage = source.libraryKind == LibraryKind.IMAGE && isUntyped(declaredType)
         val bytesType = if (!options.currentFormat) null else thumbs.sourceFormat ?: if (untypedLibraryImage) contentTypeOfFile(source.path, fileOps) else null
         val sniffedType = bytesType?.takeIf { it.startsWith("image/") }
-        val contentType = if (finalPath != null) "image/webp" else sniffedType ?: declaredType
+        val sentFinalImage = thumbs.finalImage?.takeIf { finalPath != null }
+        val contentType = sentFinalImage?.format?.contentType ?: sniffedType ?: declaredType
 
         // Quality is recorded only for an HD or Original photo that really is one, and never for a
         // sticker: its bytes are bounded at 512 px whatever the setting.
-        val sentFinalImage = thumbs.finalImage?.takeIf { finalPath != null }
         val finalSize = sentFinalImage?.let { ImageSize(it.width, it.height) } ?: thumbs.displayedSize
         val recordedQuality = options.quality.takeIf {
             it == MediaQuality.ORIGINAL || (it == MediaQuality.HD && thumbs.finalImage != null)

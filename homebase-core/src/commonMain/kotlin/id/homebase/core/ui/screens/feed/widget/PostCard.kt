@@ -365,6 +365,7 @@ private fun QuotedPostMedia(
         previewThumbnail = thumb,
         // Repost is only offered on public (unencrypted) posts, so these payloads carry no per-payload iv.
         keyHeader = KeyHeader.empty(),
+        isEncrypted = false,
         modifier = modifier.fillMaxWidth(),
         onMediaClick = onClick?.let { open -> { _: PayloadDescriptor -> open() } },
         sharedTransitionScope = null,
@@ -444,6 +445,7 @@ private fun PostMedia(
             driveId = mediaDriveId,
             previewThumbnail = post.previewThumbnail,
             keyHeader = post.keyHeader,
+            isEncrypted = post.isEncrypted,
             modifier = Modifier.fillMaxWidth(),
             onMediaClick = { payload ->
                 val index = mediaPayloads.indexOf(payload).coerceAtLeast(0)

@@ -84,6 +84,7 @@ fun MomentMediaItem(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     modifier: Modifier = Modifier,
     keyHeader: KeyHeader,
+    isEncrypted: Boolean,
     preserveAspectRatio: Boolean = false,
     // Set when the host gives an explicit size (comments-shrink band, detail/reels pager page): without it the
     // intrinsic `.aspectRatio()` below sizes the image to its own ratio and overflows that box.
@@ -95,6 +96,8 @@ fun MomentMediaItem(
     // Routes photos through [ZoomableSubSamplingImage] for inline pinch-zoom; only affects image payloads.
     enableZoom: Boolean = false,
     stepUpToPayload: Boolean = true,
+    /** Only the full-screen detail viewer's page in view sets this; feed cards stay SDR as they scroll. */
+    showsHdr: Boolean = false,
     // True while the zoomed photo is panned past fit; the carousel pager uses it to suspend page-swiping.
     onZoomedChanged: ((Boolean) -> Unit)? = null,
     shape: Shape =
@@ -199,15 +202,15 @@ fun MomentMediaItem(
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
                 imageLocalContext?.localFilePath,
-                driveId, fileId, payload.key, payload.lastModified,
+                driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted,
             ) {
-                val localPath = imageLocalContext?.localFilePath
+                // The sent copy, as everyone else sees it; the local file only while an encrypted post has no IV
+                // yet, or as the stand-in if the sent copy can't be loaded.
+                val localPath = imageLocalContext?.localFilePath?.takeIf { isEncrypted && payload.iv == null }
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {
-                    // A public (unencrypted) post carries no IV — build the source anyway (encrypted
-                    // only when an IV is present). Bailing to null here left public feed images as a
-                    // blank Box that never even requested bytes; matches the non-zoom builder below.
+                    // A public post's payloads carry no IV: request the plain bytes, never an empty Box.
                     val payloadIv = payload.iv?.bytes
                     val imageData = HomebaseImageData.from(
                         driveId = driveId,
@@ -215,7 +218,7 @@ fun MomentMediaItem(
                         descriptor = payload,
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
-                        isEncrypted = payloadIv != null,
+                        isEncrypted = isEncrypted,
                         keyHeader = payloadIv
                             ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                             ?: KeyHeader.empty(),
@@ -225,7 +228,7 @@ fun MomentMediaItem(
                         // pinched photo shows real detail, not an upscaled thumb.
                         loadFullPayload = true,
                     )
-                    SubSamplingImageSource.Remote(imageData)
+                    SubSamplingImageSource.Remote(imageData, standIn = imageLocalContext?.localFilePath)
                 }
             }
             ZoomableSubSamplingImage(
@@ -242,6 +245,7 @@ fun MomentMediaItem(
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedContentStateKey = "image-${fileId}-${payload.key}",
+                showsHdr = showsHdr,
             )
         }
 
@@ -281,13 +285,8 @@ fun MomentMediaItem(
                 )
             } else {
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified) {
-                        // Public feed posts are unencrypted: a plaintext payload carries
-                        // no IV. Build a plaintext request (isEncrypted=false, empty
-                        // keyHeader) rather than bailing to an empty Box — the server's
-                        // `payloadencrypted=false` header makes the loader return the bytes
-                        // as-is (keyHeader ignored). Encrypted payloads (chat, moments) still
-                        // carry an IV, so they keep the encrypted path unchanged.
+                    remember(driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted) {
+                        // A public post's payloads carry no IV: request the plain bytes, never an empty Box.
                         val payloadIv = payload.iv?.bytes
                         HomebaseImageData.from(
                             driveId = driveId,
@@ -295,7 +294,7 @@ fun MomentMediaItem(
                             descriptor = payload,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
-                            isEncrypted = payloadIv != null,
+                            isEncrypted = isEncrypted,
                             keyHeader = payloadIv
                                 ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                                 ?: KeyHeader.empty(),
@@ -354,14 +353,14 @@ fun MomentMediaItem(
                     onProgress = { preloadProgress = it },
                 )
             }
-            val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
+            val imageData = remember(driveId, fileId, payload.key, payload.lastModified, perPayloadKeyHeader, isEncrypted) {
                 HomebaseImageData.from(
                     driveId = driveId,
                     fileId = fileId,
                     descriptor = payload,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
-                    isEncrypted = payloadIv != null,
+                    isEncrypted = isEncrypted,
                     keyHeader = perPayloadKeyHeader,
                     remoteOdinId = remoteOdinId,
                     globalTransitId = globalTransitId,

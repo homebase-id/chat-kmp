@@ -38,7 +38,7 @@ data class ThumbnailInstruction(
     val type: ImageFormat = ImageFormat.WEBP
 )
 
-enum class ImageFormat {
-    WEBP, JPEG, PNG, BMP, GIF
+enum class ImageFormat(val contentType: String) {
+    WEBP("image/webp"), JPEG("image/jpeg"), PNG("image/png"), BMP("image/bmp"), GIF("image/gif")
 }
 

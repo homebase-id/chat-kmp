@@ -3,7 +3,7 @@ package id.homebase.api.image
 import co.touchlab.kermit.Logger
 
 /**
- * A re-encoded WebP [finalImage] carrying [source]'s EXIF, for an app that keeps metadata (THUMBNAILS.md,
+ * A re-encoded WebP or JPEG [finalImage] carrying [source]'s EXIF, for an app that keeps metadata (THUMBNAILS.md,
  * "Metadata"): Orientation 1, because the pixels are already upright; the pixel-size tags set to the new
  * size; the camera's embedded EXIF thumbnail left out. Neither Android's nor Skia's encoder carries
  * metadata over. [finalImage] comes back unchanged when the source has none.
@@ -11,14 +11,14 @@ import co.touchlab.kermit.Logger
  * XMP isn't carried: on phones it describes the source file's structure (a Motion Photo's video, an
  * Ultra HDR gain map, its orientation), which a re-encode makes false.
  */
-fun withSourceMetadata(finalImage: ByteArray, source: ByteArray, width: Int, height: Int): ByteArray {
+fun withSourceMetadata(finalImage: ByteArray, format: ImageFormat, source: ByteArray, width: Int, height: Int): ByteArray {
     val tiff = ImageMetadataScrubber.readBlocks(source)?.exif ?: return finalImage
     val exif = ExifTiff.normalized(tiff, width, height)
     if (exif == null) {
         Logger.w(tag = "ImageMetadataCarry") { "source EXIF couldn't be read; the final image goes without" }
         return finalImage
     }
-    return WebpMetadata.embed(finalImage, exif, width, height)
+    return if (format == ImageFormat.JPEG) ImageMetadataScrubber.withExif(finalImage, exif) else WebpMetadata.embed(finalImage, exif, width, height)
 }
 
 internal object ExifTiff {

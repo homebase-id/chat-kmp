@@ -23,6 +23,11 @@ data class ImageOutput(
     val overLimit: OverLimit = OverLimit.LOWER_QUALITY,
     /** The size to fall back to first when over the limit, if this output was enlarged past its row. */
     val rowSize: ImageSize? = null,
+    /**
+     * The image people look at: when the source carries an HDR gain map this platform can write, it's a JPEG
+     * with the gain map (Ultra HDR) whatever [format] says, so it shows bright on an HDR screen and as itself elsewhere.
+     */
+    val keepsHdr: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_MIN_QUALITY = 40
@@ -78,6 +83,15 @@ internal interface PipelineBitmap : AutoCloseable {
     val isSrgb: Boolean
 
     /**
+     * True when the pixels carry an HDR gain map that [encode] writes into a JPEG. [scaledTo] and [resampledTo]
+     * keep it, scaled with the image; [inSrgb] drops it. False where the platform can't write one.
+     */
+    val hasGainmap: Boolean get() = false
+
+    /** Lets go of the gain map, so the steps after the last HDR output don't scale it. */
+    fun dropGainmap() = Unit
+
+    /**
      * A new bitmap at the given size, filtered at least bilinearly, leaving this one open.
      * Only asked for exact halvings, where bilinear averages every pixel.
      */
@@ -125,18 +139,20 @@ internal suspend fun renderFrom(
 
     val largestFirst = outputs.withIndex().sortedByDescending { longEdge(it.value) }
     val rendered = arrayOfNulls<RenderedImage>(outputs.size)
+    var hdrOutputsLeft = outputs.count { it.keepsHdr }
     var current = source.decode(longEdge(largestFirst.first().value))
+    if (hdrOutputsLeft == 0) current.dropGainmap()
     try {
         for ((index, output) in largestFirst) {
             checkCancelled()
             val scaled = scaleDown(current, output.width, output.height)
             if (scaled !== current) current.close()
             current = scaled
-            rendered[index] = if (output.keepColorProfile) {
-                encodeWithin(current, output)
-            } else {
-                encodeInSrgb(current, output)
+            rendered[index] = hdrWithinLimit(current, output) ?: when {
+                output.keepColorProfile -> encodeWithin(current, output)
+                else -> encodeInSrgb(current, output)
             }
+            if (output.keepsHdr && --hdrOutputsLeft == 0) current.dropGainmap()
         }
     } finally {
         current.close()
@@ -182,6 +198,13 @@ private suspend fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): R
     } finally {
         if (srgb !== bitmap) srgb.close()
     }
+}
+
+// HDR never costs pixels: a gain-map JPEG over the output's limit makes it the SDR image at full size instead.
+private fun hdrWithinLimit(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage? {
+    if (!output.keepsHdr || !bitmap.hasGainmap) return null
+    val bytes = bitmap.encode(ImageFormat.JPEG, output.quality)
+    return RenderedImage(bytes, bitmap.width, bitmap.height, output.quality, ImageFormat.JPEG).takeIf { bytes.size <= output.maxBytes }
 }
 
 private suspend fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage = when (output.overLimit) {

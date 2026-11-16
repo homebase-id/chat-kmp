@@ -5,6 +5,10 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorSpace
 import android.graphics.ImageDecoder
+import android.graphics.Rect
+import android.graphics.Paint
+import android.os.Build
+import android.graphics.Gainmap
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import co.touchlab.kermit.Logger
@@ -21,9 +25,14 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     override val width get() = bitmap.width
     override val height get() = bitmap.height
     override val isSrgb get() = bitmap.colorSpace.let { it == null || it == ColorSpace.get(ColorSpace.Named.SRGB) }
+    override val hasGainmap get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && bitmap.hasGainmap()
+
+    override fun dropGainmap() {
+        if (hasGainmap) bitmap.gainmap = null
+    }
 
     override fun scaledTo(width: Int, height: Int): PipelineBitmap =
-        AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true))
+        AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true).also { bitmap.carryGainmapTo(it) })
 
     // An OutOfMemoryError is an Error, so the send's fail-soft catch would miss it and the app would crash.
     override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = try {
@@ -32,6 +41,7 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
         val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, eightBit.hasAlpha(), colorSpace)
         try {
             NativeResize.lanczos(eightBit, out)
+            bitmap.carryGainmapTo(out)
             AndroidPipelineBitmap(out)
         } catch (e: Throwable) {
             out.recycle()
@@ -59,6 +69,33 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
 }
 
 private const val TAG = "ImagePipeline"
+
+// The gain map scaled with the image, as the camera made it: a fraction of the image's size, same parameters.
+private fun Bitmap.carryGainmapTo(out: Bitmap) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE || !hasGainmap() || out.hasGainmap()) return
+    val source = gainmap ?: return
+    val contents = source.gainmapContents
+    val width = max(1, (contents.width.toLong() * out.width / this.width).toInt())
+    val height = max(1, (contents.height.toLong() * out.height / this.height).toInt())
+    // Drawn, not createScaledBitmap: a single-channel gain map (ALPHA_8) has no colour space, which that refuses.
+    val config = contents.config ?: Bitmap.Config.ARGB_8888
+    val scaled = contents.colorSpace?.let { Bitmap.createBitmap(width, height, config, contents.hasAlpha(), it) }
+        ?: Bitmap.createBitmap(width, height, config)
+    Canvas(scaled).drawBitmap(contents, null, Rect(0, 0, width, height), Paint(Paint.FILTER_BITMAP_FLAG))
+    out.gainmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+        Gainmap(source, scaled)
+    } else {
+        Gainmap(scaled).apply {
+            source.ratioMin.let { setRatioMin(it[0], it[1], it[2]) }
+            source.ratioMax.let { setRatioMax(it[0], it[1], it[2]) }
+            source.gamma.let { setGamma(it[0], it[1], it[2]) }
+            source.epsilonSdr.let { setEpsilonSdr(it[0], it[1], it[2]) }
+            source.epsilonHdr.let { setEpsilonHdr(it[0], it[1], it[2]) }
+            minDisplayRatioForHdrTransition = source.minDisplayRatioForHdrTransition
+            displayRatioForFullHdr = source.displayRatioForFullHdr
+        }
+    }
+}
 
 private class HeaderRead : RuntimeException(null, null, false, false)
 
