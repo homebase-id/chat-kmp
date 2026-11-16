@@ -1,7 +1,11 @@
 package id.homebase.core.ui.screens.vault
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -50,6 +54,12 @@ import id.homebase.resources.vault_section_menu
 import id.homebase.resources.vault_section_move_down
 import id.homebase.resources.vault_section_move_up
 import id.homebase.resources.vault_section_rename
+import id.homebase.chat.widget.FileDropPreview
+import id.homebase.chat.widget.fileDropTarget
+import id.homebase.resources.chat_drop_files_title
+import id.homebase.resources.chat_drop_folders_title
+import io.github.vinceglb.filekit.PlatformFile
+import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -62,6 +72,7 @@ fun VaultSectionCard(
     onMoveDown: () -> Unit,
     onRenameSection: () -> Unit,
     onDeleteSection: () -> Unit,
+    onFilesDropped: (List<PlatformFile>) -> Unit,
     modifier: Modifier = Modifier,
     // Hoisted by the caller so the row's horizontal scroll survives the
     // full-screen overlay open/close; defaults to a local state for previews.
@@ -69,14 +80,20 @@ fun VaultSectionCard(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
+    var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
     ElevatedCard(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().fileDropTarget(
+            enabled = true,
+            onDragPreviewChanged = { dropPreview = it },
+            onFilesDropped = onFilesDropped,
+        ),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     ) {
+        Box {
         Column(
             modifier = Modifier
                 .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
@@ -126,6 +143,29 @@ fun VaultSectionCard(
                 }
             }
         }
+        dropPreview?.let { SectionDropOverlay(it, Modifier.matchParentSize()) }
+        }
+    }
+}
+
+internal fun vaultSectionDropAction(sectionId: Uuid, files: List<PlatformFile>): VaultUiAction? =
+    if (files.isEmpty()) null else VaultUiAction.AddEntryToSection(sectionId, files)
+
+@Composable
+private fun SectionDropOverlay(preview: FileDropPreview, modifier: Modifier = Modifier) {
+    val rejected = preview is FileDropPreview.Rejected
+    val accent = if (rejected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .background(accent.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
+            .border(BorderStroke(2.dp, accent), RoundedCornerShape(16.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(if (rejected) MR.string.chat_drop_folders_title else MR.string.chat_drop_files_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = accent,
+        )
     }
 }
 
