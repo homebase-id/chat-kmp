@@ -65,6 +65,7 @@ internal fun CardOverview(
     onCapture: suspend () -> Unit,
     onNewCard: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    topRoom: Dp = OVERVIEW_TOP_ROOM,
 ) {
     val cards = uiState.cards
     val capturing = host != null && cards.isNotEmpty()
@@ -89,7 +90,7 @@ internal fun CardOverview(
                         maxSize = OVERVIEW_MAX_TILE_WIDTH * max(1f, fontScale),
                         count = cards.size + if (onNewCard != null) 1 else 0,
                     ),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = OVERVIEW_TOP_ROOM, bottom = 16.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = topRoom, bottom = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                     modifier = Modifier.fillMaxSize().navigationBarsPadding(),

@@ -62,7 +62,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import id.homebase.resources.menu_back
 import androidx.compose.foundation.layout.Box
@@ -83,6 +82,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -359,7 +359,7 @@ internal fun ProfileCardPager(
     }
 
     // A pane (desktop, web) shows the card in place; a phone's route shows it as a modal sheet.
-    // Opening the editor pops this dialog entry, so the view model carries "was open" across that round trip.
+    // The editor route takes this screen out of composition, so the view model carries "was open" across that round trip.
     val returningFromEditor = remember { viewModel.takeSheetOpenOnReturn() }
     var overview by rememberSaveable { mutableStateOf(!returningFromEditor) }
     val sheet = remember { AnchoredDraggableState(if (returningFromEditor) SheetValue.Open else SheetValue.Dismissed) }
@@ -636,7 +636,20 @@ private fun CardOverviewPage(
     onCapture: suspend () -> Unit,
     onNewCard: (() -> Unit)?,
 ) {
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 20.dp, top = 16.dp),
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
+            }
+            Text(
+                text = stringResource(MR.string.profile_card_intro_title),
+                style = MaterialTheme.typography.headlineMediumEmphasized,
+                modifier = Modifier.weight(1f).semantics { heading() },
+            )
+        }
         CardOverview(
             uiState = uiState,
             tiles = tiles,
@@ -644,23 +657,9 @@ private fun CardOverviewPage(
             onOpen = onOpen,
             onCapture = onCapture,
             onNewCard = onNewCard,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            topRoom = 8.dp,
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 20.dp, top = 8.dp),
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
-            }
-            Text(
-                text = stringResource(MR.string.profile_card_intro_title),
-                style = MaterialTheme.typography.titleLargeEmphasized,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).semantics { heading() },
-            )
-        }
     }
 }
 
