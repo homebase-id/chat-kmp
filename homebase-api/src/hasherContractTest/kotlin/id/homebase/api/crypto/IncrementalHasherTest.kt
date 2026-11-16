@@ -83,6 +83,19 @@ class IncrementalHasherTest {
     }
 
     @Test
+    fun aRangeOutsideTheInputThrowsBeforeHashingAnything() {
+        for (make in listOf(::Sha256Hasher, ::Blake3Hasher)) {
+            val untouched = make().digest()
+            val hasher = make()
+            val input = ByteArray(10)
+            for ((offset, length) in listOf(-1 to 1, 0 to -1, 5 to 6, 1 to Int.MAX_VALUE)) {
+                assertFailsWith<IndexOutOfBoundsException> { hasher.update(input, offset, length) }
+            }
+            assertEquals(untouched.toHexString(), hasher.digest().toHexString())
+        }
+    }
+
+    @Test
     fun aHasherCannotBeUsedAfterDigest() {
         for (hasher in listOf(Sha256Hasher(), Blake3Hasher())) {
             hasher.digest()
