@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import android.content.ContentValues
+import android.graphics.BitmapFactory
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -23,6 +24,7 @@ import java.nio.ByteBuffer
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -75,6 +77,9 @@ class Media3VideoCompressorTest {
             camera.delete()
             assertTrue(AndroidVideoCompressor.readsInPlace(uri.toString()), "no cache copy is made for it")
             val before = context.cacheDir.walk().filter { it.name.startsWith("resolved_") }.count()
+            val poster = assertNotNull(VideoThumbnailService.extractPosterFrame(uri.toString(), fullSize = true))
+            val posterSize = BitmapFactory.decodeByteArray(poster, 0, poster.size).let { maxOf(it.width, it.height) }
+            assertEquals(1920, posterSize, "an upload's poster is the frame at the video's own size")
 
             val info = probe(AndroidVideoCompressor.compress(uri.toString(), null, null, null, VideoQuality.STANDARD, keepMetadata = true))
 

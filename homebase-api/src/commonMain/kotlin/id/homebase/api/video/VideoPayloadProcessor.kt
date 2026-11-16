@@ -51,8 +51,7 @@ class VideoPayloadProcessor(
             onProgress?.invoke(phase)
         }
         return try {
-            // A compressor that can't read the pick where it is gets a resolved copy, reaped when we're done so it
-            // can't linger at full video size; Android's Media3 reads a content:// pick in place.
+            // A resolved copy is reaped when we're done, so it can't linger at full video size.
             fileOperationsProvider.withResolvedFile(payload.filePath, resolve = !compressor.readsInPlace(payload.filePath)) { resolvedPath ->
                 processResolved(
                     payload =
@@ -113,7 +112,7 @@ class VideoPayloadProcessor(
         // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
         // native-first decode per platform), so no temp-file round-trip to read+delete.
         val (posterBytes, posterElapsed) =
-            measureTimedValue { VideoThumbnailService.extractPosterFrame(ffmpegInputPath) }
+            measureTimedValue { VideoThumbnailService.extractPosterFrame(ffmpegInputPath, fullSize = true) }
         Logger.i(tag = "VideoProcessing") {
             "poster done in ${posterElapsed.inWholeMilliseconds}ms (bytes=${posterBytes?.size})"
         }

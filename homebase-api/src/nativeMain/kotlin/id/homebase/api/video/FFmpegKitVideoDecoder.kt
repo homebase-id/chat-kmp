@@ -38,7 +38,7 @@ internal class FFmpegKitVideoDecoder : VideoDecoder {
     private val bridge: FFmpegKitBridge
         get() = FFmpegKitBridgeHolder.getBridge()
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
         val thumbPath = FFmpegUtils.grabThumbnail(videoPath) ?: return null
         return try {
             NSData.dataWithContentsOfFile(thumbPath)?.toByteArray()
