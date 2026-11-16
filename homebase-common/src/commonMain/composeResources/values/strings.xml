@@ -2593,6 +2593,9 @@
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>
+    <string name="profile_card_new">New card</string>
+    <string name="profile_card_intro_open">Open %1$s card</string>
+    <string name="profile_card_edit_design">Edit design</string>
     <string name="profile_card_audience_description">Card for %1$s</string>
     <string name="profile_card_circle_unsupported">Your Homebase server can't keep a separate card for each circle yet, so circle cards can't be changed.</string>
     <string name="profile_card_read_only">Read-only</string>
@@ -2628,7 +2631,6 @@
     <string name="profile_card_step_customise">Customise</string>
     <string name="profile_card_step_count">Step %1$d of %2$d</string>
     <string name="profile_card_step_design_title">Choose a design</string>
-    <string name="profile_card_option_default">Default</string>
     <string name="profile_card_option_accent">Accent colour</string>
     <string name="profile_card_option_background">Background pattern</string>
     <string name="profile_card_tool_background">Background</string>
@@ -2645,9 +2647,9 @@
     <string name="profile_card_background_contours">Contours</string>
     <string name="profile_card_background_halftone">Halftone</string>
     <string name="profile_card_background_sparkles">Sparkles</string>
+    <string name="profile_card_background_speckle">Speckle</string>
     <string name="profile_card_background_none">No pattern</string>
     <string name="profile_card_option_colours">Colours</string>
-    <string name="profile_card_option_colours_swatch">%1$s colours</string>
     <string name="profile_card_colours_midnight">Midnight</string>
     <string name="profile_card_colours_wine">Wine</string>
     <string name="profile_card_colours_pine">Pine</string>
@@ -2683,7 +2685,6 @@
     <string name="profile_card_colours_lemon">Lemon</string>
     <string name="profile_card_colours_purple">Purple</string>
     <string name="profile_card_colours_blue">Blue</string>
-    <string name="profile_card_change_design_to">Change design. Current design: %1$s</string>
     <string name="profile_card_option_accent_swatch">Accent %1$s</string>
     <string name="profile_card_option_display_font">Heading font</string>
     <string name="profile_card_option_text_font">Body font</string>
@@ -2692,7 +2693,12 @@
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_block_style">Content style</string>
     <string name="profile_card_tool_style">Style</string>
-    <string name="profile_card_tool_presets">Presets</string>
+    <string name="profile_card_tool_palette">Palette</string>
+    <string name="profile_card_style_ocean">Ocean</string>
+    <string name="profile_card_style_espresso">Espresso</string>
+    <string name="profile_card_style_linen">Linen</string>
+    <string name="profile_card_style_onyx">Onyx</string>
+    <string name="profile_card_style_frost">Frost</string>
     <string name="profile_card_option_presets">Ready-made styles</string>
     <string name="profile_card_presentation_bare">Plain</string>
     <string name="profile_card_presentation_boxed">Boxed</string>

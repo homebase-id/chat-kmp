@@ -30,8 +30,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
-import id.homebase.resources.profile_card_option_default
 import id.homebase.resources.profile_card_style_custom
+import id.homebase.resources.profile_card_style_espresso
+import id.homebase.resources.profile_card_style_linen
+import id.homebase.resources.profile_card_style_onyx
+import id.homebase.resources.profile_card_style_frost
+import id.homebase.resources.profile_card_style_ocean
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -61,7 +65,7 @@ internal fun CardStyleRow(
 ) {
     val tiles = listOfNotNull(custom) + styles
     val selectedId = remember(custom, styles, overrides) { custom?.id ?: styles.firstOrNull { it.matches(overrides) }?.id }
-    val labels = tiles.map { stringResource(styleLabel(it)) }
+    val labels = tiles.map { stringResource(styleLabel(it, design)) }
     val labelStyle = MaterialTheme.typography.labelMedium
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -145,8 +149,14 @@ private fun StyleTile(
     }
 }
 
-private fun styleLabel(style: ResolvedCardStyle): StringResource = when (style.id) {
-    DEFAULT_STYLE_ID -> MR.string.profile_card_option_default
+private fun styleLabel(style: ResolvedCardStyle, design: String): StringResource = when (style.id) {
+    DEFAULT_STYLE_ID -> when (design) {
+        CardDesign.POSTER -> MR.string.profile_card_style_espresso
+        CardDesign.COLLAGE -> MR.string.profile_card_style_linen
+        CardDesign.DOSSIER -> MR.string.profile_card_style_onyx
+        CardDesign.LINKS -> MR.string.profile_card_style_frost
+        else -> MR.string.profile_card_style_ocean
+    }
     CUSTOM_STYLE_ID -> MR.string.profile_card_style_custom
     else -> schemeLabel(style.id)
 }

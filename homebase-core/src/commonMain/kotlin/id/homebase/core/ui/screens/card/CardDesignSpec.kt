@@ -15,7 +15,7 @@ enum class CardOption {
     TEXT_FONT,
 }
 
-/** [portraitSlots] is how many portraits the layout's preset draws; the web replaces the preset's list, so a shape override must fill every slot. */
+/** [defaults] is what the web preset draws with no override (odin-js cards/presets.ts), so an option row selects it until the owner picks something else. [portraitSlots] is how many portraits the layout's preset draws; the web replaces the preset's list, so a shape override must fill every slot. */
 data class CardDesignSpec(
     val design: String,
     val options: Set<CardOption>,
@@ -23,6 +23,8 @@ data class CardDesignSpec(
     val schemes: List<CardColourScheme> = emptyList(),
     val orderedKinds: List<String> = CardDesignSpecs.ORDERED_KINDS,
     val presetOrder: List<String> = CardDesignSpecs.ORDERED_KINDS,
+    val defaults: Map<CardOption, String> = emptyMap(),
+    val accent: String = "",
 ) {
     /** Chat and moments always render; links only when the card has some. */
     fun reorderable(hasLinks: Boolean): List<String> = orderedKinds.filter { hasLinks || it != "links" }
@@ -52,6 +54,12 @@ object CardDesignSpecs {
     val PORTRAIT_SHAPES = listOf("circle", "square", "rounded", "ellipse")
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
     val PRESENTATIONS = listOf("bare", "boxed", "row", "button")
+
+    /** [all] with [design]'s preset value for [option] moved first; the row shows the preset as its first choice. */
+    fun presetFirst(design: String, option: CardOption, all: List<String>): List<String> {
+        val preset = of(design)?.defaults?.get(option)?.takeIf { it in all } ?: return all
+        return listOf(preset) + (all - preset)
+    }
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
     val ORDERED_KINDS = BLOCK_KINDS - "posts"
 
@@ -68,6 +76,8 @@ object CardDesignSpecs {
             CardDesign.POSTER,
             setOf(CardOption.COLOURS, CardOption.BACKGROUND, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER, CardOption.BLOCK_STYLE),
             presetOrder = listOf("chat", "moments", "links"),
+            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "newsreader", CardOption.TEXT_FONT to "newsreader", CardOption.BLOCK_STYLE to "bare", CardOption.SOCIALS_STYLE to "glyphs"),
+            accent = "#F4F0EA",
             schemes = listOf(
                 CardColourScheme("midnight", "#0F1626", "#EEF2FA", "#B4BCCB", "#4A505E", "#EEF2FA", listOf("#7FD4E8", "#8B7CF6", "#4FD1C5", "#F2B84B")),
                 CardColourScheme("wine", "#2A0E14", "#F7E9EC", "#C9AEB4", "#5A3F45", "#F7E9EC", listOf("#F26B5B", "#F2B84B", "#E8A0B4", "#F5C6A5")),
@@ -83,6 +93,8 @@ object CardDesignSpecs {
             ALL_OPTIONS,
             portraitSlots = 1,
             presetOrder = listOf("links", "moments", "chat"),
+            defaults = mapOf(CardOption.BACKGROUND to "circles", CardOption.DISPLAY_FONT to "montserrat-alt", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SHAPE to "circle", CardOption.BLOCK_STYLE to "boxed", CardOption.SOCIALS_STYLE to "bar"),
+            accent = "#4FD1C5",
             schemes = listOf(
                 CardColourScheme("forest", "#1E5B45", "#FFFFFF", "#BFD6CC", "#FFFFFF", "#173B2E", listOf("#F2B84B", "#9BE3B8", "#7FD4E8", "#F5C6A5")),
                 CardColourScheme("plum", "#5B2A6E", "#FFFFFF", "#D9C3E2", "#FFFFFF", "#3A1A47", listOf("#F2B84B", "#E8A0D4", "#B4A5FF", "#7FD4E8")),
@@ -100,6 +112,8 @@ object CardDesignSpecs {
             orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 2,
             presetOrder = listOf("chat", "links", "moments"),
+            defaults = mapOf(CardOption.BACKGROUND to "speckle", CardOption.DISPLAY_FONT to "caveat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SHAPE to "square", CardOption.SOCIALS_STYLE to "wordmark"),
+            accent = "#B4553A",
             schemes = listOf(
                 CardColourScheme("sage", "#DDE5D3", "#26331F", "#56664A", "#FFFFFF", "#26331F", listOf("#3F7A3A", "#B4553A", "#2E6F8F", "#8A5A00")),
                 CardColourScheme("mist", "#DCE6F0", "#1E2C3B", "#4D5E70", "#FFFFFF", "#1E2C3B", listOf("#2E6FB5", "#5A4FB5", "#1F7A70", "#B4553A")),
@@ -119,6 +133,8 @@ object CardDesignSpecs {
             orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 1,
             presetOrder = listOf("chat", "moments", "links"),
+            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "archivo-black", CardOption.TEXT_FONT to "space-mono", CardOption.PORTRAIT_SHAPE to "square", CardOption.BLOCK_STYLE to "row", CardOption.SOCIALS_STYLE to "handles"),
+            accent = "#7FD4E8",
             schemes = listOf(
                 CardColourScheme("ink", "#0D1B2A", "#E3ECF5", "#8EA3B8", "#1B2E44", "#E3ECF5", listOf("#7FD4E8", "#F2B84B", "#4FD1C5", "#8B7CF6")),
                 CardColourScheme("moss", "#0F1A14", "#E4EFE7", "#8FA697", "#1E2E24", "#E4EFE7", listOf("#6BCB77", "#C5E86C", "#F2B84B", "#4FD1C5")),
@@ -136,6 +152,8 @@ object CardDesignSpecs {
             WITHOUT_BLOCK_STYLE,
             portraitSlots = 1,
             presetOrder = listOf("links", "moments", "chat"),
+            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "montserrat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SHAPE to "circle", CardOption.SOCIALS_STYLE to "glyphs"),
+            accent = "#1A66D6",
             schemes = listOf(
                 CardColourScheme("cloud", "#F1F3F6", "#1B1F24", "#5C6673", "#FFFFFF", "#1B1F24", listOf("#2E6FB5", "#5A4FB5", "#1F7A70", "#C23B2A")),
                 CardColourScheme("slate", "#1B1F24", "#F1F3F6", "#A3ACB8", "#2A3037", "#F1F3F6", listOf("#4FD1C5", "#7FD4E8", "#F2B84B", "#F26B5B")),
@@ -152,6 +170,9 @@ object CardDesignSpecs {
     ).associateBy { it.design }
 
     fun of(design: String): CardDesignSpec? = specs[design]
+
+    /** The value [option] shows as selected: the owner's override, else what [design]'s preset draws. */
+    fun selectedValue(design: String, option: CardOption, override: String?): String? = override ?: of(design)?.defaults?.get(option)
 
     /** [design]'s own scheme on [ground], or null for the preset's colours or a ground the design doesn't offer. */
     fun schemeFor(design: String, ground: String?): CardColourScheme? =
@@ -170,7 +191,7 @@ object CardDesignSpecs {
 fun CardOverrides.prunedFor(design: String): CardOverrides {
     val spec = CardDesignSpecs.of(design) ?: return CardOverrides(fields = fields)
     fun has(option: CardOption) = option in spec.options
-    val shape = portraits?.firstOrNull()?.shape
+    val shape = portraits?.firstOrNull()?.shape?.takeIf { has(CardOption.PORTRAIT_SHAPE) }
     // Colours only travel as one of this design's schemes, so another design's ink can never land on a ground it wasn't checked against.
     val scheme = CardDesignSpecs.schemeByGround(palette?.ground)?.takeIf { has(CardOption.COLOURS) && it in spec.schemes }
     val colours = scheme?.applyTo(null)
@@ -181,7 +202,7 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
             display = type?.display?.takeIf { has(CardOption.DISPLAY_FONT) },
             text = type?.text?.takeIf { has(CardOption.TEXT_FONT) },
         ).takeIf { it.display != null || it.text != null },
-        portraits = shape?.takeIf { has(CardOption.PORTRAIT_SHAPE) }?.let {
+        portraits = shape?.let {
             List(spec.portraitSlots) { slot -> if (slot == 0) CardPortrait(shape = it) else CardPortrait() }
         },
         blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.let { withBlockOrder(blockOrder()).blocks }

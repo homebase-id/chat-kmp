@@ -109,7 +109,6 @@ import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.dialog
 import androidx.navigation.compose.currentBackStackEntryAsState
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseManager
@@ -205,8 +204,6 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.ui.screens.card.CardTapShareDriver
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
-import id.homebase.core.ui.screens.card.CardSheetWindowEffect
-import id.homebase.core.ui.screens.card.cardSheetDialogProperties
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
@@ -1877,17 +1874,15 @@ fun AppNavHost(
                                 }
                             }
 
-                            // A dialog, so the screen it opened from stays drawn under the sheet's scrim.
-                            dialog<Route.ProfileCard>(dialogProperties = cardSheetDialogProperties()) { entry ->
-                                CardSheetWindowEffect()
+                            composable<Route.ProfileCard> { entry ->
                                 if (isAuthenticated) {
                                     ProfileCardScreen(
                                         viewModel = koinViewModel(
                                             viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                         ),
                                         onBack = { navController.popBackStack() },
-                                        onEdit = { navController.navigate(Route.ProfileCardEditor(fromCard = true)) },
-                                        onChangeDesign = { navController.navigate(Route.ProfileCardEditor(design = true, fromCard = true)) },
+                                        onEdit = { navController.navigate(Route.ProfileCardEditor()) },
+                                        onChangeDesign = { navController.navigate(Route.ProfileCardEditor(design = true)) },
                                     )
                                 }
                             }
@@ -1900,7 +1895,7 @@ fun AppNavHost(
                                             viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                         ),
                                         avatarViewModel = koinViewModel(),
-                                        onBack = { navController.leaveCardEditor(route.fromCard) },
+                                        onBack = { navController.popBackStack() },
                                         onNavigateToCropper = { requestId ->
                                             navController.navigate(Route.Crop(requestId.toString(), lockedAspect = "square"))
                                         },
@@ -2622,7 +2617,7 @@ private fun rememberSettingsOwner(navController: NavHostController, entry: NavBa
     }
 
 // The card host lives with the Settings entry, so it is warm before the card opens; otherwise with the screen the card
-// opened from, since opening the editor pops the card's dialog entry and the selected page must survive that.
+// opened from, so the card and its editor share one view model.
 @Composable
 private fun rememberCardHostOwner(navController: NavHostController, entry: NavBackStackEntry): ViewModelStoreOwner =
     remember(entry) {
@@ -2631,12 +2626,6 @@ private fun rememberCardHostOwner(navController: NavHostController, entry: NavBa
             ?: backStack.lastOrNull { it != entry && !it.destination.isCardRoute() }
             ?: entry
     }
-
-// Navigating to the editor popped the card's dialog, so leaving an editor opened from the card brings the sheet back.
-private fun NavHostController.leaveCardEditor(fromCard: Boolean) {
-    popBackStack()
-    if (fromCard) navigate(Route.ProfileCard)
-}
 
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,

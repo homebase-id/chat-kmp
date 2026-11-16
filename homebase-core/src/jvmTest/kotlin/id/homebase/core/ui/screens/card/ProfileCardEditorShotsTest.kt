@@ -646,10 +646,27 @@ class ProfileCardEditorShotsTest {
     fun theCustomiseStepListsOnlyTheStylesTheOpenDesignSupportsAndAppliesOneOnTap() {
         val applied = mutableListOf<ResolvedCardStyle>()
         customiseStep(base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, EditorMode.Design, onStyle = { applied += it }) {
-            for (name in listOf("Default", "Midnight", "Wine", "Pine", "Cobalt", "Rust", "Slate", "Plum")) onNodeWithText(name).assertExists()
+            for (name in listOf("Espresso", "Midnight", "Wine", "Pine", "Cobalt", "Rust", "Slate", "Plum")) onNodeWithText(name).assertExists()
             for (name in listOf("Forest", "Sage", "Paper", "Purple")) onAllNodesWithText(name).assertCountEquals(0)
             onNodeWithText("Wine").performClick()
             assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "wine" }), applied)
+        }
+    }
+
+    @Test
+    fun theCustomiseStepLeadsWithOnePaletteTabAndNoDefaultChips() {
+        customiseStep(base.copy(previewDesign = CardDesign.BOARD), EditorStep.Customise, EditorMode.Design) {
+            onNodeWithContentDescription("Ready-made styles").assertExists()
+            onAllNodesWithContentDescription("Colours").assertCountEquals(0)
+            onNodeWithText("Ocean").assertExists()
+            onAllNodesWithText("Default").assertCountEquals(0)
+        }
+    }
+
+    @Test
+    fun theCustomiseStepNoLongerOffersTheDesignNameButton() {
+        customiseStep(base.copy(previewDesign = CardDesign.BOARD), EditorStep.Customise, EditorMode.Design) {
+            onAllNodesWithText("Board").assertCountEquals(0)
         }
     }
 
