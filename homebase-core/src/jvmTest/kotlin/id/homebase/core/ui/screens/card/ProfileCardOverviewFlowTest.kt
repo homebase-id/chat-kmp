@@ -162,5 +162,7 @@ class ProfileCardOverviewFlowTest {
         waitForIdle()
         assertEquals(1, rig.edits)
         assertEquals(0, rig.designs)
+        // A pane drops this screen for its editor page too, so the way back must also skip the overview.
+        assertTrue(rig.viewModel.takeSheetOpenOnReturn())
     }
 }

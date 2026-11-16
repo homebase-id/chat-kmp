@@ -359,7 +359,7 @@ internal fun ProfileCardPager(
     }
 
     // A pane (desktop, web) shows the card in place; a phone's route shows it as a modal sheet.
-    // The editor route takes this screen out of composition, so the view model carries "was open" across that round trip.
+    // The editor (a route, or a pane page) takes this screen out of composition, so the view model carries "was open" across that round trip.
     val returningFromEditor = remember { viewModel.takeSheetOpenOnReturn() }
     var overview by rememberSaveable { mutableStateOf(!returningFromEditor) }
     val sheet = remember { AnchoredDraggableState(if (returningFromEditor) SheetValue.Open else SheetValue.Dismissed) }
@@ -443,10 +443,10 @@ internal fun ProfileCardPager(
                     modifier = Modifier
                         .fillMaxSize()
                         .drawBehind { drawRect(bottomColor) }
-                        .padding(top = if (cardBands) TOP_BAND_HEIGHT else 0.dp),
+                        .padding(top = if (cardBands && !overview) TOP_BAND_HEIGHT else 0.dp),
                 ) {
                     CardBandsLayout(
-                        bottomBand = cardBands,
+                        bottomBand = cardBands && !overview,
                         bottomColor = { bottomColor },
                         modifier = Modifier.fillMaxSize(),
                     ) {
@@ -535,8 +535,8 @@ internal fun ProfileCardPager(
                                 readOnly = uiState.isCircleReadOnly,
                                 onExplainReadOnly = { explainReadOnly = true },
                                 container = selectedCard?.let(::pencilContainer),
-                                onEdit = { if (sheeted) viewModel.onLeftForEditor(); onEdit() },
-                                onChangeDesign = { if (sheeted) viewModel.onLeftForEditor(); onChangeDesign() },
+                                onEdit = { viewModel.onLeftForEditor(); onEdit() },
+                                onChangeDesign = { viewModel.onLeftForEditor(); onChangeDesign() },
                             )
                         }
                     }
@@ -546,7 +546,7 @@ internal fun ProfileCardPager(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .then(if (cardBands) Modifier.drawBehind { drawRect(topColor) } else Modifier)
+                        .then(if (cardBands && !overview) Modifier.drawBehind { drawRect(topColor) } else Modifier)
                         // The card's webview never hands drags to Compose, so the header alone drags the sheet.
                         .then(if (sheeted) Modifier.anchoredDraggable(sheet, Orientation.Vertical, flingBehavior = sheetFling) else Modifier),
                 ) {

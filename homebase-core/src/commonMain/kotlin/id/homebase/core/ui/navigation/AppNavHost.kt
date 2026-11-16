@@ -2617,7 +2617,7 @@ private fun rememberSettingsOwner(navController: NavHostController, entry: NavBa
     }
 
 // The card host lives with the Settings entry, so it is warm before the card opens; otherwise with the screen the card
-// opened from, since opening the editor pops the card's dialog entry and the selected page must survive that.
+// opened from, so the card and its editor share one view model.
 @Composable
 private fun rememberCardHostOwner(navController: NavHostController, entry: NavBackStackEntry): ViewModelStoreOwner =
     remember(entry) {
@@ -2627,7 +2627,6 @@ private fun rememberCardHostOwner(navController: NavHostController, entry: NavBa
             ?: entry
     }
 
-// Navigating to the editor popped the card's dialog, so leaving an editor opened from the card brings the sheet back.
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,
     fromShareIntent: Boolean = false,
