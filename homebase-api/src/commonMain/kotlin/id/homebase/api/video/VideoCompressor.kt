@@ -31,6 +31,12 @@ interface VideoCompressor {
         keepMetadata: Boolean = false,
     ): String
 
+    /**
+     * Whether [compress] reads [path] where it is: an Android `content://` pick with no copy into the cache
+     * first. False means the caller resolves it to a file (`FileOperationsProvider.resolveToFilePath`).
+     */
+    fun readsInPlace(path: String): Boolean = false
+
     /** Segments [inputPath] into an unencrypted HLS playlist + `.ts` segments. */
     suspend fun segment(
         inputPath: String,

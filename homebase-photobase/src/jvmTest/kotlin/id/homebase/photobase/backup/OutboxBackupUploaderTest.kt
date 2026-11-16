@@ -41,6 +41,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
+import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDateTime
@@ -63,7 +65,14 @@ import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class OutboxBackupUploaderTest {
-    private val fileOps = JvmFileOperationsProvider()
+    private val jvmFileOps = JvmFileOperationsProvider()
+    private val streamedReads = mutableMapOf<String, Int>()
+    private val fileOps: FileOperationsProvider = object : FileOperationsProvider by jvmFileOps {
+        override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> {
+            streamedReads[path] = (streamedReads[path] ?: 0) + 1
+            return jvmFileOps.readFileAsFlow(path, chunkSize)
+        }
+    }
     private val db = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
     private val workDir = File.createTempFile("photobase", "test").let { it.delete(); it.mkdirs(); it }
     private val writer = CountingWriter()
@@ -354,6 +363,7 @@ class OutboxBackupUploaderTest {
         assertEquals(filmedAt, locationOf(copy), "and keeps where it was filmed")
         assertNotNull(request.payloads.single { it.key == PhotobaseProtocol.VideoPayloadKey }.hash, "the original is hashed as it's encrypted")
         assertEquals(PhotoContent(latitude = 37.7749, longitude = -122.4194), request.photoContent())
+        assertEquals(1, streamedReads[clip], "the hand-off reads the original once: its encryption checks the hash and finds the location")
     }
 
     @Test

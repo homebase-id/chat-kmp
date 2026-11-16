@@ -51,11 +51,9 @@ class VideoPayloadProcessor(
             onProgress?.invoke(phase)
         }
         return try {
-            // Resolve content URIs (Android copies the gallery pick into cacheDir as
-            // resolved_*; other platforms no-op) and reap that copy when we're done,
-            // so it can't linger at full video size. withResolvedFile is the shared
-            // resolve-then-delete scope — see FileOperationsProvider.withResolvedFile.
-            fileOperationsProvider.withResolvedFile(payload.filePath) { resolvedPath ->
+            // A compressor that can't read the pick where it is gets a resolved copy, reaped when we're done so it
+            // can't linger at full video size; Android's Media3 reads a content:// pick in place.
+            fileOperationsProvider.withResolvedFile(payload.filePath, resolve = !compressor.readsInPlace(payload.filePath)) { resolvedPath ->
                 processResolved(
                     payload =
                         if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath)

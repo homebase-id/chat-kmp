@@ -208,9 +208,10 @@ fun FileOperationsProvider.uploadTempDirectory(): String =
  */
 suspend fun <T> FileOperationsProvider.withResolvedFile(
     path: String,
+    resolve: Boolean = true,
     block: suspend (resolvedPath: String) -> T,
 ): T {
-    val resolved = resolveToFilePath(path)
+    val resolved = if (resolve) resolveToFilePath(path) else path
     return try {
         block(resolved)
     } finally {

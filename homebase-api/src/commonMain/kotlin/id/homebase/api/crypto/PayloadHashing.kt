@@ -88,10 +88,14 @@ suspend fun FileOperationsProvider.encryptWithPayloadHash(
     outputPath: String,
     aesKey: SecureByteArray,
     algorithm: PayloadHashAlgorithm,
+    onPlaintext: (chunk: ByteArray, offset: Int, length: Int) -> Unit = { _, _, _ -> },
 ): HashedPayload {
     val payloadKey = KeyHeader(ByteArrayUtil.getRndByteArray(16), aesKey)
     var plaintextBytes = 0L
-    val hash = encryptWithPayloadHash(inputPath, outputPath, payloadKey, algorithm) { plaintextBytes += it }
+    val hash = encryptWithPayloadHash(inputPath, outputPath, payloadKey, algorithm) { chunk, offset, length ->
+        plaintextBytes += length
+        onPlaintext(chunk, offset, length)
+    }
     return HashedPayload(hash, payloadKey.iv, plaintextBytes)
 }
 
@@ -101,13 +105,13 @@ suspend fun FileOperationsProvider.encryptWithPayloadHash(
     outputPath: String,
     payloadKey: KeyHeader,
     algorithm: PayloadHashAlgorithm,
-    onPlaintext: (bytes: Int) -> Unit = {},
+    onPlaintext: (chunk: ByteArray, offset: Int, length: Int) -> Unit = { _, _, _ -> },
 ): PayloadHash {
     val contentHasher = algorithm.newHasher()
     val storedHasher = algorithm.newHasher()
     val countingContentHasher = object : IncrementalHasher by contentHasher {
         override fun update(input: ByteArray, offset: Int, length: Int) {
-            onPlaintext(length)
+            onPlaintext(input, offset, length)
             contentHasher.update(input, offset, length)
         }
     }
