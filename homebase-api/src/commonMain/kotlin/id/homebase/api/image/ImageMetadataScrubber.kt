@@ -15,7 +15,8 @@ import id.homebase.api.lib.image.ImageFormatDetector
  * `Orientation` is re-emitted when the source had a non-default value.
  *
  * Kept because they affect how the image decodes rather than who took it: JFIF (APP0),
- * ICC colour profiles (APP2) and the Adobe colour-transform marker (APP14).
+ * ICC colour profiles (APP2) and the Adobe colour-transform marker (APP14). An HDR JPEG's
+ * gain map is declared in its XMP, so that XMP is rebuilt with only the gain-map fields.
  *
  * Unknown or malformed input is returned unchanged — this must never be able to corrupt a
  * send. JPEG, PNG, WebP and HEIF/HEIC are handled; every other format passes through untouched.
@@ -210,7 +211,12 @@ object ImageMetadataScrubber {
                 break
             }
 
-            if (shouldDropSegment(marker)) {
+            val gainmapXmp = if (marker == MARKER_APP1) gainmapXmpApp1(src, i + 2, segmentEnd) else null
+            if (gainmapXmp != null) {
+                droppedAnything = true
+                emitOrientation()
+                pieces += Piece.Literal(gainmapXmp)
+            } else if (shouldDropSegment(marker)) {
                 droppedAnything = true
             } else {
                 // Re-emitted EXIF belongs after JFIF but before everything else.
@@ -308,6 +314,35 @@ object ImageMetadataScrubber {
             0xFF.toByte(), MARKER_APP1.toByte(),
             ((length shr 8) and 0xFF).toByte(), (length and 0xFF).toByte(),
         ) + payload
+    }
+
+    private const val HDRGM_NS = "http://ns.adobe.com/hdr-gain-map/1.0/"
+    private val HDRGM_VERSION = Regex("""hdrgm:Version\s*=\s*"([0-9.]+)"|<hdrgm:Version>([0-9.]+)</hdrgm:Version>""")
+    private val CONTAINER_ITEM = Regex("""<Container:Item\b([^>]*)/?>""")
+    private val ITEM_ATTRIBUTE = Regex("""Item:(Semantic|Mime|Length|Padding)\s*=\s*"([A-Za-z0-9/.+-]*)"""")
+
+    /**
+     * An Ultra HDR JPEG declares its gain map in the primary image's XMP (`hdrgm:Version`, and the
+     * Container directory that says where the gain-map image is). Without it, decoders show the SDR
+     * image only. Null when this APP1 isn't such an XMP; otherwise the same declaration rebuilt from
+     * an allowlist, so anything else the XMP held (location, camera, dates) is still dropped.
+     */
+    private fun gainmapXmpApp1(b: ByteArray, from: Int, until: Int): ByteArray? {
+        if (!startsWith(b, from, until, XMP_JPEG_HEADER)) return null
+        val xml = b.decodeToString(from + XMP_JPEG_HEADER.size, until)
+        if (HDRGM_NS !in xml) return null
+        val version = HDRGM_VERSION.find(xml)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } ?: return null
+        val items = CONTAINER_ITEM.findAll(xml).map { item ->
+            val attributes = ITEM_ATTRIBUTE.findAll(item.groupValues[1]).joinToString("") { " Item:${it.groupValues[1]}=\"${it.groupValues[2]}\"" }
+            "<rdf:li rdf:parseType=\"Resource\"><Container:Item$attributes/></rdf:li>"
+        }.joinToString("")
+        val directory = if (items.isEmpty()) "" else "<Container:Directory><rdf:Seq>$items</rdf:Seq></Container:Directory>"
+        val xmp = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
+            "<rdf:Description rdf:about=\"\" xmlns:hdrgm=\"$HDRGM_NS\" xmlns:Container=\"http://ns.google.com/photos/1.0/container/\" " +
+            "xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\" hdrgm:Version=\"$version\">$directory</rdf:Description></rdf:RDF></x:xmpmeta>"
+        val payload = XMP_JPEG_HEADER + xmp.encodeToByteArray()
+        val length = payload.size + 2
+        return byteArrayOf(0xFF.toByte(), MARKER_APP1.toByte(), (length shr 8).toByte(), length.toByte()) + payload
     }
 
     /* ---------------- WebP ---------------- */

@@ -434,10 +434,12 @@ There's no HDR setting (decided 2026-11-16). Original already promises the exact
 
 **Photos: HDR wherever the file is kept as it is.** An HDR photo (Android's Ultra HDR, iPhone HDR) is an ordinary SDR image plus a gain map, so it shows correctly everywhere, and an HDR screen brightens it. It has none of video's playback problem.
 
-- **Kept as it is,** with its metadata: Photos at Original, and at Standard or HD when the source already fits and re-encoding wouldn't save a quarter. The gain map stays.
-- **Kept, but metadata stripped** (chat and Moments, Original included): the scrubber strips the XMP that declares an Ultra HDR JPEG's gain map, so the photo arrives SDR. Whether chat should keep HDR, and how, is open.
+- **Kept as it is:** Photos at Original, and any app at Standard or HD when the source already fits and re-encoding wouldn't save a quarter. The gain map stays.
+- **Kept, metadata stripped** (chat and Moments): an Ultra HDR JPEG declares its gain map in its XMP, so the scrubber rebuilds that XMP with only the gain-map fields (`hdrgm:Version` and the container directory's type, MIME type, length and padding) and drops the rest. The gain map survives; location and camera data don't. iPhone HEIC gain maps are untested.
 - **Re-encoded:** thumbnails, the tiny, and a resized final image are WebP, which has no gain map. They keep the SDR image, so they look right but not HDR-bright.
-- **Tests:** `GainmapDeviceTest` (Android 14 and later): no thumbnail or final image encoded from an Ultra HDR photo carries a gain map, including a final image made at the source's own size; and scrubbing one drops its gain map today.
+- **Tests:**
+  - `GainmapDeviceTest` (Android 14 and later): no thumbnail or final image encoded from an Ultra HDR photo carries a gain map, including a final image made at the source's own size; and a scrubbed Ultra HDR JPEG still decodes with its gain map.
+  - `ImageMetadataScrubberTest`: on every platform, the rebuilt XMP keeps the gain-map declaration and nothing else of the XMP, such as GPS, owner or unknown attributes.
 
 ## Metadata
 

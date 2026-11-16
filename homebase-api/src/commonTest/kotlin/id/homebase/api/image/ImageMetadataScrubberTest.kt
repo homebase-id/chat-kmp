@@ -112,6 +112,36 @@ class ImageMetadataScrubberTest {
         assertTrue(out.size < src.size, "scrubbed output should be smaller")
     }
 
+    // An Ultra HDR JPEG's primary XMP, as a camera writes it: the gain-map declaration plus things that identify.
+    private val ultraHdrXmp = """<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+        <rdf:Description xmlns:Container="http://ns.google.com/photos/1.0/container/" xmlns:Item="http://ns.google.com/photos/1.0/container/item/"
+          xmlns:hdrgm="http://ns.adobe.com/hdr-gain-map/1.0/" xmlns:exif="http://ns.adobe.com/exif/1.0/" xmlns:GCamera="http://ns.google.com/photos/1.0/camera/"
+          hdrgm:Version="1.0" exif:GPSLatitude="51,30.1N" GCamera:Owner="Jane Secret">
+          <Container:Directory><rdf:Seq>
+            <rdf:li rdf:parseType="Resource"><Container:Item Item:Semantic="Primary" Item:Mime="image/jpeg"/></rdf:li>
+            <rdf:li rdf:parseType="Resource"><Container:Item Item:Semantic="GainMap" Item:Mime="image/jpeg" Item:Length="2047" Item:URI="evil"/></rdf:li>
+          </rdf:Seq></Container:Directory>
+        </rdf:Description></rdf:RDF></x:xmpmeta>"""
+
+    @Test
+    fun jpeg_keepsAGainmapDeclarationAndNothingElseOfItsXmp() {
+        val xmp = "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray() + ultraHdrXmp.encodeToByteArray()
+        val src = jpeg().let { it.copyOfRange(0, 2) + seg(0xE1, xmp) + it.copyOfRange(2, it.size) }
+        val out = ImageMetadataScrubber.scrub(src).decodeToString()
+
+        assertTrue("hdrgm:Version=\"1.0\"" in out, out)
+        assertTrue("Item:Semantic=\"Primary\" Item:Mime=\"image/jpeg\"" in out, out)
+        assertTrue("Item:Semantic=\"GainMap\" Item:Mime=\"image/jpeg\" Item:Length=\"2047\"" in out, out)
+        for (gone in listOf("51,30.1N", "Jane Secret", "evil", "7749", "SecretCamera")) assertFalse(gone in out, "$gone survived")
+    }
+
+    @Test
+    fun jpeg_dropsAnXmpThatDeclaresNoGainmap() {
+        val xmp = "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray() + ultraHdrXmp.replace("hdr-gain-map", "nothing-here").encodeToByteArray()
+        val src = jpeg().let { it.copyOfRange(0, 2) + seg(0xE1, xmp) + it.copyOfRange(2, it.size) }
+        assertFalse("xmpmeta" in ImageMetadataScrubber.scrub(src).decodeToString())
+    }
+
     @Test
     fun jpeg_preservesOrientation() {
         val out = ImageMetadataScrubber.scrub(jpeg(orientation = 6))
