@@ -76,7 +76,7 @@ class CardDesignMatrixGoldenTest {
             photo("friends-key", ProfileVisibility.CONNECTED, listOf(friendsCircle))
 
     private fun payload(audience: CardAudience, design: String, overrides: CardOverrides): JsonElement {
-        val key = attributes.visiblePhoto(audience.aclFilter())?.data?.get(ProfileAttributeTypes.KEY_PROFILE_IMAGE)
+        val key = attributes.visiblePhoto(audience.viewer())?.data?.get(ProfileAttributeTypes.KEY_PROFILE_IMAGE)
         return OdinSystemSerializer.json.parseToJsonElement(
             buildCardPayload(
                 odinId = "frodo.dotyou.cloud",

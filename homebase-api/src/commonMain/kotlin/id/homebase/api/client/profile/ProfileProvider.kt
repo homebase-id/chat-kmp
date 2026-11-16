@@ -56,8 +56,7 @@ class ProfileProvider(
         expectedVersionTag: Uuid?,
         visibility: ProfileVisibility,
         data: JsonObject,
-        priority: Int? = null,
-        circleIds: List<String> = emptyList(),
+        options: ProfileWriteOptions = ProfileWriteOptions(),
     ): ProfileWriteResult {
         val creds = requireCreds()
 
@@ -71,8 +70,8 @@ class ProfileProvider(
                     expectedVersionTag = expectedVersionTag,
                     visibility = visibility.wireValue,
                     data = data,
-                    priority = priority,
-                    circleIds = circleIds.takeIf { it.isNotEmpty() },
+                    priority = options.priority,
+                    circleIds = options.wireCircleIds,
                 )
             ),
             secret = creds.secret,

@@ -16,7 +16,7 @@ class AccessControlVisibilityTest {
         AccessControlList(requiredSecurityGroup = group, circleIdList = circles, odinIdList = odinIds?.map(::OdinId))
 
     private fun visibleTiers(acl: AccessControlList?) =
-        listOf(ANONYMOUS, CONNECTED).filter { acl.isVisibleTo(it) }
+        listOf(ANONYMOUS, CONNECTED).filter { acl.isVisibleTo(AclViewer(it)) }
 
     @Test
     fun publicAndVettedRuleTable() {
@@ -41,10 +41,10 @@ class AccessControlVisibilityTest {
 
     @Test
     fun theOwnerSeesEverythingAndAStrangerOnlyWhatNeedsNoConnection() {
-        assertEquals(true, acl("owner").isVisibleTo(ProfileVisibility.OWNER))
-        assertEquals(true, null.isVisibleTo(ProfileVisibility.OWNER))
-        assertEquals(true, acl("authenticated").isVisibleTo(ProfileVisibility.AUTHENTICATED))
-        assertEquals(false, acl("connected").isVisibleTo(ProfileVisibility.AUTHENTICATED))
+        assertEquals(true, acl("owner").isVisibleTo(AclViewer(ProfileVisibility.OWNER)))
+        assertEquals(true, null.isVisibleTo(AclViewer(ProfileVisibility.OWNER)))
+        assertEquals(true, acl("authenticated").isVisibleTo(AclViewer(ProfileVisibility.AUTHENTICATED)))
+        assertEquals(false, acl("connected").isVisibleTo(AclViewer(ProfileVisibility.AUTHENTICATED)))
     }
 
     @Test
@@ -86,6 +86,14 @@ class AccessControlVisibilityTest {
             acl(null) to false,
             null to false,
         )
-        table.forEach { (acl, expected) -> assertEquals(expected, acl.isVisibleToCircle(friendsCircle), "$acl") }
+        table.forEach { (acl, expected) -> assertEquals(expected, acl.isVisibleTo(AclViewer(CONNECTED, setOf(friendsCircle))), "$acl") }
+    }
+
+    @Test
+    fun aStrangerInACircleIdListStillSeesNoCircleCards() {
+        val circleCard = acl("connected", circles = listOf(friendsCircle))
+        assertEquals(false, circleCard.isVisibleTo(AclViewer(ProfileVisibility.AUTHENTICATED, setOf(friendsCircle))))
+        assertEquals(false, circleCard.isVisibleTo(AclViewer(CONNECTED)))
+        assertEquals(true, circleCard.isVisibleTo(AclViewer(ProfileVisibility.OWNER)))
     }
 }

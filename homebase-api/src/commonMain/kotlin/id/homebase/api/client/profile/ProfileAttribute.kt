@@ -60,6 +60,11 @@ data class ProfileAttribute(
     }
 }
 
+/** What a profile write adds to the attribute: its sort [priority] and the [circleIds] it is limited to. */
+data class ProfileWriteOptions(val priority: Int? = null, val circleIds: List<String> = emptyList()) {
+    val wireCircleIds: List<String>? get() = circleIds.takeIf { it.isNotEmpty() }
+}
+
 /**
  * PUT /api/v2/profile/attributes body. [id] and [expectedVersionTag] are omitted (not sent) when
  * null — omitting [id] CREATEs a new attribute; including it with [expectedVersionTag] EDITs the

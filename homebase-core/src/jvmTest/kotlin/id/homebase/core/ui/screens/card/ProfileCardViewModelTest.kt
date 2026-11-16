@@ -19,6 +19,7 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileWriteOptions
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ArgbImage
 import id.homebase.api.image.ImageUtils
@@ -1051,8 +1052,8 @@ class ProfileCardViewModelTest {
 
     private class StoredCardsOverWire(private val stored: List<ProfileAttribute>, private val wire: ProfileRepositoryCardStore) : CardAttributeStore {
         override suspend fun load() = stored
-        override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int, circleIds: List<String>) =
-            wire.save(data, visibility, id, versionTag, priority, circleIds)
+        override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, options: ProfileWriteOptions) =
+            wire.save(data, visibility, id, versionTag, options)
         override suspend fun delete(id: Uuid, versionTag: Uuid) = wire.delete(id, versionTag)
     }
 

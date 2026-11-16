@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.client.drives.AclViewer
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
@@ -127,8 +128,8 @@ class CardProfileDataTest {
         val public = photo(ProfileVisibility.ANONYMOUS)
         val vetted = photo(ProfileVisibility.CONNECTED)
 
-        assertSame(public, listOf(public, vetted).visiblePhoto(ProfileVisibility.ANONYMOUS))
-        assertNull(listOf(vetted, photo(ProfileVisibility.OWNER)).visiblePhoto(ProfileVisibility.ANONYMOUS))
+        assertSame(public, listOf(public, vetted).visiblePhoto(AclViewer(ProfileVisibility.ANONYMOUS)))
+        assertNull(listOf(vetted, photo(ProfileVisibility.OWNER)).visiblePhoto(AclViewer(ProfileVisibility.ANONYMOUS)))
     }
 
     @Test
@@ -538,7 +539,7 @@ class CardProfileDataTest {
             publicPhoto,
             photo(ProfileVisibility.CONNECTED),
         )
-        assertEquals(publicPhoto, attributes.visiblePhoto(ProfileVisibility.ANONYMOUS))
+        assertEquals(publicPhoto, attributes.visiblePhoto(AclViewer(ProfileVisibility.ANONYMOUS)))
 
         val built = buildCardPayload(
             odinId, attributes, CardDesign.BOARD,

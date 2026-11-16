@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.AclViewer
 import id.homebase.api.client.drives.isVisibleTo
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.profile.ProfileVisibility
@@ -94,7 +95,7 @@ private suspend fun pagePosts(odinId: String, channelId: Uuid, channel: CardChan
     return kept
 }
 
-private fun HomebaseFile.isPublic() = serverMetadata.accessControlList.isVisibleTo(ProfileVisibility.ANONYMOUS)
+private fun HomebaseFile.isPublic() = serverMetadata.accessControlList.isVisibleTo(AclViewer(ProfileVisibility.ANONYMOUS))
 
 internal fun cardPost(odinId: String, channel: CardChannel, file: HomebaseFile): CardPostEntry? {
     if (file.isSoftDeleted() || !file.isPublic()) return null
