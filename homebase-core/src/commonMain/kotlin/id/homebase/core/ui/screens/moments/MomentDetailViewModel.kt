@@ -708,7 +708,6 @@ class MomentDetailViewModel(
                             fileId = moment.fileId,
                             payloadKey = payloadKey,
                             keyHeader = keyHeader,
-                            metadata = hlsMetadata,
                             suggestedBaseName = payload.filename(),
                         )
                     }
@@ -782,7 +781,6 @@ class MomentDetailViewModel(
                             fileId = moment.fileId,
                             payloadKey = payloadKey,
                             keyHeader = keyHeader,
-                            metadata = hlsMetadata,
                             suggestedBaseName = payload.filename(),
                         )
                     }
@@ -848,7 +846,6 @@ class MomentDetailViewModel(
         fileId: Uuid,
         payloadKey: String,
         keyHeader: KeyHeader,
-        metadata: VideoMetadata,
         suggestedBaseName: String?,
     ): Pair<String, String>? {
         val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
@@ -867,28 +864,8 @@ class MomentDetailViewModel(
         )
         if (!tsOk) return null
 
-        // Strip EXT-X-KEY (segments are already decrypted on disk) and rewrite
-        // segment references to point at the local .ts file we just wrote.
-        val rewrittenPlaylist = metadata.hlsPlaylist!!.lines()
-            .filter { !it.startsWith("#EXT-X-KEY") }
-            .joinToString("\n") { line ->
-                if (line.isNotBlank() && !line.startsWith("#")) tsFileName else line
-            }
-
-        // cacheInputVideo writes to "<cacheDir>/input_<fileName>", the same
-        // directory as tsPath, so the playlist's relative segment ref resolves.
-        val playlistPath = VideoCompressionService.cacheInputVideo(
-            fileName = "hlsdl_${uid}.m3u8",
-            data = rewrittenPlaylist.encodeToByteArray(),
-        )
-
-        val ok = VideoCompressionService.remuxHlsToMp4(
-            playlistPath = playlistPath,
-            outputPath = mp4Path,
-        )
-
+        val ok = VideoCompressionService.remuxTsToMp4(fileOperationsProvider, tsPath, mp4Path)
         runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
-        runCatching { fileOperationsProvider.deleteTempFile(playlistPath) }
 
         if (!ok) return null
 

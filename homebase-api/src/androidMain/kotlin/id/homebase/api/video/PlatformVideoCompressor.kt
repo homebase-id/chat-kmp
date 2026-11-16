@@ -61,30 +61,4 @@ internal object AndroidVideoCompressor : VideoCompressor {
         return segmented
     }
 
-    // A saved video's playlist addresses byte ranges of one decrypted .ts, in order, so the .ts is the whole stream.
-    override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean {
-        val playlist = File(playlistPath)
-        val segments = withContext(Dispatchers.IO) { playlist.readLines() }
-            .map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.distinct()
-        val ts = segments.singleOrNull()?.let { File(playlist.parentFile, it) }
-        if (ts == null) {
-            Logger.e(tag = TAG) { "remux: expected one segment file in $playlistPath, found $segments" }
-            return false
-        }
-        return try {
-            TsToMp4.remux(fileOps, ts.absolutePath, outputPath)
-            true
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.e(tag = TAG, throwable = e) { "remux of $ts failed" }
-            File(outputPath).delete()
-            false
-        }
-    }
-
-    override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String = withContext(Dispatchers.IO) {
-        val dir = AppCacheDirs.scratchDir(fileOps.context.cacheDir.absolutePath, AppCacheDirs.MEDIA_WORK)
-        File(dir, "input_$fileName").apply { writeBytes(data) }.absolutePath
-    }
 }

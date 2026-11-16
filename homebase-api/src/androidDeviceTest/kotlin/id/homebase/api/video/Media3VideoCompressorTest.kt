@@ -136,8 +136,8 @@ class Media3VideoCompressorTest {
             val media3 = Media3VideoCompressor.compress(source.absolutePath, null, null, null, quality, false)
             source.delete()
             val media3Bytes = File(media3).length()
-            val media3Size = probe(media3).displaySize
             val targetBytes = quality.targets().videoBitrateBps.toLong() * AndroidVideoProber.getDurationMs(media3) / 8000
+            val media3Size = probe(media3).displaySize
             Log.i("Media3Quality", "$setting -> $quality: media3 $media3Size ${media3Bytes / 1000} kB, target ${targetBytes / 1000} kB")
             assertEquals(size, media3Size, "$setting media3")
             assertTrue(media3Bytes in targetBytes / 2..targetBytes * 2, "$setting: $media3Bytes bytes against a target of $targetBytes")

@@ -1,6 +1,9 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.hls.TsToMp4
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlinx.atomicfu.atomic
@@ -46,11 +49,11 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * - **JVM:** parallel transcodes just thrash CPU/memory for no throughput gain.
  *
  * Rather than rely on every caller (the full-screen attachment editor, multi-video send,
- * Moments, Chat) to remember to serialize, this service guards the heavy ops — [compress],
- * [segmentAndEncrypt], [remuxHlsToMp4] — behind a single [Mutex]: a second call
+ * Moments, Chat) to remember to serialize, this service guards the heavy ops — [compress]
+ * and [segmentAndEncrypt] — behind a single [Mutex]: a second call
  * waits until the first completes (and `withLock` is cancellation-aware, so a waiter that's
  * cancelled unblocks the queue cleanly). The cheap probes ([getDurationMs],
- * [getFfmpegVersion]) and [cacheInputVideo] are unguarded — they're fine to call freely.
+ * [getFfmpegVersion]) are unguarded — they're fine to call freely.
  *
  * Note: this mutex serializes heavy compress/segment ops against *each other*. It does NOT
  * cover [VideoThumbnailService]'s FFmpegKit sessions, which may still run concurrently —
@@ -123,13 +126,21 @@ object VideoCompressionService : VideoCompressor, VideoProber {
             compressor.segmentAndEncrypt(inputPath, keyHeader, onProgress)
         }
 
-    override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-        heavy {
-            compressor.remuxHlsToMp4(playlistPath, outputPath)
-        }
-
-    override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-        compressor.cacheInputVideo(fileName, data)
+    /**
+     * Copies a decrypted HLS video's `.ts` into an MP4 at [outputPath], without re-encoding, the same way on every
+     * platform. False, logged, when [tsPath] isn't H.264 (and AAC) in MPEG-TS; nothing is left at [outputPath] then.
+     */
+    suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, tsPath: String, outputPath: String): Boolean = try {
+        TsToMp4.remux(fileOps, tsPath, outputPath)
+        true
+    } catch (e: CancellationException) {
+        fileOps.deleteTempFile(outputPath)
+        throw e
+    } catch (e: Exception) {
+        Logger.e(tag = "VideoCompressionService", throwable = e) { "remux of $tsPath failed" }
+        fileOps.deleteTempFile(outputPath)
+        false
+    }
 
     override suspend fun getDurationMs(inputPath: String): Long =
         probe.getDurationMs(inputPath)

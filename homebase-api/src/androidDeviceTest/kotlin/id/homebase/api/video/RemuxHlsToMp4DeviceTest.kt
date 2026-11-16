@@ -9,6 +9,7 @@ import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
+import id.homebase.api.file.AndroidFileOperationsProvider
 import java.io.File
 import java.nio.ByteBuffer
 import kotlin.random.Random
@@ -57,14 +58,9 @@ class RemuxHlsToMp4DeviceTest {
         val dir = File(context.cacheDir, "remux-${System.nanoTime()}").apply { mkdirs() }
         try {
             val ts = File(dir, "video.ts").apply { writeBytes(decrypted(segmented)) }
-            // As the download writes it: no key, every segment line pointing at the one decrypted .ts.
-            val playlist = File(dir, "video.m3u8").apply {
-                writeText(File(segmented.playlistPath).readLines().filter { !it.startsWith("#EXT-X-KEY") }
-                    .joinToString("\n") { if (it.isNotBlank() && !it.startsWith("#")) ts.name else it })
-            }
             val ours = File(dir, "ours.mp4")
             val started = System.currentTimeMillis()
-            assertTrue(AndroidVideoCompressor.remuxHlsToMp4(playlist.absolutePath, ours.absolutePath))
+            assertTrue(VideoCompressionService.remuxTsToMp4(AndroidFileOperationsProvider(context), ts.absolutePath, ours.absolutePath))
             val oursMs = System.currentTimeMillis() - started
 
             val expected = tracks(compressed)

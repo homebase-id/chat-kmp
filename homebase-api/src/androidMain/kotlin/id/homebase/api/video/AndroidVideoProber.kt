@@ -27,7 +27,8 @@ internal object AndroidVideoProber : VideoProber {
                 retriever.setDataSource(inputPath)
             }
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "getDurationMs failed for $inputPath" }
             0L
         } finally {
             retriever.release()

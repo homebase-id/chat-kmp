@@ -61,9 +61,4 @@ internal object FFmpegVideoCompressor : VideoCompressor {
             ?.let { (playlist, segments) -> SegmentedVideo(playlist, segments) }
             ?.also { onProgress?.invoke(1f) }
 
-    override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-        FFmpegUtils.remuxHlsToMp4(playlistPath, outputPath)
-
-    override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-        FFmpegUtils.cacheInputVideo(fileName, data)
 }

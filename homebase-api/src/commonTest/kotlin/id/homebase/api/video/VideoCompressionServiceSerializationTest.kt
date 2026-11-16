@@ -196,7 +196,4 @@ private open class NoopVideoCompressor : VideoCompressor {
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? = null
 
-    override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean = false
-
-    override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String = ""
 }

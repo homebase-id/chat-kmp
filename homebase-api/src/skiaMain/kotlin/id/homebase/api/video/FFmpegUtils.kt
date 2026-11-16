@@ -72,15 +72,6 @@ expect object FFmpegUtils {
         onProgress: ((Float) -> Unit)?
     ): Pair<String, String>?
 
-    /** Writes [data] to a new file in the media scratch directory and returns its path. */
-    suspend fun cacheInputVideo(fileName: String, data: ByteArray): String
-
-    /**
-     * Remuxes an HLS playlist (expecting unencrypted local .ts segments) into an MP4 container
-     * using stream copy (no re-encoding). Returns true on success.
-     */
-    suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean
-
     /**
      * Version reported by the underlying ffmpeg (e.g. "n6.0", "6.1.1"), or null if it
      * could not be determined. Result is process-stable; actuals memoize after the first call.

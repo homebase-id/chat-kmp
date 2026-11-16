@@ -386,22 +386,6 @@ actual object FFmpegUtils {
     private fun hlsOutputDir(inputPath: String): String =
         "${scratchDir(AppCacheDirs.HLS)}/${AppCacheDirs.HLS_DIR_PREFIX}${getUniqueId(inputPath)}"
 
-    actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-            withContext(Dispatchers.IO) {
-                val cacheDir = getCacheDirectory()
-                val outputPath = "$cacheDir/input_$fileName"
-
-                // Use memScoped to allocate buffer and copy bytes
-                memScoped {
-                    val buffer = allocArrayOf(data)
-                    // dataWithBytes expects CPointer and length
-                    val nsData = NSData.dataWithBytes(bytes = buffer, length = data.size.toULong())
-                    nsData.writeToFile(outputPath, true)
-                }
-
-                outputPath
-            }
-
     actual suspend fun segmentAndEncryptVideo(
             inputPath: String,
             keyHeader: KeyHeader,
@@ -463,21 +447,6 @@ actual object FFmpegUtils {
                     deleteFailedFfmpegOutput(outputDir)
                     null
                 }
-            }
-
-    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-            withContext(Dispatchers.IO) {
-                val fileManager = NSFileManager.defaultManager
-                if (fileManager.fileExistsAtPath(outputPath)) {
-                    fileManager.removeItemAtPath(outputPath, null)
-                }
-                val command =
-                        "-y -allowed_extensions ALL -i \"$playlistPath\" -c copy -bsf:a aac_adtstoasc -movflags +faststart \"$outputPath\""
-                val result = bridge.executeFFmpeg(command)
-                if (!result.isSuccess) {
-                    println("Docs: Error remuxing HLS→MP4: ${result.failStackTrace}")
-                }
-                result.isSuccess
             }
 
     fun generateHlsKeyInfoFile(

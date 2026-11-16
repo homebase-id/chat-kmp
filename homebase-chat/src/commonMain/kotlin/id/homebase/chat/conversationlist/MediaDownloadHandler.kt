@@ -277,7 +277,6 @@ internal class MediaDownloadHandler(
                             fileId = action.fileId,
                             payloadKey = action.payloadKey,
                             keyHeader = action.keyHeader,
-                            metadata = hlsMetadata,
                             suggestedBaseName = action.payload.filename(),
                         )
                     } ?: run {
@@ -651,7 +650,6 @@ internal class MediaDownloadHandler(
         fileId: Uuid,
         payloadKey: String,
         keyHeader: KeyHeader,
-        metadata: VideoMetadata,
         suggestedBaseName: String?,
     ): Pair<String, String>? {
         val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
@@ -673,26 +671,8 @@ internal class MediaDownloadHandler(
             return null
         }
 
-        // Strip EXT-X-KEY (segments are already decrypted on disk) and rewrite segment
-        // references to point at the local .ts file we just wrote.
-        val rewrittenPlaylist = metadata.hlsPlaylist!!.lines()
-            .filter { !it.startsWith("#EXT-X-KEY") }
-            .joinToString("\n") { line ->
-                if (line.isNotBlank() && !line.startsWith("#")) tsFileName else line
-            }
-
-        // cacheInputVideo writes to "<cacheDir>/input_<fileName>" on all platforms, which is the
-        // same directory as tsPath — the playlist's relative segment reference resolves correctly.
-        val playlistPath = VideoCompressionService.cacheInputVideo(
-            fileName = "hlsdl_${uid}.m3u8",
-            data = rewrittenPlaylist.encodeToByteArray(),
-        )
-
-        val ok = VideoCompressionService.remuxHlsToMp4(playlistPath = playlistPath, outputPath = mp4Path)
-
-        // Clean up intermediates regardless of success
+        val ok = VideoCompressionService.remuxTsToMp4(fileOperationsProvider, tsPath, mp4Path)
         runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
-        runCatching { fileOperationsProvider.deleteTempFile(playlistPath) }
 
         if (!ok) {
             Logger.e(tag = "HlsSave") { "HLS save failed at remux to mp4 (payload $payloadKey, file $fileId)" }
