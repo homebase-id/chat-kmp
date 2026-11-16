@@ -1102,7 +1102,6 @@ private fun StepHeader(
 ) {
     val motion = MaterialTheme.motionScheme
     val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
-    val designName = stringResource(designLabel(design))
     AnimatedContent(
         targetState = step,
         transitionSpec = {
@@ -1126,39 +1125,17 @@ private fun StepHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         ) {
-            when (shown) {
-                EditorStep.Design -> Unit
-                // The design's name is the way back to step one, so the step reads as "this design, adjusted".
-                EditorStep.Customise -> {
-                    val description = stringResource(MR.string.profile_card_change_design_to, designName)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        FilledTonalButton(
-                            onClick = { if (!isSaving) onStep(EditorStep.Design) },
-                            enabled = !isSaving,
-                            shapes = ButtonDefaults.shapes(),
-                            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .heightIn(min = ACTION_HEIGHT)
-                                .semantics {
-                                    heading()
-                                    contentDescription = "$description, $count"
-                                },
-                        ) {
-                            Icon(
-                                Icons.Outlined.SwapHoriz,
-                                contentDescription = null,
-                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                            )
-                            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                            ActionLabel(designName)
-                        }
-                    }
-                }
-            }
+            val title = stringResource(MR.string.profile_card_step_customise)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLargeEmphasized,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).semantics {
+                    heading()
+                    contentDescription = "$title, $count"
+                },
+            )
         }
     }
 }

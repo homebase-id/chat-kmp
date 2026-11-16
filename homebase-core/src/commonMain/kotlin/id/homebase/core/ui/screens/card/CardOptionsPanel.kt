@@ -97,7 +97,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Style
@@ -179,7 +178,7 @@ import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
 import id.homebase.resources.profile_card_option_block_style
 import id.homebase.resources.profile_card_tool_style
-import id.homebase.resources.profile_card_tool_presets
+import id.homebase.resources.profile_card_tool_palette
 import id.homebase.resources.profile_card_option_presets
 import id.homebase.resources.profile_card_presentation_bare
 import id.homebase.resources.profile_card_presentation_boxed
@@ -249,7 +248,10 @@ internal fun CardOptionsPanel(
     val orderable = spec?.reorderable(hasLinks).orEmpty()
     val options = CardOption.entries.filter { spec != null && it in spec.options && (it != CardOption.BLOCK_ORDER || orderable.size > 1) }
     val tools = remember(options, styles.isEmpty()) {
-        listOfNotNull(PRESETS_TOOL.takeIf { styles.isNotEmpty() }) + options.map { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it)) }
+        // The presets are the design's colour schemes, so they are the one Palette tab.
+        val palette = styles.isNotEmpty()
+        val shown = options.filter { !(palette && it == CardOption.COLOURS) }.sortedBy { TAB_ORDER.indexOf(it).let { i -> if (i < 0) TAB_ORDER.size else i } }
+        listOfNotNull(PALETTE_TOOL.takeIf { palette }) + shown.map { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it)) }
     }
     var picked by rememberSaveable(design) { mutableStateOf(tools.firstOrNull()?.key.orEmpty()) }
     val current = tools.firstOrNull { it.key == picked } ?: tools.firstOrNull() ?: return
@@ -301,45 +303,45 @@ private fun OptionControl(
         }
         // Shapes read as glyphs, so the group stays one row of icons; the name is spoken, not printed.
         CardOption.PORTRAIT_SHAPE -> SegmentedChoices(
-            values = listOf(null) + CardDesignSpecs.PORTRAIT_SHAPES,
-            selected = overrides.valueOf(option),
+            values = CardDesignSpecs.PORTRAIT_SHAPES,
+            selected = overrides.valueOf(option) ?: CardDesignSpecs.PORTRAIT_SHAPES.first(),
             enabled = enabled,
             chipHeight = chipHeight,
             minSegmentWidth = SHAPE_SEGMENT_MIN_WIDTH,
-            description = { stringResource(it?.let(::shapeLabel) ?: MR.string.profile_card_option_default) },
+            description = { stringResource(shapeLabel(it.orEmpty())) },
             onSelect = { onOption(option, it) },
         ) { shape ->
-            if (shape == null) DefaultGlyph() else ShapeGlyph(shape)
+            ShapeGlyph(shape.orEmpty())
         }
         CardOption.BLOCK_STYLE -> SegmentedChoices(
-            values = listOf(null) + CardDesignSpecs.PRESENTATIONS,
-            selected = overrides.valueOf(option),
+            values = CardDesignSpecs.PRESENTATIONS,
+            selected = overrides.valueOf(option) ?: CardDesignSpecs.PRESENTATIONS.first(),
             enabled = enabled,
             chipHeight = chipHeight,
             onSelect = { onOption(option, it) },
         ) { style ->
-            SegmentLabel(stringResource(style?.let(::presentationLabel) ?: MR.string.profile_card_option_default))
+            SegmentLabel(stringResource(presentationLabel(style.orEmpty())))
         }
         CardOption.SOCIALS_STYLE -> SegmentedChoices(
-            values = listOf(null) + CardDesignSpecs.SOCIALS_STYLES,
-            selected = overrides.valueOf(option),
+            values = CardDesignSpecs.SOCIALS_STYLES,
+            selected = overrides.valueOf(option) ?: CardDesignSpecs.SOCIALS_STYLES.first(),
             enabled = enabled,
             chipHeight = chipHeight,
             onSelect = { onOption(option, it) },
         ) { style ->
-            SegmentLabel(stringResource(style?.let(::socialsLabel) ?: MR.string.profile_card_option_default))
+            SegmentLabel(stringResource(socialsLabel(style.orEmpty())))
         }
         // A font picker shows each face by setting its own name in it; the name is never cut.
         CardOption.DISPLAY_FONT, CardOption.TEXT_FONT -> SegmentedChoices(
-            values = listOf(null) + CardDesignSpecs.FONTS,
-            selected = overrides.valueOf(option),
+            values = CardDesignSpecs.FONTS,
+            selected = overrides.valueOf(option) ?: CardDesignSpecs.FONTS.first(),
             enabled = enabled,
             chipHeight = chipHeight,
             connected = false,
             onSelect = { onOption(option, it) },
         ) { font ->
             Text(
-                text = stringResource(font?.let(::fontLabel) ?: MR.string.profile_card_option_default),
+                text = stringResource(fontLabel(font.orEmpty())),
                 style = fontPreviewStyle(font),
                 maxLines = 1,
                 softWrap = false,
@@ -522,11 +524,6 @@ private fun SegmentLabel(text: String) {
     )
 }
 
-@Composable
-private fun DefaultGlyph() {
-    Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(GLYPH_SIZE))
-}
-
 // Each name set in the card's own face (Latin subsets bundled from the web card's fonts), so look-alike names still differ.
 @Composable
 private fun fontPreviewStyle(font: String?): TextStyle {
@@ -553,14 +550,7 @@ private fun SchemeRow(design: String, palette: CardPalette?, enabled: Boolean, o
     val selected = palette?.ground
     val saved = selected?.takeIf { ground -> schemes.none { it.ground.equals(ground, ignoreCase = true) } }
     ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
-        Swatch(
-            fill = Color(CardDesign.baseArgb(design)),
-            selected = selected == null,
-            enabled = enabled,
-            description = stringResource(MR.string.profile_card_option_default),
-            onClick = { onSelect(null) },
-        ) { InkDot(Color(CardDesign.inkArgb(design))) }
-        // A saved ground outside this design's set still shows as what the card is wearing, never as Default.
+        // A saved ground outside this design's set still shows as what the card is wearing, never as a preset.
         saved?.let { ground ->
             Swatch(
                 fill = Color(hexToArgb(ground)),
@@ -573,7 +563,7 @@ private fun SchemeRow(design: String, palette: CardPalette?, enabled: Boolean, o
         schemes.forEach { scheme ->
             Swatch(
                 fill = Color(hexToArgb(scheme.ground)),
-                selected = scheme.ground.equals(selected, ignoreCase = true),
+                selected = scheme.ground.equals(selected ?: schemes.firstOrNull()?.ground, ignoreCase = true),
                 enabled = enabled,
                 description = stringResource(MR.string.profile_card_option_colours_swatch, stringResource(schemeLabel(scheme.id))),
                 onClick = { onSelect(scheme.ground) },
@@ -705,7 +695,7 @@ private fun ShapeGlyph(shape: String) {
 private fun DrawScope.drawPortraitShape(shape: String, color: Color) {
     when (shape) {
         "square" -> drawRect(color)
-        "rounded" -> drawRoundRect(color, cornerRadius = CornerRadius(size.minDimension * 0.28f))
+        "rounded" -> drawRoundRect(color, cornerRadius = CornerRadius(size.minDimension * 0.18f))
         "ellipse" -> drawOval(color, topLeft = Offset(size.width * 0.18f, 0f), size = Size(size.width * 0.64f, size.height))
         else -> drawCircle(color)
     }
@@ -853,7 +843,10 @@ private fun List<String>.swap(a: Int, b: Int): List<String> {
 
 private data class PanelTool(val key: String, val icon: ImageVector, val label: StringResource, val description: StringResource)
 
-private val PRESETS_TOOL = PanelTool("presets", Icons.Outlined.Layers, MR.string.profile_card_tool_presets, MR.string.profile_card_option_presets)
+private val PALETTE_TOOL = PanelTool("presets", Icons.Outlined.Palette, MR.string.profile_card_tool_palette, MR.string.profile_card_option_presets)
+
+// After Palette: Portrait, Background, Style, then the rest in their usual order.
+private val TAB_ORDER = listOf(CardOption.PORTRAIT_SHAPE, CardOption.BACKGROUND, CardOption.BLOCK_STYLE)
 
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
