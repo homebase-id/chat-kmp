@@ -434,9 +434,10 @@ There's no HDR setting (decided 2026-11-16). Original already promises the exact
 
 **Photos: HDR wherever the file is kept as it is.** An HDR photo (Android's Ultra HDR, iPhone HDR) is an ordinary SDR image plus a gain map, so it shows correctly everywhere, and an HDR screen brightens it. It has none of video's playback problem.
 
-- **Kept as it is:** at Original, and at Standard or HD when the source already fits and re-encoding wouldn't save a quarter. The gain map stays.
+- **Kept as it is,** with its metadata: Photos at Original, and at Standard or HD when the source already fits and re-encoding wouldn't save a quarter. The gain map stays.
+- **Kept, but metadata stripped** (chat and Moments, Original included): the scrubber strips the XMP that declares an Ultra HDR JPEG's gain map, so the photo arrives SDR. Whether chat should keep HDR, and how, is open.
 - **Re-encoded:** thumbnails, the tiny, and a resized final image are WebP, which has no gain map. They keep the SDR image, so they look right but not HDR-bright.
-- **Test:** `GainmapDeviceTest` (Android 14 and later): no thumbnail or final image encoded from an Ultra HDR photo carries a gain map, including a final image made at the source's own size. A kept source is the file itself.
+- **Tests:** `GainmapDeviceTest` (Android 14 and later): no thumbnail or final image encoded from an Ultra HDR photo carries a gain map, including a final image made at the source's own size; and scrubbing one drops its gain map today.
 
 ## Metadata
 

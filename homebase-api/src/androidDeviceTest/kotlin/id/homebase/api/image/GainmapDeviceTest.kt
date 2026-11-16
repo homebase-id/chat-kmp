@@ -50,4 +50,15 @@ class GainmapDeviceTest {
             }
         }
     }
+
+    // Stripping metadata strips the XMP that declares the gain map, so chat's Original goes out SDR. Flip this
+    // when the scrubber learns to keep it (THUMBNAILS.md, "HDR").
+    @Test
+    fun scrubbingAnUltraHdrJpegDropsItsGainmapToday() {
+        assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        val source = ultraHdrJpeg(1600, 1200)
+        assertTrue(hasGainmap(source), "the fixture is Ultra HDR")
+        val scrubbed = ImageMetadataScrubber.scrub(source)
+        assertFalse(BitmapFactory.decodeByteArray(scrubbed, 0, scrubbed.size)!!.hasGainmap())
+    }
 }
