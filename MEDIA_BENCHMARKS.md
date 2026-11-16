@@ -37,7 +37,7 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 
 ## How many times a file is read
 
-Full reads of the video per operation, with the code that ships. Header reads (duration, probe, finding the `moov`) and the one frame a poster decodes aren't counted. Keep this table current whenever a change adds or removes a pass.
+Full reads of the file per operation, with the code that ships. Header reads (duration, probe, finding the `moov`) and the one frame a poster decodes aren't counted. Keep this table current whenever a change adds or removes a pass.
 
 | Operation | Android | iOS | Desktop | Web |
 |---|---|---|---|---|
@@ -48,6 +48,7 @@ Full reads of the video per operation, with the code that ships. Header reads (d
 | **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
 | Photos backup at Original | **1** (read once at hand-off) | | | |
 | Saving a received video to the gallery | **2** of the decrypted `.ts` (`TsToMp4`: size the samples, then copy them behind the index) | **2** | **2** | **2** |
+| An HDR photo at HD or Original | the photo is decoded as before; its gain map, the file's tail (a few percent of it), is read **1** more time on its own | same | same | same |
 | Shrinking a GIF sticker | the file is read **1** time into memory, then decoded **2** times per ladder step (palette, then encode), at most 3 steps | same | same | same |
 
 ## Sending a video, end to end
@@ -184,6 +185,16 @@ For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed wi
 | 2 | HD | 2268×4032 | 614 kB | 1073 kB (+75%) | 1185–1199 / 169–171 ms | 2026-11-16 |
 
 Same quality number for both (60 at Standard, 80 at HD); a JPEG at the same number is not the same picture quality as WebP, which this doesn't measure. For scale: Signal's Ultra HDR copy of a Pixel 8 photo in #2390 was 243 kB at 900×1600. The JPEG encodes 2–7× faster than WebP here.
+
+### The shared writer against Android's encoder
+
+`benchmarkHdrFinalImages` (`-e hdrBench true`, plus `-e hdrSynthetic true` for a generated 4032×3024 Ultra HDR photo with fine noise and a smooth gain map): the HD final image four ways, three rounds in rotating order. The pipeline rows are the whole render (decode, scale, encode); Android's rows are only `compress` of the same scaled pixels, so compare each pair's difference, not the rows across.
+
+| Device | Input | Pipeline SDR WebP | Pipeline SDR JPEG | Shared Ultra HDR | Android: SDR / Ultra HDR `compress` | Measured |
+|---|---|---|---|---|---|---|
+| Pixel 5 | Synthetic 12 MP | 2198 kB, 2.65–2.72 s | 1552 kB, 280 ms | 1568 kB (+16 kB), 294–304 ms (+14–24 ms) | 1566 / 1566 kB, 155 / 153 ms (+2 ms scaling the gain map) | 2026-11-16 |
+
+The shared writer costs about 15–25 ms for decoding, scaling and encoding the gain map and joining; Android's native encoder hides almost all of that. A smooth synthetic gain map compresses to nearly nothing, so this says nothing about size on real photos yet: to measure on real Pixel 8 photos (the shared writer writes the gain map as a 3-channel JPEG).
 
 **Decided 2026-11-16: no HDR at Standard.** Standard is for small and fast; HD and Original keep HDR. Reopen if a quality-matched comparison (JPEG quality chosen to look like today's WebP) shows the gap is much smaller.
 

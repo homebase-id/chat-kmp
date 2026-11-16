@@ -22,6 +22,12 @@ internal class ByteBuilder(initialCapacity: Int = 1024 * 1024) {
     }
 
     /** Big-endian. */
+    fun addU16(value: Int) {
+        addByte(value shr 8)
+        addByte(value)
+    }
+
+    /** Big-endian. */
     fun addU32(value: Long) {
         room(4)
         setU32(size, value)
