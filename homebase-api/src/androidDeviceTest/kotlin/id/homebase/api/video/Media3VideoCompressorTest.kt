@@ -342,7 +342,8 @@ class Media3VideoCompressorTest {
     }
 
     /**
-     * Not a check: what sending a video costs end to end, as VideoPayloadProcessor runs it. Compress, then
+     * Not a check: what sending a video costs end to end, as VideoPayloadProcessor runs it, at Standard and HD
+     * (Original video is HD's transcode outside Photos). Compress, then
      * HLS (segment and encrypt) at 5 MB or more, else encrypt the MP4 in one pass. Ours is Media3, our
      * segmenter and the payload hash; ffmpeg's is ffmpeg for both steps and no hash, as Android had before.
      */
@@ -350,7 +351,7 @@ class Media3VideoCompressorTest {
     fun benchmarkEndToEnd() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val fileOps = AndroidFileOperationsProvider(context)
-        for (input in benchInputs()) {
+        for (input in benchInputs()) for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) {
             for (round in 0..1) {
                 val backends = listOf("ours", "ffmpeg").let { if (round == 0) it else it.reversed() }
                 for (backend in backends) {
@@ -358,9 +359,9 @@ class Media3VideoCompressorTest {
                     val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
                     val started = System.currentTimeMillis()
                     val compressed = if (backend == "ours") {
-                        AndroidVideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, false)
+                        AndroidVideoCompressor.compress(input.absolutePath, null, null, null, quality, false)
                     } else {
-                        FFmpegVideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, false)
+                        FFmpegVideoCompressor.compress(input.absolutePath, null, null, null, quality, false)
                     }
                     val compressMs = System.currentTimeMillis() - started
                     val compressedBytes = File(compressed).length()
@@ -381,7 +382,7 @@ class Media3VideoCompressorTest {
                     val now = System.currentTimeMillis()
                     Log.i(
                         "Media3Benchmark",
-                        "${input.name} ${input.length() / 1_000_000}MB end to end $backend: ${now - started}ms " +
+                        "${input.name} ${input.length() / 1_000_000}MB $quality end to end $backend: ${now - started}ms " +
                             "(compress ${compressMs}ms to ${compressedBytes / 1000}kB, ${if (hls) "HLS" else "MP4 encrypt"} ${now - second}ms)",
                     )
                     output.deleteRecursively()
