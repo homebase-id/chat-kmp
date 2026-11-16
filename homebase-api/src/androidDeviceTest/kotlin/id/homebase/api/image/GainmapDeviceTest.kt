@@ -13,16 +13,17 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
+/** An Ultra HDR JPEG as Android 14's camera writes one: an SDR image and a quarter-size gain map. */
+internal fun ultraHdrJpeg(width: Int, height: Int): ByteArray {
+    val base = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF6699CC.toInt()) }
+    val map = Bitmap.createBitmap(width / 4, height / 4, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF808080.toInt()) }
+    base.gainmap = Gainmap(map).apply { setRatioMax(4f, 4f, 4f); setDisplayRatioForFullHdr(4f) }
+    return ByteArrayOutputStream().also { base.compress(Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
+}
+
 /** THUMBNAILS.md, "HDR". */
 @RunWith(AndroidJUnit4::class)
 class GainmapDeviceTest {
-
-    private fun ultraHdrJpeg(width: Int, height: Int): ByteArray {
-        val base = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF6699CC.toInt()) }
-        val map = Bitmap.createBitmap(width / 4, height / 4, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF808080.toInt()) }
-        base.gainmap = Gainmap(map).apply { setRatioMax(4f, 4f, 4f); setDisplayRatioForFullHdr(4f) }
-        return ByteArrayOutputStream().also { base.compress(Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
-    }
 
     private fun hasGainmap(bytes: ByteArray): Boolean =
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.hasGainmap() == true || bytes.decodeToString().contains("hdrgm")

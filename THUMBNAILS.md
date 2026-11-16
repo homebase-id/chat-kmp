@@ -442,7 +442,8 @@ There's no HDR setting (decided 2026-11-16). Original already promises the exact
   - **Not scrubbed:** everything after the main image passes unchanged. That includes the gain-map image's own segments and a motion photo's embedded video with its metadata.
   - **iPhone HDR HEIC probably loses its HDR:** the scrubber blanks the gain-map image's XMP too, and drops the EXIF MakerNote that holds its headroom. To check on an iPhone.
 - **Re-encoded:** thumbnails, the tiny, and a resized final image are WebP, which has no gain map. They keep the SDR image, so they look right but not HDR-bright.
-- **Tests:** `GainmapDeviceTest` (Android 14 and later) and `ImageMetadataScrubberTest` (every platform).
+- **Shown in HDR** by the full-screen viewer on Android 14 and later: when the decoded image carries a gain map, `HdrWhileShown` puts the window in HDR mode until it closes (`COLOR_MODE_HDR`). Coil's screen-sized decode and the zoom tiles both keep the gain map. It needs a screen with an HDR/SDR ratio: a Pixel 8 has one, a Pixel 5 doesn't. iOS, desktop and web draw through Skia, which shows the SDR base.
+- **Tests:** `GainmapDeviceTest`, `HdrDisplayDeviceTest` (Android 14 and later) and `ImageMetadataScrubberTest` (every platform).
 
 ## Metadata
 

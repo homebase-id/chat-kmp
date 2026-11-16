@@ -53,6 +53,8 @@ import id.homebase.core.HomebaseConstants
 import id.homebase.core.avatars.rememberPublicAvatarUrl
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageLoader
+import coil3.Image
+import id.homebase.core.image.HdrWhileShown
 import id.homebase.core.image.fullScreenImageRequest
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.koinInject
@@ -133,6 +135,8 @@ fun ZoomableSubSamplingImage(
     }
 
     var imageLoaded by remember(model) { mutableStateOf(false) }
+    var shownImage by remember(model) { mutableStateOf<Image?>(null) }
+    HdrWhileShown(shownImage)
 
     // Cross-fade the sharp image in over the placeholder so the unavoidable
     // decode (a 6 MB JPEG can take a few hundred ms on older devices) reads as a
@@ -190,7 +194,8 @@ fun ZoomableSubSamplingImage(
             contentScale = contentScale,
             zoomState = zoomState,
             scrollBar = null,
-            onSuccess = {
+            onSuccess = { success ->
+                shownImage = success.result.image
                 imageLoaded = true
                 onLoaded?.invoke()
             },

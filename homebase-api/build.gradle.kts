@@ -430,6 +430,7 @@ kotlin {
             implementation(libs.androidx.test.core)
             implementation(libs.androidx.junit)
             implementation(libs.androidx.heifwriter)
+            implementation(libs.coil3)
         }
     }
 
