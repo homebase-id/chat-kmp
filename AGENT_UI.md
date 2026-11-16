@@ -172,9 +172,14 @@ The app disables an action after one send per `rev`, and re-enables it if the se
 send is in flight the control shows a spinner; after it succeeds the button shows a check and stays
 disabled (saved with the list item). The app also treats your own replies in the loaded conversation
 (`AgentUiConversation.answeredByYou`, same target and `rev`) as sent, so reopening the chat neither
-spins nor sends the same action again. The reply itself renders as a muted line naming its card
-(header `title`, else the first text of an inline tree, else `fallback`) when that card is loaded,
-with short values; tapping it scrolls to the card.
+spins nor sends the same action again. A reply whose card is loaded is folded onto it, like a poll
+vote (`foldAgentUiReplies` before clustering, so it never splits the agent's cluster): the card lists
+each sender's latest choice at its `rev` above the footer (`AgentUiConversation.choices`, yours first,
+three then "+N more"). A reply whose card is not loaded renders as a muted line with short values;
+tapping it scrolls to the card. Replies are never the chat list's last message or its sort key
+(`dataType NOT IN (202, 220)` in `selectAllConversationPlusLastMessage`, `leavesConversationRow` on
+the live path), never count as unread, and push no notification (`pushesToRecipient = false`, also on
+desktop).
 
 ### Card as a message bubble
 

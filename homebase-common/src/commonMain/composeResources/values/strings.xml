@@ -997,8 +997,8 @@
     <string name="chat_agent_ui_action_failed">Couldn't send that action. Try again.</string>
     <string name="chat_agent_ui_action_you">You chose %1$s</string>
     <string name="chat_agent_ui_action_other">%1$s chose %2$s</string>
-    <string name="chat_agent_ui_action_you_on">You chose %1$s on “%2$s”</string>
-    <string name="chat_agent_ui_action_other_on">%1$s chose %2$s on “%3$s”</string>
+    <string name="chat_agent_ui_choices_more">+%1$d more</string>
+    <string name="chat_agent_ui_choice_at">%1$s · %2$s</string>
     <string name="chat_agent_ui_chosen">Chosen</string>
     <string name="chat_agent_ui_open_card">Open card</string>
     <string name="chat_agent_ui_open_image">View image</string>

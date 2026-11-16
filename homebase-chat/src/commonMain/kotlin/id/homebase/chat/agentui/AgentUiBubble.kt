@@ -55,13 +55,14 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.supportsTouchGestures
 import id.homebase.resources.MR
 import id.homebase.resources.chat_agent_ui_action_failed
 import id.homebase.resources.chat_agent_ui_action_other
-import id.homebase.resources.chat_agent_ui_action_other_on
 import id.homebase.resources.chat_agent_ui_action_you
-import id.homebase.resources.chat_agent_ui_action_you_on
+import id.homebase.resources.chat_agent_ui_choice_at
+import id.homebase.resources.chat_agent_ui_choices_more
 import id.homebase.resources.chat_agent_ui_open_card
 import id.homebase.resources.chat_agent_ui_unparseable
 import id.homebase.resources.chat_message_options
@@ -256,6 +257,10 @@ fun AgentUiBubble(
         } else {
             Text(descriptor.fallback, style = MaterialTheme.typography.bodyMedium)
         }
+        val choices = remember(conversation, message.id, ready?.rev ?: descriptor.rev) {
+            conversation.choices(message.id, ready?.rev ?: descriptor.rev)
+        }
+        if (choices.shown.isNotEmpty()) AgentUiChoicesLine(choices)
         if (failed) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
@@ -265,6 +270,31 @@ fun AgentUiBubble(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+        }
+    }
+}
+
+/** The card's answers above its footer, like votes on a poll: "You chose Keep · 10:42", one line per sender. */
+@Composable
+private fun AgentUiChoicesLine(choices: AgentUiChoices) {
+    val muted = LocalContentColor.current.copy(alpha = 0.7f)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (a in choices.shown) {
+            val chose = if (a.byYou) {
+                stringResource(MR.string.chat_agent_ui_action_you, a.label)
+            } else {
+                stringResource(MR.string.chat_agent_ui_action_other, a.name, a.label)
+            }
+            Text(
+                stringResource(MR.string.chat_agent_ui_choice_at, chose, formatMessageTimestamp(a.at)),
+                style = MaterialTheme.typography.labelMedium,
+                color = muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (choices.more > 0) {
+            Text(stringResource(MR.string.chat_agent_ui_choices_more, choices.more), style = MaterialTheme.typography.labelMedium, color = muted)
         }
     }
 }
@@ -321,8 +351,8 @@ private fun Modifier.agentUiFrameWidth(): Modifier = layout { measurable, constr
 }
 
 /**
- * A person's action reply, drawn as a quiet line under the card rather than a bubble: it names the card it
- * answered when that card is loaded ("You chose Keep on “Post plan”"), and tapping it jumps to the card.
+ * A person's action reply whose card is not loaded, drawn as a quiet line rather than a bubble ("You chose Keep");
+ * tapping it jumps to the card. A reply whose card is loaded is folded onto the card instead.
  */
 @Composable
 fun AgentUiActionBubble(
@@ -337,16 +367,14 @@ fun AgentUiActionBubble(
         UnparseableTypedChip(Icons.Default.TouchApp, stringResource(MR.string.chat_agent_ui_unparseable), modifier)
         return
     }
-    val subject = LocalAgentUiConversation.current.subjects[descriptor.target]
-    val text = when {
-        subject != null && sentByYou -> stringResource(MR.string.chat_agent_ui_action_you_on, descriptor.label, subject)
-        subject != null -> stringResource(MR.string.chat_agent_ui_action_other_on, authorName, descriptor.label, subject)
-        sentByYou -> stringResource(MR.string.chat_agent_ui_action_you, descriptor.label)
-        else -> stringResource(MR.string.chat_agent_ui_action_other, authorName, descriptor.label)
+    val text = if (sentByYou) {
+        stringResource(MR.string.chat_agent_ui_action_you, descriptor.label)
+    } else {
+        stringResource(MR.string.chat_agent_ui_action_other, authorName, descriptor.label)
     }
     val values = remember(descriptor) { descriptor.shortValues() }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val open = onOpenCard?.takeIf { subject != null }
+    val open = onOpenCard
     // The link takes the press, so it carries the touch menu too; right-click still reaches the message wrapper.
     val longPress = onLongClick?.takeIf { supportsTouchGestures() }
     Row(

@@ -484,11 +484,12 @@ fun ConversationContent(
         }
     }
 
-    // Agent cards and the action replies that answer them: replies name their card, cards mark what was chosen.
+    // Agent cards and the action replies that answer them, folded or not: each card marks and shows what was chosen.
     val ownDomain = uiState.ownerSession?.odinId?.domainName
     val agentUiLoader = koinInject<AgentUiTreeLoader>()
-    val agentUiConversation = remember(uiState.messages, ownDomain, agentUiLoader) {
-        agentUiConversation(uiState.messages.mapNotNull { (it as? MessageListContentModel.Message)?.message }, agentUiLoader::cached) {
+    val agentUiConversation = remember(uiState.messages, uiState.agentUiReplies, ownDomain, agentUiLoader) {
+        val shown = uiState.messages.mapNotNull { (it as? MessageListContentModel.Message)?.message }
+        agentUiConversation(shown + uiState.agentUiReplies, agentUiLoader::cached) {
             ownDomain != null && it.originalAuthor?.domainName == ownDomain
         }
     }

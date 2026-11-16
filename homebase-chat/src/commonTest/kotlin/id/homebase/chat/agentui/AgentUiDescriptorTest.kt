@@ -127,14 +127,6 @@ class AgentUiDescriptorTest {
         assertIs<MessageContent.Unknown>(MessageContentParser.parse(999, """{"x":1}"""))
     }
 
-    @Test fun a_reply_names_its_card_by_title_then_first_text_then_fallback() {
-        assertEquals("Draft", MessageContent.AgentUi(ui()).subject())
-        val tree = AgentUiTree.decode(AgentUiFixtures.draftPostCardBytes(), AgentUiFixtures.imageKeys)
-        assertEquals("Draft post", MessageContent.AgentUi(ui(fallback = "fb", title = null), tree).subject())
-        assertEquals("Post plan for Monday", MessageContent.AgentUi(ui(fallback = "**Post plan** for Monday\nmore", title = null)).subject())
-        assertEquals("x".repeat(60) + "…", MessageContent.AgentUi(ui(fallback = "x".repeat(200), title = null)).subject())
-    }
-
     @Test fun reply_values_are_shown_only_when_short() {
         assertNull(action().shortValues())
         assertEquals("nets: x,li", action(values = mapOf("nets" to "x,li")).shortValues())
@@ -144,7 +136,6 @@ class AgentUiDescriptorTest {
     @Test fun answered_by_you_counts_only_your_replies_at_the_current_rev() {
         val card = Uuid.random()
         val c = AgentUiConversation(
-            emptyMap(),
             mapOf(card to listOf(AgentUiAnswer(1, "keep", byYou = true), AgentUiAnswer(0, "drop", byYou = true), AgentUiAnswer(1, "drop", byYou = false))),
         )
         assertEquals(setOf("keep"), c.answeredByYou(card, 1))
