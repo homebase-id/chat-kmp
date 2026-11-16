@@ -69,9 +69,10 @@ Tapping Post sends `{"nets":"x,li"}`; with no network picked the button is disab
   own once-per-`rev` state. The app also reads your earlier replies in the loaded chat, so a
   reopened chat still shows the check and never sends the same action twice at one `rev`. You do
   not need to edit the card just to stop a spinner; reply with a message if that is all you need.
-- The reply shows under the card as a quiet line naming the card ("You chose Keep on “Post plan”",
-  from the header `title`, else the card's first text, else its `fallback`), plus its values when
-  they are short. Tapping it scrolls to the card. Give every card a `title` so replies read well.
+- The reply shows on the card, like a poll vote: a line above the card's time reads "You chose Keep
+  · 10:42", and in a group each member's latest choice at the current `rev` is listed (three, then
+  "+N more"). It takes no row in the chat and is not the chat list's last message. Only when the card
+  is not loaded does the reply show as a quiet line ("You chose Keep") that scrolls to the card.
 
 ### Copy buttons
 
