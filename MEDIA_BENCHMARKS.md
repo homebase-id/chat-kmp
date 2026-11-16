@@ -49,10 +49,11 @@ This is segment and encrypt, with ffmpeg's `-hls_flags single_file` as the refer
 | 2026-11-16 | Pixel 5 | stand-in (27 MB) | 23.8 s | 1.0 s | fully unrolled BLAKE3: Android 14 left the huge method interpreted |
 | 2026-11-16 | Pixel 5 | stand-in (27 MB) | 1.9–2.5 s | 0.9–1.1 s | BLAKE3 rounds looped over locals |
 | 2026-11-16 | Pixel 5 | stand-in (27 MB) | 1.4–1.8 s | 1.0–1.1 s | primitive decode-order sort, pipelined reading and writing, full read chunks |
+| 2026-11-16 | Pixel 5 | stand-in (27 MB) | 0.89–0.91 s | 0.89–1.12 s | native BLAKE3 |
 
 Where the time went before the hashes ran in parallel (stand-in, Pixel 8): BLAKE3 1.6–1.9 s, TS writing 0.1–0.25 s, AES 0.03–0.07 s.
 
-On the Pixel 5 at the last row: reading 0.06 s (0.64 s before the read-chunk fix), TS writing 0.3–0.44 s, AES 0.07–0.1 s, parsing the moov 0.1–0.2 s, and waiting on hashing 0.4–0.7 s. Hashing is the limit there; a native BLAKE3 is next.
+On the Pixel 5 at the last row: reading 0.06 s (0.64 s before the read-chunk fix), TS writing 0.3–0.44 s, AES 0.07–0.1 s, parsing the moov 0.1–0.2 s, and waiting on hashing 0.4–0.7 s. Hashing was the limit there; with native BLAKE3 it no longer is. What's left on the Pixel 5 is TS writing (about 0.3 s) and parsing the moov (0.1–0.2 s).
 
 ## Audio
 
@@ -70,6 +71,7 @@ On the Pixel 5 at the last row: reading 0.06 s (0.64 s before the read-chunk fix
 | 2026-11-16 | Pixel 8 | about 34 → 55 MB/s | the same change; measured inside the segmenter |
 | 2026-11-16 | desktop JVM | 141 MB/s | rounds looped over locals instead of unrolled |
 | 2026-11-16 | Pixel 5 | 45 MB/s | rounds looped over locals; AES-CBC on the same phone runs at 681 MB/s |
+| 2026-11-16 | Pixel 5 | **933 MB/s** (Kotlin 44 MB/s) | native: the official C BLAKE3 1.8.7 with NEON, `-O3`; `Blake3NativeDeviceTest.throughput` |
 
 ## Decisions, and when to reopen them
 
@@ -80,7 +82,11 @@ On the Pixel 5 at the last row: reading 0.06 s (0.64 s before the read-chunk fix
   - **Reopen when** Android's AAC re-encode of a long video runs well under its video path, at about 20× real time, or when a hardware AAC encoder appears.
 - **BLAKE3's rounds loop over local variables, and the two payload hashes run in parallel** (2026-11-16).
   - **Not fully unrolled:** an unrolled `compress` is one huge method, and Android 14 left it interpreted, about 20× slower. Keep the method small.
-  - **Speed:** about 45 MB/s per core on a Pixel 5 and 55 MB/s on a Pixel 8, still the limit when segmenting on the Pixel 5.
-  - **Next:** native BLAKE3 with SIMD on Android.
+  - **Speed:** about 45 MB/s per core on a Pixel 5 and 55 MB/s on a Pixel 8. This is what the JVM and web run.
+- **Android hashes BLAKE3 natively** (2026-11-16).
+  - **How:** `Blake3Hasher` is still the one class every platform and caller uses. On Android it runs the official C implementation (`homebase-blake3`: BLAKE3 1.8.7, NEON on 64-bit ARM, `-O3`) through JNI. The library adds 27 KB on arm64 and 19 KB on 32-bit ARM.
+  - **Speed:** 933 MB/s against 44 MB/s for the Kotlin port on a Pixel 5, 21×.
+  - **Who gains:** segmenting, Photos' hash stage (a 226 MB video in about 0.25 s instead of 5 s) and Filesync.
+  - **Proof:** `Blake3NativeDeviceTest` checks it hashes exactly as the Kotlin port across block, chunk and tree boundaries.
 - **Read files in full chunks** (2026-11-16). Okio's `read` returns at most one 8 KB segment, so `readFileAsFlow` asked for 256 KB and emitted 8 KB, copied and handed across threads each time. Filling each chunk made reading 27 MB 10× faster on a Pixel 5, for every upload and hash that reads a file.
 - **Our own segmenter rather than ffmpeg's** (2026-11-16). It's faster with the hashes included, it reads the file once, and it never re-encodes portrait video. It must keep the same cuts and decoded frames as ffmpeg's; `HlsSegmenterTest.theSegmentsAndDecodedFramesMatchFfmpegsOwnHls` checks that.

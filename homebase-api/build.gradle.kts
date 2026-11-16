@@ -333,6 +333,7 @@ kotlin {
         getByName("androidDeviceTest").kotlin.srcDir("src/imageFileContractTest/kotlin")
         androidMain.dependencies {
             implementation(project(":homebase-imageresize"))
+            implementation(project(":homebase-blake3"))
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)

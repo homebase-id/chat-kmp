@@ -1,7 +1,16 @@
 package id.homebase.api.crypto
 
-/** BLAKE3, plain hashing mode with the default 32-byte output, ported from the official `reference_impl`. */
-class Blake3Hasher : IncrementalHasher {
+/**
+ * BLAKE3, plain hashing mode with the default 32-byte output. Every platform uses this one class; where the
+ * platform has a native BLAKE3 (Android) it runs that, else [PortableBlake3]. The output is the same either way.
+ */
+class Blake3Hasher : IncrementalHasher by (platformBlake3Hasher() ?: PortableBlake3())
+
+/** Null where only [PortableBlake3] runs. */
+internal expect fun platformBlake3Hasher(): IncrementalHasher?
+
+/** BLAKE3 in Kotlin, ported from the official `reference_impl`. */
+internal class PortableBlake3 : IncrementalHasher {
 
     private companion object {
         const val BLOCK_LEN = 64
