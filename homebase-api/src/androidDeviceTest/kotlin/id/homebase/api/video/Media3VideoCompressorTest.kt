@@ -189,6 +189,20 @@ class Media3VideoCompressorTest {
                 }
             }
             delay(COOL_DOWN_MS)
+            val compressed = Media3VideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, true)
+            val key = id.homebase.api.client.KeyHeader(kotlin.random.Random.nextBytes(16), id.homebase.api.common.SecureByteArray(kotlin.random.Random.nextBytes(16)))
+            for ((name, segment) in listOf<Pair<String, suspend () -> SegmentedVideo?>>(
+                "segmenter" to { AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) },
+                "ffmpeg" to { FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null) },
+            )) {
+                delay(COOL_DOWN_MS)
+                val started = System.currentTimeMillis()
+                val out = segment()
+                Log.i("Media3Benchmark", "${input.name} ${File(compressed).length() / 1_000_000}MB compressed, segment+encrypt $name: ${System.currentTimeMillis() - started}ms hash=${out?.hash != null} thermal=${power.currentThermalStatus}")
+                out?.let { File(it.segmentsPath).parentFile?.deleteRecursively() }
+            }
+            File(compressed).delete()
+            delay(COOL_DOWN_MS)
             val audio = File(input.parentFile, "audio_only.m4a")
             val started = System.currentTimeMillis()
             val session = executeFfmpeg(arrayOf("-y", "-i", input.absolutePath, "-vn", "-c:a", "aac", "-b:a", "128k", audio.absolutePath))

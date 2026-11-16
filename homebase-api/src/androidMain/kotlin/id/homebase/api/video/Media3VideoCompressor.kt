@@ -134,6 +134,8 @@ internal object Media3VideoCompressor {
         val muxer = InAppMp4Muxer.Factory { entries -> withMetadata(entries, source.takeIf { keepMetadata }) }
         val transformer = Transformer.Builder(context)
             .setLooper(looper)
+            // Portrait frames rather than a rotation flag: an HLS stream can't carry one.
+            .setPortraitEncodingEnabled(true)
             .setVideoMimeType(MimeTypes.VIDEO_H264)
             .setAudioMimeType(MimeTypes.AUDIO_AAC)
             .setEncoderFactory(encoders)

@@ -51,6 +51,19 @@ open class OkioFileOperationsProvider(
         openSource(path).buffer().use { it.readByteArray() }
     }
 
+    override suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray = withContext(io) {
+        fileSystem.openReadOnly(path.toPath()).use { handle ->
+            val out = ByteArray(length)
+            var filled = 0
+            while (filled < length) {
+                val n = handle.read(offset + filled, out, filled, length - filled)
+                if (n <= 0) break
+                filled += n
+            }
+            out.copyOf(filled)
+        }
+    }
+
     override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray = withContext(io) {
         openSource(path).buffer().use { source ->
             source.request(maxBytes.toLong())
