@@ -487,8 +487,8 @@ class ConversationStream(
 
             // region Auto-unarchive: Signal-style unarchive on incoming message
             if (matchingConversation?.conversationState == ConversationState.Archived) {
-                // A status message (rename, join, leave) is not re-engagement.
-                if (!m.isStatusMessage && !m.isAuthoredBy(credentialsManager.getActiveDomain())) {
+                // A status message (rename, join, leave) or a card action reply is not re-engagement.
+                if (!m.leavesConversationRow && !m.isAuthoredBy(credentialsManager.getActiveDomain())) {
                     Logger.i("ConversationStream: unarchiving conversation ${m.conversationId} due to incoming message from ${m.originalAuthor}")
                     val unarchived = matchingConversation.copy(
                         conversationState = ConversationState.Active,

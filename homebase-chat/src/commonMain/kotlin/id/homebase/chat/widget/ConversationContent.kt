@@ -111,6 +111,9 @@ import id.homebase.chat.services.sticker.StickerStream
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.agentui.AgentUiTreeLoader
+import id.homebase.chat.agentui.LocalAgentUiConversation
+import id.homebase.chat.agentui.agentUiConversation
 import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
@@ -478,6 +481,16 @@ fun ConversationContent(
             allMessages.filter { it.message.id in replyTargetIds }
                 .associate { it.message.id to it.message }
                 .toPersistentMap()
+        }
+    }
+
+    // Agent cards and the action replies that answer them, folded or not: each card marks and shows what was chosen.
+    val ownDomain = uiState.ownerSession?.odinId?.domainName
+    val agentUiLoader = koinInject<AgentUiTreeLoader>()
+    val agentUiConversation = remember(uiState.messages, uiState.agentUiReplies, ownDomain, agentUiLoader) {
+        val shown = uiState.messages.mapNotNull { (it as? MessageListContentModel.Message)?.message }
+        agentUiConversation(shown + uiState.agentUiReplies, agentUiLoader::cached) {
+            ownDomain != null && it.originalAuthor?.domainName == ownDomain
         }
     }
 
@@ -1082,7 +1095,7 @@ fun ConversationContent(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) {
                     if (!uiState.isLoadingMessages) {
-                        CompositionLocalProvider(LocalExpandedMessages provides expandedMessages) {
+                        CompositionLocalProvider(LocalExpandedMessages provides expandedMessages, LocalAgentUiConversation provides agentUiConversation) {
                         LazyColumn(
                             modifier = Modifier.keyboardPanelAnchoredList(bottomPanel, listState)
                                 .fillMaxSize().dismissKeyboardOnTap(),

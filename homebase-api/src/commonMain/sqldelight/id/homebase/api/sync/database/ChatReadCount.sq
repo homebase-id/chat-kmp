@@ -35,7 +35,8 @@ WHERE identityId = ? AND fileType = 8888;
 -- This is needed at boot-time to efficiently load the full list of conversations
 -- and their corresponding last message.
 -- Only fetches the 1 latest message per conversation via index seek.
--- `dataType != 202` skips status messages; its twin is the `isStatusMessage`
+-- `dataType NOT IN (202, 220)` skips status messages and agent-card action replies
+-- (a reply shows on its card, like a poll vote); its twin is the `leavesConversationRow`
 -- gate in applyIncomingMessageBump — both own the row's last-message fields and
 -- must stay in step (#1153). Don't drop it: status visibility depends on
 -- decrypted content SQL can't read, so a row returned here can fail to map and
@@ -53,7 +54,7 @@ LEFT JOIN DriveMainIndex AS m
     WHERE m2.identityId = d.identityId
       AND m2.groupId = d.uniqueId
       AND m2.fileType = 7878
-      AND m2.dataType != 202
+      AND m2.dataType NOT IN (202, 220)
     ORDER BY m2.userDate DESC
     LIMIT 1
   )
@@ -61,14 +62,14 @@ WHERE d.identityId = ?
   AND d.fileType = 8888
 ORDER BY msgUserDate DESC;
 
--- Newest non-status message's userDate for one conversation; same row selectAllConversationPlusLastMessage picks.
+-- Newest non-status, non-action-reply message's userDate for one conversation; same row selectAllConversationPlusLastMessage picks.
 selectLatestMessageUserDate:
 SELECT MAX(userDate) AS latestUserDate
 FROM DriveMainIndex
 WHERE identityId = ?
   AND groupId = ?
   AND fileType = 7878
-  AND dataType != 202;
+  AND dataType NOT IN (202, 220);
 
 -- Return unread message count for a specific groupId
 -- probably shouldn't be needed - with good design we should only need to call selectAllReadCount

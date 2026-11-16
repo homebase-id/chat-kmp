@@ -90,6 +90,7 @@ class ChatReadCountWrapperTest {
         fileState: String = "active",
         archivalStatus: Int = 1,
         originalAuthor: String = "test.sender",
+        dataType: Int = 0,
     ): HomebaseFile {
         val jsonHeader = """{
             "driveId": "${driveId}",
@@ -116,7 +117,7 @@ class ChatReadCountWrapperTest {
                     "uniqueId": "${uniqueId}",
                     "tags": null,
                     "fileType": ${fileType},
-                    "dataType": 0,
+                    "dataType": $dataType,
                     "groupId": ${if (groupId != null) "\"$groupId\"" else "null"},
                     "userDate": ${created.milliseconds},
                     "content": "test content",
@@ -264,6 +265,26 @@ class ChatReadCountWrapperTest {
             assertEquals(
                 testData.convWithThreeMessages.second.last().fileMetadata.appData.uniqueId, conv3Result.message.fileMetadata.appData.uniqueId
             )
+        }
+    }
+
+    // A status message (202) and an agent-card action reply (220) are not the row's last message.
+    @Test
+    fun lastMessage_skipsStatusMessagesAndCardActionReplies() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val t = UnixTimeUtc.now()
+            val convId = Uuid.random()
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(convId, driveId, 8888, null, t))
+            val card = createMockHomebaseFile(Uuid.random(), driveId, 7878, convId, t.addMilliseconds(1000), dataType = 219)
+            insertHomebaseFile(dbm, identityId, driveId, card)
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, convId, t.addMilliseconds(2000), dataType = 220))
+            insertHomebaseFile(dbm, identityId, driveId, createMockHomebaseFile(Uuid.random(), driveId, 7878, convId, t.addMilliseconds(3000), dataType = 202))
+
+            val row = dbm.chatReadCount.selectAllConversationPlusLastMessage(identityId).single()
+            assertEquals(card.fileMetadata.appData.uniqueId, row.message?.fileMetadata?.appData?.uniqueId)
+            assertEquals(t.addMilliseconds(1000).milliseconds, dbm.chatReadCount.selectLatestMessageUserDateMs(identityId, convId))
         }
     }
 

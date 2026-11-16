@@ -78,6 +78,8 @@ data class ConversationListUiState(
 @Immutable
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
+    /** Action replies left out of [messages] because their card is loaded; the card shows them. */
+    val agentUiReplies: ImmutableList<MessageUiModel> = persistentListOf(),
     val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
