@@ -72,9 +72,6 @@ internal object FFmpegVideoCompressor : VideoCompressor {
     override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
         FFmpegUtils.remuxHlsToMp4(playlistPath, outputPath)
 
-    override suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
-        FFmpegUtils.transcode(input, extension, outputArgs)
-
     override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
         FFmpegUtils.cacheInputVideo(fileName, data)
 }

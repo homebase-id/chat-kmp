@@ -1,5 +1,7 @@
 package id.homebase.api.video.hls
 
+import id.homebase.api.util.ByteBuilder
+
 /**
  * Writes H.264 and AAC samples as MPEG-TS, laid out as ffmpeg's mpegts muxer does: PMT on 0x1000,
  * video on 0x100 carrying the PCR, audio on 0x101, timestamps offset by 1.4 s.
@@ -201,27 +203,4 @@ internal class MpegTsWriter(private val video: Mp4Track.Avc, private val audio: 
             return crc
         }
     }
-}
-
-/** A growable byte buffer that keeps its capacity between [take]s. */
-internal class ByteBuilder {
-    private var bytes = ByteArray(1024 * 1024)
-    private var size = 0
-
-    private fun room(n: Int) {
-        if (size + n > bytes.size) bytes = bytes.copyOf(maxOf(bytes.size * 2, size + n))
-    }
-
-    fun add(data: ByteArray, from: Int = 0, length: Int = data.size - from) {
-        room(length)
-        data.copyInto(bytes, size, from, from + length)
-        size += length
-    }
-
-    fun addByte(value: Int) {
-        room(1)
-        bytes[size++] = value.toByte()
-    }
-
-    fun take(): ByteArray = bytes.copyOf(size).also { size = 0 }
 }
