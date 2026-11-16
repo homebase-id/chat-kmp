@@ -93,6 +93,13 @@ class ProfileCardViewModelTest {
             onRender(payload)
         }
 
+        val overridesRendered = CopyOnWriteArrayList<CardPayload>()
+
+        override fun renderOverrides(payload: CardPayload) {
+            overridesRendered += payload
+            render(payload)
+        }
+
         override fun exportPng() = onExport()
         var edgeProbes = 0
         override fun probeEdges() {
@@ -126,7 +133,11 @@ class ProfileCardViewModelTest {
 
         override suspend fun odinId() = OdinId("frodo.dotyou.cloud")
         var liveCards: (suspend () -> List<ProfileAttribute>)? = null
-        override suspend fun attributes() = attributes + liveCards?.invoke().orEmpty()
+        var attributeLoads = 0
+        override suspend fun attributes(): List<ProfileAttribute> {
+            attributeLoads++
+            return attributes + liveCards?.invoke().orEmpty()
+        }
 
         var circleList: List<CardCircle> = listOf(CardCircle(FRIENDS_CIRCLE_ID, "Friends"), CardCircle(FAMILY_CIRCLE_ID, "Family"))
         override val supportsCircleCards: Boolean get() = cardRepository?.supportsCircleCards ?: true
@@ -186,9 +197,9 @@ class ProfileCardViewModelTest {
 
         val cardWrites = MutableStateFlow(0)
 
-        override suspend fun savePublicCard(design: String, overrides: CardOverrides?) {
+        override suspend fun savePublicCard(design: String, overrides: CardOverrides?, known: List<ProfileCard>?): ProfileCard? {
             try {
-                cardRepository?.savePublic(design, overrides)
+                return cardRepository?.savePublicCard(design, overrides, known)
             } finally {
                 cardWrites.update { it + 1 }
             }
@@ -1535,6 +1546,58 @@ class ProfileCardViewModelTest {
 
         assertTrue(store.writes.isEmpty())
         assertEquals("bar", host.rendered.last().overrides?.socials)
+    }
+
+    @Test
+    fun anOptionChangeSendsTheHostOnlyDesignAudienceAndOverrides() = runTest(dispatcher) {
+        val (vm, host, _) = boardVm()
+        advanceUntilIdle()
+        val full = host.rendered.last()
+        assertTrue(host.overridesRendered.isEmpty())
+
+        vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")
+
+        val sent = host.overridesRendered.single()
+        assertEquals(full.data, sent.data)
+        assertEquals("#F26B5B", sent.overrides?.palette?.accent)
+    }
+
+    @Test
+    fun savingACircleCardDoesNotReloadTheProfile() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.BOARD, 2)))
+        val (vm, source, _) = circleVm(store)
+        vm.onCardOpened(friends)
+        advanceUntilIdle()
+        val loads = source.attributeLoads
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(1, store.writes.size)
+        assertEquals(loads, source.attributeLoads)
+    }
+
+    @Test
+    fun aPublicCardWriteReadsNoProfileAndAnEditUsesTheTagItWrote() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val (vm, _, _) = circleVm(store)
+        advanceUntilIdle()
+        val loads = store.loads
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+        vm.onDesignSelected(CardDesign.BOARD)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(loads, store.loads)
+        val (first, second) = store.writes
+        assertEquals(publicCardAttribute.id, first.id)
+        assertEquals(publicCardAttribute.versionTag, first.versionTag)
+        assertEquals(publicCardAttribute.id, second.id)
+        assertTrue(second.versionTag != publicCardAttribute.versionTag)
     }
 
     @Test

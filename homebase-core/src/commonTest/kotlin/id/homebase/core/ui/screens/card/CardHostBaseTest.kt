@@ -68,6 +68,27 @@ class CardHostBaseTest {
     }
 
     @Test
+    fun anOverridesRenderAfterAFullOneSendsNoData() {
+        host.onBridgeMessage("""{"type":"loaded"}""")
+        host.render(payload(CardDesign.BOARD))
+        host.renderOverrides(payload(CardDesign.POSTER))
+
+        assertIs<CardCommand.Render>(host.sent[0])
+        val script = assertIs<CardCommand.RenderOverrides>(host.sent[1]).script()
+        assertTrue(script.startsWith("window.homebaseCard.render("))
+        assertTrue("\"data\"" !in script, script)
+        assertTrue("\"design\":\"poster\"" in script, script)
+    }
+
+    @Test
+    fun anOverridesRenderBeforeAnyDataWasSentSendsTheFullPayload() {
+        host.onBridgeMessage("""{"type":"loaded"}""")
+        host.renderOverrides(payload(CardDesign.POSTER))
+
+        assertIs<CardCommand.Render>(host.sent.single())
+    }
+
+    @Test
     fun renderBeforeLoadIsQueuedUntilLoaded() {
         host.render(payload(CardDesign.BOARD))
         assertTrue(host.sent.isEmpty())

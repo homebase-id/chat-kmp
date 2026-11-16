@@ -94,6 +94,21 @@ class CardRepositoryTest {
     }
 
     @Test
+    fun savingWithTheKnownCardsReadsNothingAndEditsTheKnownOne() = runTest {
+        val existing = profileCardAttribute(buildJsonObject { put("design", "board") })
+        val store = FakeCardStore(listOf(existing))
+        val repo = CardRepository(store)
+
+        val written = assertNotNull(repo.savePublicCard(CardDesign.POSTER, known = repo.cards()))
+
+        assertEquals(1, store.loads)
+        assertEquals(existing.id, store.writes.single().id)
+        assertEquals(existing.versionTag, store.writes.single().versionTag)
+        assertEquals(existing.id, written.id)
+        assertTrue(written.versionTag != existing.versionTag)
+    }
+
+    @Test
     fun switchingTheDesignDropsOverridesTheNewDesignDoesNotExpose() = runTest {
         val existing = profileCardAttribute(
             Json.parseToJsonElement(

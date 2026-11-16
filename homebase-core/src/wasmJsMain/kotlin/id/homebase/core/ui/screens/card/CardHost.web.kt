@@ -67,6 +67,7 @@ internal class WebCardHost(odinId: String) : CardHostBase(cardPageUrl(odinId, Ca
 
     override fun send(command: CardCommand) = when (command) {
         is CardCommand.Render -> postCardCommand(frame, "render", command.payload.toJson(), origin)
+        is CardCommand.RenderOverrides -> postCardCommand(frame, "render", cardJson.encodeToString(CardOverridesPayload.serializer(), command.payload), origin)
         CardCommand.ExportPng -> postCardCommand(frame, "exportPng", null, origin)
         // A cross-origin frame runs none of our script: its colours stay the fallback ones and it paints as the browser composites it.
         CardCommand.ProbeEdges, is CardCommand.HostStyle, CardCommand.ScrollToTop -> Unit

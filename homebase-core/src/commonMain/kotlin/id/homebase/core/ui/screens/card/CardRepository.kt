@@ -59,17 +59,21 @@ class CardRepository(private val store: CardAttributeStore) {
     suspend fun cards(): List<ProfileCard> = store.load().profileCards()
 
     /** A null [overrides] keeps the stored ones. Returns false, without an error, when the server doesn't know the card type. */
-    suspend fun savePublic(design: String, overrides: CardOverrides? = null): Boolean {
-        if (typeUnsupported) return false
-        val existing = cards().publicCard()
+    suspend fun savePublic(design: String, overrides: CardOverrides? = null): Boolean = savePublicCard(design, overrides) != null
+
+    /** With [known] (the stored cards the caller holds) nothing is read first; a stale version tag is re-read by the write itself. */
+    suspend fun savePublicCard(design: String, overrides: CardOverrides? = null, known: List<ProfileCard>? = null): ProfileCard? {
+        if (typeUnsupported) return null
+        val existing = (known ?: cards()).publicCard()
         val card = existing?.withDesign(design, overrides) ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, design, overrides ?: CardOverrides.EMPTY)
-        return saveOrUnsupported(
+        val written = saveOrUnsupported(
             data = card.toData(),
             visibility = ProfileVisibility.ANONYMOUS,
             id = existing?.id,
             versionTag = existing?.versionTag,
             priority = PUBLIC_CARD_PRIORITY,
-        ) != null
+        ) ?: return null
+        return card.copy(id = written.id, versionTag = written.versionTag)
     }
 
     suspend fun saveCircle(card: ProfileCard): ProfileCard? {

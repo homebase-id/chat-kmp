@@ -156,7 +156,7 @@ interface ProfileCardSource {
     suspend fun savedDesign(): String?
     suspend fun saveDesign(design: String)
     /** Writes the public card attribute; a no-op on a server that doesn't know the type. */
-    suspend fun savePublicCard(design: String, overrides: CardOverrides?)
+    suspend fun savePublicCard(design: String, overrides: CardOverrides?, known: List<ProfileCard>?): ProfileCard?
     val supportsCircleCards: Boolean
     suspend fun circles(): List<CardCircle>
     /** Every circle the server holds, disabled, other apps' and system ones included. */
@@ -213,9 +213,8 @@ class DefaultProfileCardSource(
 
     override suspend fun saveDesign(design: String) = cardPreferences.setDesign(design)
 
-    override suspend fun savePublicCard(design: String, overrides: CardOverrides?) {
-        cardRepository.savePublic(design, overrides)
-    }
+    override suspend fun savePublicCard(design: String, overrides: CardOverrides?, known: List<ProfileCard>?) =
+        cardRepository.savePublicCard(design, overrides, known)
 
     override val supportsCircleCards: Boolean get() = cardRepository.supportsCircleCards
 
@@ -362,7 +361,18 @@ class ProfileCardViewModel(
         val edited = edit(state.overrides).prunedFor(state.design)
         if (edited == state.overrides || spec.options.isEmpty()) return
         _uiState.update { it.copy(previewOverrides = edited) }
-        render()
+        renderOverridesOnly()
+    }
+
+    // An option edit leaves the card's data as it was, so the page is sent only what changed.
+    private fun renderOverridesOnly() {
+        val last = lastRendered
+        if (last == null || renderJob?.isActive == true) return render()
+        val state = _uiState.value
+        val payload = last.copy(design = state.design, overrides = effectiveOverrides(state.design, state.selectedAudience).takeUnless { it.isEmpty() })
+        if (payload == last) return
+        lastRendered = payload
+        if (state.isExporting) renderDeferredByExport = true else _host.value?.renderOverrides(payload)
     }
 
     private suspend fun coverOutgoingDesign() {
@@ -493,7 +503,7 @@ class ProfileCardViewModel(
         val card = _uiState.value.cards.firstOrNull { it.audience == audience } ?: return
         val stored = attempt("saving the fields of the ${audience.logName()} card") {
             when (audience) {
-                CardAudience.Public -> source.savePublicCard(card.design, card.overrides).let { card }
+                CardAudience.Public -> source.savePublicCard(card.design, card.overrides, storedCards()) ?: card
                 is CardAudience.Circle -> source.saveCircleCard(card)
             }
         }
@@ -502,11 +512,7 @@ class ProfileCardViewModel(
             load(force = true)
             return
         }
-        if (audience is CardAudience.Circle) {
-            _uiState.update { state ->
-                state.copy(cards = state.cards.map { c -> if (c.audience == audience) c.copy(id = stored.id, versionTag = stored.versionTag) else c })
-            }
-        }
+        keepWritten(stored)
     }
 
     fun onContentAudienceChosen(id: Uuid, audience: ProfileAudience) {
@@ -771,10 +777,7 @@ class ProfileCardViewModel(
                     else it.copy(isSavingDesign = false),
                 )
             }
-            if (stored != null) {
-                render()
-                load()
-            }
+            if (stored != null) render()
             val event = when {
                 stored != null -> ProfileCardEvent.DesignSaved
                 !source.supportsCircleCards -> ProfileCardEvent.CircleCardsUnsupported
@@ -788,7 +791,7 @@ class ProfileCardViewModel(
     private fun writeCard(card: UnsavedCard) {
         cardJob?.cancel()
         cardJob = viewModelScope.launch {
-            attempt("saving the public card ${card.design}") { source.savePublicCard(card.design, card.overrides) } ?: return@launch
+            attempt("saving the public card ${card.design}") { source.savePublicCard(card.design, card.overrides, storedCards())?.let(::keepWritten); Unit } ?: return@launch
             if (unsavedCard == card) unsavedCard = null
         }
     }
@@ -1047,8 +1050,6 @@ class ProfileCardViewModel(
     private suspend fun payloadFor(design: String, audience: CardAudience): CardPayload? {
         val content = content ?: return null
         val photo = content.attributes.photoFor(audience)?.photoImageData()
-        val card = _uiState.value.cards.firstOrNull { it.audience == audience }
-        val stored = _uiState.value.previewOverrides.takeIf { audience == _uiState.value.selectedAudience } ?: card?.overrides ?: CardOverrides.EMPTY
         return buildCardPayload(
             odinId = content.odinId.domainName,
             attributes = content.attributes,
@@ -1058,9 +1059,26 @@ class ProfileCardViewModel(
             tagLine = content.siteDefaults.tagLine,
             posts = posts,
             audience = audience,
-            overrides = card?.withDesign(design, stored)?.overrides ?: stored,
+            overrides = effectiveOverrides(design, audience),
             visitorPreview = true,
         )
+    }
+
+    private fun effectiveOverrides(design: String, audience: CardAudience): CardOverrides {
+        val state = _uiState.value
+        val card = state.cards.firstOrNull { it.audience == audience }
+        val stored = state.previewOverrides.takeIf { audience == state.selectedAudience } ?: card?.overrides ?: CardOverrides.EMPTY
+        return card?.withDesign(design, stored)?.overrides ?: stored
+    }
+
+    // Null while the profile hasn't loaded, so the repository reads instead of mistaking "not loaded" for "no card stored".
+    private fun storedCards(): List<ProfileCard>? =
+        if (content == null) null else _uiState.value.cards.filter { it.id != Uuid.NIL }
+
+    private fun keepWritten(written: ProfileCard) {
+        _uiState.update { state ->
+            state.copy(cards = state.cards.map { c -> if (c.audience.isSameAs(written.audience)) c.copy(id = written.id, versionTag = written.versionTag) else c })
+        }
     }
 
     // Once per image for the ViewModel's life, so a design switch never re-encodes; failures retry on the next show.

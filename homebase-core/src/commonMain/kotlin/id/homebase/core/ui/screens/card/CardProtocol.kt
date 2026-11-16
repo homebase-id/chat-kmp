@@ -44,6 +44,17 @@ data class CardPayload(
     val visitorPreview: Boolean? = null,
 )
 
+// A render without `data`: the page keeps the data of its last full render and re-resolves against the new design, audience and overrides.
+@Serializable
+internal data class CardOverridesPayload(
+    val design: String,
+    val audience: CardAudiencePayload? = null,
+    val overrides: CardOverrides? = null,
+    val visitorPreview: Boolean? = null,
+)
+
+internal fun CardPayload.overridesOnly() = CardOverridesPayload(design, audience, overrides, visitorPreview)
+
 @Serializable
 data class CardAudiencePayload(val kind: String)
 
@@ -100,6 +111,7 @@ sealed interface CardEvent {
 
 internal sealed interface CardCommand {
     data class Render(val payload: CardPayload) : CardCommand
+    data class RenderOverrides(val payload: CardOverridesPayload) : CardCommand
     data object ExportPng : CardCommand
     data object ProbeEdges : CardCommand
     data object RequestPaint : CardCommand
@@ -145,6 +157,7 @@ internal fun CardPayload.toJson(): String = cardJson.encodeToString(CardPayload.
 
 internal fun CardCommand.script(): String = when (this) {
     is CardCommand.Render -> "window.homebaseCard.render(${payload.toJson()})"
+    is CardCommand.RenderOverrides -> "window.homebaseCard.render(${cardJson.encodeToString(CardOverridesPayload.serializer(), payload)})"
     CardCommand.ExportPng -> "window.homebaseCard.exportPng()"
     CardCommand.ProbeEdges -> PROBE_EDGES_SCRIPT
     CardCommand.RequestPaint -> REQUEST_PAINT_SCRIPT
