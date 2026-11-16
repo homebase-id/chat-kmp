@@ -62,37 +62,6 @@ class TsToMp4Test {
         val out = File(cache, "$name.out.mp4")
         TsToMp4.remux(fileOps, ts.absolutePath, out.absolutePath)
 
-        val written = out.readBytes()
-        assertEquals(listOf("ftyp", "moov", "mdat"), mp4Boxes(written, 0, written.size).map { it.type }, "index up front")
-        val ours = assertNotNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, out.absolutePath))))
-        val theirs = assertNotNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, source.absolutePath))))
-        val original = source.readBytes()
-        for (video in listOf(true, false)) {
-            val a = theirs.samples.filter { (it.track is Mp4Track.Avc) == video }
-            val b = ours.samples.filter { (it.track is Mp4Track.Avc) == video }
-            assertEquals(a.size, b.size, "${if (video) "video" else "audio"} samples")
-            assertEquals(a.map { it.isKey }, b.map { it.isKey })
-            assertEquals(a.map { it.pts90k - a.first().pts90k }, b.map { it.pts90k - b.first().pts90k }, "timing")
-            a.zip(b).forEach { (x, y) ->
-                assertContentEquals(original.copyOfRange(x.offset.toInt(), x.offset.toInt() + x.size), written.copyOfRange(y.offset.toInt(), y.offset.toInt() + y.size))
-            }
-        }
-        decodesInFfmpeg(source, out)
-    }
-
-    /** With an ffmpeg on the machine: every decoded frame and every audio packet the same as the source's. */
-    private fun decodesInFfmpeg(source: File, out: File) {
-        if (runCatching { ProcessBuilder("ffmpeg", "-version").start().waitFor() != 0 }.getOrDefault(true)) return
-        fun md5(file: File, vararg args: String) = ProcessBuilder("ffmpeg", "-v", "error", "-i", file.absolutePath, *args, "-f", "framemd5", "-")
-            .redirectErrorStream(true).start().inputStream.bufferedReader().readText()
-            .lines().filter { it.isNotBlank() && !it.startsWith("#") }.map { it.split(",")[5].trim() }
-        assertEquals(md5(source, "-map", "0:v"), md5(out, "-map", "0:v"), "decoded video")
-        assertEquals(md5(source, "-map", "0:a", "-c", "copy"), md5(out, "-map", "0:a", "-c", "copy"), "audio packets")
-        // In sync: audio starts as far from the video as in the source, within a millisecond.
-        fun start(file: File, stream: String) = ProcessBuilder("ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "stream=start_time", "-of", "csv=p=0", file.absolutePath)
-            .start().inputStream.bufferedReader().readText().trim().toDouble()
-        val sourceGap = start(source, "a") - start(source, "v")
-        val ourGap = start(out, "a") - start(out, "v")
-        assertTrue(kotlin.math.abs(sourceGap - ourGap) < 0.0215, "audio against video: source $sourceGap s, ours $ourGap s")
+        assertSameMedia(fileOps, source, out)
     }
 }
