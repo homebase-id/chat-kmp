@@ -58,10 +58,13 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * those are isolated via per-session cancel on iOS, so a compress/segment cancel never tears
  * a thumbnail session down (and vice versa).
  */
+/** ffmpeg everywhere, except where the platform's own media APIs do the work. */
+internal expect fun platformVideoCompressor(): VideoCompressor
+
 object VideoCompressionService : VideoCompressor, VideoProber {
 
     // Delegates are `var` only so tests can substitute fakes; production never reassigns them.
-    internal var compressor: VideoCompressor = FFmpegVideoCompressor
+    internal var compressor: VideoCompressor = platformVideoCompressor()
     internal var probe: VideoProber = FFmpegVideoProber
 
     /** Serializes the heavy ffmpeg ops so two never run on the shared backend at once. */
