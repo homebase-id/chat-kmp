@@ -37,6 +37,7 @@ import id.homebase.resources.profile_card_background_confetti
 import id.homebase.resources.profile_card_background_contours
 import id.homebase.resources.profile_card_background_halftone
 import id.homebase.resources.profile_card_background_sparkles
+import id.homebase.resources.profile_card_background_speckle
 import org.jetbrains.compose.resources.StringResource
 
 object CardBackgrounds {
@@ -50,11 +51,17 @@ object CardBackgrounds {
         CardDesign.LINKS to "blobs",
     )
 
-    /** The patterns a design offers; the preset's own pattern is the unset choice and is not listed. */
-    fun variantsFor(design: String): List<String> = (listOfNotNull(EXTRA[design]) + SHARED).distinct() + NONE
+    private val PRESET = mapOf(CardDesign.BOARD to "circles", CardDesign.COLLAGE to "speckle")
+
+    /** What the web preset draws with no override (odin-js cards/presets.ts ground.art). */
+    fun presetFor(design: String): String = PRESET[design] ?: NONE
+
+    /** The patterns a design offers, the preset's own first. */
+    fun variantsFor(design: String): List<String> =
+        (listOf(presetFor(design)) + listOfNotNull(EXTRA[design]) + SHARED + "speckle" + NONE).distinct()
 
     /** An unknown value falls back to the preset's pattern. */
-    internal fun known(value: String?): String? = value?.takeIf { v -> v == NONE || v in SHARED || v in EXTRA.values }
+    internal fun known(value: String?): String? = value?.takeIf { v -> v == NONE || v == "speckle" || v in SHARED || v in EXTRA.values }
 }
 
 internal fun backgroundLabel(id: String): StringResource = when (id) {
@@ -71,6 +78,7 @@ internal fun backgroundLabel(id: String): StringResource = when (id) {
     "contours" -> MR.string.profile_card_background_contours
     "halftone" -> MR.string.profile_card_background_halftone
     "sparkles" -> MR.string.profile_card_background_sparkles
+    "speckle" -> MR.string.profile_card_background_speckle
     else -> MR.string.profile_card_background_none
 }
 
@@ -152,6 +160,9 @@ internal fun DrawScope.backgroundPattern(id: String, color: Color) {
         "halftone" -> for (c in 0 until 6) for (r in 0 until 10) {
             drawCircle(color, radius = w * (0.01f + r * 0.007f), center = Offset(w * (0.08f + c * 0.168f), h * (0.05f + r * 0.1f)))
         }
+        "speckle" -> for (c in 0 until 9) for (r in 0 until 14) {
+            drawCircle(color, radius = w * 0.008f, center = Offset(w * (0.06f + c * 0.11f + (r % 3) * 0.03f), h * (0.04f + r * 0.07f)))
+        }
         "sparkles" -> SPARKLES.forEach { (cx, cy, size) ->
             val x = w * cx
             val y = h * cy
@@ -184,7 +195,7 @@ private fun DrawScope.contour(color: Color, center: Offset, radii: Size) =
 
 @Composable
 internal fun BackgroundTile(
-    id: String?,
+    id: String,
     selected: Boolean,
     enabled: Boolean,
     ground: Color,
@@ -205,10 +216,6 @@ internal fun BackgroundTile(
     ) {
         drawRect(ground)
         when (id) {
-            null -> {
-                drawCircle(ink.copy(alpha = 0.12f), radius = size.width * 0.3f, center = Offset(size.width * 0.5f, size.height * 0.5f))
-                drawCircle(ink.copy(alpha = 0.5f), radius = size.width * 0.1f, center = Offset(size.width * 0.5f, size.height * 0.5f))
-            }
             CardBackgrounds.NONE -> drawLine(ink.copy(alpha = 0.5f), Offset(size.width * 0.2f, size.height * 0.8f), Offset(size.width * 0.8f, size.height * 0.2f), strokeWidth = 3f)
             else -> backgroundPattern(id, ink.copy(alpha = 0.22f))
         }

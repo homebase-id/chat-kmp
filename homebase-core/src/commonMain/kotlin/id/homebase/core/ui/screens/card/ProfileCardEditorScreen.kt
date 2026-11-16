@@ -1044,7 +1044,6 @@ private fun EditorPanel(
             }
             StepHeader(
                 step = step,
-                design = design,
                 isSaving = isSaving,
                 canCustomise = !uiState.loadFailed,
                 onStep = onStep,
@@ -1087,11 +1086,9 @@ private fun EditorPanel(
     }
 }
 
-// One filled action per step: Customise on the first; the second swaps designs, and Save lives in the top bar.
 @Composable
 private fun StepHeader(
     step: EditorStep,
-    design: String,
     isSaving: Boolean,
     canCustomise: Boolean,
     onStep: (EditorStep) -> Unit,

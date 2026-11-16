@@ -2626,7 +2626,6 @@
     <string name="profile_card_step_customise">Customise</string>
     <string name="profile_card_step_count">Step %1$d of %2$d</string>
     <string name="profile_card_step_design_title">Choose a design</string>
-    <string name="profile_card_option_default">Default</string>
     <string name="profile_card_option_accent">Accent colour</string>
     <string name="profile_card_option_background">Background pattern</string>
     <string name="profile_card_tool_background">Background</string>
@@ -2643,6 +2642,7 @@
     <string name="profile_card_background_contours">Contours</string>
     <string name="profile_card_background_halftone">Halftone</string>
     <string name="profile_card_background_sparkles">Sparkles</string>
+    <string name="profile_card_background_speckle">Speckle</string>
     <string name="profile_card_background_none">No pattern</string>
     <string name="profile_card_option_colours">Colours</string>
     <string name="profile_card_option_colours_swatch">%1$s colours</string>

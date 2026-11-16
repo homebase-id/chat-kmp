@@ -132,7 +132,6 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -183,7 +182,6 @@ import id.homebase.resources.profile_card_presentation_bare
 import id.homebase.resources.profile_card_presentation_boxed
 import id.homebase.resources.profile_card_presentation_row
 import id.homebase.resources.profile_card_presentation_button
-import id.homebase.resources.profile_card_option_default
 import id.homebase.resources.profile_card_option_display_font
 import id.homebase.resources.profile_card_option_drag
 import id.homebase.resources.profile_card_option_move_down
@@ -554,17 +552,18 @@ private fun BackgroundRow(design: String, overrides: CardOverrides, enabled: Boo
     val scheme = CardDesignSpecs.schemeFor(design, overrides.palette?.ground)
     val ground = Color(scheme?.let { hexToArgb(it.ground) } ?: CardDesign.baseArgb(design))
     val ink = Color(scheme?.let { hexToArgb(it.ink) } ?: CardDesign.inkArgb(design))
-    val selected = overrides.background
+    val selected = CardDesignSpecs.selectedValue(design, CardOption.BACKGROUND, overrides.background)
+    val preset = CardBackgrounds.presetFor(design)
     ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
-        (listOf<String?>(null) + CardBackgrounds.variantsFor(design)).forEach { id ->
+        CardBackgrounds.variantsFor(design).forEach { id ->
             BackgroundTile(
                 id = id,
                 selected = selected == id,
                 enabled = enabled,
                 ground = ground,
                 ink = ink,
-                description = stringResource(id?.let(::backgroundLabel) ?: MR.string.profile_card_option_default),
-                onClick = { onSelect(id) },
+                description = stringResource(backgroundLabel(id)),
+                onClick = { onSelect(id.takeIf { it != preset }) },
             )
         }
     }
@@ -577,42 +576,21 @@ private fun SwatchRow(design: String, colours: String?, selected: String?, enabl
     val ground = Color(scheme?.let { hexToArgb(it.ground) } ?: CardDesign.baseArgb(design))
     val ink = Color(scheme?.let { hexToArgb(it.ink) } ?: CardDesign.inkArgb(design))
     val accents = CardDesignSpecs.accentsFor(design, colours)
-    val saved = selected?.takeIf { s -> accents.none { it.equals(s, ignoreCase = true) } }
-    val values = listOf<String?>(null) + listOfNotNull(saved) + accents
+    val preset = CardDesignSpecs.of(design)?.accent?.takeIf { it.isNotEmpty() }
+    val saved = selected?.takeIf { s -> accents.none { it.equals(s, ignoreCase = true) } && !s.equals(preset, ignoreCase = true) }
+    val values = listOfNotNull(preset) + listOfNotNull(saved) + accents.filterNot { it.equals(preset, ignoreCase = true) }
     ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
         values.forEach { hex ->
-            if (hex == null) {
-                Swatch(
-                    fill = ground,
-                    selected = selected == null,
-                    enabled = enabled,
-                    description = stringResource(MR.string.profile_card_option_default),
-                    onClick = { onSelect(null) },
-                ) { NoColourSlash(ink) }
-            } else {
-                Swatch(
-                    fill = ground,
-                    selected = selected.equals(hex, ignoreCase = true),
-                    enabled = enabled,
-                    description = stringResource(MR.string.profile_card_option_accent_swatch, hex),
-                    onClick = { onSelect(hex) },
-                    // The ground's ink rings the dot, so a saved accent close to the ground stays visible.
-                ) { InkDot(Color(hexToArgb(hex)), ACCENT_DOT_SIZE, edge = ink.copy(alpha = 0.45f)) }
-            }
+            val isPreset = hex.equals(preset, ignoreCase = true)
+            Swatch(
+                fill = ground,
+                selected = if (isPreset) selected == null || selected.equals(hex, ignoreCase = true) else selected.equals(hex, ignoreCase = true),
+                enabled = enabled,
+                description = stringResource(MR.string.profile_card_option_accent_swatch, hex),
+                onClick = { onSelect(if (isPreset) null else hex) },
+                // The ground's ink rings the dot, so a saved accent close to the ground stays visible.
+            ) { InkDot(Color(hexToArgb(hex)), ACCENT_DOT_SIZE, edge = ink.copy(alpha = 0.45f)) }
         }
-    }
-}
-
-@Composable
-private fun NoColourSlash(ink: Color) {
-    Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
-        drawLine(
-            color = ink,
-            start = Offset(size.width, 0f),
-            end = Offset(0f, size.height),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
     }
 }
 

@@ -121,16 +121,38 @@ class ProfileCardOptionDefaultsTest {
     }
 
     @Test
-    fun noRowOffersADefaultChipExceptTheNoneChoiceOfBackgroundAndAccent() {
-        panel(CardDesign.BOARD) {
-            for (tab in tabNames()) {
+    fun noTabOffersADefaultChipOrSwatchAndBackgroundSelectsThePresetPattern() {
+        val presetBackground = mapOf(
+            CardDesign.BOARD to "Circles", CardDesign.COLLAGE to "Speckle",
+            CardDesign.POSTER to "No pattern", CardDesign.DOSSIER to "No pattern", CardDesign.LINKS to "No pattern",
+        )
+        val presetAccent = mapOf(
+            CardDesign.BOARD to "#4FD1C5", CardDesign.COLLAGE to "#B4553A", CardDesign.POSTER to "#F4F0EA",
+            CardDesign.DOSSIER to "#7FD4E8", CardDesign.LINKS to "#1A66D6",
+        )
+        for ((design, label) in presetBackground) panel(design) {
+            val tabs = tabNames()
+            assertTrue(tabs.isNotEmpty())
+            for (tab in tabs) {
                 pickTab(tab)
                 onAllNodesWithText("Default").assertCountEquals(0)
-                val none = onAllNodesWithContentDescription("Default").fetchSemanticsNodes().size
-                val noneRow = tab == "Background pattern" || tab == "Accent colour"
-                assertEquals(if (noneRow) 1 else 0, none, "tab '$tab' Default chips")
+                onAllNodesWithContentDescription("Default").assertCountEquals(0)
+                if (tab == "Background pattern") {
+                    val selected = onAllNodes(isSelectedRadio).fetchSemanticsNodes().map { it.config.getOrNull(SemanticsProperties.ContentDescription)!!.joinToString() }
+                    assertEquals(listOf(label), selected, "$design selects its preset background")
+                }
+                if (tab == "Accent colour") {
+                    val selected = onAllNodes(isSelectedRadio).fetchSemanticsNodes().map { it.config.getOrNull(SemanticsProperties.ContentDescription)!!.joinToString() }
+                    assertEquals(1, selected.size, "$design accent selection")
+                    assertTrue(selected.single().contains(presetAccent.getValue(design)), "$design selects its preset accent: $selected")
+                }
             }
         }
+    }
+
+    private val isSelectedRadio = SemanticsMatcher("is a selected radio") {
+        it.config.getOrNull(SemanticsProperties.Selected) == true && it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton &&
+            it.config.getOrNull(SemanticsProperties.ContentDescription) != null
     }
 
     @Test
