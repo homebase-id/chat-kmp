@@ -947,6 +947,8 @@
     <string name="chat_agent_ui_action_other">%1$s valgte %2$s</string>
     <string name="chat_agent_ui_action_you_on">Du valgte %1$s på “%2$s”</string>
     <string name="chat_agent_ui_action_other_on">%1$s valgte %2$s på “%3$s”</string>
+    <string name="chat_agent_ui_chosen">Valgt</string>
+    <string name="chat_agent_ui_open_card">Åbn kort</string>
     <string name="chat_agent_ui_open_image">Vis billede</string>
 
     <!-- Poll detail dialog -->

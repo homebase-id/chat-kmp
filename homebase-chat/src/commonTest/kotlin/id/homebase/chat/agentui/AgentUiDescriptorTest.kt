@@ -1,15 +1,23 @@
 package id.homebase.chat.agentui
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
+import id.homebase.api.common.SecureByteArray
+import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -142,6 +150,45 @@ class AgentUiDescriptorTest {
         assertEquals(setOf("keep"), c.answeredByYou(card, 1))
         assertEquals(setOf("drop"), c.answeredByYou(card, 0))
         assertEquals(emptySet(), c.answeredByYou(Uuid.random(), 1))
+    }
+
+    private fun reply(target: Uuid, actionId: String, status: ChatDeliveryStatus = ChatDeliveryStatus.Sent) = MessageUiModel(
+        id = Uuid.random(),
+        globalTransitId = null,
+        fileId = Uuid.random(),
+        conversationId = Uuid.random(),
+        content = "",
+        userDate = Instant.fromEpochMilliseconds(0),
+        modified = null,
+        created = Instant.fromEpochMilliseconds(0),
+        originalAuthor = OdinId("me.example.com"),
+        sender = OdinId("me.example.com"),
+        displayName = "Me",
+        messageAppData = MessageAppData(deliveryStatus = status.value),
+        reactionPreview = null,
+        previewThumbnail = null,
+        payloads = null,
+        keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
+        versionTag = Uuid.random(),
+        isPendingSend = false,
+        hasMore = false,
+        messageContent = MessageContent.AgentUiAction(
+            AgentUiActionDescriptor(target = target, rev = 1, actionId = actionId, label = actionId),
+        ),
+    )
+
+    // A failed reply un-checks its button, so the action can be sent again.
+    @Test fun a_failed_reply_does_not_count_as_answered() {
+        val card = Uuid.random()
+        val c = agentUiConversation(listOf(reply(card, "keep"), reply(card, "drop", ChatDeliveryStatus.Failed))) { true }
+        assertEquals(setOf("keep"), c.answeredByYou(card, 1))
+    }
+
+    @Test fun conversations_with_the_same_cards_and_replies_are_equal() {
+        val card = Uuid.random()
+        val replies = listOf(reply(card, "keep"))
+        assertEquals(agentUiConversation(replies) { true }, agentUiConversation(replies + reply(Uuid.random(), "x", ChatDeliveryStatus.Failed)) { true })
+        assertNotEquals(agentUiConversation(replies) { true }, agentUiConversation(replies) { false })
     }
 
     // Copy on a card copies its text and table rows, not the 80-character summary.

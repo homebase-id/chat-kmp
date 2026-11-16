@@ -437,6 +437,15 @@ class AgentUiTreeTest {
         assertEquals(emptyList(), t.overBudgetActions())
     }
 
+    @Test fun json_null_copy_or_action_counts_as_absent() {
+        val withNullCopy = assertIs<AgentUiNode.Button>(valid(tree("""{"id":"root","type":"button","label":"Go","copy":null,"action":{"id":"go"}}""")).root)
+        assertNull(withNullCopy.copy)
+        assertEquals("go", withNullCopy.action?.id)
+        val withNullAction = assertIs<AgentUiNode.Button>(valid(tree("""{"id":"root","type":"button","label":"Copy","copy":"x","action":null}""")).root)
+        assertEquals("x", withNullAction.copy)
+        assertNull(withNullAction.action)
+    }
+
     @Test fun copy_is_capped_and_must_be_a_lone_non_blank_string() {
         val emoji = "😀"
         valid(tree("""{"id":"root","type":"button","label":"Copy","copy":"${emoji.repeat(AgentUiLimits.MAX_COPY_CP)}"}"""))

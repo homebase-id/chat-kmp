@@ -1,9 +1,10 @@
 package id.homebase.chat.agentui
 
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.content.MessageContent
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -39,12 +40,18 @@ class AgentUiConversation(
         return listOfNotNull(title, body.takeIf { it.isNotBlank() }).joinToString("\n").ifBlank { d.fallback }
     }
 
+    // Equal by its maps, so a message update that touches no card or reply recomposes no bubble.
+    override fun equals(other: Any?): Boolean =
+        other is AgentUiConversation && subjects == other.subjects && answers == other.answers
+
+    override fun hashCode(): Int = 31 * subjects.hashCode() + answers.hashCode()
+
     companion object {
         val Empty = AgentUiConversation(emptyMap(), emptyMap())
     }
 }
 
-val LocalAgentUiConversation = staticCompositionLocalOf { AgentUiConversation.Empty }
+val LocalAgentUiConversation = compositionLocalOf { AgentUiConversation.Empty }
 
 @OptIn(ExperimentalUuidApi::class)
 fun agentUiConversation(
@@ -55,6 +62,8 @@ fun agentUiConversation(
     val answers = HashMap<Uuid, MutableList<AgentUiAnswer>>()
     for (m in messages) {
         val d = (m.messageContent as? MessageContent.AgentUiAction)?.descriptor ?: continue
+        // A reply that failed to send answers nothing, so its button can be pressed again.
+        if (m.messageAppData.deliveryStatus == ChatDeliveryStatus.Failed.value) continue
         answers.getOrPut(d.target) { ArrayList() } += AgentUiAnswer(d.rev, d.actionId, byYou(m))
     }
     if (answers.isEmpty()) return AgentUiConversation(emptyMap(), emptyMap(), loadedTree)

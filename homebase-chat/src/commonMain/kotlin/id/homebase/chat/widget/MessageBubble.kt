@@ -391,11 +391,7 @@ fun SentMessageBubble(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = {},
-                                onLongClick = {
-                                    if (onMessageInfo != null) {
-                                        openPopup(MessagePopupMode.All)
-                                    }
-                                },
+                                onLongClick = { longPressPopup() },
                                 // Only reaches the padding around the bubble and the typed kinds
                                 // that paint their own surface; MessageBubbleRaw owns the rest.
                                 onDoubleClick = openReactionBar,
@@ -653,11 +649,7 @@ fun ReceivedMessageBubble(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
-                        onLongClick = {
-                            if (onMessageInfo != null) {
-                                openPopup(MessagePopupMode.All)
-                            }
-                        },
+                        onLongClick = { longPressPopup() },
                         // See SentMessageBubble — MessageBubbleRaw owns the bubble surface.
                         onDoubleClick = openReactionBar,
                     )

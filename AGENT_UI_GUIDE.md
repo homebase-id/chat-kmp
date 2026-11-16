@@ -77,7 +77,7 @@ Tapping Post sends `{"nets":"x,li"}`; with no network picked the button is disab
 
 A button with `copy` copies that text to the reader's clipboard and briefly shows "Copied". It
 never sends an action and never reaches you, and it stays usable after other actions are sent
-(but not on a display-only preview). Use it for codes, links and commands the person will paste
+and on the sender's own card (but not on a display-only preview). Use it for codes, links and commands the person will paste
 elsewhere.
 
 ```json

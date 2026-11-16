@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SmartToy
@@ -61,6 +62,7 @@ import id.homebase.resources.chat_agent_ui_action_other
 import id.homebase.resources.chat_agent_ui_action_other_on
 import id.homebase.resources.chat_agent_ui_action_you
 import id.homebase.resources.chat_agent_ui_action_you_on
+import id.homebase.resources.chat_agent_ui_open_card
 import id.homebase.resources.chat_agent_ui_unparseable
 import id.homebase.resources.chat_message_options
 import kotlinx.coroutines.CancellationException
@@ -234,6 +236,7 @@ fun AgentUiBubble(
                 inputs = inputs,
                 imageData = { images[it] },
                 enabled = !displayOnly && !sentByYou,
+                copyEnabled = !displayOnly,
                 pendingActionIds = remember(sentActions, answered) { sentActions.toSet() + answered },
                 answeredActionIds = answered,
                 onAction = onAction,
@@ -353,6 +356,8 @@ fun AgentUiActionBubble(
                 // Without a card to open it takes no gesture, so the message wrapper gets long-press and right-click.
                 if (open != null) {
                     Modifier.combinedClickable(
+                        onClickLabel = stringResource(MR.string.chat_agent_ui_open_card),
+                        role = Role.Button,
                         onLongClickLabel = longPress?.let { stringResource(MR.string.chat_message_options) },
                         onLongClick = longPress,
                         onClick = { open(descriptor.target) },

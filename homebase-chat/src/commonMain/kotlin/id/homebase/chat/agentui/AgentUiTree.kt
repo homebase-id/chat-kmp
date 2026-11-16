@@ -13,6 +13,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
@@ -349,15 +350,18 @@ data class AgentUiTree(
         private fun button(id: String, obj: JsonObject): AgentUiNode? {
             val label = obj.label("label") ?: ""
             if (label.isBlank()) return fail(missing("button '$id' has no label", obj, "label", "text", "markdown", "title"))
-            val copy = if (obj["copy"] == null) null else {
+            // An explicit JSON null counts as absent, for copy and action alike.
+            val copy = if (obj.present("copy") == null) null else {
                 val s = obj.strictString("copy")?.takeIf { it.isNotBlank() } ?: return fail("button '$id' copy must be a non-blank string")
                 val cp = s.codePointCount()
                 if (cp > AgentUiLimits.MAX_COPY_CP) return fail("button '$id' copy is $cp code points, limit ${AgentUiLimits.MAX_COPY_CP}")
-                if (obj["action"] != null) return fail("button '$id' has both copy and action; a copy button sends nothing")
+                if (obj.present("action") != null) return fail("button '$id' has both copy and action; a copy button sends nothing")
                 s
             }
             return AgentUiNode.Button(id, label, buttonStyle(obj.strictString("style")), if (copy == null) action(id, obj["action"]) else null, copy)
         }
+
+        private fun JsonObject.present(key: String): JsonElement? = this[key]?.takeUnless { it is JsonNull }
 
         private fun image(id: String, obj: JsonObject, fallback: String?): AgentUiNode? {
             val alt = obj.text("alt", AgentUiLimits.MAX_LABEL_CP)?.takeIf { it.isNotBlank() }

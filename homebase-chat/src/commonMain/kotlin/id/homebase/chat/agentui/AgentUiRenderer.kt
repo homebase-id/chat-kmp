@@ -70,6 +70,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
@@ -87,10 +88,13 @@ import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
+import id.homebase.resources.chat_agent_ui_chosen
 import id.homebase.resources.chat_agent_ui_open_image
 import id.homebase.resources.chat_image_unavailable
 import id.homebase.resources.copied
 import id.homebase.resources.error
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -115,6 +119,7 @@ private class Env(
     val onLongClick: (() -> Unit)?,
     val onImageSecondaryPress: ((payloadKey: String) -> Unit)?,
     val enabled: Boolean,
+    val copyEnabled: Boolean,
     val pending: Set<String>,
     val answered: Set<String>,
     val onAction: (AgentUiActionRequest) -> Unit,
@@ -142,6 +147,8 @@ fun AgentUiTreeView(
     answeredActionIds: Set<String> = emptySet(),
     /** Right-click on an image: the message menu for that image, as on a photo bubble. */
     onImageSecondaryPress: ((payloadKey: String) -> Unit)? = null,
+    /** Copy buttons act on the device only, so they also work where actions cannot be sent (your own card). */
+    copyEnabled: Boolean = enabled,
 ) {
     val currentImageData by rememberUpdatedState(imageData)
     val currentOnAction by rememberUpdatedState(onAction)
@@ -152,11 +159,11 @@ fun AgentUiTreeView(
     val imagesOpen = onImageClick != null
     val longPress = onLongClick != null
     // Remembered so an unchanged card skips recomposing its nodes when the bubble around it recomposes.
-    val env = remember(tree, inputs, enabled, pendingActionIds, answeredActionIds, imagesOpen, longPress, imageMenu) {
+    val env = remember(tree, inputs, enabled, copyEnabled, pendingActionIds, answeredActionIds, imagesOpen, longPress, imageMenu) {
         val openImage: ((String) -> Unit)? = if (imagesOpen) { key -> currentOnImageClick?.invoke(key) } else null
         val menu: (() -> Unit)? = if (longPress) { { currentOnLongClick?.invoke() } } else null
         val imageSecondary: ((String) -> Unit)? = if (imageMenu) { key -> currentOnImageSecondaryPress?.invoke(key) } else null
-        Env(tree, inputs, { currentImageData(it) }, openImage, menu, imageSecondary, enabled, pendingActionIds, answeredActionIds) { currentOnAction(it) }
+        Env(tree, inputs, { currentImageData(it) }, openImage, menu, imageSecondary, enabled, copyEnabled, pendingActionIds, answeredActionIds) { currentOnAction(it) }
     }
     val root = tree.root
     Box(modifier) {
@@ -441,18 +448,28 @@ private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
         }
     }
     // A copy button acts on the device only: it never sends an action, so it stays usable after a send.
-    val enabled = if (copyText != null) env.enabled
+    val enabled = if (copyText != null) env.copyEnabled
     else node.action != null && env.usable(node.action) && env.tree.selectionCountsOk(node.action) { env.inputs[it] }
     val onClick = {
         if (copyText != null) {
-            scope.launch { if (runCatching { clipboard.setClipEntry(clipEntryOf(copyText)) }.isSuccess) copied = true }
+            scope.launch {
+                try {
+                    clipboard.setClipEntry(clipEntryOf(copyText))
+                    copied = true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(e, tag = "AgentUi") { "copy failed node=${node.id}" }
+                }
+            }
         } else {
             node.action?.let { env.fire(it, node.id, node.label) }
         }
         Unit
     }
     val shapes = ButtonDefaults.shapes()
-    val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight)
+    val chosenLabel = stringResource(MR.string.chat_agent_ui_chosen)
+    val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight).then(if (chosen) Modifier.semantics { stateDescription = chosenLabel } else Modifier)
     val label: @Composable () -> Unit = {
         if (busy) {
             LoadingIndicator(Modifier.size(ButtonDefaults.IconSize + 6.dp), color = LocalContentColor.current)

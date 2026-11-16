@@ -999,6 +999,8 @@
     <string name="chat_agent_ui_action_other">%1$s chose %2$s</string>
     <string name="chat_agent_ui_action_you_on">You chose %1$s on “%2$s”</string>
     <string name="chat_agent_ui_action_other_on">%1$s chose %2$s on “%3$s”</string>
+    <string name="chat_agent_ui_chosen">Chosen</string>
+    <string name="chat_agent_ui_open_card">Open card</string>
     <string name="chat_agent_ui_open_image">View image</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
