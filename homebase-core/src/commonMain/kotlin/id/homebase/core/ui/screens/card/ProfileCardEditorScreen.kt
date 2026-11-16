@@ -73,13 +73,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
@@ -155,7 +153,6 @@ import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_preview
 import id.homebase.resources.profile_card_preview_desktop
 import id.homebase.resources.profile_card_preview_mobile
-import id.homebase.resources.profile_card_change_design_to
 import id.homebase.resources.profile_card_audience_editing
 import id.homebase.resources.profile_card_design_save_failed
 import id.homebase.resources.profile_card_discard_confirm
@@ -1047,7 +1044,6 @@ private fun EditorPanel(
             }
             StepHeader(
                 step = step,
-                design = design,
                 isSaving = isSaving,
                 canCustomise = !uiState.loadFailed,
                 onStep = onStep,
@@ -1090,11 +1086,9 @@ private fun EditorPanel(
     }
 }
 
-// One filled action per step: Customise on the first; the second swaps designs, and Save lives in the top bar.
 @Composable
 private fun StepHeader(
     step: EditorStep,
-    design: String,
     isSaving: Boolean,
     canCustomise: Boolean,
     onStep: (EditorStep) -> Unit,
@@ -1102,7 +1096,6 @@ private fun StepHeader(
 ) {
     val motion = MaterialTheme.motionScheme
     val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
-    val designName = stringResource(designLabel(design))
     AnimatedContent(
         targetState = step,
         transitionSpec = {
@@ -1126,39 +1119,17 @@ private fun StepHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         ) {
-            when (shown) {
-                EditorStep.Design -> Unit
-                // The design's name is the way back to step one, so the step reads as "this design, adjusted".
-                EditorStep.Customise -> {
-                    val description = stringResource(MR.string.profile_card_change_design_to, designName)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        FilledTonalButton(
-                            onClick = { if (!isSaving) onStep(EditorStep.Design) },
-                            enabled = !isSaving,
-                            shapes = ButtonDefaults.shapes(),
-                            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .heightIn(min = ACTION_HEIGHT)
-                                .semantics {
-                                    heading()
-                                    contentDescription = "$description, $count"
-                                },
-                        ) {
-                            Icon(
-                                Icons.Outlined.SwapHoriz,
-                                contentDescription = null,
-                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                            )
-                            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                            ActionLabel(designName)
-                        }
-                    }
-                }
-            }
+            val title = stringResource(MR.string.profile_card_step_customise)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLargeEmphasized,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).semantics {
+                    heading()
+                    contentDescription = "$title, $count"
+                },
+            )
         }
     }
 }
