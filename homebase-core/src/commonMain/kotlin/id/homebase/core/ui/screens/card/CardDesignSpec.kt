@@ -6,6 +6,7 @@ enum class CardOption {
     COLOURS,
     BACKGROUND,
     ACCENT,
+    PHOTO_SIZE,
     PORTRAIT_SHAPE,
     SOCIALS_STYLE,
     BLOCK_STYLE,
@@ -54,6 +55,14 @@ object CardDesignSpecs {
     val PORTRAIT_SHAPES = listOf("circle", "square", "rounded", "ellipse")
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
     val PRESENTATIONS = listOf("bare", "boxed", "row", "button")
+    val PHOTO_SIZES = listOf("medium", "small", "large")
+    const val MEDIUM_PHOTO = "medium"
+
+    /** [all] with [design]'s preset value for [option] moved first; the row shows the preset as its first choice. */
+    fun presetFirst(design: String, option: CardOption, all: List<String>): List<String> {
+        val preset = of(design)?.defaults?.get(option)?.takeIf { it in all } ?: return all
+        return listOf(preset) + (all - preset)
+    }
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
     val ORDERED_KINDS = BLOCK_KINDS - "posts"
 
@@ -185,7 +194,8 @@ object CardDesignSpecs {
 fun CardOverrides.prunedFor(design: String): CardOverrides {
     val spec = CardDesignSpecs.of(design) ?: return CardOverrides(fields = fields)
     fun has(option: CardOption) = option in spec.options
-    val shape = portraits?.firstOrNull()?.shape
+    val shape = portraits?.firstOrNull()?.shape?.takeIf { has(CardOption.PORTRAIT_SHAPE) }
+    val size = portraits?.firstOrNull()?.size?.takeIf { has(CardOption.PHOTO_SIZE) }
     // Colours only travel as one of this design's schemes, so another design's ink can never land on a ground it wasn't checked against.
     val scheme = CardDesignSpecs.schemeByGround(palette?.ground)?.takeIf { has(CardOption.COLOURS) && it in spec.schemes }
     val colours = scheme?.applyTo(null)
@@ -196,8 +206,8 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
             display = type?.display?.takeIf { has(CardOption.DISPLAY_FONT) },
             text = type?.text?.takeIf { has(CardOption.TEXT_FONT) },
         ).takeIf { it.display != null || it.text != null },
-        portraits = shape?.takeIf { has(CardOption.PORTRAIT_SHAPE) }?.let {
-            List(spec.portraitSlots) { slot -> if (slot == 0) CardPortrait(shape = it) else CardPortrait() }
+        portraits = CardPortrait(shape = shape, size = size).takeUnless { it == CardPortrait() }?.let {
+            List(spec.portraitSlots) { slot -> if (slot == 0) it else CardPortrait() }
         },
         blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.let { withBlockOrder(blockOrder()).blocks }
             ?.map { if (has(CardOption.BLOCK_STYLE)) it else it.copy(presentation = null) },

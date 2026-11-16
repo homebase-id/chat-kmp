@@ -115,6 +115,7 @@ class CardOverridesTest {
         CardOption.DISPLAY_FONT -> "type.display"
         CardOption.TEXT_FONT -> "type.text"
         CardOption.PORTRAIT_SHAPE -> "portraits[].shape"
+        CardOption.PHOTO_SIZE -> "portraits[].size"
         CardOption.SOCIALS_STYLE -> "socials"
         CardOption.BLOCK_ORDER -> "blocks[].kind"
         CardOption.BLOCK_STYLE -> "blocks[].presentation"
@@ -141,6 +142,7 @@ class CardOverridesTest {
                 assertTrue(resolves(CardOverrides.serializer().descriptor, path), "$design/$option -> $path")
             }
             assertEquals(spec.options.contains(CardOption.PORTRAIT_SHAPE), spec.portraitSlots > 0, design)
+            assertEquals(spec.options.contains(CardOption.PHOTO_SIZE), spec.portraitSlots > 0, design)
         }
     }
 
@@ -235,5 +237,19 @@ class CardOverridesTest {
         val reset = custom.with(CardOption.BLOCK_STYLE, "row", listOf("links", "moments", "chat"))
             .with(CardOption.BLOCK_STYLE, null, listOf("links", "moments", "chat"))
         assertEquals(listOf("chat", "moments", "links"), reset.blockOrder())
+    }
+
+    @Test
+    fun aChosenPhotoSizeIsSentAndMediumOrNoChoiceSendsNone() {
+        fun payload(design: String, o: CardOverrides) = cardJson.encodeToString(CardOverrides.serializer(), o.prunedFor(design))
+        val large = CardOverrides.EMPTY.with(CardOption.PHOTO_SIZE, "large")
+        assertEquals("""{"portraits":[{"size":"large"}]}""", payload(CardDesign.BOARD, large))
+        assertEquals("""{"portraits":[{"size":"large"},{}]}""", payload(CardDesign.COLLAGE, large))
+        assertEquals("""{"portraits":[{"shape":"square","size":"small"},{}]}""", payload(CardDesign.COLLAGE, large.with(CardOption.PORTRAIT_SHAPE, "square").with(CardOption.PHOTO_SIZE, "small")))
+        assertEquals("""{"portraits":[{"size":"large"}]}""", payload(CardDesign.BOARD, large.with(CardOption.PORTRAIT_SHAPE, "circle").with(CardOption.PORTRAIT_SHAPE, null)))
+        assertEquals("{}", payload(CardDesign.BOARD, large.with(CardOption.PHOTO_SIZE, null)))
+        assertEquals("{}", payload(CardDesign.BOARD, CardOverrides.EMPTY))
+        assertEquals("{}", payload(CardDesign.POSTER, large))
+        assertEquals("large", CardOverrides.fromJson(cardJson.parseToJsonElement("""{"portraits":[{"size":"large"}]}""").jsonObject).valueOf(CardOption.PHOTO_SIZE))
     }
 }

@@ -2603,6 +2603,7 @@
     <string name="profile_card_tool_heading">Heading</string>
     <string name="profile_card_tool_body">Body</string>
     <string name="profile_card_tool_portrait">Portrait</string>
+    <string name="profile_card_tool_photo_size">Photo size</string>
     <string name="profile_card_tool_socials">Socials</string>
     <string name="profile_card_tool_order">Order</string>
     <string name="profile_card_content_name_required">Always on the Public card</string>
@@ -2685,6 +2686,7 @@
     <string name="profile_card_option_display_font">Heading font</string>
     <string name="profile_card_option_text_font">Body font</string>
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
+    <string name="profile_card_option_photo_size">Photo size</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_block_style">Content style</string>
@@ -2710,6 +2712,9 @@
     <string name="profile_card_font_caveat">Caveat</string>
     <string name="profile_card_font_archivo_black">Archivo Black</string>
     <string name="profile_card_font_space_mono">Space Mono</string>
+    <string name="profile_card_photo_size_small">Small</string>
+    <string name="profile_card_photo_size_medium">Medium</string>
+    <string name="profile_card_photo_size_large">Large</string>
     <string name="profile_card_shape_circle">Circle</string>
     <string name="profile_card_shape_square">Square</string>
     <string name="profile_card_shape_rounded">Rounded</string>

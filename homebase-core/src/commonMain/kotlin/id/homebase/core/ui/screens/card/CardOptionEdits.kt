@@ -8,6 +8,7 @@ fun CardOverrides.valueOf(option: CardOption): String? = when (option) {
     CardOption.DISPLAY_FONT -> type?.display
     CardOption.TEXT_FONT -> type?.text
     CardOption.PORTRAIT_SHAPE -> portraits?.firstOrNull()?.shape
+    CardOption.PHOTO_SIZE -> portraits?.firstOrNull()?.size
     CardOption.SOCIALS_STYLE -> socials
     CardOption.BLOCK_ORDER -> null
     CardOption.BLOCK_STYLE -> blocks?.map { it.presentation }?.distinct()?.singleOrNull()
@@ -40,7 +41,8 @@ fun CardOverrides.with(
     CardOption.ACCENT -> copy(palette = (palette ?: CardPalette()).copy(accent = value).takeUnless { it == CardPalette() })
     CardOption.DISPLAY_FONT -> copy(type = (type ?: CardTypeface()).copy(display = value).takeUnless { it == CardTypeface() })
     CardOption.TEXT_FONT -> copy(type = (type ?: CardTypeface()).copy(text = value).takeUnless { it == CardTypeface() })
-    CardOption.PORTRAIT_SHAPE -> copy(portraits = value?.let { listOf(CardPortrait(shape = it)) })
+    CardOption.PORTRAIT_SHAPE -> withPortrait(shape = value, size = valueOf(CardOption.PHOTO_SIZE))
+    CardOption.PHOTO_SIZE -> withPortrait(shape = valueOf(CardOption.PORTRAIT_SHAPE), size = value)
     CardOption.SOCIALS_STYLE -> copy(socials = value)
     CardOption.BLOCK_ORDER -> this
     CardOption.BLOCK_STYLE -> withBlockStyle(value, presetOrder)
@@ -67,3 +69,6 @@ private fun CardOverrides.withBlockStyle(value: String?, presetOrder: List<Strin
     val unchanged = value == null && ordered.blockOrder() == completeOrder(presetOrder)
     return copy(blocks = styled.takeUnless { unchanged })
 }
+
+private fun CardOverrides.withPortrait(shape: String?, size: String?) =
+    copy(portraits = CardPortrait(shape = shape, size = size).takeUnless { it == CardPortrait() }?.let { listOf(it) })

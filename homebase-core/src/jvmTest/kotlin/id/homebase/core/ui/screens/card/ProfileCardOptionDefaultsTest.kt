@@ -19,9 +19,8 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.printToLog
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.assertCountEquals
@@ -70,7 +69,6 @@ class ProfileCardOptionDefaultsTest {
                 }
             }
             waitForIdle()
-            if (System.getenv("K16_DUMP") != null) onRoot().printToLog("K16")
             check()
         }
 
@@ -100,11 +98,11 @@ class ProfileCardOptionDefaultsTest {
 
     // The labels each open design's preset draws with, from odin-js cards/presets.ts.
     private val presetChips = mapOf(
-        CardDesign.BOARD to setOf("Ocean", "Circle", "Boxed", "Bar", "Alternates", "Montserrat"),
-        CardDesign.DOSSIER to setOf("Onyx", "Square", "Rows", "Handles", "Archivo Black", "Space Mono"),
-        CardDesign.COLLAGE to setOf("Linen", "Square", "Wordmarks", "Caveat", "Montserrat"),
+        CardDesign.BOARD to setOf("Ocean", "Medium", "Circle", "Boxed", "Bar", "Alternates", "Montserrat"),
+        CardDesign.DOSSIER to setOf("Onyx", "Medium", "Square", "Rows", "Handles", "Archivo Black", "Space Mono"),
+        CardDesign.COLLAGE to setOf("Linen", "Medium", "Square", "Wordmarks", "Caveat", "Montserrat"),
         CardDesign.POSTER to setOf("Espresso", "Plain", "Icons", "Newsreader"),
-        CardDesign.LINKS to setOf("Frost", "Circle", "Icons", "Montserrat"),
+        CardDesign.LINKS to setOf("Frost", "Medium", "Circle", "Icons", "Montserrat"),
     )
 
     @Test
@@ -182,10 +180,10 @@ class ProfileCardOptionDefaultsTest {
     private val isRadio = SemanticsMatcher("is a radio") { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
 
     @Test
-    fun designTabsRunPaletteThenPortraitBackgroundStyleAndNoneIsCalledPresets() {
+    fun designTabsRunPalettePhotoSizePortraitBackgroundStyleAndNoneIsCalledPresets() {
         panel(CardDesign.BOARD) {
             val tabs = tabNames()
-            assertEquals(listOf("Ready-made styles", "Portrait shape", "Background pattern", "Content style"), tabs.take(4))
+            assertEquals(listOf("Ready-made styles", "Photo size", "Portrait shape", "Background pattern", "Content style"), tabs.take(5))
             assertTrue(tabs.none { it.contains("Presets", ignoreCase = true) })
         }
     }
@@ -231,5 +229,54 @@ class ProfileCardOptionDefaultsTest {
                 assertEquals(listOf(CardOption.ACCENT to null, CardOption.ACCENT to hex), calls, design)
             }
         }
+    }
+
+    private val isToggle = SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState)
+
+    @Test
+    fun thePresetsValueIsTheFirstChipInEveryRowAndIsSelectedWithNoOverrides() {
+        for (design in presetChips.keys) panel(design) {
+            var rows = 0
+            for (tab in tabNames()) {
+                pickTab(tab)
+                val chips = onAllNodes(isToggle).fetchSemanticsNodes()
+                if (chips.isEmpty()) continue
+                rows++
+                val states = chips.map { it.config.getOrNull(SemanticsProperties.ToggleableState) }
+                assertEquals(ToggleableState.On, states.first(), "$design/$tab: first chip is not the selected one")
+                assertEquals(1, states.count { it == ToggleableState.On }, "$design/$tab: exactly the first chip is selected")
+            }
+            assertTrue(rows >= 3, "$design checked only $rows segmented rows")
+        }
+    }
+
+    @Test
+    fun pickingThePresetValueSendsNullAndAnotherSendsItsId() {
+        val calls = mutableListOf<Pair<CardOption, String?>>()
+        panel(CardDesign.COLLAGE, onOption = { o, v -> calls += o to v }) {
+            pickTab("Portrait shape")
+            onNodeWithContentDescription("Circle").performClick()
+            onNodeWithContentDescription("Square").performClick()
+            assertEquals(listOf(CardOption.PORTRAIT_SHAPE to "circle", CardOption.PORTRAIT_SHAPE to null), calls)
+        }
+    }
+
+    @Test
+    fun photoSizeOffersMediumFirstAndSendsNoSizeForIt() {
+        val calls = mutableListOf<Pair<CardOption, String?>>()
+        panel(CardDesign.BOARD, onOption = { o, v -> calls += o to v }) {
+            pickTab("Photo size")
+            val labels = onAllNodes(isToggle).fetchSemanticsNodes().map { n -> n.config.getOrNull(SemanticsProperties.Text)!!.joinToString("") { it.text } }
+            assertEquals(listOf("Medium", "Small", "Large"), labels)
+            onNodeWithText("Large").performClick()
+            onNodeWithText("Small").performClick()
+            onNodeWithText("Medium").performClick()
+            assertEquals(listOf(CardOption.PHOTO_SIZE to "large", CardOption.PHOTO_SIZE to "small", CardOption.PHOTO_SIZE to null), calls)
+        }
+    }
+
+    @Test
+    fun posterHasNoPhotoSizeTab() {
+        panel(CardDesign.POSTER) { assertTrue(tabNames().none { it == "Photo size" }) }
     }
 }
