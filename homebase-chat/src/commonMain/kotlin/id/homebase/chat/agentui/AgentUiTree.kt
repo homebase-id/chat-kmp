@@ -280,8 +280,7 @@ data class AgentUiTree(
             if (depth > AgentUiLimits.MAX_DEPTH) return fail("node '$id' is nested $depth deep, limit ${AgentUiLimits.MAX_DEPTH}")
             if (!visited.add(id)) return fail("node '$id' is referenced twice (a cycle, or a child of two parents)")
             val fallback = obj.text("fallback", AgentUiLimits.MAX_TEXT_CP)?.takeIf { it.isNotBlank() }
-            val type = obj.strictString("type")
-            return when (type) {
+            return when (val type = obj.strictString("type")) {
                 "column" -> children(id, "column", obj, depth)?.let { AgentUiNode.Column(id, it, spacing(obj)) }
                 "row" -> children(id, "row", obj, depth)?.let { AgentUiNode.Row(id, it, spacing(obj)) }
                 "card" -> children(id, "card", obj, depth)?.let { AgentUiNode.Card(id, it, tone(obj.strictString("tone"))) }
@@ -350,8 +349,7 @@ data class AgentUiTree(
         private fun button(id: String, obj: JsonObject): AgentUiNode? {
             val label = obj.label("label") ?: ""
             if (label.isBlank()) return fail(missing("button '$id' has no label", obj, "label", "text", "markdown", "title"))
-            val copyField = obj["copy"]
-            val copy = if (copyField == null) null else {
+            val copy = if (obj["copy"] == null) null else {
                 val s = obj.strictString("copy")?.takeIf { it.isNotBlank() } ?: return fail("button '$id' copy must be a non-blank string")
                 val cp = s.codePointCount()
                 if (cp > AgentUiLimits.MAX_COPY_CP) return fail("button '$id' copy is $cp code points, limit ${AgentUiLimits.MAX_COPY_CP}")
@@ -420,7 +418,10 @@ data class AgentUiTree(
         private fun action(nodeId: String, e: JsonElement?): AgentUiNodeAction? {
             val o = e as? JsonObject ?: return null
             val id = o.strictString("id")?.takeIf { AgentUiLimits.ACTION_ID.matches(it) }
-                ?: return null.also { note("action of '$nodeId' has no id matching ${AgentUiLimits.ACTION_ID.pattern}, so it is dropped") }
+                ?: run {
+                    note("action of '$nodeId' has no id matching ${AgentUiLimits.ACTION_ID.pattern}, so it is dropped")
+                    return null
+                }
             val include = (o["include"] as? JsonArray).orEmpty()
                 .mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.takeIf { s -> s.isNotBlank() && s.length <= AgentUiLimits.MAX_ID_LENGTH } }
                 .distinct()

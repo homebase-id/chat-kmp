@@ -461,10 +461,8 @@ private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
         if (copied || chosen) {
             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize).testTag(if (copied) CopiedIconTag else ChosenIconTag))
             Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-            Text(if (copied) stringResource(MR.string.copied) else node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        } else {
-            Text(node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        Text(if (copied) stringResource(MR.string.copied) else node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
     // A sent action stays disabled, but keeps its colours so it reads as in progress, not unavailable.
     fun ButtonColors.busyAware() = if (busy || chosen) copy(disabledContainerColor = containerColor, disabledContentColor = contentColor) else this
