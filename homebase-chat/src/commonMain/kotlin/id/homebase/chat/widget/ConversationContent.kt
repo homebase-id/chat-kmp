@@ -50,6 +50,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -206,6 +207,7 @@ import id.homebase.resources.chat_not_connected_view_request
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
 import id.homebase.resources.chat_previous_result
+import id.homebase.resources.chat_jump_to_mention
 import id.homebase.resources.chat_scroll_to_bottom
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_send_message_button
@@ -1361,11 +1363,18 @@ fun ConversationContent(
                             }
                         }
 
+                        Column(
+                            modifier = Modifier.align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                        JumpToMentionButton(
+                            visible = uiState.nextMention != null,
+                            onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
+                        )
                         ScrollToBottomButton(
                             visible = showScrollToBottom,
                             unreadCount = conversation.conversation.unreadCount,
-                            modifier = Modifier.align(Alignment.BottomEnd)
-                                .padding(end = 16.dp, bottom = 16.dp),
                             onClick = {
                                 if (uiState.hasNewerMessages) {
                                     // Deep in history: the bottom of the loaded
@@ -1386,6 +1395,7 @@ fun ConversationContent(
                                 }
                             },
                         )
+                        }
 
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -2333,6 +2343,29 @@ private suspend fun LazyListState.animateScrollToItemUnlessPreempted(index: Int)
         // Compose's MutationInterruptedException is internal; a still-active context means
         // another scroll took the list over, not the caller going away.
         if (!currentCoroutineContext().isActive) throw e
+    }
+}
+
+@Composable
+private fun JumpToMentionButton(
+    visible: Boolean,
+    onClick: () -> Unit,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        SmallFloatingActionButton(
+            onClick = onClick,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.AlternateEmail,
+                contentDescription = stringResource(MR.string.chat_jump_to_mention),
+            )
+        }
     }
 }
 

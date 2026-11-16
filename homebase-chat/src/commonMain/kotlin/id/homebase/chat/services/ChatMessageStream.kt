@@ -17,6 +17,7 @@ import id.homebase.api.common.BatchResult
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.ScannedMessage
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.groodle.GroodleVote
@@ -439,6 +440,11 @@ class ChatMessageStream(
      * reuse the existing one. Returns false when the conversation has no window
      * cached at all.
      */
+    suspend fun nextUnreadMention(conversationId: Uuid, afterUserDateMs: Long): ScannedMessage? =
+        dbm.chatMentionIndex.selectOldestMentionAfter(
+            credentialsManager.requireActiveCredentials().getIdentityId(), conversationId, afterUserDateMs,
+        )
+
     fun isMessageInWindow(conversationId: Uuid, messageId: Uuid): Boolean =
         messageInWindow(conversationId, messageId) != null
 

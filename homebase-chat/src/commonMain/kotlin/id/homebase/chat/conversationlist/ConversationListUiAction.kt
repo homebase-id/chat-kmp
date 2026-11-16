@@ -258,6 +258,7 @@ sealed interface ConversationListUiAction {
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
     data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class ScrollToMessageId(val messageId: Uuid) : ConversationListUiAction
+    data object JumpToNextMention : ConversationListUiAction
 
     /**
      * User tapped the inline reply-preview chip pinned above a message bubble.

@@ -574,6 +574,8 @@
     <string name="chat_message_search_result_count">%1$d of %2$d</string>
     <string name="chat_message_search_no_results">No results</string>
     <string name="chat_scroll_to_bottom">Scroll to bottom</string>
+    <string name="chat_jump_to_mention">Jump to unread mention</string>
+    <string name="chat_unread_mention">You were mentioned</string>
     <string name="chat_previous_result">Previous result</string>
     <string name="chat_next_result">Next result</string>
     <string name="chat_no_gallery_items">No items</string>

@@ -549,6 +549,8 @@
     <string name="chat_message_search_result_count">%1$d af %2$d</string>
     <string name="chat_message_search_no_results">Ingen resultater</string>
     <string name="chat_scroll_to_bottom">Gå til bunden</string>
+    <string name="chat_jump_to_mention">Gå til ulæst omtale</string>
+    <string name="chat_unread_mention">Du er blevet nævnt</string>
     <string name="chat_previous_result">Forrige resultat</string>
     <string name="chat_next_result">Næste resultat</string>
     <string name="chat_no_gallery_items">Ingen elementer</string>

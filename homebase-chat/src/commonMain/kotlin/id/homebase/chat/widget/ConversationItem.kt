@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +88,7 @@ import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_archived
+import id.homebase.resources.chat_unread_mention
 import id.homebase.resources.chat_connection_invitation_received
 import id.homebase.resources.chat_connection_invitation_sent
 import id.homebase.resources.chat_connection_invited
@@ -351,7 +353,9 @@ fun ConversationItem(
                         modifier = Modifier.weight(1f)
                     )
 
-                    UnreadBadge(enrichedData.conversation.unreadCount)
+                    val unreadMentions = enrichedData.conversation.unreadMentionCount
+                    MentionBadge(unreadMentions > 0)
+                    UnreadBadge(if (unreadMentions > 0 && enrichedData.conversation.unreadCount == 1) 0 else enrichedData.conversation.unreadCount)
                     if (enrichedData.conversation.unreadCount == 0 && draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                         Spacer(modifier = Modifier.width(Dimens.Spacing.label))
                         DeliveryStatus(
@@ -444,6 +448,29 @@ fun ConversationItem(
                         onArchive = onArchiveClick,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MentionBadge(visible: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
+        exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+    ) {
+        Row {
+            Spacer(modifier = Modifier.width(Dimens.Spacing.item))
+            Badge(
+                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AlternateEmail,
+                    contentDescription = stringResource(MR.string.chat_unread_mention),
+                    modifier = Modifier.padding(2.dp).size(12.dp),
+                )
             }
         }
     }

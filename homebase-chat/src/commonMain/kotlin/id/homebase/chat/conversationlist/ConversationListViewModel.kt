@@ -247,6 +247,20 @@ class ConversationListViewModel(
     // conversation like pendingScrollToLatest.
     private val frozenUnreadBoundary = mutableMapOf<Uuid, Instant>()
 
+    // Mentions at or before this userDate (epoch ms) are already jumped to or read; seeded from the
+    // frozen boundary so opening the conversation (which advances lastRead) does not hide the control.
+    private val mentionCursor = mutableMapOf<Uuid, Long>()
+
+    private fun refreshNextMention(conversationId: Uuid) {
+        val cursor = mentionCursor[conversationId] ?: return
+        viewModelScope.launch {
+            val next = chatMessageStream.nextUnreadMention(conversationId, cursor)
+            if (mentionCursor[conversationId] == cursor) {
+                _messagesUiState.update { it.copy(nextMention = next?.let { n -> NextMention(n.uniqueId, n.userDateMs) }) }
+            }
+        }
+    }
+
     private val jumpCoordinator = MessageJumpCoordinator(
         messagesUiState = _messagesUiState,
         isMessageInWindow = chatMessageStream::isMessageInWindow,
@@ -1353,10 +1367,14 @@ class ConversationListViewModel(
                 // Drop the frozen unread boundary so re-entering recomputes it from
                 // the (now advanced) lastRead — a fully-read conversation then shows
                 // no separator on the next open.
-                _uiState.value.selectedConversationId?.let { frozenUnreadBoundary.remove(it) }
+                _uiState.value.selectedConversationId?.let {
+                    frozenUnreadBoundary.remove(it)
+                    mentionCursor.remove(it)
+                }
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
                     it.closeMediaViewer().copy(
+                        nextMention = null,
                         messages = persistentListOf(),
                         agentUiReplies = persistentListOf(),
                         isLoadingMessages = false,
@@ -1434,6 +1452,17 @@ class ConversationListViewModel(
             is ConversationListUiAction.DownloadVideoMedia -> mediaDownloadHandler.handleDownloadVideoMedia(action)
 
             is ConversationListUiAction.DecryptFile -> mediaDownloadHandler.handleDecryptFile(action)
+
+            is ConversationListUiAction.JumpToNextMention -> {
+                val conversationId = _uiState.value.selectedConversationId
+                val target = _messagesUiState.value.nextMention
+                if (conversationId != null && target != null) {
+                    mentionCursor[conversationId] = target.userDateMs
+                    _messagesUiState.update { it.copy(nextMention = null) }
+                    refreshNextMention(conversationId)
+                    onAction(ConversationListUiAction.ScrollToMessageId(target.messageId))
+                }
+            }
 
             is ConversationListUiAction.ScrollToMessageId -> {
                 val conversationId = _uiState.value.selectedConversationId
@@ -1923,11 +1952,17 @@ class ConversationListViewModel(
         if (isNewSelection) {
             // Only one conversation is viewed at a time; drop any stale boundaries.
             frozenUnreadBoundary.clear()
+            mentionCursor.clear()
+            _messagesUiState.update { it.copy(nextMention = null) }
             val convo = _uiState.value.activeConversations
                 .find { it.conversation.id == conversationId }
                 ?.conversation
             if (convo != null && convo.unreadCount > 0) {
                 frozenUnreadBoundary[conversationId] = convo.lastRead
+                if (convo.isGroup && convo.unreadMentionCount > 0) {
+                    mentionCursor[conversationId] = convo.lastRead.toEpochMilliseconds()
+                    refreshNextMention(conversationId)
+                }
             }
             unpinExpiredPins(conversationId)
         }

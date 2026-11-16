@@ -75,6 +75,9 @@ fun findMentions(text: String): List<Mention> {
     return mentions ?: emptyList()
 }
 
-/** Body-level [Mention.isIdentity]. No production caller yet; #1417's notification gate is it. */
+/**
+ * Body-level [Mention.isIdentity]. Blind spot: a body over the header budget is stored as a
+ * 400-code-point preview, so a mention further in is not on the device until the full text is fetched.
+ */
 fun mentionsIdentity(text: String, odinId: String): Boolean =
     findMentions(text).any { it.isIdentity(odinId) }
