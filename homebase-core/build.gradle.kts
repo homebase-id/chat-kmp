@@ -222,6 +222,8 @@ kotlin {
         jvmTest.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.koin.test)
+            implementation(libs.androidx.navigationevent)
+            implementation(libs.androidx.navigationevent.compose)
         }
         iosTest.dependencies {
             implementation(libs.sqldelight.native.driver)
