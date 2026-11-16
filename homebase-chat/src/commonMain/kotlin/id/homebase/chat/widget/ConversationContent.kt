@@ -1368,33 +1368,33 @@ fun ConversationContent(
                                 .padding(end = 16.dp, bottom = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                        JumpToMentionButton(
-                            visible = uiState.nextMention != null,
-                            onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
-                        )
-                        ScrollToBottomButton(
-                            visible = showScrollToBottom,
-                            unreadCount = conversation.conversation.unreadCount,
-                            onClick = {
-                                if (uiState.hasNewerMessages) {
-                                    // Deep in history: the bottom of the loaded
-                                    // window isn't the latest message, so a plain
-                                    // animateScrollToItem(last) would land mid-history.
-                                    // Reload the latest page instead — the VM marks
-                                    // the reload pending-scroll-to-latest and the
-                                    // resulting emission carries a triggerScroll
-                                    // bottom anchor (resolveScrollToLatestPosition)
-                                    // that ConversationMessagesPane scrolls to.
-                                    // (Auto-follow can't do this: it only fires on
-                                    // list growth while already at the bottom, but
-                                    // this reload shrinks the window from up in
-                                    // history.)
-                                    onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
-                                } else {
-                                    coroutineScope.launch { listState.animateScrollToNewestItem() }
-                                }
-                            },
-                        )
+                            JumpToMentionButton(
+                                visible = uiState.nextMention != null,
+                                onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
+                            )
+                            ScrollToBottomButton(
+                                visible = showScrollToBottom,
+                                unreadCount = conversation.conversation.unreadCount,
+                                onClick = {
+                                    if (uiState.hasNewerMessages) {
+                                        // Deep in history: the bottom of the loaded
+                                        // window isn't the latest message, so a plain
+                                        // animateScrollToItem(last) would land mid-history.
+                                        // Reload the latest page instead — the VM marks
+                                        // the reload pending-scroll-to-latest and the
+                                        // resulting emission carries a triggerScroll
+                                        // bottom anchor (resolveScrollToLatestPosition)
+                                        // that ConversationMessagesPane scrolls to.
+                                        // (Auto-follow can't do this: it only fires on
+                                        // list growth while already at the bottom, but
+                                        // this reload shrinks the window from up in
+                                        // history.)
+                                        onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
+                                    } else {
+                                        coroutineScope.launch { listState.animateScrollToNewestItem() }
+                                    }
+                                },
+                            )
                         }
 
                     } else {
@@ -2347,30 +2347,34 @@ private suspend fun LazyListState.animateScrollToItemUnlessPreempted(index: Int)
 }
 
 @Composable
-private fun JumpToMentionButton(
+internal fun JumpToMentionButton(
     visible: Boolean,
     onClick: () -> Unit,
 ) {
+    val motion = MaterialTheme.motionScheme
     androidx.compose.animation.AnimatedVisibility(
         visible = visible,
-        enter = fadeIn() + scaleIn(),
-        exit = fadeOut() + scaleOut(),
+        enter = fadeIn(motion.fastEffectsSpec()) + scaleIn(motion.fastSpatialSpec()) + expandVertically(motion.fastSpatialSpec()),
+        exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()) + shrinkVertically(motion.fastSpatialSpec()),
     ) {
-        SmallFloatingActionButton(
-            onClick = onClick,
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.AlternateEmail,
-                contentDescription = stringResource(MR.string.chat_jump_to_mention),
-            )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            SmallFloatingActionButton(
+                onClick = onClick,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AlternateEmail,
+                    contentDescription = stringResource(MR.string.chat_jump_to_mention),
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
 
 @Composable
-private fun ScrollToBottomButton(
+internal fun ScrollToBottomButton(
     visible: Boolean,
     unreadCount: Int,
     modifier: Modifier = Modifier,

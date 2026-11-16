@@ -469,7 +469,7 @@ private fun MentionBadge(visible: Boolean) {
                 Icon(
                     imageVector = Icons.Outlined.AlternateEmail,
                     contentDescription = stringResource(MR.string.chat_unread_mention),
-                    modifier = Modifier.padding(2.dp).size(12.dp),
+                    modifier = Modifier.padding(vertical = 4.dp).size(16.dp),
                 )
             }
         }
