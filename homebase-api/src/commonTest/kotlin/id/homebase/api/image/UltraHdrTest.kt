@@ -111,6 +111,22 @@ class UltraHdrTest {
     }
 
     @Test
+    fun anMpfImageThePrimaryDoesntDeclareIsNotAGainmap() {
+        // A camera's large preview: an MPF second image, with no hdrgm XMP or ISO block in the primary.
+        val joined = UltraHdr.join(jpeg(1), jpeg(2), metadata)
+        val primaryEnd = UltraHdr.gainmapRange(joined)!!.first.toInt()
+        val undeclared = joined.copyOf()
+        for (word in listOf("hdr-gain-map", "21496")) {
+            var at = joined.decodeToString(0, primaryEnd).indexOf(word)
+            while (at >= 0) {
+                word.indices.forEach { undeclared[at + it] = 'x'.code.toByte() }
+                at = joined.decodeToString(0, primaryEnd).indexOf(word, at + 1)
+            }
+        }
+        assertNull(UltraHdr.gainmapRange(undeclared))
+    }
+
+    @Test
     fun aPlainJpegHasNoGainmap() {
         assertNull(UltraHdr.gainmapOf(jpeg(1, 2)))
     }

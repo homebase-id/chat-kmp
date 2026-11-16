@@ -1,6 +1,8 @@
 package id.homebase.api.image
 
 import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.CancellationException
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -104,6 +106,9 @@ internal interface PipelineBitmap : AutoCloseable {
 
 internal expect fun openImageSource(bytes: ByteArray): ImageSource
 
+/** A gain-map JPEG, decoded with its values untouched: they're data, not colour, so nothing may colour-convert them. */
+internal expect fun openGainmapSource(bytes: ByteArray): ImageSource
+
 /** [path] for the decoder to read itself, like its bytes would; null where [fileOps] must read the bytes. */
 internal expect fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource?
 
@@ -133,7 +138,16 @@ internal class HdrGainmap(val image: ImageSource, val metadata: GainmapMetadata)
          * file's tail, a fraction of its size) and tagged with the source's orientation so it turns upright with it.
          * Null for anything else.
          */
-        suspend fun of(header: ByteArray, readRange: suspend (LongRange) -> ByteArray): HdrGainmap? {
+        suspend fun of(header: ByteArray, readRange: suspend (LongRange) -> ByteArray): HdrGainmap? = try {
+            find(header, readRange)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = "HdrGainmap", throwable = e) { "The gain map couldn't be read; the photo goes as SDR" }
+            null
+        }
+
+        private suspend fun find(header: ByteArray, readRange: suspend (LongRange) -> ByteArray): HdrGainmap? {
             val range = UltraHdr.gainmapRange(header)
                 ?: if (UltraHdr.mayHaveMpfBeyond(header)) UltraHdr.gainmapRange(readRange(0L until LONG_HEADER_BYTES)) else null
             if (range == null || range.last - range.first >= MAX_GAINMAP_BYTES) return null
@@ -141,7 +155,7 @@ internal class HdrGainmap(val image: ImageSource, val metadata: GainmapMetadata)
             val metadata = UltraHdr.metadataOf(jpeg) ?: return null
             val orientation = readJpegExifOrientation(header) ?: 1
             val upright = if (orientation == 1) jpeg else ImageMetadataScrubber.withOrientation(jpeg, orientation)
-            return HdrGainmap(openImageSource(upright), metadata)
+            return HdrGainmap(openGainmapSource(upright), metadata)
         }
 
         // MPF sits after EXIF (with its thumbnail), XMP and ICC, which can outgrow a 64 KB header read.
@@ -220,20 +234,36 @@ private suspend fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): R
     }
 }
 
-// HDR never costs pixels: an Ultra HDR JPEG over the output's limit makes it the SDR image at full size instead.
-// The gain map keeps its share of the source's size, as the camera made it.
+// HDR never costs pixels: an Ultra HDR JPEG over the output's limit, or a gain map that won't render, makes it the SDR
+// image at full size instead.
 private suspend fun hdrWithinLimit(bitmap: PipelineBitmap, output: ImageOutput, gainmap: HdrGainmap, source: ImageSize): RenderedImage? {
     val primary = bitmap.encode(ImageFormat.JPEG, output.quality)
     if (primary.size >= output.maxBytes) return null
-    val map = gainmap.image.displayedSize
-    val width = max(1, (map.pixelWidth.toLong() * bitmap.width / source.pixelWidth).toInt())
-    val height = max(1, (map.pixelHeight.toLong() * bitmap.height / source.pixelHeight).toInt())
-    val decoded = gainmap.image.decode(max(width, height))
-    val scaled = scaleDown(decoded, width, height)
-    if (scaled !== decoded) decoded.close()
-    val mapJpeg = scaled.use { it.encode(ImageFormat.JPEG, output.quality) }
+    val mapJpeg = try {
+        renderedGainmap(gainmap.image, bitmap.width * 1.0 / source.pixelWidth, bitmap.height * 1.0 / source.pixelHeight, output.quality)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = "HdrGainmap", throwable = e) { "The gain map couldn't be rendered; the image goes as SDR" }
+        return null
+    }
     val bytes = UltraHdr.join(primary, mapJpeg, gainmap.metadata)
     return RenderedImage(bytes, bitmap.width, bitmap.height, output.quality, ImageFormat.JPEG).takeIf { bytes.size <= output.maxBytes }
+}
+
+// The gain map keeps its share of the source's size, as the camera made it.
+private suspend fun renderedGainmap(map: ImageSource, xScale: Double, yScale: Double, quality: Int): ByteArray {
+    val width = max(1, (map.displayedSize.pixelWidth * xScale).toInt())
+    val height = max(1, (map.displayedSize.pixelHeight * yScale).toInt())
+    val decoded = map.decode(max(width, height))
+    val scaled = try {
+        scaleDown(decoded, width, height)
+    } catch (e: Throwable) {
+        decoded.close()
+        throw e
+    }
+    if (scaled !== decoded) decoded.close()
+    return scaled.use { it.encode(ImageFormat.JPEG, quality) }
 }
 
 private suspend fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage = when (output.overLimit) {

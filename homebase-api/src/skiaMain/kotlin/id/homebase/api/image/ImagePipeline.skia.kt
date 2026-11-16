@@ -58,6 +58,10 @@ internal expect suspend fun resampleRaster(image: Image, width: Int, height: Int
 internal val Image.pipelineAlphaType: ColorAlphaType
     get() = if (alphaType == ColorAlphaType.OPAQUE) ColorAlphaType.OPAQUE else ColorAlphaType.PREMUL
 
+// Skia reads pixels in the image's own colour space, so a gain map's values come through untouched; ImageIO, which iOS
+// otherwise decodes with, would draw them into sRGB.
+internal actual fun openGainmapSource(bytes: ByteArray): ImageSource = SkiaImageSource(bytes)
+
 /** Skia reads EXIF rotation itself and decodes lazily, so the size costs no pixels. */
 internal class SkiaImageSource(private val bytes: ByteArray) : ImageSource {
     private val image: Image = ImageUtils.decodeImage(bytes)

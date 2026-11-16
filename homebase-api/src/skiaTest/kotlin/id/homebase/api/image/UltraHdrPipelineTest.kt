@@ -3,6 +3,9 @@ package id.homebase.api.image
 import kotlinx.coroutines.test.runTest
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Color
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Surface
@@ -39,6 +42,35 @@ class UltraHdrPipelineTest {
         val pixels = Bitmap.makeFromImage(map)
         val grey = Color.getR(pixels.getColor(map.width / 2, map.height / 2))
         assertTrue(abs(grey - 128) <= 3, "gain map value moved to $grey")
+    }
+
+    @Test
+    fun aSingleChannelGainmapKeepsItsDarkValues() = runTest {
+        // Cameras write the gain map as a grey JPEG; colour-converting it would move a 10 to about 3.
+        val grey = Surface.makeRaster(ImageInfo(400, 300, ColorType.GRAY_8, ColorAlphaType.OPAQUE))
+        grey.canvas.clear(Color.makeRGB(10, 10, 10))
+        val greyJpeg = grey.makeImageSnapshot().encodeToData(EncodedImageFormat.JPEG, 95)!!.bytes
+        val source = UltraHdr.join(jpeg(1600, 1200, 0xFF6699CC.toInt()), greyJpeg, metadata)
+
+        val final = assertNotNull(createMediaImages(source, "k", MediaQuality.HD, hdr = true).finalImage)
+
+        val map = Image.makeFromEncoded(assertNotNull(UltraHdr.gainmapOf(final.bytes)).jpeg)
+        val value = Color.getR(Bitmap.makeFromImage(map).getColor(map.width / 2, map.height / 2))
+        assertTrue(abs(value - 10) <= 2, "gain map value moved from 10 to $value")
+    }
+
+    @Test
+    fun aBrokenGainmapStillGivesTheSdrImage() = runTest {
+        // The gain map's frame header turned into a comment: its metadata reads, its pixels won't decode.
+        val broken = ultraHdrSource()
+        val gainmapStart = UltraHdr.gainmapRange(broken)!!.first.toInt()
+        val sof = (gainmapStart until broken.size - 1).first { broken[it] == 0xFF.toByte() && broken[it + 1] == 0xC0.toByte() }
+        broken[sof + 1] = 0xFE.toByte()
+
+        val final = assertNotNull(createMediaImages(broken, "k", MediaQuality.HD, hdr = true).finalImage)
+
+        assertEquals(ImageFormat.WEBP, final.format)
+        assertEquals(1600, final.width)
     }
 
     @Test

@@ -26,26 +26,32 @@ class UltraHdrDeviceTest {
     fun theSharedReaderReadsWhatAndroidWrites() {
         val source = ultraHdrJpeg(800, 600)
         val android = assertNotNull(BitmapFactory.decodeByteArray(source, 0, source.size).gainmap)
-        val shared = assertNotNull(UltraHdr.gainmapOf(source)).metadata
+        val shared = assertNotNull(UltraHdr.metadataOf(gainmapJpeg(source)))
         assertSame(android, shared)
     }
 
     @Test
     fun androidReadsWhatTheSharedWriterWrites() {
         val source = ultraHdrJpeg(800, 600)
-        val gainmap = assertNotNull(UltraHdr.gainmapOf(source))
+        val gainmapJpeg = gainmapJpeg(source)
+        val metadata = assertNotNull(UltraHdr.metadataOf(gainmapJpeg))
         // A fresh SDR primary, as the pipeline encodes one: no gain map, XMP or MPF of its own.
         val primary = ByteArrayOutputStream().also {
             Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF6699CC.toInt()) }
                 .compress(Bitmap.CompressFormat.JPEG, 90, it)
         }.toByteArray()
 
-        val joined = UltraHdr.join(primary, gainmap.jpeg, gainmap.metadata)
+        val joined = UltraHdr.join(primary, gainmapJpeg, metadata)
 
         val decoded = assertNotNull(BitmapFactory.decodeByteArray(joined, 0, joined.size))
         assertTrue(decoded.hasGainmap(), "Android finds the gain map")
         assertEquals(200, decoded.gainmap!!.gainmapContents.width)
-        assertSame(decoded.gainmap!!, gainmap.metadata)
+        assertSame(decoded.gainmap!!, metadata)
+    }
+
+    private fun gainmapJpeg(jpeg: ByteArray): ByteArray {
+        val range = assertNotNull(UltraHdr.gainmapRange(jpeg))
+        return jpeg.copyOfRange(range.first.toInt(), range.last.toInt() + 1)
     }
 
     private fun assertSame(android: Gainmap, shared: GainmapMetadata) {

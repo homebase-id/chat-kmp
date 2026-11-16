@@ -173,6 +173,9 @@ private fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {
 
 internal actual fun openImageSource(bytes: ByteArray): ImageSource = AndroidImageSource(AndroidImageInput.Bytes(bytes))
 
+// ImageDecoder reads an untagged JPEG as sRGB and keeps its values.
+internal actual fun openGainmapSource(bytes: ByteArray): ImageSource = openImageSource(bytes)
+
 internal actual fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource? {
     val files = fileOps as? AndroidFileOperationsProvider
     val input = when {

@@ -18,11 +18,8 @@ data class GainmapMetadata(
     val hdrCapacityMax: Double,
     val useBaseColorSpace: Boolean = true,
 ) {
-    val channels: Int get() = gainMapMax.size
+    val channels: Int get() = maxOf(gainMapMin.size, gainMapMax.size, gamma.size, offsetSdr.size, offsetHdr.size)
 }
-
-/** A gain map as its own JPEG, and how to apply it. */
-internal class Gainmap(val jpeg: ByteArray, val metadata: GainmapMetadata)
 
 /**
  * Ultra HDR JPEGs: an SDR primary image, then a gain-map JPEG, joined by an MPF index (CIPA DC-007), with the gain
@@ -31,19 +28,25 @@ internal class Gainmap(val jpeg: ByteArray, val metadata: GainmapMetadata)
  * Layouts follow Google's libultrahdr.
  */
 internal object UltraHdr {
-    /** The gain map's byte range in [jpeg], from the primary image's MPF index; [jpeg] needs only reach past that. */
+    /**
+     * The gain map's byte range in [jpeg], from the primary image's MPF index, when the primary declares one (an
+     * `hdrgm` XMP or an ISO 21496-1 block): a camera's MPF can also hold a large preview, which isn't one.
+     * [jpeg] needs only reach past the MPF index.
+     */
     fun gainmapRange(jpeg: ByteArray): LongRange? {
         if (!isJpeg(jpeg)) return null
+        var declared = false
         var range: LongRange? = null
         walkJpegSegments(jpeg) { marker, payload, end ->
-            if (marker == MARKER_APP2 && startsWith(jpeg, payload, end, MPF_HEADER)) {
-                range = secondImage(jpeg, payload + MPF_HEADER.size, end)
-                false
-            } else {
-                true
+            when {
+                marker == MARKER_APP2 && startsWith(jpeg, payload, end, ISO_NAMESPACE) -> declared = true
+                marker == MARKER_APP1 && startsWith(jpeg, payload, end, XMP_JPEG_HEADER) ->
+                    declared = declared || jpeg.decodeToString(payload, end).contains(HDRGM_NS)
+                marker == MARKER_APP2 && startsWith(jpeg, payload, end, MPF_HEADER) -> range = secondImage(jpeg, payload + MPF_HEADER.size, end)
             }
+            range == null
         }
-        return range
+        return range.takeIf { declared }
     }
 
     /**
@@ -56,13 +59,6 @@ internal object UltraHdr {
         walkJpegSegments(header) { _, _, segmentEnd -> end = segmentEnd; true }
         // A walk that reached the scan stops at its SOS marker; one cut off by the header's end doesn't.
         return !(end + 1 < header.size && (header[end + 1].toInt() and 0xFF) == MARKER_SOS)
-    }
-
-    fun gainmapOf(jpeg: ByteArray): Gainmap? {
-        val range = gainmapRange(jpeg) ?: return null
-        if (range.last >= jpeg.size) return null
-        val gainmap = jpeg.copyOfRange(range.first.toInt(), range.last.toInt() + 1)
-        return metadataOf(gainmap)?.let { Gainmap(gainmap, it) }
     }
 
     /** A gain-map JPEG's metadata: its ISO 21496-1 block if it has one, else its `hdrgm` XMP. */

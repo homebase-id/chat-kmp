@@ -49,7 +49,8 @@ suspend fun createMediaImages(
     if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
     openImageSource(imageBytes).use {
         mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata, hdr) { range ->
-            imageBytes.copyOfRange(range.first.toInt(), minOf(range.last + 1, imageBytes.size.toLong()).toInt())
+            val size = imageBytes.size.toLong()
+            imageBytes.copyOfRange(range.first.coerceIn(0, size).toInt(), (range.last + 1).coerceIn(0, size).toInt())
         }
     }
 }

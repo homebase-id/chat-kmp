@@ -67,7 +67,7 @@ internal fun mpfEntries(b: ByteArray, tiff: Int, end: Int): MpfEntries? {
         if (readU16(b, entry, little) != 0xB002) continue
         val count = readU32(b, entry + 4, little) / 16
         val list = tiff + readU32(b, entry + 8, little)
-        if (count < 0 || list < tiff || list + count * 16 > end) return null
+        if (count < 0 || list < tiff || list.toLong() + count.toLong() * 16 > end) return null
         return MpfEntries(little, list, count)
     }
     return null
