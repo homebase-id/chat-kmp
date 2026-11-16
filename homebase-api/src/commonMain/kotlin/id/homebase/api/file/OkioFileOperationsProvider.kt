@@ -75,11 +75,17 @@ open class OkioFileOperationsProvider(
     // ONE chunk, defeating streamed encryption's bounded-memory point.
     override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> = flow {
         openSource(path).buffer().use { source ->
-            val buf = ByteArray(chunkSize)
+            // Okio's read returns at most one 8 KB segment: fill the chunk, or each emit carries 8 KB.
             while (true) {
-                val read = source.read(buf, 0, chunkSize)
-                if (read == -1) break
-                if (read > 0) emit(buf.copyOf(read))
+                val buf = ByteArray(chunkSize)
+                var filled = 0
+                while (filled < chunkSize) {
+                    val read = source.read(buf, filled, chunkSize - filled)
+                    if (read == -1) break
+                    filled += read
+                }
+                if (filled > 0) emit(if (filled == chunkSize) buf else buf.copyOf(filled))
+                if (filled < chunkSize) break
             }
         }
     }.flowOn(io)

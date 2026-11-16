@@ -167,14 +167,15 @@ class Media3VideoCompressorTest {
 
     /**
      * Not a check: times Media3 against ffmpeg on videos pushed to the test app's own folder, e.g.
-     * `adb push big.mp4 /sdcard/Android/data/id.homebase.api.test/files/bench/`. Does nothing when it's empty.
+     * `adb push big.mp4 /sdcard/Android/data/id.homebase.api.test/files/bench/`, or with `run-as` into the app's
+     * internal files/bench/ where Android hides adb's files from the app. Does nothing when both are empty.
      * Runs alternate which goes first and pause between, as the phone throttles when hot.
      */
     @Test
     fun benchmarkAgainstFfmpeg() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val power = context.getSystemService(android.os.PowerManager::class.java)
-        val inputs = File(context.getExternalFilesDir(null), "bench").listFiles { f -> f.extension.lowercase() in setOf("mp4", "mov") }.orEmpty()
+        val inputs = benchInputs()
         if (inputs.isEmpty()) return@runBlocking
         var media3First = true
         for (input in inputs.sortedBy { it.length() }) {
@@ -294,7 +295,7 @@ class Media3VideoCompressorTest {
     @Test
     fun benchmarkSegmenting() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val inputs = File(context.getExternalFilesDir(null), "bench").listFiles { f -> f.extension.lowercase() in setOf("mp4", "mov") }.orEmpty()
+        val inputs = benchInputs()
         for (input in inputs) {
             val compressed = Media3VideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, true)
             val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
@@ -318,7 +319,7 @@ class Media3VideoCompressorTest {
     @Test
     fun benchmarkSegmentingAsIs() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val inputs = File(context.getExternalFilesDir(null), "bench").listFiles { f -> f.extension.lowercase() in setOf("mp4", "mov") }.orEmpty()
+        val inputs = benchInputs()
         for (input in inputs) {
             val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
             repeat(2) { round ->
@@ -349,6 +350,13 @@ class Media3VideoCompressorTest {
         } finally {
             extractor.release()
         }
+    }
+
+    // The app's own bench/ folders: external for adb push on newer Android, internal (via run-as) everywhere.
+    private fun benchInputs(): List<File> {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        return listOfNotNull(context.getExternalFilesDir(null), context.filesDir)
+            .flatMap { File(it, "bench").listFiles { f -> f.extension.lowercase() in setOf("mp4", "mov") }.orEmpty().toList() }
     }
 
     private suspend fun timed(block: suspend () -> String): Pair<Long, Long> {
