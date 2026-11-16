@@ -100,6 +100,21 @@ class ProfileCardOverviewFlowTest {
     }
 
     @Test
+    fun closingAnOpenedCardReturnsToTheOverviewAndClosingTheOverviewLeaves() = runDesktopComposeUiTest(width = 824, height = 1784) {
+        val rig = screen()
+        waitUntil(timeoutMillis = 10_000) { hasText("Open Friends card") }
+        onNodeWithContentDescription("Open Friends card").performClick()
+        waitUntil(timeoutMillis = 10_000) { hasText("Edit") }
+
+        onNodeWithContentDescription("Close").performClick()
+        waitUntil(timeoutMillis = 10_000) { hasText("Open Friends card") }
+        assertEquals(0, rig.backs)
+
+        onNodeWithContentDescription("Close").performClick()
+        waitUntil(timeoutMillis = 10_000) { rig.backs == 1 }
+    }
+
+    @Test
     fun onAPhoneTheOverviewIsAPageBehindTheCardSheetAndClosingTheCardReturnsToIt() = runDesktopComposeUiTest(width = 824, height = 1784) {
         val rig = screen(sheeted = true)
         waitUntil(timeoutMillis = 10_000) { hasText("Open Friends card") }
