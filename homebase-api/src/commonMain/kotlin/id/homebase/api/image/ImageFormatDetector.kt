@@ -127,10 +127,10 @@ object ImageFormatDetector {
         return false
     }
 
-    private fun gifColorTableSize(packed: Byte): Int =
+    internal fun gifColorTableSize(packed: Byte): Int =
         if ((packed.toInt() and 0x80) != 0) 3 * (1 shl ((packed.toInt() and 0x07) + 1)) else 0
 
-    private fun skipGifSubBlocks(b: ByteArray, start: Int): Int {
+    internal fun skipGifSubBlocks(b: ByteArray, start: Int): Int {
         var i = start
         while (i < b.size) {
             val length = b[i].toInt() and 0xFF
@@ -139,6 +139,9 @@ object ImageFormatDetector {
         }
         return i
     }
+
+    /** Browsers and ffmpeg both play a delay under 2 cs at 10 cs. */
+    internal fun playedDelayCs(delayCs: Int) = if (delayCs < 2) 10 else delayCs
 
     internal class GifInfo(val width: Int, val height: Int, val frameCount: Int, val durationCs: Int)
 
@@ -153,8 +156,7 @@ object ImageFormatDetector {
             when (b[i].toInt() and 0xFF) {
                 0x2C -> {
                     frames++
-                    // Browsers and ffmpeg both play a delay under 2 cs at 10 cs.
-                    durationCs += if (delayCs < 2) 10 else delayCs
+                    durationCs += playedDelayCs(delayCs)
                     delayCs = 0
                     if (i + 10 > b.size) break
                     i = skipGifSubBlocks(b, i + 10 + gifColorTableSize(b[i + 9]) + 1)
@@ -169,7 +171,7 @@ object ImageFormatDetector {
         return if (frames > 0) GifInfo(u16le(b, 6), u16le(b, 8), frames, durationCs) else null
     }
 
-    private fun u16le(b: ByteArray, at: Int): Int = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
+    internal fun u16le(b: ByteArray, at: Int): Int = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
 
     private fun u32be(b: ByteArray, at: Int): Int = (0..3).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }
     private fun u32le(b: ByteArray, at: Int): Int = (3 downTo 0).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }

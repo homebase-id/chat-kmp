@@ -2,12 +2,13 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.image.calculateTargetDimensions
+import id.homebase.api.image.gif.lowersFrameRate
+import id.homebase.api.image.gif.reencodeGif
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.lib.image.ImageFormatDetector.GifInfo
 import kotlin.math.min
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
-import id.homebase.api.image.gif.reencodeGif
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -19,7 +20,7 @@ object GifShrinker {
     internal const val MAX_INPUT_BYTES = 40 * 1024 * 1024
 
     // Bounds the work: every output pixel is scaled twice, once for the palette and once to encode.
-    private const val MAX_BUFFERED_PIXELS = 32L * 1024 * 1024
+    private const val MAX_SCALED_PIXELS = 32L * 1024 * 1024
     private const val TIMEOUT_MS = 30_000L
 
     private class Step(
@@ -39,7 +40,7 @@ object GifShrinker {
 
     internal enum class OverBudget { InputTooLarge, TooManyPixels, Timeout, EncodeFailed, FrameLoss, LadderExhausted }
 
-    /** One re-encode: the size, colours and frame rate (null: the source's) of a ladder step for a given GIF. */
+    /** A ladder step for one GIF; a null [fps] keeps the source's. */
     internal data class Encoding(val width: Int, val height: Int, val colors: Int, val fps: Int?)
 
     /** [overBudget] is null when [bytes] fits, or when the input was never a GIF to shrink. */
@@ -64,7 +65,7 @@ object GifShrinker {
 
         val started = TimeSource.Monotonic.markNow()
         val start = (startStep(bytes.size, maxBytes) until ladder.size)
-            .firstOrNull { ladder[it].bufferedPixels(gif) <= MAX_BUFFERED_PIXELS }
+            .firstOrNull { ladder[it].scaledPixels(gif) <= MAX_SCALED_PIXELS }
         var best = bytes
         var steps = 0
         var thrown: Exception? = null
@@ -124,10 +125,12 @@ object GifShrinker {
     }
 
     // Only ever lower the frame rate: a higher one would duplicate frames.
-    private fun Step.loweredFps(gif: GifInfo): Int? =
-        fps?.takeIf { gif.frameCount * 100L > it.toLong() * gif.durationCs }
+    private fun Step.loweredFps(gif: GifInfo): Int? = fps?.takeIf { lowersFrameRate(gif.frameCount, gif.durationCs, it) }
 
-    private fun Step.bufferedPixels(gif: GifInfo): Long {
+    /** The re-encodes the ladder would try for [gif], in order. */
+    internal fun encodings(gif: GifInfo): List<Encoding> = ladder.map { it.encoding(gif) }
+
+    private fun Step.scaledPixels(gif: GifInfo): Long {
         val (w, h) = gif.fitWithin(maxSide)
         val frames = loweredFps(gif)?.let { (gif.durationCs.toLong() * it + 99) / 100 } ?: gif.frameCount.toLong()
         return frames * w * h

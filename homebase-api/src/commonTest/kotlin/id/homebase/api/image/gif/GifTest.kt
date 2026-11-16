@@ -6,6 +6,14 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+/** Every frame of [gif], each its own copy of the canvas. */
+internal fun decode(gif: ByteArray): List<IntArray> {
+    val decoder = assertNotNull(GifDecoder.open(gif))
+    val frames = decoder.frames()
+    return List(decoder.frameCount) { frames.next().copyOf() }
+}
 
 class GifTest {
     private val red = 0xFFE01010.toInt()
@@ -15,11 +23,6 @@ class GifTest {
 
     private fun frame(w: Int, h: Int, paint: (x: Int, y: Int) -> Int) = IntArray(w * h) { paint(it % w, it / w) }
 
-    private fun decode(gif: ByteArray): List<IntArray> {
-        val frames = mutableListOf<IntArray>()
-        assertNotNull(GifDecoder.open(gif)).forEachFrame { canvas, _ -> frames += canvas.copyOf() }
-        return frames
-    }
 
     @Test
     fun framesOfPaletteColoursComeBackExactly() {
@@ -82,7 +85,7 @@ class GifTest {
         assertEquals(12, info.frameCount, "1 s at 12 fps")
         assertEquals(100, info.durationCs)
         val colours = decode(out).flatMap { it.asList() }.toSet()
-        assertEquals(true, colours.size <= 63, "${colours.size} colours")
+        assertTrue(colours.size <= 63, "${colours.size} colours")
     }
 
     @Test

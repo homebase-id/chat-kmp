@@ -1,17 +1,19 @@
 package id.homebase.api.image.gif
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import id.homebase.api.lib.image.ImageFormatDetector.playedDelayCs
+import id.homebase.api.lib.image.ImageFormatDetector.skipGifSubBlocks
+import id.homebase.api.lib.image.ImageFormatDetector.u16le
+import id.homebase.api.util.ByteBuilder
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.yield
 
 /**
  * Re-encodes an animated GIF smaller: [width]×[height], at most [colors] colours, and at most [fps] frames a second
@@ -28,7 +30,8 @@ internal suspend fun reencodeGif(gif: ByteArray, width: Int, height: Int, colors
     var previous: IntArray? = null
     val frames = decoder.frames()
     for (index in 0 until decoder.frameCount) {
-        currentCoroutineContext().ensureActive()
+        // Each frame also gives a single-threaded platform (the web) back its event loop, and lets a timeout fire.
+        yield()
         val canvas = frames.next()
         if (schedule.copiesOf(index) > 0) {
             histogram.add(canvas, previous)
@@ -36,19 +39,20 @@ internal suspend fun reencodeGif(gif: ByteArray, width: Int, height: Int, colors
         }
     }
     val writer = GifWriter(width, height, histogram.palette(colors), decoder.loopCount)
-    // Decoding and writing are sequential; scaling and mapping colours run a few frames at once, in order.
+    // Decoding and writing are sequential; scaling and mapping colours run a few frames at once, in order. A frame
+    // waits for a free scaler before it's copied, so at most that many copies are alive.
     val scalers = Channel<Scaler>(PARALLEL_FRAMES).apply { repeat(PARALLEL_FRAMES) { trySend(Scaler(decoder.width, decoder.height, width, height)) } }
     var outputIndex = 0
     coroutineScope {
         flow {
             val again = decoder.frames()
             for (index in 0 until decoder.frameCount) {
+                yield()
                 val canvas = again.next()
-                repeat(schedule.copiesOf(index)) { emit(canvas.copyOf()) }
+                repeat(schedule.copiesOf(index)) { emit(scalers.receive() to canvas.copyOf()) }
             }
-        }.map { canvas ->
-            async(Dispatchers.Default) {
-                val scaler = scalers.receive()
+        }.map { (scaler, canvas) ->
+            async {
                 try { writer.indices(scaler.scale(canvas)) } finally { scalers.send(scaler) }
             }
         }.buffer(PARALLEL_FRAMES).collect { writer.add(it.await(), schedule.delayCs(outputIndex++)) }
@@ -58,6 +62,9 @@ internal suspend fun reencodeGif(gif: ByteArray, width: Int, height: Int, colors
 
 private const val PARALLEL_FRAMES = 4
 
+/** Whether [fps] is below the rate of [frames] frames in [durationCs]: a frame rate is only ever lowered. */
+internal fun lowersFrameRate(frames: Int, durationCs: Int, fps: Int) = frames * 100L > fps.toLong() * durationCs
+
 /** Which output frames each source frame becomes when the frame rate is lowered: ticks of 1/[fps] s. */
 private class FrameSchedule(private val sourceDelaysCs: IntArray, fps: Int?) {
     private val copies: IntArray
@@ -65,7 +72,7 @@ private class FrameSchedule(private val sourceDelaysCs: IntArray, fps: Int?) {
 
     init {
         val total = sourceDelaysCs.sum()
-        if (fps == null || sourceDelaysCs.size * 100L <= fps.toLong() * total) {
+        if (fps == null || !lowersFrameRate(sourceDelaysCs.size, total, fps)) {
             copies = IntArray(sourceDelaysCs.size) { 1 }
             delays = sourceDelaysCs
         } else {
@@ -129,12 +136,6 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
             }
             return canvas
         }
-    }
-
-    /** [block] gets the canvas after each frame is drawn; it's reused, so copy what must be kept. */
-    fun forEachFrame(block: (canvas: IntArray, index: Int) -> Unit) {
-        val frames = frames()
-        for (index in 0 until frameCount) block(frames.next(), index)
     }
 
     private inner class Image(
@@ -202,9 +203,8 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
                         globalColors ?: IntArray(0)
                     }
                     if (at >= b.size) return
-                    // Browsers and ffmpeg both play a delay under 2 cs at 10 cs.
                     onImage(Image(u16(i + 1), u16(i + 3), u16(i + 5), u16(i + 7), colors, transparent, disposal,
-                        if (delayCs < 2) 10 else delayCs, packed and 0x40 != 0, at))
+                        playedDelayCs(delayCs), packed and 0x40 != 0, at))
                     transparent = -1
                     disposal = 0
                     delayCs = 0
@@ -215,17 +215,9 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
         }
     }
 
-    private fun u16(at: Int) = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
+    private fun u16(at: Int) = u16le(b, at)
 
-    private fun skipSubBlocks(from: Int): Int {
-        var i = from
-        while (i < b.size) {
-            val n = b[i].toInt() and 0xFF
-            i += n + 1
-            if (n == 0) break
-        }
-        return i
-    }
+    private fun skipSubBlocks(from: Int) = skipGifSubBlocks(b, from)
 
     private fun readColors(at: Int, n: Int): IntArray = IntArray(n) { k ->
         val p = at + k * 3
@@ -342,50 +334,46 @@ private class LzwDecoder(private val b: ByteArray, private var block: Int, priva
 
 /**
  * Area-average downscale of ARGB canvases where alpha is 0 or 255: a pixel is opaque when most of its area is.
- * Separable and in integers (coverage in 1/256ths), with its buffers kept between frames.
+ * In integers (coverage in 1/256ths), one output row at a time, so it holds a row of sums, not a frame.
  */
 internal class Scaler(private val sw: Int, private val sh: Int, private val dw: Int, private val dh: Int) {
     private val xs = spans(sw, dw)
     private val ys = spans(sh, dh)
-    private val rowR = IntArray(sh * dw)
-    private val rowG = IntArray(sh * dw)
-    private val rowB = IntArray(sh * dw)
-    private val rowA = IntArray(sh * dw)
+    private val r = LongArray(dw)
+    private val g = LongArray(dw)
+    private val b = LongArray(dw)
+    private val a = LongArray(dw)
+    // Opaque when covered by at least half the output pixel's area, in 1/256ths squared.
+    private val half = (sw.toLong() * sh * 256 * 256) / (2L * dw * dh)
 
+    /** [src] is the caller's own copy: at the same size it comes back as it is. */
     fun scale(src: IntArray): IntArray {
-        if (sw == dw && sh == dh) return src.copyOf()
-        for (y in 0 until sh) {
-            val from = y * sw
-            val to = y * dw
-            for (ox in 0 until dw) {
-                val span = xs[ox]
-                var r = 0; var g = 0; var b = 0; var a = 0
-                for (k in span.weights.indices) {
-                    val p = src[from + span.first + k]
-                    if (p ushr 24 == 0) continue
-                    val w = span.weights[k]
-                    r += w * ((p shr 16) and 0xFF)
-                    g += w * ((p shr 8) and 0xFF)
-                    b += w * (p and 0xFF)
-                    a += w
-                }
-                rowR[to + ox] = r; rowG[to + ox] = g; rowB[to + ox] = b; rowA[to + ox] = a
-            }
-        }
+        if (sw == dw && sh == dh) return src
         val out = IntArray(dw * dh)
-        // Opaque when covered by at least half the output pixel's area, in the same 1/256 units squared.
-        val half = (sw.toLong() * sh * 256 * 256) / (2L * dw * dh)
         for (oy in 0 until dh) {
-            val span = ys[oy]
-            for (ox in 0 until dw) {
-                var r = 0L; var g = 0L; var b = 0L; var a = 0L
-                for (k in span.weights.indices) {
-                    val i = (span.first + k) * dw + ox
-                    val w = span.weights[k].toLong()
-                    r += w * rowR[i]; g += w * rowG[i]; b += w * rowB[i]; a += w * rowA[i]
+            r.fill(0); g.fill(0); b.fill(0); a.fill(0)
+            val yspan = ys[oy]
+            for (ky in yspan.weights.indices) {
+                val wy = yspan.weights[ky]
+                val from = (yspan.first + ky) * sw
+                for (ox in 0 until dw) {
+                    val span = xs[ox]
+                    for (k in span.weights.indices) {
+                        val p = src[from + span.first + k]
+                        if (p ushr 24 == 0) continue
+                        val w = (wy * span.weights[k]).toLong()
+                        r[ox] += w * ((p shr 16) and 0xFF)
+                        g[ox] += w * ((p shr 8) and 0xFF)
+                        b[ox] += w * (p and 0xFF)
+                        a[ox] += w
+                    }
                 }
-                if (a < half || a == 0L) continue
-                out[oy * dw + ox] = (0xFF shl 24) or (((r + a / 2) / a).toInt() shl 16) or (((g + a / 2) / a).toInt() shl 8) or ((b + a / 2) / a).toInt()
+            }
+            for (ox in 0 until dw) {
+                val area = a[ox]
+                if (area < half || area == 0L) continue
+                out[oy * dw + ox] = (0xFF shl 24) or (((r[ox] + area / 2) / area).toInt() shl 16) or
+                    (((g[ox] + area / 2) / area).toInt() shl 8) or ((b[ox] + area / 2) / area).toInt()
             }
         }
         return out
@@ -470,39 +458,51 @@ private class Histogram(private val stride: Int, private val width: Int) {
 
 private fun key(p: Int) = (((p shr 19) and 31) shl 10) or (((p shr 11) and 31) shl 5) or ((p shr 3) and 31)
 
+/** A frame's palette indices, and whether any pixel is transparent. */
+internal class IndexedFrame(val indices: ByteArray, val transparent: Boolean)
+
 /** Writes GIF89a: one global palette, each frame only where it changed, unchanged pixels transparent. */
-internal class GifWriter(private val width: Int, private val height: Int, palette: IntArray, loopCount: Int?) {
-    private val out = GrowingBytes()
-    private val colors = palette
-    private val clearIndex = palette.size
-    private val tableBits = run { var n = 1; while ((1 shl n) < palette.size + 1) n++; n }
+internal class GifWriter(private val width: Int, private val height: Int, private val colors: IntArray, loopCount: Int?) {
+    private val out = ByteBuilder(64 * 1024)
+    private val clearIndex = colors.size
+    private val tableBits = run { var n = 1; while ((1 shl n) < colors.size + 1) n++; n }
     private val nearest = IntArray(1 shl 15) { -1 }
-    private var previous: IntArray? = null
+    private var previous: ByteArray? = null
     private var previousHadTransparency = false
     private val lzw = LzwEncoder(out)
 
     init {
-        "GIF89a".forEach { out.add(it.code) }
-        out.u16(width); out.u16(height)
-        out.add(0x80 or (7 shl 4) or (tableBits - 1)); out.add(0); out.add(0)
+        "GIF89a".forEach { out.addByte(it.code) }
+        u16(width); u16(height)
+        out.addByte(0x80 or (7 shl 4) or (tableBits - 1)); out.addByte(0); out.addByte(0)
         for (k in 0 until (1 shl tableBits)) {
             val c = if (k < colors.size) colors[k] else 0
-            out.add((c shr 16) and 0xFF); out.add((c shr 8) and 0xFF); out.add(c and 0xFF)
+            out.addByte((c shr 16) and 0xFF); out.addByte((c shr 8) and 0xFF); out.addByte(c and 0xFF)
         }
         if (loopCount != null) {
-            out.add(0x21); out.add(0xFF); out.add(11)
-            "NETSCAPE2.0".forEach { out.add(it.code) }
-            out.add(3); out.add(1); out.u16(loopCount); out.add(0)
+            out.addByte(0x21); out.addByte(0xFF); out.addByte(11)
+            "NETSCAPE2.0".forEach { out.addByte(it.code) }
+            out.addByte(3); out.addByte(1); u16(loopCount); out.addByte(0)
         }
     }
 
-    /** A frame's palette indices; safe to call for several frames at once. */
-    fun indices(frame: IntArray): IntArray = IntArray(frame.size) { i -> if (frame[i] ushr 24 == 0) clearIndex else index(frame[i]) }
+    private fun u16(v: Int) { out.addByte(v and 0xFF); out.addByte((v shr 8) and 0xFF) }
 
-    /** Writes frames in order, from their [indices]. */
-    fun add(indices: IntArray, delayCs: Int) {
+    /** A frame's palette indices; safe to call for several frames at once. */
+    fun indices(frame: IntArray): IndexedFrame {
+        var transparent = false
+        val indices = ByteArray(frame.size) { i ->
+            val p = frame[i]
+            if (p ushr 24 == 0) { transparent = true; clearIndex.toByte() } else index(p).toByte()
+        }
+        return IndexedFrame(indices, transparent)
+    }
+
+    /** Writes frames in order. */
+    fun add(frame: IndexedFrame, delayCs: Int) {
+        val indices = frame.indices
         val prev = previous
-        val transparentNow = indices.any { it == clearIndex }
+        val transparentNow = frame.transparent
         // A frame that drops pixels to transparent needs its predecessor cleared first, so frames with transparency
         // are written whole and cleared after; an opaque animation stores only what changed.
         val whole = prev == null || transparentNow || previousHadTransparency
@@ -525,27 +525,29 @@ internal class GifWriter(private val width: Int, private val height: Int, palett
         }
         val w = x1 - x0 + 1
         val h = y1 - y0 + 1
-        val rect = ByteArray(w * h)
-        var k = 0
-        for (y in y0..y1) {
-            val row = y * width
-            for (x in x0..x1) {
-                val i = row + x
-                rect[k++] = (if (!whole && indices[i] == prev!![i]) clearIndex else indices[i]).toByte()
+        val rect = if (whole) indices else ByteArray(w * h).also { rect ->
+            val clear = clearIndex.toByte()
+            var k = 0
+            for (y in y0..y1) {
+                val row = y * width
+                for (x in x0..x1) {
+                    val i = row + x
+                    rect[k++] = if (indices[i] == prev!![i]) clear else indices[i]
+                }
             }
         }
-        out.add(0x21); out.add(0xF9); out.add(4)
-        out.add(((if (transparentNow) 2 else 1) shl 2) or 1)
-        out.u16(delayCs); out.add(clearIndex); out.add(0)
-        out.add(0x2C); out.u16(x0); out.u16(y0); out.u16(w); out.u16(h); out.add(0)
+        out.addByte(0x21); out.addByte(0xF9); out.addByte(4)
+        out.addByte(((if (transparentNow) 2 else 1) shl 2) or 1)
+        u16(delayCs); out.addByte(clearIndex); out.addByte(0)
+        out.addByte(0x2C); u16(x0); u16(y0); u16(w); u16(h); out.addByte(0)
         lzw.encode(rect, max(2, tableBits))
         previous = indices
         previousHadTransparency = transparentNow
     }
 
     fun finish(): ByteArray {
-        out.add(0x3B)
-        return out.toByteArray()
+        out.addByte(0x3B)
+        return out.take()
     }
 
     // A racing lookup computes the same answer twice, so the cache needs no lock.
@@ -569,19 +571,8 @@ internal class GifWriter(private val width: Int, private val height: Int, palett
     }
 }
 
-private class GrowingBytes {
-    private var bytes = ByteArray(64 * 1024)
-    private var size = 0
-    fun add(v: Int) {
-        if (size == bytes.size) bytes = bytes.copyOf(bytes.size * 2)
-        bytes[size++] = v.toByte()
-    }
-    fun u16(v: Int) { add(v and 0xFF); add((v shr 8) and 0xFF) }
-    fun toByteArray() = bytes.copyOf(size)
-}
-
 /** GIF LZW: codes from minCodeSize+1 bits up to 12, cleared when the table is full, in 255-byte sub-blocks. */
-private class LzwEncoder(private val out: GrowingBytes) {
+private class LzwEncoder(private val out: ByteBuilder) {
     // Open addressing over (prefix, pixel) keys: a boxed map costs tens of millions of allocations a GIF, and a
     // direct 4096x256 table misses the cache on most lookups.
     private val keys = IntArray(HASH_SIZE)
@@ -595,8 +586,8 @@ private class LzwEncoder(private val out: GrowingBytes) {
 
     private fun flushBlock() {
         if (blockFill == 0) return
-        out.add(blockFill)
-        for (k in 0 until blockFill) out.add(block[k].toInt())
+        out.addByte(blockFill)
+        out.add(block, 0, blockFill)
         blockFill = 0
     }
 
@@ -615,7 +606,7 @@ private class LzwEncoder(private val out: GrowingBytes) {
         this.minCodeSize = minCodeSize
         codeSize = minCodeSize + 1
         blockFill = 0; acc = 0; bits = 0
-        out.add(minCodeSize)
+        out.addByte(minCodeSize)
         val clear = 1 shl minCodeSize
         val end = clear + 1
         keys.fill(-1)
@@ -653,7 +644,7 @@ private class LzwEncoder(private val out: GrowingBytes) {
             if (blockFill == 255) flushBlock()
         }
         flushBlock()
-        out.add(0)
+        out.addByte(0)
     }
 }
 

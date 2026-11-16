@@ -202,7 +202,7 @@ class GifShrinkerTest {
 
     @Test
     fun longGifStartingAtTheFpsStep_isCappedAtThatStepsFramesAndSize() = runTest {
-        // 600 frames at 25 fps: 512x288 buffers 88M pixels, but step 3 keeps 288 frames of 384x216 = 24M.
+        // 600 frames at 25 fps: 512x288 scales 88M pixels, but step 3 keeps 288 frames of 384x216 = 24M.
         val long = gif(frames = 600, size = 5_000)
         val encoder = FakeEncoder(gif(frames = 2, size = 300))
         val result = GifShrinker.shrink(long, 500, encoder::encode)

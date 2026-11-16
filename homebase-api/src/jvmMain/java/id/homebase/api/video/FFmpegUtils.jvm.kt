@@ -568,26 +568,6 @@ actual object FFmpegUtils {
             if (isAlive) destroyForcibly()
         }
 
-    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
-        withContext(Dispatchers.IO) {
-            if (!FFmpegBinaryManager.isAvailable()) return@withContext null
-            val id = UUID.randomUUID()
-            val inFile = File(scratchDirPath, "transcode_in_$id.$extension")
-            val outFile = File(scratchDirPath, "transcode_out_$id.$extension")
-            try {
-                inFile.writeBytes(input)
-                val command = listOf(FFmpegBinaryManager.ffmpegPath(), "-y", "-i", inFile.absolutePath) +
-                    outputArgs + outFile.absolutePath
-                val process = FFmpegBinaryManager.processBuilder(command)
-                    .redirectErrorStream(true)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .start()
-                if (process.waitForOrDestroy() == 0) outFile.readBytes() else null
-            } finally {
-                inFile.delete()
-                outFile.delete()
-            }
-        }
 }
 
 data class ProcessResult(

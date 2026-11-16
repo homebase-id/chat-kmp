@@ -141,8 +141,6 @@ class VideoPayloadProcessorCompressionSeamTest {
 
         override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean = true
 
-        override suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? = null
-
         override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
             "$fileName-cached"
     }

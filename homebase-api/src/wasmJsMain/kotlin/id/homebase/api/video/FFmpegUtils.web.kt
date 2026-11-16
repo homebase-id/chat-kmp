@@ -284,22 +284,6 @@ actual object FFmpegUtils {
         }.isSuccess
     }
 
-    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? {
-        val inName = "transcode_in.$extension"
-        val outName = "transcode_out.$extension"
-        try {
-            FFmpegBridge.writeFile(inName, input)
-            val status = FFmpegBridge.exec(listOf("-y", "-i", inName) + outputArgs + outName)
-            return if (status == 0) FFmpegBridge.readFile(outName) else null
-        } finally {
-            // ffmpeg.wasm can't be interrupted: wait out a cancelled exec instead of leaking MEMFS files.
-            withContext(NonCancellable) {
-                FFmpegBridge.deleteFile(inName)
-                FFmpegBridge.deleteFile(outName)
-            }
-        }
-    }
-
     private var cachedVersion: String? = null
     private var versionProbed = false
 

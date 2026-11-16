@@ -34,9 +34,7 @@ class GifAgainstFfmpegTest {
 
     private fun ourFrames(gif: ByteArray): Triple<Int, Int, List<IntArray>> {
         val decoder = assertNotNull(GifDecoder.open(gif))
-        val frames = mutableListOf<IntArray>()
-        decoder.forEachFrame { canvas, _ -> frames += canvas.copyOf() }
-        return Triple(decoder.width, decoder.height, frames)
+        return Triple(decoder.width, decoder.height, decode(gif))
     }
 
     private fun assertSameAsFfmpeg(gif: ByteArray, name: String) {
