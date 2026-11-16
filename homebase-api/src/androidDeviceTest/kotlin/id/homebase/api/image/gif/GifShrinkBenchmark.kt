@@ -4,6 +4,7 @@ import android.os.Build
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import id.homebase.api.ActivityProvider
 import id.homebase.api.image.calculateTargetDimensions
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.video.FFmpegVideoCompressor
@@ -23,6 +24,7 @@ class GifShrinkBenchmark {
     fun oursAgainstFfmpeg() = runBlocking {
         if (InstrumentationRegistry.getArguments().getString("gifBench") != "true") return@runBlocking
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        ActivityProvider.initializeApplicationContext(context)
         val gifs = File(context.filesDir, "bench").listFiles { f -> f.extension == "gif" }.orEmpty()
         for (file in gifs) {
             val bytes = file.readBytes()

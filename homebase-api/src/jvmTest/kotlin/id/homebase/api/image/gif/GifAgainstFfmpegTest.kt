@@ -72,8 +72,8 @@ class GifAgainstFfmpegTest {
     }
 
     @Test
-    fun ffmpegReadsOurReencodesAsWeDo() {
-        ffmpeg ?: return
+    fun ffmpegReadsOurReencodesAsWeDo() = kotlinx.coroutines.runBlocking {
+        ffmpeg ?: return@runBlocking
         for ((name, source) in listOf(
             "testsrc2" to ffmpegGif("-f", "lavfi", "-i", "testsrc2=size=320x240:rate=20:duration=1"),
             "mountain_800" to javaClass.getResourceAsStream("/test_images/mountain_800.gif")!!.readBytes(),

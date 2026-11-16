@@ -98,6 +98,23 @@ Why AAC is copied (see the decisions below). 83 s of 48 kHz stereo AAC, Pixel 8,
 | ffmpeg's AAC encoder | 3.3–4.5 s |
 | Media3 export of the video with no audio track | 8–13 s |
 
+## GIF stickers: our codec against ffmpeg
+
+`id.homebase.api.image.gif.GifShrinkBenchmark` with `-e gifBench true` re-encodes every GIF in the test app's `files/bench/` at each of `GifShrinker`'s three steps, with our codec (`Gif.kt`) and with ffmpeg given the filters `GifShrinker` used to use. Two rounds, alternating order. The device test app is debuggable, so Android runs our Kotlin less optimised there than in the app; ffmpeg is native either way.
+
+| Device | GIF | Step | Ours | ffmpeg | Output: ours / ffmpeg | Measured |
+|---|---|---|---|---|---|---|
+| Pixel 5 | 800×450, 300 frames, 7 MB | 512 px, 128 colours | **8.5–8.9 s** | 10.7–11.2 s | **2.79** / 3.32 MB | 2026-11-16 |
+| Pixel 5 | the same | 384 px, 128 colours | **5.9–6.2 s** | 6.2–7.5 s | **1.75** / 2.14 MB | 2026-11-16 |
+| Pixel 5 | the same | 384 px, 64 colours, 12 fps | 3.5–5.9 s | 3.1–3.9 s | **0.71** / 0.86 MB | 2026-11-16 |
+| Pixel 5 | video, 360×640, 120 frames, 2.8 MB | 512 px, 128 colours | **2.7–2.9 s** | 4.8–8.7 s | **1.27** / 1.55 MB | 2026-11-16 |
+| Pixel 5 | sticker, 480×480, 120 frames, 1.7 MB | 384 px, 128 colours | **2.7–3.3 s** | 3.7–3.8 s | **1.12** / 1.33 MB | 2026-11-16 |
+| Pixel 5 | the same | 480 px (no scaling), 128 colours | 2.4–2.6 s | **1.1–1.2 s** | 1.47 / 1.48 MB | 2026-11-16 |
+| Desktop JVM | 800×450, 300 frames | 512 px, 128 colours | **1.40–1.51 s** | 2.05 s (285 MB peak) | **2.79** / 3.32 MB | 2026-11-16 |
+| Desktop JVM | sticker 480×480 | 480 px (no scaling) | 0.51–0.56 s | **0.36–0.41 s** | 1.47 / 1.48 MB | 2026-11-16 |
+
+Where the time goes without scaling, desktop: decoding 85 ms (done twice: palette, then encode), mapping colours 60–90 ms on one core, changed rectangles and LZW 317 ms.
+
 ## Hashing: BLAKE3
 
 | Where | Ships | Speed | Kotlin port on the same | Measured |
@@ -145,6 +162,12 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
   - **Who gains:** segmenting, Photos' hash stage (a 226 MB video in about 0.25 s instead of 5 s) and Filesync.
   - **Proof:** the official vectors (`IncrementalHasherTest`, shared into the device tests) run on a phone, as a 64-bit and as a 32-bit app. `Blake3NativeDeviceTest` also checks it against the Kotlin port across block, chunk and tree boundaries.
 - **Copy picked and shared files with a 1 MB buffer** (2026-11-16). A `content://` stream is served by another process, one round trip per read, so Java's 8 KB default copied 3–6× slower on a Pixel 5. `copyInLargeChunks` is used wherever Android copies a stream to a file: the picked file's cache copy, shared files, files opened with the app, and saves to the gallery.
+- **Our own GIF codec instead of ffmpeg** (2026-11-16). Android has no GIF encoder, and shrinking oversized GIF stickers was ffmpeg's last job there that nothing else could do. `Gif.kt` (shared Kotlin, every platform) decodes, scales by area averaging, builds one palette from the pixels that change, and writes only each frame's changed rectangle, as the ffmpeg filters did. Scaling and colour mapping run on four frames at once; decoding and writing stay in order.
+  - **Smaller output:** 15–30% below ffmpeg's at every step, so a sticker more often fits at the first, best-looking step.
+  - **Memory:** a few frames, against ffmpeg's 285 MB for a 300-frame GIF.
+  - **Speed:** faster than ffmpeg when scaling, which is most steps; about 1.4× slower when no scaling is needed, in the LZW loop (Kotlin against C).
+  - **Considered:** gif.kt (com.shakster:gifkt, MIT, Kotlin Multiplatform) encodes with a palette per frame and doesn't scale or lower the frame rate, so the shrinker would still need its own code for both, plus about 4,500 lines to maintain.
+  - **Reopen** if the no-scaling step shows up as slow in practice: LZW is then the place to look.
 - **Read files in full chunks** (2026-11-16). Okio's `read` returns at most one 8 KB segment, so `readFileAsFlow` asked for 256 KB and emitted 8 KB, copied and handed across threads each time. Filling each chunk made reading 27 MB 10× faster on a Pixel 5, for every upload and hash that reads a file.
 - **Our own segmenter rather than ffmpeg's** (2026-11-16). It's faster with the hashes included, it reads the file once, and it never re-encodes portrait video. It must keep the same cuts and decoded frames as ffmpeg's; `HlsSegmenterTest.theSegmentsAndDecodedFramesMatchFfmpegsOwnHls` checks that.
 

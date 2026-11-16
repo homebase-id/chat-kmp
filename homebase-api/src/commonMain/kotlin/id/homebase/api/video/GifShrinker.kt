@@ -9,8 +9,6 @@ import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import id.homebase.api.image.gif.reencodeGif
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -52,10 +50,7 @@ object GifShrinker {
 
     /** First re-encode under [maxBytes], else the smallest, else [bytes]; non-GIFs and failures return [bytes]. */
     suspend fun shrink(bytes: ByteArray, maxBytes: Long): ByteArray = withContext(Dispatchers.Default) {
-        shrink(bytes, maxBytes) { input, e ->
-            val job = currentCoroutineContext().job
-            reencodeGif(input, e.width, e.height, e.colors, e.fps) { job.isActive }
-        }.bytes
+        shrink(bytes, maxBytes) { input, e -> reencodeGif(input, e.width, e.height, e.colors, e.fps) }.bytes
     }
 
     internal suspend fun shrink(
