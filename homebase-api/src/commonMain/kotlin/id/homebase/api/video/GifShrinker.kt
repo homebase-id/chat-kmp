@@ -7,17 +7,20 @@ import id.homebase.api.lib.image.ImageFormatDetector.GifInfo
 import kotlin.math.min
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
+import id.homebase.api.image.gif.reencodeGif
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "GifShrinker"
 
-/** Re-encodes an oversized GIF with ffmpeg until it fits a byte budget, keeping it animated. */
+/** Re-encodes an oversized GIF until it fits a byte budget, keeping it animated: smaller, fewer colours, fewer frames. */
 object GifShrinker {
     internal const val MAX_INPUT_BYTES = 40 * 1024 * 1024
 
-    // The palette pass buffers every scaled RGBA frame before it writes one, so this bounds memory.
+    // Bounds the work: every output pixel is scaled twice, once for the palette and once to encode.
     private const val MAX_BUFFERED_PIXELS = 32L * 1024 * 1024
     private const val TIMEOUT_MS = 30_000L
 
@@ -36,7 +39,10 @@ object GifShrinker {
         Step(384, 64, fps = 12),
     )
 
-    internal enum class OverBudget { InputTooLarge, TooManyPixels, Timeout, FfmpegFailed, FrameLoss, LadderExhausted }
+    internal enum class OverBudget { InputTooLarge, TooManyPixels, Timeout, EncodeFailed, FrameLoss, LadderExhausted }
+
+    /** One re-encode: the size, colours and frame rate (null: the source's) of a ladder step for a given GIF. */
+    internal data class Encoding(val width: Int, val height: Int, val colors: Int, val fps: Int?)
 
     /** [overBudget] is null when [bytes] fits, or when the input was never a GIF to shrink. */
     internal class Shrunk(val bytes: ByteArray, val overBudget: OverBudget?)
@@ -46,13 +52,16 @@ object GifShrinker {
 
     /** First re-encode under [maxBytes], else the smallest, else [bytes]; non-GIFs and failures return [bytes]. */
     suspend fun shrink(bytes: ByteArray, maxBytes: Long): ByteArray = withContext(Dispatchers.Default) {
-        shrink(bytes, maxBytes, VideoCompressionService::transcode).bytes
+        shrink(bytes, maxBytes) { input, e ->
+            val job = currentCoroutineContext().job
+            reencodeGif(input, e.width, e.height, e.colors, e.fps) { job.isActive }
+        }.bytes
     }
 
     internal suspend fun shrink(
         bytes: ByteArray,
         maxBytes: Long,
-        transcode: suspend (input: ByteArray, extension: String, outputArgs: List<String>) -> ByteArray?,
+        encode: suspend (input: ByteArray, encoding: Encoding) -> ByteArray?,
     ): Shrunk {
         if (bytes.size <= maxBytes) return Shrunk(bytes, null)
         val gif = ImageFormatDetector.parseGif(bytes)?.takeIf { it.width > 0 && it.height > 0 }
@@ -78,11 +87,11 @@ object GifShrinker {
         val minFrames = min(2, gif.frameCount)
         var stopped = OverBudget.LadderExhausted
         val finished = withTimeoutOrNull(TIMEOUT_MS) {
-            for ((i, args) in ladder.map { it.args(gif) }.withIndex().drop(start).distinctBy { it.value }) {
+            for ((i, encoding) in ladder.map { it.encoding(gif) }.withIndex().drop(start).distinctBy { it.value }) {
                 steps++
                 val stepStarted = TimeSource.Monotonic.markNow()
                 val out = try {
-                    transcode(bytes, "gif", args)
+                    encode(bytes, encoding)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -90,11 +99,11 @@ object GifShrinker {
                     null
                 }
                 Logger.d(tag = TAG) {
-                    "Step ${i + 1} [${args.last()}] -> ${out?.size} B, " +
+                    "Step ${i + 1} $encoding -> ${out?.size} B, " +
                         "${stepStarted.elapsedNow().inWholeMilliseconds} ms"
                 }
                 if (out == null) {
-                    stopped = OverBudget.FfmpegFailed
+                    stopped = OverBudget.EncodeFailed
                     break
                 }
                 if ((ImageFormatDetector.parseGif(out)?.frameCount ?: 0) < minFrames) {
@@ -114,19 +123,12 @@ object GifShrinker {
         )
     }
 
-    private fun Step.args(gif: GifInfo): List<String> {
+    private fun Step.encoding(gif: GifInfo): Encoding {
         val (w, h) = gif.fitWithin(maxSide)
-        val fpsFilter = loweredFps(gif)?.let { "fps=$it," } ?: ""
-        return listOf(
-            "-loglevel", "error",
-            "-filter_complex",
-            "${fpsFilter}scale=$w:$h:flags=lanczos,split[a][b];" +
-                "[a]palettegen=max_colors=$colors:stats_mode=diff[p];" +
-                "[b][p]paletteuse=dither=none:diff_mode=rectangle",
-        )
+        return Encoding(w, h, colors, loweredFps(gif))
     }
 
-    // Only ever lower the frame rate: fps= on a slower source would duplicate frames.
+    // Only ever lower the frame rate: a higher one would duplicate frames.
     private fun Step.loweredFps(gif: GifInfo): Int? =
         fps?.takeIf { gif.frameCount * 100L > it.toLong() * gif.durationCs }
 

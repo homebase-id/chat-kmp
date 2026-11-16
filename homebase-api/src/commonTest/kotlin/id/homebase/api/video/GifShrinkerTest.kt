@@ -4,6 +4,7 @@ import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import co.touchlab.kermit.platformLogWriter
+import id.homebase.api.video.GifShrinker.Encoding
 import id.homebase.api.video.GifShrinker.OverBudget
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
@@ -35,13 +36,12 @@ private fun gif(width: Int = 800, height: Int = 450, frames: Int = 30, delayCs: 
     return b.toByteArray()
 }
 
-private class FakeFfmpeg(vararg results: ByteArray?) {
+private class FakeEncoder(vararg results: ByteArray?) {
     private val results = results.toMutableList()
-    val calls = mutableListOf<List<String>>()
-    val graphs get() = calls.map { it[it.indexOf("-filter_complex") + 1] }
+    val calls = mutableListOf<Encoding>()
 
-    suspend fun transcode(input: ByteArray, extension: String, args: List<String>): ByteArray? {
-        calls += args
+    suspend fun encode(input: ByteArray, encoding: Encoding): ByteArray? {
+        calls += encoding
         return results.removeAt(0)
     }
 }
@@ -49,51 +49,47 @@ private class FakeFfmpeg(vararg results: ByteArray?) {
 class GifShrinkerTest {
     private val input = gif(size = 5_000)
 
-    private suspend fun shrink(bytes: ByteArray, ffmpeg: FakeFfmpeg) = GifShrinker.shrink(bytes, BUDGET, ffmpeg::transcode)
+    private suspend fun shrink(bytes: ByteArray, encoder: FakeEncoder) = GifShrinker.shrink(bytes, BUDGET, encoder::encode)
 
     /** Every step over budget, so the whole ladder runs. */
-    private fun overBudget() = FakeFfmpeg(gif(size = 3_000), gif(size = 3_000), gif(size = 3_000))
+    private fun overBudget() = FakeEncoder(gif(size = 3_000), gif(size = 3_000), gif(size = 3_000))
 
     @Test
     fun gifWithinBudget_isUntouched() = runTest {
         val small = gif(size = 900)
-        val ffmpeg = FakeFfmpeg()
-        val result = shrink(small, ffmpeg)
+        val encoder = FakeEncoder()
+        val result = shrink(small, encoder)
         assertSame(small, result.bytes)
         assertNull(result.overBudget)
-        assertTrue(ffmpeg.calls.isEmpty())
+        assertTrue(encoder.calls.isEmpty())
     }
 
     @Test
     fun nonGif_isUntouched() = runTest {
         val png = ByteArray(5_000).also { byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47).copyInto(it) }
-        val ffmpeg = FakeFfmpeg()
-        val result = shrink(png, ffmpeg)
+        val encoder = FakeEncoder()
+        val result = shrink(png, encoder)
         assertSame(png, result.bytes)
         assertNull(result.overBudget)
-        assertTrue(ffmpeg.calls.isEmpty())
+        assertTrue(encoder.calls.isEmpty())
     }
 
     @Test
     fun firstStepWithinBudget_stopsTheLadder() = runTest {
         val fits = gif(size = 600)
-        val ffmpeg = FakeFfmpeg(fits)
-        val result = shrink(input, ffmpeg)
+        val encoder = FakeEncoder(fits)
+        val result = shrink(input, encoder)
         assertSame(fits, result.bytes)
         assertNull(result.overBudget)
-        assertEquals(1, ffmpeg.calls.size)
-        assertTrue("scale=512:288:flags=lanczos" in ffmpeg.graphs[0], ffmpeg.graphs[0])
-        assertTrue("max_colors=128" in ffmpeg.graphs[0], ffmpeg.graphs[0])
+        assertEquals(listOf(Encoding(512, 288, 128, null)), encoder.calls)
     }
 
     @Test
     fun fallsThroughToSmallerSteps() = runTest {
         val fits = gif(size = 800)
-        val ffmpeg = FakeFfmpeg(gif(size = 3_000), gif(size = 2_500), fits)
-        assertSame(fits, shrink(input, ffmpeg).bytes)
-        assertEquals(3, ffmpeg.calls.size)
-        assertTrue("scale=384:216:" in ffmpeg.graphs[1] && "max_colors=128" in ffmpeg.graphs[1], ffmpeg.graphs[1])
-        assertTrue("scale=384:216:" in ffmpeg.graphs[2] && "max_colors=64" in ffmpeg.graphs[2], ffmpeg.graphs[2])
+        val encoder = FakeEncoder(gif(size = 3_000), gif(size = 2_500), fits)
+        assertSame(fits, shrink(input, encoder).bytes)
+        assertEquals(listOf(Encoding(512, 288, 128, null), Encoding(384, 216, 128, null), Encoding(384, 216, 64, 12)), encoder.calls)
     }
 
     @Test
@@ -113,60 +109,56 @@ class GifShrinkerTest {
 
     @Test
     fun farOverBudget_startsLowerDownTheLadder() = runTest {
-        val fiveTimes = FakeFfmpeg(gif(size = 3_000), gif(size = 3_000))
-        GifShrinker.shrink(input, 1_000, fiveTimes::transcode)
-        assertEquals(2, fiveTimes.calls.size, fiveTimes.graphs.toString())
-        val first = fiveTimes.graphs[0]
-        assertTrue("scale=384:216:" in first && "max_colors=128" in first, first)
-        assertTrue("max_colors=64" in fiveTimes.graphs[1], fiveTimes.graphs[1])
+        val fiveTimes = FakeEncoder(gif(size = 3_000), gif(size = 3_000))
+        GifShrinker.shrink(input, 1_000, fiveTimes::encode)
+        assertEquals(listOf(Encoding(384, 216, 128, null), Encoding(384, 216, 64, 12)), fiveTimes.calls)
 
-        val tenTimes = FakeFfmpeg(gif(size = 3_000))
-        GifShrinker.shrink(input, 500, tenTimes::transcode)
-        assertEquals(1, tenTimes.calls.size, tenTimes.graphs.toString())
-        assertTrue(tenTimes.graphs[0].startsWith("fps=12,scale=384:216:"), tenTimes.graphs[0])
+        val tenTimes = FakeEncoder(gif(size = 3_000))
+        GifShrinker.shrink(input, 500, tenTimes::encode)
+        assertEquals(listOf(Encoding(384, 216, 64, 12)), tenTimes.calls)
     }
 
     @Test
     fun nothingFits_keepsTheSmallestResult() = runTest {
         val smallest = gif(size = 2_200)
-        val ffmpeg = FakeFfmpeg(gif(size = 3_000), smallest, gif(size = 2_500))
-        val result = shrink(input, ffmpeg)
+        val encoder = FakeEncoder(gif(size = 3_000), smallest, gif(size = 2_500))
+        val result = shrink(input, encoder)
         assertSame(smallest, result.bytes)
         assertEquals(OverBudget.LadderExhausted, result.overBudget)
     }
 
     @Test
     fun noStepBeatsTheOriginal_keepsTheOriginal() = runTest {
-        val ffmpeg = FakeFfmpeg(gif(size = 6_000), gif(size = 7_000), gif(size = 8_000))
-        val result = shrink(input, ffmpeg)
+        val encoder = FakeEncoder(gif(size = 6_000), gif(size = 7_000), gif(size = 8_000))
+        val result = shrink(input, encoder)
         assertSame(input, result.bytes)
         assertEquals(OverBudget.LadderExhausted, result.overBudget)
-        assertEquals(3, ffmpeg.calls.size)
+        assertEquals(3, encoder.calls.size)
     }
 
     @Test
-    fun ffmpegFailure_keepsTheOriginal() = runTest {
-        val failed = FakeFfmpeg(null, gif(size = 600))
+    fun encodeFailure_keepsTheOriginal() = runTest {
+        val failed = FakeEncoder(null, gif(size = 600))
         val result = shrink(input, failed)
         assertSame(input, result.bytes)
-        assertEquals(OverBudget.FfmpegFailed, result.overBudget)
+        assertEquals(OverBudget.EncodeFailed, result.overBudget)
         assertEquals(1, failed.calls.size)
 
-        val threw = GifShrinker.shrink(input, BUDGET) { _, _, _ -> error("ffmpeg crashed") }
+        val threw = GifShrinker.shrink(input, BUDGET) { _, _ -> error("encoder crashed") }
         assertSame(input, threw.bytes)
-        assertEquals(OverBudget.FfmpegFailed, threw.overBudget)
+        assertEquals(OverBudget.EncodeFailed, threw.overBudget)
     }
 
     @Test
     fun stillOutputOfAnAnimation_keepsTheOriginal() = runTest {
-        val result = shrink(input, FakeFfmpeg(gif(frames = 1, size = 600)))
+        val result = shrink(input, FakeEncoder(gif(frames = 1, size = 600)))
         assertSame(input, result.bytes)
         assertEquals(OverBudget.FrameLoss, result.overBudget)
     }
 
     @Test
     fun timeout_keepsTheOriginal() = runTest {
-        val result = GifShrinker.shrink(input, BUDGET) { _, _, _ -> awaitCancellation() }
+        val result = GifShrinker.shrink(input, BUDGET) { _, _ -> awaitCancellation() }
         assertSame(input, result.bytes)
         assertEquals(OverBudget.Timeout, result.overBudget)
     }
@@ -174,21 +166,21 @@ class GifShrinkerTest {
     @Test
     fun inputOverTheByteCap_isUntouched() = runTest {
         val huge = ByteArray(GifShrinker.MAX_INPUT_BYTES + 1).also { gif().copyInto(it) }
-        val ffmpeg = FakeFfmpeg()
-        val result = shrink(huge, ffmpeg)
+        val encoder = FakeEncoder()
+        val result = shrink(huge, encoder)
         assertSame(huge, result.bytes)
         assertEquals(OverBudget.InputTooLarge, result.overBudget)
-        assertTrue(ffmpeg.calls.isEmpty())
+        assertTrue(encoder.calls.isEmpty())
     }
 
     @Test
     fun overThePixelCapAtEveryStep_isUntouched() = runTest {
         // At 10 fps no step drops frames, so 384² is the smallest frame: 227 frames fit the cap, 228 don't.
-        val atCap = FakeFfmpeg(gif(size = 600))
+        val atCap = FakeEncoder(gif(size = 600))
         shrink(gif(width = 1024, height = 1024, frames = 227, delayCs = 10, size = 5_000), atCap)
         assertEquals(1, atCap.calls.size)
 
-        val overCap = FakeFfmpeg()
+        val overCap = FakeEncoder()
         val big = gif(width = 1024, height = 1024, frames = 228, delayCs = 10, size = 5_000)
         val result = shrink(big, overCap)
         assertSame(big, result.bytes)
@@ -199,23 +191,23 @@ class GifShrinkerTest {
     @Test
     fun overThePixelCapAtTheFirstStep_startsAtTheFirstStepUnderIt() = runTest {
         // 1024² scales to 512² for step 1: 128 frames is exactly the cap, 129 is over it but fits at 384².
-        val atCap = FakeFfmpeg(gif(size = 600))
+        val atCap = FakeEncoder(gif(size = 600))
         shrink(gif(width = 1024, height = 1024, frames = 128, size = 5_000), atCap)
-        assertTrue("scale=512:512:" in atCap.graphs.single(), atCap.graphs.toString())
+        assertEquals(listOf(Encoding(512, 512, 128, null)), atCap.calls)
 
-        val overCap = FakeFfmpeg(gif(size = 600))
+        val overCap = FakeEncoder(gif(size = 600))
         shrink(gif(width = 1024, height = 1024, frames = 129, size = 5_000), overCap)
-        assertTrue("scale=384:384:" in overCap.graphs.single() && "max_colors=128" in overCap.graphs.single())
+        assertEquals(listOf(Encoding(384, 384, 128, null)), overCap.calls)
     }
 
     @Test
     fun longGifStartingAtTheFpsStep_isCappedAtThatStepsFramesAndSize() = runTest {
         // 600 frames at 25 fps: 512x288 buffers 88M pixels, but step 3 keeps 288 frames of 384x216 = 24M.
         val long = gif(frames = 600, size = 5_000)
-        val ffmpeg = FakeFfmpeg(gif(frames = 2, size = 300))
-        val result = GifShrinker.shrink(long, 500, ffmpeg::transcode)
+        val encoder = FakeEncoder(gif(frames = 2, size = 300))
+        val result = GifShrinker.shrink(long, 500, encoder::encode)
         assertNull(result.overBudget)
-        assertTrue(ffmpeg.graphs.single().startsWith("fps=12,scale=384:216:"), ffmpeg.graphs.toString())
+        assertEquals(listOf(Encoding(384, 216, 64, 12)), encoder.calls)
     }
 
     @Test
@@ -245,29 +237,26 @@ class GifShrinkerTest {
     fun frameRateIsOnlyEverLowered() = runTest {
         val fast = overBudget() // 4 cs per frame = 25 fps
         shrink(input, fast)
-        assertTrue(fast.graphs.take(2).none { "fps=" in it }, fast.graphs.toString())
-        assertTrue(fast.graphs[2].startsWith("fps=12,"), fast.graphs[2])
+        assertEquals(listOf(null, null, 12), fast.calls.map { it.fps })
 
-        for (delayCs in listOf(10, 0)) { // 10 fps, and ffmpeg plays a 0 cs delay at 10 cs
+        for (delayCs in listOf(10, 0)) { // 10 fps, and players show a 0 cs delay at 10 cs
             val slow = overBudget()
             shrink(gif(delayCs = delayCs, size = 5_000), slow)
-            assertTrue(slow.graphs.none { "fps=" in it }, "delay=$delayCs ${slow.graphs}")
+            assertTrue(slow.calls.all { it.fps == null }, "delay=$delayCs ${slow.calls}")
         }
     }
 
     @Test
     fun portraitSource_scalesTheLongSide() = runTest {
-        val ffmpeg = overBudget()
-        shrink(gif(width = 450, height = 800, size = 5_000), ffmpeg)
-        assertTrue("scale=288:512:" in ffmpeg.graphs[0], ffmpeg.graphs[0])
-        assertTrue("scale=216:384:" in ffmpeg.graphs[1], ffmpeg.graphs[1])
+        val encoder = overBudget()
+        shrink(gif(width = 450, height = 800, size = 5_000), encoder)
+        assertEquals(listOf(288 to 512, 216 to 384, 216 to 384), encoder.calls.map { it.width to it.height })
     }
 
     @Test
     fun smallSource_isNeverUpscaledAndDuplicateStepsAreSkipped() = runTest {
-        val ffmpeg = overBudget()
-        shrink(gif(width = 300, height = 200, size = 5_000), ffmpeg)
-        assertEquals(2, ffmpeg.calls.size, ffmpeg.graphs.toString())
-        assertTrue(ffmpeg.graphs.all { "scale=300:200:" in it }, ffmpeg.graphs.toString())
+        val encoder = overBudget()
+        shrink(gif(width = 300, height = 200, size = 5_000), encoder)
+        assertEquals(listOf(Encoding(300, 200, 128, null), Encoding(300, 200, 64, 12)), encoder.calls)
     }
 }

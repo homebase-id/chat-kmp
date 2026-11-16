@@ -11,7 +11,7 @@ import org.junit.Assume.assumeTrue
 class GifShrinkerJvmTest {
 
     @Test
-    fun realFfmpeg_shrinksAGifUnderBudgetAndKeepsItAnimated() = runTest {
+    fun aGifIsShrunkUnderBudgetAndStaysAnimated_asFfprobeReadsIt() = runTest {
         assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
         val dir = kotlin.io.path.createTempDirectory("gif-shrink").toFile()
         try {
