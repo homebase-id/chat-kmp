@@ -80,6 +80,14 @@ Segment and encrypt, with ffmpeg's `-hls_flags single_file` as the reference. Ou
 
 On the Pixel 5, what's left is TS writing (about 0.3 s) and parsing the moov (0.1–0.2 s).
 
+## Reading a picked file
+
+`id.homebase.api.file.ContentReadBenchmark` with `-e readBench true`: a video from the test app's `files/bench/` is put in the media library, then copied out through its `content://` URI, as a picked or shared file is. Three rounds, alternating which buffer goes first. The file was just written, so it's read from the page cache: this measures the round trips to the media process, not the flash.
+
+| Device | Input | 8 KB (Java's default) | 1 MB | Measured |
+|---|---|---|---|---|
+| Pixel 5 | Synthetic 1080p, 83 s (210 MB) | 563–1151 ms (182–373 MB/s) | **159–188 ms** (1117–1320 MB/s) | 2026-11-16 |
+
 ## Audio
 
 Why AAC is copied (see the decisions below). 83 s of 48 kHz stereo AAC, Pixel 8, 2026-11-16:
@@ -136,6 +144,7 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
   - **Segmenting:** at this speed, separate hasher threads no longer paid for themselves. The plaintext is hashed inline, and the ciphertext on the writing thread.
   - **Who gains:** segmenting, Photos' hash stage (a 226 MB video in about 0.25 s instead of 5 s) and Filesync.
   - **Proof:** the official vectors (`IncrementalHasherTest`, shared into the device tests) run on a phone, as a 64-bit and as a 32-bit app. `Blake3NativeDeviceTest` also checks it against the Kotlin port across block, chunk and tree boundaries.
+- **Copy picked and shared files with a 1 MB buffer** (2026-11-16). A `content://` stream is served by another process, one round trip per read, so Java's 8 KB default copied 3–6× slower on a Pixel 5. `copyInLargeChunks` is used wherever Android copies a stream to a file: the picked file's cache copy, shared files, files opened with the app, and saves to the gallery.
 - **Read files in full chunks** (2026-11-16). Okio's `read` returns at most one 8 KB segment, so `readFileAsFlow` asked for 256 KB and emitted 8 KB, copied and handed across threads each time. Filling each chunk made reading 27 MB 10× faster on a Pixel 5, for every upload and hash that reads a file.
 - **Our own segmenter rather than ffmpeg's** (2026-11-16). It's faster with the hashes included, it reads the file once, and it never re-encodes portrait video. It must keep the same cuts and decoded frames as ffmpeg's; `HlsSegmenterTest.theSegmentsAndDecodedFramesMatchFfmpegsOwnHls` checks that.
 

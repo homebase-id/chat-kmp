@@ -34,11 +34,17 @@ class AndroidFileOperationsProvider(
         if (isContentUri(path)) {
             flow {
                 openContentStream(path).use {
-                    val buf = ByteArray(chunkSize)
+                    // A read returns what one round trip to the provider brought; fill the chunk, as Okio's reader does.
                     while (true) {
-                        val n = it.read(buf, 0, buf.size)
-                        if (n <= 0) break
-                        emit(buf.copyOf(n))
+                        val buf = ByteArray(chunkSize)
+                        var filled = 0
+                        while (filled < chunkSize) {
+                            val n = it.read(buf, filled, chunkSize - filled)
+                            if (n < 0) break
+                            filled += n
+                        }
+                        if (filled > 0) emit(if (filled == chunkSize) buf else buf.copyOf(filled))
+                        if (filled < chunkSize) break
                     }
                 }
             }.flowOn(Dispatchers.IO)
@@ -120,7 +126,7 @@ class AndroidFileOperationsProvider(
                 ?.let { ".$it" } ?: ""
             val tmp = File.createTempFile("resolved_", ext, File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, AppCacheDirs.PICKER_COPIES)))
             context.contentResolver.openInputStream(uri)?.use { input ->
-                tmp.outputStream().use { input.copyTo(it) }
+                tmp.outputStream().use { input.copyInLargeChunks(it) }
             } ?: throw IllegalArgumentException("Unable to open content URI: $path")
             tmp.absolutePath
         }

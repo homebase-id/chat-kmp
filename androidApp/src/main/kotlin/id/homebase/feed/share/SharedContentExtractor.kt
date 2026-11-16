@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import co.touchlab.kermit.Logger
+import id.homebase.api.file.copyInLargeChunks
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.splitExtension
 import java.io.File
@@ -89,7 +90,7 @@ object SharedContentExtractor {
 
             contentResolver.openInputStream(uri)?.use { input ->
                 tempFile.outputStream().use { output ->
-                    input.copyTo(output)
+                    input.copyInLargeChunks(output)
                 }
             } ?: return null
 
