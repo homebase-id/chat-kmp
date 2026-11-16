@@ -513,7 +513,7 @@ internal fun ProfileCardPager(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 SnackbarHost(hostState = snackbarHostState) { data ->
-                                    // Only an inline card needs to step aside; floating chrome sizes its window to the snackbar already.
+                                    // Floating chrome already sizes its window to the snackbar; only an inline card steps aside.
                                     if (cardBands) ReportOverlay()
                                     Snackbar(data, Modifier.padding(8.dp))
                                 }

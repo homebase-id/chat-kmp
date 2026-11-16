@@ -32,7 +32,6 @@ import java.awt.AWTEvent
 import java.awt.Dialog
 import java.awt.MouseInfo
 import java.awt.Toolkit
-import java.awt.Window
 import java.awt.event.AWTEventListener
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -45,7 +44,7 @@ import kotlin.math.roundToInt
 
 internal actual val chromeFloatsOverCard: Boolean = true
 
-// Room for a tooltip, which can't draw outside the chrome's own window; taken only while one shows or the pointer is over it.
+// Room for a tooltip, which can't draw outside the chrome's own window.
 private const val TOOLTIP_ROOM_X = 16
 private const val TOOLTIP_ROOM_Y = 48
 private val Everywhere = Rect(Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
@@ -74,7 +73,7 @@ actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) {
     val entered by LocalPaneEntered.current
     val tooltips = remember { OpenOverlays() }
     val tooltipShown by remember { derivedStateOf { tooltips.covers(Everywhere) } }
-    // A menu can't draw outside the chrome's own window either, and needs far more room: the window spans the content pane while one is open.
+    // A menu needs far more room than a tooltip: the window spans the content pane while one is open.
     val menuShown by remember { derivedStateOf { tooltips.coversWindow() } }
     // Moving the owner doesn't re-lay out Compose, so the chrome window follows it itself.
     var moves by remember { mutableIntStateOf(0) }
@@ -87,8 +86,7 @@ actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) {
         owner.addComponentListener(moved)
         onDispose { owner.removeComponentListener(moved) }
     }
-    // AWT floats owned windows over their owner only when it gains focus, so one shown after that sits at normal level
-    // and the owner's next click buries it; this keeps the chrome floating while the owner has focus.
+    // AWT floats owned windows only when the owner gains focus, so chrome shown after that is buried by the owner's next click.
     var ownerFocused by remember { mutableStateOf(owner.isFocused) }
     DisposableEffect(owner) {
         val focus = object : WindowFocusListener {
@@ -103,18 +101,13 @@ actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) {
         owner.addWindowFocusListener(focus)
         onDispose { owner.removeWindowFocusListener(focus) }
     }
-    // Resizing a window under the pointer sends it an exit, which hides the tooltip that grew it; the pointer, not the tooltip, holds the room.
-    val hover = remember { PointerOver() }
-    DisposableEffect(hover) {
-        Toolkit.getDefaultToolkit().addAWTEventListener(hover, AWTEvent.MOUSE_EVENT_MASK)
-        onDispose { Toolkit.getDefaultToolkit().removeAWTEventListener(hover) }
-    }
+    var pointerInside by remember { mutableStateOf(false) }
     val bounds = area ?: return
     val constraints = room ?: return
     val scale = owner.graphicsConfiguration.defaultTransform.scaleX
     val left = (bounds.left / scale).roundToInt()
     val top = (bounds.top / scale).roundToInt()
-    val tooltipRoom = tooltipShown || hover.inside
+    val tooltipRoom = tooltipShown || pointerInside
     val offsetX = if (menuShown) left else if (tooltipRoom) TOOLTIP_ROOM_X else 0
     val offsetY = if (menuShown) top else if (tooltipRoom) TOOLTIP_ROOM_Y else 0
     DialogWindow(
@@ -128,7 +121,6 @@ actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) {
                 // macOS shadows the drawn pixels of a transparent window, outlining the chrome over the card.
                 rootPane.putClientProperty("Window.shadow", false)
                 setSize(1, 1)
-                hover.window = this
             }
         },
         // macOS fades a closing window out over whatever the page has already switched to; a transparent one goes at once.
@@ -141,6 +133,16 @@ actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) {
         // Its overlays sit above the card, so they don't send it away; they only grow this window.
         CompositionLocalProvider(LocalOpenOverlays provides tooltips) {
             val window = checkNotNull(LocalAwtWindow.current)
+            // Resizing a window under the pointer sends it an exit, which hides the tooltip that grew it; the pointer holds the room.
+            DisposableEffect(window) {
+                val hover = AWTEventListener { event ->
+                    if (event.id != MouseEvent.MOUSE_ENTERED && event.id != MouseEvent.MOUSE_EXITED) return@AWTEventListener
+                    if (SwingUtilities.getWindowAncestor((event as MouseEvent).component) !== window) return@AWTEventListener
+                    pointerInside = MouseInfo.getPointerInfo()?.location?.let(window.bounds::contains) == true
+                }
+                Toolkit.getDefaultToolkit().addAWTEventListener(hover, AWTEvent.MOUSE_EVENT_MASK)
+                onDispose { Toolkit.getDefaultToolkit().removeAWTEventListener(hover) }
+            }
             val windowDensity = LocalDensity.current
             // Measured against the slot's room, not this window's size, so the window can start at a pixel and grow to fit.
             // Bounds are set in the pass that places the content: set a frame apart, the chrome jumps from under the pointer.
@@ -169,15 +171,3 @@ actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) {
     }
 }
 
-private class PointerOver : AWTEventListener {
-    var window: Window? = null
-    var inside by mutableStateOf(false)
-        private set
-
-    override fun eventDispatched(event: AWTEvent) {
-        val window = window ?: return
-        if (event.id != MouseEvent.MOUSE_ENTERED && event.id != MouseEvent.MOUSE_EXITED) return
-        if (SwingUtilities.getWindowAncestor((event as MouseEvent).component) !== window) return
-        inside = MouseInfo.getPointerInfo()?.location?.let(window.bounds::contains) == true
-    }
-}
