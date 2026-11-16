@@ -118,7 +118,7 @@ class ProfileCardOverviewFlowTest {
 
         onNodeWithContentDescription("Open Friends card").performClick()
         waitUntil(timeoutMillis = 10_000) { hasText("Edit") }
-        onNodeWithContentDescription("Close").performClick()
+        runOnIdle { rig.system.backCompleted() }
         waitUntil(timeoutMillis = 10_000) { !hasText("Edit") }
         assertTrue(hasText("Open Friends card"))
         assertEquals(0, rig.backs)
@@ -150,6 +150,17 @@ class ProfileCardOverviewFlowTest {
         assertEquals(1, rig.designs)
         assertEquals(0, rig.edits)
         assertTrue(rig.viewModel.uiState.value.cards.isNotEmpty())
+    }
+
+    @Test
+    fun onAPhoneTheOpenedCardHasTheShareToolbarAndAPencilInPlaceOfTheCloseButton() = runDesktopComposeUiTest(width = 824, height = 1784) {
+        screen(sheeted = true)
+        waitUntil(timeoutMillis = 10_000) { hasText("Open Friends card") }
+        onNodeWithContentDescription("Open Friends card").performClick()
+        waitUntil(timeoutMillis = 10_000) { hasText("Edit") }
+        onAllNodesWithContentDescription("Save card image").assertCountEquals(1)
+        onAllNodesWithContentDescription("Edit").assertCountEquals(1)
+        onAllNodesWithContentDescription("Close").assertCountEquals(0)
     }
 
     @Test

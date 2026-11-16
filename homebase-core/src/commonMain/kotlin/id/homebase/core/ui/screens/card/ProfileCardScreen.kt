@@ -32,7 +32,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.draw.shadow
 import id.homebase.resources.profile_card_add_card
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
@@ -219,10 +222,10 @@ internal val WIDE_SHEET_MAX_WIDTH = 480.dp
 private val DESKTOP_PAGE_MAX_WIDTH = 1024.dp
 
 private val TOP_BAND_HEIGHT = 56.dp
-// Height reserved for the share toolbar and the pencil FAB.
-private val FAB_BAND_HEIGHT = 88.dp
+private val TOOLBAR_BAND_HEIGHT = 88.dp
 private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
+private val PENCIL_SIZE = 48.dp
 private val MENU_MIN_WIDTH = 248.dp
 private val MENU_MAX_WIDTH = 320.dp
 private val MENU_INSET = 4.dp
@@ -429,7 +432,7 @@ internal fun ProfileCardPager(
         isDesktopOrWeb() -> Modifier.widthIn(max = DESKTOP_PAGE_MAX_WIDTH)
         else -> Modifier
     }
-    val reservedBottom = FAB_BAND_HEIGHT + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val reservedBottom = TOOLBAR_BAND_HEIGHT + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     LaunchedEffect(host, reservedBottom) { if (!cardBands) host?.reserveBottom(reservedBottom) }
 
     CardExpressiveTheme {
@@ -505,9 +508,9 @@ internal fun ProfileCardPager(
                                     traversalIndex = -1f
                                 }
                                 .navigationBarsPadding()
-                                .padding(16.dp),
+                                .padding(bottom = (TOOLBAR_BAND_HEIGHT - FloatingToolbarDefaults.ContainerSize) / 2),
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 SnackbarHost(hostState = snackbarHostState) { data ->
                                     ReportOverlay()
                                     Snackbar(data, Modifier.padding(8.dp))
@@ -520,24 +523,6 @@ internal fun ProfileCardPager(
                                     extraActions = { nfc?.let { CardNfcAction(it) } },
                                 )
                             }
-                        }
-                        AboveCard(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .semantics {
-                                    isTraversalGroup = true
-                                    traversalIndex = -1f
-                                }
-                                .navigationBarsPadding()
-                                .padding(16.dp),
-                        ) {
-                            EditFab(
-                                readOnly = uiState.isCircleReadOnly,
-                                onExplainReadOnly = { explainReadOnly = true },
-                                container = selectedCard?.let(::pencilContainer),
-                                onEdit = { viewModel.onLeftForEditor(); onEdit() },
-                                onChangeDesign = { viewModel.onLeftForEditor(); onChangeDesign() },
-                            )
                         }
                     }
                 }
@@ -552,7 +537,12 @@ internal fun ProfileCardPager(
                 ) {
                     SheetTopChrome(
                         uiState = uiState,
-                        onClose = leave.takeIf { !sheeted || !overview },
+                        onClose = leave.takeIf { !sheeted },
+                        onEdit = { viewModel.onLeftForEditor(); onEdit() }.takeIf { !overview },
+                        onChangeDesign = { viewModel.onLeftForEditor(); onChangeDesign() },
+                        onExplainReadOnly = { explainReadOnly = true },
+                        readOnly = uiState.isCircleReadOnly,
+                        pencilContainer = selectedCard?.let(::pencilContainer),
                         overview = overview,
                         onSelect = { index -> cards.getOrNull(index)?.let { viewModel.onCardSelected(it.audience) } },
                         onNewCard = onNewCard.takeIf { uiState.circleCardsSupported },
@@ -712,7 +702,7 @@ private fun CardBandsLayout(
                     .fillMaxWidth()
                     .drawBehind { drawRect(bottomColor()) }
                     .navigationBarsPadding()
-                    .height(FAB_BAND_HEIGHT),
+                    .height(TOOLBAR_BAND_HEIGHT),
             )
         }
     }
@@ -722,6 +712,11 @@ private fun CardBandsLayout(
 private fun SheetTopChrome(
     uiState: ProfileCardUiState,
     onClose: (() -> Unit)?,
+    onEdit: (() -> Unit)?,
+    onChangeDesign: () -> Unit,
+    onExplainReadOnly: () -> Unit,
+    readOnly: Boolean,
+    pencilContainer: Color?,
     overview: Boolean,
     onSelect: (Int) -> Unit,
     onNewCard: (() -> Unit)?,
@@ -767,7 +762,16 @@ private fun SheetTopChrome(
                             }
                         }
                     }
-                    // A pane has no sheet handle and a sheet rises from the bottom, so both keep a visible way out.
+                    onEdit?.let { edit ->
+                        EditDesignMenu(
+                            readOnly = readOnly,
+                            onExplainReadOnly = onExplainReadOnly,
+                            container = pencilContainer,
+                            onEdit = edit,
+                            onChangeDesign = onChangeDesign,
+                        )
+                    }
+                    // A pane has no sheet handle, so it keeps a visible way out.
                     onClose?.let { close ->
                         val closeLabel = stringResource(MR.string.close)
                         WithTooltip(closeLabel) {
@@ -896,6 +900,7 @@ private fun ShareToolbar(
             toolbarContainerColor = chromePillColor(),
             toolbarContentColor = MaterialTheme.colorScheme.onSurface,
         ),
+        contentPadding = PaddingValues(start = 4.dp, end = 8.dp),
     ) {
         if (isExporting) {
             Box(modifier = Modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
@@ -914,7 +919,7 @@ private fun ShareToolbar(
 }
 
 @Composable
-private fun EditFab(readOnly: Boolean, onExplainReadOnly: () -> Unit, container: Color?, onEdit: () -> Unit, onChangeDesign: () -> Unit) {
+private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, container: Color?, onEdit: () -> Unit, onChangeDesign: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val label = stringResource(MR.string.edit)
     val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
@@ -922,12 +927,13 @@ private fun EditFab(readOnly: Boolean, onExplainReadOnly: () -> Unit, container:
     val ink by animateColorAsState(container?.let(::readableOn) ?: MaterialTheme.colorScheme.onSecondaryContainer, spec)
     Box {
         WithTooltip(label) {
-            FloatingActionButton(
+            FilledTonalIconButton(
                 onClick = { if (readOnly) onExplainReadOnly() else open = true },
-                containerColor = fill,
-                contentColor = ink,
+                shapes = IconButtonDefaults.shapes(),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = fill, contentColor = ink),
+                modifier = Modifier.size(PENCIL_SIZE).shadow(3.dp, CircleShape),
             ) {
-                Icon(Icons.Outlined.Edit, contentDescription = label)
+                Icon(Icons.Outlined.Edit, contentDescription = label, modifier = Modifier.size(24.dp))
             }
         }
         DropdownMenu(
