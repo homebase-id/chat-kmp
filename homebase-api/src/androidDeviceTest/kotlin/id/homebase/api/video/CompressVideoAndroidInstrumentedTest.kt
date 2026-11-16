@@ -19,6 +19,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -26,6 +28,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeout
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -82,10 +86,10 @@ class CompressVideoAndroidInstrumentedTest {
                 inputPath = fixture.absolutePath,
                 quality = VideoQuality.STANDARD,
             )
-            // sample.mp4 is 320x180 / h264 / ~35kbps — way below STANDARD's
-            // 720p / 2.5M target. The already-optimal check returns null and
-            // the caller falls back to the original file.
-            assertNull(out, "Already-optimal fixture must short-circuit to null")
+            val info = FFmpegUtils.probeVideo(out)
+            File(out).delete()
+            assertNotNull(info, "the output must be a readable video")
+            assertEquals(320 to 180, info.widthPx to info.heightPx, "a source below the target keeps its size")
         } finally {
             fixture.delete()
         }
@@ -106,6 +110,36 @@ class CompressVideoAndroidInstrumentedTest {
             val out = FFmpegUtils.compressVideo(fixture.absolutePath, trimStartMs = 1_000L, trimEndMs = 4_000L, quality = VideoQuality.STANDARD)
             assertNotNull(out, "compress after cancels must still work")
             cleanup += File(out)
+        } finally {
+            cleanup.forEach { it.delete() }
+        }
+    }
+
+    @Test
+    fun aCancelledLongCompressStopsWithinFiveSeconds() = runBlocking {
+        val fixture = copyFixtureToCache("sample.mp4")
+        val long = File(fixture.parentFile, "sample_x200.mp4")
+        val cleanup = mutableListOf(fixture, long)
+        try {
+            val looped = executeFfmpegArgs(
+                arrayOf("-y", "-stream_loop", "199", "-i", fixture.absolutePath, "-c", "copy", long.absolutePath),
+            )
+            assertTrue(ReturnCode.isSuccess(looped.returnCode), "looping the fixture failed: ${looped.allLogsAsString}")
+
+            val compress = launch(Dispatchers.IO) {
+                FFmpegUtils.compressVideo(long.absolutePath, trimStartMs = 1_000L, trimEndMs = 1_190_000L, quality = VideoQuality.STANDARD)
+            }
+            delay(3_000L)
+            assertTrue(compress.isActive, "the 20-minute encode must still be running when it's cancelled")
+            val stopping = TimeSource.Monotonic.markNow()
+            compress.cancelAndJoin()
+            val took = stopping.elapsedNow()
+            assertTrue(took < 5.seconds, "cancel took $took to stop ffmpeg")
+
+            val next = withTimeout(30.seconds) {
+                FFmpegUtils.compressVideo(fixture.absolutePath, trimStartMs = 1_000L, trimEndMs = 4_000L, quality = VideoQuality.STANDARD)
+            }
+            cleanup += File(next)
         } finally {
             cleanup.forEach { it.delete() }
         }
