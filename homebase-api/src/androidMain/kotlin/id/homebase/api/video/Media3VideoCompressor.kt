@@ -134,7 +134,7 @@ internal object Media3VideoCompressor {
                 if (!source.copyableAudio) setRequestedAudioEncoderSettings(AudioEncoderSettings.Builder().setBitrate(targets.audioBitrateBps).build())
             }
             .build()
-        val muxer = InAppMp4Muxer.Factory { entries -> withMetadata(entries, source.takeIf { keepMetadata }) }
+        val muxer = muxer { entries -> withMetadata(entries, source.takeIf { keepMetadata }) }
         val transformer = Transformer.Builder(context)
             .setLooper(looper)
             // Portrait frames rather than a rotation flag: an HLS stream can't carry one.
@@ -243,6 +243,11 @@ internal object Media3VideoCompressor {
     }
 
     private fun MediaFormat.int(key: String): Int? = if (containsKey(key)) getInteger(key) else null
+
+    // Streamable output reserves about 400 kB for the index up front, left as a free box. Nothing here streams an
+    // MP4 progressively (payloads are decrypted whole; the segmenter finds the index anywhere), so it goes at the end.
+    private fun muxer(metadata: InAppMp4Muxer.MetadataProvider? = null) =
+        (if (metadata != null) InAppMp4Muxer.Factory(metadata) else InAppMp4Muxer.Factory()).setAttemptStreamableOutputEnabled(false)
 
 
     // Seeks past the media, so only the box headers and the moov are read.

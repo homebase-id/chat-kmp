@@ -47,7 +47,7 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  *
  * Rather than rely on every caller (the full-screen attachment editor, multi-video send,
  * Moments, Chat) to remember to serialize, this service guards the heavy ops — [compress],
- * [segment], [segmentAndEncrypt], [remuxHlsToMp4] — behind a single [Mutex]: a second call
+ * [segmentAndEncrypt], [remuxHlsToMp4] — behind a single [Mutex]: a second call
  * waits until the first completes (and `withLock` is cancellation-aware, so a waiter that's
  * cancelled unblocks the queue cleanly). The cheap probes ([getDurationMs],
  * [getFfmpegVersion]) and [cacheInputVideo] are unguarded — they're fine to call freely.
@@ -61,7 +61,7 @@ object VideoCompressionService : VideoCompressor, VideoProber {
 
     // Delegates are `var` only so tests can substitute fakes; production never reassigns them.
     internal var compressor: VideoCompressor = platformVideoCompressor()
-    internal var probe: VideoProber = FFmpegVideoProber
+    internal var probe: VideoProber = platformVideoProber()
 
     /** Serializes the heavy ffmpeg ops so two never run on the shared backend at once. */
     private val heavyOpLock = Mutex()
@@ -114,14 +114,6 @@ object VideoCompressionService : VideoCompressor, VideoProber {
 
     override fun readsInPlace(path: String): Boolean = compressor.readsInPlace(path)
 
-    override suspend fun segment(
-        inputPath: String,
-        onProgress: VideoProgressListener?,
-    ): SegmentedVideo? =
-        heavy {
-            compressor.segment(inputPath, onProgress)
-        }
-
     override suspend fun segmentAndEncrypt(
         inputPath: String,
         keyHeader: KeyHeader,
@@ -152,3 +144,6 @@ object VideoCompressionService : VideoCompressor, VideoProber {
 
 /** ffmpeg everywhere, except where the platform's own media APIs do the work: Android compresses with Media3. */
 internal expect fun platformVideoCompressor(): VideoCompressor
+
+/** ffmpeg everywhere but Android, which reads headers with its own extractor. */
+internal expect fun platformVideoProber(): VideoProber

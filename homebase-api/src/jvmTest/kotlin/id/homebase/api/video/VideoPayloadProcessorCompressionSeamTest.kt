@@ -127,9 +127,6 @@ class VideoPayloadProcessorCompressionSeamTest {
             return compressedPath
         }
 
-        override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo =
-            segmented
-
         override suspend fun segmentAndEncrypt(
             inputPath: String,
             keyHeader: KeyHeader,

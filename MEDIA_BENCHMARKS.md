@@ -104,6 +104,21 @@ Why AAC is copied (see the decisions below). 83 s of 48 kHz stereo AAC, Pixel 8,
 | ffmpeg's AAC encoder | 3.3–4.5 s |
 | Media3 export of the video with no audio track | 8–13 s |
 
+## Saving a received video: TS back to MP4
+
+Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4. `RemuxHlsToMp4DeviceTest` (`-e remuxBench true` for videos in the test app's `files/bench/`) times it on the phone, and `TsToMp4Test` checks every sample against the source on the desktop. The video is an 83 s, 27.7 MB 720×1280 H.264 + AAC stand-in.
+
+| Where | Remux | Time | Output | Frames | Measured |
+|---|---|---|---|---|---|
+| Desktop JVM | **ours** (`TsToMp4`, shared Kotlin) | **90 ms** | 27.5 MB | all | 2026-11-16 |
+| Desktop | ffmpeg `-c copy -movflags +faststart` | 90 ms | 27.6 MB | all | 2026-11-16 |
+| Pixel 5 (debuggable test app) | **ours** | 865–889 ms | 27.5 MB | **2490 / 2490** | 2026-11-16 |
+| Pixel 5 | ffmpeg-kit | 235–349 ms | 27.6 MB | 2490 / 2490 | 2026-11-16 |
+| Pixel 5 | Media3 Transformer, transmux | 5.4 s | 27.6 MB | 2490 / 2490 | 2026-11-16 |
+| Pixel 5 | MediaExtractor + MediaMuxer | 3.4 s | 27.6 MB | 2489 / 2490 | 2026-11-16 |
+
+Ours is a little smaller because it keeps parameter sets in the index rather than repeating them in-band. ffmpeg decodes ours to the same frames as the source, with the same audio packets and A/V offset (`TsToMp4Test`). On the phone, the test app is debuggable, so ART won't compile it ahead of time; the release app runs it compiled, as the desktop does.
+
 ## GIF stickers: our codec against ffmpeg
 
 `id.homebase.api.image.gif.GifShrinkBenchmark` with `-e gifBench true` re-encodes every GIF in the test app's `files/bench/` at each of `GifShrinker`'s three steps, with our codec (`Gif.kt`) and with ffmpeg given the filters `GifShrinker` used to use. Two rounds, alternating order. The device test app is debuggable, so Android runs our Kotlin less optimised there than in the app; ffmpeg is native either way.
@@ -168,6 +183,8 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
   - **Who gains:** segmenting, Photos' hash stage (a 226 MB video in about 0.25 s instead of 5 s) and Filesync.
   - **Proof:** the official vectors (`IncrementalHasherTest`, shared into the device tests) run on a phone, as a 64-bit and as a 32-bit app. `Blake3NativeDeviceTest` also checks it against the Kotlin port across block, chunk and tree boundaries.
 - **Copy picked and shared files with a 1 MB buffer** (2026-11-16). A `content://` stream is served by another process, one round trip per read, so Java's 8 KB default copied 3–6× slower on a Pixel 5. `copyInLargeChunks` is used wherever Android copies a stream to a file: the picked file's cache copy, shared files, files opened with the app, and saves to the gallery.
+- **Our own TS → MP4 remux instead of ffmpeg on Android** (2026-11-16). Saving a received HLS video was ffmpeg's last job on Android. Media3 Transformer copies correctly but takes 5.4 s for 83 s of video; the platform's MediaExtractor + MediaMuxer take 3.4 s and drop the last frame. Both pay per sample through the framework. `TsToMp4` (shared Kotlin, like the segmenter) reads the TS twice: once to size the samples and build the index, then once to write the file with the index up front. It matches ffmpeg on the desktop and keeps every frame.
+- **Media3's MP4s lost 400 kB of padding** (2026-11-16). Media3's muxer reserves about 400 kB at the front for a streamable index and leaves it as a `free` box, so a 6 s clip compressed to 1221 kB instead of 822 kB. Nothing here streams an MP4 progressively (payloads are decrypted whole, and the segmenter finds the index anywhere), so the index now goes at the end.
 - **Our own GIF codec instead of ffmpeg** (2026-11-16). Android has no GIF encoder, and shrinking oversized GIF stickers was ffmpeg's last job there that nothing else could do. `Gif.kt` (shared Kotlin, every platform) decodes, scales by area averaging, builds one palette from the pixels that change, and writes only each frame's changed rectangle, as the ffmpeg filters did. Scaling and colour mapping run on four frames at once; decoding and writing stay in order.
   - **Smaller output:** 15–30% below ffmpeg's at every step, so a sticker more often fits at the first, best-looking step.
   - **Memory:** a few frames, against ffmpeg's 285 MB for a 300-frame GIF.

@@ -190,11 +190,6 @@ private open class NoopVideoCompressor : VideoCompressor {
         keepMetadata: Boolean,
     ): String = "out_$inputPath"
 
-    override suspend fun segment(
-        inputPath: String,
-        onProgress: VideoProgressListener?,
-    ): SegmentedVideo? = null
-
     override suspend fun segmentAndEncrypt(
         inputPath: String,
         keyHeader: KeyHeader,

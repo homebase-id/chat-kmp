@@ -38,12 +38,6 @@ interface VideoCompressor {
      */
     fun readsInPlace(path: String): Boolean = false
 
-    /** Segments [inputPath] into an unencrypted HLS playlist + `.ts` segments. */
-    suspend fun segment(
-        inputPath: String,
-        onProgress: VideoProgressListener?,
-    ): SegmentedVideo?
-
     /**
      * Segments [inputPath] into an HLS playlist whose `.ts` segments are AES
      * encrypted with [keyHeader]. Returns null on failure.
