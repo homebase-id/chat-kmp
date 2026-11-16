@@ -78,6 +78,7 @@ data class ConversationListUiState(
 @Immutable
 data class NextMention(val messageId: Uuid, val userDateMs: Long)
 
+@Immutable
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
     /** Action replies left out of [messages] because their card is loaded; the card shows them. */

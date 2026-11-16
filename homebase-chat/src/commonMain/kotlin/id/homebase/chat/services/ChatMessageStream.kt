@@ -433,6 +433,11 @@ class ChatMessageStream(
         }
     }
 
+    suspend fun nextUnreadMention(conversationId: Uuid, afterUserDateMs: Long): ScannedMessage? =
+        dbm.chatMentionIndex.selectOldestMentionAfter(
+            credentialsManager.requireActiveCredentials().getIdentityId(), conversationId, afterUserDateMs,
+        )
+
     /**
      * True when [messageId] is present in the cached in-memory window for
      * [conversationId]. Lets a jump-to-message caller decide whether it needs a
@@ -440,11 +445,6 @@ class ChatMessageStream(
      * reuse the existing one. Returns false when the conversation has no window
      * cached at all.
      */
-    suspend fun nextUnreadMention(conversationId: Uuid, afterUserDateMs: Long): ScannedMessage? =
-        dbm.chatMentionIndex.selectOldestMentionAfter(
-            credentialsManager.requireActiveCredentials().getIdentityId(), conversationId, afterUserDateMs,
-        )
-
     fun isMessageInWindow(conversationId: Uuid, messageId: Uuid): Boolean =
         messageInWindow(conversationId, messageId) != null
 
