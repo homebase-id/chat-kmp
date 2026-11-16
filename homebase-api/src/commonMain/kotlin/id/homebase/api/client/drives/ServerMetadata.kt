@@ -40,9 +40,9 @@ data class AclViewer(val tier: ProfileVisibility, val circleIds: Set<String> = e
 /**
  * Whether [viewer] can read a file with this ACL, mirroring Odin's DriveAclAuthorizationService for
  * an anonymous visitor ([ProfileVisibility.ANONYMOUS]), a logged-in stranger or unreviewed
- * connection ([ProfileVisibility.AUTHENTICATED]) or a reviewed connection
- * ([ProfileVisibility.CONNECTED]), who also reads what is limited to a circle they are in. A missing ACL or an unknown group is
- * visible to the owner only.
+ * connection ([ProfileVisibility.AUTHENTICATED]) or a reviewed connection ([ProfileVisibility.CONNECTED]),
+ * who also reads what is limited to a circle they are in. A missing ACL or an unknown group is visible to
+ * the owner only.
  */
 fun AccessControlList?.isVisibleTo(viewer: AclViewer): Boolean {
     if (viewer.tier == ProfileVisibility.OWNER) return true

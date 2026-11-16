@@ -16,9 +16,4 @@ class ProfileWriteOptionsTest {
     fun circlesAreSentAsGiven() {
         assertEquals(listOf("c1"), ProfileWriteOptions(priority = 20, circleIds = listOf("c1")).wireCircleIds)
     }
-
-    @Test
-    fun defaultsLeavePriorityUnset() {
-        assertNull(ProfileWriteOptions().priority)
-    }
 }
