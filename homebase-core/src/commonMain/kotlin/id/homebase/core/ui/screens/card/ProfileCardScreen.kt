@@ -8,9 +8,6 @@ import id.homebase.resources.profile_card_intro_title
 import id.homebase.resources.profile_card_edit_design
 import androidx.compose.ui.semantics.heading
 import androidx.compose.material3.IconButton
-import androidx.compose.ui.draw.shadow
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.FilledTonalIconButton
 import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.border
@@ -36,7 +33,6 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.runtime.rememberUpdatedState
 import id.homebase.resources.profile_card_add_card
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
@@ -188,7 +184,6 @@ import id.homebase.resources.profile_card_design_poster
 import id.homebase.resources.edit
 import id.homebase.resources.profile_card_menu_edit_desc
 import id.homebase.resources.profile_card_menu_design_desc
-import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_error
 import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
@@ -303,7 +298,7 @@ fun ProfileCardScreen(
 
 @Composable
 @Suppress("DEPRECATION")
-private fun ProfileCardPager(
+internal fun ProfileCardPager(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
     onEdit: () -> Unit,

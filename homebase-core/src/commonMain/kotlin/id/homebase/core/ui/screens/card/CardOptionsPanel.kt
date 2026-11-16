@@ -100,7 +100,6 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Style
-import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -295,7 +294,8 @@ private fun OptionControl(
     onBlockOrder: (List<String>) -> Unit,
 ) {
     when (option) {
-        CardOption.COLOURS -> SchemeRow(design, overrides.palette, enabled) { onOption(option, it) }
+        // Colours are the Palette tab; a design without COLOURS has no such tool.
+        CardOption.COLOURS -> Unit
         CardOption.BACKGROUND -> BackgroundRow(design, overrides, enabled) { onOption(option, it) }
         CardOption.ACCENT -> SwatchRow(design, overrides.valueOf(CardOption.COLOURS), overrides.valueOf(option), enabled) { onOption(option, it) }
         CardOption.BLOCK_ORDER -> BlockOrderRow(overrides.blockOrder().filter { it in orderable }, enabled, chipHeight) {
@@ -304,7 +304,7 @@ private fun OptionControl(
         // Shapes read as glyphs, so the group stays one row of icons; the name is spoken, not printed.
         CardOption.PORTRAIT_SHAPE -> SegmentedChoices(
             values = CardDesignSpecs.PORTRAIT_SHAPES,
-            selected = overrides.valueOf(option) ?: CardDesignSpecs.PORTRAIT_SHAPES.first(),
+            selected = CardDesignSpecs.selectedValue(design, option, overrides.valueOf(option)),
             enabled = enabled,
             chipHeight = chipHeight,
             minSegmentWidth = SHAPE_SEGMENT_MIN_WIDTH,
@@ -315,7 +315,7 @@ private fun OptionControl(
         }
         CardOption.BLOCK_STYLE -> SegmentedChoices(
             values = CardDesignSpecs.PRESENTATIONS,
-            selected = overrides.valueOf(option) ?: CardDesignSpecs.PRESENTATIONS.first(),
+            selected = CardDesignSpecs.selectedValue(design, option, overrides.valueOf(option)),
             enabled = enabled,
             chipHeight = chipHeight,
             onSelect = { onOption(option, it) },
@@ -324,7 +324,7 @@ private fun OptionControl(
         }
         CardOption.SOCIALS_STYLE -> SegmentedChoices(
             values = CardDesignSpecs.SOCIALS_STYLES,
-            selected = overrides.valueOf(option) ?: CardDesignSpecs.SOCIALS_STYLES.first(),
+            selected = CardDesignSpecs.selectedValue(design, option, overrides.valueOf(option)),
             enabled = enabled,
             chipHeight = chipHeight,
             onSelect = { onOption(option, it) },
@@ -334,7 +334,7 @@ private fun OptionControl(
         // A font picker shows each face by setting its own name in it; the name is never cut.
         CardOption.DISPLAY_FONT, CardOption.TEXT_FONT -> SegmentedChoices(
             values = CardDesignSpecs.FONTS,
-            selected = overrides.valueOf(option) ?: CardDesignSpecs.FONTS.first(),
+            selected = CardDesignSpecs.selectedValue(design, option, overrides.valueOf(option)),
             enabled = enabled,
             chipHeight = chipHeight,
             connected = false,
@@ -544,34 +544,6 @@ private fun fontPreviewStyle(font: String?): TextStyle {
 }
 
 // Each swatch is the scheme in small: its ground with an ink dot, so the pairing is judged before it is picked.
-@Composable
-private fun SchemeRow(design: String, palette: CardPalette?, enabled: Boolean, onSelect: (String?) -> Unit) {
-    val schemes = CardDesignSpecs.of(design)?.schemes.orEmpty()
-    val selected = palette?.ground
-    val saved = selected?.takeIf { ground -> schemes.none { it.ground.equals(ground, ignoreCase = true) } }
-    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
-        // A saved ground outside this design's set still shows as what the card is wearing, never as a preset.
-        saved?.let { ground ->
-            Swatch(
-                fill = Color(hexToArgb(ground)),
-                selected = true,
-                enabled = enabled,
-                description = stringResource(MR.string.profile_card_option_colours_swatch, ground),
-                onClick = {},
-            ) { InkDot(Color(palette.ink?.let(::hexToArgb) ?: CardDesign.inkArgb(design))) }
-        }
-        schemes.forEach { scheme ->
-            Swatch(
-                fill = Color(hexToArgb(scheme.ground)),
-                selected = scheme.ground.equals(selected ?: schemes.firstOrNull()?.ground, ignoreCase = true),
-                enabled = enabled,
-                description = stringResource(MR.string.profile_card_option_colours_swatch, stringResource(schemeLabel(scheme.id))),
-                onClick = { onSelect(scheme.ground) },
-            ) { InkDot(Color(hexToArgb(scheme.ink))) }
-        }
-    }
-}
-
 @Composable
 private fun InkDot(ink: Color, size: Dp = INK_DOT_SIZE, edge: Color = Color.Transparent) {
     Box(Modifier.size(size).background(ink, CircleShape).border(1.dp, edge, CircleShape))

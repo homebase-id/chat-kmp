@@ -2681,7 +2681,6 @@
     <string name="profile_card_colours_lemon">Lemon</string>
     <string name="profile_card_colours_purple">Purple</string>
     <string name="profile_card_colours_blue">Blue</string>
-    <string name="profile_card_change_design_to">Change design. Current design: %1$s</string>
     <string name="profile_card_option_accent_swatch">Accent %1$s</string>
     <string name="profile_card_option_display_font">Heading font</string>
     <string name="profile_card_option_text_font">Body font</string>
