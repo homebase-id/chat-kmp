@@ -8,12 +8,9 @@ import id.homebase.api.crypto.hashedBy
 import id.homebase.api.crypto.newHasher
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.fourCc
-import id.homebase.api.image.readU32
-import id.homebase.api.image.readU64
-import id.homebase.api.video.MAX_MOOV_BYTES
 import id.homebase.api.video.SegmentedVideo
 import id.homebase.api.video.VideoProgressListener
+import id.homebase.api.video.readMoov
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.uuid.ExperimentalUuidApi
@@ -181,31 +178,6 @@ internal object HlsSegmenter {
     private fun sixDecimals(seconds: Double): String {
         val micros = (seconds * 1_000_000).roundToLong()
         return "${micros / 1_000_000}.${(micros % 1_000_000).toString().padStart(6, '0')}"
-    }
-
-    // Walks the top-level boxes by their headers alone, so a moov after the media costs no pass over it.
-    private suspend fun readMoov(fileOps: FileOperationsProvider, path: String): ByteArray? {
-        val size = fileOps.getFileSize(path)
-        var at = 0L
-        while (at + 8 <= size) {
-            val header = fileOps.readFileRange(path, at, 16)
-            if (header.size < 8) return null
-            var boxSize = readU32(header, 0, little = false).toLong() and 0xFFFFFFFFL
-            var headerSize = 8
-            if (boxSize == 1L && header.size >= 16) {
-                headerSize = 16
-                boxSize = readU64(header, 8)
-            } else if (boxSize == 0L) {
-                boxSize = size - at
-            }
-            if (boxSize < headerSize) return null
-            if (fourCc(header, 4) == "moov") {
-                if (boxSize > MAX_MOOV_BYTES) return null
-                return fileOps.readFileRange(path, at, boxSize.toInt()).copyOfRange(headerSize, boxSize.toInt())
-            }
-            at += boxSize
-        }
-        return null
     }
 
     private const val CHUNK = 256 * 1024

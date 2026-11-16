@@ -28,7 +28,7 @@ import kotlinx.coroutines.withContext
  */
 internal class MmrVideoDecoder : VideoDecoder {
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? =
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? =
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireApplicationContext()
             when (val s = videoPath.toAndroidVideoSource()) {

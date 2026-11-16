@@ -41,8 +41,8 @@ object VideoThumbnailService : VideoDecoder {
      */
     val ffmpegDecoderForTest: VideoDecoder? by lazy { platformFfmpegDecoder() }
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? =
-        delegate.extractPosterFrame(videoPath)
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? =
+        delegate.extractPosterFrame(videoPath, fullSize)
 
     override fun extractThumbnailStrip(
         videoPath: String,

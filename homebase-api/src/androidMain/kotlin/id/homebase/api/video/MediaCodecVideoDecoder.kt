@@ -29,11 +29,12 @@ import kotlinx.coroutines.withContext
  */
 internal class MediaCodecVideoDecoder : VideoDecoder {
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? =
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? =
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireApplicationContext()
             when (val s = videoPath.toAndroidVideoSource()) {
-                is AndroidVideoSource.ContentUri -> tryLoadThumbnail(context, s.uriString)
+                // MediaStore's cached thumbnail is 640 px: quick for a preview, too small for an upload's thumbnails.
+                is AndroidVideoSource.ContentUri -> if (fullSize) null else tryLoadThumbnail(context, s.uriString)
                 // No fast native path for file paths — let the MMR tier handle it.
                 is AndroidVideoSource.Path -> null
             }

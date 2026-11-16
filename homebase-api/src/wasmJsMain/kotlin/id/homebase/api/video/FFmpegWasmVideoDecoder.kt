@@ -14,7 +14,7 @@ import okio.Path.Companion.toPath
  */
 internal class FFmpegWasmVideoDecoder : VideoDecoder {
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
         val bytes = readBytes(videoPath) ?: return null
         FFmpegBridge.writeFile(MEMFS_INPUT, bytes)
         val status = FFmpegBridge.exec(

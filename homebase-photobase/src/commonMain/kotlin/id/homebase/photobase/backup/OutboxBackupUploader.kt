@@ -86,8 +86,8 @@ class OutboxBackupUploader(
         }
     }
 
-    // A transcode's bytes aren't the library's file, so the source is checked as it's read for its location,
-    // which an HLS stream has no place for. An untouched original is checked again as it's encrypted.
+    // The source is checked against its hash as it's read for its location, which an HLS stream has no place
+    // for: by a read of its own for a transcode, and by the encrypt pass for an untouched original.
     private suspend fun handOffVideo(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
@@ -95,18 +95,16 @@ class OutboxBackupUploader(
         expectedDigest: ByteArray,
     ): HandOffResult {
         val part = exported.parts.single()
-        val reader = VideoLocationReader()
-        if (!hasher.matches(exported, part, expectedDigest, reader::feed)) return HandOffResult.ChangedUnderUs
-        val location = reader.location
-        val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
         val options = requests.options()
+        val reader = VideoLocationReader()
+        if (!options.originalVideo && !hasher.matches(exported, part, expectedDigest) { reader.feed(it) }) return HandOffResult.ChangedUnderUs
         return try {
-            upload(row, uniqueId, exported, expectedDigest, content, options, untouched = false)
+            upload(row, uniqueId, exported, expectedDigest, reader, options, untouched = false)
         } catch (e: VideoCompressionFailedException) {
             if (!options.originalVideo) throw e
             // A backup that isn't the original isn't a backup: keep the file even when no copy can be made to play.
             Logger.w(tag = TAG, throwable = e) { "no playable copy for $uniqueId; backing up the original alone" }
-            upload(row, uniqueId, exported, expectedDigest, content, options.copy(originalVideo = false), untouched = true)
+            upload(row, uniqueId, exported, expectedDigest, VideoLocationReader(), options.copy(originalVideo = false), untouched = true)
         }
     }
 
@@ -115,7 +113,7 @@ class OutboxBackupUploader(
         uniqueId: Uuid,
         exported: ExportedAsset,
         expectedDigest: ByteArray,
-        content: PhotoContent,
+        reader: VideoLocationReader,
         options: UploadOptions,
         untouched: Boolean,
     ): HandOffResult {
@@ -127,10 +125,12 @@ class OutboxBackupUploader(
             fileOps,
         ) { PhotobaseProtocol.VideoPayloadKey }
         val bundle = if (untouched || options.originalVideo) {
-            built.withOriginalEncrypted(part.path, keyHeader, expectedDigest) ?: return HandOffResult.ChangedUnderUs
+            built.withOriginalEncrypted(part.path, keyHeader, expectedDigest, reader) ?: return HandOffResult.ChangedUnderUs
         } else {
             built
         }
+        val location = reader.location
+        val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
         val spec = MediaUploadSpec(
             driveId = photosDriveId,
             uniqueId = uniqueId,
@@ -153,9 +153,11 @@ class OutboxBackupUploader(
     }
 
     // The untouched original, encrypted here so its hash is checked on the same read; null when it changed.
-    private suspend fun PayloadBundle.withOriginalEncrypted(path: String, keyHeader: KeyHeader, expectedDigest: ByteArray): PayloadBundle? {
+    private suspend fun PayloadBundle.withOriginalEncrypted(path: String, keyHeader: KeyHeader, expectedDigest: ByteArray, reader: VideoLocationReader): PayloadBundle? {
         val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
-        val hashed = fileOps.encryptWithPayloadHash(path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
+        val hashed = fileOps.encryptWithPayloadHash(path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3) { chunk, offset, length ->
+            reader.feed(chunk, offset, length)
+        }
         val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
         if (digest == null || !digest.contentEquals(expectedDigest)) {
             runCatching { fileOps.deleteTempFile(encryptedPath) }

@@ -3,9 +3,11 @@ package id.homebase.api.video
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Metadata
 import androidx.media3.common.MimeTypes
@@ -28,8 +30,8 @@ import androidx.media3.transformer.VideoEncoderSettings
 import co.touchlab.kermit.Logger
 import id.homebase.api.ActivityProvider
 import id.homebase.api.file.AppCacheDirs
+import id.homebase.api.file.AndroidFileOperationsProvider
 import java.io.File
-import java.io.RandomAccessFile
 import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -54,6 +56,7 @@ import kotlinx.coroutines.withContext
 internal object Media3VideoCompressor {
     private const val TAG = "Media3VideoCompressor"
     private const val PROGRESS_POLL_MS = 250L
+    internal val fileOps by lazy { AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext()) }
 
     // Transformer's calls, callbacks and blocking cancel stay off the main thread.
     private val looper by lazy { HandlerThread("Media3Transformer").apply { start() }.looper }
@@ -67,16 +70,16 @@ internal object Media3VideoCompressor {
         quality: VideoQuality,
         keepMetadata: Boolean,
     ): String {
-        val input = File(inputPath)
+        val uri = if (fileOps.isContentUri(inputPath)) Uri.parse(inputPath) else File(inputPath).toUri()
         val targets = quality.targets()
         val trim = if (trimStartMs != null && trimEndMs != null) trimStartMs to trimEndMs else null
         val (source, output) = withContext(Dispatchers.IO) {
-            if (!input.exists()) throw VideoCompressionFailedException(inputPath, "input file not found")
-            val cacheDir = ActivityProvider.requireApplicationContext().cacheDir.absolutePath
-            probeSource(input, keepMetadata) to File(AppCacheDirs.scratchDir(cacheDir, AppCacheDirs.MEDIA_WORK), "compressed_${UUID.randomUUID()}.mp4")
+            if (!fileOps.sourceExists(inputPath)) throw VideoCompressionFailedException(inputPath, "input file not found")
+            val cacheDir = fileOps.context.cacheDir.absolutePath
+            probeSource(inputPath, uri, keepMetadata) to File(AppCacheDirs.scratchDir(cacheDir, AppCacheDirs.MEDIA_WORK), "compressed_${UUID.randomUUID()}.mp4")
         }
 
-        val mediaItem = MediaItem.Builder().setUri(input.toURI().toString()).apply {
+        val mediaItem = MediaItem.Builder().setUri(uri).apply {
             if (trim != null) {
                 setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder()
@@ -109,7 +112,7 @@ internal object Media3VideoCompressor {
             throw VideoCompressionFailedException(inputPath, "Media3 export failed: $reason", e)
         }
         Logger.i(tag = TAG) {
-            "compress: ${System.currentTimeMillis() - started}ms in=${input.length()}B ${source.width}x${source.height} " +
+            "compress: ${System.currentTimeMillis() - started}ms ${source.width}x${source.height} " +
                 "out=${output.length()}B trimMs=${trim?.let { it.second - it.first } ?: 0} quality=$quality"
         }
         return output.absolutePath
@@ -123,7 +126,7 @@ internal object Media3VideoCompressor {
         keepMetadata: Boolean,
         onProgress: VideoProgressListener?,
     ) = withContext(transformerThread) {
-        val context = ActivityProvider.requireApplicationContext()
+        val context = fileOps.context
         val encoders = DefaultEncoderFactory.Builder(context)
             .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(videoBitrate(targets, source)).build())
             .apply {
@@ -213,10 +216,10 @@ internal object Media3VideoCompressor {
     private class Source(val width: Int, val height: Int, val videoBitrateBps: Int?, val copyableAudio: Boolean, val location: VideoLocation?)
 
     // Headers only: Transformer's export is the one pass over the media.
-    private fun probeSource(file: File, keepMetadata: Boolean): Source {
+    private suspend fun probeSource(path: String, uri: Uri, keepMetadata: Boolean): Source {
         val extractor = MediaExtractor()
         val formats = try {
-            extractor.setDataSource(file.absolutePath)
+            extractor.setDataSource(fileOps.context, uri, null)
             (0 until extractor.trackCount).map { extractor.getTrackFormat(it) }
         } catch (e: Exception) {
             emptyList()
@@ -235,7 +238,7 @@ internal object Media3VideoCompressor {
                     it.int(MediaFormat.KEY_AAC_PROFILE) == MediaCodecInfo.CodecProfileLevel.AACObjectLC &&
                     (it.int(MediaFormat.KEY_CHANNEL_COUNT) ?: 0) in 1..2
             },
-            location = if (keepMetadata) moovLocation(file) else null,
+            location = if (keepMetadata) moovLocation(path) else null,
         )
     }
 
@@ -243,20 +246,12 @@ internal object Media3VideoCompressor {
 
 
     // Seeks past the media, so only the box headers and the moov are read.
-    private fun moovLocation(file: File): VideoLocation? = try {
-        RandomAccessFile(file, "r").use { raf ->
-            val reader = VideoLocationReader()
-            val chunk = ByteArray(64 * 1024)
-            while (!reader.finished) {
-                raf.seek(raf.filePointer + reader.takeSkip())
-                val n = raf.read(chunk)
-                if (n <= 0) break
-                reader.feed(if (n == chunk.size) chunk else chunk.copyOf(n))
-            }
-            reader.location
-        }
+    private suspend fun moovLocation(path: String): VideoLocation? = try {
+        readMoov(fileOps, path)?.let(::locationInMoov)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
-        Logger.w(tag = TAG, throwable = e) { "Couldn't read ${file.name}'s location" }
+        Logger.w(tag = TAG, throwable = e) { "Couldn't read the video's location" }
         null
     }
 }

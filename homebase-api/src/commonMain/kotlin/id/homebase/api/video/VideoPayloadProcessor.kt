@@ -51,11 +51,8 @@ class VideoPayloadProcessor(
             onProgress?.invoke(phase)
         }
         return try {
-            // Resolve content URIs (Android copies the gallery pick into cacheDir as
-            // resolved_*; other platforms no-op) and reap that copy when we're done,
-            // so it can't linger at full video size. withResolvedFile is the shared
-            // resolve-then-delete scope — see FileOperationsProvider.withResolvedFile.
-            fileOperationsProvider.withResolvedFile(payload.filePath) { resolvedPath ->
+            // A resolved copy is reaped when we're done, so it can't linger at full video size.
+            fileOperationsProvider.withResolvedFile(payload.filePath, resolve = !compressor.readsInPlace(payload.filePath)) { resolvedPath ->
                 processResolved(
                     payload =
                         if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath)
@@ -90,8 +87,7 @@ class VideoPayloadProcessor(
     ): VideoProcessResult {
         // The okio path stays the source of truth for size, the compress-skip fallback, and the
         // non-HLS encrypt of an uncompressed clip; inputBlobUrl only short-circuits the INPUT reads.
-        // Only a real blob: handle may bypass the resolved path — a raw content:// or PHAsset id
-        // here is unreadable by native ffmpeg.
+        // Only a real blob: handle replaces the path: a content:// or PHAsset id there would skip the resolve.
         val ffmpegInputPath = inputBlobUrl?.takeIf { it.isBlobUrl() } ?: payload.filePath
         val inputSize = fileOperationsProvider.getFileSize(payload.filePath)
         Logger.i(tag = "VideoProcessing") {
@@ -115,7 +111,7 @@ class VideoPayloadProcessor(
         // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
         // native-first decode per platform), so no temp-file round-trip to read+delete.
         val (posterBytes, posterElapsed) =
-            measureTimedValue { VideoThumbnailService.extractPosterFrame(ffmpegInputPath) }
+            measureTimedValue { VideoThumbnailService.extractPosterFrame(ffmpegInputPath, fullSize = true) }
         Logger.i(tag = "VideoProcessing") {
             "poster done in ${posterElapsed.inWholeMilliseconds}ms (bytes=${posterBytes?.size})"
         }
