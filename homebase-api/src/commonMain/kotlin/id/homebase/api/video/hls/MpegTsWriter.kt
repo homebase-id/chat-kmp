@@ -1,6 +1,12 @@
 package id.homebase.api.video.hls
 
 import id.homebase.api.util.ByteBuilder
+import id.homebase.api.video.hls.MpegTs.NAL_AUD
+import id.homebase.api.video.hls.MpegTs.NAL_PPS
+import id.homebase.api.video.hls.MpegTs.NAL_SPS
+import id.homebase.api.video.hls.MpegTs.PACKET
+import id.homebase.api.video.hls.MpegTs.STREAM_AAC_ADTS
+import id.homebase.api.video.hls.MpegTs.STREAM_H264
 
 /**
  * Writes H.264 and AAC samples as MPEG-TS, laid out as ffmpeg's mpegts muxer does: PMT on 0x1000,
@@ -162,8 +168,8 @@ internal class MpegTsWriter(private val video: Mp4Track.Avc, private val audio: 
     private fun pat(): ByteArray = psi(0x00, 1, byteArrayOf(0, 1, (0xE0 or (PMT_PID shr 8)).toByte(), PMT_PID.toByte()))
 
     private fun pmt(): ByteArray {
-        val video = byteArrayOf(0x1B, (0xE0 or (VIDEO_PID shr 8)).toByte(), VIDEO_PID.toByte(), 0xF0.toByte(), 0)
-        val audio = if (audio == null) byteArrayOf() else byteArrayOf(0x0F, (0xE0 or (AUDIO_PID shr 8)).toByte(), AUDIO_PID.toByte(), 0xF0.toByte(), 0)
+        val video = byteArrayOf(STREAM_H264.toByte(), (0xE0 or (VIDEO_PID shr 8)).toByte(), VIDEO_PID.toByte(), 0xF0.toByte(), 0)
+        val audio = if (audio == null) byteArrayOf() else byteArrayOf(STREAM_AAC_ADTS.toByte(), (0xE0 or (AUDIO_PID shr 8)).toByte(), AUDIO_PID.toByte(), 0xF0.toByte(), 0)
         return psi(0x02, 1, byteArrayOf((0xE0 or (VIDEO_PID shr 8)).toByte(), VIDEO_PID.toByte(), 0xF0.toByte(), 0) + video + audio)
     }
 
@@ -180,16 +186,12 @@ internal class MpegTsWriter(private val video: Mp4Track.Avc, private val audio: 
     private fun next(pid: Int): Int = continuity[pid].also { continuity[pid] = (it + 1) and 0xF }
 
     private companion object {
-        const val PACKET = 188
         const val PAT_PID = 0x0000
         const val PMT_PID = 0x1000
         const val VIDEO_PID = 0x0100
         const val AUDIO_PID = 0x0101
         const val OFFSET_90K = 126_000L
         const val PCR_LEAD_90K = 63_000L
-        const val NAL_SPS = 7
-        const val NAL_PPS = 8
-        const val NAL_AUD = 9
         val START_CODE = byteArrayOf(0, 0, 0, 1)
         val AUD = byteArrayOf(0x09, 0xF0.toByte())
 

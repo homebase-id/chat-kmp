@@ -38,7 +38,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** [Media3VideoCompressor] on a real device: the same output contract as the ffmpeg path. */
+/** [Media3VideoCompressor] on a real device. */
 @RunWith(AndroidJUnit4::class)
 class Media3VideoCompressorTest {
     private companion object {
@@ -122,9 +122,9 @@ class Media3VideoCompressorTest {
     }
 
     @Test
-    fun eachQualitySettingGivesItsSizeAndAboutFfmpegsBytes() = runBlocking {
+    fun eachQualitySettingGivesItsSizeAndAboutItsBitrate() = runBlocking {
         // A 3 s 1440p60 clip without audio, so the file is the video stream alone. On content this
-        // hard the hardware encoder overshoots and libx264 undershoots, hence the wide band.
+        // hard the hardware encoder overshoots, hence the wide band.
         val expected = mapOf(
             MediaQuality.STANDARD to (1280 to 720),
             MediaQuality.HD to (1920 to 1080),
@@ -134,16 +134,13 @@ class Media3VideoCompressorTest {
             val quality = setting.toVideoQuality()
             val source = fixture("landscape_1440p.mp4")
             val media3 = Media3VideoCompressor.compress(source.absolutePath, null, null, null, quality, false)
-            val ffmpeg = FFmpegUtils.compressVideo(source.absolutePath, null, null, null, quality, false)
             source.delete()
             val media3Bytes = File(media3).length()
-            val ffmpegBytes = File(ffmpeg).length()
+            val targetBytes = quality.targets().videoBitrateBps.toLong() * AndroidVideoProber.getDurationMs(media3) / 8000
             val media3Size = probe(media3).displaySize
-            val ffmpegSize = probe(ffmpeg).displaySize
-            Log.i("Media3Quality", "$setting -> $quality: media3 $media3Size ${media3Bytes / 1000} kB, ffmpeg $ffmpegSize ${ffmpegBytes / 1000} kB, target ${quality.targets().videoBitrateBps / 1000} kbps")
+            Log.i("Media3Quality", "$setting -> $quality: media3 $media3Size ${media3Bytes / 1000} kB, target ${targetBytes / 1000} kB")
             assertEquals(size, media3Size, "$setting media3")
-            assertEquals(size, ffmpegSize, "$setting ffmpeg")
-            assertTrue(media3Bytes in ffmpegBytes / 2..ffmpegBytes * 2, "$setting: media3 $media3Bytes bytes against ffmpeg's $ffmpegBytes")
+            assertTrue(media3Bytes in targetBytes / 2..targetBytes * 2, "$setting: $media3Bytes bytes against a target of $targetBytes")
         }
     }
 
@@ -206,219 +203,36 @@ class Media3VideoCompressorTest {
     }
 
     /**
-     * Not a check: times Media3 against ffmpeg on videos pushed to the test app's own folder, e.g.
-     * `adb push big.mp4 /sdcard/Android/data/id.homebase.api.test/files/bench/`, or with `run-as` into the app's
-     * internal files/bench/ where Android hides adb's files from the app. Does nothing when both are empty.
-     * Runs alternate which goes first and pause between, as the phone throttles when hot.
-     */
-    @Test
-    fun benchmarkAgainstFfmpeg() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val power = context.getSystemService(android.os.PowerManager::class.java)
-        val inputs = benchInputs()
-        if (inputs.isEmpty()) return@runBlocking
-        var media3First = true
-        for (input in inputs.sortedBy { it.length() }) {
-            for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) {
-                val runs = listOf<Pair<String, suspend () -> String>>(
-                    "media3" to { Media3VideoCompressor.compress(input.absolutePath, null, null, null, quality, true) },
-                    "ffmpeg" to { FFmpegUtils.compressVideo(input.absolutePath, null, null, null, quality, true) },
-                ).let { if (media3First) it else it.reversed() }
-                media3First = !media3First
-                for ((name, run) in runs) {
-                    delay(COOL_DOWN_MS)
-                    val thermal = power.currentThermalStatus
-                    val (ms, bytes) = timed(run)
-                    Log.i("Media3Benchmark", "${input.name} ${input.length() / 1_000_000}MB $quality $name: ${ms}ms ${bytes / 1000}kB thermal=$thermal")
-                }
-            }
-            delay(COOL_DOWN_MS)
-            val compressed = Media3VideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, true)
-            val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
-            for ((name, segment) in listOf<Pair<String, suspend () -> SegmentedVideo?>>(
-                "segmenter" to { AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) },
-                "ffmpeg" to { FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null) },
-            )) {
-                delay(COOL_DOWN_MS)
-                val started = System.currentTimeMillis()
-                val out = segment()
-                Log.i("Media3Benchmark", "${input.name} ${File(compressed).length() / 1_000_000}MB compressed, segment+encrypt $name: ${System.currentTimeMillis() - started}ms hash=${out?.hash != null} thermal=${power.currentThermalStatus}")
-                out?.let { File(it.segmentsPath).parentFile?.deleteRecursively() }
-            }
-            File(compressed).delete()
-            delay(COOL_DOWN_MS)
-            val audio = File(input.parentFile, "audio_only.m4a")
-            val started = System.currentTimeMillis()
-            val session = executeFfmpeg(arrayOf("-y", "-i", input.absolutePath, "-vn", "-c:a", "aac", "-b:a", "128k", audio.absolutePath))
-            Log.i("Media3Benchmark", "${input.name} ffmpeg audio only: ${System.currentTimeMillis() - started}ms rc=${session.returnCode} thermal=${power.currentThermalStatus}")
-            audio.delete()
-            delay(COOL_DOWN_MS)
-            androidAacReencodeMs(input)?.let { ms ->
-                Log.i("Media3Benchmark", "${input.name} Android AAC re-encode only: ${ms}ms thermal=${power.currentThermalStatus}")
-            }
-        }
-    }
-
-    /** Decodes and re-encodes [input]'s audio with Android's own AAC codecs, the step Media3 avoids by copying. */
-    private fun androidAacReencodeMs(input: File): Long? {
-        val extractor = MediaExtractor().apply { setDataSource(input.absolutePath) }
-        val track = (0 until extractor.trackCount).firstOrNull { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME) == MediaFormat.MIMETYPE_AUDIO_AAC }
-            ?: return null.also { extractor.release() }
-        extractor.selectTrack(track)
-        val source = extractor.getTrackFormat(track)
-        val decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply { configure(source, null, null, 0); start() }
-        val target = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, source.getInteger(MediaFormat.KEY_SAMPLE_RATE), source.getInteger(MediaFormat.KEY_CHANNEL_COUNT)).apply {
-            setInteger(MediaFormat.KEY_BIT_RATE, 128_000)
-            setInteger(MediaFormat.KEY_AAC_PROFILE, 2)
-            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1 shl 16)
-        }
-        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply { configure(target, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE); start() }
-        val info = MediaCodec.BufferInfo()
-        val pcm = ArrayDeque<Pair<ByteArray, Long>>()
-        var inputDone = false
-        var decoded = false
-        var encoderEos = false
-        val started = System.currentTimeMillis()
-        while (true) {
-            if (!inputDone) {
-                val i = decoder.dequeueInputBuffer(0)
-                if (i >= 0) {
-                    val n = extractor.readSampleData(decoder.getInputBuffer(i)!!, 0)
-                    if (n < 0) {
-                        decoder.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        inputDone = true
-                    } else {
-                        decoder.queueInputBuffer(i, 0, n, extractor.sampleTime, 0)
-                        extractor.advance()
-                    }
-                }
-            }
-            if (!decoded) {
-                val o = decoder.dequeueOutputBuffer(info, 0)
-                if (o >= 0) {
-                    val bytes = ByteArray(info.size).also { decoder.getOutputBuffer(o)!!.get(it) }
-                    pcm.addLast(bytes to info.presentationTimeUs)
-                    decoder.releaseOutputBuffer(o, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) decoded = true
-                }
-            }
-            if (pcm.isNotEmpty() || (decoded && !encoderEos)) {
-                val i = encoder.dequeueInputBuffer(0)
-                if (i >= 0) {
-                    if (pcm.isEmpty()) {
-                        encoder.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        encoderEos = true
-                    } else {
-                        val buffer = encoder.getInputBuffer(i)!!
-                        val (bytes, timeUs) = pcm.removeFirst()
-                        val n = minOf(bytes.size, buffer.remaining())
-                        buffer.put(bytes, 0, n)
-                        if (n < bytes.size) pcm.addFirst(bytes.copyOfRange(n, bytes.size) to timeUs)
-                        encoder.queueInputBuffer(i, 0, n, timeUs, 0)
-                    }
-                }
-            }
-            val o = encoder.dequeueOutputBuffer(info, 0)
-            if (o >= 0) {
-                encoder.releaseOutputBuffer(o, false)
-                if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
-            }
-        }
-        val ms = System.currentTimeMillis() - started
-        decoder.release()
-        encoder.release()
-        extractor.release()
-        return ms
-    }
-
-    /** Not a check: times our segmenter against ffmpeg's on each bench/ video, compressed once by Media3. */
-    @Test
-    fun benchmarkSegmenting() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val inputs = benchInputs()
-        for (input in inputs) {
-            val compressed = Media3VideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, true)
-            val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
-            repeat(2) { round ->
-                for ((name, segment) in listOf<Pair<String, suspend () -> SegmentedVideo?>>(
-                    "segmenter" to { AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) },
-                    "ffmpeg" to { FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null) },
-                ).let { if (round == 0) it else it.reversed() }) {
-                    delay(10_000)
-                    val started = System.currentTimeMillis()
-                    val out = segment()
-                    Log.i("Media3Benchmark", "${input.name} ${File(compressed).length() / 1_000_000}MB compressed, segment+encrypt $name: ${System.currentTimeMillis() - started}ms hash=${out?.hash != null}")
-                    out?.let { File(it.segmentsPath).parentFile?.deleteRecursively() }
-                }
-            }
-            File(compressed).delete()
-        }
-    }
-
-    /** Not a check: segments each bench/ video as it is, ours and ffmpeg's, twice in alternating order. */
-    @Test
-    fun benchmarkSegmentingAsIs() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val inputs = benchInputs()
-        for (input in inputs) {
-            val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
-            repeat(2) { round ->
-                for ((name, segment) in listOf<Pair<String, suspend () -> SegmentedVideo?>>(
-                    "segmenter" to { AndroidVideoCompressor.segmentAndEncrypt(input.absolutePath, key, null) },
-                    "ffmpeg" to { FFmpegVideoCompressor.segmentAndEncrypt(input.absolutePath, key, null) },
-                ).let { if (round == 0) it else it.reversed() }) {
-                    delay(10_000)
-                    val started = System.currentTimeMillis()
-                    val out = segment()
-                    Log.i("Media3Benchmark", "${input.name} ${input.length() / 1_000_000}MB as is, segment+encrypt $name: ${System.currentTimeMillis() - started}ms hash=${out?.hash != null}")
-                    out?.let { File(it.segmentsPath).parentFile?.deleteRecursively() }
-                }
-            }
-        }
-    }
-
-    /**
      * Not a check: what sending a video costs end to end, as VideoPayloadProcessor runs it, at Standard and HD
      * (Original video is HD's transcode outside Photos). Compress, then
-     * HLS (segment and encrypt) at 5 MB or more, else encrypt the MP4 in one pass. Ours is Media3, our
-     * segmenter and the payload hash; ffmpeg's is ffmpeg for both steps and no hash, as Android had before.
+     * HLS (segment and encrypt) at 5 MB or more, else encrypt the MP4 in one pass, with the payload hash.
      */
     @Test
     fun benchmarkEndToEnd() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val fileOps = AndroidFileOperationsProvider(context)
         for (input in benchInputs()) for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) {
-            for (round in 0..1) {
-                val backends = listOf("ours", "ffmpeg").let { if (round == 0) it else it.reversed() }
-                for (backend in backends) {
+            repeat(2) {
+                run {
                     delay(COOL_DOWN_MS)
                     val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
                     val started = System.currentTimeMillis()
-                    val compressed = if (backend == "ours") {
-                        AndroidVideoCompressor.compress(input.absolutePath, null, null, null, quality, false)
-                    } else {
-                        FFmpegVideoCompressor.compress(input.absolutePath, null, null, null, quality, false)
-                    }
+                    val compressed = AndroidVideoCompressor.compress(input.absolutePath, null, null, null, quality, false)
                     val compressMs = System.currentTimeMillis() - started
                     val compressedBytes = File(compressed).length()
                     val hls = compressedBytes >= 5L * 1024 * 1024
                     val second = System.currentTimeMillis()
                     val output = if (hls) {
-                        val segmented = if (backend == "ours") AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) else FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null)
-                        File(segmented!!.segmentsPath).parentFile!!
+                        File(AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null)!!.segmentsPath).parentFile!!
                     } else {
-                        val out = File(context.cacheDir, "encrypted_$backend.bin")
-                        if (backend == "ours") {
-                            fileOps.encryptWithPayloadHash(compressed, out.absolutePath, key, PayloadHashAlgorithm.Blake3)
-                        } else {
-                            fileOps.encryptFileStreaming(compressed, out.absolutePath, key)
-                        }
+                        val out = File(context.cacheDir, "encrypted.bin")
+                        fileOps.encryptWithPayloadHash(compressed, out.absolutePath, key, PayloadHashAlgorithm.Blake3)
                         out
                     }
                     val now = System.currentTimeMillis()
                     Log.i(
                         "Media3Benchmark",
-                        "${input.name} ${input.length() / 1_000_000}MB $quality end to end $backend: ${now - started}ms " +
+                        "${input.name} ${input.length() / 1_000_000}MB $quality end to end: ${now - started}ms " +
                             "(compress ${compressMs}ms to ${compressedBytes / 1000}kB, ${if (hls) "HLS" else "MP4 encrypt"} ${now - second}ms)",
                     )
                     output.deleteRecursively()
@@ -427,11 +241,6 @@ class Media3VideoCompressorTest {
             }
         }
     }
-
-    private suspend fun executeFfmpeg(args: Array<String>): com.arthenica.ffmpegkit.FFmpegSession =
-        kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-            com.arthenica.ffmpegkit.FFmpegKit.executeWithArgumentsAsync(args) { session -> cont.resumeWith(Result.success(session)) }
-        }
 
     private fun audioFormat(path: String): MediaFormat? {
         val extractor = MediaExtractor()

@@ -127,9 +127,6 @@ class VideoPayloadProcessorCompressionSeamTest {
             return compressedPath
         }
 
-        override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo =
-            segmented
-
         override suspend fun segmentAndEncrypt(
             inputPath: String,
             keyHeader: KeyHeader,
@@ -142,10 +139,6 @@ class VideoPayloadProcessorCompressionSeamTest {
             return segmented
         }
 
-        override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean = true
-
-        override suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-            "$fileName-cached"
     }
 
     private class FakeVideoProbe(private val durationMs: Long) : VideoProber {
