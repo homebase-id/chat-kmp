@@ -35,9 +35,6 @@ plugins {
 
 dependencyResolutionManagement {
     repositories {
-        maven {
-            url = uri("gradle/local-repo")
-        }
         google {
             mavenContent {
                 includeGroupAndSubgroups("androidx")

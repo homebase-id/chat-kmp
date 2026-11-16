@@ -426,13 +426,6 @@ actual object FFmpegUtils {
     }
 
 
-    actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-        withContext(Dispatchers.IO) {
-            val cacheFile = File(scratchDirPath, "input_$fileName")
-            cacheFile.writeBytes(data)
-            cacheFile.absolutePath
-        }
-
     internal suspend fun runProcess(command: List<String>, timeoutMs: Long? = null): Int {
         Logger.d(tag = LOG_TAG) { "Running: ${command.joinToString(" ")}" }
         val result = runCapturing(command, timeoutMs, onLine = null)
@@ -519,43 +512,6 @@ actual object FFmpegUtils {
         } ?: -1
         return ProcessResult(exitCode, output.toString())
     }
-
-    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-        withContext(Dispatchers.IO) {
-            if (!FFmpegBinaryManager.isAvailable()) {
-                Logger.e(tag = LOG_TAG) { "Remux HLS->MP4 skipped: no bundled ffmpeg for this platform" }
-                return@withContext false
-            }
-            val command = listOf(
-                FFmpegBinaryManager.ffmpegPath(),
-                "-y",
-                "-allowed_extensions", "ALL",
-                "-i", playlistPath,
-                "-c", "copy",
-                "-bsf:a", "aac_adtstoasc",
-                "-movflags", "+faststart",
-                outputPath,
-            )
-            val logFile = File(scratchDirPath, "remux_${UUID.randomUUID()}.log")
-            try {
-                val process = FFmpegBinaryManager.processBuilder(command)
-                    .redirectErrorStream(true)
-                    .redirectOutput(logFile)
-                    .start()
-                val exitCode = process.waitForOrDestroy()
-                val ok = exitCode == 0 && File(outputPath).length() > 0L
-                if (!ok) {
-                    Logger.e(tag = LOG_TAG) {
-                        "Remux HLS->MP4 failed, exit=$exitCode, output tail:\n" +
-                            logFile.readLines().takeLast(20).joinToString("\n")
-                    }
-                    deleteFailedFfmpegOutput(outputPath)
-                }
-                ok
-            } finally {
-                logFile.delete()
-            }
-        }
 
     private const val LOG_TAG = "FFmpegUtils"
     private const val PROBE_TIMEOUT_MS = 30 * 1000L

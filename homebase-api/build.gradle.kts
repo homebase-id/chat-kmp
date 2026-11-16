@@ -349,8 +349,6 @@ kotlin {
             implementation(libs.androidx.media3.effect)
             implementation(libs.sqldelight.android.driver)
             implementation(libs.android.database.sqlcipher)
-            implementation(libs.ffmpeg.kit)
-            implementation(libs.smart.exception.java)
             implementation(libs.androidsvg)
         }
         nativeMain.dependencies {

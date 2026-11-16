@@ -22,7 +22,14 @@ internal sealed class Mp4Track {
     class Avc(val nalLengthSize: Int, val sps: List<ByteArray>, val pps: List<ByteArray>) : Mp4Track()
 
     /** AAC: the fields of an ADTS header. */
-    class Aac(val profile: Int, val sampleRateIndex: Int, val channels: Int) : Mp4Track()
+    class Aac(val profile: Int, val sampleRateIndex: Int, val channels: Int) : Mp4Track() {
+        val sampleRate: Int get() = SAMPLE_RATES[sampleRateIndex]
+
+        companion object {
+            // ADTS's sampling frequency indexes; above 12 is reserved or explicit, which ADTS can't carry.
+            val SAMPLE_RATES = intArrayOf(96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350)
+        }
+    }
 }
 
 // A sample table claiming more than this is damaged, not a phone's video.
@@ -170,7 +177,7 @@ internal class Mp4Movie(val video: Mp4Track.Avc, val audio: Mp4Track.Aac?, val s
             val sampleRateIndex = (config ushr 7) and 0xF
             val channels = (config ushr 3) and 0xF
             // ADTS carries AAC Main, LC, SSR and LTP only, and no explicit sample rate.
-            if (audioObjectType !in 1..4 || sampleRateIndex > 12 || channels !in 1..7) return null
+            if (audioObjectType !in 1..4 || sampleRateIndex >= Mp4Track.Aac.SAMPLE_RATES.size || channels !in 1..7) return null
             return Mp4Track.Aac(audioObjectType - 1, sampleRateIndex, channels)
         }
 
