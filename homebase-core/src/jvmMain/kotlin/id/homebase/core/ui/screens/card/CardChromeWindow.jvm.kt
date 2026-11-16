@@ -75,11 +75,15 @@ actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) {
     val tooltipShown by remember { derivedStateOf { tooltips.covers(Everywhere) } }
     // A menu needs far more room than a tooltip: the window spans the content pane while one is open.
     val menuShown by remember { derivedStateOf { tooltips.coversWindow() } }
-    // Moving the owner doesn't re-lay out Compose, so the chrome window follows it itself.
+    // Moving or resizing the owner doesn't re-lay out the chrome window, so it follows the owner itself.
     var moves by remember { mutableIntStateOf(0) }
     DisposableEffect(owner) {
         val moved = object : ComponentAdapter() {
             override fun componentMoved(e: ComponentEvent) {
+                moves++
+            }
+
+            override fun componentResized(e: ComponentEvent) {
                 moves++
             }
         }
@@ -165,7 +169,13 @@ actual fun AboveCard(modifier: Modifier, content: @Composable () -> Unit) {
                 }
                 val x = with(windowDensity) { offsetX.dp.roundToPx() }
                 val y = with(windowDensity) { offsetY.dp.roundToPx() }
-                layout(placeable.width + x * 2, placeable.height + y * 2) { placeable.place(x, y) }
+                // Reported at the window's own size: a mismatch is centred, which would shift the chrome under an open menu.
+                val (w, h) = if (menuShown) {
+                    with(windowDensity) { pane.width.dp.roundToPx() to pane.height.dp.roundToPx() }
+                } else {
+                    placeable.width + x * 2 to placeable.height + y * 2
+                }
+                layout(w, h) { placeable.place(x, y) }
             }
         }
     }
