@@ -73,6 +73,7 @@ fun MomentMediaCarousel(
     driveId: Uuid,
     previewThumbnail: EmbeddedThumb?,
     keyHeader: KeyHeader,
+    isEncrypted: Boolean,
     messageId: Uuid,
     downloadingFiles: Set<String>,
     isUploading: Boolean,
@@ -221,6 +222,7 @@ fun MomentMediaCarousel(
                     fileId = fileId,
                     driveId = driveId,
                     keyHeader = keyHeader,
+                    isEncrypted = isEncrypted,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
                     modifier = Modifier.fillMaxSize(),

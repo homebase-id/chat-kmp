@@ -144,6 +144,7 @@ class MomentsWideScreenshotTest {
             fileId = Uuid.random(),
             driveId = Uuid.random(),
             keyHeader = KeyHeader.empty(),
+            isEncrypted = false,
             payloads = if (fixture.type == null) emptyList() else List(fixture.pages) { payload(fixture, index, it) },
             description = "Moment $index on the ridge at first light",
             userDateMs = atMs,

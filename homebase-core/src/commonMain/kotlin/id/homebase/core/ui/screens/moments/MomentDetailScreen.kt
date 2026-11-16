@@ -1769,6 +1769,7 @@ private fun MomentDetailContent(
                             driveId = moment.driveId,
                             previewThumbnail = moment.previewThumbnail,
                             keyHeader = moment.keyHeader,
+                            isEncrypted = moment.isEncrypted,
                             modifier = Modifier.fillMaxSize(),
                             stepUpToPayload = isActivePage && pagerState.settledPage == page,
                             // Fit (not crop) — the whole post is visible,

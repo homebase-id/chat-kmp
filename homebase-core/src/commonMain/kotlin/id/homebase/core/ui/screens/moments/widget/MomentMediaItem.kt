@@ -84,6 +84,7 @@ fun MomentMediaItem(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     modifier: Modifier = Modifier,
     keyHeader: KeyHeader,
+    isEncrypted: Boolean,
     preserveAspectRatio: Boolean = false,
     // Set when the host gives an explicit size (comments-shrink band, detail/reels pager page): without it the
     // intrinsic `.aspectRatio()` below sizes the image to its own ratio and overflows that box.
@@ -199,11 +200,11 @@ fun MomentMediaItem(
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
                 imageLocalContext?.localFilePath,
-                driveId, fileId, payload.key, payload.lastModified, payload.iv != null,
+                driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted,
             ) {
-                // The sent copy once the payload has its IV (seeded in the cache, so no download), as everyone else
-                // sees it; the local file only stands in while the post is still uploading.
-                val localPath = imageLocalContext?.localFilePath?.takeIf { payload.iv == null }
+                // The sent copy whenever it can be read from the cache (seeded at send, so no download), as everyone
+                // else sees it; the local file only stands in while an encrypted post is still uploading.
+                val localPath = imageLocalContext?.localFilePath?.takeIf { isEncrypted && payload.iv == null }
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {
@@ -217,7 +218,7 @@ fun MomentMediaItem(
                         descriptor = payload,
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
-                        isEncrypted = payloadIv != null,
+                        isEncrypted = isEncrypted,
                         keyHeader = payloadIv
                             ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                             ?: KeyHeader.empty(),
@@ -297,7 +298,7 @@ fun MomentMediaItem(
                             descriptor = payload,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
-                            isEncrypted = payloadIv != null,
+                            isEncrypted = isEncrypted,
                             keyHeader = payloadIv
                                 ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                                 ?: KeyHeader.empty(),
@@ -363,7 +364,7 @@ fun MomentMediaItem(
                     descriptor = payload,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
-                    isEncrypted = payloadIv != null,
+                    isEncrypted = isEncrypted,
                     keyHeader = perPayloadKeyHeader,
                     remoteOdinId = remoteOdinId,
                     globalTransitId = globalTransitId,
