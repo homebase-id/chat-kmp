@@ -364,8 +364,10 @@ object ImageMetadataScrubber {
         0x00, 0x00, 0x00, 0x00,                         // no next IFD
     )
 
-    /** [minimalExifTiff] wrapped as a JPEG APP1 segment, with the Exif identifier prefix. */
-    private fun minimalExifApp1(orientation: Int): ByteArray = app1(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + minimalExifTiff(orientation))
+    private fun minimalExifApp1(orientation: Int): ByteArray = exifApp1(minimalExifTiff(orientation))
+
+    /** [tiff] wrapped as a JPEG APP1 segment, with the Exif identifier prefix. */
+    internal fun exifApp1(tiff: ByteArray): ByteArray = app1(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + tiff)
 
     private fun app1(payload: ByteArray): ByteArray {
         val length = payload.size + 2

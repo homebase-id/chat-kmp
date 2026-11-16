@@ -88,6 +88,9 @@ internal interface PipelineBitmap : AutoCloseable {
      */
     val hasGainmap: Boolean get() = false
 
+    /** Lets go of the gain map, so the steps after the last HDR output don't scale it. */
+    fun dropGainmap() = Unit
+
     /**
      * A new bitmap at the given size, filtered at least bilinearly, leaving this one open.
      * Only asked for exact halvings, where bilinear averages every pixel.
@@ -136,7 +139,9 @@ internal suspend fun renderFrom(
 
     val largestFirst = outputs.withIndex().sortedByDescending { longEdge(it.value) }
     val rendered = arrayOfNulls<RenderedImage>(outputs.size)
+    var hdrOutputsLeft = outputs.count { it.keepsHdr }
     var current = source.decode(longEdge(largestFirst.first().value))
+    if (hdrOutputsLeft == 0) current.dropGainmap()
     try {
         for ((index, output) in largestFirst) {
             checkCancelled()
@@ -148,6 +153,7 @@ internal suspend fun renderFrom(
                 output.keepColorProfile -> encodeWithin(current, output)
                 else -> encodeInSrgb(current, output)
             }
+            if (output.keepsHdr && --hdrOutputsLeft == 0) current.dropGainmap()
         }
     } finally {
         current.close()

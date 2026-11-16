@@ -11,30 +11,29 @@ import co.touchlab.kermit.Logger
  * XMP isn't carried: on phones it describes the source file's structure (a Motion Photo's video, an
  * Ultra HDR gain map, its orientation), which a re-encode makes false.
  */
-fun withSourceMetadata(finalImage: ByteArray, source: ByteArray, width: Int, height: Int): ByteArray {
+fun withSourceMetadata(finalImage: ByteArray, format: ImageFormat, source: ByteArray, width: Int, height: Int): ByteArray {
     val tiff = ImageMetadataScrubber.readBlocks(source)?.exif ?: return finalImage
     val exif = ExifTiff.normalized(tiff, width, height)
     if (exif == null) {
         Logger.w(tag = "ImageMetadataCarry") { "source EXIF couldn't be read; the final image goes without" }
         return finalImage
     }
-    return if (isJpeg(finalImage)) JpegMetadata.embed(finalImage, exif) else WebpMetadata.embed(finalImage, exif, width, height)
+    return if (format == ImageFormat.JPEG) JpegMetadata.embed(finalImage, exif) else WebpMetadata.embed(finalImage, exif, width, height)
 }
 
-private fun isJpeg(b: ByteArray) = b.size > 2 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte()
-
 internal object JpegMetadata {
-    private val EXIF_HEADER = byteArrayOf(0x45, 0x78, 0x69, 0x66, 0, 0)
-
     /**
      * [jpeg] with an APP1 Exif segment holding [tiff] right after SOI. In front of everything, so an Ultra HDR
      * file's MPF offsets, which count from the MPF segment itself, still find the gain map.
      */
     fun embed(jpeg: ByteArray, tiff: ByteArray): ByteArray {
-        val length = 2 + EXIF_HEADER.size + tiff.size
-        if (length > 0xFFFF) return jpeg
-        val segment = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (length shr 8).toByte(), length.toByte()) + EXIF_HEADER + tiff
-        return jpeg.copyOfRange(0, 2) + segment + jpeg.copyOfRange(2, jpeg.size)
+        if (tiff.size + 8 > 0xFFFF) return jpeg
+        val segment = ImageMetadataScrubber.exifApp1(tiff)
+        return ByteArray(jpeg.size + segment.size).also { out ->
+            jpeg.copyInto(out, 0, 0, 2)
+            segment.copyInto(out, 2)
+            jpeg.copyInto(out, 2 + segment.size, 2)
+        }
     }
 }
 

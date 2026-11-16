@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -26,6 +27,10 @@ class ImagePipelineTest {
         override val isSrgb = true
 
         override val hasGainmap get() = log.gainmap
+
+        override fun dropGainmap() {
+            log.gainmap = false
+        }
 
         override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
 
@@ -65,8 +70,14 @@ class ImagePipelineTest {
     fun onlyTheImagePeopleLookAtBecomesAJpegWithTheGainmap() = runTest {
         val plan = { _: ImageSize -> listOf(output(1600, 1200).copy(keepsHdr = true), output(320, 240), output(20, 15)) }
 
-        val hdr = renderFrom(FakeSource(4000, 3000, Log().apply { gainmap = true }), plan = plan).images
+        val hdrLog = Log().apply { gainmap = true }
+        val hdr = renderFrom(FakeSource(4000, 3000, hdrLog), plan = plan).images
         assertEquals(listOf(ImageFormat.JPEG, ImageFormat.WEBP, ImageFormat.WEBP), hdr.map { it.format })
+        assertFalse(hdrLog.gainmap, "the smaller steps don't scale a gain map nothing keeps")
+
+        val standardLog = Log().apply { gainmap = true }
+        renderFrom(FakeSource(4000, 3000, standardLog)) { listOf(output(1600, 1200), output(320, 240)) }
+        assertFalse(standardLog.gainmap, "with no HDR output, the gain map goes at decode")
 
         val sdr = renderFrom(FakeSource(4000, 3000, Log()), plan = plan).images
         assertEquals(listOf(ImageFormat.WEBP, ImageFormat.WEBP, ImageFormat.WEBP), sdr.map { it.format }, "no gain map, no JPEG")

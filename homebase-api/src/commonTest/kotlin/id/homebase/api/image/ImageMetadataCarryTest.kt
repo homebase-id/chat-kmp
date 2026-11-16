@@ -62,7 +62,7 @@ class ImageMetadataCarryTest {
 
     @Test
     fun theFinalImageCarriesTheSourcesMetadataMadeRightForIt() {
-        val out = withSourceMetadata(lossyWebp, jpeg, 640, 480)
+        val out = withSourceMetadata(lossyWebp, ImageFormat.WEBP, jpeg, 640, 480)
 
         assertEquals("VP8X", out.decodeToString(12, 16), "the extended header announces the metadata")
         assertEquals(0x08, out[20].toInt() and 0x0C, "the EXIF flag, and no XMP")
@@ -84,7 +84,7 @@ class ImageMetadataCarryTest {
     @Test
     fun anExtendedWebpGainsTheChunksAndFlags() {
         val vp8x = ByteArray(10).also { it[0] = 0x20 } // already has an ICC profile flag
-        val out = withSourceMetadata(riff(chunk("VP8X", vp8x), chunk("VP8 ", ByteArray(10))), jpeg, 640, 480)
+        val out = withSourceMetadata(riff(chunk("VP8X", vp8x), chunk("VP8 ", ByteArray(10))), ImageFormat.WEBP, jpeg, 640, 480)
 
         assertEquals(0x28, out[20].toInt() and 0xFF, "its own flags kept, EXIF added")
         assertNotNull(ImageMetadataScrubber.readBlocks(out)?.exif)
@@ -97,7 +97,7 @@ class ImageMetadataCarryTest {
         assertTrue(assertNotNull(blocks.exif).contains("SecretCamera".encodeToByteArray()))
         assertNotNull(blocks.xmp)
 
-        val exif = assertNotNull(ImageMetadataScrubber.readBlocks(withSourceMetadata(lossyWebp, heic, 64, 32))?.exif)
+        val exif = assertNotNull(ImageMetadataScrubber.readBlocks(withSourceMetadata(lossyWebp, ImageFormat.WEBP, heic, 64, 32))?.exif)
         assertEquals(1, orientationOf(exif), "upright pixels: Orientation 1")
     }
 
@@ -114,6 +114,6 @@ class ImageMetadataCarryTest {
     @Test
     fun aSourceWithNoMetadataLeavesTheFinalImageAlone() {
         val plain = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xDA.toByte(), 0, 2, 0xFF.toByte(), 0xD9.toByte())
-        assertSame(lossyWebp, withSourceMetadata(lossyWebp, plain, 640, 480))
+        assertSame(lossyWebp, withSourceMetadata(lossyWebp, ImageFormat.WEBP, plain, 640, 480))
     }
 }

@@ -1772,6 +1772,7 @@ private fun MomentDetailContent(
                             isEncrypted = moment.isEncrypted,
                             modifier = Modifier.fillMaxSize(),
                             stepUpToPayload = isActivePage && pagerState.settledPage == page,
+                            showsHdr = isActivePage && pagerState.settledPage == page,
                             // Fit (not crop) — the whole post is visible,
                             // including landscape media in a portrait viewport
                             // (and vice versa). Letterbox bars take the Box's

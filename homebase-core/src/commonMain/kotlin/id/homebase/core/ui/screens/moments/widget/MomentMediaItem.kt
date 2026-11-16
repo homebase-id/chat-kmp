@@ -96,6 +96,8 @@ fun MomentMediaItem(
     // Routes photos through [ZoomableSubSamplingImage] for inline pinch-zoom; only affects image payloads.
     enableZoom: Boolean = false,
     stepUpToPayload: Boolean = true,
+    /** Only the full-screen detail viewer's page in view sets this; feed cards stay SDR as they scroll. */
+    showsHdr: Boolean = false,
     // True while the zoomed photo is panned past fit; the carousel pager uses it to suspend page-swiping.
     onZoomedChanged: ((Boolean) -> Unit)? = null,
     shape: Shape =
@@ -208,9 +210,7 @@ fun MomentMediaItem(
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {
-                    // A public (unencrypted) post carries no IV — build the source anyway (encrypted
-                    // only when an IV is present). Bailing to null here left public feed images as a
-                    // blank Box that never even requested bytes; matches the non-zoom builder below.
+                    // A public post's payloads carry no IV: request the plain bytes, never an empty Box.
                     val payloadIv = payload.iv?.bytes
                     val imageData = HomebaseImageData.from(
                         driveId = driveId,
@@ -245,6 +245,7 @@ fun MomentMediaItem(
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedContentStateKey = "image-${fileId}-${payload.key}",
+                showsHdr = showsHdr,
             )
         }
 
@@ -284,13 +285,8 @@ fun MomentMediaItem(
                 )
             } else {
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified) {
-                        // Public feed posts are unencrypted: a plaintext payload carries
-                        // no IV. Build a plaintext request (isEncrypted=false, empty
-                        // keyHeader) rather than bailing to an empty Box — the server's
-                        // `payloadencrypted=false` header makes the loader return the bytes
-                        // as-is (keyHeader ignored). Encrypted payloads (chat, moments) still
-                        // carry an IV, so they keep the encrypted path unchanged.
+                    remember(driveId, fileId, payload.key, payload.lastModified, isEncrypted) {
+                        // A public post's payloads carry no IV: request the plain bytes, never an empty Box.
                         val payloadIv = payload.iv?.bytes
                         HomebaseImageData.from(
                             driveId = driveId,

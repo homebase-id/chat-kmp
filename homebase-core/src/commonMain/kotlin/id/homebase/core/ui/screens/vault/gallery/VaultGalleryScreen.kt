@@ -232,6 +232,7 @@ fun VaultGalleryScreen(
                             onToggleUI = onTapImage,
                             sharedTransitionScope = sharedTransitionScope.takeIf { isHero },
                             animatedVisibilityScope = animatedVisibilityScope.takeIf { isHero },
+                            showsHdr = pagerState.settledPage == page,
                         )
                     } else if (previewKind != null) {
                         // Composed only on the settled page: a video fetches and decrypts its whole file.

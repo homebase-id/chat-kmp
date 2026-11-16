@@ -53,8 +53,8 @@ import id.homebase.core.HomebaseConstants
 import id.homebase.core.avatars.rememberPublicAvatarUrl
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageLoader
-import coil3.Image
-import id.homebase.core.image.HdrWhileShown
+import id.homebase.core.image.HdrWindowEffect
+import id.homebase.core.image.carriesGainmap
 import id.homebase.core.image.fullScreenImageRequest
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.koinInject
@@ -86,6 +86,8 @@ fun ZoomableSubSamplingImage(
      * so they never crop/uncrop and need no hero. See [VaultZoomableImage].
      */
     heroContentAspect: Float? = null,
+    /** Full-screen viewers set this on the page in view, so a photo with a gain map is shown in HDR. */
+    showsHdr: Boolean = false,
 ) {
     val coilImageLoader: ImageLoader = koinInject()
     val homebaseImageLoader: HomebaseImageLoader = koinInject()
@@ -135,8 +137,8 @@ fun ZoomableSubSamplingImage(
     }
 
     var imageLoaded by remember(model) { mutableStateOf(false) }
-    var shownImage by remember(model) { mutableStateOf<Image?>(null) }
-    HdrWhileShown(shownImage)
+    var hasGainmap by remember(model) { mutableStateOf(false) }
+    HdrWindowEffect(active = showsHdr && hasGainmap)
 
     // Cross-fade the sharp image in over the placeholder so the unavoidable
     // decode (a 6 MB JPEG can take a few hundred ms on older devices) reads as a
@@ -195,7 +197,7 @@ fun ZoomableSubSamplingImage(
             zoomState = zoomState,
             scrollBar = null,
             onSuccess = { success ->
-                shownImage = success.result.image
+                hasGainmap = carriesGainmap(success.result.image)
                 imageLoaded = true
                 onLoaded?.invoke()
             },

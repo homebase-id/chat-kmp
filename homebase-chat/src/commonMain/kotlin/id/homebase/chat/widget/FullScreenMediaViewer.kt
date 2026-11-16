@@ -192,6 +192,7 @@ fun FullScreenMediaViewer(
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        showsHdr = isSettled,
                     )
                 }
 
@@ -218,6 +219,7 @@ fun FullScreenMediaViewer(
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        showsHdr = isSettled,
                     )
                 }
 

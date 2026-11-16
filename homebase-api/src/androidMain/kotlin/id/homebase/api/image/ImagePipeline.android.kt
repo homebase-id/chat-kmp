@@ -27,6 +27,10 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     override val isSrgb get() = bitmap.colorSpace.let { it == null || it == ColorSpace.get(ColorSpace.Named.SRGB) }
     override val hasGainmap get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && bitmap.hasGainmap()
 
+    override fun dropGainmap() {
+        if (hasGainmap) bitmap.gainmap = null
+    }
+
     override fun scaledTo(width: Int, height: Int): PipelineBitmap =
         AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true).also { bitmap.carryGainmapTo(it) })
 
