@@ -38,14 +38,16 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 
 ## Sending a video, end to end
 
-`benchmarkEndToEnd`: compress at Standard, then HLS (segment, encrypt, hash) at 5 MB or more, else encrypt the MP4 in one pass. "Ours" is Media3, our segmenter and the payload hash. "ffmpeg" is ffmpeg for both steps without a hash, as Android was before.
+`benchmarkEndToEnd`: compress at Standard and at HD (Original video is HD's transcode outside Photos), then HLS (segment, encrypt, hash) at 5 MB or more, else encrypt the MP4 in one pass. "Ours" is Media3, our segmenter and the payload hash. "ffmpeg" is ffmpeg for both steps without a hash, as Android was before.
 
-| Device | Input | Sent as | Ours | ffmpeg | Measured |
-|---|---|---|---|---|---|
-| Pixel 5 | Synthetic 1080p, 10 s → 3.7 MB (ffmpeg 3.3 MB) | MP4 | **2.5–3.5 s**: compress 2.3–3.1 s, encrypt and hash 0.19–0.40 s | 6.6–6.8 s: compress 6.4–6.6 s, encrypt 0.12 s | 2026-11-16 |
-| Pixel 5 | Synthetic 1080p, 83 s → 27.9 MB (ffmpeg 27.4 MB) | HLS | **16.5–17.0 s**: compress 15.8–16.0 s, HLS 0.62–0.93 s | 51.0–51.2 s: compress 50.0–50.2 s, HLS 0.99–1.03 s | 2026-11-16 |
+| Device | Input | Setting | Sent as | Ours | ffmpeg | Measured |
+|---|---|---|---|---|---|---|
+| Pixel 5 | Synthetic 1080p, 10 s | Standard | MP4, 3.7 MB (ffmpeg 3.3 MB) | **2.5–3.4 s**: compress 2.3–3.1 s, encrypt and hash 0.14–0.40 s | 6.6–6.8 s: compress 6.4–6.6 s, encrypt 0.12–0.17 s | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 10 s | HD | HLS, 6.8 MB (ffmpeg 6.5 MB) | **4.0 s**: compress 3.5–3.6 s, HLS 0.37–0.53 s | 9.0–9.1 s: compress 8.6–8.7 s, HLS 0.34–0.38 s | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 83 s | Standard | HLS, 27.9 MB (ffmpeg 27.4 MB) | **16.3–17.0 s**: compress 15.6–16.0 s, HLS 0.62–0.93 s | 50.5–51.2 s: compress 49.6–50.2 s, HLS 0.97–1.03 s | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 83 s | HD | HLS, 53.8 MB (ffmpeg 53.5 MB) | **26.8–27.3 s**: compress 25.8–26.2 s, HLS 0.96–1.06 s | 70.9–71.0 s: compress 69.3 s, HLS 1.6–1.7 s | 2026-11-16 |
 
-Compressing is almost all of a send. **Open question:** the small MP4's encrypt-and-hash step (0.19–0.40 s) is slower than ffmpeg's plain encrypt (0.12 s), though two native hashes of 3.7 MB cost about 15 ms. The 0.40 s run also loaded the library. To profile with the read-buffer fixes.
+Compressing is almost all of a send. Our MP4 encrypt also takes both payload hashes: 0.14–0.27 s against ffmpeg's plain 0.12–0.17 s, and 0.40 s on a process's first send, which also loads the native BLAKE3 and checks it.
 
 ## Compression: Media3 against ffmpeg
 
@@ -54,10 +56,17 @@ The compress step alone. On the HDR phone video, Media3 tone-maps to SDR; ffmpeg
 | Device | Input | Standard: Media3 / ffmpeg | HD: Media3 / ffmpeg | Measured |
 |---|---|---|---|---|
 | Pixel 8 | HDR phone video | **13.9–15.6 s** / 63.3–64.4 s | **11.7–14.0 s** / 156–163 s | 2026-11-16 |
-| Pixel 5 | Synthetic 1080p, 83 s | **15.8–16.0 s** / 50.0–50.2 s | not measured | 2026-11-16 |
-| Pixel 5 | Synthetic 1080p, 10 s | **2.3–3.1 s** / 6.4–6.6 s | not measured | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 83 s | **15.6–16.0 s** / 49.6–50.2 s | **25.8–26.2 s** / 69.3 s | 2026-11-16 |
+| Pixel 5 | Synthetic 1080p, 10 s | **2.3–3.1 s** / 6.4–6.6 s | **3.5–3.6 s** / 8.6–8.7 s | 2026-11-16 |
 
-Output sizes match ffmpeg's within a few percent on camera footage. On hard synthetic content (a 1440p60 animation), the hardware encoder runs 20–40% over its bitrate and libx264 about 16% under. See THUMBNAILS.md, "Android: Media3".
+**Output size per setting** (`eachQualitySettingGivesItsSizeAndAboutFfmpegsBytes`, a short synthetic clip; Original video is HD's transcode):
+
+| Device | Setting | Size | Media3 | ffmpeg | Measured |
+|---|---|---|---|---|---|
+| Pixel 5 | Standard | 1280×720 | 1384 kB | 791 kB | 2026-11-16 |
+| Pixel 5 | HD and Original | 1920×1080 | 2277 kB | 1581 kB | 2026-11-16 |
+
+Both land on the setting's size. On synthetic test patterns the hardware encoder runs over its bitrate and libx264 under it, so Media3 comes out 1.4–1.7× larger there; on the longer synthetic inputs above, and on real camera footage, the two are within a few percent. On hard synthetic content (a 1440p60 animation), the hardware encoder runs 20–40% over its bitrate and libx264 about 16% under. See THUMBNAILS.md, "Android: Media3".
 
 ## Segmenting: ours against ffmpeg
 
@@ -70,6 +79,14 @@ Segment and encrypt, with ffmpeg's `-hls_flags single_file` as the reference. Ou
 | Pixel 8 | | to measure | | |
 
 On the Pixel 5, what's left is TS writing (about 0.3 s) and parsing the moov (0.1–0.2 s).
+
+## Reading a picked file
+
+`id.homebase.api.file.ContentReadBenchmark` with `-e readBench true`: a video from the test app's `files/bench/` is put in the media library, then copied out through its `content://` URI, as a picked or shared file is. Three rounds, alternating which buffer goes first. The file was just written, so it's read from the page cache: this measures the round trips to the media process, not the flash.
+
+| Device | Input | 8 KB (Java's default) | 1 MB | Measured |
+|---|---|---|---|---|
+| Pixel 5 | Synthetic 1080p, 83 s (210 MB) | 563–1151 ms (182–373 MB/s) | **159–188 ms** (1117–1320 MB/s) | 2026-11-16 |
 
 ## Audio
 
@@ -127,6 +144,7 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
   - **Segmenting:** at this speed, separate hasher threads no longer paid for themselves. The plaintext is hashed inline, and the ciphertext on the writing thread.
   - **Who gains:** segmenting, Photos' hash stage (a 226 MB video in about 0.25 s instead of 5 s) and Filesync.
   - **Proof:** the official vectors (`IncrementalHasherTest`, shared into the device tests) run on a phone, as a 64-bit and as a 32-bit app. `Blake3NativeDeviceTest` also checks it against the Kotlin port across block, chunk and tree boundaries.
+- **Copy picked and shared files with a 1 MB buffer** (2026-11-16). A `content://` stream is served by another process, one round trip per read, so Java's 8 KB default copied 3–6× slower on a Pixel 5. `copyInLargeChunks` is used wherever Android copies a stream to a file: the picked file's cache copy, shared files, files opened with the app, and saves to the gallery.
 - **Read files in full chunks** (2026-11-16). Okio's `read` returns at most one 8 KB segment, so `readFileAsFlow` asked for 256 KB and emitted 8 KB, copied and handed across threads each time. Filling each chunk made reading 27 MB 10× faster on a Pixel 5, for every upload and hash that reads a file.
 - **Our own segmenter rather than ffmpeg's** (2026-11-16). It's faster with the hashes included, it reads the file once, and it never re-encodes portrait video. It must keep the same cuts and decoded frames as ffmpeg's; `HlsSegmenterTest.theSegmentsAndDecodedFramesMatchFfmpegsOwnHls` checks that.
 
