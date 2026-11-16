@@ -7,7 +7,6 @@ import id.homebase.api.util.isBlobUrl
 import kotlin.js.Promise
 import kotlin.math.abs
 import kotlin.random.Random
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.await
 import kotlinx.coroutines.withContext
 import okio.Path.Companion.toPath

@@ -174,6 +174,20 @@ class GifShrinkerTest {
     }
 
     @Test
+    fun aCanvasOverTheMemoryCap_isUntouched() = runTest {
+        val atCap = FakeEncoder(gif(size = 600))
+        shrink(gif(width = 2048, height = 2048, frames = 2, delayCs = 10, size = 5_000), atCap)
+        assertEquals(1, atCap.calls.size)
+
+        val overCap = FakeEncoder()
+        val big = gif(width = 2048, height = 2049, frames = 2, delayCs = 10, size = 5_000)
+        val result = shrink(big, overCap)
+        assertSame(big, result.bytes)
+        assertEquals(OverBudget.TooManyPixels, result.overBudget)
+        assertTrue(overCap.calls.isEmpty())
+    }
+
+    @Test
     fun overThePixelCapAtEveryStep_isUntouched() = runTest {
         // At 10 fps no step drops frames, so 384² is the smallest frame: 227 frames fit the cap, 228 don't.
         val atCap = FakeEncoder(gif(size = 600))

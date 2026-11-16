@@ -19,8 +19,11 @@ private const val TAG = "GifShrinker"
 object GifShrinker {
     internal const val MAX_INPUT_BYTES = 40 * 1024 * 1024
 
-    // Bounds the work: every output pixel is scaled twice, once for the palette and once to encode.
+    // Bounds the work: every output pixel of every step is scaled and mapped once.
     private const val MAX_SCALED_PIXELS = 32L * 1024 * 1024
+
+    // Bounds the memory: the codec holds about eight canvases of the source's size at once.
+    private const val MAX_CANVAS_PIXELS = 2048L * 2048
     private const val TIMEOUT_MS = 30_000L
 
     private class Step(
@@ -66,6 +69,7 @@ object GifShrinker {
         val started = TimeSource.Monotonic.markNow()
         val start = (startStep(bytes.size, maxBytes) until ladder.size)
             .firstOrNull { ladder[it].scaledPixels(gif) <= MAX_SCALED_PIXELS }
+            ?.takeIf { gif.width.toLong() * gif.height <= MAX_CANVAS_PIXELS }
         var best = bytes
         var steps = 0
         var thrown: Exception? = null
