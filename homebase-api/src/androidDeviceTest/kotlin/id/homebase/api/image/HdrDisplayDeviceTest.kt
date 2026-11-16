@@ -31,6 +31,33 @@ class HdrDisplayDeviceTest {
         assertTrue(bitmap.hasGainmap(), "Coil's bitmap has the gain map")
     }
 
+    /** Not a check: with `-e hdrFixture true`, puts a generated Ultra HDR photo in the gallery to open in the app. */
+    @Test
+    fun putAnUltraHdrPhotoInTheGallery() {
+        if (InstrumentationRegistry.getArguments().getString("hdrFixture") != "true") return
+        assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        val width = InstrumentationRegistry.getArguments().getString("hdrWidth")?.toInt() ?: 3000
+        val height = InstrumentationRegistry.getArguments().getString("hdrHeight")?.toInt() ?: 2000
+        val base = android.graphics.Bitmap.createBitmap(IntArray(width * height) { i ->
+            val x = i % width
+            val y = i / width
+            (0xFF shl 24) or ((x * 255 / width) shl 16) or ((y * 255 / height) shl 8) or 0x60
+        }, width, height, android.graphics.Bitmap.Config.ARGB_8888)
+        val map = android.graphics.Bitmap.createBitmap(IntArray(width / 4 * (height / 4)) { i ->
+            val bright = if ((i % (width / 4)) > width / 8) 0xFF else 0x20
+            (0xFF shl 24) or (bright shl 16) or (bright shl 8) or bright
+        }, width / 4, height / 4, android.graphics.Bitmap.Config.ARGB_8888)
+        base.gainmap = android.graphics.Gainmap(map).apply { setRatioMax(4f, 4f, 4f); setDisplayRatioForFullHdr(4f) }
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "hdr_test_${System.currentTimeMillis()}.jpg")
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/HomebaseTest")
+        }
+        val uri = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+        context.contentResolver.openOutputStream(uri)!!.use { base.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it) }
+        Log.i("HdrDisplay", "gallery: $uri")
+    }
+
     @Test
     fun aZoomTileKeepsTheGainmap() {
         assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
