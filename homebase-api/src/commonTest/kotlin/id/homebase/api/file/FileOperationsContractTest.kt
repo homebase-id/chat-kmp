@@ -86,6 +86,17 @@ abstract class FileOperationsContractTest {
     }
 
     @Test
+    fun readFileRangeReturnsTheRangeAndFewerAtTheEnd() = runTest {
+        val p = provider()
+        val path = path("range.bin")
+        val data = ByteArray(300_000) { (it % 251).toByte() }
+        p.writeStream(path, flowOf(data))
+        assertContentEquals(data.copyOfRange(123_456, 123_556), p.readFileRange(path, 123_456, 100))
+        assertContentEquals(data.copyOfRange(299_990, 300_000), p.readFileRange(path, 299_990, 100))
+        assertContentEquals(ByteArray(0), p.readFileRange(path, 400_000, 100))
+    }
+
+    @Test
     fun sizeAndExistenceForWrittenEmptyAndMissingFiles() = runTest {
         val p = provider()
         val written = path("sized.bin")

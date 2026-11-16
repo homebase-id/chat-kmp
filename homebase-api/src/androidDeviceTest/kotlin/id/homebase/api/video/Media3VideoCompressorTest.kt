@@ -9,10 +9,17 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import id.homebase.api.ActivityProvider
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import id.homebase.api.crypto.encryptFileStreaming
+import id.homebase.api.crypto.encryptWithPayloadHash
+import id.homebase.api.file.AndroidFileOperationsProvider
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.image.MediaQuality
 import java.io.File
 import java.nio.ByteBuffer
 import kotlin.math.abs
+import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -164,14 +171,15 @@ class Media3VideoCompressorTest {
 
     /**
      * Not a check: times Media3 against ffmpeg on videos pushed to the test app's own folder, e.g.
-     * `adb push big.mp4 /sdcard/Android/data/id.homebase.api.test/files/bench/`. Does nothing when it's empty.
+     * `adb push big.mp4 /sdcard/Android/data/id.homebase.api.test/files/bench/`, or with `run-as` into the app's
+     * internal files/bench/ where Android hides adb's files from the app. Does nothing when both are empty.
      * Runs alternate which goes first and pause between, as the phone throttles when hot.
      */
     @Test
     fun benchmarkAgainstFfmpeg() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val power = context.getSystemService(android.os.PowerManager::class.java)
-        val inputs = File(context.getExternalFilesDir(null), "bench").listFiles { f -> f.extension.lowercase() in setOf("mp4", "mov") }.orEmpty()
+        val inputs = benchInputs()
         if (inputs.isEmpty()) return@runBlocking
         var media3First = true
         for (input in inputs.sortedBy { it.length() }) {
@@ -188,6 +196,20 @@ class Media3VideoCompressorTest {
                     Log.i("Media3Benchmark", "${input.name} ${input.length() / 1_000_000}MB $quality $name: ${ms}ms ${bytes / 1000}kB thermal=$thermal")
                 }
             }
+            delay(COOL_DOWN_MS)
+            val compressed = Media3VideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, true)
+            val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
+            for ((name, segment) in listOf<Pair<String, suspend () -> SegmentedVideo?>>(
+                "segmenter" to { AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) },
+                "ffmpeg" to { FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null) },
+            )) {
+                delay(COOL_DOWN_MS)
+                val started = System.currentTimeMillis()
+                val out = segment()
+                Log.i("Media3Benchmark", "${input.name} ${File(compressed).length() / 1_000_000}MB compressed, segment+encrypt $name: ${System.currentTimeMillis() - started}ms hash=${out?.hash != null} thermal=${power.currentThermalStatus}")
+                out?.let { File(it.segmentsPath).parentFile?.deleteRecursively() }
+            }
+            File(compressed).delete()
             delay(COOL_DOWN_MS)
             val audio = File(input.parentFile, "audio_only.m4a")
             val started = System.currentTimeMillis()
@@ -273,6 +295,102 @@ class Media3VideoCompressorTest {
         return ms
     }
 
+    /** Not a check: times our segmenter against ffmpeg's on each bench/ video, compressed once by Media3. */
+    @Test
+    fun benchmarkSegmenting() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val inputs = benchInputs()
+        for (input in inputs) {
+            val compressed = Media3VideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, true)
+            val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
+            repeat(2) { round ->
+                for ((name, segment) in listOf<Pair<String, suspend () -> SegmentedVideo?>>(
+                    "segmenter" to { AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) },
+                    "ffmpeg" to { FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null) },
+                ).let { if (round == 0) it else it.reversed() }) {
+                    delay(10_000)
+                    val started = System.currentTimeMillis()
+                    val out = segment()
+                    Log.i("Media3Benchmark", "${input.name} ${File(compressed).length() / 1_000_000}MB compressed, segment+encrypt $name: ${System.currentTimeMillis() - started}ms hash=${out?.hash != null}")
+                    out?.let { File(it.segmentsPath).parentFile?.deleteRecursively() }
+                }
+            }
+            File(compressed).delete()
+        }
+    }
+
+    /** Not a check: segments each bench/ video as it is, ours and ffmpeg's, twice in alternating order. */
+    @Test
+    fun benchmarkSegmentingAsIs() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val inputs = benchInputs()
+        for (input in inputs) {
+            val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
+            repeat(2) { round ->
+                for ((name, segment) in listOf<Pair<String, suspend () -> SegmentedVideo?>>(
+                    "segmenter" to { AndroidVideoCompressor.segmentAndEncrypt(input.absolutePath, key, null) },
+                    "ffmpeg" to { FFmpegVideoCompressor.segmentAndEncrypt(input.absolutePath, key, null) },
+                ).let { if (round == 0) it else it.reversed() }) {
+                    delay(10_000)
+                    val started = System.currentTimeMillis()
+                    val out = segment()
+                    Log.i("Media3Benchmark", "${input.name} ${input.length() / 1_000_000}MB as is, segment+encrypt $name: ${System.currentTimeMillis() - started}ms hash=${out?.hash != null}")
+                    out?.let { File(it.segmentsPath).parentFile?.deleteRecursively() }
+                }
+            }
+        }
+    }
+
+    /**
+     * Not a check: what sending a video costs end to end, as VideoPayloadProcessor runs it. Compress, then
+     * HLS (segment and encrypt) at 5 MB or more, else encrypt the MP4 in one pass. Ours is Media3, our
+     * segmenter and the payload hash; ffmpeg's is ffmpeg for both steps and no hash, as Android had before.
+     */
+    @Test
+    fun benchmarkEndToEnd() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val fileOps = AndroidFileOperationsProvider(context)
+        for (input in benchInputs()) {
+            for (round in 0..1) {
+                val backends = listOf("ours", "ffmpeg").let { if (round == 0) it else it.reversed() }
+                for (backend in backends) {
+                    delay(COOL_DOWN_MS)
+                    val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
+                    val started = System.currentTimeMillis()
+                    val compressed = if (backend == "ours") {
+                        AndroidVideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, false)
+                    } else {
+                        FFmpegVideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, false)
+                    }
+                    val compressMs = System.currentTimeMillis() - started
+                    val compressedBytes = File(compressed).length()
+                    val hls = compressedBytes >= 5L * 1024 * 1024
+                    val second = System.currentTimeMillis()
+                    val output = if (hls) {
+                        val segmented = if (backend == "ours") AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) else FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null)
+                        File(segmented!!.segmentsPath).parentFile!!
+                    } else {
+                        val out = File(context.cacheDir, "encrypted_$backend.bin")
+                        if (backend == "ours") {
+                            fileOps.encryptWithPayloadHash(compressed, out.absolutePath, key, PayloadHashAlgorithm.Blake3)
+                        } else {
+                            fileOps.encryptFileStreaming(compressed, out.absolutePath, key)
+                        }
+                        out
+                    }
+                    val now = System.currentTimeMillis()
+                    Log.i(
+                        "Media3Benchmark",
+                        "${input.name} ${input.length() / 1_000_000}MB end to end $backend: ${now - started}ms " +
+                            "(compress ${compressMs}ms to ${compressedBytes / 1000}kB, ${if (hls) "HLS" else "MP4 encrypt"} ${now - second}ms)",
+                    )
+                    output.deleteRecursively()
+                    File(compressed).delete()
+                }
+            }
+        }
+    }
+
     private suspend fun executeFfmpeg(args: Array<String>): com.arthenica.ffmpegkit.FFmpegSession =
         kotlinx.coroutines.suspendCancellableCoroutine { cont ->
             com.arthenica.ffmpegkit.FFmpegKit.executeWithArgumentsAsync(args) { session -> cont.resumeWith(Result.success(session)) }
@@ -286,6 +404,13 @@ class Media3VideoCompressorTest {
         } finally {
             extractor.release()
         }
+    }
+
+    // The app's own bench/ folders: external for adb push on newer Android, internal (via run-as) everywhere.
+    private fun benchInputs(): List<File> {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        return listOfNotNull(context.getExternalFilesDir(null), context.filesDir)
+            .flatMap { File(it, "bench").listFiles { f -> f.extension.lowercase() in setOf("mp4", "mov") }.orEmpty().toList() }
     }
 
     private suspend fun timed(block: suspend () -> String): Pair<Long, Long> {

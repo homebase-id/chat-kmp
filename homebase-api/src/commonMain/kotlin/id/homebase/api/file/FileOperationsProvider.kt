@@ -33,6 +33,10 @@ interface FileOperationsProvider {
         return if (all.size <= maxBytes) all else all.copyOf(maxBytes)
     }
 
+    /** Up to [length] bytes from [offset]; fewer at the end of the file. Providers that can seek override it. */
+    suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray =
+        readFileBytes(path).let { it.copyOfRange(minOf(offset, it.size.toLong()).toInt(), minOf(offset + length, it.size.toLong()).toInt()) }
+
     /** Returns true for a missing path or a directory (neither is deleted); never throws. */
     fun deleteTempFile(path: String): Boolean
     fun getCacheDirectory(): String

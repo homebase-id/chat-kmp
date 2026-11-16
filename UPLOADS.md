@@ -112,6 +112,7 @@ Encoding rules:
 - **Leave out** every field that doesn't apply; never write `null`.
 - **`v` is always written** (`@EncodeDefault`), so readers can tell this format from older ones.
 - **An HLS playlist is always its own payload,** `pls_<4-digit index>` (content type `application/vnd.apple.mpegurl`), because it can be very long; `vd.p` names it. Like the video's thumbnails, it is encrypted with the video payload's IV, and its record carries that IV, so a player reads it with the key header it already holds for the video. Today it's inline when short and moved with all the metadata into a `pld_desc` payload when long.
+- **An HLS video's payload hash** (odin-core `docs/payload-hashes.md`) covers its one segments file: `storedHash` is BLAKE3 of the file as uploaded, and `contentHash` is BLAKE3 of its decrypted content, which is its byte ranges decrypted in playlist order, as a player reads them. The segmenter takes both in the pass that writes the file.
 - **Descriptor content always fits.** With the playlist out, nothing a user uploads comes near 1,024 characters (about 730 encrypted). App content over the limit is rejected by the builder, and each app caps its own (the link preview builder already trims to fit). Old files' `pld_desc` payloads are still read (section 6).
 
 The dog photo's payload record, sent at Standard in a public post. The outer keys are the server's and stay as they are:
