@@ -39,6 +39,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
@@ -91,13 +92,6 @@ class ProfileCardViewModelTest {
         override fun render(payload: CardPayload) {
             rendered += payload
             onRender(payload)
-        }
-
-        val overridesRendered = CopyOnWriteArrayList<CardPayload>()
-
-        override fun renderOverrides(payload: CardPayload) {
-            overridesRendered += payload
-            render(payload)
         }
 
         override fun exportPng() = onExport()
@@ -1549,16 +1543,15 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun anOptionChangeSendsTheHostOnlyDesignAudienceAndOverrides() = runTest(dispatcher) {
+    fun anOptionChangeReusesTheLastPayloadsData() = runTest(dispatcher) {
         val (vm, host, _) = boardVm()
         advanceUntilIdle()
         val full = host.rendered.last()
-        assertTrue(host.overridesRendered.isEmpty())
 
         vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")
 
-        val sent = host.overridesRendered.single()
-        assertEquals(full.data, sent.data)
+        val sent = host.rendered.last()
+        assertSame(full.data, sent.data)
         assertEquals("#F26B5B", sent.overrides?.palette?.accent)
     }
 

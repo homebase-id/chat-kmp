@@ -187,7 +187,7 @@ internal class DesktopCardHost(pageUrl: String) : CardHostBase(pageUrl) {
 
     override fun send(command: CardCommand) {
         when (command) {
-            is CardCommand.Render, is CardCommand.RenderOverrides -> CardEvent.Ready::class
+            is CardCommand.Render -> CardEvent.Ready::class
             CardCommand.ExportPng -> CardEvent.Png::class
             CardCommand.ProbeEdges -> CardEvent.Edges::class
             CardCommand.RequestPaint -> CardEvent.Painted::class

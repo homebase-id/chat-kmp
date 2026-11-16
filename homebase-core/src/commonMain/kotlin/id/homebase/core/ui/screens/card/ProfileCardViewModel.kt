@@ -361,18 +361,18 @@ class ProfileCardViewModel(
         val edited = edit(state.overrides).prunedFor(state.design)
         if (edited == state.overrides || spec.options.isEmpty()) return
         _uiState.update { it.copy(previewOverrides = edited) }
-        renderOverridesOnly()
+        renderOptionEdit()
     }
 
-    // An option edit leaves the card's data as it was, so the page is sent only what changed.
-    private fun renderOverridesOnly() {
+    // An option edit leaves the card's data as it was, so the last payload is reused instead of rebuilt.
+    private fun renderOptionEdit() {
         val last = lastRendered
         if (last == null || renderJob?.isActive == true) return render()
         val state = _uiState.value
         val payload = last.copy(design = state.design, overrides = effectiveOverrides(state.design, state.selectedAudience).takeUnless { it.isEmpty() })
         if (payload == last) return
         lastRendered = payload
-        if (state.isExporting) renderDeferredByExport = true else _host.value?.renderOverrides(payload)
+        if (state.isExporting) renderDeferredByExport = true else _host.value?.render(payload)
     }
 
     private suspend fun coverOutgoingDesign() {

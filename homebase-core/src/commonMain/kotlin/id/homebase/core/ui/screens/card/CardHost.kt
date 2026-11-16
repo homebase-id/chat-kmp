@@ -63,9 +63,6 @@ interface CardHost {
     val events: SharedFlow<CardEvent>
     val isLoaded: StateFlow<Boolean>
     fun render(payload: CardPayload)
-
-    /** [payload] differs from the last full render only in design, audience and overrides, so a host may skip resending its data. */
-    fun renderOverrides(payload: CardPayload) = render(payload)
     fun exportPng()
     fun probeEdges()
     fun requestPaint()
@@ -176,7 +173,6 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
     private var hostStyle: CardCommand.HostStyle? = null
     private var renderSent: TimeMark? = null
     private var paintRequested: TimeMark? = null
-    private var dataSent = false
     private var mainFrameSettled = false
     private var loadedTimeout: Job? = null
 
@@ -186,7 +182,6 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
 
     protected fun loadPage() {
         _isLoaded.value = false
-        dataSent = false
         mainFrameSettled = false
         loadedTimeout?.cancel()
         loadUrl(pageUrl)
@@ -197,17 +192,8 @@ internal abstract class CardHostBase(protected val pageUrl: String) : CardHost {
         if (_isLoaded.value) sendRender(payload)
     }
 
-    override fun renderOverrides(payload: CardPayload) {
-        lastPayload = payload
-        if (!_isLoaded.value) return
-        if (!dataSent) return sendRender(payload)
-        renderSent = TimeSource.Monotonic.markNow()
-        send(CardCommand.RenderOverrides(payload.overridesOnly()))
-    }
-
     private fun sendRender(payload: CardPayload) {
         renderSent = TimeSource.Monotonic.markNow()
-        dataSent = true
         send(CardCommand.Render(payload))
     }
 
