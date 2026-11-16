@@ -2,7 +2,7 @@
 
 How fast we resize images, compress and segment video, and hash, per device, so a regression or an improvement shows. THUMBNAILS.md has the rules; this file has the numbers and the decisions they led to.
 
-**How to read the tables.** Each section starts with a **Now** table: one row per device and input, measured with the code that ships, where a range like `13.9–15.6 s` is the spread across runs. A **How we got here** log follows where the numbers changed because the code did: each row is the code after one more change, on the same device and input. When you re-measure, replace the **Now** row (with its date); when a code change moves a number, also add a row to the log.
+**How to read the tables.** Every table holds only numbers measured with the code that ships: one row per device and input, where a range like `13.9–15.6 s` is the spread across runs. When the code changes what a row measures, measure again and replace the row; until then, leave it out rather than keep a stale number. Where we began is in the [History](#history) appendix.
 
 ## How to measure
 
@@ -40,8 +40,6 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 
 `benchmarkEndToEnd`: compress at Standard, then HLS (segment, encrypt, hash) at 5 MB or more, else encrypt the MP4 in one pass. "Ours" is Media3, our segmenter and the payload hash. "ffmpeg" is ffmpeg for both steps without a hash, as Android was before.
 
-**Now**
-
 | Device | Input | Sent as | Ours | ffmpeg | Measured |
 |---|---|---|---|---|---|
 | Pixel 5 | Synthetic 1080p, 10 s → 3.7 MB (ffmpeg 3.3 MB) | MP4 | **2.5–3.5 s**: compress 2.3–3.1 s, encrypt and hash 0.19–0.40 s | 6.6–6.8 s: compress 6.4–6.6 s, encrypt 0.12 s | 2026-11-16 |
@@ -53,8 +51,6 @@ Compressing is almost all of a send. **Open question:** the small MP4's encrypt-
 
 The compress step alone. On the HDR phone video, Media3 tone-maps to SDR; ffmpeg only relabels the colours.
 
-**Now**
-
 | Device | Input | Standard: Media3 / ffmpeg | HD: Media3 / ffmpeg | Measured |
 |---|---|---|---|---|
 | Pixel 8 | HDR phone video | **13.9–15.6 s** / 63.3–64.4 s | **11.7–14.0 s** / 156–163 s | 2026-11-16 |
@@ -63,50 +59,17 @@ The compress step alone. On the HDR phone video, Media3 tone-maps to SDR; ffmpeg
 
 Output sizes match ffmpeg's within a few percent on camera footage. On hard synthetic content (a 1440p60 animation), the hardware encoder runs 20–40% over its bitrate and libx264 about 16% under. See THUMBNAILS.md, "Android: Media3".
 
-**How we got here** (Pixel 8, HDR phone video, Standard)
-
-| Change | Media3 |
-|---|---|
-| First version: AAC re-encoded by Android's codecs (phone warm) | about 38–45 s |
-| AAC copied (see Audio) | 13.9–15.6 s |
-
 ## Segmenting: ours against ffmpeg
 
 Segment and encrypt, with ffmpeg's `-hls_flags single_file` as the reference. Ours also takes both BLAKE3 payload hashes; ffmpeg takes none.
-
-**Now**
 
 | Device | Input | Ours | ffmpeg | Measured |
 |---|---|---|---|---|
 | Pixel 5 | Stand-in | **0.77–0.90 s** | 0.87–1.03 s | 2026-11-16 |
 | Pixel 5 | Synthetic 1080p, 83 s, compressed | **0.62–0.93 s** | 0.99–1.03 s | 2026-11-16, in `benchmarkEndToEnd` |
-| Pixel 8 | HDR phone video, compressed | **0.78–1.18 s** | 1.50–2.08 s | 2026-11-16, before native BLAKE3: re-measure |
-| Pixel 8 | Stand-in | **0.92–0.96 s** | 1.87–2.03 s | 2026-11-16, before native BLAKE3: re-measure |
+| Pixel 8 | | to measure | | |
 
 On the Pixel 5, what's left is TS writing (about 0.3 s) and parsing the moov (0.1–0.2 s).
-
-**How we got here, Pixel 8**
-
-| Change | Input | Ours | ffmpeg |
-|---|---|---|---|
-| First version: a 64 KB buffer per 188-byte TS packet | HDR phone video, compressed | 9.6 s | 1.9 s |
-| Packets written straight to the output | HDR phone video, compressed | 2.2–2.8 s | 1.7–2.4 s |
-| Kotlin BLAKE3 fully unrolled | Stand-in | 1.6–2.1 s | 1.8 s |
-| Both hashes on their own cores | Stand-in | 0.92–0.96 s | 1.87–2.03 s |
-
-Before the hashes ran in parallel, the stand-in's time went to BLAKE3 1.6–1.9 s, TS writing 0.1–0.25 s and AES 0.03–0.07 s.
-
-**How we got here, Pixel 5** (stand-in)
-
-| Change | Ours | ffmpeg |
-|---|---|---|
-| Kotlin BLAKE3 fully unrolled: Android 14 left the huge method interpreted | 23.8 s | 1.0 s |
-| Kotlin BLAKE3's rounds looped over local variables | 1.9–2.5 s | 0.9–1.1 s |
-| Primitive decode-order sort, reading and writing pipelined, full read chunks | 1.4–1.8 s | 1.0–1.1 s |
-| Native BLAKE3 | 0.89–0.91 s | 0.89–1.12 s |
-| Hashing inline and on the writing thread, instead of separate threads | 0.77–0.90 s | 0.87–1.03 s |
-
-The full-read-chunks fix cut reading 27 MB from 0.64 s to 0.06 s.
 
 ## Audio
 
@@ -120,24 +83,14 @@ Why AAC is copied (see the decisions below). 83 s of 48 kHz stereo AAC, Pixel 8,
 
 ## Hashing: BLAKE3
 
-**Now**
-
 | Where | Ships | Speed | Kotlin port on the same | Measured |
 |---|---|---|---|---|
 | Pixel 5, 64-bit app | native C, NEON | **453–933 MB/s** (which core the scheduler picks moves it) | 44 MB/s | 2026-11-16 |
 | Pixel 5, 32-bit app | native C, NEON | **603 MB/s** | 36 MB/s | 2026-11-16 |
-| Pixel 8 | native C, NEON | not measured | about 55 MB/s | |
+| Pixel 8 | native C, NEON | to measure | | |
 | Desktop JVM | Kotlin port | 141 MB/s | — | 2026-11-16 |
 
 For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed with `adb install --abi armeabi-v7a`.
-
-**How we got here** (the Kotlin port)
-
-| Change | Desktop JVM | Pixel 8 | Pixel 5 |
-|---|---|---|---|
-| Port of the reference implementation | 97 MB/s | about 34 MB/s | not measured |
-| `compress` fully unrolled over local variables | 120 MB/s | about 55 MB/s | about 20× slower: interpreted (segmenting took 23.8 s) |
-| Rounds looped over local variables | 141 MB/s | not measured | 44 MB/s |
 
 ## Images
 
@@ -176,3 +129,30 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
   - **Proof:** the official vectors (`IncrementalHasherTest`, shared into the device tests) run on a phone, as a 64-bit and as a 32-bit app. `Blake3NativeDeviceTest` also checks it against the Kotlin port across block, chunk and tree boundaries.
 - **Read files in full chunks** (2026-11-16). Okio's `read` returns at most one 8 KB segment, so `readFileAsFlow` asked for 256 KB and emitted 8 KB, copied and handed across threads each time. Filling each chunk made reading 27 MB 10× faster on a Pixel 5, for every upload and hash that reads a file.
 - **Our own segmenter rather than ffmpeg's** (2026-11-16). It's faster with the hashes included, it reads the file once, and it never re-encodes portrait video. It must keep the same cuts and decoded frames as ffmpeg's; `HlsSegmenterTest.theSegmentsAndDecodedFramesMatchFfmpegsOwnHls` checks that.
+
+## History
+
+Where each measurement began, against now, and the changes that made the difference. The reasons behind them are in the decisions above.
+
+**Segmenting** (ours / ffmpeg)
+
+| Device | Input | First version | Now |
+|---|---|---|---|
+| Pixel 8 | HDR phone video, compressed | 9.6 s / 1.9 s | to measure (0.78–1.18 s / 1.50–2.08 s before native BLAKE3) |
+| Pixel 5 | Stand-in | 23.8 s / 1.0 s | 0.77–0.90 s / 0.87–1.03 s |
+
+- **TS packets written straight to the output:** the first version allocated a 64 KB buffer for every 188-byte packet.
+- **Kotlin BLAKE3, rounds looped over local variables:** fully unrolled, it was too big for Android 14 to compile and ran interpreted, which made the Pixel 5's first version 23.8 s.
+- **Full read chunks:** reading 27 MB went from 0.64 s to 0.06 s on the Pixel 5.
+- **A primitive decode-order sort, and reading, muxing and writing overlapped.**
+- **Native BLAKE3:** hashing stopped being the limit, so it runs inline instead of on separate threads.
+
+**Compression** (Pixel 8, HDR phone video, Standard, Media3): about 38–45 s at first, 13.9–15.6 s now, from copying AAC instead of re-encoding it with Android's codecs (see Audio).
+
+**BLAKE3 in Kotlin** (the port desktop, iOS and web run; Android runs native now)
+
+| Where | First version | Now |
+|---|---|---|
+| Desktop JVM | 97 MB/s | 141 MB/s |
+| Pixel 8 | about 34 MB/s | not measured (about 55 MB/s fully unrolled) |
+| Pixel 5 | not measured | 44 MB/s |
