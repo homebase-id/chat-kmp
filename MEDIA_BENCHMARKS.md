@@ -186,6 +186,16 @@ For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed wi
 
 Same quality number for both (60 at Standard, 80 at HD); a JPEG at the same number is not the same picture quality as WebP, which this doesn't measure. For scale: Signal's Ultra HDR copy of a Pixel 8 photo in #2390 was 243 kB at 900×1600. The JPEG encodes 2–7× faster than WebP here.
 
+### The shared writer against Android's encoder
+
+`benchmarkHdrFinalImages` (`-e hdrBench true`, plus `-e hdrSynthetic true` for a generated 4032×3024 Ultra HDR photo with fine noise and a smooth gain map): the HD final image four ways, three rounds in rotating order. The pipeline rows are the whole render (decode, scale, encode); Android's rows are only `compress` of the same scaled pixels, so compare each pair's difference, not the rows across.
+
+| Device | Input | Pipeline SDR WebP | Pipeline SDR JPEG | Shared Ultra HDR | Android: SDR / Ultra HDR `compress` | Measured |
+|---|---|---|---|---|---|---|
+| Pixel 5 | Synthetic 12 MP | 2198 kB, 2.65–2.72 s | 1552 kB, 280 ms | 1568 kB (+16 kB), 294–304 ms (+14–24 ms) | 1566 / 1566 kB, 155 / 153 ms (+2 ms scaling the gain map) | 2026-11-16 |
+
+The shared writer costs about 15–25 ms for decoding, scaling and encoding the gain map and joining; Android's native encoder hides almost all of that. A smooth synthetic gain map compresses to nearly nothing, so this says nothing about size on real photos yet: to measure on real Pixel 8 photos (the shared writer writes the gain map as a 3-channel JPEG).
+
 **Decided 2026-11-16: no HDR at Standard.** Standard is for small and fast; HD and Original keep HDR. Reopen if a quality-matched comparison (JPEG quality chosen to look like today's WebP) shows the gap is much smaller.
 
 ## Images
