@@ -8,7 +8,6 @@ import id.homebase.resources.profile_card_intro_title
 import id.homebase.resources.profile_card_edit_design
 import androidx.compose.ui.semantics.heading
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.border
@@ -33,7 +32,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FloatingActionButton
 import id.homebase.resources.profile_card_add_card
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
@@ -220,7 +219,7 @@ internal val WIDE_SHEET_MAX_WIDTH = 480.dp
 private val DESKTOP_PAGE_MAX_WIDTH = 1024.dp
 
 private val TOP_BAND_HEIGHT = 56.dp
-// Height reserved for the floating toolbar.
+// Height reserved for the share toolbar and the pencil FAB.
 private val FAB_BAND_HEIGHT = 88.dp
 private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
@@ -519,17 +518,26 @@ internal fun ProfileCardPager(
                                     saveInsteadOfShare = saveInsteadOfShare,
                                     onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
                                     extraActions = { nfc?.let { CardNfcAction(it) } },
-                                    edit = {
-                                        EditAction(
-                                            readOnly = uiState.isCircleReadOnly,
-                                            onExplainReadOnly = { explainReadOnly = true },
-                                            container = selectedCard?.let(::pencilContainer),
-                                            onEdit = { viewModel.onLeftForEditor(); onEdit() },
-                                            onChangeDesign = { viewModel.onLeftForEditor(); onChangeDesign() },
-                                        )
-                                    },
                                 )
                             }
+                        }
+                        AboveCard(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .semantics {
+                                    isTraversalGroup = true
+                                    traversalIndex = -1f
+                                }
+                                .navigationBarsPadding()
+                                .padding(16.dp),
+                        ) {
+                            EditFab(
+                                readOnly = uiState.isCircleReadOnly,
+                                onExplainReadOnly = { explainReadOnly = true },
+                                container = selectedCard?.let(::pencilContainer),
+                                onEdit = { viewModel.onLeftForEditor(); onEdit() },
+                                onChangeDesign = { viewModel.onLeftForEditor(); onChangeDesign() },
+                            )
                         }
                     }
                 }
@@ -881,7 +889,6 @@ private fun ShareToolbar(
     saveInsteadOfShare: Boolean,
     onShare: () -> Unit,
     extraActions: @Composable () -> Unit,
-    edit: @Composable () -> Unit,
 ) {
     HorizontalFloatingToolbar(
         expanded = true,
@@ -903,12 +910,11 @@ private fun ShareToolbar(
             }
         }
         extraActions()
-        edit()
     }
 }
 
 @Composable
-private fun EditAction(readOnly: Boolean, onExplainReadOnly: () -> Unit, container: Color?, onEdit: () -> Unit, onChangeDesign: () -> Unit) {
+private fun EditFab(readOnly: Boolean, onExplainReadOnly: () -> Unit, container: Color?, onEdit: () -> Unit, onChangeDesign: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val label = stringResource(MR.string.edit)
     val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
@@ -916,9 +922,10 @@ private fun EditAction(readOnly: Boolean, onExplainReadOnly: () -> Unit, contain
     val ink by animateColorAsState(container?.let(::readableOn) ?: MaterialTheme.colorScheme.onSecondaryContainer, spec)
     Box {
         WithTooltip(label) {
-            FilledIconButton(
+            FloatingActionButton(
                 onClick = { if (readOnly) onExplainReadOnly() else open = true },
-                colors = IconButtonDefaults.filledIconButtonColors(containerColor = fill, contentColor = ink),
+                containerColor = fill,
+                contentColor = ink,
             ) {
                 Icon(Icons.Outlined.Edit, contentDescription = label)
             }

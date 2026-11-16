@@ -135,10 +135,10 @@ class ProfileCardOverviewFlowTest {
     }
 
     @Test
-    fun theOpenedCardHasOneToolbarWithShareAndAPencilMenuForEditAndEditDesign() = runDesktopComposeUiTest(width = 824, height = 1784) {
+    fun theOpenedCardHasAShareOnlyToolbarAndAPencilMenuForEditAndEditDesign() = runDesktopComposeUiTest(width = 824, height = 1784) {
         val rig = screen(returningFromEditor = true)
         waitUntil(timeoutMillis = 10_000) { hasText("Edit") }
-        // JVM has no NFC, so the toolbar holds save-the-image and the pencil.
+        // JVM has no NFC, so the toolbar is the one save-the-image action.
         onAllNodesWithContentDescription("Save card image").assertCountEquals(1)
         onAllNodesWithContentDescription("Edit design").assertCountEquals(0)
         onAllNodesWithContentDescription("Edit").assertCountEquals(1)
