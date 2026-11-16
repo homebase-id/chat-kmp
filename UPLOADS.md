@@ -115,7 +115,7 @@ Encoding rules:
 - **An HLS video's payload hash** (odin-core `docs/payload-hashes.md`) covers its one segments file: `storedHash` is BLAKE3 of the file as uploaded, and `contentHash` is BLAKE3 of its decrypted content, which is its byte ranges decrypted in playlist order, as a player reads them. The segmenter takes both in the pass that writes the file.
 - **Descriptor content always fits.** With the playlist out, nothing a user uploads comes near 1,024 characters (about 730 encrypted). App content over the limit is rejected by the builder, and each app caps its own (the link preview builder already trims to fit). Old files' `pld_desc` payloads are still read (section 6).
 
-The dog photo's payload record, sent at Standard in a public post. The outer keys are the server's and stay as they are:
+The dog photo's payload record, sent at SD in a public post. The outer keys are the server's and stay as they are:
 
 ```json
 {
@@ -198,13 +198,13 @@ A name that collides with an existing file when saved becomes `name (1).ext`, `n
 
 - **No name** (null) for a camera capture, a pasted image, a recorded voice note. Saving then uses a dated name (#2393).
 - **Stickers** always null; they save as `StickerFile.<format>`.
-- **Re-encoding keeps the name.** `IMG_1234.HEIC` sent at Standard is stored as `IMG_1234.HEIC`; saving swaps the extension for the saved bytes' type (#2393).
+- **Re-encoding keeps the name.** `IMG_1234.HEIC` sent at SD is stored as `IMG_1234.HEIC`; saving swaps the extension for the saved bytes' type (#2393).
 - **An app's own editable name is separate.** Vault's label and a Filesync rename live in the app's content; saving prefers them.
 - **Filesync keeps a file's name as its computer had it** (`FilesyncNames`: NFC, `/` and NUL replaced, 255 bytes, no collisions). It syncs folders between computers, so a name has to come back exactly as it left: `Q3: plan.pdf` must not become `Q3_ plan.pdf` on the Mac it came from. The rule above is applied where Filesync writes a file to disk.
 
 ### 3.3 Original or copy
 
-`original = true` when the payload data is the user's own file: byte for byte, or with only its metadata stripped (section 3.4), which leaves the picture itself untouched (Original, Photos, Vault, a GIF, a kept source). `false` when the builder made it (Standard or HD final image, a transcoded video). Views step up to the payload data only when `original == false` and `pixelWidth` is set (`THUMBNAILS.md`, "Showing the images").
+`original = true` when the payload data is the user's own file: byte for byte, or with only its metadata stripped (section 3.4), which leaves the picture itself untouched (Original, Photos, Vault, a GIF, a kept source). `false` when the builder made it (SD or HD final image, a transcoded video). Views step up to the payload data only when `original == false` and `pixelWidth` is set (`THUMBNAILS.md`, "Showing the images").
 
 ### 3.4 Metadata
 
@@ -219,7 +219,7 @@ The builder decides it per app and records it on each image payload (`PayloadFil
 | JPEG, PNG, WebP, HEIF | remove EXIF, XMP and IPTC without re-encoding (today's scrubber) | nothing |
 | AVIF, TIFF | re-encode to WebP at the setting's quality | nothing |
 | GIF | nothing (GIF has no standard location field) | nothing |
-| Final image (Standard, HD) | already has none | copy the source's metadata into it |
+| Final image (SD, HD) | already has none | copy the source's metadata into it |
 | Video | `-map_metadata -1` (transcode or remux) | keep the container's metadata |
 | Audio, files | nothing | nothing |
 
@@ -268,7 +268,7 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 - The upload providers seal the descriptor content of every encrypted upload they send when the switch is on (section 7); the outbox and the optimistic local copy stay readable. An app that writes the current format ahead of the switch asks for the seal on its spec (`MediaUploadSpec.sealDescriptorContent`), which reaches the create request; updates follow the switch.
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
-- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and ask the provider to seal; videos go through `UploadService`. A photo's own bytes decide its content type, the library's type only when they name none. At Original each part is the user's file (`o: 1`), a Live Photo's paired video included; at Standard or HD a photo or video is a re-encode that keeps the source's metadata. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS, a video's included, read from the source because an HLS stream can't hold it.
+- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and ask the provider to seal; videos go through `UploadService`. A photo's own bytes decide its content type, the library's type only when they name none. At Original each part is the user's file (`o: 1`), a Live Photo's paired video included; at SD or HD a photo or video is a re-encode that keeps the source's metadata. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS, a video's included, read from the source because an HLS stream can't hold it.
 - Link and location previews take their descriptor from `appDescriptor` (layer 7). Still to fold in: `enqueuePlaintextUpload` for public files.
 
 ## 5. Per app

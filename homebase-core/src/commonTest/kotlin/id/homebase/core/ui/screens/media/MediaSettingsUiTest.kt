@@ -31,7 +31,7 @@ class MediaSettingsUiTest {
             }
         }
         onNodeWithText("Media").assertExists()
-        onNodeWithText("Standard").assertExists()
+        onNodeWithText("SD").assertExists()
         onNodeWithText("HD").assertExists()
         onNodeWithText("Original").assertExists()
     }

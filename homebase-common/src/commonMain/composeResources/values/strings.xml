@@ -1676,7 +1676,7 @@
     <string name="settings_media_quality">Media quality</string>
     <string name="settings_data_storage">Data and storage</string>
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
-    <string name="settings_media_quality_standard">Standard</string>
+    <string name="settings_media_quality_standard">SD</string>
     <string name="settings_media_quality_footer">Whichever you choose, what you save to your device is the version that was sent.</string>
 
     <!-- Auto-save incoming media -->

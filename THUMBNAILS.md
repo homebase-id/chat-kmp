@@ -67,7 +67,7 @@ Desktop and web follow the same table, rules and quality bar, so every platform 
 
 ### What "good" means everywhere
 
-- **Readable and sharp:** screenshots stay readable on Standard, on a phone and on a 2× desktop monitor.
+- **Readable and sharp:** screenshots stay readable on SD, on a phone and on a 2× desktop monitor.
 - **Predictable size:** bytes come from pixels and quality chosen per setting, never from byte budgets that silently wreck quality.
 - **Never regress:** everything chat-kmp does well today keeps working. #2230 has the checklist.
 
@@ -75,7 +75,7 @@ Desktop and web follow the same table, rules and quality bar, so every platform 
 
 These are agreed. Change one only with the evidence described in [Changing the table](#changing-the-table).
 
-- **Three settings:** Standard, HD and Original, as in [The three settings](#the-three-settings).
+- **Three settings:** SD, HD and Original, as in [The three settings](#the-three-settings).
 - **The table:** sizes and qualities for every row and setting, as in [The table](#the-table).
 - **Sizing:** long edge, plus a minimum short edge and a longest edge allowed, worked out with integer math before any pixels are touched.
 - **Never upscale.** A row within 10% of the source is made at the source size, with no scaling.
@@ -85,17 +85,17 @@ These are agreed. Change one only with the evidence described in [Changing the t
 - **Colour:** keep wide-gamut colour, and put no colour profile on sRGB images or the tiny.
 - **Metadata:** the calling app decides whether a final image or video keeps its location and other metadata, through a required keep-or-strip parameter. The library never decides. Thumbnails never carry metadata.
 - **Display:** every view shows the smallest image that covers the area it's drawn in, allowing 10% of stretch (40% for grid tiles), and never loads an untouched file in place of a thumbnail. See [Showing the images](#showing-the-images).
-- **Wire codes:** Standard records nothing, HD records `"hd"`, and Original records `"high"`.
+- **Wire codes:** SD records nothing, HD records `"hd"`, and Original records `"high"`.
 
 ## The three settings
 
 | Setting | What people expect | Photo | Video |
 |---|---|---|---|
-| **Standard** (default) | Looks good, quick to send, screenshots readable | 2048 px, WebP q60 | 720p |
-| **HD** | Stays sharp when zoomed | 4096 px, WebP q80 | 1080p |
-| **Original** | The exact file | The file, untouched | 1080p, as HD; in Photos only, the file untouched plus a 1080p copy for playback (see [Video](#video)) |
+| **SD** (default) | SD aka Standard, Looks good, quick to send, screenshots readable | 2048 px, WebP q60 | 720p |
+| **HD** | HD aka High Definition, Stays sharp when zoomed | 4096 px, WebP q80 | 1080p |
+| **Original** | The original exact file | The file, untouched | 1080p, as HD; in Photos only, the file untouched plus a 1080p copy for playback (see [Video](#video)) |
 
-**Names.** Every screen uses exactly these names: chat, Moments, the share sheet, settings, badges and Photos. They're **Standard**, **HD** and **Original**, in every language, all from one place (`MediaQualityLabels.kt`). Descriptions quote this table's numbers, for example "Photos up to 2048 pixels". Change the table, and its names and descriptions change with it.
+**Names.** Every screen uses exactly these names: chat, Moments, the share sheet, settings, badges and Photos. They're **SD**, **HD** and **Original**, in every language, all from one place (`MediaQualityLabels.kt`). SD was called Standard until 2026-11-16; in code it's still `MediaQuality.STANDARD`, and its wire code (none) is unchanged. Descriptions quote this table's numbers, for example "Photos up to 2048 pixels". Change the table, and its names and descriptions change with it.
 
 **Why three.** Two settings forced a choice between "small" and "the exact file". The old "High" really meant the exact file, but it was badged "HD". People who want sharp photos without multi-megabyte originals had no setting. Three settings match what WhatsApp, Signal and Google Photos offer (see [How others do it](#how-others-do-it)).
 
@@ -103,7 +103,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 
 All sizes are WebP. In each column, the last filled row is that setting's **final image**, "the photo". Everything above it is a thumbnail.
 
-| Row | Long edge | Minimum short edge | Longest edge allowed | Standard | HD | Original |
+| Row | Long edge | Minimum short edge | Longest edge allowed | SD | HD | Original |
 |---|---|---|---|---|---|---|
 | Tiny (768 bytes max) | 20 | – | 20 | q76 | q76 | q76 |
 | Small | 320 | 240 | 640 | q70 | q80 | q80 |
@@ -133,7 +133,7 @@ Each row has a job. A change to a row should show that the row still does its jo
 | **Small, 320 px** | Grid cells and small previews | A phone grid's tiles are 270–330 px, and grids allow 40% of stretch, so phone grids use this row. A small rise here costs bytes on every photo in the library. |
 | **Medium, 640 px** | Chat bubbles on phones | A phone bubble is about 600–900 physical pixels wide. |
 | **Large, 1080 px** | Full phone width, and bubbles on desktop | Matches the width of most phone screens. |
-| **Extra large, 2048 px** | Standard's photo, and a big thumbnail in HD and Original | **Screenshots need pixels.** At the old 1600 px, a phone screenshot was 738 px wide, and small text blurred; at 2048 it's 1080 px wide and readable. In HD and Original, it's the thumbnail desktop bubbles and full-screen views use first. |
+| **Extra large, 2048 px** | SD's photo, and a big thumbnail in HD and Original | **Screenshots need pixels.** At the old 1600 px, a phone screenshot was 738 px wide, and small text blurred; at 2048 it's 1080 px wide and readable. In HD and Original, it's the thumbnail desktop bubbles and full-screen views use first. |
 | **High definition, 4096 px** | HD's photo: sharp when zoomed | The same as WhatsApp HD and Signal High. At 4096×3072, about 12.6 MP, it's close to Google Photos' 16 MP storage saver. |
 | **Original file** | The exact file | Nothing is lost. It's the only choice for people who want their camera's file. |
 
@@ -148,7 +148,7 @@ Each row has a job. A change to a row should show that the row still does its jo
 
 **The rule.** For every caller and setting, a thumbnail is kept only if the next bigger image a viewer could load, meaning the next kept thumbnail or the final image, is at least **1.5× its long edge**. The planner walks down from the top and always keeps the smallest thumbnail. What the walk starts from is the only difference between callers:
 
-- **The pipeline makes the final image** (Standard and HD): the walk starts from the final image.
+- **The pipeline makes the final image** (SD and HD): the walk starts from the final image.
 - **The untouched file is the payload** (Original, so Photobase backup, Vault and chat at Original; stickers, animated images, SVGs, PDF and video posters): the largest thumbnail always stays, and the walk starts from it. Pixels don't predict an untouched file's bytes: a 1500 px PNG screenshot can be 2 MB against its 100 kB thumbnail, and viewers never step up to a large Original. So the largest thumbnail is the best image most views ever load.
 
 It's integer math on the planned sizes, so a skipped thumbnail is never resized, encoded, encrypted or uploaded.
@@ -162,7 +162,7 @@ for each thumbnail, largest first (the smallest is always kept):
 
 **Why.** Our server can't see the photo, so it can't make the sizes, as Telegram's does. The sender encodes, encrypts and uploads every thumbnail, the server stores it, and every recipient's device may sync it. A thumbnail earns that cost only when a viewer loads it instead of the bigger image above it, and then it saves the difference between the two. When the two are close, it costs nearly a whole extra photo and saves little.
 
-The table made exactly that case for tall and wide photos. The Large row's minimum short edge (810) stretches a 9:16 photo to 810×1440, only 1.42× below Standard's 2048. A 9:16 Pixel photo sent at Standard, measured on the phone:
+The table made exactly that case for tall and wide photos. The Large row's minimum short edge (810) stretches a 9:16 photo to 810×1440, only 1.42× below SD's 2048. A 9:16 Pixel photo sent at SD, measured on the phone:
 
 | Image | Size | Bytes | Step from the one below (edge / bytes) |
 |---|---|---|---|
@@ -179,11 +179,11 @@ That was about 507 kB on the wire for a 231 kB photo. Without the Large thumbnai
 - **It's about where a thumbnail stops paying for itself.** 1.5× on the edge is 2.25× the pixels. Below it, a thumbnail costs more to send than a view saves: the 810×1440 above cost 165 kB to save 66 kB per view, so it needs about 2.5 views to pay off, while a chat photo is usually seen once or twice. The 480×854 below the final image (2.4×) costs 81 kB and saves 150 kB on its first view.
 - **It's in line with common practice.** Responsive-image sets on the web usually step 1.5–2× per edge. Telegram's server-made photo sizes (320, 800, 1280 and 2560 px) step 2.5×, 1.6× and 2×.
 
-**Other chat apps.** WhatsApp and Signal upload one compressed image plus a tiny preview inside the message (WhatsApp a small JPEG, Signal a blurhash), so they send about one photo: 362 kB and 243 kB for the photo above. Telegram uploads one image and its servers make the other sizes, which an end-to-end encrypted server can't. With the rule, our 9:16 Standard photo is about 342 kB on the wire, between the two, and its final image measured sharper than both.
+**Other chat apps.** WhatsApp and Signal upload one compressed image plus a tiny preview inside the message (WhatsApp a small JPEG, Signal a blurhash), so they send about one photo: 362 kB and 243 kB for the photo above. Telegram uploads one image and its servers make the other sizes, which an end-to-end encrypted server can't. With the rule, our 9:16 SD photo is about 342 kB on the wire, between the two, and its final image measured sharper than both.
 
 **What it doesn't touch.** The tiny is never skipped, and GIFs make no thumbnails anyway; see [GIFs and animated images](#gifs-and-animated-images). In a Photobase library, every 9:16 photo stores one thumbnail less, about 150–200 kB each.
 
-**What it costs a viewer.** A view that wants a size between two kept images now loads the bigger one. For example, a 1000 px view of a 9:16 Standard photo loads the 231 kB final image instead of the 165 kB thumbnail. A view steps up to the final image when no thumbnail covers it (see [Showing the images](#showing-the-images)), and full screen loads it anyway. At Original, the same view loads the 2048 thumbnail instead of the 1440 one.
+**What it costs a viewer.** A view that wants a size between two kept images now loads the bigger one. For example, a 1000 px view of a 9:16 SD photo loads the 231 kB final image instead of the 165 kB thumbnail. A view steps up to the final image when no thumbnail covers it (see [Showing the images](#showing-the-images)), and full screen loads it anyway. At Original, the same view loads the 2048 thumbnail instead of the 1440 one.
 
 **Changing the threshold.** The [appendix](#appendix-the-15-rule-on-real-cameras) shows what the rule does to typical cameras, and `ThumbnailLadderTest` pins the same table, so a change shows up there first. Update both, and the [worked examples](#worked-examples).
 
@@ -191,7 +191,7 @@ That was about 507 kB on the wire for a 231 kB photo. Without the Large thumbnai
 
 | Setting | Qualities | Why |
 |---|---|---|
-| **Standard** | q70 thumbnails, q60 photo | **Text needs pixels, not quality:** by eye, text stayed clean at q50. Photos at 2× zoom looked as good at 2048 q60 as at the old 1600 q85, and were smaller: 222 KB against 294 KB median. Thumbnails are viewed smaller than their pixels, so q70 is plenty. |
+| **SD** | q70 thumbnails, q60 photo | **Text needs pixels, not quality:** by eye, text stayed clean at q50. Photos at 2× zoom looked as good at 2048 q60 as at the old 1600 q85, and were smaller: 222 KB against 294 KB median. Thumbnails are viewed smaller than their pixels, so q70 is plenty. |
 | **HD** | q80 small thumbnails, q76 Large, q70 Extra large, q80 photo | People chose sharpness. The big Extra large thumbnail can be lower, because the 4096 photo replaces it when it matters. |
 | **Original** | q80 small thumbnails, q80 Large, q76 Extra large | People chose the best. The thumbnails are all they see until the full file loads, so they're the highest of the three. |
 | **Tiny** | q76, dropping as needed | It's shown blurred. Only its byte limit matters. |
@@ -205,8 +205,8 @@ Two conditions apply:
 
 | Median per photo | Bytes | Final image |
 |---|---|---|
-| Old Standard (320 q84, 640 q84, 1600 q85), with proper resampling | 365 KB | 1600×1200 |
-| New Standard | 359 KB | 2048×1536 |
+| Old SD (320 q84, 640 q84, 1600 q85), with proper resampling | 365 KB | 1600×1200 |
+| New SD | 359 KB | 2048×1536 |
 | HD | 1135 KB, of which 742 KB is the photo | Up to 4096×3072 |
 | Original | 441 KB of thumbnails, plus the file | The file |
 
@@ -260,8 +260,8 @@ Then put `long` and `short` back as width and height in the source's orientation
 | Source smaller than every row | Still make one thumbnail at source size | Older clients need a thumbnail; see below. |
 | Comparing with the final image | The final image never counts in the 90% rules | Thumbnails must exist even when the final image is the same size, because existing clients only load the payload directly for GIFs (`HomebaseImageLoader.kt`, `THUMBLESS_CONTENT_TYPES`). |
 | Final image at least 90% of the largest thumbnail | It gets at least that thumbnail's quality | The photo should never look worse than its own thumbnail. |
-| Source already fits Standard or HD, 10% band included | Keep the source if it's JPEG, PNG or WebP, unless re-encoding saves at least a quarter | Re-encoding a file that already fits only adds generational loss, and costs CPU. |
-| HEIC source on Standard or HD | Re-encode at source size, without scaling, if it fits | Browsers can't decode HEIC. |
+| Source already fits SD or HD, 10% band included | Keep the source if it's JPEG, PNG or WebP, unless re-encoding saves at least a quarter | Re-encoding a file that already fits only adds generational loss, and costs CPU. |
+| HEIC source on SD or HD | Re-encode at source size, without scaling, if it fits | Browsers can't decode HEIC. |
 | Source can't be decoded | Send the file with no thumbnails | Better than failing the send. |
 | Very thin image | Never below 1 px on either edge | |
 | Sticker, GIF, SVG or animated image | The file stays as the final image | Re-encoding would break animation or vectors. See [GIFs and animated images](#gifs-and-animated-images). |
@@ -298,7 +298,7 @@ RAW files hold the camera's unprocessed sensor data:
 | **Photos (Photobase)** | **Back up the RAW file untouched,** like every other original | It's the user's own original, and often the best copy they have. Google Photos, iCloud and Immich all keep RAW files. |
 | Thumbnails in Photos | Made on the phone from the rendered image. Use the RAW's embedded preview JPEG when it's at least as large as the largest thumbnail, because it's fast and is the camera's own rendering. Otherwise render the RAW, which ImageIO does on iOS and `ImageDecoder` does for DNG on Android | Rendering a 48 MP RAW is slow and memory-hungry, while the embedded preview is usually ready to use. |
 | A RAW the phone can't decode | Back it up untouched, with no thumbnails, like any undecodable file | The file is never lost, and the album shows a placeholder. Android only decodes DNG, not camera makers' formats. |
-| **Chat, Standard or HD** | Render it and send WebP at the setting's size, like HEIC | Recipients' browsers and apps can't show RAW. |
+| **Chat, SD or HD** | Render it and send WebP at the setting's size, like HEIC | Recipients' browsers and apps can't show RAW. |
 | **Chat, Original** | Send the RAW file, with thumbnails if the sending device can decode it | Original means the exact file. |
 | Desktop and web | Skia can't decode RAW, so a RAW sent from there gets no thumbnails | Phones are where RAW comes from. |
 
@@ -313,7 +313,7 @@ How pairs should be stored and shown is in [To do](#to-do-and-what-isnt-settled)
 
 Each cell lists the thumbnails, then the final image after the arrow. They come from the planning script and are exact tests.
 
-| Source | Standard | HD | Original |
+| Source | SD | HD | Original |
 |---|---|---|---|
 | 4000×3000 | 320×240 q70, 640×480 q70, 1080×810 q70 → 2048×1536 q60 | 320×240 q80, 640×480 q80, 1080×810 q76, 2048×1536 q70 → 4000×3000 q80 | 320×240 q80, 640×480 q80, 1080×810 q80, 2048×1536 q76 → file |
 | 4000×2250 | 427×240, 854×480 → 2048×1152 | 427×240, 854×480, 2048×1152 → 4000×2250 | 427×240, 854×480, 2048×1152 → file |
@@ -329,7 +329,7 @@ Each cell lists the thumbnails, then the final image after the arrow. They come 
 | 600×450 | 320×240 → 600×450 | 320×240 → 600×450 | 320×240, 600×450 → file |
 | 200×150 | 200×150 → 200×150 | 200×150 → 200×150 | 200×150 → file |
 
-A thumbnail less than 1.5× below the next image is [skipped](#skipping-a-thumbnail-too-close-to-the-next-image), so one that would duplicate the final image is too, unless it's the only thumbnail. That's why Standard and HD can list fewer thumbnails than Original, where the largest thumbnail always stays. Qualities are omitted where they follow the table directly. The 1100×825 final image keeps q70 because the thumbnail it would have duplicated had it. The 321×241 in the 2275×1706 row isn't a typo: 1706 × 320 / 2275 is just under 240, so the minimum short edge pushes the row up one pixel.
+A thumbnail less than 1.5× below the next image is [skipped](#skipping-a-thumbnail-too-close-to-the-next-image), so one that would duplicate the final image is too, unless it's the only thumbnail. That's why SD and HD can list fewer thumbnails than Original, where the largest thumbnail always stays. Qualities are omitted where they follow the table directly. The 1100×825 final image keeps q70 because the thumbnail it would have duplicated had it. The 321×241 in the 2275×1706 row isn't a typo: 1706 × 320 / 2275 is just under 240, so the minimum short edge pushes the row up one pixel.
 
 ## Byte limits
 
@@ -341,11 +341,11 @@ There are exactly three, and two of them are the server's.
 | Each thumbnail | **1 MiB**, less a little for encryption | Odin-core's `ThumbnailDescriptor.MaxThumbnailSize`. Odin-core also allows at most 5 thumbnails (`PayloadDescriptor.MaxThumbnailsCount`), and the table makes at most 4 | **Shrink, keep the quality.** If the 10% rule enlarged it, go back to the row's normal size first. Otherwise shrink by an estimate (about √(limit ÷ bytes), with a margin) and check again. Lower quality only for noise-like images, and never below q60 before shrinking further. |
 | Final image | **None** | Odin-core's general payload limit, 50 GB by default | – |
 
-**Why shrink rather than drop quality.** The 1 MiB only bites on HD's and Original's Extra large thumbnail, typically a long screenshot or a very detailed photo. Those settings always have a full-size final image, which the step-up loads when a display needs more pixels. So a slightly smaller thumbnail costs nothing visible, while q40 blockiness would show. Standard's thumbnails never get near 1 MiB.
+**Why shrink rather than drop quality.** The 1 MiB only bites on HD's and Original's Extra large thumbnail, typically a long screenshot or a very detailed photo. Those settings always have a full-size final image, which the step-up loads when a display needs more pixels. So a slightly smaller thumbnail costs nothing visible, while q40 blockiness would show. SD's thumbnails never get near 1 MiB.
 
 **Why the tiny drops quality instead.** It's a 20 px placeholder shown blurred, so detail doesn't matter and its size does.
 
-**Why the limits are the same in every setting.** The limits are hard ceilings set by the server, not tuning knobs. The settings already differ in pixels and quality, and a lower limit for Standard would never trigger.
+**Why the limits are the same in every setting.** The limits are hard ceilings set by the server, not tuning knobs. The settings already differ in pixels and quality, and a lower limit for SD would never trigger.
 
 ## Making the pixels
 
@@ -446,21 +446,21 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 - **Thumbnails and the tiny are WebP.** It's the best size for the quality among the formats every client can decode.
 - **Re-encoded final images are WebP.** A kept source stays JPEG, PNG or WebP, as it was.
-- **HEIC is never uploaded as a final image on Standard or HD,** because browsers can't decode it. Original uploads the file as it is, from chat and Vault too: no JPEG conversion first. The upload's metadata strip overwrites the HEIF Exif and XMP items in place, so the image data and the `irot`/`imir` orientation stay byte-identical. On web, the full-screen viewer shows the largest thumbnail instead of a HEIC payload.
+- **HEIC is never uploaded as a final image on SD or HD,** because browsers can't decode it. Original uploads the file as it is, from chat and Vault too: no JPEG conversion first. The upload's metadata strip overwrites the HEIF Exif and XMP items in place, so the image data and the `irot`/`imir` orientation stay byte-identical. On web, the full-screen viewer shows the largest thumbnail instead of a HEIC payload.
 
 ## Where each caller lands
 
 | Caller | Rows |
 |---|---|
-| Photobase backup | Its photo setting (default Original) and its video setting (default HD), each Standard, HD or Original |
+| Photobase backup | Its photo setting (default Original) and its video setting (default HD), each SD, HD or Original |
 | Chat photos, Moments, share sheet, view-once | The sender's setting |
-| Group avatars and other incidental images through `MessageAttachmentBuilder` | Standard |
+| Group avatars and other incidental images through `MessageAttachmentBuilder` | SD |
 | Stickers | The sender's setting for thumbnails; the file stays the final image, and no quality is recorded |
 | PDF previews, audio, Vault, contacts, video posters, saved stickers | Original's rows, as thumbnails only (Vault videos are HD) |
 | Link and location previews | Tiny only, made with `createTinyPreview` |
 | Profile avatars | Their own sizes and budgets, plus the shared tiny rule |
 
-**Photos' two settings** (decided 2026-11-14): photos and videos each Standard, HD or Original, defaulting to Original for photos and HD for videos. At Standard or HD the uploaded bytes aren't the library's file, so Photos checks a re-encoded photo's source against its hash and refuses the upload when it changed, and dedupe keeps keying on the source's hash: changing the setting never re-uploads what is already backed up. Under `Keep`, a re-encoded photo carries the source's EXIF but not its XMP (section [Metadata](#metadata)).
+**Photos' two settings** (decided 2026-11-14): photos and videos each SD, HD or Original, defaulting to Original for photos and HD for videos. At SD or HD the uploaded bytes aren't the library's file, so Photos checks a re-encoded photo's source against its hash and refuses the upload when it changed, and dedupe keeps keying on the source's hash: changing the setting never re-uploads what is already backed up. Under `Keep`, a re-encoded photo carries the source's EXIF but not its XMP (section [Metadata](#metadata)).
 
 ## Showing the images
 
@@ -503,14 +503,14 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
   Original keeps `"high"` because every existing `"high"` already means "the exact file". Saved "High" settings become Original.
 - **Older clients** read `"hd"` as null, through `coerceInputValues`, and show no badge. A test proves it, because a failure there would lose the whole descriptor.
 - **New descriptor fields** in `ImageFile` (descriptor content), such as the final image's pixel size, are safe: older clients have `ignoreUnknownKeys`.
-- **Badges:** Original shows "Original", HD shows "HD", and Standard or missing values show nothing.
+- **Badges:** Original shows "Original", HD shows "HD", and SD or missing values show nothing.
 - **Existing messages are never regenerated.** Any thumbnail size is readable by every client, so new sizes don't need a migration.
 
 ## Video
 
 | Setting | Video |
 |---|---|
-| Standard | 720p transcode |
+| SD | 720p transcode |
 | HD | 1080p transcode |
 | Original | 1080p transcode, as HD, in every app but Photos. In Photos, the file untouched plus a 1080p copy that the apps play |
 
@@ -545,7 +545,7 @@ Android's AAC codecs are software and much slower than the hardware video path, 
 | Immich | Grid thumbnail: 250 px **short edge**, WebP q80 | Preview: 1440 px **short edge**, JPEG q80 | Original |
 | **chat-kmp** | **2048 px, WebP q60** | **4096 px, WebP q80** | **Untouched** |
 
-None of them caps the final photo by bytes; they all use pixels and quality. Our Standard is larger than the messengers' 1600 px, on purpose, for readable screenshots. Immich's short-edge sizing is what gave us the minimum short edge. Its 250 px short edge is about the same as our 320 px long edge on a 4:3 photo (333×250 against 320×240), so it didn't change our grid size.
+None of them caps the final photo by bytes; they all use pixels and quality. Our SD is larger than the messengers' 1600 px, on purpose, for readable screenshots. Immich's short-edge sizing is what gave us the minimum short edge. Its 250 px short edge is about the same as our 320 px long edge on a 4:3 photo (333×250 against 320×240), so it didn't change our grid size.
 
 ## Testing
 
@@ -558,7 +558,7 @@ What must stay proven, and where.
 - A random-size property test, over 5,000 sizes for each setting, checks the [properties](#working-out-the-sizes) above. It also checks that no two thumbnails are within 90% of each other, and that the final image's quality is at least that of any thumbnail within 90% of it.
 - Portrait and landscape give the same sizes, transposed.
 - The random-size test also checks the [1.5 rule](#skipping-a-thumbnail-too-close-to-the-next-image) in every setting.
-- `ThumbnailLadderTest` pins the [appendix](#appendix-the-15-rule-on-real-cameras): real camera sizes at Standard, HD and Original, with the thumbnails each keeps, and that a file kept as the payload keeps its largest thumbnail.
+- `ThumbnailLadderTest` pins the [appendix](#appendix-the-15-rule-on-real-cameras): real camera sizes at SD, HD and Original, with the thumbnails each keeps, and that a file kept as the payload keeps its largest thumbnail.
 - `HomebaseImageTinyFirstTest` pins that a view draws the tiny on its first frame while the thumbnail loads, and shows the placeholder only without a tiny. `CreateThumbnailsTest` pins that every upload, of every format, gets a tiny.
 - `ThumbSizeSelectionTest` pins [how a view picks its image](#showing-the-images): the 10% and 40% allowances, fit against crop, phone and larger grid tiles, that only a recorded final image is pulled, that grid tiles never pull it, and when a view steps up.
 
@@ -596,7 +596,7 @@ Record results in `OPTIMIZE.md`:
 
 - **Time per photo, peak memory and battery,** for 12 MP and 48 MP HEIC and JPEG, on a real iPhone and Android phone, before and after any change.
 - **Real photos compared by bytes and by eye:** faces, night shots, and 12, 24 and 48 MP.
-- **A small-text screenshot,** readable on Standard on a phone and on a desktop monitor at 1× and 2×.
+- **A small-text screenshot,** readable on SD on a phone and on a desktop monitor at 1× and 2×.
 
 ### Reproducing the reference numbers
 
@@ -623,14 +623,14 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 | Question | Decision | Rejected, and why |
 |---|---|---|
 | Which platforms to optimise for? | iOS and Android, where the library syncs from | Equal effort everywhere: desktop and web make few images. |
-| How many settings? | Three: Standard, HD, Original | Two forced a choice between small and the exact file, and the old "High" was mislabelled. |
-| What size for Standard's photo? | 2048 px at q60 | 1600 at q85: screenshots were unreadable, and 2048 q60 is smaller for the same look. |
+| How many settings? | Three: SD, HD, Original | Two forced a choice between small and the exact file, and the old "High" was mislabelled. |
+| What size for SD's photo? | 2048 px at q60 | 1600 at q85: screenshots were unreadable, and 2048 q60 is smaller for the same look. |
 | Which edge to size by? | Long edge, plus a minimum short edge and a longest edge allowed | Long edge only gives slivers for odd shapes. Short edge only, like Immich, makes sizes unpredictable. |
 | How to control bytes? | Fixed quality per row and setting; only the server's hard limits | Byte budgets: being 1% over cost half the quality. |
 | Upscale small sources? | Never | It adds no detail and costs bytes, and the image ends up softer. |
 | Scale by 2–10%? | No: make it at the source size | Every pixel gets resampled to save very few of them. |
 | Over 1 MiB? | Shrink at the same quality | Dropping to q40: visible blockiness, when a full-size photo exists anyway. |
-| Different limits per setting? | No | The limits are server ceilings, and Standard never reaches them. |
+| Different limits per setting? | No | The limits are server ceilings, and SD never reaches them. |
 | How to resample? | Halve, then a Lanczos-class filter | Plain bilinear, all Skia modes, and area averaging: all measured to alias. |
 | Native code on phones? | Wherever it's measurably better, preferring platform APIs and proven libraries | Skia everywhere: no good resampler. Our own C code: libraries already exist. |
 | Decode per size, or once? | Once, then chain from largest to smallest | Decoding per size meant 11 HEIC conversions per photo in the old code. |
@@ -664,14 +664,14 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 - **RAW+JPEG pairs on iOS.** Back up the RAW too, as part of the same photo? Today it's skipped. Android backs up both as separate photos; should they be linked?
 - **GIFs in Photos' grid.** Give GIFs still thumbnails from the first frame, so the grid doesn't download whole GIFs, while bubbles keep playing the file? Older clients would ignore the thumbnails and still play the file, so it's safe.
 - **Animated WebP in bubbles.** It shows still today. Animating it needs a descriptor flag, because its type is the same `image/webp` as a still image.
-- **A source no bigger than the smallest thumbnail** (a 320×240 photo, a small sticker or screenshot). Every row clamps to the source, so the plan keeps one 320×240 thumbnail and, at Standard and HD, a 320×240 final image, which is usually dropped for the source because re-encoding saves less than a quarter. The payload and its thumbnail are then the same picture at the same size: one extra encode, and a few tens of KB stored and sent twice. Dropping the thumbnail needs the display rule changed with it: views never load an untouched file in place of a thumbnail, so with no thumbnail they would stop at the tiny. Options: make no thumbnail when the payload is no larger than the smallest row, and let views load such a payload directly; or keep the duplicate. `ThumbnailLadderTest` pins whichever we pick.
+- **A source no bigger than the smallest thumbnail** (a 320×240 photo, a small sticker or screenshot). Every row clamps to the source, so the plan keeps one 320×240 thumbnail and, at SD and HD, a 320×240 final image, which is usually dropped for the source because re-encoding saves less than a quarter. The payload and its thumbnail are then the same picture at the same size: one extra encode, and a few tens of KB stored and sent twice. Dropping the thumbnail needs the display rule changed with it: views never load an untouched file in place of a thumbnail, so with no thumbnail they would stop at the tiny. Options: make no thumbnail when the payload is no larger than the smallest row, and let views load such a payload directly; or keep the duplicate. `ThumbnailLadderTest` pins whichever we pick.
 - **Linear-light resampling.** Not used; see [How to resize well](#how-to-resize-well). Revisit only if a real-photo test shows a visible gain.
 
 ## Appendix: the 1.5 rule on real cameras
 
 What the planner keeps for typical camera and screen sizes. ~~Struck~~ thumbnails are skipped; the number in brackets is how many times bigger, per edge, the next kept image is. `ThumbnailLadderTest` pins this table, so read it before changing the threshold or the [table](#the-table).
 
-**Standard** (final image at most 2048 px):
+**SD** (final image at most 2048 px):
 
 | Source | Size | Thumbnails | Final image |
 |---|---|---|---|
@@ -717,4 +717,4 @@ What it shows:
 - **9:16 and 16:9 photos and screenshots lose one thumbnail** in every setting.
 - **Ordinary 4:3 photos from every phone keep every thumbnail.** Their steps are 2.0, 1.69 and 1.90.
 - **A thumbnail the same size as the final image (1.00) is dropped,** unless it's the only one: a 200×150 photo still sends its one thumbnail. Before the rule, a small photo or a phone screenshot at HD encoded and uploaded the same pixels twice.
-- **The closest calls are 1.48:** a small photo's 1080×810 at Standard and a square photo's 2048×2048 at HD. Both are dropped, which fits the cost argument, but they show where 1.5 sits.
+- **The closest calls are 1.48:** a small photo's 1080×810 at SD and a square photo's 2048×2048 at HD. Both are dropped, which fits the cost argument, but they show where 1.5 sits.
