@@ -450,7 +450,8 @@ class PhotoBackupRunTest {
         val uploader = uploader()
         val (run, _) = newRun(uploader)
 
-        run.run(request())
+        // The app open: a background run with a photo waiting leaves videos for later.
+        run.run(request(trigger = BackupTrigger.Foreground))
         advanceUntilIdle()
         assertEquals(listOf("photo"), uploader.handedOff)
         assertEquals(BackupState.Failed.code, state("clip"))
