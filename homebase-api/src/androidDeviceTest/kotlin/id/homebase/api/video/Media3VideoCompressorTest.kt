@@ -9,10 +9,13 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import id.homebase.api.ActivityProvider
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.image.MediaQuality
 import java.io.File
 import java.nio.ByteBuffer
 import kotlin.math.abs
+import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -190,7 +193,7 @@ class Media3VideoCompressorTest {
             }
             delay(COOL_DOWN_MS)
             val compressed = Media3VideoCompressor.compress(input.absolutePath, null, null, null, VideoQuality.STANDARD, true)
-            val key = id.homebase.api.client.KeyHeader(kotlin.random.Random.nextBytes(16), id.homebase.api.common.SecureByteArray(kotlin.random.Random.nextBytes(16)))
+            val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
             for ((name, segment) in listOf<Pair<String, suspend () -> SegmentedVideo?>>(
                 "segmenter" to { AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null) },
                 "ffmpeg" to { FFmpegVideoCompressor.segmentAndEncrypt(compressed, key, null) },

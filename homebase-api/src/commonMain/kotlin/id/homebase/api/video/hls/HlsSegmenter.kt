@@ -9,6 +9,8 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.fourCc
 import id.homebase.api.image.readU32
+import id.homebase.api.image.readU64
+import id.homebase.api.video.MAX_MOOV_BYTES
 import id.homebase.api.video.SegmentedVideo
 import id.homebase.api.video.VideoProgressListener
 import kotlin.math.roundToInt
@@ -26,7 +28,6 @@ import kotlinx.coroutines.flow.flow
  */
 internal object HlsSegmenter {
     private const val SEGMENT_SECONDS = 6.0
-    private const val MAX_MOOV_BYTES = 64 * 1024 * 1024
 
     @OptIn(ExperimentalUuidApi::class)
     suspend fun segmentAndEncrypt(
@@ -36,8 +37,6 @@ internal object HlsSegmenter {
         onProgress: VideoProgressListener? = null,
     ): SegmentedVideo? {
         val movie = readMoov(fileOps, inputPath)?.let(Mp4Movie::parse) ?: return null
-        val video = movie.samples.first { it.track is Mp4Track.Avc }.track as Mp4Track.Avc
-        val audio = movie.samples.firstOrNull { it.track is Mp4Track.Aac }?.track as Mp4Track.Aac?
 
         val dir = "${AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.HLS)}/${AppCacheDirs.HLS_DIR_PREFIX}${Uuid.random()}"
         val segmentsPath = "$dir/index.ts"
@@ -47,8 +46,8 @@ internal object HlsSegmenter {
         val segments = mutableListOf<Segment>()
 
         fileOps.writeStream(segmentsPath, flow {
-            val ts = MpegTsWriter(video, audio)
-            var segmentStart = movie.samples.first { it.track is Mp4Track.Avc }.pts90k
+            val ts = MpegTsWriter(movie.video, movie.audio)
+            var segmentStart = movie.start90k
             var written = 0L
             suspend fun finish(end90k: Long) {
                 val plain = ts.drain()
@@ -118,7 +117,7 @@ internal object HlsSegmenter {
         appendLine("#EXT-X-VERSION:4")
         appendLine("#EXT-X-TARGETDURATION:${segments.maxOf { it.seconds }.roundToInt()}")
         appendLine("#EXT-X-MEDIA-SEQUENCE:0")
-        appendLine("#EXT-X-KEY:METHOD=AES-128,URI=\"enc.key\",IV=0x${iv.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }}")
+        appendLine("#EXT-X-KEY:METHOD=AES-128,URI=\"enc.key\",IV=0x${iv.toHexString()}")
         for (segment in segments) {
             appendLine("#EXTINF:${sixDecimals(segment.seconds)},")
             appendLine("#EXT-X-BYTERANGE:${segment.length}@${segment.offset}")
@@ -143,8 +142,7 @@ internal object HlsSegmenter {
             var headerSize = 8
             if (boxSize == 1L && header.size >= 16) {
                 headerSize = 16
-                boxSize = ((readU32(header, 8, little = false).toLong() and 0xFFFFFFFFL) shl 32) or
-                    (readU32(header, 12, little = false).toLong() and 0xFFFFFFFFL)
+                boxSize = readU64(header, 8)
             } else if (boxSize == 0L) {
                 boxSize = size - at
             }

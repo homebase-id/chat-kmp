@@ -3,7 +3,6 @@ package id.homebase.api.file
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.flowOf
 
 interface FileOperationsProvider {
@@ -34,27 +33,11 @@ interface FileOperationsProvider {
         return if (all.size <= maxBytes) all else all.copyOf(maxBytes)
     }
 
-    /** Returns true for a missing path or a directory (neither is deleted); never throws. */
-    /**
-     * Up to [length] bytes from [offset]; fewer at the end of the file. Providers that can seek
-     * override it; this default reads from the start.
-     */
-    suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray {
-        val out = ByteArray(length)
-        var position = 0L
-        var filled = 0
-        readFileAsFlow(path).takeWhile { filled < length }.collect { chunk ->
-            val from = (offset - position).coerceIn(0, chunk.size.toLong()).toInt()
-            val n = minOf(chunk.size - from, length - filled)
-            if (n > 0 && position + from >= offset) {
-                chunk.copyInto(out, filled, from, from + n)
-                filled += n
-            }
-            position += chunk.size
-        }
-        return out.copyOf(filled)
-    }
+    /** Up to [length] bytes from [offset]; fewer at the end of the file. Providers that can seek override it. */
+    suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray =
+        readFileBytes(path).let { it.copyOfRange(minOf(offset, it.size.toLong()).toInt(), minOf(offset + length, it.size.toLong()).toInt()) }
 
+    /** Returns true for a missing path or a directory (neither is deleted); never throws. */
     fun deleteTempFile(path: String): Boolean
     fun getCacheDirectory(): String
 

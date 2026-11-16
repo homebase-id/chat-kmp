@@ -90,16 +90,27 @@ suspend fun FileOperationsProvider.encryptWithPayloadHash(
     algorithm: PayloadHashAlgorithm,
 ): HashedPayload {
     val payloadKey = KeyHeader(ByteArrayUtil.getRndByteArray(16), aesKey)
+    var plaintextBytes = 0L
+    val hash = encryptWithPayloadHash(inputPath, outputPath, payloadKey, algorithm) { plaintextBytes += it }
+    return HashedPayload(hash, payloadKey.iv, plaintextBytes)
+}
+
+/** [encryptFileStreaming] under [payloadKey]'s IV, with the payload hash taken in the same pass. */
+suspend fun FileOperationsProvider.encryptWithPayloadHash(
+    inputPath: String,
+    outputPath: String,
+    payloadKey: KeyHeader,
+    algorithm: PayloadHashAlgorithm,
+    onPlaintext: (bytes: Int) -> Unit = {},
+): PayloadHash {
     val contentHasher = algorithm.newHasher()
     val storedHasher = algorithm.newHasher()
-    var plaintextBytes = 0L
     val countingContentHasher = object : IncrementalHasher by contentHasher {
         override fun update(input: ByteArray, offset: Int, length: Int) {
-            plaintextBytes += length
+            onPlaintext(length)
             contentHasher.update(input, offset, length)
         }
     }
     encryptFileStreaming(inputPath, outputPath, payloadKey, countingContentHasher, storedHasher)
-    val hash = encryptedPayloadHash(algorithm, storedHasher.digest(), contentHasher.digest(), payloadKey)
-    return HashedPayload(hash, payloadKey.iv, plaintextBytes)
+    return encryptedPayloadHash(algorithm, storedHasher.digest(), contentHasher.digest(), payloadKey)
 }

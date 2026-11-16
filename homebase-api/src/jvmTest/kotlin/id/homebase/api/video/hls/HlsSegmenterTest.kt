@@ -49,7 +49,7 @@ class HlsSegmenterTest {
         val playlist = File(segmented.playlistPath).readText()
         val stored = File(segmented.segmentsPath).readBytes()
 
-        val iv = keyHeader.iv.joinToString("") { "%02x".format(it) }
+        val iv = keyHeader.iv.toHexString()
         assertTrue(playlist.startsWith("#EXTM3U\n#EXT-X-VERSION:4\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n"), playlist)
         assertTrue("#EXT-X-KEY:METHOD=AES-128,URI=\"enc.key\",IV=0x$iv\n" in playlist, playlist)
         assertTrue(playlist.trimEnd().endsWith("#EXT-X-ENDLIST"), playlist)
@@ -93,6 +93,46 @@ class HlsSegmenterTest {
         val notMp4 = File(cache, "not.mp4").apply { writeBytes(Random.nextBytes(4096)) }
         assertNull(HlsSegmenter.segmentAndEncrypt(fileOps, notMp4.absolutePath, keyHeader))
     }
+
+    @Test
+    fun theSegmentsAndDecodedFramesMatchFfmpegsOwnHls() = runTest {
+        val ffmpeg = tool("ffmpeg") ?: return@runTest
+        for (name in listOf("moov_first.mp4", "moov_last.mp4")) {
+            val input = fixture(name)
+            val ours = assertNotNull(HlsSegmenter.segmentAndEncrypt(fileOps, input, keyHeader))
+            val oursDir = File(ours.playlistPath).parentFile
+            File(oursDir, "enc.key").writeBytes(keyHeader.aesKey.unsafeBytes)
+
+            // ffmpeg's own HLS, cut with the arguments the Android ffmpeg path uses.
+            val theirsDir = Files.createTempDirectory(cache.toPath(), "ffmpeg").toFile()
+            File(theirsDir, "enc.key").writeBytes(keyHeader.aesKey.unsafeBytes)
+            val keyInfo = File(theirsDir, "keyinfo.txt").apply { writeText("enc.key\n${File(theirsDir, "enc.key").absolutePath}\n${keyHeader.iv.toHexString()}\n") }
+            run(ffmpeg, "-v", "error", "-y", "-i", input, "-codec:v", "copy", "-codec:a", "copy", "-hls_time", "6", "-hls_list_size", "0",
+                "-hls_flags", "single_file", "-hls_key_info_file", keyInfo.absolutePath, "-f", "hls",
+                "-hls_segment_filename", File(theirsDir, "index.ts").absolutePath, File(theirsDir, "index.m3u8").absolutePath)
+
+            val oursRanges = ranges(File(ours.playlistPath).readText())
+            val theirsRanges = ranges(File(theirsDir, "index.m3u8").readText())
+            assertEquals(theirsRanges.map { (it.seconds * 1000).toInt() }, oursRanges.map { (it.seconds * 1000).toInt() }, "$name: the same cuts")
+            for (stream in listOf("v:0", "a:0")) {
+                assertEquals(framemd5(ffmpeg, theirsDir, stream), framemd5(ffmpeg, oursDir, stream), "$name: the same decoded $stream")
+            }
+        }
+    }
+
+    private fun tool(name: String): String? = name.takeIf { runCatching { ProcessBuilder(it, "-version").start().waitFor() == 0 }.getOrDefault(false) }
+
+    private fun run(vararg command: String): String {
+        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+        val out = process.inputStream.bufferedReader().readText()
+        assertEquals(0, process.waitFor(), out)
+        return out
+    }
+
+    // Each decoded frame's checksum, timestamps dropped (ffmpeg's TS starts its clock 1.4 s in, as ours does).
+    private fun framemd5(ffmpeg: String, dir: File, stream: String): List<String> =
+        run(ffmpeg, "-v", "error", "-allowed_extensions", "ALL", "-i", File(dir, "index.m3u8").absolutePath, "-map", "0:$stream", "-f", "framemd5", "-")
+            .lines().filter { it.isNotBlank() && !it.startsWith("#") }.map { it.split(",").map(String::trim).let { f -> "${f[4]} ${f[5]}" } }
 
     private fun blake3(bytes: ByteArray) = Blake3Hasher().apply { update(bytes) }.digest()
 

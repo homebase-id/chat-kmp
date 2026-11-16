@@ -7,6 +7,7 @@ package id.homebase.api.video.hls
 internal class MpegTsWriter(private val video: Mp4Track.Avc, private val audio: Mp4Track.Aac?) {
     private val out = ByteBuilder()
     private val continuity = IntArray(0x2000)
+    private val pesHeader = ByteArray(19)
 
     /** Starts a segment: players need the program tables before its first frame. */
     fun writeTables() {
@@ -31,106 +32,116 @@ internal class MpegTsWriter(private val video: Mp4Track.Avc, private val audio: 
     /** The bytes written since the last call. */
     fun drain(): ByteArray = out.take()
 
+    // Ours go first: an access unit delimiter, and on keyframes the parameter sets.
+    private fun keep(type: Int, isKey: Boolean) = type != NAL_AUD && !(isKey && (type == NAL_SPS || type == NAL_PPS))
+
     private fun annexB(track: Mp4Track.Avc, isKey: Boolean, sample: ByteArray): ByteArray {
-        val b = ByteBuilder()
-        b.add(START_CODE); b.add(AUD)
-        if (isKey) (track.sps + track.pps).forEach { b.add(START_CODE); b.add(it) }
+        val sets = if (isKey) track.sps + track.pps else emptyList()
+        var size = START_CODE.size + AUD.size + sets.sumOf { START_CODE.size + it.size }
+        forEachNal(track, sample) { at, length -> if (keep(sample[at].toInt() and 0x1F, isKey)) size += START_CODE.size + length }
+        val b = ByteArray(size)
+        var to = 0
+        fun put(data: ByteArray, from: Int = 0, length: Int = data.size) {
+            data.copyInto(b, to, from, from + length)
+            to += length
+        }
+        put(START_CODE); put(AUD)
+        sets.forEach { put(START_CODE); put(it) }
+        forEachNal(track, sample) { at, length ->
+            if (keep(sample[at].toInt() and 0x1F, isKey)) {
+                put(START_CODE)
+                put(sample, at, length)
+            }
+        }
+        return b
+    }
+
+    private inline fun forEachNal(track: Mp4Track.Avc, sample: ByteArray, block: (at: Int, length: Int) -> Unit) {
         var at = 0
         while (at + track.nalLengthSize <= sample.size) {
             var length = 0
             repeat(track.nalLengthSize) { length = (length shl 8) or (sample[at++].toInt() and 0xFF) }
-            if (length <= 0 || at + length > sample.size) break
-            val type = sample[at].toInt() and 0x1F
-            // Ours go first: an access unit delimiter, and on keyframes the parameter sets.
-            if (type != NAL_AUD && !(isKey && (type == NAL_SPS || type == NAL_PPS))) {
-                b.add(START_CODE)
-                b.add(sample, at, length)
-            }
+            if (length <= 0 || at + length > sample.size) return
+            block(at, length)
             at += length
         }
-        return b.take()
     }
 
     private fun adts(track: Mp4Track.Aac, frame: ByteArray): ByteArray {
         val length = frame.size + 7
-        val header = byteArrayOf(
-            0xFF.toByte(),
-            0xF1.toByte(),
-            ((track.profile shl 6) or (track.sampleRateIndex shl 2) or (track.channels shr 2)).toByte(),
-            (((track.channels and 3) shl 6) or (length shr 11)).toByte(),
-            ((length shr 3) and 0xFF).toByte(),
-            (((length and 7) shl 5) or 0x1F).toByte(),
-            0xFC.toByte(),
-        )
-        return header + frame
+        val b = ByteArray(length)
+        b[0] = 0xFF.toByte()
+        b[1] = 0xF1.toByte()
+        b[2] = ((track.profile shl 6) or (track.sampleRateIndex shl 2) or (track.channels shr 2)).toByte()
+        b[3] = (((track.channels and 3) shl 6) or (length shr 11)).toByte()
+        b[4] = ((length shr 3) and 0xFF).toByte()
+        b[5] = (((length and 7) shl 5) or 0x1F).toByte()
+        b[6] = 0xFC.toByte()
+        frame.copyInto(b, 7)
+        return b
     }
 
     private fun writePes(pid: Int, streamId: Int, payload: ByteArray, pts: Long, dts: Long?, pcr: Long?, randomAccess: Boolean) {
         val withDts = dts != null && dts != pts
         val headerData = if (withDts) 10 else 5
-        val pes = ByteBuilder()
-        pes.add(byteArrayOf(0, 0, 1, streamId.toByte()))
         val length = 3 + headerData + payload.size
         // Video may exceed 16 bits; 0 means "unbounded", as ffmpeg writes for video.
         val pesLength = if (pid == VIDEO_PID || length > 0xFFFF) 0 else length
-        pes.add(byteArrayOf((pesLength shr 8).toByte(), pesLength.toByte(), 0x84.toByte(), (if (withDts) 0xC0 else 0x80).toByte(), headerData.toByte()))
-        pes.add(timestamp(if (withDts) 3 else 2, pts))
-        if (withDts) pes.add(timestamp(1, dts!!))
-        pes.add(payload)
-        packetize(pid, pes.take(), pcr, randomAccess)
+        val h = pesHeader
+        h[0] = 0; h[1] = 0; h[2] = 1; h[3] = streamId.toByte()
+        h[4] = (pesLength shr 8).toByte(); h[5] = pesLength.toByte()
+        h[6] = 0x84.toByte(); h[7] = (if (withDts) 0xC0 else 0x80).toByte(); h[8] = headerData.toByte()
+        timestamp(h, 9, if (withDts) 3 else 2, pts)
+        if (withDts) timestamp(h, 14, 1, dts!!)
+        packetize(pid, h, 9 + headerData, payload, pcr, randomAccess)
     }
 
-    private fun timestamp(marker: Int, t: Long): ByteArray {
+    private fun timestamp(b: ByteArray, at: Int, marker: Int, t: Long) {
         val v = t and 0x1FFFFFFFFL
-        return byteArrayOf(
-            ((marker shl 4) or ((v shr 29).toInt() and 0x0E) or 1).toByte(),
-            (v shr 22).toByte(),
-            (((v shr 14).toInt() and 0xFE) or 1).toByte(),
-            (v shr 7).toByte(),
-            (((v shl 1).toInt() and 0xFE) or 1).toByte(),
-        )
+        b[at] = ((marker shl 4) or ((v shr 29).toInt() and 0x0E) or 1).toByte()
+        b[at + 1] = (v shr 22).toByte()
+        b[at + 2] = (((v shr 14).toInt() and 0xFE) or 1).toByte()
+        b[at + 3] = (v shr 7).toByte()
+        b[at + 4] = (((v shl 1).toInt() and 0xFE) or 1).toByte()
     }
 
-    private fun packetize(pid: Int, data: ByteArray, pcr: Long?, randomAccess: Boolean) {
+    // The PES header then its payload, cut into 188-byte packets written straight to the output.
+    private fun packetize(pid: Int, header: ByteArray, headerSize: Int, payload: ByteArray, pcr: Long?, randomAccess: Boolean) {
+        val total = headerSize + payload.size
         var at = 0
         var first = true
-        while (at < data.size) {
-            val adaptation = ByteBuilder()
-            if (first && (pcr != null || randomAccess)) {
-                adaptation.add(byteArrayOf(((if (randomAccess) 0x40 else 0) or (if (pcr != null) 0x10 else 0)).toByte()))
-                if (pcr != null) {
-                    val base = pcr.coerceAtLeast(0) and 0x1FFFFFFFFL
-                    adaptation.add(byteArrayOf((base shr 25).toByte(), (base shr 17).toByte(), (base shr 9).toByte(), (base shr 1).toByte(), (((base and 1) shl 7) or 0x7E).toInt().toByte(), 0))
-                }
+        while (at < total) {
+            val flags = first && (pcr != null || randomAccess)
+            val fieldBody = if (flags) 1 + (if (pcr != null) 6 else 0) else 0
+            val room = PACKET - 4 - (if (fieldBody > 0) 1 + fieldBody else 0)
+            val n = minOf(room, total - at)
+            // The last packet is stuffed through the adaptation field.
+            val stuffing = room - n
+            val fieldLength = when {
+                fieldBody > 0 -> fieldBody + stuffing
+                stuffing == 0 -> -1
+                else -> stuffing - 1
             }
-            var fieldLength = adaptation.size
-            var room = PACKET - 4 - (if (fieldLength > 0) 1 + fieldLength else 0)
-            val remaining = data.size - at
-            if (remaining < room) {
-                // Stuff the last packet through the adaptation field.
-                val stuffing = room - remaining
-                if (fieldLength == 0) {
-                    if (stuffing == 1) {
-                        fieldLength = -1
-                    } else {
-                        adaptation.add(byteArrayOf(0))
-                        adaptation.add(ByteArray(stuffing - 2) { 0xFF.toByte() })
-                        fieldLength = adaptation.size
+            out.addByte(0x47)
+            out.addByte((if (first) 0x40 else 0) or (pid shr 8))
+            out.addByte(pid)
+            out.addByte((if (fieldLength >= 0) 0x30 else 0x10) or next(pid))
+            if (fieldLength >= 0) {
+                out.addByte(fieldLength)
+                if (fieldLength > 0) {
+                    out.addByte(if (flags) (if (randomAccess) 0x40 else 0) or (if (pcr != null) 0x10 else 0) else 0)
+                    if (flags && pcr != null) {
+                        val base = pcr.coerceAtLeast(0) and 0x1FFFFFFFFL
+                        out.addByte((base shr 25).toInt()); out.addByte((base shr 17).toInt()); out.addByte((base shr 9).toInt())
+                        out.addByte((base shr 1).toInt()); out.addByte((((base and 1) shl 7) or 0x7E).toInt()); out.addByte(0)
                     }
-                } else {
-                    adaptation.add(ByteArray(stuffing) { 0xFF.toByte() })
-                    fieldLength = adaptation.size
+                    repeat(fieldLength - (if (fieldBody > 0) fieldBody else 1)) { out.addByte(0xFF) }
                 }
-                room = remaining
             }
-            val hasField = fieldLength != 0
-            out.add(byteArrayOf(0x47, ((if (first) 0x40 else 0) or (pid shr 8)).toByte(), pid.toByte(), ((if (hasField) 0x30 else 0x10) or next(pid)).toByte()))
-            if (fieldLength == -1) out.add(byteArrayOf(0)) else if (hasField) {
-                out.add(byteArrayOf(fieldLength.toByte()))
-                out.add(adaptation.take())
-            }
-            out.add(data, at, room)
-            at += room
+            val fromHeader = minOf(n, (headerSize - at).coerceAtLeast(0))
+            if (fromHeader > 0) out.add(header, at, fromHeader)
+            if (n > fromHeader) out.add(payload, at + fromHeader - headerSize, n - fromHeader)
+            at += n
             first = false
         }
     }
@@ -149,11 +160,9 @@ internal class MpegTsWriter(private val video: Mp4Track.Avc, private val audio: 
     private fun pat(): ByteArray = psi(0x00, 1, byteArrayOf(0, 1, (0xE0 or (PMT_PID shr 8)).toByte(), PMT_PID.toByte()))
 
     private fun pmt(): ByteArray {
-        val body = ByteBuilder()
-        body.add(byteArrayOf((0xE0 or (VIDEO_PID shr 8)).toByte(), VIDEO_PID.toByte(), 0xF0.toByte(), 0))
-        body.add(byteArrayOf(0x1B, (0xE0 or (VIDEO_PID shr 8)).toByte(), VIDEO_PID.toByte(), 0xF0.toByte(), 0))
-        if (audio != null) body.add(byteArrayOf(0x0F, (0xE0 or (AUDIO_PID shr 8)).toByte(), AUDIO_PID.toByte(), 0xF0.toByte(), 0))
-        return psi(0x02, 1, body.take())
+        val video = byteArrayOf(0x1B, (0xE0 or (VIDEO_PID shr 8)).toByte(), VIDEO_PID.toByte(), 0xF0.toByte(), 0)
+        val audio = if (audio == null) byteArrayOf() else byteArrayOf(0x0F, (0xE0 or (AUDIO_PID shr 8)).toByte(), AUDIO_PID.toByte(), 0xF0.toByte(), 0)
+        return psi(0x02, 1, byteArrayOf((0xE0 or (VIDEO_PID shr 8)).toByte(), VIDEO_PID.toByte(), 0xF0.toByte(), 0) + video + audio)
     }
 
     private fun psi(tableId: Int, idExtension: Int, body: ByteArray): ByteArray {
@@ -194,16 +203,24 @@ internal class MpegTsWriter(private val video: Mp4Track.Avc, private val audio: 
     }
 }
 
-/** A growable byte buffer. */
+/** A growable byte buffer that keeps its capacity between [take]s. */
 internal class ByteBuilder {
-    private var bytes = ByteArray(64 * 1024)
-    var size = 0
-        private set
+    private var bytes = ByteArray(1024 * 1024)
+    private var size = 0
+
+    private fun room(n: Int) {
+        if (size + n > bytes.size) bytes = bytes.copyOf(maxOf(bytes.size * 2, size + n))
+    }
 
     fun add(data: ByteArray, from: Int = 0, length: Int = data.size - from) {
-        if (size + length > bytes.size) bytes = bytes.copyOf(maxOf(bytes.size * 2, size + length))
+        room(length)
         data.copyInto(bytes, size, from, from + length)
         size += length
+    }
+
+    fun addByte(value: Int) {
+        room(1)
+        bytes[size++] = value.toByte()
     }
 
     fun take(): ByteArray = bytes.copyOf(size).also { size = 0 }

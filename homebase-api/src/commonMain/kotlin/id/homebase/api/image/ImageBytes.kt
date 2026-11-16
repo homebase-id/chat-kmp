@@ -13,6 +13,9 @@ internal fun readU32(b: ByteArray, at: Int, little: Boolean): Int =
     if (little) (readU16(b, at + 2, true) shl 16) or readU16(b, at, true)
     else (readU16(b, at, false) shl 16) or readU16(b, at + 2, false)
 
+internal fun readU64(b: ByteArray, at: Int): Long =
+    ((readU32(b, at, little = false).toLong() and 0xFFFFFFFFL) shl 32) or (readU32(b, at + 4, little = false).toLong() and 0xFFFFFFFFL)
+
 internal fun writeLe32(b: ByteArray, at: Int, value: Int) {
     for (i in 0..3) b[at + i] = (value ushr (8 * i)).toByte()
 }

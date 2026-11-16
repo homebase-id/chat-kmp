@@ -11,9 +11,7 @@ import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.files.WholePercentProgressGate
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.crypto.encryptFileStreaming
-import id.homebase.api.crypto.encryptedPayloadHash
-import id.homebase.api.crypto.newHasher
+import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFile
@@ -234,8 +232,7 @@ class VideoPayloadProcessor(
 
         /* ---------- PHASE 4: SEGMENT (HLS ONLY) ---------- */
 
-        var videoHash: PayloadHash? = null
-        val (playlistPath, videoPath, isSegmented) =
+        val (playlistPath, videoPath, segmentedHash) =
             if (useHls) {
                 // Same whole-percent throttle as compression (see compressGate). No priming —
                 // there is no separate SEGMENTING phase-start emit, so the first tick should land.
@@ -291,20 +288,20 @@ class VideoPayloadProcessor(
                 }
                 val stagedHlsDir =
                     fileOperationsProvider.promoteToOutboxStaging(scratchHlsDir.toString()).toPath()
-                videoHash = segmented.hash
 
                 Triple(
                     (stagedHlsDir / segmented.playlistPath.toPath().name).toString(),
                     (stagedHlsDir / segmented.segmentsPath.toPath().name).toString(),
-                    true,
+                    segmented.hash,
                 )
             } else {
-                Triple(null, compressedPath, false)
+                Triple(null, compressedPath, null)
             }
+        val isSegmented = playlistPath != null
 
         /* ---------- PHASE 4.5: ENCRYPT NON-HLS VIDEO ---------- */
 
-        val finalVideoPath =
+        val (finalVideoPath, videoHash) =
             if (!isSegmented) {
                 onProgress?.invoke(
                     VideoPayloadProgressPhase(
@@ -317,10 +314,9 @@ class VideoPayloadProcessor(
                 encryptVideoFile(
                     inputPath = videoPath,
                     keyHeader = keyHeader
-                ).also { videoHash = it.second }.first
-
+                )
             } else {
-                videoPath
+                videoPath to segmentedHash
             }
 
 
@@ -447,10 +443,7 @@ class VideoPayloadProcessor(
         // cache reclaim deleted it out from under a pending outbox row (ENOENT retries).
         val outputPath =
             fileOperationsProvider.createOutboxStagingPath("video-encrypted-", ".bin")
-        val content = PayloadHashAlgorithm.Blake3.newHasher()
-        val stored = PayloadHashAlgorithm.Blake3.newHasher()
-        fileOperationsProvider.encryptFileStreaming(inputPath, outputPath, keyHeader, content, stored)
-        return outputPath to encryptedPayloadHash(PayloadHashAlgorithm.Blake3, stored.digest(), content.digest(), keyHeader)
+        return outputPath to fileOperationsProvider.encryptWithPayloadHash(inputPath, outputPath, keyHeader, PayloadHashAlgorithm.Blake3)
     }
 
     private suspend fun detectVideoCodec(filePath: String): String {

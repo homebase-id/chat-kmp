@@ -42,7 +42,7 @@ class HlsSegmenterDeviceTest {
         val compressed = AndroidVideoCompressor.compress(source.absolutePath, null, null, null, VideoQuality.STANDARD, false)
         // Android's TS extractor leaves out the last frame of a stream; ffmpeg's own HLS reads back the same.
         val frames = FFmpegVideoCompressor.segmentAndEncrypt(compressed, keyHeader, null)!!.let { ffmpeg ->
-            videoFrames(decryptedTs(ffmpeg, "$name.ffmpeg.ts").absolutePath).also { File(ffmpeg.segmentsPath).parentFile!!.deleteRecursively() }
+            videoTrack(decryptedTs(ffmpeg, "$name.ffmpeg.ts").absolutePath).second.also { File(ffmpeg.segmentsPath).parentFile!!.deleteRecursively() }
         }
 
         val started = System.currentTimeMillis()
@@ -52,22 +52,12 @@ class HlsSegmenterDeviceTest {
 
         val ts = decryptedTs(segmented, "$name.ts")
 
-        val extractor = MediaExtractor().apply { setDataSource(ts.absolutePath) }
         try {
-            val formats = (0 until extractor.trackCount).map { extractor.getTrackFormat(it) }
-            val video = formats.indexOfFirst { it.getString(MediaFormat.KEY_MIME) == MediaFormat.MIMETYPE_VIDEO_AVC }
-            assertTrue(video >= 0, "an H.264 track: $formats")
-            assertEquals(size, formats[video].getInteger(MediaFormat.KEY_WIDTH) to formats[video].getInteger(MediaFormat.KEY_HEIGHT))
-            extractor.selectTrack(video)
-            val buffer = ByteBuffer.allocate(4 * 1024 * 1024)
-            var read = 0
-            while (extractor.readSampleData(buffer, 0) >= 0) {
-                read++
-                extractor.advance()
-            }
+            val (format, read) = videoTrack(ts.absolutePath)
+            assertEquals(MediaFormat.MIMETYPE_VIDEO_AVC, format.getString(MediaFormat.KEY_MIME))
+            assertEquals(size, format.getInteger(MediaFormat.KEY_WIDTH) to format.getInteger(MediaFormat.KEY_HEIGHT))
             assertEquals(frames, read, "every frame ffmpeg's HLS keeps")
         } finally {
-            extractor.release()
             listOf(source, File(compressed), ts, File(segmented.segmentsPath).parentFile!!).forEach { it.deleteRecursively() }
         }
     }
@@ -82,7 +72,8 @@ class HlsSegmenterDeviceTest {
         return File(InstrumentationRegistry.getInstrumentation().context.cacheDir, name).apply { writeBytes(plain) }
     }
 
-    private fun videoFrames(path: String): Int {
+    /** The video track's format and how many frames Android's extractor reads from it. */
+    private fun videoTrack(path: String): Pair<MediaFormat, Int> {
         val extractor = MediaExtractor().apply { setDataSource(path) }
         try {
             val track = (0 until extractor.trackCount).first { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)!!.startsWith("video/") }
@@ -93,7 +84,7 @@ class HlsSegmenterDeviceTest {
                 n++
                 extractor.advance()
             }
-            return n
+            return extractor.getTrackFormat(track) to n
         } finally {
             extractor.release()
         }

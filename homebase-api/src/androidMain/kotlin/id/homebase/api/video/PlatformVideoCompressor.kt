@@ -3,11 +3,10 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.file.OkioFileOperationsProvider
+import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.video.hls.HlsSegmenter
 import java.io.File
 import kotlinx.coroutines.CancellationException
-import okio.FileSystem
 
 internal actual fun platformVideoCompressor(): VideoCompressor = AndroidVideoCompressor
 
@@ -41,7 +40,7 @@ internal object AndroidVideoCompressor : VideoCompressor by FFmpegVideoCompresso
         keyHeader: KeyHeader,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? {
-        val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, ActivityProvider.requireApplicationContext().cacheDir.absolutePath)
+        val fileOps = AndroidFileOperationsProvider(ActivityProvider.requireApplicationContext())
         val segmented = try {
             HlsSegmenter.segmentAndEncrypt(fileOps, inputPath, keyHeader, onProgress)
         } catch (e: CancellationException) {
