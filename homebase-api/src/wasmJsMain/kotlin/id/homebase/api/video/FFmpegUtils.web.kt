@@ -143,11 +143,6 @@ actual object FFmpegUtils {
         onProgress: ((Float) -> Unit)?,
     ): Pair<String, String>? = runSegment(inputPath, keyHeader, onProgress)
 
-    actual suspend fun segmentVideo(
-        inputPath: String,
-        onProgress: ((Float) -> Unit)?,
-    ): Pair<String, String>? = runSegment(inputPath, keyHeader = null, onProgress = onProgress)
-
     /**
      * Drives ffmpeg.wasm to produce single-file HLS (index.m3u8 + index.ts). When [keyHeader]
      * is non-null, segments are AES-128 encrypted (built-in HLS crypto). Returns the okio

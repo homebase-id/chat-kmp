@@ -84,13 +84,18 @@ class FFmpegPipelineCoverageJvmTest {
                 "trimmed duration ≈3000ms, got ${trimmedDuration}ms",
             )
 
-            // 6. Unencrypted HLS segmentation produces a real m3u8 playlist
-            //    with no key declaration.
-            val seg = FFmpegUtils.segmentVideo(fixture, onProgress = null)
-            assertNotNull(seg, "segmentVideo must succeed")
-            val (playlistPath, segmentPath) = seg
-            cleanup += playlistPath
-            cleanup += segmentPath
+            // 6. ffmpeg's own unencrypted single-file HLS, as the app wrote it before the shared segmenter
+            //    (the arguments of FFmpegUtils' segmenter, without the key).
+            val hlsDir = File.createTempFile("hls_", "").also { it.delete(); it.mkdirs() }
+            cleanup += hlsDir.absolutePath
+            val playlistPath = File(hlsDir, "index.m3u8").absolutePath
+            val segmentPath = File(hlsDir, "index.ts").absolutePath
+            val segmenting = ProcessBuilder(
+                FFmpegBinaryManager.ffmpegPath(), "-y", "-i", fixture, "-codec:v", "copy", "-codec:a", "copy",
+                "-hls_time", "6", "-hls_list_size", "0", "-hls_flags", "single_file", playlistPath,
+            ).redirectErrorStream(true).start()
+            val segmentingLog = segmenting.inputStream.bufferedReader().readText()
+            assertEquals(0, segmenting.waitFor(), "ffmpeg must segment:\n$segmentingLog")
             val playlist = File(playlistPath).readText()
             assertTrue(
                 playlist.startsWith("#EXTM3U"),

@@ -66,12 +66,6 @@ expect object FFmpegUtils {
         onProgress: ((Float) -> Unit)?
     ): Pair<String, String>?
 
-    /** As [segmentAndEncryptVideo] but the segment is not encrypted. */
-    suspend fun segmentVideo(
-        inputPath: String,
-        onProgress: ((Float) -> Unit)?
-    ): Pair<String, String>?
-
     /**
      * Version reported by the underlying ffmpeg (e.g. "n6.0", "6.1.1"), or null if it
      * could not be determined. Result is process-stable; actuals memoize after the first call.

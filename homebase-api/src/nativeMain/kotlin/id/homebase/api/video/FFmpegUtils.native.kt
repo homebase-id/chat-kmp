@@ -299,47 +299,6 @@ actual object FFmpegUtils {
         throw VideoCompressionFailedException(inputPath, "all encoders failed (${encoders.joinToString()})")
     }
 
-    actual suspend fun segmentVideo(
-            inputPath: String,
-            onProgress: ((Float) -> Unit)?
-    ): Pair<String, String>? =
-            withContext(Dispatchers.IO) {
-                val outputDir = hlsOutputDir(inputPath)
-
-                val fileManager = NSFileManager.defaultManager
-                if (!fileManager.fileExistsAtPath(outputDir)) {
-                    fileManager.createDirectoryAtPath(outputDir, true, null, null)
-                }
-
-                val indexPath = "$outputDir/index.m3u8"
-                val segmentPath = "$outputDir/index.ts"
-
-                val rotation = getRotationFromFile(inputPath)
-                val absRot = kotlin.math.abs(((rotation % 360) + 360) % 360)
-                val needsRotationFix = absRot == 90 || absRot == 270
-
-                val baseCommand =
-                        if (!needsRotationFix) {
-                            "-i \"$inputPath\" -codec:v copy -codec:a copy"
-                        } else {
-                            "-i \"$inputPath\" -c:v libx264 -preset veryfast -crf 23 -g 30 -bf 2 -c:a copy"
-                        }
-
-                val command =
-                        "$baseCommand -hls_time 6 -hls_list_size 0 -hls_flags single_file -f hls -hls_segment_filename \"$segmentPath\" \"$indexPath\""
-
-                val result = bridge.executeFFmpeg(command)
-
-                if (result.isSuccess) {
-                    Pair(indexPath, segmentPath)
-                } else {
-                    println("Docs: Error segmenting video: ${result.failStackTrace}")
-                    // Delete the leftover hls_<uuid>/ dir (see #5).
-                    deleteFailedFfmpegOutput(outputDir)
-                    null
-                }
-            }
-
     private fun progressFraction(timeMs: Long, durationMs: Long): Float =
         if (durationMs <= 0L) 0f else (timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
 

@@ -10,7 +10,7 @@ import okio.Path.Companion.toPath
  * Best-effort delete of FFmpeg output left behind by a *failed* compress or
  * segment operation.
  *
- * `compressVideo` / `segmentVideo` / `segmentAndEncryptVideo` each write their
+ * `compressVideo` / `segmentAndEncryptVideo` each write their
  * output into the cache directory and, on FFmpeg failure, used to just return
  * null (or throw) — leaving a partial or empty file (`compressed_*.mp4`,
  * `ffmpeg-segmented-*.{m3u8,ts}`) or a whole `hls_<uuid>/` directory behind,
