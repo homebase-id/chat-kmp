@@ -31,6 +31,34 @@ class HdrDisplayDeviceTest {
         assertTrue(bitmap.hasGainmap(), "Coil's bitmap has the gain map")
     }
 
+    /**
+     * Not a check: with `-e hdrBench true`, each photo in the test app's files/bench re-encoded as the final image at
+     * Standard and HD, as today's SDR WebP and as an Ultra HDR JPEG, timed twice each in alternating order.
+     */
+    @Test
+    fun benchmarkHdrFinalImages() = runBlocking {
+        if (InstrumentationRegistry.getArguments().getString("hdrBench") != "true") return@runBlocking
+        assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        val photos = java.io.File(context.filesDir, "bench").listFiles { f -> f.extension.lowercase() == "jpg" }.orEmpty().sortedBy { it.name }
+        for ((n, photo) in photos.withIndex()) {
+            val bytes = photo.readBytes()
+            for (setting in listOf(id.homebase.api.image.MediaQuality.STANDARD, id.homebase.api.image.MediaQuality.HD)) {
+                repeat(2) { round ->
+                    for (hdr in if (round == 0) listOf(false, true) else listOf(true, false)) {
+                        val started = System.nanoTime()
+                        val image = renderImages(bytes) { size ->
+                            val final = planMediaImages(size, setting).finalImage!!
+                            listOf(ImageOutput(final.width, final.height, final.quality, Int.MAX_VALUE, keepsHdr = hdr))
+                        }.images.single()
+                        val ms = (System.nanoTime() - started) / 1_000_000
+                        Log.i("HdrBench", "${Build.MODEL} photo ${n + 1} ${bytes.size / 1000} kB -> $setting ${image.width}x${image.height} " +
+                            "${image.format} q${image.quality}: ${image.bytes.size / 1000} kB, $ms ms")
+                    }
+                }
+            }
+        }
+    }
+
     /** Not a check: with `-e hdrFixture true`, puts a generated Ultra HDR photo in the gallery to open in the app. */
     @Test
     fun putAnUltraHdrPhotoInTheGallery() {
