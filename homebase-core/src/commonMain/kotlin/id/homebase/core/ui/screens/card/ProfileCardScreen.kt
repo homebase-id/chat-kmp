@@ -62,6 +62,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import id.homebase.resources.menu_back
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Arrangement
@@ -306,6 +309,7 @@ internal fun ProfileCardPager(
     onNewCard: () -> Unit,
     fullWindow: Boolean,
     onToggleFullWindow: (() -> Unit)?,
+    sheeted: Boolean = onToggleFullWindow == null && !isDesktopOrWeb(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
@@ -355,12 +359,10 @@ internal fun ProfileCardPager(
     }
 
     // A pane (desktop, web) shows the card in place; a phone's route shows it as a modal sheet.
-    val sheeted = onToggleFullWindow == null && !isDesktopOrWeb()
     // Opening the editor pops this dialog entry, so the view model carries "was open" across that round trip.
     val returningFromEditor = remember { viewModel.takeSheetOpenOnReturn() }
-    var opened by rememberSaveable { mutableStateOf(returningFromEditor) }
     var overview by rememberSaveable { mutableStateOf(!returningFromEditor) }
-    val sheet = remember { AnchoredDraggableState(if (opened) SheetValue.Open else SheetValue.Dismissed) }
+    val sheet = remember { AnchoredDraggableState(if (returningFromEditor) SheetValue.Open else SheetValue.Dismissed) }
     var dismissing by remember { mutableStateOf(false) }
     val sheetHeightPx = LocalWindowInfo.current.containerSize.height * SHEET_HEIGHT_FRACTION
     val sheetFling = deliberateFling(AnchoredDraggableDefaults.flingBehavior(sheet, positionalThreshold = { it * SHEET_POSITIONAL_THRESHOLD }))
@@ -369,9 +371,12 @@ internal fun ProfileCardPager(
     var leaving by remember { mutableStateOf(false) }
     val leave: () -> Unit = {
         if (!leaving) {
-            if (sheeted) {
+            if (sheeted && !overview) {
                 dismissing = true
                 scope.launch { sheet.animateTo(SheetValue.Dismissed) }
+            } else if (sheeted) {
+                leaving = true
+                onBack()
             } else {
                 leaving = true
                 // Back would otherwise pop past captureCover(), leaving the native card view behind.
@@ -383,23 +388,23 @@ internal fun ProfileCardPager(
         }
     }
     val hasCards = uiState.cards.isNotEmpty()
-    BackHandler { if (!overview && hasCards) overview = true else leave() }
+    BackHandler { if (!sheeted && !overview && hasCards) overview = true else leave() }
     if (sheeted) {
         LaunchedEffect(sheetHeightPx) {
             sheet.updateAnchors(DraggableAnchors { SheetValue.Open at 0f; SheetValue.Dismissed at sheetHeightPx })
         }
-        LaunchedEffect(sheet) {
+        LaunchedEffect(sheet, overview) {
+            if (overview) return@LaunchedEffect
             snapshotFlow { sheet.anchors.size }.first { it > 0 }
             // Launched: a header drag or leave() cancels the opening animation, and the dismissal watch must outlive it.
             // A frame late, as the first frame composes the whole card and would swallow the animation's start.
-            if (!opened) launch {
+            if (sheet.currentValue != SheetValue.Open) launch {
                 withFrameNanos { }
                 sheet.animateTo(SheetValue.Open)
             }
-            opened = true
             sheet.awaitDismissed(SheetValue.Dismissed) { dismissing }
-            leaving = true
-            onBack()
+            dismissing = false
+            overview = true
         }
     }
 
@@ -452,7 +457,7 @@ internal fun ProfileCardPager(
                                 modifier = Modifier.align(Alignment.Center),
                             )
                             cards.isEmpty() -> ContainedLoadingIndicator(modifier = Modifier.align(Alignment.Center))
-                            overview -> CardOverview(
+                            overview && !sheeted -> CardOverview(
                                 uiState = uiState,
                                 tiles = tiles,
                                 host = host,
@@ -560,16 +565,30 @@ internal fun ProfileCardPager(
         }
         if (sheeted) {
             Box(modifier = Modifier.fillMaxSize()) {
-                Spacer(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .drawBehind {
-                            val shown = sheet.offset.takeUnless { it.isNaN() }?.let { 1f - it / sheetHeightPx } ?: 0f
-                            drawRect(Color.Black.copy(alpha = SCRIM_ALPHA * shown.coerceIn(0f, 1f)))
-                        }
-                        .clickable(interactionSource = null, indication = null, onClick = leave),
+                CardOverviewPage(
+                    uiState = uiState,
+                    tiles = tiles,
+                    host = host.takeIf { overview },
+                    onBack = leave,
+                    onOpen = { audience ->
+                        viewModel.onCardSelected(audience)
+                        overview = false
+                    },
+                    onCapture = viewModel::captureEditorTiles,
+                    onNewCard = onNewCard.takeIf { uiState.circleCardsSupported },
                 )
-                body(
+                if (!overview) {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawBehind {
+                                val shown = sheet.offset.takeUnless { it.isNaN() }?.let { 1f - it / sheetHeightPx } ?: 0f
+                                drawRect(Color.Black.copy(alpha = SCRIM_ALPHA * shown.coerceIn(0f, 1f)))
+                            }
+                            .clickable(interactionSource = null, indication = null, onClick = leave),
+                    )
+                }
+                if (!overview) body(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .then(if (isExpandedLayout()) Modifier else Modifier.widthIn(max = WIDE_SHEET_MAX_WIDTH))
@@ -604,6 +623,44 @@ internal fun ProfileCardPager(
             )
         }
         if (explainReadOnly) ReadOnlyCardDialog(onDismiss = { explainReadOnly = false })
+    }
+}
+
+@Composable
+private fun CardOverviewPage(
+    uiState: ProfileCardUiState,
+    tiles: Map<String, ImageBitmap>,
+    host: CardHost?,
+    onBack: () -> Unit,
+    onOpen: (CardAudience) -> Unit,
+    onCapture: suspend () -> Unit,
+    onNewCard: (() -> Unit)?,
+) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
+        CardOverview(
+            uiState = uiState,
+            tiles = tiles,
+            host = host,
+            onOpen = onOpen,
+            onCapture = onCapture,
+            onNewCard = onNewCard,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 20.dp, top = 8.dp),
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
+            }
+            Text(
+                text = stringResource(MR.string.profile_card_intro_title),
+                style = MaterialTheme.typography.titleLargeEmphasized,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).semantics { heading() },
+            )
+        }
     }
 }
 

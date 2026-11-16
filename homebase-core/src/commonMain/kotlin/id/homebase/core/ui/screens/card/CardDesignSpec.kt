@@ -55,7 +55,7 @@ object CardDesignSpecs {
     val PORTRAIT_SHAPES = listOf("circle", "square", "rounded", "ellipse")
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
     val PRESENTATIONS = listOf("bare", "boxed", "row", "button")
-    val PHOTO_SIZES = listOf("medium", "small", "large")
+    val PHOTO_SIZES = listOf("small", "medium", "large")
     const val MEDIUM_PHOTO = "medium"
 
     /** [all] with [design]'s preset value for [option] moved first; the row shows the preset as its first choice. */

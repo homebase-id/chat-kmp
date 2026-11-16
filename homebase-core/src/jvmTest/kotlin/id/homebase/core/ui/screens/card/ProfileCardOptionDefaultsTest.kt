@@ -243,8 +243,8 @@ class ProfileCardOptionDefaultsTest {
                 if (chips.isEmpty()) continue
                 rows++
                 val states = chips.map { it.config.getOrNull(SemanticsProperties.ToggleableState) }
-                assertEquals(ToggleableState.On, states.first(), "$design/$tab: first chip is not the selected one")
-                assertEquals(1, states.count { it == ToggleableState.On }, "$design/$tab: exactly the first chip is selected")
+                if (tab != "Photo size") assertEquals(ToggleableState.On, states.first(), "$design/$tab: first chip is not the selected one")
+                assertEquals(1, states.count { it == ToggleableState.On }, "$design/$tab: exactly one chip is selected")
             }
             assertTrue(rows >= 3, "$design checked only $rows segmented rows")
         }
@@ -262,12 +262,14 @@ class ProfileCardOptionDefaultsTest {
     }
 
     @Test
-    fun photoSizeOffersMediumFirstAndSendsNoSizeForIt() {
+    fun photoSizeIsASmallMediumLargeScaleWithMediumSelectedAndSendsNoSizeForIt() {
         val calls = mutableListOf<Pair<CardOption, String?>>()
         panel(CardDesign.BOARD, onOption = { o, v -> calls += o to v }) {
             pickTab("Photo size")
             val labels = onAllNodes(isToggle).fetchSemanticsNodes().map { n -> n.config.getOrNull(SemanticsProperties.Text)!!.joinToString("") { it.text } }
-            assertEquals(listOf("Medium", "Small", "Large"), labels)
+            assertEquals(listOf("Small", "Medium", "Large"), labels)
+            val states = onAllNodes(isToggle).fetchSemanticsNodes().map { it.config.getOrNull(SemanticsProperties.ToggleableState) }
+            assertEquals(listOf(ToggleableState.Off, ToggleableState.On, ToggleableState.Off), states)
             onNodeWithText("Large").performClick()
             onNodeWithText("Small").performClick()
             onNodeWithText("Medium").performClick()

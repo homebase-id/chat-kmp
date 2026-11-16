@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
-import id.homebase.resources.circle_new
+import id.homebase.resources.profile_card_new
 import id.homebase.resources.profile_card_intro_open
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.max
@@ -167,7 +167,7 @@ private fun OverviewTile(card: ProfileCard, emoji: String?, still: ImageBitmap?,
 
 @Composable
 private fun NewCardTile(onClick: () -> Unit) {
-    val title = stringResource(MR.string.circle_new)
+    val title = stringResource(MR.string.profile_card_new)
     val shape = RoundedCornerShape(OVERVIEW_TILE_CORNER)
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),

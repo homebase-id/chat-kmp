@@ -2589,6 +2589,7 @@
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>
+    <string name="profile_card_new">New card</string>
     <string name="profile_card_intro_open">Open %1$s card</string>
     <string name="profile_card_edit_design">Edit design</string>
     <string name="profile_card_audience_description">Card for %1$s</string>

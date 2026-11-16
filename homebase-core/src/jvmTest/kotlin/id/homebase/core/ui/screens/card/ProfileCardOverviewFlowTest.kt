@@ -34,7 +34,7 @@ class ProfileCardOverviewFlowTest {
         val system = DirectNavigationEventInput()
     }
 
-    private fun ComposeUiTest.screen(returningFromEditor: Boolean = false): Rig {
+    private fun ComposeUiTest.screen(returningFromEditor: Boolean = false, sheeted: Boolean = false): Rig {
         val fixtures = ProfileCardViewModelTest()
         val wire = CardWireHarness()
         val repository = runBlocking { wire.profileRepository() }
@@ -64,6 +64,7 @@ class ProfileCardOverviewFlowTest {
                         onNewCard = {},
                         fullWindow = false,
                         onToggleFullWindow = null,
+                        sheeted = sheeted,
                     )
                 }
             }
@@ -96,6 +97,27 @@ class ProfileCardOverviewFlowTest {
         runOnIdle { rig.system.backCompleted() }
         waitUntil(timeoutMillis = 10_000) { hasText("Open Friends card") }
         assertEquals(0, rig.backs)
+    }
+
+    @Test
+    fun onAPhoneTheOverviewIsAPageBehindTheCardSheetAndClosingTheCardReturnsToIt() = runDesktopComposeUiTest(width = 824, height = 1784) {
+        val rig = screen(sheeted = true)
+        waitUntil(timeoutMillis = 10_000) { hasText("Open Friends card") }
+        onAllNodesWithContentDescription("Back").assertCountEquals(1)
+        onAllNodesWithContentDescription("Edit").assertCountEquals(0)
+
+        onNodeWithContentDescription("Open Friends card").performClick()
+        waitUntil(timeoutMillis = 10_000) { hasText("Edit") }
+        assertEquals(friends, rig.viewModel.uiState.value.selectedAudience)
+        assertTrue(hasText("Open Friends card"))
+
+        runOnIdle { rig.system.backCompleted() }
+        waitUntil(timeoutMillis = 10_000) { !hasText("Edit") }
+        assertTrue(hasText("Open Friends card"))
+        assertEquals(0, rig.backs)
+
+        runOnIdle { rig.system.backCompleted() }
+        waitUntil(timeoutMillis = 10_000) { rig.backs == 1 }
     }
 
     @Test
