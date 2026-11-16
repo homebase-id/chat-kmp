@@ -29,7 +29,6 @@ konsist = "0.18.1"
 nucleus = "1.15.7"
 conveyor = "2.0"
 conveyorControl = "1.1"
-ffmpegKit = "1.0"
 androidx-pdf-viewer = "1.0.0-alpha18"
 pdfbox = "3.0.8"
 vlcj = "4.8.2"
@@ -97,7 +96,6 @@ mlkit-subject-segmentation = "16.0.0-beta1"
 metadataExtractor = "2.22.0"
 
 [libraries]
-ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
 androidx-pdf-viewer = { module = "androidx.pdf:pdf-viewer-fragment", version.ref = "androidx-pdf-viewer" }
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
@@ -217,7 +215,6 @@ filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "file
 filekit-dialogs = { module = "io.github.vinceglb:filekit-dialogs", version.ref = "filekit" }
 filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekit" }
 filekit-coil = { module = "io.github.vinceglb:filekit-coil", version.ref = "filekit" }
-smart-exception-java = { module = "com.arthenica:smart-exception-java", version = "0.2.1" }
 runner = { group = "com.android.support.test", name = "runner", version.ref = "runner" }
 espresso-core = { group = "com.android.support.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 appcompat-v7 = { group = "com.android.support", name = "appcompat-v7", version.ref = "appcompatV7" }

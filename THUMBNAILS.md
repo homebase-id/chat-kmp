@@ -555,7 +555,7 @@ A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place
 
 Numbers per device: MEDIA_BENCHMARKS.md.
 
-Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS, desktop and web use ffmpeg. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend. Both take the sizes and bitrates from `VideoQualityTargets.kt`. Media3 differs from ffmpeg in a few ways:
+Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS, desktop and web use ffmpeg; Android has none, so a Media3 failure fails the send. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend. Both take the sizes and bitrates from `VideoQualityTargets.kt`. Media3 differs from ffmpeg in a few ways:
 
 - **Bitrate.** A hardware encoder spends the whole bitrate it's given, where libx264 spends less on simple content. So Media3 asks for less when the source is smaller than the target, in proportion to its area, and never more than the source's own bitrate. Android also enforces a minimum quality: on hard content it raises the bitrate itself. A 3 s 1440p60 animation came out 20–40% over target, with libx264 about 16% under. Real camera footage lands on target with both.
 - **Portrait.** Media3 writes portrait frames rather than a rotation flag, because MPEG-TS has no rotation.

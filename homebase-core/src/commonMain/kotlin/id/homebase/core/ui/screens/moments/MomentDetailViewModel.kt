@@ -16,8 +16,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoCompressionService
+import id.homebase.api.video.downloadHlsAsMp4
 import id.homebase.api.video.VideoMetadata
 import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -53,7 +52,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -708,7 +706,6 @@ class MomentDetailViewModel(
                             fileId = moment.fileId,
                             payloadKey = payloadKey,
                             keyHeader = keyHeader,
-                            metadata = hlsMetadata,
                             suggestedBaseName = payload.filename(),
                         )
                     }
@@ -782,7 +779,6 @@ class MomentDetailViewModel(
                             fileId = moment.fileId,
                             payloadKey = payloadKey,
                             keyHeader = keyHeader,
-                            metadata = hlsMetadata,
                             suggestedBaseName = payload.filename(),
                         )
                     }
@@ -838,60 +834,17 @@ class MomentDetailViewModel(
     }
 
     /**
-     * Decrypt the HLS segment payload, synthesize a local playlist pointing at
-     * it, and remux into an MP4 via stream-copy (no re-encode). Returns
-     * (mp4Path, suggestedName) or null on failure. Mirrors
-     * `MediaDownloadHandler.downloadAndRemuxHlsToMp4`.
+     * Decrypts the HLS segments and copies them into an MP4. Returns (mp4Path, suggestedName) or null on failure.
+     * Mirrors `MediaDownloadHandler.downloadAndRemuxHlsToMp4`.
      */
     private suspend fun downloadAndRemuxHlsToMp4(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,
         keyHeader: KeyHeader,
-        metadata: VideoMetadata,
         suggestedBaseName: String?,
     ): Pair<String, String>? {
-        val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
-        val uid = Uuid.random().toString().take(8)
-        val tsFileName = "input_hlsdl_${uid}.ts"
-        val tsPath = "$cacheDir/$tsFileName"
-        val mp4Path = "$cacheDir/hlsdl_${uid}.mp4"
-
-        val tsOk = driveFileProvider.streamPayloadDecryptedToPath(
-            driveId = driveId,
-            fileId = fileId,
-            key = payloadKey,
-            keyHeader = keyHeader,
-            outputPath = tsPath,
-            fileOps = fileOperationsProvider,
-        )
-        if (!tsOk) return null
-
-        // Strip EXT-X-KEY (segments are already decrypted on disk) and rewrite
-        // segment references to point at the local .ts file we just wrote.
-        val rewrittenPlaylist = metadata.hlsPlaylist!!.lines()
-            .filter { !it.startsWith("#EXT-X-KEY") }
-            .joinToString("\n") { line ->
-                if (line.isNotBlank() && !line.startsWith("#")) tsFileName else line
-            }
-
-        // cacheInputVideo writes to "<cacheDir>/input_<fileName>", the same
-        // directory as tsPath, so the playlist's relative segment ref resolves.
-        val playlistPath = VideoCompressionService.cacheInputVideo(
-            fileName = "hlsdl_${uid}.m3u8",
-            data = rewrittenPlaylist.encodeToByteArray(),
-        )
-
-        val ok = VideoCompressionService.remuxHlsToMp4(
-            playlistPath = playlistPath,
-            outputPath = mp4Path,
-        )
-
-        runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
-        runCatching { fileOperationsProvider.deleteTempFile(playlistPath) }
-
-        if (!ok) return null
-
+        val mp4Path = driveFileProvider.downloadHlsAsMp4(driveId, fileId, payloadKey, keyHeader, fileOperationsProvider) ?: return null
         return mp4Path to safeFileName(suggestedBaseName?.substringBeforeLast('.'), "video", "mp4")
     }
 

@@ -7,10 +7,9 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 ## How to measure
 
 - **Device tests** are in `homebase-api`. Install them with `./gradlew :homebase-api:installAndroidDeviceTest`, then run one with `adb shell am instrument -w -e class 'id.homebase.api.video.Media3VideoCompressorTest#<test>' id.homebase.api.test/androidx.test.runner.AndroidJUnitRunner`. Results are logged under the `Media3Benchmark` tag (`adb logcat -s Media3Benchmark`).
-  - `benchmarkAgainstFfmpeg`: Media3 against ffmpeg compression at Standard and HD, then segmenting and the AAC timings.
-  - `benchmarkSegmenting`: compresses once with Media3, then times our segmenter against ffmpeg's.
-  - `benchmarkSegmentingAsIs`: segments the file as it is.
   - `benchmarkEndToEnd`: a whole send, as `VideoPayloadProcessor` runs it.
+  - `RemuxHlsToMp4DeviceTest#benchmark` with `-e remuxBench true`: saving a received video.
+  - The comparisons against ffmpeg on Android (`benchmarkAgainstFfmpeg`, `benchmarkSegmenting`, `benchmarkSegmentingAsIs`, the ffmpeg legs of `benchmarkEndToEnd`, `GifShrinkBenchmark` and the remux) were removed with ffmpeg-kit; their numbers below stand, and the tests are in git history before ffmpeg left Android.
   - BLAKE3 speed: `id.homebase.api.crypto.Blake3NativeDeviceTest#throughput` with `-e hashBench true`.
 - **Inputs:** the tests read every `.mp4`/`.mov` in the test app's `files/bench/` folder. On Android 14 and later, only the app itself can see that folder, so copy a file in with `adb push <file> /data/local/tmp/`, then `adb shell run-as id.homebase.api.test sh -c 'mkdir -p files/bench && cp /data/local/tmp/<file> files/bench/'`. Delete it afterwards: `adb shell run-as id.homebase.api.test rm -rf files/bench`. Uninstalling the test package also removes it.
 - **Fair runs:**
@@ -35,6 +34,21 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 | Pixel 8 | 17 | Tensor G3 | `c2.exynos.*` hardware; AAC `c2.android.*` software |
 | Pixel 5 | 14 | Snapdragon 765G | Qualcomm hardware; AAC `c2.android.*` software. Also runs 32-bit apps |
 | Galaxy S23+ | 17 | Snapdragon 8 Gen 2 | |
+
+## How many times a file is read
+
+Full reads of the video per operation, with the code that ships. Header reads (duration, probe, finding the `moov`) and the one frame a poster decodes aren't counted. Keep this table current whenever a change adds or removes a pass.
+
+| Operation | Android | iOS | Desktop | Web |
+|---|---|---|---|---|
+| Before compressing a pick | 0 from the media library (read in place); **1** for any other picked or shared file (copied to the cache) | **1** from the Photos library (copied out first); 0 for a file | 0 | 0 |
+| Compress | **1** of the source (Media3) | **1** (ffmpeg) | **1** (ffmpeg) | **1** (ffmpeg.wasm) |
+| HLS, compressed 5 MB or more | **1** of the compressed file: cut, encrypt and both payload hashes in one pass | **1** (ffmpeg cuts and encrypts; no payload hash) | **1** (as iOS) | **1** (as iOS) |
+| Plain MP4, under 5 MB | **1** of the compressed file: encrypt and hash in one pass | **1** | **1** | **1** |
+| **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
+| Photos backup at Original | **1** (read once at hand-off) | | | |
+| Saving a received video to the gallery | **2** of the decrypted `.ts` (`TsToMp4`: size the samples, then copy them behind the index) | **2** | **2** | **2** |
+| Shrinking a GIF sticker | the file is read **1** time into memory, then decoded **2** times per ladder step (palette, then encode), at most 3 steps | same | same | same |
 
 ## Sending a video, end to end
 
@@ -104,9 +118,35 @@ Why AAC is copied (see the decisions below). 83 s of 48 kHz stereo AAC, Pixel 8,
 | ffmpeg's AAC encoder | 3.3–4.5 s |
 | Media3 export of the video with no audio track | 8–13 s |
 
+## App size without ffmpeg on Android
+
+Release APKs built locally the same way (`./gradlew :androidApp:assembleRelease`, all four ABIs in one APK). Native libraries are stored uncompressed, so they count in full on the phone.
+
+| Build | Whole APK | arm64-v8a libs | armeabi-v7a libs | x86_64 libs | Measured |
+|---|---|---|---|---|---|
+| With ffmpeg-kit (main a5396a08b) | 182.5 MB | 37.9 MB (ffmpeg 17.3) | 29.2 MB (ffmpeg 16.4) | 43.8 MB (ffmpeg 21.1) | 2026-11-16 |
+| **Without** | **108.1 MB** | **20.7 MB** | **12.8 MB** | **22.6 MB** | 2026-11-16 |
+
+A Play Store install downloads one ABI: the CI bundle before this was about 53 MB for arm64, ffmpeg 8.6 MB of it compressed.
+
+## Saving a received video: TS back to MP4
+
+Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4. `RemuxHlsToMp4DeviceTest` (`-e remuxBench true` for videos in the test app's `files/bench/`) times it on the phone, and `TsToMp4Test` checks every sample against the source on the desktop. The video is an 83 s, 27.7 MB 720×1280 H.264 + AAC stand-in.
+
+| Where | Remux | Time | Output | Frames | Measured |
+|---|---|---|---|---|---|
+| Desktop JVM | **ours** (`TsToMp4`, shared Kotlin) | **90 ms** | 27.5 MB | all | 2026-11-16 |
+| Desktop | ffmpeg `-c copy -movflags +faststart` | 90 ms | 27.6 MB | all | 2026-11-16 |
+| Pixel 5 (debuggable test app) | **ours** | 558–982 ms (first run cold) | 27.5 MB | **2490 / 2490** | 2026-11-16 |
+| Pixel 5 | ffmpeg-kit | 235–349 ms | 27.6 MB | 2490 / 2490 | 2026-11-16 |
+| Pixel 5 | Media3 Transformer, transmux | 5.4 s | 27.6 MB | 2490 / 2490 | 2026-11-16 |
+| Pixel 5 | MediaExtractor + MediaMuxer | 3.4 s | 27.6 MB | 2489 / 2490 | 2026-11-16 |
+
+Ours is a little smaller because it keeps parameter sets in the index rather than repeating them in-band. ffmpeg decodes ours to the same frames as the source, with the same audio packets and A/V offset (`TsToMp4Test`). On the phone, the test app is debuggable, so ART won't compile it ahead of time; the release app runs it compiled, as the desktop does.
+
 ## GIF stickers: our codec against ffmpeg
 
-`id.homebase.api.image.gif.GifShrinkBenchmark` with `-e gifBench true` re-encodes every GIF in the test app's `files/bench/` at each of `GifShrinker`'s three steps, with our codec (`Gif.kt`) and with ffmpeg given the filters `GifShrinker` used to use. Two rounds, alternating order. The device test app is debuggable, so Android runs our Kotlin less optimised there than in the app; ffmpeg is native either way.
+`id.homebase.api.image.gif.GifShrinkBenchmark` with `-e gifBench true` re-encodes every GIF in the test app's `files/bench/` at each of `GifShrinker`'s three steps, with our codec (`Gif.kt`) and, while Android still had it, with ffmpeg given the filters `GifShrinker` used to use. Two rounds, alternating order. The device test app is debuggable, so Android runs our Kotlin less optimised there than in the app; ffmpeg is native either way.
 
 | Device | GIF | Step | Ours | ffmpeg | Output: ours / ffmpeg | Measured |
 |---|---|---|---|---|---|---|
@@ -183,6 +223,8 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
   - **Who gains:** segmenting, Photos' hash stage (a 226 MB video in about 0.25 s instead of 5 s) and Filesync.
   - **Proof:** the official vectors (`IncrementalHasherTest`, shared into the device tests) run on a phone, as a 64-bit and as a 32-bit app. `Blake3NativeDeviceTest` also checks it against the Kotlin port across block, chunk and tree boundaries.
 - **Copy picked and shared files with a 1 MB buffer** (2026-11-16). A `content://` stream is served by another process, one round trip per read, so Java's 8 KB default copied 3–6× slower on a Pixel 5. `copyInLargeChunks` is used wherever Android copies a stream to a file: the picked file's cache copy, shared files, files opened with the app, and saves to the gallery.
+- **Our own TS → MP4 remux instead of ffmpeg on Android** (2026-11-16). Saving a received HLS video was ffmpeg's last job on Android. Media3 Transformer copies correctly but takes 5.4 s for 83 s of video; the platform's MediaExtractor + MediaMuxer take 3.4 s and drop the last frame. Both pay per sample through the framework. `TsToMp4` (shared Kotlin, like the segmenter) reads the TS twice: once to size the samples and build the index, then once to write the file with the index up front. It matches ffmpeg on the desktop and keeps every frame.
+- **Media3's MP4s lost 400 kB of padding** (2026-11-16). Media3's muxer reserves about 400 kB at the front for a streamable index and leaves it as a `free` box, so a 6 s clip compressed to 1221 kB instead of 822 kB. Nothing here streams an MP4 progressively (payloads are decrypted whole, and the segmenter finds the index anywhere), so the index now goes at the end.
 - **Our own GIF codec instead of ffmpeg** (2026-11-16). Android has no GIF encoder, and shrinking oversized GIF stickers was ffmpeg's last job there that nothing else could do. `Gif.kt` (shared Kotlin, every platform) decodes, scales by area averaging, builds one palette from the pixels that change, and writes only each frame's changed rectangle, as the ffmpeg filters did. Scaling and colour mapping run on four frames at once; decoding and writing stay in order.
   - **Smaller output:** 15–30% below ffmpeg's at every step, so a sticker more often fits at the first, best-looking step.
   - **Memory:** a few frames, against ffmpeg's 285 MB for a 300-frame GIF.
