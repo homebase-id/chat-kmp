@@ -26,7 +26,7 @@ class Blake3NativeDeviceTest {
             val data = random.nextBytes(length)
             for (piece in listOf(1, 7, 64, 1000, 64 * 1024, maxOf(1, length))) {
                 if (piece == 1 && length > 4096) continue
-                val native = Blake3Hasher().apply { data.asList().chunked(piece).forEach { update(it.toByteArray()) } }.digest()
+                val native = Blake3Hasher().apply { for (at in data.indices step piece) update(data, at, minOf(piece, data.size - at)) }.digest()
                 val kotlin = PortableBlake3().apply { update(data) }.digest()
                 assertContentEquals(kotlin, native, "length $length, pieces of $piece")
             }

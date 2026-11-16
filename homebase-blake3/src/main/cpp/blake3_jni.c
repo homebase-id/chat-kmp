@@ -20,6 +20,12 @@ JNIEXPORT void JNICALL Java_id_homebase_blake3_NativeBlake3_update(
         JNIEnv *env, jclass cls, jobject state, jbyteArray data, jint offset, jint length) {
     // Before the critical get: no other JNI call is allowed until it's released.
     blake3_hasher *h = hasher(env, state);
+    jsize size = (*env)->GetArrayLength(env, data);
+    if (offset < 0 || length < 0 || length > size - offset) {
+        jclass bounds = (*env)->FindClass(env, "java/lang/IndexOutOfBoundsException");
+        (*env)->ThrowNew(env, bounds, "range outside the array");
+        return;
+    }
     // Critical: no copy of the input, which is what makes this fast. Hashing a few MB holds it briefly.
     jbyte *bytes = (*env)->GetPrimitiveArrayCritical(env, data, NULL);
     if (bytes == NULL) return;

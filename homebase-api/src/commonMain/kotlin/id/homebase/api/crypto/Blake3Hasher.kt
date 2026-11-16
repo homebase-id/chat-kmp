@@ -131,6 +131,7 @@ internal class PortableBlake3 : IncrementalHasher {
 
     override fun update(input: ByteArray, offset: Int, length: Int) {
         check(!finished) { "digest() was already called" }
+        checkRange(input, offset, length)
         var off = offset
         var len = length
         while (len > 0) {

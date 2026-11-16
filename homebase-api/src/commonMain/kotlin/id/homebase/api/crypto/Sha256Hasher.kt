@@ -33,6 +33,7 @@ class Sha256Hasher : IncrementalHasher {
 
     override fun update(input: ByteArray, offset: Int, length: Int) {
         check(!finished) { "digest() was already called" }
+        checkRange(input, offset, length)
         var off = offset
         var len = length
         totalBytes += len

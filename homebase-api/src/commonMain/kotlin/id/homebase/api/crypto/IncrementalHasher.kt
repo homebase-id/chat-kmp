@@ -5,10 +5,16 @@ import kotlinx.coroutines.flow.onEach
 
 /** Fed in pieces, so a file is hashed as it streams; wasmJs WebCrypto can only hash a whole buffer, asynchronously. */
 interface IncrementalHasher {
+    /** A range outside [input] throws [IndexOutOfBoundsException] before anything is hashed. */
     fun update(input: ByteArray, offset: Int = 0, length: Int = input.size - offset)
 
     /** Finishes the hash; the hasher can't be used after this. */
     fun digest(): ByteArray
+}
+
+internal fun checkRange(input: ByteArray, offset: Int, length: Int) {
+    // Not offset + length <= size, which overflows for a huge length.
+    if (offset < 0 || length < 0 || length > input.size - offset) throw IndexOutOfBoundsException("range $offset+$length of ${input.size}")
 }
 
 fun Flow<ByteArray>.hashedBy(hasher: IncrementalHasher?): Flow<ByteArray> =

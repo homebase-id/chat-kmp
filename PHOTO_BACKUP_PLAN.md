@@ -199,7 +199,7 @@ derived from both parts. Video is hashed from the original file, before HLS.
 a new hash is saved as a separate photo in v1. How to handle edits properly is reconsidered in v2.
 
 **Throughput.** Android runs the official BLAKE3 C library with NEON through JNI (`homebase-blake3`), behind the same
-`Blake3Hasher` and test vectors: 933 MB/s against 44 MB/s for the Kotlin port on a Pixel 5. Desktop, web and iOS
+`Blake3Hasher` and test vectors: 453–933 MB/s against 44 MB/s for the Kotlin port on a Pixel 5. Desktop, web and iOS
 still run the port. iOS could take the same C library through cinterop. Numbers per device: `MEDIA_BENCHMARKS.md`.
 
 ### 3.3 Entry from a push wake
