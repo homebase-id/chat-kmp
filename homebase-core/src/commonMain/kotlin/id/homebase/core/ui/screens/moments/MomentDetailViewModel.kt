@@ -16,8 +16,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoCompressionService
+import id.homebase.api.video.downloadHlsAsMp4
 import id.homebase.api.video.VideoMetadata
 import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -53,7 +52,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -846,27 +844,7 @@ class MomentDetailViewModel(
         keyHeader: KeyHeader,
         suggestedBaseName: String?,
     ): Pair<String, String>? {
-        val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
-        val uid = Uuid.random().toString().take(8)
-        val tsFileName = "input_hlsdl_${uid}.ts"
-        val tsPath = "$cacheDir/$tsFileName"
-        val mp4Path = "$cacheDir/hlsdl_${uid}.mp4"
-
-        val tsOk = driveFileProvider.streamPayloadDecryptedToPath(
-            driveId = driveId,
-            fileId = fileId,
-            key = payloadKey,
-            keyHeader = keyHeader,
-            outputPath = tsPath,
-            fileOps = fileOperationsProvider,
-        )
-        if (!tsOk) return null
-
-        val ok = VideoCompressionService.remuxTsToMp4(fileOperationsProvider, tsPath, mp4Path)
-        runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
-
-        if (!ok) return null
-
+        val mp4Path = driveFileProvider.downloadHlsAsMp4(driveId, fileId, payloadKey, keyHeader, fileOperationsProvider) ?: return null
         return mp4Path to safeFileName(suggestedBaseName?.substringBeforeLast('.'), "video", "mp4")
     }
 

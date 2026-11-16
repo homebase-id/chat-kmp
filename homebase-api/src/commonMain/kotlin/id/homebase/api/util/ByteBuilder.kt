@@ -38,6 +38,15 @@ internal class ByteBuilder(initialCapacity: Int = 1024 * 1024) {
 
     fun take(): ByteArray = bytes.copyOf(size).also { size = 0 }
 
+    /** Drops the first [n] bytes, keeping the rest. */
+    fun removeFirst(n: Int) {
+        bytes.copyInto(bytes, 0, n, size)
+        size -= n
+    }
+
+    /** Hands [block] the bytes so far without copying or removing them. */
+    inline fun <T> peek(block: (bytes: ByteArray, size: Int) -> T): T = block(view(), size)
+
     /** Hands [block] the bytes so far without copying them, then empties the builder. */
     inline fun <T> drain(block: (bytes: ByteArray, size: Int) -> T): T = block(view(), size).also { clear() }
 

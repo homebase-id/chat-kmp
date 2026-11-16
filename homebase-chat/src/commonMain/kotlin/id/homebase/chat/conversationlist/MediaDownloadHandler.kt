@@ -16,8 +16,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoCompressionService
+import id.homebase.api.video.downloadHlsAsMp4
 import id.homebase.core.util.formatMediumDate
 import id.homebase.resources.chat_error_copy_image
 import id.homebase.resources.chat_image_copied
@@ -649,33 +648,7 @@ internal class MediaDownloadHandler(
         keyHeader: KeyHeader,
         suggestedBaseName: String?,
     ): Pair<String, String>? {
-        val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
-        val uid = Uuid.random().toString().take(8)
-        val tsFileName = "input_hlsdl_${uid}.ts"
-        val tsPath = "$cacheDir/$tsFileName"
-        val mp4Path = "$cacheDir/hlsdl_${uid}.mp4"
-
-        val tsOk = driveFileProvider.streamPayloadDecryptedToPath(
-            driveId = chatTargetDrive.alias,
-            fileId = fileId,
-            key = payloadKey,
-            keyHeader = keyHeader,
-            outputPath = tsPath,
-            fileOps = fileOperationsProvider,
-        )
-        if (!tsOk) {
-            Logger.e(tag = "HlsSave") { "HLS save failed at download/decrypt of payload $payloadKey (file $fileId)" }
-            return null
-        }
-
-        val ok = VideoCompressionService.remuxTsToMp4(fileOperationsProvider, tsPath, mp4Path)
-        runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
-
-        if (!ok) {
-            Logger.e(tag = "HlsSave") { "HLS save failed at remux to mp4 (payload $payloadKey, file $fileId)" }
-            return null
-        }
-
+        val mp4Path = driveFileProvider.downloadHlsAsMp4(chatTargetDrive.alias, fileId, payloadKey, keyHeader, fileOperationsProvider) ?: return null
         return mp4Path to safeFileName(suggestedBaseName?.substringBeforeLast('.'), "video", "mp4")
     }
 }

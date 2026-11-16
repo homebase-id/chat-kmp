@@ -9,8 +9,7 @@ package id.homebase.api.video
  * the per-platform compress actuals to feed [FfmpegCompressPlanner]; it stays on
  * [FFmpegUtils].
  *
- * The production implementation is [FFmpegVideoProber], reached through
- * [VideoCompressionService].
+ * Each platform's is [platformVideoProber], reached through [VideoCompressionService].
  *
  * Named `VideoProber` (the actor) rather than `VideoProbe` to avoid colliding with the
  * web-only `FFmpegBridge.VideoProbe` probe-*result* data class on the wasmJs target (both

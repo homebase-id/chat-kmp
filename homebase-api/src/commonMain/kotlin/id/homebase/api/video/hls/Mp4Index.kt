@@ -17,14 +17,15 @@ internal class SampleTable {
         check(video.isNotEmpty()) { "no H.264 frames" }
         // Tracks line up by when their first sample shows, not when it decodes.
         val base = minOf(video.first().pts, audio.firstOrNull()?.pts ?: Long.MAX_VALUE)
-        val (width, height) = spsSize(avc.sps.first()) ?: error("unreadable SPS")
+        val sps = readSps(avc.sps.first()) ?: error("unreadable SPS")
+        val (width, height) = sps.width to sps.height
         val ftyp = Boxes().apply {
             box("ftyp") { type("isom"); u32(0x200); type("isom"); type("iso2"); type("avc1"); type("mp41") }
         }.bytes()
         val mdatBytes = entries.sumOf { it.size.toLong() }
         val mdatHeader = if (mdatBytes + 8 > 0xFFFFFFFFL) 16 else 8
         // The offsets depend on the moov's size, which doesn't depend on their values: build it twice.
-        val placeholder = moov(video, audio, avc, aac, width, height, base, LongArray(video.size), LongArray(audio.size), wide = false)
+        val placeholder = moov(video, audio, avc, sps, aac, width, height, base, LongArray(video.size), LongArray(audio.size), wide = false)
         val wide = ftyp.size + placeholder.size + mdatHeader + mdatBytes > 0xFFFFFFFFL
         val first = ftyp.size + placeholder.size + (if (wide) 4L * entries.size else 0L) + mdatHeader
         val videoOffsets = LongArray(video.size)
@@ -36,7 +37,7 @@ internal class SampleTable {
             if (e.video) videoOffsets[v++] = at else audioOffsets[a++] = at
             at += e.size
         }
-        val moov = moov(video, audio, avc, aac, width, height, base, videoOffsets, audioOffsets, wide)
+        val moov = moov(video, audio, avc, sps, aac, width, height, base, videoOffsets, audioOffsets, wide)
         val mdat = Boxes().apply {
             if (mdatHeader == 16) { u32(1); type("mdat"); u64(mdatBytes + 16) } else { u32(mdatBytes + 8); type("mdat") }
         }.bytes()
@@ -44,7 +45,7 @@ internal class SampleTable {
     }
 
     private fun moov(
-        video: List<TsSample>, audio: List<TsSample>, avc: Mp4Track.Avc, aac: Mp4Track.Aac?, width: Int, height: Int,
+        video: List<TsSample>, audio: List<TsSample>, avc: Mp4Track.Avc, sps: Sps, aac: Mp4Track.Aac?, width: Int, height: Int,
         base: Long, videoOffsets: LongArray, audioOffsets: LongArray, wide: Boolean,
     ): ByteArray = Boxes().apply {
         val videoDurations = LongArray(video.size) { i ->
@@ -68,10 +69,14 @@ internal class SampleTable {
                         repeat(6) { u8(0) }; u16(1); u16(0); u16(0); repeat(3) { u32(0) }; u16(width); u16(height)
                         u32(0x00480000); u32(0x00480000); u32(0); u16(1); repeat(32) { u8(0) }; u16(0x18); u16(0xFFFF)
                         box("avcC") {
-                            val sps = avc.sps.first()
-                            u8(1); u8(sps[1].toInt()); u8(sps[2].toInt()); u8(sps[3].toInt()); u8(0xFF)
+                            val first = avc.sps.first()
+                            u8(1); u8(first[1].toInt()); u8(first[2].toInt()); u8(first[3].toInt()); u8(0xFF)
                             u8(0xE0 or avc.sps.size); avc.sps.forEach { u16(it.size); bytes(it) }
                             u8(avc.pps.size); avc.pps.forEach { u16(it.size); bytes(it) }
+                            // ISO/IEC 14496-15 adds the chroma format and bit depths for the High profiles.
+                            if (sps.profile in HIGH_AVCC_PROFILES) {
+                                u8(0xFC or sps.chromaFormat); u8(0xF8 or (sps.bitDepthLuma - 8)); u8(0xF8 or (sps.bitDepthChroma - 8)); u8(0)
+                            }
                         }
                     }
                 }
@@ -110,6 +115,7 @@ internal class SampleTable {
         id: Int, handler: String, timescale: Int, ticks: Long, startMs: Long, mediaStart: Long, width: Int, height: Int,
         stbl: Boxes.() -> Unit,
     ) = box("trak") {
+        // A first frame shown late (B-frames) is skipped to; the frames shown still span the whole duration.
         val durationMs = ticks * 1000 / timescale
         full("tkhd", 0, 3) {
             u32(0); u32(0); u32(id); u32(0); u32(startMs + durationMs); u32(0); u32(0)
@@ -182,18 +188,27 @@ internal class Boxes {
     fun bytes(): ByteArray = out.take()
 }
 
-/** The coded frame size an H.264 SPS declares, after cropping; null when it can't be read. */
-internal fun spsSize(sps: ByteArray): Pair<Int, Int>? = try {
+/** What the MP4 index needs from an H.264 SPS: the cropped frame size, and the High profiles' format fields. */
+internal class Sps(val profile: Int, val width: Int, val height: Int, val chromaFormat: Int, val bitDepthLuma: Int, val bitDepthChroma: Int)
+
+private val HIGH_AVCC_PROFILES = setOf(100, 110, 122, 144)
+
+/** Null when [sps] can't be read. */
+internal fun readSps(sps: ByteArray): Sps? = try {
     val r = ExpGolomb(sps)
     r.bits(8) // NAL header
     val profile = r.bits(8)
     r.bits(16)
     r.ue()
     var chroma = 1
+    var lumaDepth = 8
+    var chromaDepth = 8
     if (profile in HIGH_PROFILES) {
         chroma = r.ue()
         if (chroma == 3) r.bits(1)
-        r.ue(); r.ue(); r.bits(1)
+        lumaDepth = 8 + r.ue()
+        chromaDepth = 8 + r.ue()
+        r.bits(1)
         if (r.bits(1) == 1) {
             for (i in 0 until if (chroma != 3) 8 else 12) {
                 if (r.bits(1) == 1) {
@@ -227,7 +242,7 @@ internal fun spsSize(sps: ByteArray): Pair<Int, Int>? = try {
         width -= (left + right) * unitX
         height -= (top + bottom) * unitY
     }
-    width to height
+    Sps(profile, width, height, chroma, lumaDepth, chromaDepth)
 } catch (_: IndexOutOfBoundsException) {
     null
 }

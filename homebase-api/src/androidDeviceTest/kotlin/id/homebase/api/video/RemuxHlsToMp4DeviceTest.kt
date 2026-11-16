@@ -16,6 +16,8 @@ import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
@@ -82,13 +84,9 @@ class RemuxHlsToMp4DeviceTest {
         }
     }
 
-    private suspend fun decrypted(segmented: SegmentedVideo): ByteArray {
-        val stored = File(segmented.segmentsPath).readBytes()
-        return Regex("#EXT-X-BYTERANGE:(\\d+)@(\\d+)").findAll(File(segmented.playlistPath).readText()).toList().map { m ->
-            val (length, offset) = m.destructured
-            AesCbc.decrypt(stored.copyOfRange(offset.toInt(), offset.toInt() + length.toInt()), keyHeader.aesKey, keyHeader.iv)
-        }.reduce(ByteArray::plus)
-    }
+    // As a download writes it: the whole payload as one CBC stream, though each segment was encrypted on its own.
+    private suspend fun decrypted(segmented: SegmentedVideo): ByteArray =
+        AesCbc.streamDecryptWithCbc(flowOf(File(segmented.segmentsPath).readBytes()), keyHeader.aesKey, keyHeader.iv).toList().reduce(ByteArray::plus)
 
     private data class Tracks(val size: Pair<Int, Int>, val frames: Int, val audio: Boolean, val videoBytes: Long)
 

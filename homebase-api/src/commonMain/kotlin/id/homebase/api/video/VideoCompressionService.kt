@@ -31,7 +31,7 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * Consumers see one generic shape ([VideoCompressor] + [VideoProber]) instead of
  * the low-level [FFmpegUtils] `expect object`. The compressor is per platform
  * ([platformVideoCompressor]): Android compresses with Media3, everything else with
- * [FFmpegVideoCompressor]; probes go to [FFmpegVideoProber].
+ * [FFmpegVideoCompressor]; probes go to [platformVideoProber].
  *
  * `FFmpegUtils` remains the low-level backend and still owns the thumbnail-grab
  * helper (`grabThumbnail`) and the actuals' internal probes.
@@ -44,8 +44,8 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * - **iOS (FFmpegKit):** a job's coroutine-cancellation tears down its own session; if two
  *   heavy jobs overlap, the bookkeeping and scratch dirs (`compressed_<id>.mp4`,
  *   `hls_<id>/`) can collide.
- * - **Android (FFmpegKit):** the engine isn't reentrant, so overlapping sessions can crash the
- *   process. A cancelled session counts until it has really stopped.
+ * - **Android (Media3):** two exports at once compete for the hardware codecs. A cancelled export
+ *   counts until its codecs are released.
  * - **JVM:** parallel transcodes just thrash CPU/memory for no throughput gain.
  *
  * Rather than rely on every caller (the full-screen attachment editor, multi-video send,
