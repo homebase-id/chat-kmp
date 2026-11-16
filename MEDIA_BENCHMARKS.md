@@ -46,6 +46,8 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 | Pixel 5 | Synthetic 1080p, 10 s | HD | HLS, 6.8 MB (ffmpeg 6.5 MB) | **4.0 s**: compress 3.5–3.6 s, HLS 0.37–0.53 s | 9.0–9.1 s: compress 8.6–8.7 s, HLS 0.34–0.38 s | 2026-11-16 |
 | Pixel 5 | Synthetic 1080p, 83 s | Standard | HLS, 27.9 MB (ffmpeg 27.4 MB) | **16.3–17.0 s**: compress 15.6–16.0 s, HLS 0.62–0.93 s | 50.5–51.2 s: compress 49.6–50.2 s, HLS 0.97–1.03 s | 2026-11-16 |
 | Pixel 5 | Synthetic 1080p, 83 s | HD | HLS, 53.8 MB (ffmpeg 53.5 MB) | **26.8–27.3 s**: compress 25.8–26.2 s, HLS 0.96–1.06 s | 70.9–71.0 s: compress 69.3 s, HLS 1.6–1.7 s | 2026-11-16 |
+| Pixel 8 | Synthetic 1080p, 83 s | Standard | HLS, 27.9 MB (ffmpeg 27.4 MB) | **15.8–17.4 s**: compress 14.9–16.4 s, HLS 0.92–0.96 s | 41.5–41.9 s: compress 40.3 s, HLS 1.1–1.6 s | 2026-11-16 |
+| Pixel 8 | Synthetic 1080p, 83 s | HD | HLS, 53.8 MB (ffmpeg 53.5 MB) | **16.8–17.5 s**: compress 15.2–15.8 s, HLS 1.6–1.7 s | 65.6–68.2 s: compress 63.4–65.9 s, HLS 2.2–2.3 s | 2026-11-16 |
 
 Compressing is almost all of a send. Our MP4 encrypt also takes both payload hashes: 0.14–0.27 s against ffmpeg's plain 0.12–0.17 s, and 0.40 s on a process's first send, which also loads the native BLAKE3 and checks it.
 
@@ -57,6 +59,7 @@ The compress step alone. On the HDR phone video, Media3 tone-maps to SDR; ffmpeg
 |---|---|---|---|---|
 | Pixel 8 | HDR phone video | **13.9–15.6 s** / 63.3–64.4 s | **11.7–14.0 s** / 156–163 s | 2026-11-16 |
 | Pixel 5 | Synthetic 1080p, 83 s | **15.6–16.0 s** / 49.6–50.2 s | **25.8–26.2 s** / 69.3 s | 2026-11-16 |
+| Pixel 8 | Synthetic 1080p, 83 s | **14.9–16.4 s** / 40.3 s | **15.2–15.8 s** / 63.4–65.9 s | 2026-11-16 |
 | Pixel 5 | Synthetic 1080p, 10 s | **2.3–3.1 s** / 6.4–6.6 s | **3.5–3.6 s** / 8.6–8.7 s | 2026-11-16 |
 
 **Output size per setting** (`eachQualitySettingGivesItsSizeAndAboutFfmpegsBytes`, a short synthetic clip; Original video is HD's transcode):
@@ -76,7 +79,9 @@ Segment and encrypt, with ffmpeg's `-hls_flags single_file` as the reference. Ou
 |---|---|---|---|---|
 | Pixel 5 | Stand-in | **0.77–0.90 s** | 0.87–1.03 s | 2026-11-16 |
 | Pixel 5 | Synthetic 1080p, 83 s, compressed | **0.62–0.93 s** | 0.99–1.03 s | 2026-11-16, in `benchmarkEndToEnd` |
-| Pixel 8 | | to measure | | |
+| Pixel 8 | Stand-in | **0.65–0.99 s** | 1.68–1.81 s | 2026-11-16 |
+| Pixel 8 | Synthetic 1080p, 83 s, compressed | **0.92–1.68 s** (Standard 28 MB to HD 54 MB) | 1.1–2.3 s | 2026-11-16, in `benchmarkEndToEnd` |
+| Pixel 8 | HDR phone video, compressed | to measure with native BLAKE3 (0.78–1.18 s / 1.50–2.08 s before it) | | |
 
 On the Pixel 5, what's left is TS writing (about 0.3 s) and parsing the moov (0.1–0.2 s).
 
@@ -87,6 +92,7 @@ On the Pixel 5, what's left is TS writing (about 0.3 s) and parsing the moov (0.
 | Device | Input | 8 KB (Java's default) | 1 MB | Measured |
 |---|---|---|---|---|
 | Pixel 5 | Synthetic 1080p, 83 s (210 MB) | 563–1151 ms (182–373 MB/s) | **159–188 ms** (1117–1320 MB/s) | 2026-11-16 |
+| Pixel 8 | Synthetic 1080p, 83 s (210 MB) | 626–769 ms (273–335 MB/s) | **295–318 ms** (660–711 MB/s) | 2026-11-16 |
 
 ## Audio
 
@@ -104,7 +110,7 @@ Why AAC is copied (see the decisions below). 83 s of 48 kHz stereo AAC, Pixel 8,
 |---|---|---|---|---|
 | Pixel 5, 64-bit app | native C, NEON | **453–933 MB/s** (which core the scheduler picks moves it) | 44 MB/s | 2026-11-16 |
 | Pixel 5, 32-bit app | native C, NEON | **603 MB/s** | 36 MB/s | 2026-11-16 |
-| Pixel 8 | native C, NEON | to measure | | |
+| Pixel 8 | native C, NEON | **924 MB/s** | 52 MB/s | 2026-11-16 |
 | Desktop JVM | Kotlin port | 141 MB/s | — | 2026-11-16 |
 
 For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed with `adb install --abi armeabi-v7a`.
@@ -156,7 +162,7 @@ Where each measurement began, against now, and the changes that made the differe
 
 | Device | Input | First version | Now |
 |---|---|---|---|
-| Pixel 8 | HDR phone video, compressed | 9.6 s / 1.9 s | to measure (0.78–1.18 s / 1.50–2.08 s before native BLAKE3) |
+| Pixel 8 | HDR phone video, compressed | 9.6 s / 1.9 s | to measure (0.78–1.18 s / 1.50–2.08 s before native BLAKE3; the stand-in is 0.65–0.99 s / 1.68–1.81 s with it) |
 | Pixel 5 | Stand-in | 23.8 s / 1.0 s | 0.77–0.90 s / 0.87–1.03 s |
 
 - **TS packets written straight to the output:** the first version allocated a 64 KB buffer for every 188-byte packet.
