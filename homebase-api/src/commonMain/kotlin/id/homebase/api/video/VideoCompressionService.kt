@@ -26,10 +26,9 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * — the symmetric counterpart to [VideoThumbnailService] on the thumbnail side.
  *
  * Consumers see one generic shape ([VideoCompressor] + [VideoProber]) instead of
- * the low-level [FFmpegUtils] `expect object`. Today every platform compresses
- * via ffmpeg, so this simply delegates to the ffmpeg-backed [FFmpegVideoCompressor]
- * / [FFmpegVideoProber]; if a non-ffmpeg native backend ever appears, swap the
- * delegates here (or introduce a per-platform factory) without touching callers.
+ * the low-level [FFmpegUtils] `expect object`. The compressor is per platform
+ * ([platformVideoCompressor]): Android compresses with Media3, everything else with
+ * [FFmpegVideoCompressor]; probes go to [FFmpegVideoProber].
  *
  * `FFmpegUtils` remains the low-level backend and still owns the thumbnail-grab
  * helper (`grabThumbnail`) and the actuals' internal probes.
@@ -61,7 +60,7 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
 object VideoCompressionService : VideoCompressor, VideoProber {
 
     // Delegates are `var` only so tests can substitute fakes; production never reassigns them.
-    internal var compressor: VideoCompressor = FFmpegVideoCompressor
+    internal var compressor: VideoCompressor = platformVideoCompressor()
     internal var probe: VideoProber = FFmpegVideoProber
 
     /** Serializes the heavy ffmpeg ops so two never run on the shared backend at once. */
@@ -153,3 +152,6 @@ object VideoCompressionService : VideoCompressor, VideoProber {
     override suspend fun probeVideo(inputPath: String): VideoTrackInfo? =
         probe.probeVideo(inputPath)
 }
+
+/** ffmpeg everywhere, except where the platform's own media APIs do the work: Android compresses with Media3. */
+internal expect fun platformVideoCompressor(): VideoCompressor

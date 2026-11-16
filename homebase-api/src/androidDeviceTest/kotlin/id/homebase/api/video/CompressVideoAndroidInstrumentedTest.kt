@@ -49,11 +49,8 @@ import org.junit.runner.RunWith
  *  - Trim 1000-4000ms produces a clip whose duration is ~3000ms.
  *  - Quality mapping: LOW ≤ STANDARD ≤ HIGH for output file size.
  *
- * Tests that exercised v2-specific behaviour (continuous progress callbacks,
- * PTS normalisation, AAC pass-through, HDR tone-mapping, the bbb_1080p and
- * hdr10 fixtures) live in `archive/transcoder_v2/.../CompressVideoV2InstrumentedTest.kt`
- * — see `archive/transcoder_v2/README.md`. The ffmpeg-kit production path
- * doesn't implement those guarantees.
+ * Android compresses with Media3 now (Media3VideoCompressorTest); these cover ffmpeg-kit,
+ * which stays as its fallback until it leaves Android.
  */
 @RunWith(AndroidJUnit4::class)
 class CompressVideoAndroidInstrumentedTest {
@@ -177,9 +174,7 @@ class CompressVideoAndroidInstrumentedTest {
     // same process. The three baseline tests below sidestep this by being
     // separate @Test methods (the runner still keeps them in one process,
     // but the executeWithArgumentsAsync helper appears to handle re-entry
-    // OK for non-back-to-back invocations — verified by the existing
-    // benchmark test in archive/transcoder_v2 which ran 3 compresses
-    // successfully). If the baseline tests crash on the emulator, run them
+    // OK for non-back-to-back invocations). If the baseline tests crash on the emulator, run them
     // individually: `--tests "*baselineLow*"`, `--tests "*baselineStandard*"`,
     // `--tests "*baselineHigh*"`.
 

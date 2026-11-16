@@ -79,7 +79,7 @@ class FfmpegCompressPlannerTest {
     @Test
     fun outputDims_landscape_1080_to_720_downscale() {
         // 1920x1080 → STANDARD 720p target. Long edge auto-scaled.
-        val dims = FfmpegCompressPlanner.computeOutputDims(1920, 1080, shortEdgePx = 720)
+        val dims = computeOutputDims(1920, 1080, shortEdgePx = 720)
         assertNotNull(dims)
         assertEquals(720, dims.second)
         // 1920 * 720 / 1080 = 1280
@@ -89,7 +89,7 @@ class FfmpegCompressPlannerTest {
     @Test
     fun outputDims_portrait_1080_to_720_downscale() {
         // 1080x1920 portrait → STANDARD 720p target.
-        val dims = FfmpegCompressPlanner.computeOutputDims(1080, 1920, shortEdgePx = 720)
+        val dims = computeOutputDims(1080, 1920, shortEdgePx = 720)
         assertNotNull(dims)
         assertEquals(720, dims.first)
         // 1920 * 720 / 1080 = 1280
@@ -99,13 +99,13 @@ class FfmpegCompressPlannerTest {
     @Test
     fun outputDims_smallSource_returnsNull() {
         // 320x180 → STANDARD 720p target. Source short edge 180 ≤ 720 → no scale.
-        assertNull(FfmpegCompressPlanner.computeOutputDims(320, 180, shortEdgePx = 720))
+        assertNull(computeOutputDims(320, 180, shortEdgePx = 720))
     }
 
     @Test
     fun outputDims_atTargetExactly_returnsNull() {
         // 1280x720 → STANDARD 720p target. Source short edge == target → no scale.
-        assertNull(FfmpegCompressPlanner.computeOutputDims(1280, 720, shortEdgePx = 720))
+        assertNull(computeOutputDims(1280, 720, shortEdgePx = 720))
     }
 
     @Test
@@ -114,7 +114,7 @@ class FfmpegCompressPlannerTest {
         // h264 requires even W/H — both rounded up.
         // out_h = 480 (already even); out_w = 854 * 480 / 481 = 852.something → 852 (already even)
         // Let's use 853×481 to force a round-up.
-        val dims = FfmpegCompressPlanner.computeOutputDims(853, 481, shortEdgePx = 480)
+        val dims = computeOutputDims(853, 481, shortEdgePx = 480)
         assertNotNull(dims)
         assertEquals(480, dims.second)
         assertEquals(0, dims.first and 1, "width must be even, was ${dims.first}")
@@ -122,8 +122,8 @@ class FfmpegCompressPlannerTest {
 
     @Test
     fun outputDims_invalidSource_returnsNull() {
-        assertNull(FfmpegCompressPlanner.computeOutputDims(0, 0, shortEdgePx = 720))
-        assertNull(FfmpegCompressPlanner.computeOutputDims(-1, 100, shortEdgePx = 720))
+        assertNull(computeOutputDims(0, 0, shortEdgePx = 720))
+        assertNull(computeOutputDims(-1, 100, shortEdgePx = 720))
     }
 
     // --- Plan arg list shape ---

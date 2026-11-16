@@ -38,6 +38,12 @@ class VideoLocationReader {
     var location: VideoLocation? = null
         private set
 
+    /** Nothing more to learn: the location is found, or the file can't hold one where it's looked for. */
+    val finished: Boolean get() = done
+
+    /** The bytes [feed] would only count past next. A caller that can seek skips them instead. */
+    fun takeSkip(): Long = skipping.also { skipping = 0 }
+
     fun feed(chunk: ByteArray) {
         var at = 0
         while (at < chunk.size && !done) {
