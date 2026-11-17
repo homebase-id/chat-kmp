@@ -44,15 +44,16 @@ class BackgroundSessionUploader(
 
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
-            val request = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
+            val spec = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
             val bodyPath = bodyPath(fileOps, uniqueId)
             val prepared = try {
+                val request = outbox.request(spec)
                 timed(BackupStage.UploadBody) { uploadProvider.writeUploadBody(request, bodyPath) }
             } catch (e: Throwable) {
                 runCatching { fileOps.deleteTempFile(bodyPath) }
                 throw e
             } finally {
-                request.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+                fileOps.deleteEncrypted(spec.bundle?.payloads)
             }
             val taskId = timed(BackupStage.Enqueue) {
                 bridge.enqueue(uniqueId.toString(), prepared.url, prepared.bearerToken, prepared.contentType, bodyPath, wifiOnly())

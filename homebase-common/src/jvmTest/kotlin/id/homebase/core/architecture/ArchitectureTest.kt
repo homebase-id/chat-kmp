@@ -125,8 +125,6 @@ class ArchitectureTest {
             // Own designs: WebDrop encrypts under the link's key for an anonymous recipient; Filesync sends with live
             // progress, re-encrypts on a rejected hash and seals keys for peers.
             "WebDropService.buildWebDrop", "FilesyncUploader.create", "FilesyncMemberWrites.add",
-            // Temporary: the Photos app's photo uploads move onto UploadService next (its videos already go through it).
-            "BackupRequestBuilder.build",
         )
         val bundleCall = Regex("""\.\s*(encrypt|stage)Bundle\s*\(""")
         val request = Regex("""\b(UploadFileRequest|UpdateFileByUniqueIdRequest)\s*\(""")

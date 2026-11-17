@@ -17,6 +17,7 @@ import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.image.MediaQuality
@@ -51,12 +52,14 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
@@ -103,7 +106,7 @@ class OutboxBackupUploaderTest {
 
     private fun CoroutineScope.uploader(
         parts: List<ExportedPart>,
-        encryptor: PayloadBundleEncryptor = NoEncryption,
+        encryptor: PayloadBundleEncryptor = realEncryption(),
         photoQuality: MediaQuality = MediaQuality.ORIGINAL,
         videoQuality: MediaQuality = MediaQuality.HD,
         hashedCopy: Boolean = false,
@@ -327,7 +330,6 @@ class OutboxBackupUploaderTest {
             val (row, uniqueId) = rowFor("v$n", BackupMediaType.Video, bytes)
             val uploader = backgroundScope.uploader(
                 listOf(ExportedPart(ExportedPartRole.Primary, clip, "video/quicktime", false)),
-                realEncryption(),
                 videoQuality = quality,
             )
 
@@ -350,7 +352,6 @@ class OutboxBackupUploaderTest {
         val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
         val uploader = backgroundScope.uploader(
             listOf(ExportedPart(ExportedPartRole.Primary, clip, "video/quicktime", false)),
-            realEncryption(),
             videoQuality = MediaQuality.ORIGINAL,
         )
 
@@ -390,7 +391,6 @@ class OutboxBackupUploaderTest {
         val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
         val uploader = backgroundScope.uploader(
             listOf(ExportedPart(ExportedPartRole.Primary, file("v.mov", bytes), "video/quicktime", false)),
-            realEncryption(),
             videoQuality = MediaQuality.ORIGINAL,
         )
 
@@ -508,6 +508,56 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
+    fun aPhotoHandedOffTwiceIsQueuedOnceAndLeavesNoSecondCopy() = runTest {
+        val bytes = jpeg(640, 480)
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("p.jpg", bytes), "image/jpeg", false)))
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+        val afterFirst = stagedFiles()
+
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId), "already queued counts as handed off")
+
+        assertEquals(afterFirst, stagedFiles(), "the second copy is deleted, the queued one kept")
+        queuedRequest(uniqueId).second.payloads.forEach { File(it.filePath).delete() }
+    }
+
+    @Test
+    fun aHandOffStoppedPartWayLeavesNoEncryptedCopy() = runTest {
+        val bytes = jpeg(640, 480)
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val stagedBefore = stagedFiles()
+        val real = realEncryption()
+        val stops = object : PayloadBundleEncryptor by real {
+            override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle {
+                real.encryptBundle(uniqueId, bundle, aesKey, scope)
+                throw CancellationException("the backup was stopped")
+            }
+        }
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("p.jpg", bytes), "image/jpeg", false)), stops)
+
+        assertFailsWith<CancellationException> { uploader.handOff(row, uniqueId) }
+
+        assertEquals(stagedBefore, stagedFiles())
+    }
+
+    @Test
+    fun aStagedFileGoneBeforeTheQueueIsRetriedNotSkipped() = runTest {
+        val bytes = jpeg(640, 480)
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val stagedBefore = stagedFiles()
+        val gone = object : PayloadBundleEncryptor by realEncryption() {
+            override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle =
+                throw SourceUnavailableException(bundle!!.payloads.first().filePath)
+        }
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("p.jpg", bytes), "image/jpeg", false)), gone)
+
+        assertFailsWith<BackupEnqueueFailedException> { uploader.handOff(row, uniqueId) }
+
+        assertNull(db.outbox.selectByDriveAndUnique(PhotobaseProtocol.DriveAlias, uniqueId))
+        assertEquals(stagedBefore, stagedFiles())
+    }
+
+    @Test
     fun aRowOnlyCountsAsSendingWhileTheOutboxHoldsIt() = runTest {
         val bytes = "x".encodeToByteArray()
         val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
@@ -521,14 +571,6 @@ class OutboxBackupUploaderTest {
 
 private object NeverSends : OutboxUploader {
     override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) = error("the Outbox is offline in these tests")
-}
-
-private object NoEncryption : PayloadBundleEncryptor {
-    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
-    override suspend fun discardStaged(staged: PayloadBundle) = Unit
-
-    override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle =
-        error("images don't go through encryptBundle")
 }
 
 private class PreviewingEncryptor : PayloadBundleEncryptor {

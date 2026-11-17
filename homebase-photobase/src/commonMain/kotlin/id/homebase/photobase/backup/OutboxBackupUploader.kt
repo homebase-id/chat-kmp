@@ -9,10 +9,9 @@ import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
-import id.homebase.api.sync.database.EnqueueResult
-import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.upload.LibraryKind
@@ -65,25 +64,17 @@ class OutboxBackupUploader(
         repeat(BULK_STREAMS) { outboxSync.send(force = true) }
     }
 
+    /** What [handOff] would queue, for a transport of the platform's own. */
+    suspend fun request(spec: MediaUploadSpec): UploadFileRequest = uploadService.buildRequest(spec, scope)
+
     private suspend fun handOffOriginal(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
         mediaType: BackupMediaType,
         exported: ExportedAsset,
     ): HandOffResult {
-        val request = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
-        var queued = false
-        try {
-            when (val enqueue = timed(BackupStage.Enqueue) { outboxSync.tryEnqueue(request, priority = OUTBOX_BULK_PRIORITY, sendNow = false) }) {
-                EnqueueResult.Enqueued -> queued = true
-                EnqueueResult.AlreadyQueued -> Unit
-                EnqueueResult.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
-                is EnqueueResult.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${enqueue.cause.message}", enqueue.cause)
-            }
-            return HandOffResult.Queued
-        } finally {
-            if (!queued) request.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
-        }
+        val spec = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
+        return send(spec) { timed(BackupStage.Enqueue) { uploadService.upload(spec, scope) } }
     }
 
     // The source is checked against its hash as it's read for its location, which an HLS stream has no place
@@ -131,24 +122,25 @@ class OutboxBackupUploader(
         }
         val location = reader.location
         val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
-        val spec = MediaUploadSpec(
-            driveId = photosDriveId,
-            uniqueId = uniqueId,
-            keyHeader = keyHeader,
-            bundle = bundle,
-            metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content),
-            priority = OUTBOX_BULK_PRIORITY,
-            sendNow = false,
-            writeOptimistic = false,
-            seedCache = false,
-            existingFileIsSuccess = true,
-            sealDescriptorContent = true,
-        )
-        return when (val outcome = uploadService.upload(spec, scope)) {
-            is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
-            is UploadOutcome.SourceMissing -> throw AssetPermanentlyUnavailableException("source gone: ${outcome.missingPaths.joinToString()}")
-            UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
-            is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
+        val spec = photoSpec(photosDriveId, uniqueId, keyHeader, bundle, photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content))
+        return send(spec) { uploadService.upload(spec, scope) }
+    }
+
+    private suspend inline fun send(spec: MediaUploadSpec, upload: () -> UploadOutcome): HandOffResult {
+        var queued = false
+        try {
+            val outcome = upload()
+            queued = outcome is UploadOutcome.Enqueued
+            return when (outcome) {
+                is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
+                // A file staged for this attempt; the next one exports again, and the export says if the asset is gone.
+                is UploadOutcome.SourceMissing -> throw BackupEnqueueFailedException("a staged file is gone: ${outcome.missingPaths.joinToString()}")
+                UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
+                is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
+            }
+        } finally {
+            // What was encrypted here is ours until the Outbox takes it.
+            if (!queued) fileOps.deleteEncrypted(spec.bundle?.payloads)
         }
     }
 
