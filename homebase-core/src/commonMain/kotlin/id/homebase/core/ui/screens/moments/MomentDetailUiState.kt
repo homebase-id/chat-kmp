@@ -416,6 +416,9 @@ sealed interface MomentDetailUiEvent {
     ) : MomentDetailUiEvent
     data class MediaSaveFailed(val message: String?) : MomentDetailUiEvent
 
+    /** Already saved, at [location] (a folder name or a path). */
+    data class MediaSaved(val location: String) : MomentDetailUiEvent
+
     /** Audience successfully widened by [count] new recipients. */
     data class RecipientsAdded(val count: Int) : MomentDetailUiEvent
     data class AddRecipientsFailed(val message: String?) : MomentDetailUiEvent

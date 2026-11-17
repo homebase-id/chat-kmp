@@ -1,26 +1,27 @@
 package id.homebase.core.ui.screens.moments
 
-import id.homebase.api.client.drives.files.DescriptorContent
-import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.file.extensionForContentType
-import id.homebase.api.util.safeFileName
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.downloadHlsAsMp4
+import id.homebase.api.file.extensionForContentType
+import id.homebase.api.util.safeFileName
 import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.downloadHlsAsMp4
 import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.toChatDeliveryStatus
@@ -37,24 +38,26 @@ import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import id.homebase.core.settings.UserPreferences
-import id.homebase.chat.data.ConversationUiModel
+import id.homebase.core.util.AlbumSaveResult
+import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.saveFileName
+import id.homebase.core.util.saveVideo
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.time.Instant
-import kotlin.uuid.Uuid
 
 private const val TAG = "MomentDetailViewModel"
 
@@ -89,6 +92,7 @@ class MomentDetailViewModel(
     private val fileOperationsProvider: FileOperationsProvider,
     private val recipientLookup: MomentsRecipientLookupService,
     private val payloadDownloadService: PayloadDownloadService,
+    private val albumSaver: AlbumSaver,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -700,20 +704,16 @@ class MomentDetailViewModel(
                     keyHeader = keyHeader,
                 )
                 val sharePath = if (hlsMetadata != null) {
+                    // The share sheet takes a finished file.
+                    val mp4Path = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)}/hlsdl_${Uuid.random().toString().take(8)}.mp4"
                     val remuxed = withContext(ioDispatcher) {
-                        downloadAndRemuxHlsToMp4(
-                            driveId = moment.driveId,
-                            fileId = moment.fileId,
-                            payloadKey = payloadKey,
-                            keyHeader = keyHeader,
-                            suggestedBaseName = payload.filename(),
-                        )
+                        driveFileProvider.downloadHlsAsMp4(moment.driveId, moment.fileId, payloadKey, keyHeader, fileOperationsProvider, mp4Path)
                     }
-                    if (remuxed == null) {
+                    if (!remuxed) {
                         _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not convert video"))
                         return@launch
                     }
-                    remuxed.first
+                    mp4Path
                 } else {
                     val extension = extensionForContentType(payload.contentType)
                     val exported = payloadDownloadService.exportToTemp(
@@ -773,22 +773,16 @@ class MomentDetailViewModel(
                     keyHeader = keyHeader,
                 )
                 if (hlsMetadata != null) {
-                    val remuxed = withContext(ioDispatcher) {
-                        downloadAndRemuxHlsToMp4(
-                            driveId = moment.driveId,
-                            fileId = moment.fileId,
-                            payloadKey = payloadKey,
-                            keyHeader = keyHeader,
-                            suggestedBaseName = payload.filename(),
-                        )
+                    val saved = withContext(ioDispatcher) {
+                        albumSaver.saveVideo(fileOperationsProvider, payload.filename()) { path ->
+                            driveFileProvider.downloadHlsAsMp4(moment.driveId, moment.fileId, payloadKey, keyHeader, fileOperationsProvider, path)
+                        }
                     }
-                    if (remuxed == null) {
-                        _events.tryEmit(MomentDetailUiEvent.MediaSaveFailed("Could not convert video"))
-                        return@launch
+                    when (saved) {
+                        is AlbumSaveResult.Saved -> _events.tryEmit(MomentDetailUiEvent.MediaSaved(saved.location))
+                        AlbumSaveResult.Cancelled -> Unit
+                        AlbumSaveResult.WriteFailed -> _events.tryEmit(MomentDetailUiEvent.MediaSaveFailed("Could not convert video"))
                     }
-                    _events.tryEmit(
-                        MomentDetailUiEvent.MediaSaveReady(remuxed.first, remuxed.second),
-                    )
                 } else {
                     val fullName = saveFileName(
                         payload.filename(), payloadKey, payload.contentType,
@@ -831,21 +825,6 @@ class MomentDetailViewModel(
             payloadDownloadService.renderBytes(driveId = driveId, fileId = fileId, key = key, keyHeader = keyHeader)?.decodeToString()
         } ?: return null
         return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
-    }
-
-    /**
-     * Decrypts the HLS segments and copies them into an MP4. Returns (mp4Path, suggestedName) or null on failure.
-     * Mirrors `MediaDownloadHandler.downloadAndRemuxHlsToMp4`.
-     */
-    private suspend fun downloadAndRemuxHlsToMp4(
-        driveId: Uuid,
-        fileId: Uuid,
-        payloadKey: String,
-        keyHeader: KeyHeader,
-        suggestedBaseName: String?,
-    ): Pair<String, String>? {
-        val mp4Path = driveFileProvider.downloadHlsAsMp4(driveId, fileId, payloadKey, keyHeader, fileOperationsProvider) ?: return null
-        return mp4Path to safeFileName(suggestedBaseName?.substringBeforeLast('.'), "video", "mp4")
     }
 
     /**

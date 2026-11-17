@@ -69,8 +69,9 @@ class HlsDownloadTest {
         val stored = File(segmented.segmentsPath).readBytes()
 
         tsUses.clear() // the fixture's own segmenting writes one
-        val mp4 = assertNotNull(server(stored).downloadHlsAsMp4(DRIVE, FILE, "chat_web0", keyHeader, fileOps))
-        assertSameMedia(fileOps, source, File(mp4))
+        val mp4 = File(cache, "saved.mp4")
+        assertTrue(server(stored).downloadHlsAsMp4(DRIVE, FILE, "chat_web0", keyHeader, fileOps, mp4.absolutePath))
+        assertSameMedia(fileOps, source, mp4)
         assertEquals(emptyList(), tsUses, "the download is remuxed as it arrives, with no .ts written or read")
     }
 

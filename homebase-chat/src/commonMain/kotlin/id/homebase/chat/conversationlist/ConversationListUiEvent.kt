@@ -28,6 +28,8 @@ sealed interface ConversationListUiEvent {
     data class ShareFile(val filePath: String) : ConversationListUiEvent
     data class OpenFile(val filePath: String) : ConversationListUiEvent
     data class SaveFileToDevice(val filePath: String, val suggestedName: String) : ConversationListUiEvent
+    /** Already saved, at [location] (a folder name or a path). */
+    data class FileSaved(val location: String) : ConversationListUiEvent
     data class OpenUrl(val url: String) : ConversationListUiEvent
     data class OpenSendConnectionRequestDialog(val odinId: OdinId) : ConversationListUiEvent
 

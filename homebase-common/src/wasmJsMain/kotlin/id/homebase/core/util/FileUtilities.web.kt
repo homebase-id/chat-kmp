@@ -38,7 +38,7 @@ actual fun getUriHandler(): FileSystemHandler {
     }
 }
 
-private const val DOWNLOADS_LOCATION = "Downloads"
+internal const val DOWNLOADS_LOCATION = "Downloads"
 
 internal fun downloadWebFile(file: Path, fileName: String) {
     val path = file.toString()

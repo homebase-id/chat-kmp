@@ -3,6 +3,7 @@ package id.homebase.core.util
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -14,6 +15,8 @@ import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.api.util.freeFileName
 import id.homebase.api.util.safeFileName
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 
 private const val TAG = "AndroidAlbumSaver"
@@ -50,43 +53,14 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                 val mimeType = detectContentTypeFromExtensionOrHint(safeName)
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // API 29+ — use MediaStore (no permission needed)
-                    val (collection, directory) = when {
-                        mimeType.startsWith("image/") ->
-                            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
-                                    Environment.DIRECTORY_PICTURES
-
-                        mimeType.startsWith("video/") ->
-                            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
-                                    Environment.DIRECTORY_MOVIES
-
-                        else ->
-                            MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
-                                    Environment.DIRECTORY_DOWNLOADS
-                    }
-
-                    val relativePath = "$directory/$ALBUM_FOLDER"
-                    val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
-                        put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                        put(MediaStore.MediaColumns.IS_PENDING, 1)
-                    }
-
+                    val (uri, relativePath) = insertPending(safeName, mimeType)
                     val resolver = context.contentResolver
-                    val uri = resolver.insert(collection, values)
-                        ?: throw Exception("Failed to create MediaStore entry")
-
                     try {
                         resolver.openOutputStream(uri)?.use { outputStream ->
                             openSource().use { it.copyInLargeChunks(outputStream) }
                         } ?: throw Exception("Failed to open output stream")
-
-                        values.clear()
-                        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                        resolver.update(uri, values, null, null)
+                        publish(uri)
                     } catch (e: Exception) {
-                        // Clean up orphaned MediaStore entry on failure
                         resolver.delete(uri, null, null)
                         throw e
                     }
@@ -135,5 +109,44 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                 onError(e)
             }
         }.start()
+    }
+
+    // API 29+: MediaStore needs no permission. Below that, a finished file goes through [save] and its permission check.
+    override suspend fun target(name: String, asked: Boolean): AlbumTarget {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return super.target(name, asked)
+        val safeName = safeFileName(name)
+        val (uri, relativePath) = withContext(Dispatchers.IO) { insertPending(safeName, detectContentTypeFromExtensionOrHint(safeName)) }
+        return AlbumTarget.InPlace(
+            path = uri.toString(),
+            publish = { withContext(Dispatchers.IO) { publish(uri) }; relativePath },
+            discard = { withContext(Dispatchers.IO) { context.contentResolver.delete(uri, null, null) } },
+        )
+    }
+
+    /** A hidden entry under Pictures, Movies or Downloads by type, and its folder for the snackbar. */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun insertPending(safeName: String, mimeType: String): Pair<Uri, String> {
+        val (collection, directory) = when {
+            mimeType.startsWith("image/") ->
+                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to Environment.DIRECTORY_PICTURES
+            mimeType.startsWith("video/") ->
+                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to Environment.DIRECTORY_MOVIES
+            else ->
+                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to Environment.DIRECTORY_DOWNLOADS
+        }
+        val relativePath = "$directory/$ALBUM_FOLDER"
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = context.contentResolver.insert(collection, values) ?: throw Exception("Failed to create MediaStore entry")
+        return uri to relativePath
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun publish(uri: Uri) {
+        context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
     }
 }
