@@ -49,7 +49,7 @@ class BackgroundSessionUploader(
             return requests.build(row, uniqueId, mediaType, exported) { spec ->
                 val upload = outbox.prepare(spec) ?: return@build HandOffResult.ChangedUnderUs
                 HandOffResult.Sending(send(bridge, upload, uniqueId))
-            } ?: HandOffResult.ChangedUnderUs
+            }
         } finally {
             exported.deleteTemporaryParts(fileOps)
         }

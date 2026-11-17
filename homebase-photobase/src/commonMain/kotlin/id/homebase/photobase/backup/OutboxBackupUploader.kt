@@ -83,7 +83,7 @@ class OutboxBackupUploader(
         uniqueId: Uuid,
         mediaType: BackupMediaType,
         exported: ExportedAsset,
-    ): HandOffResult = requests.build(row, uniqueId, mediaType, exported) { send(it) } ?: HandOffResult.ChangedUnderUs
+    ): HandOffResult = requests.build(row, uniqueId, mediaType, exported) { send(it) }
 
     // The source is checked against its hash as it's read for its location, which an HLS stream has no place
     // for: by a read of its own for a transcode, and by the encrypt pass for an untouched original.
@@ -122,7 +122,6 @@ class OutboxBackupUploader(
             options,
             fileOps,
         ) { PhotobaseProtocol.VideoPayloadKey }
-        // An original sent as it is is checked, and its location read, as it's encrypted; a transcode's source already was.
         val expected = if (untouched || options.originalVideo) mapOf(PhotobaseProtocol.VideoPayloadKey to expectedDigest) else emptyMap()
         val hashes = ContentHashes(PayloadHashAlgorithm.Blake3, expected) { _, chunk, offset, length -> reader.feed(chunk, offset, length) }
         fun metadata() = reader.location.let { location ->

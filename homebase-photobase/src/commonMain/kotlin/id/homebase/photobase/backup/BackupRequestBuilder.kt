@@ -46,15 +46,15 @@ class BackupRequestBuilder(
 
     /**
      * [send] gets the photo's upload, with each part the builder left as it is checked against its hash as it's
-     * encrypted. Null, without calling [send], when a re-encoded part's source no longer matches.
+     * encrypted. [HandOffResult.ChangedUnderUs], without calling [send], when a re-encoded part's source no longer matches.
      */
-    suspend fun <T> build(
+    suspend fun build(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
         mediaType: BackupMediaType,
         exported: ExportedAsset,
-        send: suspend (MediaUploadSpec) -> T,
-    ): T? {
+        send: suspend (MediaUploadSpec) -> HandOffResult,
+    ): HandOffResult {
         val digests = digestsOf(row)
         require(exported.parts.size == digests.size) { "${exported.parts.size} parts against ${digests.size} digests" }
         val reencoded = mutableListOf<String>()
@@ -82,7 +82,7 @@ class BackupRequestBuilder(
                     expected[built.key] = digests[index]
                 } else {
                     reencoded += built.filePath
-                    if (!hasher.matches(exported, part, digests[index])) return null
+                    if (!hasher.matches(exported, part, digests[index])) return HandOffResult.ChangedUnderUs
                 }
             }
             val metadata = photoMetadata(
