@@ -6,6 +6,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.platform.BackgroundUploadBridgeHolder
 import id.homebase.api.platform.BackgroundUploadResults
 import id.homebase.api.sync.database.DeviceBackupAsset
+import id.homebase.upload.UploadService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -30,6 +31,8 @@ class BackgroundSessionUploader(
     private val source: DeviceChangeSource,
     private val uploadProvider: DriveUploadProvider,
     private val fileOps: FileOperationsProvider,
+    private val uploadService: UploadService,
+    private val scope: CoroutineScope,
     private val wifiOnly: () -> Boolean,
 ) : BackupUploader {
 
@@ -44,15 +47,16 @@ class BackgroundSessionUploader(
 
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
-            val request = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
+            val spec = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
             val bodyPath = bodyPath(fileOps, uniqueId)
             val prepared = try {
+                val request = uploadService.buildRequest(spec, scope)
                 timed(BackupStage.UploadBody) { uploadProvider.writeUploadBody(request, bodyPath) }
             } catch (e: Throwable) {
                 runCatching { fileOps.deleteTempFile(bodyPath) }
                 throw e
             } finally {
-                request.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+                spec.bundle?.payloads?.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
             }
             val taskId = timed(BackupStage.Enqueue) {
                 bridge.enqueue(uniqueId.toString(), prepared.url, prepared.bearerToken, prepared.contentType, bodyPath, wifiOnly())

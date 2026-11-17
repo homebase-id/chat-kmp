@@ -1739,7 +1739,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         val hasher = AssetHasher(exports, get())
         val requests = BackupRequestBuilder(get(), hasher, settings = { settings.settings.value })
         val outbox = OutboxBackupUploader(get(), exports, hasher, requests, get(), get(), scope)
-        val uploader = backup.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get()) { settings.settings.value.wifiOnly }) ?: outbox
+        val uploader = backup.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get(), get(), scope) { settings.settings.value.wifiOnly }) ?: outbox
         val storageQuota = get<StorageQuota>()
         PhotoBackupRun(
             settings = { settings.settings.value },

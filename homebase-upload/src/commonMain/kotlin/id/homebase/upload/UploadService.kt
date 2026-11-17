@@ -36,33 +36,26 @@ class UploadService(
     private val payloadCacheSeeder: PayloadCacheSeeder,
 ) {
     /**
-     * Encrypt (or stage) + enqueue [spec] and (best-effort) seed the cache and write the optimistic row.
-     * Returns a typed [UploadOutcome]; never throws for an expected failure (a missing source
-     * yields [UploadOutcome.SourceMissing], a failed enqueue yields [UploadOutcome.Failed]).
+     * The request [upload] would queue, for a transport of its own (an iOS background session): steps 1 and 2 alone.
+     * The caller owns its payload files. Throws [SourceUnavailableException] for a missing source.
      */
-    suspend fun upload(spec: MediaUploadSpec, scope: CoroutineScope): UploadOutcome {
-        // 1. Encrypt the payloads, or stage a public post's as they are. Fail soft: a swept/evicted/revoked source
-        //    throws here, BEFORE the enqueue below, so no doomed outbox row is ever created — the caller re-picks.
+    suspend fun buildRequest(spec: MediaUploadSpec, scope: CoroutineScope): UploadFileRequest = prepare(spec, scope).first
+
+    private suspend fun prepare(spec: MediaUploadSpec, scope: CoroutineScope): Pair<UploadFileRequest, PayloadBundle> {
+        // 1. Encrypt the payloads, or stage a public post's as they are.
         val encrypted = spec.metadata.isEncrypted
-        val fullBundle = try {
-            if (encrypted) {
-                encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
-            } else {
-                encryptor.stageBundle(spec.bundle)
-            }
-        } catch (e: SourceUnavailableException) {
-            return UploadOutcome.SourceMissing(listOf(e.path))
-        } catch (e: IllegalArgumentException) {
-            return UploadOutcome.Failed(e)
+        val fullBundle = if (encrypted) {
+            encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
+        } else {
+            encryptor.stageBundle(spec.bundle)
         }
-        val metadata = spec.metadata
         val sentBundle = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
 
         // 2. Build the request, its metadata content encrypted when the upload is.
         val request = UploadFileRequest(
             driveId = spec.driveId,
             keyHeader = spec.keyHeader,
-            metadata = if (encrypted) metadata.encryptContent(spec.keyHeader) else metadata,
+            metadata = if (encrypted) spec.metadata.encryptContent(spec.keyHeader) else spec.metadata,
             transitOptions = spec.transit,
             payloads = sentBundle.payloads,
             thumbnails = sentBundle.thumbnails,
@@ -70,6 +63,25 @@ class UploadService(
             fileSystemType = spec.requestFileSystemType,
             sealDescriptorContent = spec.sealDescriptorContent,
         )
+        return request to sentBundle
+    }
+
+    /**
+     * Encrypt (or stage) + enqueue [spec] and (best-effort) seed the cache and write the optimistic row.
+     * Returns a typed [UploadOutcome]; never throws for an expected failure (a missing source
+     * yields [UploadOutcome.SourceMissing], a failed enqueue yields [UploadOutcome.Failed]).
+     */
+    suspend fun upload(spec: MediaUploadSpec, scope: CoroutineScope): UploadOutcome {
+        // 1 and 2. Fail soft: a swept/evicted/revoked source throws here, BEFORE the enqueue below, so no doomed
+        //    outbox row is ever created — the caller re-picks.
+        val (request, sentBundle) = try {
+            prepare(spec, scope)
+        } catch (e: SourceUnavailableException) {
+            return UploadOutcome.SourceMissing(listOf(e.path))
+        } catch (e: IllegalArgumentException) {
+            return UploadOutcome.Failed(e)
+        }
+        val encrypted = spec.metadata.isEncrypted
 
         // 3. Seed the payload cache first: once queued, any drain may send the files, delete them and re-key the cache
         //    before a later seed read them. It's under the fresh optimistic fileId, so nothing else reads it until the
@@ -112,7 +124,7 @@ class UploadService(
                 optimisticWriter.writeNewFile(
                     driveId = spec.driveId,
                     keyHeader = spec.keyHeader,
-                    unecryptedMetadata = spec.optimisticMetadata ?: metadata,
+                    unecryptedMetadata = spec.optimisticMetadata ?: spec.metadata,
                     originalRecipientCount = spec.originalRecipientCount,
                     fileSystemType = spec.fileSystemType,
                     payloadDescriptors = payloadDescriptors,

@@ -103,7 +103,7 @@ class OutboxBackupUploaderTest {
 
     private fun CoroutineScope.uploader(
         parts: List<ExportedPart>,
-        encryptor: PayloadBundleEncryptor = NoEncryption,
+        encryptor: PayloadBundleEncryptor = realEncryption(),
         photoQuality: MediaQuality = MediaQuality.ORIGINAL,
         videoQuality: MediaQuality = MediaQuality.HD,
         hashedCopy: Boolean = false,
@@ -508,6 +508,20 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
+    fun aPhotoHandedOffTwiceIsQueuedOnceAndLeavesNoSecondCopy() = runTest {
+        val bytes = jpeg(640, 480)
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("p.jpg", bytes), "image/jpeg", false)))
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+        val afterFirst = stagedFiles()
+
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId), "already queued counts as handed off")
+
+        assertEquals(afterFirst, stagedFiles(), "the second copy is deleted, the queued one kept")
+        queuedRequest(uniqueId).second.payloads.forEach { File(it.filePath).delete() }
+    }
+
+    @Test
     fun aRowOnlyCountsAsSendingWhileTheOutboxHoldsIt() = runTest {
         val bytes = "x".encodeToByteArray()
         val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
@@ -516,19 +530,10 @@ class OutboxBackupUploaderTest {
         assertFalse(uniqueId in uploader.stillSending(mapOf(row to uniqueId)))
         uploader.handOff(row, uniqueId)
         assertTrue(uniqueId in uploader.stillSending(mapOf(row to uniqueId)))
-    }
-}
+    }}
 
 private object NeverSends : OutboxUploader {
     override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) = error("the Outbox is offline in these tests")
-}
-
-private object NoEncryption : PayloadBundleEncryptor {
-    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
-    override suspend fun discardStaged(staged: PayloadBundle) = Unit
-
-    override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle =
-        error("images don't go through encryptBundle")
 }
 
 private class PreviewingEncryptor : PayloadBundleEncryptor {

@@ -9,7 +9,6 @@ import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
@@ -17,16 +16,19 @@ import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DeviceBackupAsset
+import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.video.VideoQuality
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.upload.LibraryKind
+import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.MetadataPolicy
+import id.homebase.upload.PayloadBundle
 import id.homebase.upload.UploadOptions
 import id.homebase.upload.UploadSource
 import id.homebase.upload.UserUploadBuilder
 import kotlin.uuid.Uuid
 
-/** One photo as an upload request: its bytes, at the photo setting's quality, encrypted to staged files, however it's then sent. */
+/** One photo as an upload: its bytes, at the photo setting's quality, encrypted to staged files, however it's then sent. */
 class BackupRequestBuilder(
     private val fileOps: FileOperationsProvider,
     private val hasher: AssetHasher,
@@ -45,7 +47,7 @@ class BackupRequestBuilder(
     }
 
     /** Null when the bytes no longer match the hash; nothing is left behind then. On success the caller owns the staged files. */
-    suspend fun build(row: DeviceBackupAsset, uniqueId: Uuid, mediaType: BackupMediaType, exported: ExportedAsset): UploadFileRequest? {
+    suspend fun build(row: DeviceBackupAsset, uniqueId: Uuid, mediaType: BackupMediaType, exported: ExportedAsset): MediaUploadSpec? {
         val digests = digestsOf(row)
         require(exported.parts.size == digests.size) { "${exported.parts.size} parts against ${digests.size} digests" }
         val keyHeader = KeyHeader.newRandom16()
@@ -95,18 +97,8 @@ class BackupRequestBuilder(
                 PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
                 bundle.previewThumbs.firstOrNull(),
             )
-            val keyByPayload = payloads.associate { it.key to KeyHeader(it.iv!!, keyHeader.aesKey) }
-            val request = UploadFileRequest(
-                driveId = photosDriveId,
-                keyHeader = keyHeader,
-                metadata = metadata.encryptContent(keyHeader),
-                payloads = payloads.toList(),
-                thumbnails = bundle.thumbnails.map { it.copy(thumbnailBytes = keyByPayload.getValue(it.key).encryptDataAes(it.thumbnailBytes)) },
-                existingFileIsSuccess = true,
-                sealDescriptorContent = true,
-            )
             complete = true
-            return request
+            return photoSpec(photosDriveId, uniqueId, keyHeader, bundle.copy(payloads = payloads.toList()), metadata)
         } finally {
             reencoded.forEach { runCatching { fileOps.deleteTempFile(it) } }
             if (!complete) payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
@@ -120,6 +112,21 @@ class BackupRequestBuilder(
 @OptIn(ExperimentalStdlibApi::class)
 internal fun digestsOf(row: DeviceBackupAsset): List<ByteArray> =
     row.contentHash.orEmpty().split(HashedAsset.CONTENT_HASH_SEPARATOR).map { it.hexToByteArray() }
+
+/** Queued in bulk and never shown from a local row: the Photos app shows the library itself. */
+internal fun photoSpec(driveId: Uuid, uniqueId: Uuid, keyHeader: KeyHeader, bundle: PayloadBundle, metadata: UploadFileMetadata) = MediaUploadSpec(
+    driveId = driveId,
+    uniqueId = uniqueId,
+    keyHeader = keyHeader,
+    bundle = bundle,
+    metadata = metadata,
+    priority = OUTBOX_BULK_PRIORITY,
+    sendNow = false,
+    writeOptimistic = false,
+    seedCache = false,
+    existingFileIsSuccess = true,
+    sealDescriptorContent = true,
+)
 
 internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent, tiny: EmbeddedThumb? = null) = UploadFileMetadata(
     allowDistribution = false,

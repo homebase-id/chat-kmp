@@ -2,6 +2,7 @@ package id.homebase.photobase.backup
 
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.upload.UploadService
 import kotlinx.coroutines.CoroutineScope
 
 class BackgroundUploaderContext(
@@ -10,6 +11,8 @@ class BackgroundUploaderContext(
     val source: DeviceChangeSource,
     val uploadProvider: DriveUploadProvider,
     val fileOps: FileOperationsProvider,
+    val uploadService: UploadService,
+    val scope: CoroutineScope,
     val wifiOnly: () -> Boolean,
 )
 

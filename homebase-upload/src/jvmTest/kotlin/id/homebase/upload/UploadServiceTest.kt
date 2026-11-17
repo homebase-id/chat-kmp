@@ -22,6 +22,8 @@ import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import id.homebase.api.serialization.OutboxSerializer
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
@@ -225,6 +227,26 @@ class UploadServiceTest {
         assertNull(enqueued.optimisticFileId, "no optimistic id when writeOptimistic = false")
         assertEquals(1L, countRows(h))
         assertTrue(h.writer.newFileIds.isEmpty())
+    }
+
+    @Test
+    fun buildRequest_isTheRequestUploadQueues_withNothingQueuedSeededOrWritten() = runTest {
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        val spec = MediaUploadSpec(
+            driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(),
+            bundle = bundleOf("p0", "p1"), metadata = metadata(uid),
+            existingFileIsSuccess = true, sealDescriptorContent = true, sendNow = false,
+        )
+
+        val built = h.service.buildRequest(spec, backgroundScope)
+
+        assertEquals(0L, countRows(h))
+        assertTrue(h.seeder.seededFileIds.isEmpty())
+        assertTrue(h.writer.newFileIds.isEmpty())
+        assertIs<UploadOutcome.Enqueued>(h.service.upload(spec, backgroundScope))
+        val queued = assertNotNull(h.dbm.outbox.selectByUniqueId(uid)).json.decodeToString()
+        assertEquals(queued, OutboxSerializer.serialize<UploadFileRequest>(built))
     }
 
     // ---------- updateFile (PR3.5) ----------

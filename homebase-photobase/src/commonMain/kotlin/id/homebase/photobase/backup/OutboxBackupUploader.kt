@@ -11,8 +11,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
-import id.homebase.api.sync.database.EnqueueResult
-import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.upload.LibraryKind
@@ -71,19 +69,8 @@ class OutboxBackupUploader(
         mediaType: BackupMediaType,
         exported: ExportedAsset,
     ): HandOffResult {
-        val request = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
-        var queued = false
-        try {
-            when (val enqueue = timed(BackupStage.Enqueue) { outboxSync.tryEnqueue(request, priority = OUTBOX_BULK_PRIORITY, sendNow = false) }) {
-                EnqueueResult.Enqueued -> queued = true
-                EnqueueResult.AlreadyQueued -> Unit
-                EnqueueResult.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
-                is EnqueueResult.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${enqueue.cause.message}", enqueue.cause)
-            }
-            return HandOffResult.Queued
-        } finally {
-            if (!queued) request.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
-        }
+        val spec = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
+        return handled(spec, timed(BackupStage.Enqueue) { uploadService.upload(spec, scope) })
     }
 
     // The source is checked against its hash as it's read for its location, which an HLS stream has no place
@@ -131,20 +118,16 @@ class OutboxBackupUploader(
         }
         val location = reader.location
         val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
-        val spec = MediaUploadSpec(
-            driveId = photosDriveId,
-            uniqueId = uniqueId,
-            keyHeader = keyHeader,
-            bundle = bundle,
-            metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content),
-            priority = OUTBOX_BULK_PRIORITY,
-            sendNow = false,
-            writeOptimistic = false,
-            seedCache = false,
-            existingFileIsSuccess = true,
-            sealDescriptorContent = true,
-        )
-        return when (val outcome = uploadService.upload(spec, scope)) {
+        val spec = photoSpec(photosDriveId, uniqueId, keyHeader, bundle, photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content))
+        return handled(spec, uploadService.upload(spec, scope))
+    }
+
+    private suspend fun handled(spec: MediaUploadSpec, outcome: UploadOutcome): HandOffResult {
+        // What was encrypted here is ours until the Outbox takes it.
+        if (outcome !is UploadOutcome.Enqueued) {
+            spec.bundle?.payloads?.filter { it.isPreEncrypted }?.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+        }
+        return when (outcome) {
             is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
             is UploadOutcome.SourceMissing -> throw AssetPermanentlyUnavailableException("source gone: ${outcome.missingPaths.joinToString()}")
             UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
