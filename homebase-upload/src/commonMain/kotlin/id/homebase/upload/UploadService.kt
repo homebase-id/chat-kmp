@@ -36,8 +36,9 @@ class UploadService(
     private val payloadCacheSeeder: PayloadCacheSeeder,
 ) {
     /**
-     * The request [upload] would queue, for a transport of its own (an iOS background session): steps 1 and 2 alone.
-     * The caller owns its payload files. Throws [SourceUnavailableException] for a missing source.
+     * The request [upload] would queue, for a caller with a transport of its own: steps 1 and 2 alone. The caller owns
+     * its payload files. Throws [SourceUnavailableException] for a missing source, [IllegalArgumentException] for a
+     * public upload that can't be staged.
      */
     suspend fun buildRequest(spec: MediaUploadSpec, scope: CoroutineScope): UploadFileRequest = prepare(spec, scope).first
 

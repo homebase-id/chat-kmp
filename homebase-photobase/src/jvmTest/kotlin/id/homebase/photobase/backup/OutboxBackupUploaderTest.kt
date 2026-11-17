@@ -327,7 +327,6 @@ class OutboxBackupUploaderTest {
             val (row, uniqueId) = rowFor("v$n", BackupMediaType.Video, bytes)
             val uploader = backgroundScope.uploader(
                 listOf(ExportedPart(ExportedPartRole.Primary, clip, "video/quicktime", false)),
-                realEncryption(),
                 videoQuality = quality,
             )
 
@@ -350,7 +349,6 @@ class OutboxBackupUploaderTest {
         val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
         val uploader = backgroundScope.uploader(
             listOf(ExportedPart(ExportedPartRole.Primary, clip, "video/quicktime", false)),
-            realEncryption(),
             videoQuality = MediaQuality.ORIGINAL,
         )
 
@@ -390,7 +388,6 @@ class OutboxBackupUploaderTest {
         val (row, uniqueId) = rowFor("a", BackupMediaType.Video, bytes)
         val uploader = backgroundScope.uploader(
             listOf(ExportedPart(ExportedPartRole.Primary, file("v.mov", bytes), "video/quicktime", false)),
-            realEncryption(),
             videoQuality = MediaQuality.ORIGINAL,
         )
 
@@ -530,7 +527,8 @@ class OutboxBackupUploaderTest {
         assertFalse(uniqueId in uploader.stillSending(mapOf(row to uniqueId)))
         uploader.handOff(row, uniqueId)
         assertTrue(uniqueId in uploader.stillSending(mapOf(row to uniqueId)))
-    }}
+    }
+}
 
 private object NeverSends : OutboxUploader {
     override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) = error("the Outbox is offline in these tests")

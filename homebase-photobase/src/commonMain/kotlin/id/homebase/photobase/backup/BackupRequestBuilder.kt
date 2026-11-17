@@ -101,7 +101,7 @@ class BackupRequestBuilder(
             return photoSpec(photosDriveId, uniqueId, keyHeader, bundle.copy(payloads = payloads.toList()), metadata)
         } finally {
             reencoded.forEach { runCatching { fileOps.deleteTempFile(it) } }
-            if (!complete) payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+            if (!complete) fileOps.deleteEncrypted(payloads)
         }
     }
 
@@ -113,7 +113,7 @@ class BackupRequestBuilder(
 internal fun digestsOf(row: DeviceBackupAsset): List<ByteArray> =
     row.contentHash.orEmpty().split(HashedAsset.CONTENT_HASH_SEPARATOR).map { it.hexToByteArray() }
 
-/** Queued in bulk and never shown from a local row: the Photos app shows the library itself. */
+/** Bulk, and never shown from a local row: the Photos app shows the library itself. */
 internal fun photoSpec(driveId: Uuid, uniqueId: Uuid, keyHeader: KeyHeader, bundle: PayloadBundle, metadata: UploadFileMetadata) = MediaUploadSpec(
     driveId = driveId,
     uniqueId = uniqueId,
@@ -127,6 +127,10 @@ internal fun photoSpec(driveId: Uuid, uniqueId: Uuid, keyHeader: KeyHeader, bund
     existingFileIsSuccess = true,
     sealDescriptorContent = true,
 )
+
+/** Only what was encrypted here: a payload left plain is the source, which isn't ours to delete. */
+internal fun FileOperationsProvider.deleteEncrypted(payloads: List<PayloadFile>?) =
+    payloads.orEmpty().filter { it.isPreEncrypted }.forEach { runCatching { deleteTempFile(it.filePath) } }
 
 internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent, tiny: EmbeddedThumb? = null) = UploadFileMetadata(
     allowDistribution = false,

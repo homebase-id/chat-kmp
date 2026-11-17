@@ -9,6 +9,7 @@ import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.OutboxSync
@@ -59,6 +60,9 @@ class OutboxBackupUploader(
 
     // A plain send() is skipped in a background wake, where the WebSocket never comes up. Two
     // workers, because a forced drain's own re-entry is a plain send() too.
+    /** The request [handOff] would queue, for a transport of the platform's own. */
+    suspend fun request(spec: MediaUploadSpec): UploadFileRequest = uploadService.buildRequest(spec, scope)
+
     override suspend fun kick() {
         repeat(BULK_STREAMS) { outboxSync.send(force = true) }
     }
@@ -124,9 +128,7 @@ class OutboxBackupUploader(
 
     private suspend fun handled(spec: MediaUploadSpec, outcome: UploadOutcome): HandOffResult {
         // What was encrypted here is ours until the Outbox takes it.
-        if (outcome !is UploadOutcome.Enqueued) {
-            spec.bundle?.payloads?.filter { it.isPreEncrypted }?.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
-        }
+        if (outcome !is UploadOutcome.Enqueued) fileOps.deleteEncrypted(spec.bundle?.payloads)
         return when (outcome) {
             is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
             is UploadOutcome.SourceMissing -> throw AssetPermanentlyUnavailableException("source gone: ${outcome.missingPaths.joinToString()}")
