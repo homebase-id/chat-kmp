@@ -3137,6 +3137,7 @@
     <string name="filesync_day_time">%1$s, %2$s</string>
     <string name="filesync_executable">runs</string>
     <string name="filesync_not_on_computers">not on computers</string>
+    <string name="filesync_folder_not_on_computers">Not on your computers: they leave out anything named .hbsync, with all that's in it. Files added here stay on Homebase only.</string>
     <string name="filesync_open">Open</string>
     <string name="filesync_open_in_app">Open in another app</string>
     <string name="filesync_preview">Preview</string>

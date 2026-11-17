@@ -12,7 +12,10 @@ import kotlin.uuid.Uuid
 
 /** One step of the breadcrumb trail; [name] is null for the top level, [removedMs] set when it's in Recently deleted. */
 @Immutable
-data class FilesyncCrumb(val nodeId: Uuid, val name: String?, val removedMs: Long? = null)
+data class FilesyncCrumb(val nodeId: Uuid, val name: String?, val removedMs: Long? = null) {
+    /** Named `.hbsync`: computers leave it out, with all in it. */
+    val notOnComputers: Boolean get() = name != null && FilesyncNames.key(name) == FilesyncNames.stateFolderKey
+}
 
 /** A download under way: of the node [nodeId], or of a ZIP when null, whose [totalBytes] are known once it's listed. */
 @Immutable
@@ -52,8 +55,9 @@ data class FilesyncMovePicker(
     /** A folder being moved can't take itself: it isn't opened, and nothing moves below it. */
     fun isMoving(folderId: Uuid): Boolean = folderId in movingIds
 
+    // Moved into a folder computers leave out, an item is deleted on every computer that synced it.
     val canMoveHere: Boolean
-        get() = !loading && !loadFailed && path.none { isMoving(it.nodeId) } && nodes.any { it.parentId != path.last().nodeId }
+        get() = !loading && !loadFailed && path.none { isMoving(it.nodeId) || it.notOnComputers } && nodes.any { it.parentId != path.last().nodeId }
 }
 
 @Immutable
