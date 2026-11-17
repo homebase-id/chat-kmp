@@ -230,7 +230,7 @@ class UploadServiceTest {
     }
 
     @Test
-    fun buildRequest_buildsWhatUploadQueues_withNothingQueuedSeededOrWritten() = runTest {
+    fun prepare_buildsTheRequestQueueEnqueues_withNothingQueuedSeededOrWrittenBefore() = runTest {
         val h = buildHarness(backgroundScope)
         val uid = Uuid.random()
         val spec = MediaUploadSpec(
@@ -239,14 +239,14 @@ class UploadServiceTest {
             existingFileIsSuccess = true, sealDescriptorContent = true, sendNow = false,
         )
 
-        val built = h.service.buildRequest(spec, backgroundScope)
+        val prepared = h.service.prepare(spec, backgroundScope)
 
         assertEquals(0L, countRows(h))
         assertTrue(h.seeder.seededFileIds.isEmpty())
         assertTrue(h.writer.newFileIds.isEmpty())
-        assertIs<UploadOutcome.Enqueued>(h.service.upload(spec, backgroundScope))
+        assertIs<UploadOutcome.Enqueued>(h.service.queue(prepared))
         val queued = assertNotNull(h.dbm.outbox.selectByUniqueId(uid)).json.decodeToString()
-        assertEquals(queued, OutboxSerializer.serialize<UploadFileRequest>(built))
+        assertEquals(queued, OutboxSerializer.serialize<UploadFileRequest>(prepared.request))
     }
 
     // ---------- updateFile (PR3.5) ----------
@@ -441,7 +441,7 @@ class UploadServiceTest {
 /** Fake encryptor: counts calls, echoes the input as "pre-encrypted", or throws a swept source. */
 private class RecordingEncryptor(private val throwMissing: String? = null) : PayloadBundleEncryptor {
     override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
-    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+    override suspend fun discard(bundle: PayloadBundle) = Unit
 
     var callCount = 0
         private set

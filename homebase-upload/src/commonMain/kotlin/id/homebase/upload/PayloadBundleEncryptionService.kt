@@ -52,8 +52,9 @@ class PayloadBundleEncryptionService(
         }
     }
 
-    override suspend fun discardStaged(staged: PayloadBundle) {
-        staged.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+    override suspend fun discard(bundle: PayloadBundle) {
+        bundle.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+        cleanupHlsScratch(bundle.payloads)
     }
 
     override suspend fun encryptBundle(

@@ -575,7 +575,7 @@ private object NeverSends : OutboxUploader {
 
 private class PreviewingEncryptor : PayloadBundleEncryptor {
     override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
-    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+    override suspend fun discard(bundle: PayloadBundle) = Unit
 
     var calls = 0
 

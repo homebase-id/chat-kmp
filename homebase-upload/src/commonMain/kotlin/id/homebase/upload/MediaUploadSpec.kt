@@ -23,7 +23,7 @@ data class MediaUploadSpec(
     val driveId: Uuid,
     val uniqueId: Uuid,
     val keyHeader: KeyHeader,
-    /** Plaintext payloads; null for a header-only upload. */
+    /** Plaintext payloads; null for a header-only upload. One already encrypted (`isPreEncrypted`) is the upload's from the call on. */
     val bundle: PayloadBundle?,
     /** Unencrypted metadata; UploadService encrypts a copy for the request when it says `isEncrypted`. */
     val metadata: UploadFileMetadata,

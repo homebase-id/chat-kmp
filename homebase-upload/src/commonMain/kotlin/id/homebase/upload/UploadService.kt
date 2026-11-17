@@ -15,6 +15,8 @@ import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OutboxSync
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /**
  * The one shared, feature-agnostic upload pipeline (issue #844 Deliverable B). Every media
@@ -36,87 +38,116 @@ class UploadService(
     private val payloadCacheSeeder: PayloadCacheSeeder,
 ) {
     /**
-     * Steps 1 and 2 of [upload] alone, for a caller with a transport of its own; it encrypts afresh what isn't
-     * pre-encrypted. The caller owns the request's payload files. Throws [SourceUnavailableException] for a missing source, [IllegalArgumentException] for a
-     * public upload that can't be staged.
-     */
-    suspend fun buildRequest(spec: MediaUploadSpec, scope: CoroutineScope): UploadFileRequest = prepare(spec, scope).first
-
-    private suspend fun prepare(spec: MediaUploadSpec, scope: CoroutineScope): Pair<UploadFileRequest, PayloadBundle> {
-        // 1. Encrypt the payloads, or stage a public post's as they are.
-        val encrypted = spec.metadata.isEncrypted
-        val fullBundle = if (encrypted) {
-            encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
-        } else {
-            encryptor.stageBundle(spec.bundle)
-        }
-        val sentBundle = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
-
-        // 2. Build the request, its metadata content encrypted when the upload is.
-        val request = UploadFileRequest(
-            driveId = spec.driveId,
-            keyHeader = spec.keyHeader,
-            metadata = if (encrypted) spec.metadata.encryptContent(spec.keyHeader) else spec.metadata,
-            transitOptions = spec.transit,
-            payloads = sentBundle.payloads,
-            thumbnails = sentBundle.thumbnails,
-            existingFileIsSuccess = spec.existingFileIsSuccess,
-            fileSystemType = spec.requestFileSystemType,
-            sealDescriptorContent = spec.sealDescriptorContent,
-        )
-        return request to sentBundle
-    }
-
-    /**
-     * Encrypt (or stage) + enqueue [spec] and (best-effort) seed the cache and write the optimistic row.
-     * Returns a typed [UploadOutcome]; never throws for an expected failure (a missing source
+     * Encrypt (or stage) + enqueue [spec] and (best-effort) seed the cache and write the optimistic row: [prepare]
+     * then [queue]. Returns a typed [UploadOutcome]; never throws for an expected failure (a missing source
      * yields [UploadOutcome.SourceMissing], a failed enqueue yields [UploadOutcome.Failed]).
      */
     suspend fun upload(spec: MediaUploadSpec, scope: CoroutineScope): UploadOutcome {
-        // 1 and 2. Fail soft: a swept/evicted/revoked source throws here, BEFORE the enqueue below, so no doomed
-        //    outbox row is ever created — the caller re-picks.
-        val (request, sentBundle) = try {
+        // Fail soft: a swept/evicted/revoked source throws here, BEFORE the enqueue, so no doomed outbox row is ever
+        // created — the caller re-picks.
+        val prepared = try {
             prepare(spec, scope)
         } catch (e: SourceUnavailableException) {
             return UploadOutcome.SourceMissing(listOf(e.path))
         } catch (e: IllegalArgumentException) {
             return UploadOutcome.Failed(e)
         }
+        return queue(prepared)
+    }
+
+    /**
+     * Steps 1 and 2: encrypt the payloads, or stage a public post's, and build the request. Payloads handed over
+     * already encrypted (`isPreEncrypted`) become the upload's own from this call on, like the files it makes, and on
+     * a throw everything is deleted. Throws [SourceUnavailableException] for a missing source and
+     * [IllegalArgumentException] for a public upload that can't be staged.
+     */
+    suspend fun prepare(spec: MediaUploadSpec, scope: CoroutineScope): PreparedUpload {
         val encrypted = spec.metadata.isEncrypted
-
-        // 3. Seed the payload cache first: once queued, any drain may send the files, delete them and re-key the cache
-        //    before a later seed read them. It's under the fresh optimistic fileId, so nothing else reads it until the
-        //    row exists; undone if the enqueue doesn't take.
-        if (spec.seedCache) {
-            try {
-                payloadCacheSeeder.seed(spec.driveId, spec.optimisticFileId, sentBundle, encrypted)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "upload: seed failed (non-fatal) uniqueId=${spec.uniqueId}" }
+        // A payload handed over encrypted may never reach the encryptor; what the encryptor makes, it deletes itself
+        // if it throws.
+        var owned = spec.bundle?.let { it.copy(payloads = it.payloads.filter { payload -> payload.isPreEncrypted }) }
+        try {
+            val fullBundle = if (encrypted) {
+                encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
+            } else {
+                encryptor.stageBundle(spec.bundle)
             }
+            owned = fullBundle
+            val sent = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
+            val request = UploadFileRequest(
+                driveId = spec.driveId,
+                keyHeader = spec.keyHeader,
+                metadata = if (encrypted) spec.metadata.encryptContent(spec.keyHeader) else spec.metadata,
+                transitOptions = spec.transit,
+                payloads = sent.payloads,
+                thumbnails = sent.thumbnails,
+                existingFileIsSuccess = spec.existingFileIsSuccess,
+                fileSystemType = spec.requestFileSystemType,
+                sealDescriptorContent = spec.sealDescriptorContent,
+            )
+            return PreparedUpload(spec, request, sent, encryptor)
+        } catch (e: Throwable) {
+            owned?.let { withContext(NonCancellable) { encryptor.discard(it) } }
+            throw e
         }
+    }
 
-        // 4. Outbox enqueue — the durable success gate. Once accepted, delivery is guaranteed.
-        val enqueue = if (spec.replace) {
-            outboxSync.replaceEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
-        } else {
-            outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow, spec.overPeer)
-        }
-        if (enqueue !is EnqueueResult.Enqueued) {
-            if (spec.seedCache) payloadCacheSeeder.unseed(spec.driveId, spec.optimisticFileId, sentBundle)
-            if (!encrypted) encryptor.discardStaged(sentBundle)
-        }
-        when (enqueue) {
-            is EnqueueResult.Enqueued -> Unit
-            is EnqueueResult.AlreadyQueued -> return UploadOutcome.AlreadyQueued(spec.uniqueId)
-            is EnqueueResult.WouldStrandCreate -> return UploadOutcome.WouldStrandCreate
-            is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
+    /**
+     * Steps 3 to 5: seed the cache, enqueue, write the optimistic row. Unless a row takes [prepared]'s files, they're
+     * deleted and the seed undone, a cancelled call included.
+     */
+    suspend fun queue(prepared: PreparedUpload): UploadOutcome {
+        val spec = prepared.spec
+        val sent = prepared.sent
+        var queued = false
+        try {
+            // 3. Seed the payload cache first: once queued, any drain may send the files, delete them and re-key the
+            //    cache before a later seed read them. It's under the fresh optimistic fileId, so nothing else reads it
+            //    until the row exists.
+            if (spec.seedCache) {
+                try {
+                    payloadCacheSeeder.seed(spec.driveId, spec.optimisticFileId, sent, spec.metadata.isEncrypted)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.e(throwable = e, tag = TAG) { "upload: seed failed (non-fatal) uniqueId=${spec.uniqueId}" }
+                }
+            }
+
+            // 4. Outbox enqueue — the durable success gate. Once accepted, delivery is guaranteed. Not cancellable: a
+            //    cancelled insert may have committed, and then the files are the row's.
+            val enqueue = withContext(NonCancellable) {
+                if (spec.replace) {
+                    outboxSync.replaceEnqueue(prepared.request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
+                } else {
+                    outboxSync.tryEnqueue(prepared.request, spec.priority, spec.dependencyUniqueId, spec.sendNow, spec.overPeer)
+                }
+            }
+            queued = enqueue is EnqueueResult.Enqueued
+            when (enqueue) {
+                is EnqueueResult.Enqueued -> Unit
+                is EnqueueResult.AlreadyQueued -> return UploadOutcome.AlreadyQueued(spec.uniqueId)
+                is EnqueueResult.WouldStrandCreate -> return UploadOutcome.WouldStrandCreate
+                is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
+            }
+        } finally {
+            if (!queued) {
+                withContext(NonCancellable) {
+                    if (spec.seedCache) {
+                        try {
+                            payloadCacheSeeder.unseed(spec.driveId, spec.optimisticFileId, sent)
+                        } catch (e: Exception) {
+                            Logger.e(throwable = e, tag = TAG) { "upload: unseed failed uniqueId=${spec.uniqueId}" }
+                        }
+                    }
+                    prepared.discard()
+                }
+            }
         }
 
         // Optimistic mirror of what the server will return; also returned in the outcome so a
         // feature can reuse it for its own optimistic bookkeeping (e.g. the sticker tray).
-        val payloadDescriptors = sentBundle.toPayloadDescriptors()
+        val payloadDescriptors = sent.toPayloadDescriptors()
 
         // 5. Best-effort: the optimistic row, whose recompose reads the cache seeded above. Outbox delivery and sync
         //    bring the file back if it fails.
@@ -175,38 +206,47 @@ class UploadService(
             freshlyEncrypted = encrypted
         }
 
-        val request = UpdateFileByUniqueIdRequest(
-            driveId = spec.driveId,
-            uniqueId = spec.uniqueId,
-            keyHeader = spec.keyHeader,
-            instructions = FileUpdateInstructionSet(
-                transferIv = spec.transferIv,
-                locale = spec.locale,
-                recipients = spec.recipients,
-                manifest = UpdateManifest.build(
-                    payloads = payloads.ifEmpty { null },
-                    toDeletePayloads = spec.toDeletePayloads,
-                    thumbnails = thumbnails.ifEmpty { null },
-                    generatePayloadIv = spec.generatePayloadIv,
+        // As with a new file, the request's files are the update's own, those handed over encrypted included:
+        // deleted unless a row takes them.
+        var queued = false
+        try {
+            val request = UpdateFileByUniqueIdRequest(
+                driveId = spec.driveId,
+                uniqueId = spec.uniqueId,
+                keyHeader = spec.keyHeader,
+                instructions = FileUpdateInstructionSet(
+                    transferIv = spec.transferIv,
+                    locale = spec.locale,
+                    recipients = spec.recipients,
+                    manifest = UpdateManifest.build(
+                        payloads = payloads.ifEmpty { null },
+                        toDeletePayloads = spec.toDeletePayloads,
+                        thumbnails = thumbnails.ifEmpty { null },
+                        generatePayloadIv = spec.generatePayloadIv,
+                    ),
+                    useAppNotification = spec.useAppNotification,
+                    appNotificationOptions = spec.appNotificationOptions,
                 ),
-                useAppNotification = spec.useAppNotification,
-                appNotificationOptions = spec.appNotificationOptions,
-            ),
-            metadata = spec.metadata.encryptContent(spec.keyHeader),
-            payloads = payloads.ifEmpty { null },
-            thumbnails = thumbnails.ifEmpty { null },
-        )
-
-        val enqueue = if (spec.replace) {
-            outboxSync.replaceEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
-        } else {
-            outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
-        }
-        when (enqueue) {
-            is EnqueueResult.Enqueued -> Unit
-            is EnqueueResult.AlreadyQueued -> return UploadOutcome.AlreadyQueued(spec.uniqueId)
-            is EnqueueResult.WouldStrandCreate -> return UploadOutcome.WouldStrandCreate
-            is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
+                metadata = spec.metadata.encryptContent(spec.keyHeader),
+                payloads = payloads.ifEmpty { null },
+                thumbnails = thumbnails.ifEmpty { null },
+            )
+            val enqueue = withContext(NonCancellable) {
+                if (spec.replace) {
+                    outboxSync.replaceEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
+                } else {
+                    outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
+                }
+            }
+            queued = enqueue is EnqueueResult.Enqueued
+            when (enqueue) {
+                is EnqueueResult.Enqueued -> Unit
+                is EnqueueResult.AlreadyQueued -> return UploadOutcome.AlreadyQueued(spec.uniqueId)
+                is EnqueueResult.WouldStrandCreate -> return UploadOutcome.WouldStrandCreate
+                is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
+            }
+        } finally {
+            if (!queued) withContext(NonCancellable) { encryptor.discard(PayloadBundle(payloads, thumbnails, emptyList())) }
         }
 
         // When the caller gave us the existing fileId AND we just encrypted a COMPLETE new payload

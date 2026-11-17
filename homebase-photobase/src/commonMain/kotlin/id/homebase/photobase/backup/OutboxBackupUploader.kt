@@ -9,13 +9,13 @@ import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.upload.LibraryKind
 import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.PreparedUpload
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
 import id.homebase.upload.UploadSource
@@ -65,7 +65,7 @@ class OutboxBackupUploader(
     }
 
     /** What [handOff] would queue, for a transport of the platform's own. */
-    suspend fun request(spec: MediaUploadSpec): UploadFileRequest = uploadService.buildRequest(spec, scope)
+    suspend fun prepare(spec: MediaUploadSpec): PreparedUpload = uploadService.prepare(spec, scope)
 
     private suspend fun handOffOriginal(
         row: DeviceBackupAsset,
@@ -74,7 +74,7 @@ class OutboxBackupUploader(
         exported: ExportedAsset,
     ): HandOffResult {
         val spec = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
-        return send(spec) { timed(BackupStage.Enqueue) { uploadService.upload(spec, scope) } }
+        return handedOff(timed(BackupStage.Enqueue) { uploadService.upload(spec, scope) })
     }
 
     // The source is checked against its hash as it's read for its location, which an HLS stream has no place
@@ -123,25 +123,15 @@ class OutboxBackupUploader(
         val location = reader.location
         val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
         val spec = photoSpec(photosDriveId, uniqueId, keyHeader, bundle, photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content))
-        return send(spec) { uploadService.upload(spec, scope) }
+        return handedOff(uploadService.upload(spec, scope))
     }
 
-    private suspend inline fun send(spec: MediaUploadSpec, upload: () -> UploadOutcome): HandOffResult {
-        var queued = false
-        try {
-            val outcome = upload()
-            queued = outcome is UploadOutcome.Enqueued
-            return when (outcome) {
-                is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
-                // A file staged for this attempt; the next one exports again, and the export says if the asset is gone.
-                is UploadOutcome.SourceMissing -> throw BackupEnqueueFailedException("a staged file is gone: ${outcome.missingPaths.joinToString()}")
-                UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
-                is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
-            }
-        } finally {
-            // What was encrypted here is ours until the Outbox takes it.
-            if (!queued) fileOps.deleteEncrypted(spec.bundle?.payloads)
-        }
+    private fun handedOff(outcome: UploadOutcome): HandOffResult = when (outcome) {
+        is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
+        // A file staged for this attempt; the next one exports again, and the export says if the asset is gone.
+        is UploadOutcome.SourceMissing -> throw BackupEnqueueFailedException("a staged file is gone: ${outcome.missingPaths.joinToString()}")
+        UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
+        is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
     }
 
     // The untouched original, encrypted here so its hash is checked on the same read; null when it changed.

@@ -101,7 +101,7 @@ class BackupRequestBuilder(
             return photoSpec(photosDriveId, uniqueId, keyHeader, bundle.copy(payloads = payloads.toList()), metadata)
         } finally {
             reencoded.forEach { runCatching { fileOps.deleteTempFile(it) } }
-            if (!complete) fileOps.deleteEncrypted(payloads)
+            if (!complete) payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
         }
     }
 
@@ -127,10 +127,6 @@ internal fun photoSpec(driveId: Uuid, uniqueId: Uuid, keyHeader: KeyHeader, bund
     existingFileIsSuccess = true,
     sealDescriptorContent = true,
 )
-
-/** Only what was encrypted here: a payload left plain is the source, which isn't ours to delete. */
-internal fun FileOperationsProvider.deleteEncrypted(payloads: List<PayloadFile>?) =
-    payloads.orEmpty().filter { it.isPreEncrypted }.forEach { runCatching { deleteTempFile(it.filePath) } }
 
 internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent, tiny: EmbeddedThumb? = null) = UploadFileMetadata(
     allowDistribution = false,
