@@ -75,6 +75,7 @@ class FilesyncEditor(
         val breaks = trash.loopBreaks(tops, plans)
         val breaking = breaks.atTop + breaks.toExit
         val exit = if (breaks.toExit.isEmpty()) null else loopExit(trash)
+        val recoveredInTrash = exit?.folder == FilesyncProtocol.RecoveredFilesNodeId && trash.all.nodes[FilesyncProtocol.RecoveredFilesNodeId]?.removed == true
         // The top instead once Recovered files' id proves taken.
         var exitFolder = exit?.folder
         var toMake = exit?.make == true
@@ -87,12 +88,12 @@ class FilesyncEditor(
         fun chainAbove(node: FilesyncNode) = into(node).let { folder ->
             chains.getOrPut(folder) { trash.all.nodes[folder]?.let { trash.chainOf(it, stopAt = breaking) }.orEmpty() }
         }
-        // A node waits for the planned folders it comes back into, through live folders too: a level after the last of them.
-        val planIds = plan.mapTo(HashSet()) { it.nodeId }
+        // A node waits for the planned folder it comes back into: a level after it.
+        val planned = plan.associateBy { it.nodeId }
         val level = mutableMapOf<Uuid, Int>()
         fun levelOf(node: FilesyncNode): Int = level[node.nodeId] ?: run {
             level[node.nodeId] = 0
-            (chainAbove(node).filter { it.nodeId in planIds }.maxOfOrNull { levelOf(it) + 1 } ?: 0).also { level[node.nodeId] = it }
+            (planned[into(node)]?.let { levelOf(it) + 1 } ?: 0).also { level[node.nodeId] = it }
         }
         plan.forEach(::levelOf)
         val liveParents = repository.findNodes(plan.map(::into).filter { it !in level }, FilesyncStatus.Live).nodes.keys
@@ -100,8 +101,8 @@ class FilesyncEditor(
         val restored = mutableSetOf<Uuid>()
         // Folders of the plan deleted for good while it ran.
         val wentForGood = mutableSetOf<Uuid>()
-        val intoRecovered = mutableSetOf<Uuid>()
-        var loopsIntoRecovered = false
+        // In a Recovered files still in Recently deleted, it shows only once a computer brings that back.
+        val intoRecovered = if (recoveredInTrash) breaks.toExit.toMutableSet() else mutableSetOf()
         val takenByFolder = mutableMapOf<Uuid, MutableSet<String>>()
         suspend fun taken(folder: Uuid) = takenByFolder.getOrPut(folder) { repository.takenNames(folder) }
         var skipped = gone
@@ -125,10 +126,10 @@ class FilesyncEditor(
                         // Recovered files too where it is in Recently deleted: the computers bring it back for what is in it.
                         node.nodeId in breaking -> false
                         parent == FilesyncProtocol.RootNodeId -> false
-                        // A live folder that went with a delete is back only once the removed folders it went with are.
+                        // A live folder that went with a delete is back once the removed folders it went with are, or come back in this restore.
                         parent in trash.itemOf -> chainAbove(node).let { chain ->
                             if (chain.any { it.nodeId in wentForGood }) intoRecovered += node.nodeId
-                            false.takeIf { chain.all { !it.removed || it.nodeId in restored || it.nodeId in wentForGood } }
+                            false.takeIf { chain.all { !it.removed || it.nodeId in restored || it.nodeId in wentForGood || it.nodeId in level } }
                         }
                         parent in liveParents -> false
                         else -> true
@@ -169,7 +170,6 @@ class FilesyncEditor(
                         sent = true
                         if (uploader.createRecoveredFiles()) {
                             taken(FilesyncProtocol.RootNodeId).add(FilesyncNames.key(FilesyncProtocol.RecoveredFilesName))
-                            takenByFolder[FilesyncProtocol.RecoveredFilesNodeId] = mutableSetOf()
                         } else {
                             exitFolder = FilesyncProtocol.RootNodeId
                         }
@@ -185,7 +185,6 @@ class FilesyncEditor(
                     val handle = trash.all.handles.getValue(node.nodeId)
                     if (write(node.nodeId, handle, renamedContent(handle.content, name), parent)) {
                         restored += node.nodeId
-                        if (parent == FilesyncProtocol.RecoveredFilesNodeId) loopsIntoRecovered = true
                         taken += FilesyncNames.key(name)
                     } else {
                         skipped++
@@ -208,7 +207,7 @@ class FilesyncEditor(
         }
         FilesyncWriteResult(
             restored.size, skipped, recovered = (intoRecovered intersect restored).size, tryAgainSoon = tryAgainSoon,
-            loopsIntoRecovered = loopsIntoRecovered,
+            loopsIntoRecovered = exitFolder == FilesyncProtocol.RecoveredFilesNodeId && !recoveredInTrash && breaks.toExit.any { it in restored },
         )
     }
 
@@ -486,7 +485,7 @@ internal suspend fun reportWrite(
     if (result.recovered > 0) send(FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered))
     if (result.tryAgainSoon) send(FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon))
     if (result.loopsIntoRecovered) send(FilesyncUiEvent.Notice(FilesyncNotice.RestoredIntoRecovered))
-    if (result.recovered == 0 && !result.tryAgainSoon && !result.loopsIntoRecovered) send(if (result.skipped > 0) FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere) else done)
+    if (result.recovered == 0 && !result.tryAgainSoon && (result.skipped > 0 || !result.loopsIntoRecovered)) send(if (result.skipped > 0) FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere) else done)
     return result.skipped == 0
 }
 

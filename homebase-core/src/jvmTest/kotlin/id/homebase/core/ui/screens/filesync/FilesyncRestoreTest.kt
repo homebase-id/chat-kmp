@@ -236,10 +236,62 @@ class FilesyncRestoreTest {
         val recovered = add("Recovered files", FilesyncProtocol.RootNodeId, removedAt = 50, id = FilesyncProtocol.RecoveredFilesNodeId)
         val (a, b) = loop()
 
-        editor.restore(setOf(a.nodeId))
+        val result = editor.restore(setOf(a.nodeId))
 
         assertFalse(live(recovered), "the computers bring it back")
         assertTrue(a.isLiveIn(FilesyncProtocol.RecoveredFilesNodeId) && b.isLiveIn(a.nodeId))
+        assertEquals(1, result.recovered, "shown nowhere until a computer brings Recovered files back")
+        assertFalse(result.loopsIntoRecovered)
+    }
+
+    @Test
+    fun aFolderInItselfComesBackIntoRecoveredFiles() = runTest {
+        val id = Uuid.random()
+        val self = add("Self", id, removedAt = 100, id = id)
+
+        val result = editor.restore(setOf(id))
+
+        assertTrue(self.isLiveIn(FilesyncProtocol.RecoveredFilesNodeId))
+        assertTrue(result.loopsIntoRecovered)
+    }
+
+    @Test
+    fun aLoopThroughALiveFolderComesBackIntoIt() = runTest {
+        // A in B, B in the live L that went with A's delete, L in A: filesync's walk stops at L, so nothing moves.
+        val aId = Uuid.random()
+        val bId = Uuid.random()
+        val l = add("L", aId, id = Uuid.random()).apply { updated = 50 }
+        val a = add("A", bId, removedAt = 100, id = aId)
+        val b = add("B", l.nodeId, removedAt = 100, id = bId)
+
+        editor.restore(setOf(a.nodeId))
+
+        assertTrue(b.isLiveIn(l.nodeId) && a.isLiveIn(bId) && l.isLiveIn(aId))
+        assertFalse(FilesyncProtocol.RecoveredFilesNodeId in rows)
+    }
+
+    @Test
+    fun aRenamedRestoreIntoRecoveredFilesWithoutALoopSaysRestored() = runTest {
+        add("Recovered files", FilesyncProtocol.RootNodeId, id = FilesyncProtocol.RecoveredFilesNodeId)
+        add("x.txt", FilesyncProtocol.RecoveredFilesNodeId, folder = false)
+        val x = add("x.txt", FilesyncProtocol.RecoveredFilesNodeId, folder = false, removedAt = 100)
+
+        val result = editor.restore(setOf(x.nodeId))
+
+        assertTrue(x.isLiveIn(FilesyncProtocol.RecoveredFilesNodeId) && x.name == "x (restored).txt")
+        assertFalse(result.loopsIntoRecovered)
+    }
+
+    @Test
+    fun aLoopRestoredWithSomethingSkippedStillSaysSo() = runTest {
+        val sent = mutableListOf<FilesyncUiEvent>()
+        reportWrite(FilesyncUiEvent.Notice(FilesyncNotice.Restored), FilesyncError.RestoreFailed, { sent += it }) {
+            FilesyncWriteResult(done = 2, skipped = 1, loopsIntoRecovered = true)
+        }
+        assertEquals<List<FilesyncUiEvent>>(
+            listOf(FilesyncUiEvent.Notice(FilesyncNotice.RestoredIntoRecovered), FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere)),
+            sent,
+        )
     }
 
     @Test

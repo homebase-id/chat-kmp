@@ -125,8 +125,8 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
             if (top.nodeId !in planned) {
                 val up = ancestorsOf(top)
                 val walked = up.takeWhile { it.removed && it.nodeId !in planned }
-                // ancestorsOf ends where a parent repeats: then the walk went round a loop back to [again].
-                val again = walked.lastOrNull()?.parentId.takeIf { walked.size == up.size }
+                // ancestorsOf ends where a parent repeats: then the walk went round a loop back to [again] (the top itself too).
+                val again = (walked.lastOrNull() ?: top).parentId.takeIf { walked.size == up.size }
                 val round = if (again == top.nodeId) listOf(top) + walked else walked.dropWhile { it.nodeId != again }
                 val fixed = round.filter { !it.movable || it.nodeId == FilesyncProtocol.DesktopsNodeId }
                 if (round.isNotEmpty() && fixed.isEmpty()) toExit += round.first().nodeId
