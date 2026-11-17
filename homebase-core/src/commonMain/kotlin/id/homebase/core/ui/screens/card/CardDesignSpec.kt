@@ -97,7 +97,7 @@ object CardDesignSpecs {
             ALL_OPTIONS,
             portraitSlots = 1,
             presetOrder = listOf("links", "moments", "chat"),
-            defaults = mapOf(CardOption.BACKGROUND to "circles", CardOption.DISPLAY_FONT to "montserrat-alt", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SHAPE to "circle", CardOption.BLOCK_STYLE to "boxed", CardOption.SOCIALS_STYLE to "bar"),
+            defaults = mapOf(CardOption.BACKGROUND to "circles", CardOption.DISPLAY_FONT to "montserrat-alt", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SIZE to DEFAULT_PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE to "circle", CardOption.BLOCK_STYLE to "boxed", CardOption.SOCIALS_STYLE to "bar"),
             accent = "#4FD1C5",
             schemes = listOf(
                 CardColourScheme("forest", "#1E5B45", "#FFFFFF", "#BFD6CC", "#FFFFFF", "#173B2E", listOf("#F2B84B", "#9BE3B8", "#7FD4E8", "#F5C6A5")),
@@ -116,7 +116,7 @@ object CardDesignSpecs {
             orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 2,
             presetOrder = listOf("chat", "links", "moments"),
-            defaults = mapOf(CardOption.BACKGROUND to "speckle", CardOption.DISPLAY_FONT to "caveat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SHAPE to "square", CardOption.SOCIALS_STYLE to "wordmark"),
+            defaults = mapOf(CardOption.BACKGROUND to "speckle", CardOption.DISPLAY_FONT to "caveat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SIZE to DEFAULT_PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE to "square", CardOption.SOCIALS_STYLE to "wordmark"),
             accent = "#B4553A",
             schemes = listOf(
                 CardColourScheme("sage", "#DDE5D3", "#26331F", "#56664A", "#FFFFFF", "#26331F", listOf("#3F7A3A", "#B4553A", "#2E6F8F", "#8A5A00")),
@@ -137,7 +137,7 @@ object CardDesignSpecs {
             orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 1,
             presetOrder = listOf("chat", "moments", "links"),
-            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "archivo-black", CardOption.TEXT_FONT to "space-mono", CardOption.PORTRAIT_SHAPE to "square", CardOption.BLOCK_STYLE to "row", CardOption.SOCIALS_STYLE to "handles"),
+            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "archivo-black", CardOption.TEXT_FONT to "space-mono", CardOption.PORTRAIT_SIZE to DEFAULT_PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE to "square", CardOption.BLOCK_STYLE to "row", CardOption.SOCIALS_STYLE to "handles"),
             accent = "#7FD4E8",
             schemes = listOf(
                 CardColourScheme("ink", "#0D1B2A", "#E3ECF5", "#8EA3B8", "#1B2E44", "#E3ECF5", listOf("#7FD4E8", "#F2B84B", "#4FD1C5", "#8B7CF6")),
@@ -156,7 +156,7 @@ object CardDesignSpecs {
             WITHOUT_BLOCK_STYLE,
             portraitSlots = 1,
             presetOrder = listOf("links", "moments", "chat"),
-            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "montserrat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SHAPE to "circle", CardOption.SOCIALS_STYLE to "glyphs"),
+            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "montserrat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SIZE to DEFAULT_PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE to "circle", CardOption.SOCIALS_STYLE to "glyphs"),
             accent = "#1A66D6",
             presetAccents = listOf("#2E6FB5", "#5A4FB5", "#1F7A70", "#C23B2A"),
             schemes = listOf(
@@ -177,7 +177,7 @@ object CardDesignSpecs {
 
     /** The value [option] shows as selected: the owner's override, else what [design]'s preset draws. */
     fun selectedValue(design: String, option: CardOption, override: String?): String? =
-        override ?: if (option == CardOption.PORTRAIT_SIZE) DEFAULT_PORTRAIT_SIZE else of(design)?.defaults?.get(option)
+        override ?: of(design)?.defaults?.get(option)
 
     /** [design]'s own scheme on [ground], or null for the preset's colours or a ground the design doesn't offer. */
     fun schemeFor(design: String, ground: String?): CardColourScheme? =

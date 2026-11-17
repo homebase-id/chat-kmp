@@ -328,7 +328,7 @@ private fun OptionControl(
                 selected = CardDesignSpecs.selectedValue(design, option, overrides.valueOf(option)),
                 enabled = enabled,
                 chipHeight = chipHeight,
-                onSelect = { onOption(option, it.takeIf { v -> v != CardDesignSpecs.DEFAULT_PORTRAIT_SIZE }) },
+                onSelect = { onOption(option, it.takeIf { v -> v != preset }) },
             ) { size ->
                 if (sizeGlyphs) {
                     SizeGlyph(portraitShape, size.orEmpty())
