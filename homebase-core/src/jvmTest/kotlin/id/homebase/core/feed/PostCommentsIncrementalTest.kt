@@ -76,6 +76,7 @@ class PostCommentsIncrementalTest {
             outboxSync = env.outboxSync,
             uploadService = env.uploadService,
             optimisticWriter = env.optimisticWriter,
+            payloadCacheSeeder = env.payloadCacheSeeder,
             fileOps = env.fileOps,
             driveQueryProvider = driveQueryProvider,
             // Unconfined so the EventBus collector subscribes eagerly; a StandardTestDispatcher

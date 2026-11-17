@@ -63,6 +63,7 @@ class FeedPostSenderDeletePathsTest {
         outboxSync = env.outboxSync,
         uploadService = env.uploadService,
         optimisticWriter = env.optimisticWriter,
+        payloadCacheSeeder = env.payloadCacheSeeder,
         fileOps = env.fileOps,
         userPreferences = env.userPreferences,
         scope = env.scope,

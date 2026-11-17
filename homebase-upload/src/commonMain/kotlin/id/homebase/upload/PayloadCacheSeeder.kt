@@ -4,14 +4,15 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.FileOperationsProvider
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
 
 /**
- * Seeds the encrypted payload/thumbnail disk cache with the bytes that just went
+ * Seeds the payload/thumbnail disk cache with the bytes that just went
  * into the outbox, keyed under the optimistic fileId, so a just-sent image shows
  * its sharp thumbnail through the "finalizing" window instead of the blurry
  * embedded preview — and so a failed send's media stays recoverable.
  *
- * Shared by every optimistic-write sender (Chat, Moments, Vault, Stickers). The
+ * Shared by every optimistic-write sender, encrypted or plaintext. The
  * read path requests the thumbnail at its *native* size (see
  * `selectThumbSize`/`thumbSizesFrom`), so the keys written here — `(driveId,
  * fileId, payloadKey, pixelWidth, pixelHeight)` with `lastModified = null` — match
@@ -34,7 +35,8 @@ open class PayloadCacheSeeder(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
-    open suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
+    /** [encrypted] false for a plaintext upload (a public post): its bytes are cached as the server serves them. */
+    open suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle, encrypted: Boolean) {
         for (payload in bundle.payloads) {
             try {
                 // Probe the size BEFORE readFileBytes — the read buffers the whole
@@ -48,20 +50,23 @@ open class PayloadCacheSeeder(
                     }
                     continue
                 }
-                driveFileProvider.cachePayloadBytesEncrypted(
+                driveFileProvider.cachePayloadBytes(
                     driveId = driveId,
                     fileId = fileId,
                     key = payload.key,
                     bytes = fileOperationsProvider.readFileBytes(payload.filePath),
                     contentType = payload.contentType,
+                    encrypted = encrypted,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.w(throwable = e, tag = TAG) { "seed: payload seed failed (non-fatal) key=${payload.key} fileId=$fileId" }
             }
         }
         for (thumb in bundle.thumbnails) {
             try {
-                driveFileProvider.cacheThumbBytesEncrypted(
+                driveFileProvider.cacheThumbBytes(
                     driveId = driveId,
                     fileId = fileId,
                     payloadKey = thumb.key,
@@ -69,7 +74,10 @@ open class PayloadCacheSeeder(
                     height = thumb.pixelHeight,
                     bytes = thumb.thumbnailBytes,
                     contentType = thumb.contentType,
+                    encrypted = encrypted,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.w(throwable = e, tag = TAG) { "seed: thumb seed failed (non-fatal) key=${thumb.key} ${thumb.pixelWidth}x${thumb.pixelHeight} fileId=$fileId" }
             }

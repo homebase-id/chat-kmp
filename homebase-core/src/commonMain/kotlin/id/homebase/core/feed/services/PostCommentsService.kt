@@ -13,9 +13,9 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
-import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
@@ -40,10 +40,13 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.feedLabeledDrive
+import id.homebase.core.settings.UserPreferences
 import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.PayloadCacheSeeder
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
-import id.homebase.core.settings.UserPreferences
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.Uuid
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -51,8 +54,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.uuid.Uuid
 
 // Threading is one level: a top-level comment has groupId = postId, a reply has groupId = parentCommentId.
 @OptIn(ExperimentalEncodingApi::class)
@@ -63,6 +64,7 @@ class PostCommentsService(
     private val outboxSync: OutboxSync,
     private val uploadService: UploadService,
     private val optimisticWriter: OptimisticWriter,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val fileOps: FileOperationsProvider,
     private val driveQueryProvider: DriveQueryProvider,
     private val scope: CoroutineScope,
@@ -419,6 +421,7 @@ class PostCommentsService(
             enqueuePlaintextUpload(
                 outboxSync = outboxSync,
                 optimisticWriter = optimisticWriter,
+                payloadCacheSeeder = payloadCacheSeeder,
                 fileOps = fileOps,
                 request = UploadFileRequest(
                     driveId = uploadDrive,
