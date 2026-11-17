@@ -10,12 +10,15 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * [out] holds [source]'s own media: the index up front, every sample byte for byte with its timing and key flag,
+ * [out] holds [source]'s own media: the index after the samples, every sample byte for byte with its timing and key flag,
  * and, with an ffmpeg on the machine, the same decoded frames, audio packets and A/V offset.
  */
 internal suspend fun assertSameMedia(fileOps: FileOperationsProvider, source: File, out: File) {
     val written = out.readBytes()
-    assertEquals(listOf("ftyp", "moov", "mdat"), mp4Boxes(written, 0, written.size).map { it.type }, "index up front")
+    val boxes = mp4Boxes(written, 0, written.size)
+    // The mdat's size is written back last; only the right one lets the walk reach the moov and the file's end.
+    assertEquals(listOf("ftyp", "mdat", "moov"), boxes.map { it.type })
+    assertEquals(written.size, boxes.last().end)
     val ours = assertNotNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, out.absolutePath))))
     val theirs = assertNotNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, source.absolutePath))))
     val original = source.readBytes()

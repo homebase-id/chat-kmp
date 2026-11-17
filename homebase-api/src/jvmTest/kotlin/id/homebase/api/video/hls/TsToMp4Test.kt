@@ -15,6 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -34,12 +35,9 @@ class TsToMp4Test {
     fun aVideoWithItsIndexLastToo() = runTest { check("moov_last.mp4") }
 
     @Test
-    fun aTsTheDownloadCouldntSizeFailsInTheRemuxNotTheDownload() = runTest {
-        val sizing = TsSizing()
-        sizing.feed(ByteArray(4096) { 0x47 }) // sync bytes and nothing behind them
-        val notTs = File(cache, "garbage.ts").apply { writeBytes(ByteArray(4096) { 0x47 }) }
-        val out = File(cache, "garbage.mp4")
-        assertFalse(VideoCompressionService.remuxTsToMp4(fileOps, notTs.absolutePath, out.absolutePath, sizing))
+    fun aStreamThatIsntATsFailsAndLeavesNoOutput() = runTest {
+        val out = File(cache, "streamed-junk.mp4")
+        assertFalse(VideoCompressionService.remuxTsToMp4(fileOps, flowOf(ByteArray(4096) { 0x47 }, Random.nextBytes(50_000)), out.absolutePath, "junk"))
         assertFalse(out.exists())
     }
 
@@ -74,14 +72,13 @@ class TsToMp4Test {
 
         assertSameMedia(fileOps, source, out)
 
-        // Sized as a download writes it, in whatever chunks arrive, even ones smaller than a TS packet: the same file.
+        // Streamed as a download hands it over, in whatever chunks arrive, even ones smaller than a TS packet.
         val bytes = ts.readBytes()
         for (chunkSize in listOf(16, 100, 65_537)) {
-            val sizing = TsSizing()
-            for (at in bytes.indices step chunkSize) sizing.feed(bytes.copyOfRange(at, minOf(at + chunkSize, bytes.size)))
-            val fromDownload = File(cache, "$name.sized$chunkSize.mp4")
-            TsToMp4.remux(fileOps, ts.absolutePath, fromDownload.absolutePath, sizing)
-            assertContentEquals(out.readBytes(), fromDownload.readBytes(), "fed in $chunkSize-byte chunks")
+            val chunks = (bytes.indices step chunkSize).map { bytes.copyOfRange(it, minOf(it + chunkSize, bytes.size)) }
+            val streamed = File(cache, "$name.streamed$chunkSize.mp4")
+            TsToMp4.remux(fileOps, chunks.asFlow(), streamed.absolutePath, name)
+            assertContentEquals(out.readBytes(), streamed.readBytes(), "streamed in $chunkSize-byte chunks")
         }
     }
 }

@@ -11,75 +11,51 @@ import id.homebase.api.video.hls.MpegTs.NAL_SPS
 import id.homebase.api.video.hls.MpegTs.PACKET
 import id.homebase.api.video.hls.MpegTs.STREAM_AAC_ADTS
 import id.homebase.api.video.hls.MpegTs.STREAM_H264
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 /**
- * Copies the H.264 and AAC of an MPEG-TS into an MP4 without re-encoding, as `ffmpeg -c copy -movflags +faststart`
- * does: the samples are sized first ([TsSizing]) so the index can go up front, then copied behind it. Without a
- * [sizing] fed the TS already, this sizes it itself. Throws when [tsPath] has no H.264 in MPEG-TS.
+ * Copies the H.264 and AAC of an MPEG-TS into an MP4 without re-encoding, in one pass as the TS arrives: `ftyp`, the
+ * samples in one `mdat`, then the `moov` indexing them, and last the `mdat`'s size, written back in place. The index at
+ * the end is fine for a file played from disk; only streaming over HTTP wants it first. Throws when the TS has no
+ * H.264, or audio that isn't AAC; [label] names the TS in that error.
  */
 internal object TsToMp4 {
-    suspend fun remux(fileOps: FileOperationsProvider, tsPath: String, outputPath: String, sizing: TsSizing? = null) {
-        val sized = sizing ?: TsSizing().also { s -> fileOps.readFileAsFlow(tsPath, CHUNK).collect { s.feed(it) } }
-        val header = sized.header(tsPath)
+    suspend fun remux(fileOps: FileOperationsProvider, tsPath: String, outputPath: String) =
+        remux(fileOps, fileOps.readFileAsFlow(tsPath, CHUNK), outputPath, tsPath)
+
+    suspend fun remux(fileOps: FileOperationsProvider, ts: Flow<ByteArray>, outputPath: String, label: String) {
+        val demuxer = TsDemuxer()
+        val table = SampleTable()
         fileOps.writeStream(outputPath, flow {
-            emit(header)
+            emit(SampleTable.FTYP + SampleTable.mdatHeader(0))
             val out = ByteBuilder(CHUNK)
-            val demuxer = TsDemuxer()
             suspend fun copy(samples: List<TsSample>) = samples.forEach { sample ->
+                table.add(sample)
                 out.add(sample.data)
                 if (out.size >= CHUNK) emit(out.take())
             }
-            fileOps.readFileAsFlow(tsPath, CHUNK).collect { copy(demuxer.feed(it)) }
+            ts.collect { copy(demuxer.feed(it)) }
             copy(demuxer.finish())
             if (out.size > 0) emit(out.take())
+            // A saved video without its sound would be worse than a clear failure.
+            check(demuxer.unsupportedAudioType < 0) { "audio stream type 0x${demuxer.unsupportedAudioType.toString(16)} isn't AAC" }
+            val avc = checkNotNull(demuxer.avc) { "no H.264 in $label" }
+            emit(table.moov(avc, demuxer.aac, firstOffset = (SampleTable.FTYP.size + SampleTable.MDAT_HEADER).toLong()))
         })
+        fileOps.overwrite(outputPath, SampleTable.FTYP.size.toLong(), SampleTable.mdatHeader(table.dataBytes))
     }
 
     private const val CHUNK = 256 * 1024
-}
-
-/**
- * The remux's first pass, fed the TS's bytes in order as they arrive: every sample's size and time, for the index.
- * One use: fed once, then [header] once.
- */
-internal class TsSizing {
-    private val table = SampleTable()
-    private val demuxer = TsDemuxer(withData = false)
-    private var failure: Exception? = null
-    private var finished = false
-
-    // Fed by a download, which mustn't fail over a bad TS: the error waits for [header], inside the remux's handling.
-    fun feed(chunk: ByteArray) {
-        check(!finished) { "fed after the header was built" }
-        if (failure != null) return
-        try {
-            demuxer.feed(chunk).forEach { table.add(it) }
-        } catch (e: Exception) {
-            failure = e
-        }
-    }
-
-    /** The MP4's ftyp and moov, once every byte has been fed. */
-    fun header(tsPath: String): ByteArray {
-        check(!finished) { "the header was already built" }
-        finished = true
-        failure?.let { throw it }
-        demuxer.finish().forEach { table.add(it) }
-        // A saved video without its sound would be worse than a clear failure.
-        check(demuxer.unsupportedAudioType < 0) { "audio stream type 0x${demuxer.unsupportedAudioType.toString(16)} isn't AAC" }
-        return table.header(checkNotNull(demuxer.avc) { "no H.264 in $tsPath" }, demuxer.aac)
-    }
 }
 
 /** A frame as the MP4 stores it: H.264 with 4-byte NAL lengths, or raw AAC. Times in 90 kHz ticks. */
 internal class TsSample(val video: Boolean, val dts: Long, val pts: Long, val isKey: Boolean, val size: Int, val data: ByteArray)
 
 /**
- * Splits 188-byte TS packets into PES per stream, and PES into MP4 samples; without [withData], only their sizes.
- * Tracks are known from the first frames.
+ * Splits 188-byte TS packets into PES per stream, and PES into MP4 samples. Tracks are known from the first frames.
  */
-internal class TsDemuxer(private val withData: Boolean = true) {
+internal class TsDemuxer {
     var avc: Mp4Track.Avc? = null
         private set
     var aac: Mp4Track.Aac? = null
@@ -244,15 +220,13 @@ internal class TsDemuxer(private val withData: Boolean = true) {
                     if (type in 1..5) slices++
                     val length = nalEnd - nalStart
                     size += 4 + length
-                    if (withData) {
-                        sample.addU32(length.toLong())
-                        sample.add(pes, nalStart, length)
-                    }
+                    sample.addU32(length.toLong())
+                    sample.add(pes, nalStart, length)
                 }
             }
         }
         if (avc == null && sps.isNotEmpty() && pps.isNotEmpty()) avc = Mp4Track.Avc(4, sps, pps)
-        val data = if (withData) sample.take() else EMPTY
+        val data = sample.take()
         if (slices > 0 && avc != null) ready += TsSample(true, dts, pts, isKey, size, data)
     }
 
@@ -305,7 +279,7 @@ internal class TsDemuxer(private val withData: Boolean = true) {
                 channels = ((pes[at + 2].toInt() and 1) shl 2) or ((pes[at + 3].toInt() shr 6) and 3),
             ).takeIf { it.sampleRateIndex < Mp4Track.Aac.SAMPLE_RATES.size }?.also { aac = it } ?: return
             val t = pts + frame * AAC_FRAME * 90_000L / track.sampleRate
-            val data = if (withData) pes.copyOfRange(at + headerSize, at + length) else EMPTY
+            val data = pes.copyOfRange(at + headerSize, at + length)
             ready += TsSample(false, t, t, true, length - headerSize, data)
             frame++
             at += length
@@ -313,7 +287,6 @@ internal class TsDemuxer(private val withData: Boolean = true) {
     }
 
     private companion object {
-        val EMPTY = ByteArray(0)
         const val SYNC = 0x47
         const val WRAP = 1L shl 33
         const val MAX_PARAMETER_SETS = 32

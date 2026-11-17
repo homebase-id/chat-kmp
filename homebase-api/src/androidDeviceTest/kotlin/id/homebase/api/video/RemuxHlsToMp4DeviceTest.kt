@@ -10,13 +10,13 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.AndroidFileOperationsProvider
-import id.homebase.api.video.hls.TsSizing
 import java.io.File
 import java.nio.ByteBuffer
 import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -67,24 +67,20 @@ class RemuxHlsToMp4DeviceTest {
             assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, ts.absolutePath, ours.absolutePath))
             val oursMs = System.currentTimeMillis() - started
 
-            // As a save does it, roughly: sized as the TS is written (here from 64 KB chunks already in memory; a download
-            // feeds its own, smaller chunks in the same coroutine as its writes), then one read to copy.
+            // As a save does it: the decrypted stream remuxed as it arrives, no .ts (here from 64 KB chunks in memory).
             val chunks = ts.readBytes().let { b -> (b.indices step 65_536).map { b.copyOfRange(it, minOf(it + 65_536, b.size)) } }
-            val sizingStarted = System.currentTimeMillis()
-            val sizing = TsSizing().apply { chunks.forEach { feed(it) } }
-            val sizingMs = System.currentTimeMillis() - sizingStarted
-            val once = File(dir, "once.mp4")
-            val onceStarted = System.currentTimeMillis()
-            assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, ts.absolutePath, once.absolutePath, sizing))
-            val onceMs = System.currentTimeMillis() - onceStarted
-            assertTrue(ours.readBytes().contentEquals(once.readBytes()), "the same MP4 either way")
+            val streamed = File(dir, "streamed.mp4")
+            val streamedStarted = System.currentTimeMillis()
+            assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, chunks.asFlow(), streamed.absolutePath, source.name))
+            val streamedMs = System.currentTimeMillis() - streamedStarted
+            assertTrue(ours.readBytes().contentEquals(streamed.readBytes()), "the same MP4 either way")
 
             val expected = tracks(compressed)
             val got = tracks(ours)
             Log.i(
                 "RemuxBenchmark",
-                "${source.name} ${source.length() / 1000} kB: two reads ${oursMs} ms; sized during download ${sizingMs} ms + one read " +
-                    "${onceMs} ms; ${ours.length() / 1000} kB $got; source $expected",
+                "${source.name} ${source.length() / 1000} kB: from the .ts ${oursMs} ms; streamed, no .ts ${streamedMs} ms; " +
+                    "${ours.length() / 1000} kB $got; source $expected",
             )
             assertEquals(expected.size, got.size, "same frame size")
             assertEquals(expected.audio, got.audio, "audio kept")

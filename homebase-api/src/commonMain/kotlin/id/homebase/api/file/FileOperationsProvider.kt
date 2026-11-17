@@ -176,6 +176,18 @@ interface FileOperationsProvider {
     suspend fun writeDownload(path: String, data: Flow<ByteArray>) = writeStream(path, data)
 
     /**
+     * Writes [bytes] over the existing file at [path] from [offset], leaving the rest as it is: for a size a writer only
+     * knows at the end. The file must reach `offset + bytes.size` already. This default rewrites the whole file;
+     * providers that can seek write just the bytes.
+     */
+    suspend fun overwrite(path: String, offset: Long, bytes: ByteArray) {
+        val all = readFileBytes(path)
+        require(offset >= 0 && offset + bytes.size <= all.size) { "overwrite past the end of $path" }
+        bytes.copyInto(all, offset.toInt())
+        writeStream(path, flowOf(all))
+    }
+
+    /**
      * Resolves a path that may be a content URI (Android) to a real filesystem path
      * by copying it to a temp file. On platforms without content URIs, returns [path] unchanged.
      */

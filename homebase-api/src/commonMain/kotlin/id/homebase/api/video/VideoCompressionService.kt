@@ -3,7 +3,6 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.hls.TsSizing
 import id.homebase.api.video.hls.TsToMp4
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -16,6 +15,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.Flow
 
 /** Marks heavy video work nobody is waiting on: it stops for any that someone is. */
 object BackgroundVideoWork : AbstractCoroutineContextElement(Key) {
@@ -132,16 +132,20 @@ object VideoCompressionService : VideoCompressor, VideoProber {
      * platform. False, logged, when [tsPath] isn't H.264 (and AAC) in MPEG-TS; nothing is left at [outputPath] then.
      */
     suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, tsPath: String, outputPath: String): Boolean =
-        remuxTsToMp4(fileOps, tsPath, outputPath, sizing = null)
+        remuxing(fileOps, outputPath, tsPath) { TsToMp4.remux(fileOps, tsPath, outputPath) }
 
-    internal suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, tsPath: String, outputPath: String, sizing: TsSizing?): Boolean = try {
-        TsToMp4.remux(fileOps, tsPath, outputPath, sizing)
+    /** [remuxTsToMp4] on the TS as it arrives (a download's decrypted stream), with no `.ts` written at all. */
+    internal suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, ts: Flow<ByteArray>, outputPath: String, label: String): Boolean =
+        remuxing(fileOps, outputPath, label) { TsToMp4.remux(fileOps, ts, outputPath, label) }
+
+    private suspend fun remuxing(fileOps: FileOperationsProvider, outputPath: String, label: String, remux: suspend () -> Unit): Boolean = try {
+        remux()
         true
     } catch (e: CancellationException) {
         fileOps.deleteTempFile(outputPath)
         throw e
     } catch (e: Exception) {
-        Logger.e(tag = "VideoCompressionService", throwable = e) { "remux of $tsPath failed" }
+        Logger.e(tag = "VideoCompressionService", throwable = e) { "remux of $label failed" }
         fileOps.deleteTempFile(outputPath)
         false
     }

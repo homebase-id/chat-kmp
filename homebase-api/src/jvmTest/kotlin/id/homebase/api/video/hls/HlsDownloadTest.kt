@@ -23,6 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 import okio.FileSystem
 
@@ -32,9 +33,19 @@ import okio.FileSystem
  */
 class HlsDownloadTest {
     private val cache = Files.createTempDirectory("hls-download").toFile()
-    private val tsReads = mutableListOf<String>()
+    private val tsUses = mutableListOf<String>()
     private val fileOps = object : OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath) {
-        override fun readFileAsFlow(path: String, chunkSize: Int) = super.readFileAsFlow(path, chunkSize).also { if (path.endsWith(".ts")) tsReads += path }
+        override fun readFileAsFlow(path: String, chunkSize: Int) = super.readFileAsFlow(path, chunkSize).also { if (path.endsWith(".ts")) tsUses += "read $path" }
+
+        override suspend fun writeStream(path: String, data: Flow<ByteArray>) {
+            if (path.endsWith(".ts")) tsUses += "write $path"
+            super.writeStream(path, data)
+        }
+
+        override suspend fun writeDownload(path: String, data: Flow<ByteArray>) {
+            if (path.endsWith(".ts")) tsUses += "write $path"
+            super.writeDownload(path, data)
+        }
     }
     private val keyHeader = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
     private val clients = mutableListOf<HttpClient>()
@@ -57,9 +68,10 @@ class HlsDownloadTest {
         assertTrue(File(segmented.playlistPath).readText().split("#EXTINF").size > 2, "several segments, so boundaries are crossed")
         val stored = File(segmented.segmentsPath).readBytes()
 
+        tsUses.clear() // the fixture's own segmenting writes one
         val mp4 = assertNotNull(server(stored).downloadHlsAsMp4(DRIVE, FILE, "chat_web0", keyHeader, fileOps))
         assertSameMedia(fileOps, source, File(mp4))
-        assertEquals(1, tsReads.size)
+        assertEquals(emptyList(), tsUses, "the download is remuxed as it arrives, with no .ts written or read")
     }
 
     /** A provider whose server holds [stored]: whole, or the byte range a request asks for. */
