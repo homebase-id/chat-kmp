@@ -388,7 +388,14 @@ internal fun ScrollPositionTrigger(listState: LazyListState, position: ScrollPos
     LaunchedEffect(position) {
         if (position?.triggerScroll != true) return@LaunchedEffect
         if (position.animate) {
-            listState.animateScrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+            Logger.i(tag = "MentionJump") { "animate start target=${position.firstVisibleItemIndex} first=${listState.firstVisibleItemIndex} total=${listState.layoutInfo.totalItemsCount}" }
+            try {
+                listState.animateScrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                Logger.i(tag = "MentionJump") { "animate cancelled target=${position.firstVisibleItemIndex} first=${listState.firstVisibleItemIndex}: ${e.message}" }
+                throw e
+            }
+            Logger.i(tag = "MentionJump") { "animate end target=${position.firstVisibleItemIndex} first=${listState.firstVisibleItemIndex}" }
         }
         onConsumed()
     }

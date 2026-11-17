@@ -358,6 +358,7 @@ fun ConversationContent(
         if (pendingMention == null) return@LaunchedEffect
         val key = pendingMention.toString()
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.any { it.key == key } }.first { it }
+        Logger.i(tag = "MentionJump") { "seen on screen $pendingMention" }
         onUiAction(ConversationListUiAction.MentionSeen(pendingMention))
     }
 
@@ -1381,7 +1382,15 @@ fun ConversationContent(
                             JumpToMentionButton(
                                 visible = showScrollToBottom && uiState.nextMention != null,
                                 count = uiState.nextMention?.pendingCount ?: 0,
-                                onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
+                                onClick = {
+                                    val info = listState.layoutInfo
+                                    Logger.i(tag = "MentionJump") {
+                                        "tap next=${uiState.nextMention} first=${listState.firstVisibleItemIndex} " +
+                                            "visible=${info.visibleItemsInfo.firstOrNull()?.index}..${info.visibleItemsInfo.lastOrNull()?.index} " +
+                                            "total=${info.totalItemsCount} messages=${uiState.messages.size}"
+                                    }
+                                    onUiAction(ConversationListUiAction.JumpToNextMention)
+                                },
                             )
                             ScrollToBottomButton(
                                 visible = showScrollToBottom,
