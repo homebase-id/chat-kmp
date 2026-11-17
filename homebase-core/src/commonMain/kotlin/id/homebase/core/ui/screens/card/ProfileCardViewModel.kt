@@ -20,7 +20,9 @@ import id.homebase.api.util.compareStringUuId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.ui.screens.contactbook.UserCircleService
 import id.homebase.core.ui.screens.contactbook.isPresentedByThisApp
+import id.homebase.core.ui.screens.contactbook.isUserMadeCircle
 import id.homebase.core.ui.screens.profile.LoadedProfileAttributes
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.keepingCircles
@@ -89,6 +91,7 @@ data class ProfileCardUiState(
     val attributes: List<ProfileAttribute> = emptyList(),
     val circles: List<CardCircle> = emptyList(),
     val isContentBusy: Boolean = false,
+    val isDeletingCircle: Boolean = false,
     val contentSaves: Int = 0,
     val contentFailures: Int = 0,
     val pendingPublic: ContentWrite? = null,
@@ -108,6 +111,10 @@ data class ProfileCardUiState(
     private val hasStoredCard: Boolean
         get() = selectedCard?.let { !it.isDefault || (it.audience == CardAudience.Public && hasLocalPublicDesign) } ?: false
     val isUnsavedCard: Boolean get() = selectedCard != null && !hasStoredCard
+    val deletableCircle: CardCircle?
+        get() = (selectedAudience as? CardAudience.Circle)
+            ?.let { selected -> circles.firstOrNull { compareStringUuId(it.id, selected.id) } }
+            ?.takeIf { it.deletable }
     val isCircleSelected: Boolean get() = selectedAudience is CardAudience.Circle
     internal val edgeKey: String get() = "${audienceKey(selectedAudience)}/$design"
     private val paletteGround: Int? get() = overrides.palette?.ground?.let(::hexToArgb)
@@ -117,7 +124,13 @@ data class ProfileCardUiState(
     val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy && !isCircleReadOnly
 }
 
-data class CardCircle(val id: String, val name: String, val emoji: String? = null)
+data class CardCircle(
+    val id: String,
+    val name: String,
+    val emoji: String? = null,
+    val deletable: Boolean = false,
+    val memberCount: Int = 0,
+)
 
 internal fun List<CardCircle>.emojiOf(audience: CardAudience): String? =
     (audience as? CardAudience.Circle)?.let { circle -> firstOrNull { compareStringUuId(it.id, circle.id) }?.emoji }
@@ -141,6 +154,7 @@ sealed interface ProfileCardEvent {
     data object DesignSaveFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
+    data object CircleDeleteFailed : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
     data class AudienceChanged(val itemLabel: String, val nowPublic: Boolean) : ProfileCardEvent
     data object ContentRemovedFromCard : ProfileCardEvent
@@ -159,6 +173,7 @@ interface ProfileCardSource {
     suspend fun savePublicCard(design: String, overrides: CardOverrides?)
     val supportsCircleCards: Boolean
     suspend fun circles(): List<CardCircle>
+    suspend fun deleteCircle(circleId: String, removeMembers: Boolean)
     /** Every circle the server holds, disabled, other apps' and system ones included. */
     suspend fun serverCircleIds(): Set<String>
     suspend fun saveCircleCard(card: ProfileCard): ProfileCard?
@@ -179,6 +194,7 @@ class DefaultProfileCardSource(
     private val cardPreferences: CardPreferences,
     private val cardRepository: CardRepository,
     private val connectionProvider: ConnectionNetworkProvider,
+    private val userCircles: UserCircleService,
 ) : ProfileCardSource {
     override suspend fun odinId(): OdinId = ownerSessionRepository.user.filterNotNull().first().odinId
 
@@ -222,6 +238,9 @@ class DefaultProfileCardSource(
     override suspend fun circles(): List<CardCircle> =
         withContext(Dispatchers.Default) { contactsCircles(connectionProvider.getCirclesWithMembers()) }
 
+    override suspend fun deleteCircle(circleId: String, removeMembers: Boolean) =
+        userCircles.delete(circleId, removeMembers)
+
     override suspend fun serverCircleIds(): Set<String> =
         withContext(Dispatchers.Default) { connectionProvider.getCirclesWithMembers().map { it.circle.id }.toSet() }
 
@@ -245,7 +264,15 @@ class DefaultProfileCardSource(
 internal fun contactsCircles(circles: List<CircleWithMembers>): List<CardCircle> =
     circles
         .filter { it.circle.isPresentedByThisApp() && !it.circle.disabled && it.circle.name.isNotBlank() }
-        .map { CardCircle(it.circle.id, it.circle.name, it.circle.emoji?.takeIf(String::isNotBlank)) }
+        .map {
+            CardCircle(
+                it.circle.id,
+                it.circle.name,
+                it.circle.emoji?.takeIf(String::isNotBlank),
+                deletable = it.circle.isUserMadeCircle(),
+                memberCount = it.members.size + it.pendingMembers.size,
+            )
+        }
         .distinctBy { it.id.lowercase() }
         .sortedBy { it.name.lowercase() }
 
@@ -564,6 +591,23 @@ class ProfileCardViewModel(
     }
 
     fun onCardSelected(audience: CardAudience) = selectAudience(audience)
+
+    fun onDeleteCircleConfirmed() {
+        val state = _uiState.value
+        val circle = state.deletableCircle ?: return
+        if (state.isDeletingCircle) return
+        _uiState.update { it.copy(isDeletingCircle = true) }
+        viewModelScope.launch {
+            val deleted = attempt("deleting circle") { source.deleteCircle(circle.id, removeMembers = circle.memberCount > 0) } != null
+            _uiState.update { it.copy(isDeletingCircle = false) }
+            if (deleted) {
+                selectAudience(CardAudience.Public)
+                load(force = true)
+            } else {
+                _events.tryEmit(ProfileCardEvent.CircleDeleteFailed)
+            }
+        }
+    }
 
     // The editor can open long after the card was loaded, and the profile may have changed since.
     fun onContentEditorShown() = load()

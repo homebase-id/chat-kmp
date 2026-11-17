@@ -97,6 +97,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Palette
@@ -177,6 +178,11 @@ import id.homebase.resources.close
 import id.homebase.resources.collapse
 import id.homebase.resources.expand
 import id.homebase.resources.cancel
+import id.homebase.resources.circle_delete
+import id.homebase.resources.circle_delete_body
+import id.homebase.resources.circle_delete_body_members
+import id.homebase.resources.circle_delete_failed
+import id.homebase.resources.circle_delete_title
 import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
@@ -326,6 +332,8 @@ internal fun ProfileCardPager(
     val errCard = stringResource(MR.string.profile_card_error)
     val errShare = stringResource(MR.string.profile_card_share_failed)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
+    val errCircleDelete = stringResource(MR.string.circle_delete_failed)
+    var confirmDeleteCircle by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -356,6 +364,7 @@ internal fun ProfileCardPager(
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
+                ProfileCardEvent.CircleDeleteFailed -> launch { snackbarHostState.showSnackbar(errCircleDelete) }
                 ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, ProfileCardEvent.ImportUndoExpired, is ProfileCardEvent.AudienceChanged, ProfileCardEvent.ContentRemovedFromCard -> Unit
             }
         }
@@ -544,6 +553,7 @@ internal fun ProfileCardPager(
                         onEdit = { viewModel.onLeftForEditor(); onEdit() }.takeIf { !overview },
                         onChangeDesign = { viewModel.onLeftForEditor(); onChangeDesign() },
                         onExplainReadOnly = { explainReadOnly = true },
+                        onDelete = { confirmDeleteCircle = true }.takeIf { uiState.deletableCircle != null && !uiState.isDeletingCircle },
                         readOnly = uiState.isCircleReadOnly,
                         pencilContainer = selectedCard?.let(::pencilContainer),
                         overview = overview,
@@ -613,6 +623,29 @@ internal fun ProfileCardPager(
                     viewModel.onShareClicked()
                 },
                 onDismiss = { confirmPublicShare = false },
+            )
+        }
+        val deletable = uiState.deletableCircle
+        if (confirmDeleteCircle && deletable != null) {
+            ReportOverlay()
+            AlertDialog(
+                onDismissRequest = { confirmDeleteCircle = false },
+                title = { Text(stringResource(MR.string.circle_delete_title, deletable.name)) },
+                text = {
+                    Text(
+                        if (deletable.memberCount > 0) stringResource(MR.string.circle_delete_body_members, deletable.memberCount)
+                        else stringResource(MR.string.circle_delete_body),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmDeleteCircle = false
+                        viewModel.onDeleteCircleConfirmed()
+                    }) { Text(stringResource(MR.string.circle_delete)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmDeleteCircle = false }) { Text(stringResource(MR.string.cancel)) }
+                },
             )
         }
         if (explainReadOnly) ReadOnlyCardDialog(onDismiss = { explainReadOnly = false })
@@ -718,6 +751,7 @@ private fun SheetTopChrome(
     onEdit: (() -> Unit)?,
     onChangeDesign: () -> Unit,
     onExplainReadOnly: () -> Unit,
+    onDelete: (() -> Unit)?,
     readOnly: Boolean,
     pencilContainer: Color?,
     overview: Boolean,
@@ -772,6 +806,7 @@ private fun SheetTopChrome(
                             container = pencilContainer,
                             onEdit = edit,
                             onChangeDesign = onChangeDesign,
+                            onDelete = onDelete,
                         )
                     }
                     // A pane has no sheet handle, so it keeps a visible way out.
@@ -922,7 +957,7 @@ private fun ShareToolbar(
 }
 
 @Composable
-private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, container: Color?, onEdit: () -> Unit, onChangeDesign: () -> Unit) {
+private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, container: Color?, onEdit: () -> Unit, onChangeDesign: () -> Unit, onDelete: (() -> Unit)?) {
     var open by remember { mutableStateOf(false) }
     val label = stringResource(MR.string.edit)
     val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
@@ -955,6 +990,15 @@ private fun EditDesignMenu(readOnly: Boolean, onExplainReadOnly: () -> Unit, con
             EditMenuItem(Icons.Outlined.Palette, stringResource(MR.string.profile_card_edit_design), stringResource(MR.string.profile_card_menu_design_desc), fill, ink) {
                 open = false
                 onChangeDesign()
+            }
+            onDelete?.let { delete ->
+                EditMenuItem(
+                    Icons.Outlined.Delete, stringResource(MR.string.circle_delete), stringResource(MR.string.circle_delete_body),
+                    MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer,
+                ) {
+                    open = false
+                    delete()
+                }
             }
         }
     }

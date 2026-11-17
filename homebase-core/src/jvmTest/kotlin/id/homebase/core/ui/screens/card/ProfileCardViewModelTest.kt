@@ -134,6 +134,13 @@ class ProfileCardViewModelTest {
         override suspend fun circles(): List<CardCircle> {
             return circleList
         }
+        val deletedCircles = mutableListOf<Pair<String, Boolean>>()
+        var deleteFails = false
+        override suspend fun deleteCircle(circleId: String, removeMembers: Boolean) {
+            check(!deleteFails) { "delete failed" }
+            deletedCircles += circleId to removeMembers
+            circleList = circleList.filterNot { it.id == circleId }
+        }
         var serverCircles: Set<String>? = null
         var serverCircleReads = 0
         override suspend fun serverCircleIds(): Set<String> {
@@ -1216,6 +1223,62 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.BOARD, vm.uiState.value.design)
         assertEquals(CardDesign.BOARD, host.rendered.last().design)
         assertEquals("public", host.rendered.last().audience?.kind)
+    }
+
+    private val climbing = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing", deletable = true, memberCount = 2)
+
+    @Test
+    fun deletingTheSelectedCircleCardCallsTheServiceDropsTheCardAndSelectsPublic() = runTest(dispatcher) {
+        val source = FakeSource(profile + publicCardAttribute).apply { circleList = listOf(friendsCircle, climbing) }
+        val vm = viewModel(FakeHost(), source)
+        val audience = CardAudience.Circle(climbing.id, climbing.name)
+        vm.onCardOpened(audience)
+        assertEquals(climbing, vm.uiState.value.deletableCircle)
+
+        vm.onDeleteCircleConfirmed()
+        advanceUntilIdle()
+
+        assertEquals(listOf(climbing.id to true), source.deletedCircles)
+        assertTrue(vm.uiState.value.cards.none { it.audience == audience })
+        assertEquals(CardAudience.Public, vm.uiState.value.selectedAudience)
+        assertFalse(vm.uiState.value.isDeletingCircle)
+    }
+
+    @Test
+    fun aFailedCircleDeleteKeepsTheCardAndEmitsTheFailureEvent() = runTest(dispatcher) {
+        val source = FakeSource(profile + publicCardAttribute).apply {
+            circleList = listOf(friendsCircle, climbing)
+            deleteFails = true
+        }
+        val vm = viewModel(FakeHost(), source)
+        val audience = CardAudience.Circle(climbing.id, climbing.name)
+        vm.onCardOpened(audience)
+        val events = mutableListOf<ProfileCardEvent>()
+        backgroundScope.launch { vm.events.collect { events += it } }
+
+        vm.onDeleteCircleConfirmed()
+        advanceUntilIdle()
+
+        assertTrue(ProfileCardEvent.CircleDeleteFailed in events)
+        assertEquals(audience, vm.uiState.value.selectedAudience)
+        assertTrue(vm.uiState.value.cards.any { it.audience == audience })
+        assertFalse(vm.uiState.value.isDeletingCircle)
+    }
+
+    @Test
+    fun builtInAndPublicCardsAreNotDeletable() = runTest(dispatcher) {
+        val source = FakeSource(profile + publicCardAttribute).apply { circleList = listOf(friendsCircle, climbing) }
+        val vm = viewModel(FakeHost(), source)
+        assertNull(vm.uiState.value.deletableCircle)
+        vm.onDeleteCircleConfirmed()
+
+        vm.onCardOpened(friends)
+        assertNull(vm.uiState.value.deletableCircle)
+        vm.onDeleteCircleConfirmed()
+        advanceUntilIdle()
+
+        assertTrue(source.deletedCircles.isEmpty())
+        assertTrue(contactsCircles(listOf(circleDef("Friends", CONTACTS_APP_ID))).none { it.deletable })
     }
 
     @Test
