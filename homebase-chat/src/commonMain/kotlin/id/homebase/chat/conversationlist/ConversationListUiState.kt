@@ -76,7 +76,7 @@ data class ConversationListUiState(
 )
 
 @Immutable
-data class NextMention(val messageId: Uuid, val userDateMs: Long)
+data class NextMention(val messageId: Uuid, val userDateMs: Long, val pendingCount: Int)
 
 @Immutable
 data class MessageListUiState(

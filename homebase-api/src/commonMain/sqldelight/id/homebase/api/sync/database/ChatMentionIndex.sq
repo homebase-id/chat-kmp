@@ -71,3 +71,16 @@ WHERE m.identityId = ?
   AND d.archivalStatus != 2
 ORDER BY m.userDate ASC
 LIMIT 1;
+
+-- Live mentions in a conversation strictly after a given userDate; the jump control's count.
+countMentionsAfter:
+SELECT COUNT(*)
+FROM ChatMentionIndex m
+JOIN DriveMainIndex d
+  ON d.identityId = m.identityId AND d.driveId = m.driveId AND d.uniqueId = m.uniqueId
+WHERE m.identityId = ?
+  AND m.groupId = ?
+  AND m.mentionsMe = 1
+  AND m.userDate > ?
+  AND d.fileState != 0
+  AND d.archivalStatus != 2;

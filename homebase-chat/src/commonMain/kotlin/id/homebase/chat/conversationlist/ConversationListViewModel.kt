@@ -272,9 +272,11 @@ class ConversationListViewModel(
     private fun refreshNextMention(conversationId: Uuid) {
         val cursor = mentionCursor[conversationId] ?: return
         viewModelScope.launch {
-            val next = chatMessageStream.nextUnreadMention(conversationId, cursor)
+            val pending = chatMessageStream.nextUnreadMention(conversationId, cursor)?.let {
+                NextMention(it.uniqueId, it.userDateMs, chatMessageStream.countUnreadMentions(conversationId, cursor))
+            }
             if (mentionCursor[conversationId] == cursor) {
-                _messagesUiState.update { it.copy(nextMention = next?.let { n -> NextMention(n.uniqueId, n.userDateMs) }) }
+                _messagesUiState.update { it.copy(nextMention = pending) }
             }
         }
     }

@@ -1380,6 +1380,7 @@ fun ConversationContent(
                         ) {
                             JumpToMentionButton(
                                 visible = showScrollToBottom && uiState.nextMention != null,
+                                count = uiState.nextMention?.pendingCount ?: 0,
                                 onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
                             )
                             ScrollToBottomButton(
@@ -2359,6 +2360,7 @@ private suspend fun LazyListState.animateScrollToItemUnlessPreempted(index: Int)
 @Composable
 internal fun JumpToMentionButton(
     visible: Boolean,
+    count: Int,
     onClick: () -> Unit,
 ) {
     androidx.compose.animation.AnimatedVisibility(
@@ -2367,17 +2369,55 @@ internal fun JumpToMentionButton(
         exit = fadeOut() + scaleOut(),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            SmallFloatingActionButton(
-                onClick = onClick,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.AlternateEmail,
-                    contentDescription = stringResource(MR.string.chat_jump_to_mention),
-                )
+            BadgedBox(badge = { CountBadge(count) }) {
+                SmallFloatingActionButton(
+                    onClick = onClick,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AlternateEmail,
+                        contentDescription = stringResource(MR.string.chat_jump_to_mention),
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun CountBadge(count: Int) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = count > 0,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        val badgeScale = remember { Animatable(1f) }
+        var previousCount by remember { mutableIntStateOf(count) }
+        LaunchedEffect(count) {
+            if (count > previousCount) {
+                badgeScale.animateTo(
+                    targetValue = 1f,
+                    animationSpec = keyframes {
+                        durationMillis = 300
+                        1.25f at 100
+                        0.95f at 200
+                        1f at 300
+                    },
+                )
+            }
+            previousCount = count
+        }
+        Badge(
+            modifier = Modifier.graphicsLayer {
+                scaleX = badgeScale.value
+                scaleY = badgeScale.value
+            },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ) {
+            Text(text = if (count > 999) "999+" else count.toString())
         }
     }
 }
@@ -2396,40 +2436,7 @@ internal fun ScrollToBottomButton(
         exit = fadeOut() + scaleOut(),
     ) {
         BadgedBox(
-            badge = {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = unreadCount > 0,
-                    enter = fadeIn() + scaleIn(),
-                    exit = fadeOut() + scaleOut(),
-                ) {
-                    val badgeScale = remember { Animatable(1f) }
-                    var previousCount by remember { mutableIntStateOf(unreadCount) }
-                    LaunchedEffect(unreadCount) {
-                        if (unreadCount > previousCount) {
-                            badgeScale.animateTo(
-                                targetValue = 1f,
-                                animationSpec = keyframes {
-                                    durationMillis = 300
-                                    1.25f at 100
-                                    0.95f at 200
-                                    1f at 300
-                                },
-                            )
-                        }
-                        previousCount = unreadCount
-                    }
-                    Badge(
-                        modifier = Modifier.graphicsLayer {
-                            scaleX = badgeScale.value
-                            scaleY = badgeScale.value
-                        },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ) {
-                        Text(text = if (unreadCount > 999) "999+" else unreadCount.toString())
-                    }
-                }
-            },
+            badge = { CountBadge(unreadCount) },
         ) {
             SmallFloatingActionButton(
                 onClick = onClick,

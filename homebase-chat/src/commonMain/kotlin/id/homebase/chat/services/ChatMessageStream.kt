@@ -441,6 +441,11 @@ class ChatMessageStream(
         return dbm.chatMentionIndex.selectOldestMentionAfter(c.getIdentityId(), conversationId, afterUserDateMs)
     }
 
+    suspend fun countUnreadMentions(conversationId: Uuid, afterUserDateMs: Long): Int =
+        dbm.chatMentionIndex.countMentionsAfter(
+            credentialsManager.requireActiveCredentials().getIdentityId(), conversationId, afterUserDateMs,
+        )
+
     /**
      * True when [messageId] is present in the cached in-memory window for
      * [conversationId]. Lets a jump-to-message caller decide whether it needs a

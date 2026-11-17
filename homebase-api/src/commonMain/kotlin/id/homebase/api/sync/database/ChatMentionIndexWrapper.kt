@@ -66,4 +66,9 @@ class ChatMentionIndexWrapper(
                 .selectOldestMentionAfter(identityId, groupId, afterUserDateMs)
                 .executeAsOneOrNull()
         }?.let { ScannedMessage(it.driveId, it.uniqueId, it.groupId, it.userDate, mentionsMe = true) }
+
+    suspend fun countMentionsAfter(identityId: Uuid, groupId: Uuid, afterUserDateMs: Long): Int =
+        databaseManager.readValue("chatMentionIndex.countMentionsAfter") {
+            delegate.countMentionsAfter(identityId, groupId, afterUserDateMs).executeAsOne().toInt()
+        }
 }

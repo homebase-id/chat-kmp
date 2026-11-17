@@ -87,7 +87,7 @@ class MentionBadgeScreenshotTest {
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            JumpToMentionButton(visible = true, onClick = {})
+                            JumpToMentionButton(visible = true, count = 2, onClick = {})
                             ScrollToBottomButton(visible = true, unreadCount = 4, onClick = {})
                         }
                     }
