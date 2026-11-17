@@ -985,10 +985,7 @@ class ProfileCardViewModel(
             if (useTemplate) PUBLIC_CARD_TEMPLATE.overrides else CardOverrides.EMPTY,
         ))
             .let { card -> if (pendingOverrides != null) card.copy(overrides = pendingOverrides) else card }
-        // A palette this design no longer offers (the retired Cloud ground) is dropped here, so it loads as the default style.
-        val cards = (listOf(publicCard) + circleCards(stored, publicCard))
-            .map { card -> if (card.design in CardDesign.all) card.copy(overrides = card.overrides.prunedFor(card.design)) else card }
-            .sortedCards()
+        val cards = (listOf(publicCard) + circleCards(stored, publicCard)).sortedCards()
         _uiState.update {
             val selected = cards.firstOrNull { card -> card.audience.isSameAs(it.selectedAudience) }?.audience
             it.copy(
