@@ -2734,13 +2734,21 @@
     <string name="profile_card_discard_keep">Keep editing</string>
     <string name="profile_card_nfc">Share card by tapping phones</string>
     <string name="profile_card_nfc_title">Hold your phone near another phone</string>
-    <string name="profile_card_nfc_body">Touch the backs of two Android phones together while Homebase is open. Your card opens on theirs. Works with other Android phones only.</string>
+    <string name="profile_card_nfc_body">Touch the backs of two phones together. Your card opens on theirs.</string>
     <string name="profile_card_nfc_off">NFC is turned off. Turn it on to share your card by tapping phones.</string>
     <string name="profile_card_nfc_open_settings">Open NFC settings</string>
     <string name="profile_card_nfc_switch">Always share by tap while Homebase is open</string>
     <string name="profile_card_nfc_switch_desc">Keeps tap sharing on even when this panel is closed</string>
     <string name="profile_card_nfc_iphone_title">iPhones can't share by tapping</string>
-    <string name="profile_card_nfc_iphone_body">Apple doesn't allow it, so tapping phones together doesn't work from an iPhone, not to another iPhone and not to an Android phone. Show your QR code or send your card link instead. Tap sharing works between Android phones.</string>
+    <string name="profile_card_nfc_iphone_body">Apple doesn't let apps share by tapping phones together.</string>
+    <string name="profile_card_nfc_live">Sharing while this is open</string>
+    <string name="profile_card_nfc_android_only">Works with Android phones only</string>
+    <string name="profile_card_nfc_iphone_to_iphone">iPhone to iPhone</string>
+    <string name="profile_card_nfc_iphone_to_android">iPhone to Android</string>
+    <string name="profile_card_nfc_android_to_android">Android to Android</string>
+    <string name="profile_card_nfc_works">Works</string>
+    <string name="profile_card_nfc_not_possible">Not possible</string>
+    <string name="profile_card_nfc_instead">Show your QR code or send your card link instead.</string>
     <string name="profile_card_nfc_shared">Card shared</string>
 
     <!-- Avatar editor -->

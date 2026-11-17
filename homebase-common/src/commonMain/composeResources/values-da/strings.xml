@@ -1915,13 +1915,21 @@
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>
     <string name="profile_card_nfc_title">Hold din telefon tæt på en anden telefon</string>
-    <string name="profile_card_nfc_body">Rør bagsiden af to Android-telefoner mod hinanden, mens Homebase er åben. Dit kort åbnes på deres. Virker kun med andre Android-telefoner.</string>
+    <string name="profile_card_nfc_body">Rør bagsiden af to telefoner mod hinanden. Dit kort åbnes på deres.</string>
     <string name="profile_card_nfc_off">NFC er slået fra. Slå det til for at dele dit kort ved at holde telefonerne sammen.</string>
     <string name="profile_card_nfc_open_settings">Åbn NFC-indstillinger</string>
     <string name="profile_card_nfc_switch">Del altid ved berøring, mens Homebase er åben</string>
     <string name="profile_card_nfc_switch_desc">Holder deling ved berøring tændt, også når dette panel er lukket</string>
     <string name="profile_card_nfc_iphone_title">iPhones kan ikke dele ved berøring</string>
-    <string name="profile_card_nfc_iphone_body">Apple tillader det ikke, så det virker ikke fra en iPhone, hverken til en anden iPhone eller til en Android-telefon. Vis din QR-kode eller send dit kortlink i stedet. Deling ved berøring virker mellem Android-telefoner.</string>
+    <string name="profile_card_nfc_iphone_body">Apple lader ikke apps dele ved at holde telefonerne sammen.</string>
+    <string name="profile_card_nfc_live">Deler, mens dette er åbent</string>
+    <string name="profile_card_nfc_android_only">Virker kun med Android-telefoner</string>
+    <string name="profile_card_nfc_iphone_to_iphone">iPhone til iPhone</string>
+    <string name="profile_card_nfc_iphone_to_android">iPhone til Android</string>
+    <string name="profile_card_nfc_android_to_android">Android til Android</string>
+    <string name="profile_card_nfc_works">Virker</string>
+    <string name="profile_card_nfc_not_possible">Ikke muligt</string>
+    <string name="profile_card_nfc_instead">Vis din QR-kode eller send dit kortlink i stedet.</string>
     <string name="profile_card_nfc_shared">Kort delt</string>
 
     <!-- Avatar editor -->
