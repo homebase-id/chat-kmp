@@ -440,7 +440,7 @@ class CardContentTest {
 
         val card = wire.putBodies.map { it.jsonObject }.single { it.str("type") == ProfileAttributeTypes.PROFILE_CARD }
         assertEquals(CardDesign.LINKS, card.str("data", "design"))
-        assertEquals("#F1F3F6", card.str("data", "overrides", "palette", "ground"))
+        assertNull(card.str("data", "overrides", "palette", "ground"))
         assertEquals(listOf(WORK_CIRCLE_ID), card["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertFalse(rig.vm.uiState.value.selectedCard!!.isDefault)
 

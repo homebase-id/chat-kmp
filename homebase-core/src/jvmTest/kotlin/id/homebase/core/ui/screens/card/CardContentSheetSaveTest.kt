@@ -4,9 +4,11 @@ package id.homebase.core.ui.screens.card
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -15,6 +17,10 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.profile.ProfileAudience
+import id.homebase.resources.MR
+import id.homebase.resources.profile_card_sheet_not_on_card
+import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.getString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.ExperimentalUuidApi
@@ -109,5 +115,37 @@ class CardContentSheetSaveTest {
         field.performTextClearance()
         field.performTextInput("15123456780")
         onNodeWithText("Save").assertIsEnabled()
+    }
+
+    private val notOnCard = runBlocking { getString(MR.string.profile_card_sheet_not_on_card) }
+
+    @Test
+    fun anExistingTypeTheCardCannotRenderSaysSoInItsSheet() = runComposeUiTest {
+        open(item(ProfileAttributeTypes.DISCORD, mapOf(ProfileAttributeTypes.KEY_DISCORD to "maniac_fighter")))
+        onNodeWithText(notOnCard).assertIsDisplayed()
+    }
+
+    @Test
+    fun anExistingTypeTheCardRendersShowsNoNote() = runComposeUiTest {
+        open(item(ProfileAttributeTypes.TWITTER, mapOf(ProfileAttributeTypes.KEY_TWITTER to "frodo")))
+        onNodeWithText(notOnCard).assertDoesNotExist()
+    }
+
+    @Test
+    fun addingATypeTheCardCannotRenderReplacesTheShownOnCardLine() = runComposeUiTest {
+        setContent {
+            MaterialTheme { ContentSheet(type = ProfileAttributeTypes.DISCORD, card = card, circles = circles, onDismiss = {}) }
+        }
+        onNodeWithText(notOnCard).assertIsDisplayed()
+        onNode(hasText("Shown on the", substring = true)).assertDoesNotExist()
+    }
+
+    @Test
+    fun addingATypeTheCardRendersKeepsTheShownOnCardLine() = runComposeUiTest {
+        setContent {
+            MaterialTheme { ContentSheet(type = ProfileAttributeTypes.TWITTER, card = card, circles = circles, onDismiss = {}) }
+        }
+        onNode(hasText("Shown on the", substring = true)).assertIsDisplayed()
+        onNodeWithText(notOnCard).assertDoesNotExist()
     }
 }
