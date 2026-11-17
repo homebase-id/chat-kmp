@@ -48,7 +48,6 @@ fun CardOverrides.with(
     CardOption.BLOCK_STYLE -> withBlockStyle(value, presetOrder)
 }
 
-// Edits the first portrait, keeping its other fields and any later portraits.
 private fun CardOverrides.withPortrait(edit: (CardPortrait) -> CardPortrait): CardOverrides {
     val all = portraits.orEmpty()
     val edited = listOf(edit(all.firstOrNull() ?: CardPortrait())) + all.drop(1)
