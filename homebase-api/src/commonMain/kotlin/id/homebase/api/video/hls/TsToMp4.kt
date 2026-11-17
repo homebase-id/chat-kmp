@@ -15,9 +15,8 @@ import kotlinx.coroutines.flow.flow
 
 /**
  * Copies the H.264 and AAC of an MPEG-TS into an MP4 without re-encoding, as `ffmpeg -c copy -movflags +faststart`
- * does: the samples are sized first ([TsSizing]) so the index can go up front, then copied behind it. Given the
- * [sizing] a download did as it wrote the TS, this reads the TS once; otherwise it sizes it with a read of its own.
- * Throws when [tsPath] has no H.264 in MPEG-TS.
+ * does: the samples are sized first ([TsSizing]) so the index can go up front, then copied behind it. Without a
+ * [sizing] fed the TS already, this sizes it itself. Throws when [tsPath] has no H.264 in MPEG-TS.
  */
 internal object TsToMp4 {
     suspend fun remux(fileOps: FileOperationsProvider, tsPath: String, outputPath: String, sizing: TsSizing? = null) {
@@ -26,19 +25,15 @@ internal object TsToMp4 {
         fileOps.writeStream(outputPath, flow {
             emit(header)
             val out = ByteBuilder(CHUNK)
-            demux(fileOps, tsPath, withData = true) { sample ->
+            val demuxer = TsDemuxer()
+            suspend fun copy(samples: List<TsSample>) = samples.forEach { sample ->
                 out.add(sample.data)
                 if (out.size >= CHUNK) emit(out.take())
             }
+            fileOps.readFileAsFlow(tsPath, CHUNK).collect { copy(demuxer.feed(it)) }
+            copy(demuxer.finish())
             if (out.size > 0) emit(out.take())
         })
-    }
-
-    private suspend fun demux(fileOps: FileOperationsProvider, tsPath: String, withData: Boolean, onSample: suspend (TsSample) -> Unit): TsDemuxer {
-        val demuxer = TsDemuxer(withData)
-        fileOps.readFileAsFlow(tsPath, CHUNK).collect { chunk -> demuxer.feed(chunk).forEach { onSample(it) } }
-        demuxer.finish().forEach { onSample(it) }
-        return demuxer
     }
 
     private const val CHUNK = 256 * 1024

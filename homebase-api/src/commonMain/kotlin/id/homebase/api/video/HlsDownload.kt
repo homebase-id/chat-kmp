@@ -11,8 +11,7 @@ import kotlin.uuid.Uuid
 
 /**
  * A received HLS video as an MP4 in the media scratch folder, to save or share; null, logged, when its download or
- * remux fails. The caller deletes the MP4. The remux sizes the samples as the download writes the TS, so the TS is
- * read only once, to copy them.
+ * remux fails. The caller deletes the MP4.
  */
 suspend fun DriveFileProvider.downloadHlsAsMp4(
     driveId: Uuid,
@@ -28,6 +27,7 @@ suspend fun DriveFileProvider.downloadHlsAsMp4(
     try {
         var sizing: TsSizing? = null
         val found = streamPayloadDecrypted(driveId, fileId, payloadKey, keyHeader) { bytes ->
+            // One per call: fed twice, a reused one would index samples that aren't in the file.
             val sized = TsSizing().also { sizing = it }
             fileOps.writeDownload(tsPath, bytes.onEach { sized.feed(it) })
         }
