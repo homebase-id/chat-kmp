@@ -280,7 +280,12 @@ internal class FakeCardStore(var attributes: List<ProfileAttribute> = emptyList(
     var deleteResult = true
     var deleteThrows: Exception? = null
 
-    override suspend fun load() = attributes
+    var loads = 0
+
+    override suspend fun load(): List<ProfileAttribute> {
+        loads++
+        return attributes
+    }
 
     override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, options: ProfileWriteOptions): ProfileWriteResponse {
         val priority = options.priority ?: 0

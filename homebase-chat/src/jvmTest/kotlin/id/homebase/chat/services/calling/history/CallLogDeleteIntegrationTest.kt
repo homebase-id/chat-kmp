@@ -15,6 +15,7 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.testChatMessageStream
 import id.homebase.core.calling.CallsPreferences
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -89,6 +90,8 @@ class CallLogDeleteIntegrationTest {
                 eventBus = f.eventBus,
                 optimisticWriter = OptimisticWriter(f.credentialsManager, f.dbm, f.eventBus, f.outboxSync),
                 scope = backgroundScope,
+                // On the test scheduler, so advanceUntilIdle also waits for the window to apply the delete.
+                mapDispatcher = StandardTestDispatcher(testScheduler),
             )
             stream.loadConversation(convo)
             advanceUntilIdle()
