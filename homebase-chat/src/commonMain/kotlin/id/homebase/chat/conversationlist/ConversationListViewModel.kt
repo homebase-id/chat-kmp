@@ -254,12 +254,15 @@ class ConversationListViewModel(
     // Signal re-reads its mention count on every conversation change; a mention can arrive while the chat is open.
     private fun refreshLiveMention() {
         val id = _uiState.value.selectedConversationId ?: return
-        if (_messagesUiState.value.nextMention != null) return
         val convo = _uiState.value.activeConversations.find { it.conversation.id == id }?.conversation ?: return
-        if (!convo.isGroup || convo.unreadMentionCount == 0) return
+        if (!shouldRefreshLiveMention(_messagesUiState.value.nextMention, convo.isGroup, convo.unreadMentionCount, mentionCountAtRefresh)) return
+        mentionCountAtRefresh = convo.unreadMentionCount
         mentionCursor.getOrPut(id) { convo.lastRead.toEpochMilliseconds() }
         refreshNextMention(id)
     }
+
+    // The open conversation's in-memory mention count when the pending mention was last re-read.
+    private var mentionCountAtRefresh: Int? = null
 
     // Signal's model: a mention stops counting once read, so seeing or jumping to it moves on to the next.
     private fun advancePastMention(target: NextMention) {
@@ -1391,6 +1394,7 @@ class ConversationListViewModel(
                 _uiState.value.selectedConversationId?.let {
                     frozenUnreadBoundary.remove(it)
                     mentionCursor.remove(it)
+                    mentionCountAtRefresh = null
                 }
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
@@ -1974,6 +1978,7 @@ class ConversationListViewModel(
             // Only one conversation is viewed at a time; drop any stale boundaries.
             frozenUnreadBoundary.clear()
             mentionCursor.clear()
+            mentionCountAtRefresh = null
             _messagesUiState.update { it.copy(nextMention = null) }
             val convo = _uiState.value.activeConversations
                 .find { it.conversation.id == conversationId }
@@ -2519,3 +2524,9 @@ internal fun resolveNotificationTap(
     return tap.takeIf { conversationIds.contains(it.conversationId) }
 }
 
+internal fun shouldRefreshLiveMention(
+    pending: NextMention?,
+    isGroup: Boolean,
+    unreadMentionCount: Int,
+    countAtLastRefresh: Int?,
+): Boolean = isGroup && unreadMentionCount > 0 && (pending == null || unreadMentionCount != countAtLastRefresh)
