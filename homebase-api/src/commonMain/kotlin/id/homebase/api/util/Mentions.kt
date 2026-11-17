@@ -75,9 +75,6 @@ fun findMentions(text: String): List<Mention> {
     return mentions ?: emptyList()
 }
 
-/**
- * Body-level [Mention.isIdentity]. Blind spot: a body over the header budget is stored as a
- * 400-code-point preview, so a mention further in is not on the device until the full text is fetched.
- */
+/** Body-level [Mention.isIdentity]. Misses mentions past the 400-code-point preview of an over-budget body. */
 fun mentionsIdentity(text: String, odinId: String): Boolean =
     findMentions(text).any { it.isIdentity(odinId) }

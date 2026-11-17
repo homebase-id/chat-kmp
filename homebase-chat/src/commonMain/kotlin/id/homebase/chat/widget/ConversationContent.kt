@@ -2369,7 +2369,7 @@ internal fun JumpToMentionButton(
         exit = fadeOut() + scaleOut(),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // Owner's call: a lone mention is the @ itself; the count only adds information from 2 up.
+            // A lone mention is the @ itself; the count only adds information from 2 up.
             BadgedBox(badge = { CountBadge(if (count >= 2) count else 0) }) {
                 SmallFloatingActionButton(
                     onClick = onClick,
@@ -2427,12 +2427,10 @@ private fun CountBadge(count: Int) {
 internal fun ScrollToBottomButton(
     visible: Boolean,
     unreadCount: Int,
-    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     androidx.compose.animation.AnimatedVisibility(
         visible = visible,
-        modifier = modifier,
         enter = fadeIn() + scaleIn(),
         exit = fadeOut() + scaleOut(),
     ) {

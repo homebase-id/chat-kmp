@@ -251,6 +251,9 @@ class ConversationListViewModel(
     // frozen boundary so opening the conversation (which advances lastRead) does not hide the control.
     private val mentionCursor = mutableMapOf<Uuid, Long>()
 
+    // The open conversation's in-memory mention count when the pending mention was last re-read.
+    private var mentionCountAtRefresh: Int? = null
+
     // Signal re-reads its mention count on every conversation change; a mention can arrive while the chat is open.
     private fun refreshLiveMention() {
         val id = _uiState.value.selectedConversationId ?: return
@@ -260,9 +263,6 @@ class ConversationListViewModel(
         mentionCursor.getOrPut(id) { convo.lastRead.toEpochMilliseconds() }
         refreshNextMention(id)
     }
-
-    // The open conversation's in-memory mention count when the pending mention was last re-read.
-    private var mentionCountAtRefresh: Int? = null
 
     // Signal's model: a mention stops counting once read, so seeing or jumping to it moves on to the next.
     private fun advancePastMention(target: NextMention) {
@@ -1394,8 +1394,8 @@ class ConversationListViewModel(
                 _uiState.value.selectedConversationId?.let {
                     frozenUnreadBoundary.remove(it)
                     mentionCursor.remove(it)
-                    mentionCountAtRefresh = null
                 }
+                mentionCountAtRefresh = null
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
                     it.closeMediaViewer().copy(
