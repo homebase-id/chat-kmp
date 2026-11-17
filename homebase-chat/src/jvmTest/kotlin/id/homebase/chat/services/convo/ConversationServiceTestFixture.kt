@@ -1,5 +1,6 @@
 package id.homebase.chat.services.convo
 
+import id.homebase.upload.ContentHashes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -813,6 +814,7 @@ class FakePayloadBundleEncryptor : PayloadBundleEncryptor {
         bundle: PayloadBundle?,
         aesKey: SecureByteArray,
         scope: CoroutineScope,
+        hashes: ContentHashes?,
     ): PayloadBundle {
         calls += uniqueId
         // Empty bundle regardless of input. Tests that need to assert payload contents

@@ -3,9 +3,11 @@ package id.homebase.photobase.backup
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.platform.BackgroundUploadBridge
 import id.homebase.api.platform.BackgroundUploadBridgeHolder
 import id.homebase.api.platform.BackgroundUploadResults
 import id.homebase.api.sync.database.DeviceBackupAsset
+import id.homebase.upload.PreparedUpload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -44,29 +46,34 @@ class BackgroundSessionUploader(
 
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
-            val spec = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
-            val upload = outbox.prepare(spec)
-            val bodyPath = bodyPath(fileOps, uniqueId)
-            val prepared = try {
-                timed(BackupStage.UploadBody) { uploadProvider.writeUploadBody(upload.request, bodyPath) }
-            } catch (e: Throwable) {
-                runCatching { fileOps.deleteTempFile(bodyPath) }
-                throw e
-            } finally {
-                // The body holds the payloads now.
-                upload.discard()
-            }
-            val taskId = timed(BackupStage.Enqueue) {
-                bridge.enqueue(uniqueId.toString(), prepared.url, prepared.bearerToken, prepared.contentType, bodyPath, wifiOnly())
-            }
-            if (taskId == null) {
-                runCatching { fileOps.deleteTempFile(bodyPath) }
-                throw BackupEnqueueFailedException("the background session refused the upload")
-            }
-            return HandOffResult.Sending(taskId)
+            return requests.build(row, uniqueId, mediaType, exported) { spec ->
+                val upload = outbox.prepare(spec) ?: return@build HandOffResult.ChangedUnderUs
+                HandOffResult.Sending(send(bridge, upload, uniqueId))
+            } ?: HandOffResult.ChangedUnderUs
         } finally {
             exported.deleteTemporaryParts(fileOps)
         }
+    }
+
+    private suspend fun send(bridge: BackgroundUploadBridge, upload: PreparedUpload, uniqueId: Uuid): Long {
+        val bodyPath = bodyPath(fileOps, uniqueId)
+        val prepared = try {
+            timed(BackupStage.UploadBody) { uploadProvider.writeUploadBody(upload.request, bodyPath) }
+        } catch (e: Throwable) {
+            runCatching { fileOps.deleteTempFile(bodyPath) }
+            throw e
+        } finally {
+            // The body holds the payloads now.
+            upload.discard()
+        }
+        val taskId = timed(BackupStage.Enqueue) {
+            bridge.enqueue(uniqueId.toString(), prepared.url, prepared.bearerToken, prepared.contentType, bodyPath, wifiOnly())
+        }
+        if (taskId == null) {
+            runCatching { fileOps.deleteTempFile(bodyPath) }
+            throw BackupEnqueueFailedException("the background session refused the upload")
+        }
+        return taskId
     }
 
     override suspend fun stillSending(rows: Map<DeviceBackupAsset, Uuid>): Set<Uuid> {

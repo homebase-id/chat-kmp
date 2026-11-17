@@ -9,7 +9,10 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.crypto.encryptFileStreaming
+import id.homebase.api.crypto.encryptWithPayloadHash
+import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.video.VideoPayloadProgressPhase
@@ -63,7 +66,8 @@ class PayloadBundleEncryptionService(
         uniqueId: Uuid,
         bundle: PayloadBundle?,
         aesKey: SecureByteArray,
-        scope: CoroutineScope
+        scope: CoroutineScope,
+        hashes: ContentHashes?,
     ): PayloadBundle {
 
         if (bundle == null) return EMPTY_BUNDLE
@@ -100,6 +104,7 @@ class PayloadBundleEncryptionService(
                     newPayloads += payload
                     newThumbnails += bundle.thumbnails.filter { it.key == payload.key }.map { it.copy(thumbnailBytes = encryptBytes(it.thumbnailBytes, keyHeader)) }
                 } else if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
+                    require(hashes?.expected?.containsKey(payload.key) != true) { "a transcoded video can't be checked against its source's hash" }
 
                     val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
                         scope.launch {
@@ -130,14 +135,15 @@ class PayloadBundleEncryptionService(
                     newThumbnails += result.thumbnails
                 } else {
                     val sourcePath = withMetadataStripped(payload, fileOps, staged = false).filePath
-                    val encryptedFile = encryptFile(sourcePath, keyHeader)
+                    val encrypted = encryptFile(sourcePath, keyHeader, payload.key, hashes)
                     if (sourcePath != payload.filePath) {
                         runCatching { fileOps.deleteTempFile(sourcePath) }
                     }
                     newPayloads += payload.copy(
-                        filePath = encryptedFile,
+                        filePath = encrypted.path,
                         iv = keyHeader.iv,
-                        isPreEncrypted = true
+                        isPreEncrypted = true,
+                        hash = encrypted.hash,
                     )
 
                     val encryptedThumbnails =
@@ -164,9 +170,9 @@ class PayloadBundleEncryptionService(
         )
     }
 
-    private suspend fun encryptFile(
-        inputFile: String, keyHeader: KeyHeader
-    ): String {
+    private class Encrypted(val path: String, val hash: PayloadHash?)
+
+    private suspend fun encryptFile(inputFile: String, keyHeader: KeyHeader, payloadKey: String, hashes: ContentHashes?): Encrypted {
         // Defense-in-depth for the swept-mid-send race: the up-front probe in
         // encryptBundle already rejected a missing source, but it could be swept
         // between that probe and this read. A typed throw keeps the send fail-soft.
@@ -175,9 +181,19 @@ class PayloadBundleEncryptionService(
         // The durable outbox staging dir, not upload-temp: this file rides an outbox row until
         // the send completes and must survive sweeps; the outbox reaps it on success or drop.
         val path = fileOps.createOutboxStagingPath(prefix = "enc", suffix = ".encrypted")
-        fileOps.encryptFileStreaming(inputFile, path, keyHeader)
-
-        return path
+        if (hashes == null) {
+            fileOps.encryptFileStreaming(inputFile, path, keyHeader)
+            return Encrypted(path, null)
+        }
+        val hash = fileOps.encryptWithPayloadHash(inputFile, path, keyHeader, hashes.algorithm) { chunk, offset, length ->
+            hashes.onPlaintext(payloadKey, chunk, offset, length)
+        }
+        val expected = hashes.expected[payloadKey]
+        if (expected != null && !expected.contentEquals(hash.plaintextContentHash(keyHeader))) {
+            runCatching { fileOps.deleteTempFile(path) }
+            throw ContentChangedException(payloadKey)
+        }
+        return Encrypted(path, hash)
     }
 
     private suspend fun encryptBytes(

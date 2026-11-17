@@ -55,6 +55,8 @@ class UploadService(
             return UploadOutcome.SourceMissing(listOf(e.path))
         } catch (e: IllegalArgumentException) {
             return UploadOutcome.Failed(e)
+        } catch (e: ContentChangedException) {
+            return UploadOutcome.Failed(e)
         }
         return queue(prepared)
     }
@@ -64,17 +66,19 @@ class UploadService(
      * already encrypted (`isPreEncrypted`, with their IV) become the upload's own from this call on, like the files it
      * makes, and on a throw everything is deleted. Throws [SourceUnavailableException] for a missing source and
      * [IllegalArgumentException] for a public upload that can't be staged or a payload handed over encrypted that
-     * can't be sent as it is.
+     * can't be sent as it is. Throws [ContentChangedException] when a payload no longer matches
+     * [MediaUploadSpec.contentHashes].
      */
     suspend fun prepare(spec: MediaUploadSpec, scope: CoroutineScope): PreparedUpload {
         val encrypted = spec.metadata.isEncrypted
-        val fullBundle = sealOrStage(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, encrypted, scope)
+        val fullBundle = sealOrStage(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, encrypted, scope, spec.contentHashes)
         try {
+            val finished = spec.finishMetadata?.let { spec.copy(metadata = it(spec.metadata), finishMetadata = null) } ?: spec
             val sent = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
             val request = UploadFileRequest(
                 driveId = spec.driveId,
                 keyHeader = spec.keyHeader,
-                metadata = if (encrypted) spec.metadata.encryptContent(spec.keyHeader) else spec.metadata,
+                metadata = if (encrypted) finished.metadata.encryptContent(spec.keyHeader) else finished.metadata,
                 transitOptions = spec.transit,
                 payloads = sent.payloads,
                 thumbnails = sent.thumbnails,
@@ -82,7 +86,7 @@ class UploadService(
                 fileSystemType = spec.requestFileSystemType,
                 sealDescriptorContent = spec.sealDescriptorContent,
             )
-            return PreparedUpload(spec, request, sent, encryptor)
+            return PreparedUpload(finished, request, sent, encryptor)
         } catch (e: Throwable) {
             encryptor.discard(fullBundle)
             throw e
@@ -96,11 +100,13 @@ class UploadService(
         aesKey: SecureByteArray,
         encrypted: Boolean,
         scope: CoroutineScope,
+        hashes: ContentHashes? = null,
     ): PayloadBundle {
         val handed = bundle?.payloads.orEmpty().filter { it.isPreEncrypted }
         try {
             require(handed.all { encrypted && it.iv != null }) { "a payload handed over encrypted needs its IV and an encrypted upload" }
-            return if (encrypted) encryptor.encryptBundle(uniqueId, bundle, aesKey, scope) else encryptor.stageBundle(bundle)
+            require(encrypted || hashes == null) { "payload hashes are for an encrypted upload" }
+            return if (encrypted) encryptor.encryptBundle(uniqueId, bundle, aesKey, scope, hashes) else encryptor.stageBundle(bundle)
         } catch (e: Throwable) {
             if (handed.isNotEmpty()) encryptor.discard(PayloadBundle(handed, emptyList(), emptyList()))
             throw e

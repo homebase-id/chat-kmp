@@ -451,6 +451,7 @@ private class RecordingEncryptor(private val throwMissing: String? = null) : Pay
         bundle: PayloadBundle?,
         aesKey: SecureByteArray,
         scope: CoroutineScope,
+        hashes: ContentHashes?,
     ): PayloadBundle {
         callCount++
         throwMissing?.let { throw SourceUnavailableException(it) }

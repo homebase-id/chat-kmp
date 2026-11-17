@@ -1,5 +1,6 @@
 package id.homebase.core.feed
 
+import id.homebase.upload.ContentHashes
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -135,6 +136,7 @@ private class PassthroughEncryptor : PayloadBundleEncryptor {
         bundle: PayloadBundle?,
         aesKey: Sba,
         scope: CoroutineScope,
+        hashes: ContentHashes?,
     ): PayloadBundle = bundle ?: PayloadBundle(
         payloads = emptyList(),
         thumbnails = emptyList(),

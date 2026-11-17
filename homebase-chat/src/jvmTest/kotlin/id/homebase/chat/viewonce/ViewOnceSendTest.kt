@@ -1,5 +1,6 @@
 package id.homebase.chat.viewonce
 
+import id.homebase.upload.ContentHashes
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -44,6 +45,7 @@ class ViewOnceSendTest {
             bundle: PayloadBundle?,
             aesKey: SecureByteArray,
             scope: CoroutineScope,
+            hashes: ContentHashes?,
         ): PayloadBundle {
             val b = bundle ?: return PayloadBundle(emptyList(), emptyList(), emptyList())
             if (!simulateVideoProcessor) return b

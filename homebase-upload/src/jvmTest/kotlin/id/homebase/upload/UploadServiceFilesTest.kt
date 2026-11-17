@@ -6,9 +6,12 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.crypto.newHasher
+import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseManager
@@ -22,6 +25,7 @@ import io.ktor.http.HttpStatusCode
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -95,6 +99,62 @@ class UploadServiceFilesTest {
     )
 
     private fun exists(path: String) = File(path).exists()
+
+    private fun blake3(path: String): ByteArray = PayloadHashAlgorithm.Blake3.newHasher().run { update(File(path).readBytes()); digest() }
+
+    @Test
+    fun aPayloadThatNoLongerMatchesItsHashIsRefusedWithNothingLeft() = runTest {
+        val first = plain(source("a.pdf"))
+        val second = plain(source("b.pdf")).copy(key = "pdf_1")
+        val hashes = ContentHashes(PayloadHashAlgorithm.Blake3, mapOf(first.key to blake3(first.filePath), second.key to ByteArray(32)))
+
+        assertFailsWith<ContentChangedException> {
+            backgroundScope.service().prepare(spec(Uuid.random(), bundleOf(first, second)).copy(contentHashes = hashes), backgroundScope)
+        }
+
+        assertEquals(2, made.size)
+        assertTrue(made.none(::exists), "the one that matched is deleted too")
+        assertTrue(exists(first.filePath) && exists(second.filePath), "the sources are the caller's")
+    }
+
+    @Test
+    fun aPayloadIsHashedAsItsEncryptedAndTheHeaderFinishedFromWhatWasRead() = runTest {
+        val payload = plain(source("a.pdf"))
+        var read = ""
+        val spec = spec(Uuid.random(), bundleOf(payload)).let { spec ->
+            spec.copy(
+                contentHashes = ContentHashes(PayloadHashAlgorithm.Blake3, mapOf(payload.key to blake3(payload.filePath))) { _, chunk, offset, length ->
+                    read += chunk.decodeToString(offset, offset + length)
+                },
+                finishMetadata = { it.copy(appData = it.appData.copy(content = read)) },
+            )
+        }
+
+        val request = backgroundScope.service().prepare(spec, backgroundScope).request
+
+        val sent = request.payloads.single()
+        assertContentEquals(blake3(payload.filePath), sent.hash!!.plaintextContentHash(KeyHeader(sent.iv!!, spec.keyHeader.aesKey)))
+        val finished = spec.metadata.copy(appData = spec.metadata.appData.copy(content = "the file a.pdf")).encryptContent(spec.keyHeader)
+        assertEquals(finished.appData.content, request.metadata.appData.content)
+    }
+
+    @Test
+    fun anUploadThatAsksForNoHashesSendsNone() = runTest {
+        val request = backgroundScope.service().prepare(spec(Uuid.random(), bundleOf(plain(source("a.pdf")))), backgroundScope).request
+
+        assertNull(request.payloads.single().hash)
+    }
+
+    @Test
+    fun aVideoToTranscodeCantBeCheckedAgainstItsSourcesHash() = runTest {
+        val video = PayloadFile(key = "vid_0", filePath = source("v.mp4"), contentType = "video/mp4")
+        val hashes = ContentHashes(PayloadHashAlgorithm.Blake3, mapOf(video.key to blake3(video.filePath)))
+
+        val outcome = backgroundScope.service().upload(spec(Uuid.random(), bundleOf(video)).copy(contentHashes = hashes), backgroundScope)
+
+        assertIs<IllegalArgumentException>(assertIs<UploadOutcome.Failed>(outcome).cause)
+        assertTrue(made.isEmpty())
+    }
 
     @Test
     fun aQueuedUploadLeavesItsFileForTheOutbox() = runTest {
