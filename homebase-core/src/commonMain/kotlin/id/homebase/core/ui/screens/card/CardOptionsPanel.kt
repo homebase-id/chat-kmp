@@ -848,8 +848,7 @@ private fun optionIcon(option: CardOption): ImageVector = when (option) {
     CardOption.ACCENT -> Icons.Outlined.Colorize
     CardOption.DISPLAY_FONT -> Icons.Outlined.Title
     CardOption.TEXT_FONT -> Icons.Outlined.FormatSize
-    CardOption.PORTRAIT_SHAPE -> Icons.Outlined.AccountCircle
-    CardOption.PORTRAIT_SIZE -> Icons.Outlined.AccountCircle
+    CardOption.PORTRAIT_SHAPE, CardOption.PORTRAIT_SIZE -> Icons.Outlined.AccountCircle
     CardOption.SOCIALS_STYLE -> Icons.Outlined.AlternateEmail
     CardOption.BLOCK_ORDER -> Icons.Outlined.ViewAgenda
     CardOption.BLOCK_STYLE -> Icons.Outlined.Style
