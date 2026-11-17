@@ -282,9 +282,7 @@ class ConversationListViewModel(
             val pending = chatMessageStream.nextUnreadMention(conversationId, cursor)?.let {
                 NextMention(it.uniqueId, it.userDateMs, chatMessageStream.countUnreadMentions(conversationId, cursor))
             }
-            val publish = mentionCursor[conversationId] == cursor
-            Logger.i(tag = "MentionJump") { "refresh cursor=$cursor pending=$pending publish=$publish" }
-            if (publish) {
+            if (mentionCursor[conversationId] == cursor) {
                 _messagesUiState.update { it.copy(nextMention = pending) }
             }
         }
@@ -1485,7 +1483,6 @@ class ConversationListViewModel(
             is ConversationListUiAction.DecryptFile -> mediaDownloadHandler.handleDecryptFile(action)
 
             is ConversationListUiAction.JumpToNextMention -> {
-                Logger.i(tag = "MentionJump") { "vm jump next=${_messagesUiState.value.nextMention} convo=${_uiState.value.selectedConversationId}" }
                 _messagesUiState.value.nextMention?.let { target ->
                     advancePastMention(target)
                     onAction(ConversationListUiAction.ScrollToMessageId(target.messageId))
@@ -1493,7 +1490,6 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.MentionSeen -> {
-                Logger.i(tag = "MentionJump") { "vm seen ${action.messageId} next=${_messagesUiState.value.nextMention}" }
                 _messagesUiState.value.nextMention?.takeIf { it.messageId == action.messageId }?.let(::advancePastMention)
             }
 

@@ -1,6 +1,5 @@
 package id.homebase.chat.conversationlist
 
-import co.touchlab.kermit.Logger
 import id.homebase.core.util.ScrollPosition
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -85,7 +84,6 @@ internal class MessageJumpCoordinator(
         // Before the window checks: an excluded target IS in the window, so they
         // would read it as "not here yet" and arm a retry that can never resolve.
         if (isExcludedFromView(conversationId, messageId)) {
-            Logger.i(tag = "MentionJump") { "coordinator excluded $messageId" }
             reportExcluded(conversationId, messageId)
             return
         }
@@ -98,10 +96,6 @@ internal class MessageJumpCoordinator(
             -1
         }
 
-        Logger.i(tag = "MentionJump") {
-            "coordinator target=$messageId inWindow=${isMessageInWindow(conversationId, messageId)} renderedIndex=$renderedIndex " +
-                "rows=${messagesUiState.value.messages.size}"
-        }
         if (renderedIndex != -1) {
             messagesUiState.update {
                 it.copy(
@@ -118,9 +112,7 @@ internal class MessageJumpCoordinator(
 
         arm(conversationId, messageId)
         messagesUiState.update { it.copy(highlightedMessageId = messageId) }
-        val contained = ensureWindowContains(conversationId, messageId)
-        Logger.i(tag = "MentionJump") { "coordinator armed $messageId contained=$contained" }
-        if (!contained) {
+        if (!ensureWindowContains(conversationId, messageId)) {
             reportUnavailable(conversationId, messageId)
             if (pendingTarget == messageId) disarm()
             messagesUiState.update {
