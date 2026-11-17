@@ -60,12 +60,12 @@ class OutboxBackupUploader(
 
     // A plain send() is skipped in a background wake, where the WebSocket never comes up. Two
     // workers, because a forced drain's own re-entry is a plain send() too.
-    /** The request [handOff] would queue, for a transport of the platform's own. */
-    suspend fun request(spec: MediaUploadSpec): UploadFileRequest = uploadService.buildRequest(spec, scope)
-
     override suspend fun kick() {
         repeat(BULK_STREAMS) { outboxSync.send(force = true) }
     }
+
+    /** What [handOff] would queue, for a transport of the platform's own. */
+    suspend fun request(spec: MediaUploadSpec): UploadFileRequest = uploadService.buildRequest(spec, scope)
 
     private suspend fun handOffOriginal(
         row: DeviceBackupAsset,
@@ -74,7 +74,7 @@ class OutboxBackupUploader(
         exported: ExportedAsset,
     ): HandOffResult {
         val spec = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
-        return handled(spec, timed(BackupStage.Enqueue) { uploadService.upload(spec, scope) })
+        return send(spec) { timed(BackupStage.Enqueue) { uploadService.upload(spec, scope) } }
     }
 
     // The source is checked against its hash as it's read for its location, which an HLS stream has no place
@@ -123,17 +123,24 @@ class OutboxBackupUploader(
         val location = reader.location
         val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
         val spec = photoSpec(photosDriveId, uniqueId, keyHeader, bundle, photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content))
-        return handled(spec, uploadService.upload(spec, scope))
+        return send(spec) { uploadService.upload(spec, scope) }
     }
 
-    private suspend fun handled(spec: MediaUploadSpec, outcome: UploadOutcome): HandOffResult {
-        // What was encrypted here is ours until the Outbox takes it.
-        if (outcome !is UploadOutcome.Enqueued) fileOps.deleteEncrypted(spec.bundle?.payloads)
-        return when (outcome) {
-            is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
-            is UploadOutcome.SourceMissing -> throw AssetPermanentlyUnavailableException("source gone: ${outcome.missingPaths.joinToString()}")
-            UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
-            is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
+    private suspend inline fun send(spec: MediaUploadSpec, upload: () -> UploadOutcome): HandOffResult {
+        var queued = false
+        try {
+            val outcome = upload()
+            queued = outcome is UploadOutcome.Enqueued
+            return when (outcome) {
+                is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
+                // A file staged for this attempt; the next one exports again, and the export says if the asset is gone.
+                is UploadOutcome.SourceMissing -> throw BackupEnqueueFailedException("a staged file is gone: ${outcome.missingPaths.joinToString()}")
+                UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
+                is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
+            }
+        } finally {
+            // What was encrypted here is ours until the Outbox takes it.
+            if (!queued) fileOps.deleteEncrypted(spec.bundle?.payloads)
         }
     }
 

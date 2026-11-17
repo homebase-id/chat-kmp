@@ -230,7 +230,7 @@ class UploadServiceTest {
     }
 
     @Test
-    fun buildRequest_isTheRequestUploadQueues_withNothingQueuedSeededOrWritten() = runTest {
+    fun buildRequest_buildsWhatUploadQueues_withNothingQueuedSeededOrWritten() = runTest {
         val h = buildHarness(backgroundScope)
         val uid = Uuid.random()
         val spec = MediaUploadSpec(
