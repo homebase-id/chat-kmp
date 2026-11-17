@@ -381,6 +381,9 @@ class UploadServiceTest {
 
 /** Fake encryptor: counts calls, echoes the input as "pre-encrypted", or throws a swept source. */
 private class RecordingEncryptor(private val throwMissing: String? = null) : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+
     var callCount = 0
         private set
 

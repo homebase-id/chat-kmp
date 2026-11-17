@@ -13,10 +13,15 @@ interface PayloadBundleEncryptor {
     ): PayloadBundle
 
     /**
-     * [bundle] as an unencrypted upload sends it (a public post): images stripped of metadata when their payload asks,
-     * into staged copies the outbox row owns. Throws [SourceUnavailableException] for a missing source, before anything
-     * is staged, and [IllegalArgumentException] for a video that would need processing: that exists only encrypted.
+     * [bundle] as an unencrypted upload sends it (a public post): every payload copied into outbox staging, which the
+     * row then owns (images stripped of metadata on the way, when their payload asks). Throws
+     * [SourceUnavailableException] for a missing source, before anything is staged, and [IllegalArgumentException] for
+     * a video that would need processing: that exists only encrypted.
      */
-    suspend fun stageBundle(uniqueId: Uuid, bundle: PayloadBundle?): PayloadBundle =
-        bundle ?: PayloadBundle(payloads = emptyList(), thumbnails = emptyList(), previewThumbs = emptyList())
+    suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle
+
+    /** Deletes the copies [stageBundle] made for [staged], when no outbox row took them. */
+    suspend fun discardStaged(staged: PayloadBundle)
 }
+
+val EMPTY_BUNDLE = PayloadBundle(payloads = emptyList(), thumbnails = emptyList(), previewThumbs = emptyList())

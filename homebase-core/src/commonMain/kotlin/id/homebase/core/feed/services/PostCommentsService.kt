@@ -335,7 +335,7 @@ class PostCommentsService(
         val referencedFile = commentReference(post, replyToCommentId)
 
         val attachments = listOfNotNull(attachment)
-        // Encryption preserves payload keys and passes preview thumbs through, so both paths derive them here.
+        // Encrypting or staging keeps payload keys and preview thumbs, so they're derived from the plain bundle here.
         val bundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOps,

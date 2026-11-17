@@ -7,11 +7,14 @@ import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.video.VideoPayloadProcessor
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PayloadBundleEncryptionService
 import id.homebase.upload.UploadOutcome
 import java.io.File
 import java.nio.file.Files
@@ -19,7 +22,9 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.toList
@@ -34,7 +39,8 @@ class PublicUploadTest {
     @Test
     fun aPublicPostsSentCopyIsSeededPlainUnderItsOptimisticFileId() = runTest {
         val dir = Files.createTempDirectory("plaintext-upload").toFile()
-        val env = FeedTestEnv(this, fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, dir.absolutePath))
+        val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, dir.absolutePath)
+        val env = FeedTestEnv(this, fileOps = fileOps, payloadBundleEncryptor = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus()))
         env.login()
         advanceUntilIdle()
         try {
@@ -66,7 +72,10 @@ class PublicUploadTest {
             // Sent as it is: no content encryption on a public post.
             val request = OdinSystemSerializer.deserialize<UploadFileRequest>(assertNotNull(env.outboxRow(drive, uniqueId)).json.decodeToString())
             assertEquals("{\"caption\":\"hi\"}", request.metadata.appData.content)
-            assertEquals(listOf(photo.absolutePath), request.payloads.map { it.filePath })
+            // A staged copy the outbox may delete once sent, never the person's own file.
+            val sent = request.payloads.single().filePath
+            assertNotEquals(photo.absolutePath, sent)
+            assertContentEquals(photo.readBytes(), File(sent).readBytes())
 
             // Every network request fails here: bytes back are the seeded entry, served as they are.
             val payload = env.driveFileProvider.getPayloadBytesDecrypted(drive, fileId, "pst_mdi0", KeyHeader.empty(), null, null, null)
@@ -89,6 +98,34 @@ class PublicUploadTest {
             assertEquals(fileId, row.fileId)
             val thumbs = assertNotNull(row.fileMetadata.payloads?.single()?.thumbnails)
             assertEquals(listOf(320 to 240), thumbs.map { it.pixelWidth to it.pixelHeight })
+        } finally {
+            env.close()
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aMissingSourceComesBackTypedWithNothingQueued() = runTest {
+        val dir = Files.createTempDirectory("public-upload-missing").toFile()
+        val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, dir.absolutePath)
+        val env = FeedTestEnv(this, fileOps = fileOps, payloadBundleEncryptor = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus()))
+        env.login()
+        advanceUntilIdle()
+        try {
+            val uniqueId = Uuid.random()
+            val gone = File(dir, "gone.jpg").absolutePath
+            val outcome = env.uploadService.upload(
+                MediaUploadSpec(
+                    driveId = drive,
+                    uniqueId = uniqueId,
+                    keyHeader = KeyHeader.empty(),
+                    bundle = PayloadBundle(listOf(PayloadFile(key = "pst_mdi0", filePath = gone, contentType = "image/jpeg")), emptyList(), emptyList()),
+                    metadata = UploadFileMetadata(allowDistribution = true, isEncrypted = false, appData = UploadAppFileMetaData(uniqueId = uniqueId)),
+                ),
+                scope = this,
+            )
+            assertEquals(UploadOutcome.SourceMissing(listOf(gone)), outcome)
+            assertNull(env.outboxRow(drive, uniqueId))
         } finally {
             env.close()
             dir.deleteRecursively()

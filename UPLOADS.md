@@ -276,8 +276,8 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 | App | `keyPrefix` | `quality` | `metadata` | `encrypted` | Transport |
 |---|---|---|---|---|---|
 | Chat | `chat_web` | user setting | STRIP | yes | `UploadService` |
-| Moments posts / comments | `mmt_` / `mmc_` (existing 4-digit index) | user setting | STRIP (GPS opt-in kept) | per audience | `UploadService` or public |
-| Feed posts / comments | `pst_mdi_` / `cmmnt_md` | user setting | STRIP | per audience | `UploadService` or public |
+| Moments posts / comments | `mmt_` / `mmc_` (existing 4-digit index) | user setting | STRIP (GPS opt-in kept) | per audience | `UploadService` (a public one staged, not encrypted) |
+| Feed posts / comments | `pst_mdi_` / `cmmnt_md` | user setting | STRIP | per audience | `UploadService` (a public one staged, not encrypted) |
 | Stickers (saved) | `sticker_` | ORIGINAL | STRIP | yes | `UploadService` |
 | Photos | `photo_main`, `photo_live`, `video_main` (+ `vcp_0000` at Original) | its photo setting (default ORIGINAL) and video setting (default HD), each STANDARD, HD or ORIGINAL | KEEP | yes | its own outbox path (keeps hashing, dedupe, `uniqueId`) |
 | Vault | `vlt_pg_` (existing 2-digit index) | ORIGINAL (photos), HD (videos) | KEEP | yes | `UploadService` |

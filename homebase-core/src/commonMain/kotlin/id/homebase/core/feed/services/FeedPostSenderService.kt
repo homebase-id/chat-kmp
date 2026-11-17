@@ -40,7 +40,6 @@ class FeedPostSenderService(
         private const val TAG = "FeedPostSenderService"
     }
 
-    // A public post ships plaintext payloads (no encryptBundle); anything narrower goes through UploadService.
     suspend fun createPost(
         channelId: Uuid,
         caption: String,

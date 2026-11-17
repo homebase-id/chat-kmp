@@ -20,8 +20,9 @@ import kotlinx.coroutines.CoroutineScope
  * upload — chat, moments, vault, stickers, location — routes its new-file send through here so
  * the bucket policies live once:
  *
- *   encrypt (fail soft on a missing source) → encrypt metadata content → build the request →
- *   durable outbox enqueue (the success gate) → seed the payload cache → optimistic local write.
+ *   encrypt, or stage a public upload (fail soft on a missing source) → encrypt metadata content when
+ *   encrypted → build the request → durable outbox enqueue (the success gate) → seed the payload cache →
+ *   optimistic local write.
  *
  * Feature-specific source prep and post-enqueue bookkeeping stay in the feature; this owns only
  * the spine above. Platform specifics sit behind homebase-api primitives (FileOperationsProvider,
@@ -34,7 +35,7 @@ class UploadService(
     private val payloadCacheSeeder: PayloadCacheSeeder,
 ) {
     /**
-     * Encrypt + enqueue [spec] and (best-effort) seed the cache and write the optimistic row.
+     * Encrypt (or stage) + enqueue [spec] and (best-effort) seed the cache and write the optimistic row.
      * Returns a typed [UploadOutcome]; never throws for an expected failure (a missing source
      * yields [UploadOutcome.SourceMissing], a failed enqueue yields [UploadOutcome.Failed]).
      */
@@ -46,22 +47,24 @@ class UploadService(
             if (encrypted) {
                 encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
             } else {
-                encryptor.stageBundle(spec.uniqueId, spec.bundle)
+                encryptor.stageBundle(spec.bundle)
             }
         } catch (e: SourceUnavailableException) {
             return UploadOutcome.SourceMissing(listOf(e.path))
+        } catch (e: IllegalArgumentException) {
+            return UploadOutcome.Failed(e)
         }
         val metadata = spec.metadata
-        val encryptedBundle = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
+        val sentBundle = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
 
-        // 2. Build the request with shared-secret-encrypted metadata content.
+        // 2. Build the request, its metadata content encrypted when the upload is.
         val request = UploadFileRequest(
             driveId = spec.driveId,
             keyHeader = spec.keyHeader,
             metadata = if (encrypted) metadata.encryptContent(spec.keyHeader) else metadata,
             transitOptions = spec.transit,
-            payloads = encryptedBundle.payloads,
-            thumbnails = encryptedBundle.thumbnails,
+            payloads = sentBundle.payloads,
+            thumbnails = sentBundle.thumbnails,
             existingFileIsSuccess = spec.existingFileIsSuccess,
             fileSystemType = spec.requestFileSystemType,
             sealDescriptorContent = spec.sealDescriptorContent,
@@ -73,6 +76,7 @@ class UploadService(
         } else {
             outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow, spec.overPeer)
         }
+        if (enqueue !is EnqueueResult.Enqueued && !encrypted) encryptor.discardStaged(sentBundle)
         when (enqueue) {
             is EnqueueResult.Enqueued -> Unit
             is EnqueueResult.AlreadyQueued -> return UploadOutcome.AlreadyQueued(spec.uniqueId)
@@ -82,16 +86,16 @@ class UploadService(
 
         // Optimistic mirror of what the server will return; also returned in the outcome so a
         // feature can reuse it for its own optimistic bookkeeping (e.g. the sticker tray).
-        val payloadDescriptors = encryptedBundle.toPayloadDescriptors()
+        val payloadDescriptors = sentBundle.toPayloadDescriptors()
 
-        // 4. Best-effort: seed the encrypted-payload cache, then write the optimistic row. Seed
+        // 4. Best-effort: seed the payload cache, then write the optimistic row. Seed
         //    BEFORE the write — writeNewFile triggers the bubble's recompose + thumbnail read, so
         //    the cache must already be populated under the optimistic fileId or that read 404s.
         //    Failures here are non-fatal: outbox delivery + sync bring the file back.
         if (spec.seedCache || spec.writeOptimistic) {
             try {
                 if (spec.seedCache) {
-                    payloadCacheSeeder.seed(spec.driveId, spec.optimisticFileId, encryptedBundle, encrypted)
+                    payloadCacheSeeder.seed(spec.driveId, spec.optimisticFileId, sentBundle, encrypted)
                 }
                 if (spec.writeOptimistic) {
                     optimisticWriter.writeNewFile(
