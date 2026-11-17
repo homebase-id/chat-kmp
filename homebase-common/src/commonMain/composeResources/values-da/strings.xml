@@ -2351,6 +2351,7 @@
     <string name="keystore_reset_confirm">Nulstil</string>
     <string name="profile_card_option_block_style">Indholdsstil</string>
     <string name="profile_card_tool_style">Stil</string>
+    <string name="profile_card_tool_photo">Foto</string>
     <string name="profile_card_option_presets">Færdige stilarter</string>
     <string name="profile_card_presentation_bare">Almindelig</string>
     <string name="profile_card_presentation_boxed">Boks</string>
@@ -2392,6 +2393,10 @@
     <string name="openedfile_open_failed">Filen kunne ikke åbnes.</string>
     <string name="openedfile_save_failed">Filen kunne ikke gemmes. Tjek din forbindelse, og prøv igen.</string>
     <string name="profile_card_style_custom">Tilpasset</string>
+    <string name="profile_card_option_portrait_size">Fotostørrelse</string>
+    <string name="profile_card_size_small">Lille</string>
+    <string name="profile_card_size_medium">Mellem</string>
+    <string name="profile_card_size_large">Stor</string>
     <string name="profile_card_colours_midnight">Midnat</string>
     <string name="profile_card_colours_wine">Vin</string>
     <string name="profile_card_colours_pine">Fyr</string>
@@ -2418,7 +2423,6 @@
     <string name="profile_card_colours_paper">Papir</string>
     <string name="profile_card_colours_blueprint">Blåtryk</string>
     <string name="profile_card_colours_sand">Sand</string>
-    <string name="profile_card_colours_cloud">Sky</string>
     <string name="profile_card_colours_slate">Skifer</string>
     <string name="profile_card_colours_mint">Mynte</string>
     <string name="profile_card_colours_peach">Fersken</string>

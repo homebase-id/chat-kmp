@@ -98,11 +98,11 @@ class ProfileCardOptionDefaultsTest {
 
     // The labels each open design's preset draws with, from odin-js cards/presets.ts.
     private val presetChips = mapOf(
-        CardDesign.BOARD to setOf("Ocean", "Circle", "Boxed", "Bar", "Alternates", "Montserrat"),
-        CardDesign.DOSSIER to setOf("Onyx", "Square", "Rows", "Handles", "Archivo Black", "Space Mono"),
-        CardDesign.COLLAGE to setOf("Linen", "Square", "Wordmarks", "Caveat", "Montserrat"),
+        CardDesign.BOARD to setOf("Ocean", "Medium", "Circle", "Boxed", "Bar", "Alternates", "Montserrat"),
+        CardDesign.DOSSIER to setOf("Onyx", "Medium", "Square", "Rows", "Handles", "Archivo Black", "Space Mono"),
+        CardDesign.COLLAGE to setOf("Linen", "Medium", "Square", "Wordmarks", "Caveat", "Montserrat"),
         CardDesign.POSTER to setOf("Espresso", "Plain", "Icons", "Newsreader"),
-        CardDesign.LINKS to setOf("Frost", "Circle", "Icons", "Montserrat"),
+        CardDesign.LINKS to setOf("Frost", "Medium", "Circle", "Icons", "Montserrat"),
     )
 
     @Test
@@ -156,7 +156,7 @@ class ProfileCardOptionDefaultsTest {
     @Test
     fun everyPortraitShapeDrawsAGlyphThatDiffersFromTheOthers() {
         panel(CardDesign.BOARD) {
-            pickTab("Portrait shape")
+            pickTab("Photo size")
             val shapes = listOf("Circle", "Square", "Rounded", "Ellipse")
             val pixels = shapes.associateWith { name ->
                 val image = onNodeWithContentDescription(name).captureToImage().toAwtImage()
@@ -183,7 +183,7 @@ class ProfileCardOptionDefaultsTest {
     fun designTabsRunPalettePortraitBackgroundStyleAndNoneIsCalledPresets() {
         panel(CardDesign.BOARD) {
             val tabs = tabNames()
-            assertEquals(listOf("Ready-made styles", "Portrait shape", "Background pattern", "Content style"), tabs.take(4))
+            assertEquals(listOf("Ready-made styles", "Photo size", "Background pattern", "Content style"), tabs.take(4))
             assertTrue(tabs.none { it.contains("Presets", ignoreCase = true) })
         }
     }
@@ -243,6 +243,11 @@ class ProfileCardOptionDefaultsTest {
                 if (chips.isEmpty()) continue
                 rows++
                 val states = chips.map { it.config.getOrNull(SemanticsProperties.ToggleableState) }
+                if (tab == "Photo size") {
+                    assertEquals(listOf(ToggleableState.Off, ToggleableState.On, ToggleableState.Off), states.take(3), "$design/$tab: medium is not the one selected size")
+                    assertEquals(ToggleableState.On, states[3], "$design/$tab: the shape row's first chip is not selected")
+                    continue
+                }
                 assertEquals(ToggleableState.On, states.first(), "$design/$tab: first chip is not the selected one")
                 assertEquals(1, states.count { it == ToggleableState.On }, "$design/$tab: exactly one chip is selected")
             }
@@ -254,10 +259,27 @@ class ProfileCardOptionDefaultsTest {
     fun pickingThePresetValueSendsNullAndAnotherSendsItsId() {
         val calls = mutableListOf<Pair<CardOption, String?>>()
         panel(CardDesign.COLLAGE, onOption = { o, v -> calls += o to v }) {
-            pickTab("Portrait shape")
+            pickTab("Photo size")
             onNodeWithContentDescription("Circle").performClick()
             onNodeWithContentDescription("Square").performClick()
             assertEquals(listOf(CardOption.PORTRAIT_SHAPE to "circle", CardOption.PORTRAIT_SHAPE to null), calls)
         }
+    }
+
+    @Test
+    fun photoSizeIsThreeChoicesAndMediumSendsNull() {
+        val calls = mutableListOf<Pair<CardOption, String?>>()
+        panel(CardDesign.LINKS, onOption = { o, v -> calls += o to v }) {
+            pickTab("Photo size")
+            onNodeWithText("Small").performClick()
+            onNodeWithText("Large").performClick()
+            onNodeWithText("Medium").performClick()
+            assertEquals(listOf(CardOption.PORTRAIT_SIZE to "small", CardOption.PORTRAIT_SIZE to "large", CardOption.PORTRAIT_SIZE to null), calls)
+        }
+    }
+
+    @Test
+    fun aDesignWithoutAPortraitOffersNoPhotoSize() {
+        panel(CardDesign.POSTER) { assertTrue("Photo size" !in tabNames()) }
     }
 }

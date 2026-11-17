@@ -2611,6 +2611,7 @@
     <string name="profile_card_tool_heading">Heading</string>
     <string name="profile_card_tool_body">Body</string>
     <string name="profile_card_tool_portrait">Portrait</string>
+    <string name="profile_card_tool_photo">Photo</string>
     <string name="profile_card_tool_socials">Socials</string>
     <string name="profile_card_tool_order">Order</string>
     <string name="profile_card_content_name_required">Always on the Public card</string>
@@ -2679,7 +2680,6 @@
     <string name="profile_card_colours_paper">Paper</string>
     <string name="profile_card_colours_blueprint">Blueprint</string>
     <string name="profile_card_colours_sand">Sand</string>
-    <string name="profile_card_colours_cloud">Cloud</string>
     <string name="profile_card_colours_slate">Slate</string>
     <string name="profile_card_colours_mint">Mint</string>
     <string name="profile_card_colours_peach">Peach</string>
@@ -2692,6 +2692,10 @@
     <string name="profile_card_option_display_font">Heading font</string>
     <string name="profile_card_option_text_font">Body font</string>
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
+    <string name="profile_card_option_portrait_size">Photo size</string>
+    <string name="profile_card_size_small">Small</string>
+    <string name="profile_card_size_medium">Medium</string>
+    <string name="profile_card_size_large">Large</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_block_style">Content style</string>

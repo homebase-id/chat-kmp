@@ -1700,7 +1700,7 @@ class ProfileCardViewModelTest {
         val spec = CardDesignSpecs.of(CardDesign.LINKS)!!
         assertEquals(CardOption.entries.toSet() - CardOption.BLOCK_STYLE, spec.options)
         assertEquals(1, spec.portraitSlots)
-        assertEquals("#F1F3F6", spec.schemes.first().ground)
+        assertEquals("#1B1F24", spec.schemes.first().ground)
         val all = CardDesign.all.flatMap { CardDesignSpecs.of(it)!!.schemes.map { s -> s.ground.lowercase() } }
         assertEquals(all.size, all.distinct().size)
     }
@@ -1856,6 +1856,29 @@ class ProfileCardViewModelTest {
         assertEquals("#8B7CF6", vm.uiState.value.savedOverrides.palette?.accent)
         assertNull(vm.uiState.value.previewOverrides)
         assertFalse(vm.uiState.value.hasUnsavedChanges)
+    }
+
+    @Test
+    fun photoSizeIsSavedReloadedAndKeepsTheOtherPortraitFields() = runTest(dispatcher) {
+        val store = FakeCardStore(listOf(cardAttribute(CardDesign.BOARD)), keepWrites = true)
+        val (vm, _, _) = boardVm(store)
+        assertEquals(CardDesignSpecs.DEFAULT_PORTRAIT_SIZE, CardDesignSpecs.selectedValue(CardDesign.BOARD, CardOption.PORTRAIT_SIZE, vm.uiState.value.overrides.valueOf(CardOption.PORTRAIT_SIZE)))
+
+        vm.onOptionSelected(CardOption.PORTRAIT_SHAPE, "rounded")
+        vm.onOptionSelected(CardOption.PORTRAIT_SIZE, "large")
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        val written = CardOverrides.fromJson(store.writes.single().data["overrides"]!!.jsonObject)
+        assertEquals(CardPortrait(shape = "rounded", size = "large"), written.portraits?.single())
+
+        val reopened = viewModel(FakeHost(), FakeSource(profile + store.attributes, cardRepository = CardRepository(store)))
+        assertEquals("large", reopened.uiState.value.overrides.valueOf(CardOption.PORTRAIT_SIZE))
+        assertEquals("rounded", reopened.uiState.value.overrides.valueOf(CardOption.PORTRAIT_SHAPE))
+
+        reopened.onOptionSelected(CardOption.PORTRAIT_SIZE, null)
+        assertNull(reopened.uiState.value.overrides.valueOf(CardOption.PORTRAIT_SIZE))
+        assertEquals("rounded", reopened.uiState.value.overrides.valueOf(CardOption.PORTRAIT_SHAPE))
     }
 
     @Test
