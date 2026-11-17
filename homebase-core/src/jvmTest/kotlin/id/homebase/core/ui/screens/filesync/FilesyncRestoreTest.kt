@@ -25,7 +25,6 @@ import id.homebase.api.client.drives.upload.UpdateFileResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.Base64Bytes
@@ -148,9 +147,7 @@ class FilesyncRestoreTest {
 
     // The appData a write sent, and the name in its content, opened with the key it was sent under.
     private suspend fun sent(body: ByteArray, request: HttpRequestData, expectedKey: KeyHeader? = null): Pair<Map<String, kotlinx.serialization.json.JsonElement>, String> {
-        val parts = multipart(body, request)
-        val transferIv = Base64.decode(Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject["transferIv"]!!.jsonPrimitive.content)
-        val descriptor = Json.parseToJsonElement(AesCbc.decrypt(parts.getValue("metadata"), secret, transferIv).decodeToString()).jsonObject
+        val descriptor = uploadDescriptor(body, request, secret)
         val key = OdinSystemSerializer.json.decodeFromJsonElement(EncryptedKeyHeader.serializer(), descriptor["encryptedKeyHeader"]!!)
             .decryptAesToKeyHeader(SecureByteArray(secret))
         if (expectedKey != null) assertTrue(key.aesKey.toByteArray().contentEquals(expectedKey.aesKey.toByteArray()), "a restore keeps the node's key")
