@@ -291,7 +291,7 @@ internal class AttachmentHandler(
                 }
                 messagesUiState.update {
                     it.copy(
-                        fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
+                        fullScreenOverlay = if (newFiles.isEmpty()) null else fullScreenOverlay.copy(attachments = newFiles),
                     )
                 }
                 // Release the removed video's playable handle (web blob: URL; no-op on native).

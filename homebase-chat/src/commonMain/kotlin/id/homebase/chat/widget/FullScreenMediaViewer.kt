@@ -64,6 +64,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.MediaPager
+import id.homebase.core.media.pagerArrowKeys
 import id.homebase.core.media.MediaPendingOverlay
 import id.homebase.core.media.MediaRail
 import id.homebase.core.media.MediaRailItem
@@ -84,6 +85,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 import id.homebase.chat.services.collectContext
+import id.homebase.core.image.mediaSharedKey
 
 internal fun imageOnlyAction(contentType: String?, action: (() -> Unit)?): (() -> Unit)? =
     action.takeIf { contentType?.startsWith("image/") == true }
@@ -149,6 +151,7 @@ fun FullScreenMediaViewer(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
             .focusRequester(focusRequester)
+            .pagerArrowKeys(pagerState)
             .onKeyEvent { event ->
                 val copy = copyAction?.takeIf { event.isCopyChord() } ?: return@onKeyEvent false
                 copy()
@@ -189,7 +192,7 @@ fun FullScreenMediaViewer(
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
                         showsHdr = isSettled,
                     )
                 }
@@ -216,7 +219,7 @@ fun FullScreenMediaViewer(
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
                         showsHdr = isSettled,
                     )
                 }

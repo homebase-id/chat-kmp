@@ -148,7 +148,7 @@ class ProfileCardEditorShotsTest {
         Shot("04-customise-accent", edited, EditorStep.Customise),
         Shot("04b-customise-unedited", base, EditorStep.Customise),
         Shot("05-customise-heading-font", edited, EditorStep.Customise, act = tool("Heading font")),
-        Shot("06-customise-portrait", edited, EditorStep.Customise, act = tool("Portrait shape")),
+        Shot("06-customise-portrait", edited, EditorStep.Customise, act = tool("Photo size")),
         Shot("07-customise-socials", edited, EditorStep.Customise, act = tool("Social links style")),
         Shot("08-customise-order", edited, EditorStep.Customise, act = tool("Section order")),
         Shot("09-customise-poster", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise),
@@ -162,7 +162,7 @@ class ProfileCardEditorShotsTest {
         Shot("17-font-scale-customise", edited, EditorStep.Customise, fontScale = 1.6f),
         Shot("17b-font-scale-fonts", edited, EditorStep.Customise, fontScale = 1.6f, act = tool("Heading font")),
         Shot("17c-font-scale-order", edited, EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
-        Shot("18-rtl-customise", edited, EditorStep.Customise, rtl = true, act = tool("Portrait shape")),
+        Shot("18-rtl-customise", edited, EditorStep.Customise, rtl = true, act = tool("Photo size")),
         Shot("18b-rtl-design", base, rtl = true),
         Shot("19-wide-design", base, widthDp = 900, heightDp = 820),
         Shot("19b-wide-customise", edited, EditorStep.Customise, widthDp = 900, heightDp = 820, act = tool("Section order")),
@@ -174,7 +174,7 @@ class ProfileCardEditorShotsTest {
         Shot("33-redmi-colours", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("35-redmi-accent", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Accent colour")),
         Shot("36-redmi-heading-font", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Heading font")),
-        Shot("37-redmi-portrait", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Portrait shape")),
+        Shot("37-redmi-portrait", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Photo size")),
         Shot("38-redmi-socials", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Social links style")),
         Shot("39-redmi-order", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Section order")),
         Shot("40-redmi-collage-colours", collageSchemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
@@ -484,6 +484,44 @@ class ProfileCardEditorShotsTest {
         }
     }
 
+
+    private val photoTool = tool("Photo size")
+    private val links = base.copy(previewDesign = CardDesign.LINKS)
+    private fun photoShot(name: String, state: ProfileCardUiState, widthDp: Int = REDMI_W, fontScale: Float = 1f, rtl: Boolean = false) =
+        Shot(name, state, EditorStep.Customise, widthDp = widthDp, heightDp = REDMI_H, fontScale = fontScale, rtl = rtl, act = photoTool)
+
+    private val k18Shots = listOf(
+        photoShot("k18-01-photo-board-default", base),
+        photoShot(
+            "k18-02-photo-board-large-rounded",
+            base.copy(previewOverrides = CardOverrides().with(CardOption.PORTRAIT_SIZE, "large").with(CardOption.PORTRAIT_SHAPE, "rounded")),
+        ),
+        photoShot("k18-03-photo-collage-small", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = CardOverrides().with(CardOption.PORTRAIT_SIZE, "small"))),
+        photoShot("k18-04-photo-dossier", base.copy(previewDesign = CardDesign.DOSSIER)),
+        photoShot("k18-05-photo-links", links),
+        photoShot("k18-06-photo-font-scale", base, fontScale = 1.6f),
+        photoShot("k18-07-photo-rtl", base, rtl = true),
+        photoShot("k18-08-photo-narrow", base, widthDp = 360),
+        photoShot("k18-09-photo-saving", base.copy(isSavingDesign = true)),
+        photoShot("k18-10-photo-long-circle", base.copy(cards = listOf(public, card(longCircle)), selectedAudience = longCircle)),
+        photoShot("k18-11-photo-wide", base, widthDp = 900),
+        Shot("k18-12-links-palette", links, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot(
+            "k18-13-links-palette-old-cloud",
+            links.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#F1F3F6")),
+            EditorStep.Customise,
+            widthDp = REDMI_W,
+            heightDp = REDMI_H,
+        ),
+        Shot("k18-14-poster-no-photo", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+    )
+
+    @Test
+    fun k18PhotoSizeRendersEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in k18Shots) render(shot, dark)
+        }
+    }
 
     @Test
     fun polishedCreateCircleSheetRendersEveryState() {

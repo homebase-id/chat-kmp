@@ -381,6 +381,9 @@ class UploadServiceTest {
 
 /** Fake encryptor: counts calls, echoes the input as "pre-encrypted", or throws a swept source. */
 private class RecordingEncryptor(private val throwMissing: String? = null) : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+
     var callCount = 0
         private set
 
@@ -443,7 +446,8 @@ private class RecordingSeeder(
 ) : PayloadCacheSeeder(driveFileProvider, fileOperationsProvider) {
     val seededFileIds = mutableListOf<Uuid>()
 
-    override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
+    override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle, encrypted: Boolean) {
+        assertTrue(encrypted, "UploadService only ever seeds the ciphertext it made")
         seededFileIds += fileId
     }
 }

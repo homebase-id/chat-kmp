@@ -172,6 +172,7 @@ internal fun mergeReloadedConversationRow(
         lastRead = reconciled.lastRead,
         dirty = reconciled.dirty,
         unreadCount = prior.unreadCount,
+        unreadMentionCount = prior.unreadMentionCount,
     )
 
     val merged = if (

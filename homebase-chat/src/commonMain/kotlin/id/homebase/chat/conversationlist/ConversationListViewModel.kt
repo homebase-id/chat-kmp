@@ -189,6 +189,7 @@ class ConversationListViewModel(
     // Nullable so tests can build the VM without the sync engine.
     private val driveSyncManager: id.homebase.api.sync.DriveSyncManager? = null,
     private val optionalDriveActivation: id.homebase.core.sync.OptionalDriveActivation? = null,
+    private val albumSaver: id.homebase.core.util.AlbumSaver,
     private val vaultFileSaver: id.homebase.core.vault.VaultFileSaver? = null,
 ) : ViewModel() {
 
@@ -247,6 +248,47 @@ class ConversationListViewModel(
     // conversation like pendingScrollToLatest.
     private val frozenUnreadBoundary = mutableMapOf<Uuid, Instant>()
 
+    // Mentions at or before this userDate (epoch ms) are already jumped to or read; seeded from the
+    // frozen boundary so opening the conversation (which advances lastRead) does not hide the control.
+    private val mentionCursor = mutableMapOf<Uuid, Long>()
+
+    // The open conversation's in-memory mention count when the pending mention was last re-read.
+    private var mentionCountAtRefresh: Int? = null
+
+    // Signal re-reads its mention count on every conversation change; a mention can arrive while the chat is open.
+    private fun refreshLiveMention() {
+        val id = _uiState.value.selectedConversationId ?: return
+        val convo = _uiState.value.activeConversations.find { it.conversation.id == id }?.conversation ?: return
+        if (!shouldRefreshLiveMention(_messagesUiState.value.nextMention, convo.isGroup, convo.unreadMentionCount, mentionCountAtRefresh)) return
+        mentionCountAtRefresh = convo.unreadMentionCount
+        mentionCursor.getOrPut(id) { mentionCursorSeed(frozenUnreadBoundary[id], convo.lastRead) }
+        refreshNextMention(id)
+    }
+
+    // Signal's model: a mention stops counting once read, so seeing or jumping to it moves on to the next.
+    private fun advancePastMention(target: NextMention) {
+        val conversationId = _uiState.value.selectedConversationId ?: return
+        mentionCursor[conversationId] = target.userDateMs
+        _messagesUiState.update { it.copy(nextMention = null) }
+        refreshNextMention(conversationId)
+    }
+
+    private var mentionRefreshJob: Job? = null
+
+    private fun refreshNextMention(conversationId: Uuid) {
+        val cursor = mentionCursor[conversationId] ?: return
+        // Two refreshes can share a cursor, so only the latest may publish.
+        mentionRefreshJob?.cancel()
+        mentionRefreshJob = viewModelScope.launch {
+            val pending = chatMessageStream.nextUnreadMention(conversationId, cursor)?.let {
+                NextMention(it.uniqueId, it.userDateMs, chatMessageStream.countUnreadMentions(conversationId, cursor))
+            }
+            if (mentionCursor[conversationId] == cursor) {
+                _messagesUiState.update { it.copy(nextMention = pending) }
+            }
+        }
+    }
+
     private val jumpCoordinator = MessageJumpCoordinator(
         messagesUiState = _messagesUiState,
         isMessageInWindow = chatMessageStream::isMessageInWindow,
@@ -266,6 +308,7 @@ class ConversationListViewModel(
         viewOnceActions = viewOnceActions,
         chatMessageStream = chatMessageStream,
         localVideoContextStore = localVideoContextStore,
+        albumSaver = albumSaver,
         vaultFileSaver = vaultFileSaver,
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
@@ -753,6 +796,7 @@ class ConversationListViewModel(
                         )
                     }
                     updateListContent()
+                    refreshLiveMention()
                 } else if (uiState.value.conversationsContent is ConversationListContentState.Empty) {
                     _uiState.update { it.copy(conversationsContent = ConversationListContentState.Loading) }
                 }
@@ -1353,10 +1397,15 @@ class ConversationListViewModel(
                 // Drop the frozen unread boundary so re-entering recomputes it from
                 // the (now advanced) lastRead — a fully-read conversation then shows
                 // no separator on the next open.
-                _uiState.value.selectedConversationId?.let { frozenUnreadBoundary.remove(it) }
+                _uiState.value.selectedConversationId?.let {
+                    frozenUnreadBoundary.remove(it)
+                    mentionCursor.remove(it)
+                }
+                mentionCountAtRefresh = null
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
                     it.closeMediaViewer().copy(
+                        nextMention = null,
                         messages = persistentListOf(),
                         agentUiReplies = persistentListOf(),
                         isLoadingMessages = false,
@@ -1434,6 +1483,17 @@ class ConversationListViewModel(
             is ConversationListUiAction.DownloadVideoMedia -> mediaDownloadHandler.handleDownloadVideoMedia(action)
 
             is ConversationListUiAction.DecryptFile -> mediaDownloadHandler.handleDecryptFile(action)
+
+            is ConversationListUiAction.JumpToNextMention -> {
+                _messagesUiState.value.nextMention?.let { target ->
+                    advancePastMention(target)
+                    onAction(ConversationListUiAction.ScrollToMessageId(target.messageId))
+                }
+            }
+
+            is ConversationListUiAction.MentionSeen -> {
+                _messagesUiState.value.nextMention?.takeIf { it.messageId == action.messageId }?.let(::advancePastMention)
+            }
 
             is ConversationListUiAction.ScrollToMessageId -> {
                 val conversationId = _uiState.value.selectedConversationId
@@ -1923,11 +1983,18 @@ class ConversationListViewModel(
         if (isNewSelection) {
             // Only one conversation is viewed at a time; drop any stale boundaries.
             frozenUnreadBoundary.clear()
+            mentionCursor.clear()
+            mentionCountAtRefresh = null
+            _messagesUiState.update { it.copy(nextMention = null) }
             val convo = _uiState.value.activeConversations
                 .find { it.conversation.id == conversationId }
                 ?.conversation
             if (convo != null && convo.unreadCount > 0) {
                 frozenUnreadBoundary[conversationId] = convo.lastRead
+                if (convo.isGroup && convo.unreadMentionCount > 0) {
+                    mentionCursor[conversationId] = convo.lastRead.toEpochMilliseconds()
+                    refreshNextMention(conversationId)
+                }
             }
             unpinExpiredPins(conversationId)
         }
@@ -2463,3 +2530,12 @@ internal fun resolveNotificationTap(
     return tap.takeIf { conversationIds.contains(it.conversationId) }
 }
 
+internal fun shouldRefreshLiveMention(
+    pending: NextMention?,
+    isGroup: Boolean,
+    unreadMentionCount: Int,
+    countAtLastRefresh: Int?,
+): Boolean = isGroup && unreadMentionCount > 0 && (pending == null || unreadMentionCount != countAtLastRefresh)
+
+internal fun mentionCursorSeed(frozenUnreadBoundary: Instant?, lastRead: Instant): Long =
+    (frozenUnreadBoundary ?: lastRead).toEpochMilliseconds()

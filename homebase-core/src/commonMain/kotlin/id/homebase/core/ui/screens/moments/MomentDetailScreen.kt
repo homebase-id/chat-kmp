@@ -564,6 +564,9 @@ fun MomentDetailPane(
                             }
                         },
                     )
+                is MomentDetailUiEvent.MediaSaved -> scope.launch {
+                    snackbarHostState.showSnackbar(TranslationUtil.getString(MR.string.file_saved_to, event.location))
+                }
                 is MomentDetailUiEvent.MediaSaveFailed -> scope.launch {
                     val detail = event.message
                         ?: TranslationUtil.getString(MR.string.error_unknown)

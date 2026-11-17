@@ -2,6 +2,7 @@ package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.mentionsIdentity
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -125,6 +126,10 @@ internal fun applyIncomingMessageBump(
                 val next = existing
                     .copy(
                         unreadCount = existing.unreadCount + increment,
+                        unreadMentionCount = existing.unreadMentionCount +
+                            if (existing.isGroup && increment == 1 && activeDomain != null &&
+                                mentionsIdentity(m.content, activeDomain.domainName)
+                            ) 1 else 0,
                         latestMessageTimestamp = sqlUserDate,
                     )
                     .withPreviewOf()

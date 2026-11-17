@@ -65,6 +65,19 @@ class GainmapDeviceTest {
     }
 
     @Test
+    fun aSidewaysPhotosGainmapTurnsUprightWithIt() = runTest {
+        assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        // Stored 1600x1200 with "rotate 90", so it shows 1200x1600.
+        val source = ImageMetadataScrubber.withOrientation(ultraHdrJpeg(1600, 1200), 6)
+        val images = createMediaImages(source, "k", MediaQuality.HD, hdr = true)
+        val viewed = assertNotNull(images.finalImage).bytes
+        val decoded = assertNotNull(BitmapFactory.decodeByteArray(viewed, 0, viewed.size))
+        assertEquals(1200 to 1600, decoded.width to decoded.height)
+        val map = assertNotNull(decoded.gainmap).gainmapContents
+        assertEquals(300 to 400, map.width to map.height, "the gain map turned with the image")
+    }
+
+    @Test
     fun addingExifToAnUltraHdrJpegKeepsItsGainmap() {
         assumeTrue("gain maps need Android 14", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
         val tiff = byteArrayOf(0x4D, 0x4D, 0, 0x2A, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0)

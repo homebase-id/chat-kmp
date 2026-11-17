@@ -37,7 +37,7 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 
 ## How many times a file is read
 
-Full reads of the video per operation, with the code that ships. Header reads (duration, probe, finding the `moov`) and the one frame a poster decodes aren't counted. Keep this table current whenever a change adds or removes a pass.
+Full reads of the file per operation, with the code that ships. Header reads (duration, probe, finding the `moov`) and the one frame a poster decodes aren't counted. Keep this table current whenever a change adds or removes a pass.
 
 | Operation | Android | iOS | Desktop | Web |
 |---|---|---|---|---|
@@ -47,7 +47,8 @@ Full reads of the video per operation, with the code that ships. Header reads (d
 | Plain MP4, under 5 MB | **1** of the compressed file: encrypt and hash in one pass | **1** | **1** | **1** |
 | **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
 | Photos backup at Original | **1** (read once at hand-off) | | | |
-| Saving a received video to the gallery | **2** of the decrypted `.ts` (`TsToMp4`: size the samples, then copy them behind the index) | **2** | **2** | **2** |
+| Saving a received video to the gallery | **0**: no `.ts` is written; the decrypted download is remuxed as it arrives, its index written after the samples, straight into the MediaStore entry (`AlbumSaver.saveWritten`) | **1** of the MP4: written to a scratch file that Photos imports | **0**: straight into the file the Save dialog chose | **1** of the MP4: the browser download reads it |
+| An HDR photo at HD or Original | the photo is decoded as before; its gain map, the file's tail (a few percent of it), is read **1** more time on its own | same | same | same |
 | Shrinking a GIF sticker | the file is read **1** time into memory, then decoded **2** times per ladder step (palette, then encode), at most 3 steps | same | same | same |
 
 ## Sending a video, end to end
@@ -131,7 +132,7 @@ A Play Store install downloads one ABI: the CI bundle before this was about 53 M
 
 ## Saving a received video: TS back to MP4
 
-Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4. `RemuxHlsToMp4DeviceTest` (`-e remuxBench true` for videos in the test app's `files/bench/`) times it on the phone, and `TsToMp4Test` checks every sample against the source on the desktop. The video is an 83 s, 27.7 MB 720×1280 H.264 + AAC stand-in.
+Saving an HLS video to the gallery copies its H.264 and AAC into an MP4 as the decrypted download arrives (until 2026-11-17, via a `.ts` on disk). `RemuxHlsToMp4DeviceTest` (`-e remuxBench true` for videos in the test app's `files/bench/`) times it on the phone, and `TsToMp4Test` checks every sample against the source on the desktop. The video is an 83 s, 27.7 MB 720×1280 H.264 + AAC stand-in.
 
 | Where | Remux | Time | Output | Frames | Measured |
 |---|---|---|---|---|---|
@@ -141,6 +142,9 @@ Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4.
 | Pixel 5 | ffmpeg-kit | 235–349 ms | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | Media3 Transformer, transmux | 5.4 s | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | MediaExtractor + MediaMuxer | 3.4 s | 27.6 MB | 2489 / 2490 | 2026-11-16 |
+| Pixel 5 (debuggable test app) | **ours, streamed from the download** (no `.ts`, index after the samples) | **256–358 ms, while the download runs**; nothing left after it but the index and a 16-byte size. From a `.ts` (the public path, one read): 339–555 ms | 27.3 MB | **2490 / 2490** | 2026-11-17 |
+
+The 2026-11-17 row is a regenerated synthetic stand-in of the same shape (83 s, 720×1280, H.264 + AAC, 27.4 MB), two rounds of two runs each, streamed from 64 KB chunks in memory; the debuggable app's JIT makes single runs noisy, so read the ranges. Streamed and from a `.ts` write the same MP4, byte for byte, and Android's MediaExtractor and ffmpeg read every frame of it. The index now goes after the samples (`ftyp`, `mdat`, `moov`), with the `mdat`'s size written back in place at the end (`FileOperationsProvider.overwrite`): fine for a file played from disk, which is all a saved video is.
 
 Ours is a little smaller because it keeps parameter sets in the index rather than repeating them in-band. ffmpeg decodes ours to the same frames as the source, with the same audio packets and A/V offset (`TsToMp4Test`). On the phone, the test app is debuggable, so ART won't compile it ahead of time; the release app runs it compiled, as the desktop does.
 
@@ -184,6 +188,21 @@ For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed wi
 | 2 | HD | 2268×4032 | 614 kB | 1073 kB (+75%) | 1185–1199 / 169–171 ms | 2026-11-16 |
 
 Same quality number for both (60 at Standard, 80 at HD); a JPEG at the same number is not the same picture quality as WebP, which this doesn't measure. For scale: Signal's Ultra HDR copy of a Pixel 8 photo in #2390 was 243 kB at 900×1600. The JPEG encodes 2–7× faster than WebP here.
+
+### The shared writer against Android's encoder
+
+`benchmarkHdrFinalImages` (`-e hdrBench true`, plus `-e hdrSynthetic true` for a generated 4032×3024 Ultra HDR photo with fine noise and a smooth gain map): the HD final image four ways, three rounds in rotating order. The pipeline rows are the whole render (decode, scale, encode); Android's rows are only `compress` of the same scaled pixels, so compare each pair's difference, not the rows across.
+
+| Device | Input | Pipeline SDR WebP | Pipeline SDR JPEG | Shared Ultra HDR | Android: SDR / Ultra HDR `compress` | Measured |
+|---|---|---|---|---|---|---|
+| Pixel 5 | Synthetic 12 MP | 2198 kB, 2.65–2.72 s | 1552 kB, 280 ms | 1568 kB (+16 kB), 294–304 ms (+14–24 ms) | — / 1566 kB, 153 ms (the SDR row kept the gain map, see below) | 2026-11-16 |
+| Pixel 8 | Synthetic 12 MP | 2198 kB, 2.25–2.30 s | 1552 kB, 242–248 ms | 1568 kB (+16 kB), 252–260 ms (+6–12 ms) | 1552 / 1567 kB, 137–141 / 140–144 ms | 2026-11-17 |
+| Pixel 8 | Camera photo, 2.0 MB | 576 kB, 1.22–1.23 s | 862 kB, 161–199 ms | **880 kB (+18 kB, 2%)**, 167–183 ms | 862 / 879 kB, 91–92 / 91–92 ms | 2026-11-17 |
+| Pixel 8 | Camera photo, 2.0 MB | 653 kB, 1.21–1.22 s | 978 kB, 164–172 ms | **998 kB (+20 kB, 2%)**, 168–170 ms | 978 / 997 kB, 93–98 / 96–97 ms | 2026-11-17 |
+
+The shared writer costs about 5–25 ms for decoding, scaling and encoding the gain map and joining; Android's native encoder hides almost all of that. On two real Pixel 8 camera photos (4032×2268, both Ultra HDR) the gain map adds **18–20 kB, 2%** of the HD image, and the shared writer's file is within 1 kB of Android's own Ultra HDR encode, though it writes the gain map as a 3-channel JPEG.
+
+The Pixel 5 row's Android SDR figure, measured before 2026-11-17, is left out: `Bitmap.createScaledBitmap` carries a gain map over on Android 14+, so the benchmark's "SDR" encode still wrote it (the same size as the Ultra HDR one). The benchmark now clears it. The pipeline was never affected: it drops the decoded gain map before any encode.
 
 **Decided 2026-11-16: no HDR at Standard.** Standard is for small and fast; HD and Original keep HDR. Reopen if a quality-matched comparison (JPEG quality chosen to look like today's WebP) shows the gap is much smaller.
 

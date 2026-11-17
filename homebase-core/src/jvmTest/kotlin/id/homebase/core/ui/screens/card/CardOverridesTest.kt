@@ -7,6 +7,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -115,6 +116,7 @@ class CardOverridesTest {
         CardOption.DISPLAY_FONT -> "type.display"
         CardOption.TEXT_FONT -> "type.text"
         CardOption.PORTRAIT_SHAPE -> "portraits[].shape"
+        CardOption.PORTRAIT_SIZE -> "portraits[].size"
         CardOption.SOCIALS_STYLE -> "socials"
         CardOption.BLOCK_ORDER -> "blocks[].kind"
         CardOption.BLOCK_STYLE -> "blocks[].presentation"
@@ -142,6 +144,24 @@ class CardOverridesTest {
             }
             assertEquals(spec.options.contains(CardOption.PORTRAIT_SHAPE), spec.portraitSlots > 0, design)
         }
+    }
+
+    @Test
+    fun portraitSizeIsValidatedAndEditingItKeepsTheRestOfThePortrait() {
+        fun read(size: String) = CardOverrides.fromJson(Json.parseToJsonElement("""{"portraits":[{"shape":"circle","size":"$size"}]}""").jsonObject).portraits!!.single()
+        assertEquals("large", read("large").size)
+        assertNull(read("huge").size)
+        assertEquals("circle", read("huge").shape)
+
+        val edited = everything.with(CardOption.PORTRAIT_SIZE, "small")
+        assertEquals(everything.portraits!!.single().copy(size = "small"), edited.portraits!!.single())
+        assertEquals(everything.portraits, edited.with(CardOption.PORTRAIT_SIZE, null).portraits)
+        assertNull(CardOverrides.EMPTY.with(CardOption.PORTRAIT_SIZE, "large").with(CardOption.PORTRAIT_SIZE, null).portraits)
+        assertEquals(everything.portraits!!.single().copy(shape = "ellipse"), everything.with(CardOption.PORTRAIT_SHAPE, "ellipse").portraits!!.single())
+
+        assertNull(CardOverrides.EMPTY.with(CardOption.PORTRAIT_SIZE, "large").prunedFor(CardDesign.POSTER).portraits)
+        assertEquals(listOf(CardPortrait(size = "large")), CardOverrides.EMPTY.with(CardOption.PORTRAIT_SIZE, "large").prunedFor(CardDesign.LINKS).portraits)
+        assertEquals(listOf(CardPortrait(shape = "square", size = "large"), CardPortrait()), everything.with(CardOption.PORTRAIT_SIZE, "large").prunedFor(CardDesign.COLLAGE).portraits)
     }
 
     @Test

@@ -3,6 +3,7 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.hls.NotRemuxableException
 import id.homebase.api.video.hls.TsToMp4
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -15,6 +16,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.Flow
 
 /** Marks heavy video work nobody is waiting on: it stops for any that someone is. */
 object BackgroundVideoWork : AbstractCoroutineContextElement(Key) {
@@ -130,16 +132,23 @@ object VideoCompressionService : VideoCompressor, VideoProber {
      * Copies a decrypted HLS video's `.ts` into an MP4 at [outputPath], without re-encoding, the same way on every
      * platform. False, logged, when [tsPath] isn't H.264 (and AAC) in MPEG-TS; nothing is left at [outputPath] then.
      */
-    suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, tsPath: String, outputPath: String): Boolean = try {
-        TsToMp4.remux(fileOps, tsPath, outputPath)
+    suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, tsPath: String, outputPath: String): Boolean =
+        remuxTsToMp4(fileOps, fileOps.readFileAsFlow(tsPath, TsToMp4.CHUNK), outputPath, tsPath)
+
+    /**
+     * [remuxTsToMp4] on the TS as it arrives (a download's decrypted stream), with no `.ts` written. Whatever the stream
+     * throws (a dropped download, a failed decrypt, a file over the platform's limit) is rethrown, the output deleted.
+     */
+    internal suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, ts: Flow<ByteArray>, outputPath: String, label: String): Boolean = try {
+        TsToMp4.remux(fileOps, ts, outputPath, label)
         true
-    } catch (e: CancellationException) {
-        fileOps.deleteTempFile(outputPath)
-        throw e
-    } catch (e: Exception) {
-        Logger.e(tag = "VideoCompressionService", throwable = e) { "remux of $tsPath failed" }
+    } catch (e: NotRemuxableException) {
+        Logger.e(tag = "VideoCompressionService", throwable = e) { "remux of $label failed" }
         fileOps.deleteTempFile(outputPath)
         false
+    } catch (e: Throwable) {
+        fileOps.deleteTempFile(outputPath)
+        throw e
     }
 
     override suspend fun getDurationMs(inputPath: String): Long =

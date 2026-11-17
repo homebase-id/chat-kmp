@@ -18,10 +18,12 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.sync.database.ScannedMessage
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.groodle.GroodleVote
 import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.convo.UnreadMentionIndex
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
@@ -431,6 +433,18 @@ class ChatMessageStream(
             throw t
         }
     }
+
+    suspend fun nextUnreadMention(conversationId: Uuid, afterUserDateMs: Long): ScannedMessage? {
+        val c = credentialsManager.requireActiveCredentials()
+        // Live arrivals bump the row's mention count without scanning, so the index can lag the badge.
+        UnreadMentionIndex(dbm).scan(c.getIdentityId(), c.domain.domainName)
+        return dbm.chatMentionIndex.selectOldestMentionAfter(c.getIdentityId(), conversationId, afterUserDateMs)
+    }
+
+    suspend fun countUnreadMentions(conversationId: Uuid, afterUserDateMs: Long): Int =
+        dbm.chatMentionIndex.countMentionsAfter(
+            credentialsManager.requireActiveCredentials().getIdentityId(), conversationId, afterUserDateMs,
+        )
 
     /**
      * True when [messageId] is present in the cached in-memory window for

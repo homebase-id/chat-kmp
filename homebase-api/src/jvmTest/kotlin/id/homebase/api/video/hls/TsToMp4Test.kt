@@ -3,6 +3,7 @@ package id.homebase.api.video.hls
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
+import id.homebase.api.file.FileTooLargeForMemoryException
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.mp4Boxes
@@ -12,13 +13,17 @@ import java.nio.file.Files
 import kotlin.random.Random
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import okio.FileSystem
+import okio.IOException
 import org.junit.Test
 
 /** Our segmenter's HLS, decrypted as a download writes it, remuxed back: the source's own samples, in an MP4. */
@@ -32,6 +37,32 @@ class TsToMp4Test {
 
     @Test
     fun aVideoWithItsIndexLastToo() = runTest { check("moov_last.mp4") }
+
+    @Test
+    fun aStreamThatIsntATsFailsAndLeavesNoOutput() = runTest {
+        val out = File(cache, "streamed-junk.mp4")
+        assertFalse(VideoCompressionService.remuxTsToMp4(fileOps, flowOf(ByteArray(4096) { 0x47 }, Random.nextBytes(50_000)), out.absolutePath, "junk"))
+        assertFalse(out.exists())
+    }
+
+    @Test
+    fun aDownloadThatFailsMidStreamThrowsItsOwnErrorAndLeavesNoOutput() = runTest {
+        val out = File(cache, "dropped.mp4")
+        val dropped = flow<ByteArray> { emit(ByteArray(188 * 10) { 0x47 }); throw IOException("connection reset") }
+        assertFailsWith<IOException> { VideoCompressionService.remuxTsToMp4(fileOps, dropped, out.absolutePath, "dropped") }
+        assertFalse(out.exists())
+    }
+
+    @Test
+    fun anMp4OverThePlatformsLimitIsTooLargeNotUnconvertible() = runTest {
+        val (_, ts) = sourceAndTs("moov_first.mp4")
+        val limited = OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath, downloadLimitBytes = ts.length() / 2)
+        val out = File(cache, "big.mp4")
+        assertFailsWith<FileTooLargeForMemoryException> {
+            VideoCompressionService.remuxTsToMp4(limited, limited.readFileAsFlow(ts.absolutePath, 65_536), out.absolutePath, "big")
+        }
+        assertFalse(out.exists())
+    }
 
     @Test
     fun anythingButATsFailsAndLeavesNoOutput() = runTest {
@@ -51,17 +82,31 @@ class TsToMp4Test {
     }
 
     private suspend fun check(name: String) {
+        val (source, ts) = sourceAndTs(name)
+        val out = File(cache, "$name.out.mp4")
+        assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, ts.absolutePath, out.absolutePath))
+
+        assertSameMedia(fileOps, source, out)
+
+        // Streamed as a download hands it over, in whatever chunks arrive, even ones smaller than a TS packet.
+        val bytes = ts.readBytes()
+        for (chunkSize in listOf(16, 100, 65_537)) {
+            val chunks = (bytes.indices step chunkSize).map { bytes.copyOfRange(it, minOf(it + chunkSize, bytes.size)) }
+            val streamed = File(cache, "$name.streamed$chunkSize.mp4")
+            assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, chunks.asFlow(), streamed.absolutePath, name))
+            assertContentEquals(out.readBytes(), streamed.readBytes(), "streamed in $chunkSize-byte chunks")
+        }
+    }
+
+    private suspend fun sourceAndTs(name: String): Pair<File, File> {
         val source = File(cache, name).apply { TsToMp4Test::class.java.getResourceAsStream("/hls/$name")!!.use { i -> outputStream().use { i.copyTo(it) } } }
         val segmented = assertNotNull(HlsSegmenter.segmentAndEncrypt(fileOps, source.absolutePath, keyHeader))
+        assertTrue(segmented.playlistPath.let { File(it).readText().split("#EXTINF").size } > 2, "several segments, so boundaries are crossed")
         // As a download writes it: the whole payload decrypted as one CBC stream, though each segment was encrypted on
         // its own, so every boundary leaves pad bytes and a garbled block for the demuxer to skip.
         val ts = File(cache, "$name.ts").apply {
             writeBytes(AesCbc.streamDecryptWithCbc(flowOf(File(segmented.segmentsPath).readBytes()), keyHeader.aesKey, keyHeader.iv).toList().reduce(ByteArray::plus))
         }
-        assertTrue(segmented.playlistPath.let { File(it).readText().split("#EXTINF").size } > 2, "several segments, so boundaries are crossed")
-        val out = File(cache, "$name.out.mp4")
-        TsToMp4.remux(fileOps, ts.absolutePath, out.absolutePath)
-
-        assertSameMedia(fileOps, source, out)
+        return source to ts
     }
 }

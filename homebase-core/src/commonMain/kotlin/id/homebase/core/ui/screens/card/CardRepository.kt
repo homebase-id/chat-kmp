@@ -6,6 +6,7 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileWriteOptions
 import id.homebase.api.client.profile.ProfileWriteResponse
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
@@ -17,8 +18,7 @@ interface CardAttributeStore {
         visibility: ProfileVisibility,
         id: Uuid?,
         versionTag: Uuid?,
-        priority: Int,
-        circleIds: List<String> = emptyList(),
+        options: ProfileWriteOptions,
     ): ProfileWriteResponse
     suspend fun delete(id: Uuid, versionTag: Uuid): Boolean
 }
@@ -33,16 +33,14 @@ class ProfileRepositoryCardStore(private val repository: ProfileRepository) : Ca
         visibility: ProfileVisibility,
         id: Uuid?,
         versionTag: Uuid?,
-        priority: Int,
-        circleIds: List<String>,
+        options: ProfileWriteOptions,
     ) = repository.save(
         type = ProfileAttributeTypes.PROFILE_CARD,
         data = data,
         visibility = visibility,
         knownId = id,
         knownVersionTag = versionTag,
-        priority = priority,
-        circleIds = circleIds,
+        options = options,
     )
 }
 
@@ -71,7 +69,7 @@ class CardRepository(private val store: CardAttributeStore) {
             visibility = ProfileVisibility.ANONYMOUS,
             id = existing?.id,
             versionTag = existing?.versionTag,
-            priority = PUBLIC_CARD_PRIORITY,
+            options = ProfileWriteOptions(priority = PUBLIC_CARD_PRIORITY),
         ) ?: return null
         return card.copy(id = written.id, versionTag = written.versionTag)
     }
@@ -84,8 +82,7 @@ class CardRepository(private val store: CardAttributeStore) {
             visibility = ProfileVisibility.CONNECTED,
             id = card.id.takeIf { it != Uuid.NIL },
             versionTag = card.versionTag.takeIf { it != Uuid.NIL },
-            priority = card.priority,
-            circleIds = listOf(circle.id),
+            options = ProfileWriteOptions(card.priority, listOf(circle.id)),
         ) ?: return null
         return card.copy(id = written.id, versionTag = written.versionTag)
     }
@@ -95,11 +92,10 @@ class CardRepository(private val store: CardAttributeStore) {
         visibility: ProfileVisibility,
         id: Uuid?,
         versionTag: Uuid?,
-        priority: Int,
-        circleIds: List<String> = emptyList(),
+        options: ProfileWriteOptions,
     ): ProfileWriteResponse? =
         try {
-            store.save(data, visibility, id, versionTag, priority, circleIds)
+            store.save(data, visibility, id, versionTag, options)
         } catch (e: ClientException) {
             if (!e.isUnknownCardType()) throw e
             Logger.i(tag = "CardRepository") { "server has no profile_card type; keeping the home page design only" }

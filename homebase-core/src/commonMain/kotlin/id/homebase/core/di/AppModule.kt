@@ -1031,7 +1031,7 @@ val appModule = module {
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::CardPreferences)
     single { CardRepository(ProfileRepositoryCardStore(get())) }
-    singleOf(::CardTapShare)
+    single { CardTapShare(get<DeveloperPreferences>(), get<CardPreferences>(), get<OwnerSessionRepository>()) }
     singleOf(::ChatMessageActionService)
     single { ViewOnceActions(get(), get()) }
     single {
@@ -1302,6 +1302,7 @@ val appModule = module {
             locationService = get(),
             driveSyncManager = get(),
             optionalDriveActivation = get(),
+            albumSaver = get(),
             vaultFileSaver = get(),
         )
     }
@@ -1483,6 +1484,7 @@ val appModule = module {
             fileOperationsProvider = get(),
             recipientLookup = get(),
             payloadDownloadService = get(),
+            albumSaver = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {

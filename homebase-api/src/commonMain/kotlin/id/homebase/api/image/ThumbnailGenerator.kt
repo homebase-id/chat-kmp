@@ -48,7 +48,10 @@ suspend fun createMediaImages(
 ): MediaImages = withContext(Dispatchers.Default) {
     if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
     openImageSource(imageBytes).use {
-        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata, hdr)
+        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata, hdr) { range ->
+            val size = imageBytes.size.toLong()
+            imageBytes.copyOfRange(range.first.coerceIn(0, size).toInt(), (range.last + 1).coerceIn(0, size).toInt())
+        }
     }
 }
 
@@ -69,7 +72,9 @@ suspend fun createMediaImages(
         val header = fileOps.readFileHeaderBytes(path)
         if (isSvg(header) || !ImageFormatDetector.answersIsAnimated(header)) return@withContext fromBytes()
         val byteCount = fileOps.getFileSize(path).takeIf { it > 0 }
-        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, readMetadata, hdr)
+        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, readMetadata, hdr) { range ->
+            fileOps.readFileRange(path, range.first, (range.last - range.first + 1).toInt())
+        }
     }
 }
 
@@ -83,14 +88,17 @@ private suspend fun mediaImagesFrom(
     allowFinalImage: Boolean,
     readMetadata: Boolean,
     hdr: Boolean,
+    readRange: suspend (LongRange) -> ByteArray,
 ): MediaImages {
     val format = contentTypeFromBytes(header)
     val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
-    val keepsHdr = hdr && setting.keepsHdr && !keepsItsFile
-    val media = renderPlanned(source, payloadKey, displayedSize = null, keepsHdr) { size ->
-        val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)
-        if (gif) plan.copy(thumbnails = emptyList()) else plan
+    val gainmap = if (hdr && setting.keepsHdr && !keepsItsFile) HdrGainmap.of(header, readRange) else null
+    val media = gainmap.use {
+        renderPlanned(source, payloadKey, displayedSize = null, gainmap) { size ->
+            val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)
+            if (gif) plan.copy(thumbnails = emptyList()) else plan
+        }
     }
     // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
     val natural = media.displayedSize
@@ -106,7 +114,7 @@ private suspend fun createSvgImages(bytes: ByteArray, payloadKey: String, settin
     return try {
         val raster = ImageUtils.rasterizeSvg(bytes, largestThumbnailLongEdge(setting), ImageFormat.PNG, 100)
         openImageSource(raster.bytes).use { source ->
-            renderPlanned(source, payloadKey, natural, keepsHdr = false) { planMediaImages(it, setting, makesFinalImage = false) }
+            renderPlanned(source, payloadKey, natural) { planMediaImages(it, setting, makesFinalImage = false) }
         }
     } catch (e: Exception) {
         if (e is CancellationException) throw e
@@ -118,11 +126,11 @@ private suspend fun renderPlanned(
     source: ImageSource,
     payloadKey: String,
     displayedSize: ImageSize?,
-    keepsHdr: Boolean,
+    gainmap: HdrGainmap? = null,
     planFor: (ImageSize) -> MediaImagePlan,
 ): MediaImages {
     var plan: MediaImagePlan? = null
-    val result = renderImages(source) { size -> planFor(size).also { plan = it }.toOutputs(keepsHdr) }
+    val result = renderImages(source, gainmap) { size -> planFor(size).also { plan = it }.toOutputs(keepsHdr = gainmap != null) }
     val thumbnailCount = plan!!.thumbnails.size
     return MediaImages(
         displayedSize = displayedSize ?: result.displayedSize,

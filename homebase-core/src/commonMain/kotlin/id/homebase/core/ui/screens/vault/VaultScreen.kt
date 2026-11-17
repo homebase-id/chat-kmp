@@ -418,6 +418,9 @@ fun VaultScreen(
                                     activeSectionForEntry = section
                                     showImageAddSheet = true
                                 },
+                                onFilesDropped = { section, files ->
+                                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
+                                },
                                 onMoveUp = {
                                     viewModel.onAction(VaultUiAction.MoveSectionUp(it))
                                 },

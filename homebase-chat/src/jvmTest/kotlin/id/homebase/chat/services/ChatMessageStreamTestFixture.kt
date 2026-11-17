@@ -56,9 +56,14 @@ internal class ChatMessageStreamTestFixture private constructor(
         }
 
     /** Build a chat-message header without writing it to `DriveMainIndex`. */
-    fun buildMessageFile(userDateMs: Long, uniqueId: Uuid = Uuid.random()): HomebaseFile {
+    fun buildMessageFile(
+        userDateMs: Long,
+        uniqueId: Uuid = Uuid.random(),
+        text: String = "msg-${uniqueId.toString().take(8)}",
+        author: String = testDomain,
+    ): HomebaseFile {
         val content =
-            """{"message":"msg-${uniqueId.toString().take(8)}","deliveryStatus":20,"isEdited":false,"version":1}"""
+            """{"message":"$text","deliveryStatus":20,"isEdited":false,"version":1}"""
                 .replace("\"", "\\\"")
         return OdinSystemSerializer.deserialize<HomebaseFile>(
             """{
@@ -78,8 +83,8 @@ internal class ChatMessageStreamTestFixture private constructor(
                     "transitCreated": $userDateMs,
                     "transitUpdated": 0,
                     "isEncrypted": false,
-                    "senderOdinId": "$testDomain",
-                    "originalAuthor": "$testDomain",
+                    "senderOdinId": "$author",
+                    "originalAuthor": "$author",
                     "appData": {
                         "uniqueId": "$uniqueId",
                         "tags": null,

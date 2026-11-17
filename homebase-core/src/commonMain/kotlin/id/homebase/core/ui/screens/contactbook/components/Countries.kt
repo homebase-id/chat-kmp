@@ -40,13 +40,16 @@ fun splitE164(value: String, region: String? = null): Pair<Country?, String> {
     return country to national.filter { it.isDigit() }
 }
 
-// A seed like `4155553695` renders as 🇺🇸 +1 | 4155553695 while the caller still holds the raw
-// digits — the field looks right and Save stays disabled until this is published.
+// A seed like `4155553695` or `+91 965 436 7034` renders right in the field while the caller still holds
+// the raw string — the field looks right and Save stays disabled until this is published.
 fun seededE164(value: String, fallback: Country): String? {
     val (country, national) = splitE164(value)
-    if (country != null || national.isBlank()) return null
-    return composeE164(fallback, national).takeIf { it != value }
+    if (national.isBlank()) return null
+    return composeE164(country ?: fallback, national).takeIf { it != value }
 }
+
+/** The number as [PhoneNumberField] republishes it on open, so a stored `+91 965 436 7034` compares equal to what the field emits. */
+fun normalizedPhone(value: String, region: String?): String = seededE164(value, defaultCountryFor(region)) ?: value
 
 private val LEADING_ZERO_IS_SIGNIFICANT = setOf("IT", "SM", "CI", "GA", "CG", "BJ")
 

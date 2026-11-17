@@ -3,13 +3,13 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import kotlin.uuid.Uuid
 
 /**
- * A received HLS video as an MP4 in the media scratch folder, to save or share; null, logged, when its download or
- * remux fails. The caller deletes the MP4.
+ * A received HLS video, downloaded and remuxed into an MP4 at [outputPath] (a file, or a `content://` entry [fileOps]
+ * can write). False, logged, when the payload isn't there or isn't H.264/AAC in MPEG-TS; a file at [outputPath] is then
+ * deleted, a `content://` entry is the caller's to discard. A failed download, decrypt or write throws.
  */
 suspend fun DriveFileProvider.downloadHlsAsMp4(
     driveId: Uuid,
@@ -17,22 +17,13 @@ suspend fun DriveFileProvider.downloadHlsAsMp4(
     payloadKey: String,
     keyHeader: KeyHeader,
     fileOps: FileOperationsProvider,
-): String? {
-    val dir = AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
-    val uid = Uuid.random().toString().take(8)
-    val tsPath = "$dir/input_hlsdl_$uid.ts"
-    val mp4Path = "$dir/hlsdl_$uid.mp4"
-    try {
-        if (!streamPayloadDecryptedToPath(driveId, fileId, payloadKey, keyHeader, tsPath, fileOps)) {
-            Logger.e(tag = "HlsSave") { "download/decrypt failed: payload $payloadKey of file $fileId" }
-            return null
-        }
-        if (!VideoCompressionService.remuxTsToMp4(fileOps, tsPath, mp4Path)) {
-            Logger.e(tag = "HlsSave") { "remux to MP4 failed: payload $payloadKey of file $fileId" }
-            return null
-        }
-        return mp4Path
-    } finally {
-        runCatching { fileOps.deleteTempFile(tsPath) }
+    outputPath: String,
+): Boolean {
+    val label = "payload $payloadKey of file $fileId"
+    var remuxed = false
+    val found = streamPayloadDecrypted(driveId, fileId, payloadKey, keyHeader) { ts ->
+        remuxed = VideoCompressionService.remuxTsToMp4(fileOps, ts, outputPath, label)
     }
+    if (!found) Logger.e(tag = "HlsSave") { "download/decrypt failed: $label" }
+    return found && remuxed
 }

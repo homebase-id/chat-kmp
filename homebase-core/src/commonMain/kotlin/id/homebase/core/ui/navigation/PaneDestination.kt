@@ -52,8 +52,8 @@ import kotlinx.coroutines.flow.first
 /** False while a floating pane's enter animation runs: a pane is a dialog entry, RESUMED before its own animation ends. */
 internal val LocalPaneEntered = compositionLocalOf<State<Boolean>> { mutableStateOf(true) }
 
-/** Set true by a floating pane's content to grow the pane to the whole window; null where the pane isn't floating. */
-internal val LocalPaneFullWindow = compositionLocalOf<MutableState<Boolean>?> { null }
+/** Whether a floating pane's content fills the window, as a check read in the pane's own frame; null where the pane isn't floating. */
+internal val LocalPaneFullWindow = compositionLocalOf<MutableState<() -> Boolean>?> { null }
 
 /** Height of the window's title-bar strip the app draws under (macOS traffic lights); 0 where the OS keeps its own title bar. */
 internal val LocalWindowTopInset = compositionLocalOf { 0.dp }
@@ -104,8 +104,8 @@ internal fun FloatingPaneContainer(
     content: @Composable () -> Unit,
 ) {
     val windowExpanded = isExpandedLayout()
-    val fullWindow = remember { mutableStateOf(false) }
-    val floating = windowExpanded && !fullWindow.value
+    val fullWindow = remember { mutableStateOf({ false }) }
+    val floating = windowExpanded && !fullWindow.value()
     val focusRequester = remember { FocusRequester() }
     var dismissRequested by remember { mutableStateOf(false) }
     val currentOnDismiss by rememberUpdatedState(onDismiss)

@@ -574,6 +574,8 @@
     <string name="chat_message_search_result_count">%1$d of %2$d</string>
     <string name="chat_message_search_no_results">No results</string>
     <string name="chat_scroll_to_bottom">Scroll to bottom</string>
+    <string name="chat_jump_to_mention">Jump to unread mention</string>
+    <string name="chat_unread_mention">You were mentioned</string>
     <string name="chat_previous_result">Previous result</string>
     <string name="chat_next_result">Next result</string>
     <string name="chat_no_gallery_items">No items</string>
@@ -2561,6 +2563,7 @@
     <string name="profile_card_field_remove">Stop sharing %1$s with this card</string>
     <string name="profile_card_field_add_title">Add %1$s to this card</string>
     <string name="profile_card_sheet_available_on">Available on:</string>
+    <string name="profile_card_sheet_not_on_card">Who can see it only applies to your profile.</string>
     <string name="profile_card_content_not_on_card_desc_public">Still public on your profile.</string>
     <string name="profile_card_content_sees_public">Anyone with your link sees this card</string>
     <string name="profile_card_content_sees_circle">Only this circle sees this card</string>
@@ -2608,6 +2611,7 @@
     <string name="profile_card_tool_heading">Heading</string>
     <string name="profile_card_tool_body">Body</string>
     <string name="profile_card_tool_portrait">Portrait</string>
+    <string name="profile_card_tool_photo">Photo</string>
     <string name="profile_card_tool_socials">Socials</string>
     <string name="profile_card_tool_order">Order</string>
     <string name="profile_card_content_name_required">Always on the Public card</string>
@@ -2676,7 +2680,6 @@
     <string name="profile_card_colours_paper">Paper</string>
     <string name="profile_card_colours_blueprint">Blueprint</string>
     <string name="profile_card_colours_sand">Sand</string>
-    <string name="profile_card_colours_cloud">Cloud</string>
     <string name="profile_card_colours_slate">Slate</string>
     <string name="profile_card_colours_mint">Mint</string>
     <string name="profile_card_colours_peach">Peach</string>
@@ -2689,6 +2692,10 @@
     <string name="profile_card_option_display_font">Heading font</string>
     <string name="profile_card_option_text_font">Body font</string>
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
+    <string name="profile_card_option_portrait_size">Photo size</string>
+    <string name="profile_card_size_small">Small</string>
+    <string name="profile_card_size_medium">Medium</string>
+    <string name="profile_card_size_large">Large</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_block_style">Content style</string>
@@ -2731,11 +2738,21 @@
     <string name="profile_card_discard_keep">Keep editing</string>
     <string name="profile_card_nfc">Share card by tapping phones</string>
     <string name="profile_card_nfc_title">Hold your phone near another phone</string>
-    <string name="profile_card_nfc_body">Touch the backs of the phones together while Homebase is open. Your card opens on theirs.</string>
+    <string name="profile_card_nfc_body">Touch the backs of two phones together. Your card opens on theirs.</string>
     <string name="profile_card_nfc_off">NFC is turned off. Turn it on to share your card by tapping phones.</string>
     <string name="profile_card_nfc_open_settings">Open NFC settings</string>
-    <string name="profile_card_nfc_switch">Share my card by tap while Homebase is open</string>
-    <string name="profile_card_nfc_switch_desc">Another phone can open your card by touching yours</string>
+    <string name="profile_card_nfc_switch">Always share by tap while Homebase is open</string>
+    <string name="profile_card_nfc_switch_desc">Other phones can open your card whenever Homebase is open, not only while the tap panel is open</string>
+    <string name="profile_card_nfc_iphone_title">iPhones can't share by tapping</string>
+    <string name="profile_card_nfc_iphone_body">Apple doesn't let apps share by tapping phones together.</string>
+    <string name="profile_card_nfc_live">Sharing while this is open</string>
+    <string name="profile_card_nfc_android_only">Works with Android phones only</string>
+    <string name="profile_card_nfc_iphone_to_iphone">iPhone to iPhone</string>
+    <string name="profile_card_nfc_iphone_to_android">iPhone to Android</string>
+    <string name="profile_card_nfc_android_to_android">Android to Android</string>
+    <string name="profile_card_nfc_works">Works</string>
+    <string name="profile_card_nfc_not_possible">Not possible</string>
+    <string name="profile_card_nfc_instead">Show your QR code or send your card link instead.</string>
     <string name="profile_card_nfc_shared">Card shared</string>
 
     <!-- Avatar editor -->

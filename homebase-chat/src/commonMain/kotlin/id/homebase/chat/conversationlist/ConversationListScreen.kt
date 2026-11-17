@@ -338,6 +338,10 @@ fun ConversationListScreen(
                     },
                 )
 
+                is ConversationListUiEvent.FileSaved -> scope.launch {
+                    snackbarHostState.showSnackbar(TranslationUtil.getString(MR.string.file_saved_to, event.location))
+                }
+
                 is ConversationListUiEvent.OpenUrl -> fileSystemHandler.openUrl(event.url)
 
                 is ConversationListUiEvent.OpenSendConnectionRequestDialog ->

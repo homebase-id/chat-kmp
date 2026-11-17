@@ -95,14 +95,6 @@ object ImageMetadataScrubber {
         )
     }
 
-    private val XMP_JPEG_HEADER = "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray()
-
-    private fun startsWith(b: ByteArray, from: Int, until: Int, prefix: ByteArray): Boolean =
-        until - from >= prefix.size && prefix.indices.all { b[from + it] == prefix[it] }
-
-    private fun isJpeg(b: ByteArray) =
-        b.size >= 4 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte()
-
     private fun isPng(b: ByteArray) =
         b.size >= 8 && b[0] == 0x89.toByte() && b[1] == 0x50.toByte() &&
             b[2] == 0x4E.toByte() && b[3] == 0x47.toByte() && b[4] == 0x0D.toByte() &&
@@ -114,41 +106,8 @@ object ImageMetadataScrubber {
             b[8] == 'W'.code.toByte() && b[9] == 'E'.code.toByte() &&
             b[10] == 'B'.code.toByte() && b[11] == 'P'.code.toByte()
 
-    // A span of the source to copy verbatim, or literal bytes to insert. Collected first so
-    // the output is allocated exactly once rather than grown.
-    private sealed interface Piece {
-        class Span(val from: Int, val until: Int) : Piece
-        class Literal(val data: ByteArray) : Piece
-    }
-
-    private fun assemble(pieces: List<Piece>, src: ByteArray): ByteArray {
-        var size = 0
-        for (p in pieces) size += when (p) {
-            is Piece.Span -> p.until - p.from
-            is Piece.Literal -> p.data.size
-        }
-        val out = ByteArray(size)
-        var at = 0
-        for (p in pieces) when (p) {
-            is Piece.Span -> {
-                src.copyInto(out, at, p.from, p.until); at += p.until - p.from
-            }
-            is Piece.Literal -> {
-                p.data.copyInto(out, at); at += p.data.size
-            }
-        }
-        return out
-    }
-
     /* ---------------- JPEG ---------------- */
 
-    private const val MARKER_SOS = 0xDA
-    private const val MARKER_EOI = 0xD9
-    private const val MARKER_COM = 0xFE
-    private const val MARKER_APP0 = 0xE0
-    private const val MARKER_APP1 = 0xE1
-    private const val MARKER_APP2 = 0xE2
-    private const val MARKER_APP14 = 0xEE
 
     /**
      * Drop application segments that carry provenance: APP1 (EXIF and XMP), APP13
@@ -165,7 +124,7 @@ object ImageMetadataScrubber {
     private fun scrubJpeg(src: ByteArray): Outcome {
         val orientation = readJpegOrientation(src)
         val pieces = mutableListOf<Piece>()
-        pieces += Piece.Span(0, 2) // SOI
+        pieces += Piece.Span(src, 0, 2) // SOI
 
         // How much the primary image grew (negative: shrank), in all and after an MPF index, whose entries count from it.
         var resized = 0
@@ -194,31 +153,31 @@ object ImageMetadataScrubber {
             val segmentStart = i
             var j = i
             while (j < src.size && src[j] == 0xFF.toByte()) j++ // fill bytes
-            if (j >= src.size) { pieces += Piece.Span(segmentStart, src.size); break }
+            if (j >= src.size) { pieces += Piece.Span(src, segmentStart, src.size); break }
             val marker = src[j].toInt() and 0xFF
             i = j + 1
 
             // Standalone markers: no length field, no payload.
             if (marker == 0x01 || marker in 0xD0..0xD7) {
-                pieces += Piece.Span(segmentStart, i)
+                pieces += Piece.Span(src, segmentStart, i)
                 continue
             }
             if (marker == MARKER_EOI) {
-                pieces += Piece.Span(segmentStart, src.size)
+                pieces += Piece.Span(src, segmentStart, src.size)
                 break
             }
             if (marker == MARKER_SOS) {
                 // Entropy-coded data follows to the end; metadata can't appear past here.
                 emitOrientation()
-                pieces += Piece.Span(segmentStart, src.size)
+                pieces += Piece.Span(src, segmentStart, src.size)
                 break
             }
-            if (i + 1 >= src.size) { pieces += Piece.Span(segmentStart, src.size); break }
+            if (i + 1 >= src.size) { pieces += Piece.Span(src, segmentStart, src.size); break }
             val length = ((src[i].toInt() and 0xFF) shl 8) or (src[i + 1].toInt() and 0xFF)
             if (length < 2) return Outcome.Unparseable
             val segmentEnd = i + length
             if (segmentEnd > src.size) {
-                if (shouldDropSegment(marker)) droppedAnything = true else pieces += Piece.Span(segmentStart, src.size)
+                if (shouldDropSegment(marker)) droppedAnything = true else pieces += Piece.Span(src, segmentStart, src.size)
                 break
             }
 
@@ -237,7 +196,7 @@ object ImageMetadataScrubber {
                     pieces += Piece.Literal(gainmapXmp)
                     resize(gainmapXmp.size - (segmentEnd - segmentStart))
                 } else {
-                    val span = Piece.Span(segmentStart, segmentEnd)
+                    val span = Piece.Span(src, segmentStart, segmentEnd)
                     if (marker == MARKER_APP2 && mpf == null && startsWith(src, i + 2, segmentEnd, MPF_HEADER)) mpf = span
                     pieces += span
                 }
@@ -249,10 +208,9 @@ object ImageMetadataScrubber {
         mpf?.let { span ->
             if (resized != 0) pieces[pieces.indexOf(span)] = Piece.Literal(movedMpf(src, span, resized, resizedAfterMpf))
         }
-        return Outcome.Scrubbed(assemble(pieces, src))
+        return Outcome.Scrubbed(assemble(pieces))
     }
 
-    private val MPF_HEADER = byteArrayOf(0x4D, 0x50, 0x46, 0x00)
 
     /**
      * The MPF index (CIPA DC-007) after the primary image changed size: its first entry's size, and every later
@@ -260,27 +218,11 @@ object ImageMetadataScrubber {
      */
     private fun movedMpf(src: ByteArray, span: Piece.Span, resized: Int, resizedAfter: Int): ByteArray {
         val out = src.copyOfRange(span.from, span.until)
-        val tiff = 4 + 4 // FF E2, length, then "MPF\0"
-        if (tiff + 8 > out.size) return out
-        val little = when {
-            out[tiff] == 'I'.code.toByte() && out[tiff + 1] == 'I'.code.toByte() -> true
-            out[tiff] == 'M'.code.toByte() && out[tiff + 1] == 'M'.code.toByte() -> false
-            else -> return out
-        }
-        val ifd = tiff + readU32(out, tiff + 4, little)
-        if (ifd < tiff || ifd + 2 > out.size) return out
-        for (e in 0 until readU16(out, ifd, little)) {
-            val entry = ifd + 2 + e * 12
-            if (entry + 12 > out.size) return out
-            if (readU16(out, entry, little) != 0xB002) continue
-            val count = readU32(out, entry + 4, little) / 16
-            val list = tiff + readU32(out, entry + 8, little)
-            if (list < tiff || list + count * 16 > out.size) return out
-            for (k in 0 until count) {
-                val at = list + k * 16
-                if (k == 0) writeU32(out, at + 4, readU32(out, at + 4, little) + resized, little)
-                else readU32(out, at + 8, little).takeIf { it != 0 }?.let { writeU32(out, at + 8, it + resizedAfter, little) }
-            }
+        val index = mpfEntries(out, tiff = 4 + 4, end = out.size) ?: return out // FF E2, length, then "MPF\0"
+        for (k in 0 until index.count) {
+            val at = index.list + k * 16
+            if (k == 0) writeU32(out, at + 4, readU32(out, at + 4, index.little) + resized, index.little)
+            else readU32(out, at + 8, index.little).takeIf { it != 0 }?.let { writeU32(out, at + 8, it + resizedAfter, index.little) }
         }
         return out
     }
@@ -300,29 +242,6 @@ object ImageMetadataScrubber {
         return orientation
     }
 
-    /**
-     * Visits each segment before the image data as (marker, payload start, end) until [visit] returns false.
-     * Stops at the first malformed byte.
-     */
-    private inline fun walkJpegSegments(src: ByteArray, visit: (marker: Int, payload: Int, end: Int) -> Boolean) {
-        var i = 2
-        while (i + 3 < src.size) {
-            if (src[i] != 0xFF.toByte()) return
-            var j = i
-            while (j < src.size && src[j] == 0xFF.toByte()) j++
-            if (j >= src.size) return
-            val marker = src[j].toInt() and 0xFF
-            i = j + 1
-            if (marker == MARKER_SOS || marker == MARKER_EOI) return
-            if (marker == 0x01 || marker in 0xD0..0xD7) continue
-            if (i + 1 >= src.size) return
-            val length = ((src[i].toInt() and 0xFF) shl 8) or (src[i + 1].toInt() and 0xFF)
-            if (length < 2) return
-            val end = i + length
-            if (end > src.size || !visit(marker, i + 2, end)) return
-            i = end
-        }
-    }
 
     private fun isExifHeader(b: ByteArray, from: Int, until: Int): Boolean =
         until - from >= 6 &&
@@ -377,29 +296,27 @@ object ImageMetadataScrubber {
         var mpf: Piece.Span? = null
         walkJpegSegments(jpeg) { marker, payload, end ->
             if (marker == MARKER_APP0 && payload == 6) at = end
-            if (marker == MARKER_APP2 && startsWith(jpeg, payload, end, MPF_HEADER)) mpf = Piece.Span(payload - 4, end)
+            if (marker == MARKER_APP2 && startsWith(jpeg, payload, end, MPF_HEADER)) mpf = Piece.Span(jpeg, payload - 4, end)
             mpf == null
         }
         val index = mpf?.takeIf { it.from >= at }
         val pieces = if (index == null) {
-            listOf(Piece.Span(0, at), Piece.Literal(exif), Piece.Span(at, jpeg.size))
+            listOf(Piece.Span(jpeg, 0, at), Piece.Literal(exif), Piece.Span(jpeg, at, jpeg.size))
         } else {
             listOf(
-                Piece.Span(0, at), Piece.Literal(exif), Piece.Span(at, index.from),
-                Piece.Literal(movedMpf(jpeg, index, resized = exif.size, resizedAfter = 0)), Piece.Span(index.until, jpeg.size),
+                Piece.Span(jpeg, 0, at), Piece.Literal(exif), Piece.Span(jpeg, at, index.from),
+                Piece.Literal(movedMpf(jpeg, index, resized = exif.size, resizedAfter = 0)), Piece.Span(jpeg, index.until, jpeg.size),
             )
         }
-        return assemble(pieces, jpeg)
+        return assemble(pieces)
     }
 
-    private fun exifApp1(tiff: ByteArray): ByteArray = app1(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + tiff)
+    /** [jpeg] tagged with [orientation], so decoders turn it upright the way they turn its source. */
+    internal fun withOrientation(jpeg: ByteArray, orientation: Int): ByteArray = withExif(jpeg, minimalExifTiff(orientation))
 
-    private fun app1(payload: ByteArray): ByteArray {
-        val length = payload.size + 2
-        return byteArrayOf(0xFF.toByte(), MARKER_APP1.toByte(), ((length shr 8) and 0xFF).toByte(), (length and 0xFF).toByte()) + payload
-    }
+    private fun exifApp1(tiff: ByteArray): ByteArray = jpegSegment(MARKER_APP1, byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00) + tiff)
 
-    private const val HDRGM_NS = "http://ns.adobe.com/hdr-gain-map/1.0/"
+
     private val HDRGM_VERSION = Regex("""hdrgm:Version\s*=\s*(["'])([0-9]{1,3}\.[0-9]{1,3})\1|<hdrgm:Version>([0-9]{1,3}\.[0-9]{1,3})</hdrgm:Version>""")
     private val CONTAINER_DIRECTORY = Regex("""<Container:Directory>(.*?)</Container:Directory>""", RegexOption.DOT_MATCHES_ALL)
     private val CONTAINER_ITEM = Regex("""<Container:Item\s([^<>]*?)/>""")
@@ -443,7 +360,7 @@ object ImageMetadataScrubber {
         val xmp = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
             "<rdf:Description rdf:about=\"\" xmlns:hdrgm=\"$HDRGM_NS\" xmlns:Container=\"http://ns.google.com/photos/1.0/container/\" " +
             "xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\" hdrgm:Version=\"$version\">$directory</rdf:Description></rdf:RDF></x:xmpmeta>"
-        return (XMP_JPEG_HEADER + xmp.encodeToByteArray()).takeIf { it.size + 2 <= 0xFFFF }?.let(::app1)
+        return (XMP_JPEG_HEADER + xmp.encodeToByteArray()).takeIf { it.size + 2 <= 0xFFFF }?.let { jpegSegment(MARKER_APP1, it) }
     }
 
     /* ---------------- WebP ---------------- */
@@ -459,7 +376,7 @@ object ImageMetadataScrubber {
         val keepOrientation = orientation != null && orientation != 1
 
         val pieces = mutableListOf<Piece>()
-        pieces += Piece.Span(0, 12)
+        pieces += Piece.Span(src, 0, 12)
         var i = 12
         var droppedAnything = false
         var sawVp8x = false
@@ -471,7 +388,7 @@ object ImageMetadataScrubber {
             val padded = size + (size and 1)
             val chunkEnd = i + 8 + padded
             if (chunkEnd > src.size || chunkEnd < i) {
-                if (type == "EXIF" || type == "XMP ") droppedAnything = true else pieces += Piece.Span(i, src.size)
+                if (type == "EXIF" || type == "XMP ") droppedAnything = true else pieces += Piece.Span(src, i, src.size)
                 break
             }
 
@@ -482,7 +399,7 @@ object ImageMetadataScrubber {
                     // The flags byte advertises which optional chunks are present. Leaving
                     // EXIF/XMP advertised after removing them yields a file decoders may
                     // reject, so rewrite it rather than copying the span.
-                    if (size < 1) { pieces += Piece.Span(i, chunkEnd) } else {
+                    if (size < 1) { pieces += Piece.Span(src, i, chunkEnd) } else {
                         val chunk = src.copyOfRange(i, chunkEnd)
                         val flags = chunk[8].toInt() and 0xFF
                         val updated = if (keepOrientation) {
@@ -495,7 +412,7 @@ object ImageMetadataScrubber {
                         pieces += Piece.Literal(chunk)
                     }
                 }
-                else -> pieces += Piece.Span(i, chunkEnd)
+                else -> pieces += Piece.Span(src, i, chunkEnd)
             }
             i = chunkEnd
         }
@@ -504,7 +421,7 @@ object ImageMetadataScrubber {
         if (keepOrientation && sawVp8x) pieces += Piece.Literal(webpChunk("EXIF", minimalExifTiff(orientation)))
 
         if (!droppedAnything) return Outcome.NothingToStrip
-        val out = assemble(pieces, src)
+        val out = assemble(pieces)
         // RIFF size counts everything after the first 8 bytes and must match the new length.
         writeLe32(out, 4, out.size - 8)
         return Outcome.Scrubbed(out)
@@ -755,7 +672,7 @@ object ImageMetadataScrubber {
 
     private fun scrubPng(src: ByteArray): Outcome {
         val pieces = mutableListOf<Piece>()
-        pieces += Piece.Span(0, 8) // signature
+        pieces += Piece.Span(src, 0, 8) // signature
         var i = 8
         var droppedAnything = false
         while (i + 8 <= src.size) {
@@ -766,18 +683,18 @@ object ImageMetadataScrubber {
             }
             val chunkEnd = i + 12 + length // length + type + data + crc
             if (chunkEnd > src.size || chunkEnd < i) {
-                if (type in PNG_DROP) droppedAnything = true else pieces += Piece.Span(i, src.size)
+                if (type in PNG_DROP) droppedAnything = true else pieces += Piece.Span(src, i, src.size)
                 break
             }
             if (type in PNG_DROP) {
                 droppedAnything = true
             } else {
-                pieces += Piece.Span(i, chunkEnd)
+                pieces += Piece.Span(src, i, chunkEnd)
             }
             i = chunkEnd
             if (type == "IEND") break
         }
         if (!droppedAnything) return Outcome.NothingToStrip
-        return Outcome.Scrubbed(assemble(pieces, src))
+        return Outcome.Scrubbed(assemble(pieces))
     }
 }

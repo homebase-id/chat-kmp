@@ -51,6 +51,7 @@ data class CardOverrides(
                         CardPortrait(
                             source = o.strictString("source"), shape = o.strictString("shape"), ring = o.strictDouble("ring"),
                             shadow = o.strictString("shadow"), tilt = o.strictDouble("tilt"), tape = o.strictBoolean("tape"), mono = o.strictBoolean("mono"),
+                            size = o.strictString("size")?.takeIf { it in CardDesignSpecs.PORTRAIT_SIZES },
                         )
                     }
                 },
@@ -114,6 +115,7 @@ data class CardPortrait(
     @Serializable(with = CardNumberSerializer::class) val tilt: Double? = null,
     val tape: Boolean? = null,
     val mono: Boolean? = null,
+    val size: String? = null,
 )
 
 @Serializable

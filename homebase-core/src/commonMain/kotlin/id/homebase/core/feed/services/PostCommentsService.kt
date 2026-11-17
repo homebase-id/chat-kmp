@@ -13,9 +13,9 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
-import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
@@ -24,7 +24,6 @@ import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -40,10 +39,12 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.feedLabeledDrive
+import id.homebase.core.settings.UserPreferences
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
-import id.homebase.core.settings.UserPreferences
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.Uuid
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -51,8 +52,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.uuid.Uuid
 
 // Threading is one level: a top-level comment has groupId = postId, a reply has groupId = parentCommentId.
 @OptIn(ExperimentalEncodingApi::class)
@@ -336,7 +335,7 @@ class PostCommentsService(
         val referencedFile = commentReference(post, replyToCommentId)
 
         val attachments = listOfNotNull(attachment)
-        // Encryption preserves payload keys and passes preview thumbs through, so both paths derive them here.
+        // Encrypting or staging keeps payload keys and preview thumbs, so they're derived from the plain bundle here.
         val bundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOps,
@@ -379,61 +378,23 @@ class PostCommentsService(
             remoteTargetDrive = if (isLocalOnly) null else referencedFile.targetDrive,
         )
 
-        val optimisticFileId = Uuid.random()
-        if (isEncrypted) {
-            val outcome = uploadService.upload(
-                MediaUploadSpec(
-                    driveId = uploadDrive,
-                    uniqueId = commentUniqueId,
-                    keyHeader = keyHeader,
-                    bundle = bundle,
-                    metadata = uploadMetadata,
-                    transit = transit,
-                    originalRecipientCount = recipients.size,
-                    requestFileSystemType = FileSystemType.Comment,
-                    writeOptimistic = false,
-                    optimisticFileId = optimisticFileId,
-                    overPeer = overPeer,
-                ),
-                scope = scope,
-            )
-            if (outcome !is UploadOutcome.Enqueued) {
-                error("Failed to enqueue comment for upload (outbox: $outcome)")
-            }
-            try {
-                optimisticWriter.writeNewFile(
-                    driveId = uploadDrive,
-                    keyHeader = keyHeader,
-                    unecryptedMetadata = metadata,
-                    originalRecipientCount = recipients.size,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = outcome.payloadDescriptors,
-                    fileId = optimisticFileId,
-                )
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) {
-                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
-                }
-            }
-        } else {
-            enqueuePlaintextUpload(
-                outboxSync = outboxSync,
-                optimisticWriter = optimisticWriter,
-                fileOps = fileOps,
-                request = UploadFileRequest(
-                    driveId = uploadDrive,
-                    keyHeader = keyHeader,
-                    metadata = uploadMetadata,
-                    payloads = bundle.payloads,
-                    thumbnails = bundle.thumbnails,
-                    transitOptions = transit,
-                    fileSystemType = FileSystemType.Comment,
-                ),
-                tag = TAG,
-                optimisticFileId = optimisticFileId,
+        val outcome = uploadService.upload(
+            MediaUploadSpec(
+                driveId = uploadDrive,
+                uniqueId = commentUniqueId,
+                keyHeader = keyHeader,
+                bundle = bundle,
+                metadata = uploadMetadata,
                 optimisticMetadata = metadata,
+                transit = transit,
+                originalRecipientCount = recipients.size,
+                requestFileSystemType = FileSystemType.Comment,
                 overPeer = overPeer,
-            )
+            ),
+            scope = scope,
+        )
+        if (outcome !is UploadOutcome.Enqueued) {
+            error("Failed to enqueue comment for upload (outbox: $outcome)")
         }
 
         Logger.d(tag = TAG) {

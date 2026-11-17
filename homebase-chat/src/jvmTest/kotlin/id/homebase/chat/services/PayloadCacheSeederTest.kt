@@ -114,7 +114,7 @@ class PayloadCacheSeederTest {
             previewThumbs = emptyList(),
         )
 
-        seeder.seed(driveId, fileId, bundle)
+        seeder.seed(driveId, fileId, bundle, encrypted = true)
 
         // Payload: served from the seed (raw, encrypted-flagged) with no network.
         val payload = driveCache.getPayloadBytesRaw(driveId, fileId, "photo")
@@ -147,7 +147,7 @@ class PayloadCacheSeederTest {
         )
 
         // Must not throw despite the bad payload.
-        seeder.seed(driveId, fileId, bundle)
+        seeder.seed(driveId, fileId, bundle, encrypted = true)
 
         val good = driveCache.getPayloadBytesRaw(driveId, fileId, "good")
         assertContentEquals(goodBytes, good.bytes)
@@ -181,7 +181,7 @@ class PayloadCacheSeederTest {
             previewThumbs = emptyList(),
         )
 
-        seeder.seed(driveId, fileId, bundle)
+        seeder.seed(driveId, fileId, bundle, encrypted = true)
 
         assertTrue(bigPath !in readPaths, "capped payload must never be readFileBytes'd")
         // Not seeded → the read escapes the cache and hits the throwing MockEngine.

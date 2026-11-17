@@ -161,6 +161,13 @@ open class OkioFileOperationsProvider(
         }
     }
 
+    override suspend fun overwrite(path: String, offset: Long, bytes: ByteArray) = withContext(io) {
+        fileSystem.openReadWrite(path.toPath(), mustCreate = false, mustExist = true).use { handle ->
+            require(offset >= 0 && offset + bytes.size <= handle.size()) { "overwrite past the end of $path" }
+            handle.write(offset, bytes, 0, bytes.size)
+        }
+    }
+
     override suspend fun writeDownload(path: String, data: Flow<ByteArray>) {
         val limit = downloadLimitBytes ?: return writeStream(path, data)
         withContext(io) {

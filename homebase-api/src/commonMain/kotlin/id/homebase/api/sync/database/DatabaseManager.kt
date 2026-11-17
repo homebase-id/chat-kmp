@@ -42,6 +42,12 @@ private val appNotificationsAdapter = AppNotifications.Adapter(
     identityIdAdapter = UuidAdapter,
     notificationIdAdapter = UuidAdapter
 )
+private val chatMentionIndexAdapter = ChatMentionIndex.Adapter(
+    identityIdAdapter = UuidAdapter,
+    driveIdAdapter = UuidAdapter,
+    uniqueIdAdapter = UuidAdapter,
+    groupIdAdapter = UuidAdapter
+)
 private val chatReadCountAdapter = ChatReadCount.Adapter(
     groupIdAdapter = UuidAdapter
 )
@@ -170,6 +176,7 @@ class DatabaseManager(
         val database = OdinDatabase(
             driver,
             appNotificationsAdapter,
+            chatMentionIndexAdapter,
             chatReadCountAdapter,
             connectionCacheAdapter,
             driveLocalTagIndexAdapter,
@@ -230,6 +237,7 @@ class DatabaseManager(
             "AppNotifications",
             "AutoSavedMedia",
             "BackupCheckpoint",
+            "ChatMentionIndex",
             "ChatReadCount",
             "CircleMembershipCache",
             "ConnectionCache",
@@ -343,6 +351,14 @@ class DatabaseManager(
         AppNotificationsWrapper(
             driver,
             appNotificationsAdapter,
+            this
+        )
+    }
+    val chatMentionIndex: ChatMentionIndexWrapper by lazy {
+        ChatMentionIndexWrapper(
+            driver,
+            chatMentionIndexAdapter,
+            driveMainIndexAdapter,
             this
         )
     }

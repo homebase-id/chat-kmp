@@ -1,13 +1,11 @@
 package id.homebase.core.ui.screens.card
 
-import id.homebase.api.client.drives.isVisibleToCircle
+import id.homebase.api.client.drives.AclViewer
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.client.profile.isPhotoScopedTo
 import id.homebase.api.util.compareStringUuId
-import id.homebase.core.ui.screens.profile.AclFilter
-import id.homebase.core.ui.screens.profile.aclFilter
 import id.homebase.core.ui.screens.profile.visiblePhoto
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
@@ -47,15 +45,15 @@ sealed interface CardAudience {
 internal fun CardAudience.isSameAs(other: CardAudience): Boolean =
     this == other || (this is CardAudience.Circle && other is CardAudience.Circle && compareStringUuId(id, other.id))
 
-internal fun CardAudience.aclFilter(): AclFilter = when (this) {
-    CardAudience.Public -> ProfileVisibility.ANONYMOUS.aclFilter()
-    is CardAudience.Circle -> { acl -> acl.isVisibleToCircle(id) }
+internal fun CardAudience.viewer(): AclViewer = when (this) {
+    CardAudience.Public -> AclViewer(ProfileVisibility.ANONYMOUS)
+    is CardAudience.Circle -> AclViewer(ProfileVisibility.CONNECTED, setOf(id))
 }
 
 internal val CardAudience.photoVisibility: ProfileVisibility
     get() = if (this is CardAudience.Circle) ProfileVisibility.CONNECTED else ProfileVisibility.ANONYMOUS
 
-internal fun List<ProfileAttribute>.photoFor(card: CardAudience): ProfileAttribute? = visiblePhoto(card.aclFilter())
+internal fun List<ProfileAttribute>.photoFor(card: CardAudience): ProfileAttribute? = visiblePhoto(card.viewer())
 
 // Picked in the same order as photoFor, so with several Public photos the one the card shows is the one it owns.
 internal fun List<ProfileAttribute>.ownPhotoFor(card: CardAudience): ProfileAttribute? = filter {
@@ -63,7 +61,7 @@ internal fun List<ProfileAttribute>.ownPhotoFor(card: CardAudience): ProfileAttr
         CardAudience.Public -> it.visibility == ProfileVisibility.ANONYMOUS
         is CardAudience.Circle -> it.visibility == ProfileVisibility.CONNECTED && it.isPhotoScopedTo(card.id)
     }
-}.visiblePhoto { true }
+}.visiblePhoto(AclViewer(ProfileVisibility.OWNER))
 
 /** [design] stays a raw string so a design this build doesn't know survives a read-modify-write; [extra] keeps unknown `data` keys for the same reason. */
 data class ProfileCard(
