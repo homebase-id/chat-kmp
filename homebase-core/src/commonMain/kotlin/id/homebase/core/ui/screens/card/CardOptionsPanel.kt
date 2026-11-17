@@ -254,8 +254,10 @@ internal fun CardOptionsPanel(
     val tools = remember(options, styles.isEmpty()) {
         // The presets are the design's colour schemes, so they are the one Palette tab.
         val palette = styles.isNotEmpty()
-        val shown = options.filter { !(palette && it == CardOption.COLOURS) && !(it == CardOption.PORTRAIT_SHAPE && CardOption.PORTRAIT_SIZE in options) }.sortedBy { TAB_ORDER.indexOf(it).let { i -> if (i < 0) TAB_ORDER.size else i } }
-        listOfNotNull(PALETTE_TOOL.takeIf { palette }) + shown.map { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it)) }
+        val shown = options.filter { !(palette && it == CardOption.COLOURS) }
+        val grouped = TAB_GROUPS.map { group -> group.filter { it in shown } }.filter { it.isNotEmpty() }
+        val groups = grouped + (shown - grouped.flatten().toSet()).map { listOf(it) }
+        listOfNotNull(PALETTE_TOOL.takeIf { palette }) + groups.map { group -> group.first().let { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it), group) } }
     }
     var picked by rememberSaveable(design) { mutableStateOf(tools.firstOrNull()?.key.orEmpty()) }
     val current = tools.firstOrNull { it.key == picked } ?: tools.firstOrNull() ?: return
@@ -273,9 +275,11 @@ internal fun CardOptionsPanel(
         ) { shown ->
             // The picked tool names itself in the group below, so the control stands alone here.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                val option = options.firstOrNull { it.name == shown }
-                if (option == null) CardStyleRow(styles, overrides, design, enabled, onStyle, custom = custom)
-                else OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
+                val group = tools.firstOrNull { it.key == shown }?.options.orEmpty()
+                if (group.isEmpty()) CardStyleRow(styles, overrides, design, enabled, onStyle, custom = custom)
+                else Column(verticalArrangement = Arrangement.spacedBy(PHOTO_ROWS_GAP)) {
+                    for (option in group) OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
+                }
             }
         }
         OptionToolbar(
@@ -319,7 +323,7 @@ private fun OptionControl(
         ) { shape ->
             ShapeGlyph(shape.orEmpty())
         }
-        CardOption.PORTRAIT_SIZE -> Column(verticalArrangement = Arrangement.spacedBy(PHOTO_ROWS_GAP)) {
+        CardOption.PORTRAIT_SIZE -> {
             val portraitShape = CardDesignSpecs.selectedValue(design, CardOption.PORTRAIT_SHAPE, overrides.valueOf(CardOption.PORTRAIT_SHAPE)).orEmpty()
             // Large text needs the room; the words alone still name each size.
             val sizeGlyphs = LocalDensity.current.fontScale <= LARGE_TEXT_SCALE
@@ -328,16 +332,13 @@ private fun OptionControl(
                 selected = CardDesignSpecs.selectedValue(design, option, overrides.valueOf(option)),
                 enabled = enabled,
                 chipHeight = chipHeight,
-                onSelect = { onOption(option, it.takeIf { v -> v != CardDesignSpecs.DEFAULT_PORTRAIT_SIZE }) },
+                onSelect = { onOption(option, it.takeIf { v -> v != preset }) },
             ) { size ->
                 if (sizeGlyphs) {
                     SizeGlyph(portraitShape, size.orEmpty())
                     Spacer(Modifier.width(SIZE_GLYPH_GAP))
                 }
                 SegmentLabel(stringResource(sizeLabel(size.orEmpty())))
-            }
-            if (CardOption.PORTRAIT_SHAPE in CardDesignSpecs.of(design)?.options.orEmpty()) {
-                OptionControl(CardOption.PORTRAIT_SHAPE, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
             }
         }
         CardOption.BLOCK_STYLE -> SegmentedChoices(
@@ -835,12 +836,16 @@ private fun List<String>.swap(a: Int, b: Int): List<String> {
     return moved
 }
 
-private data class PanelTool(val key: String, val icon: ImageVector, val label: StringResource, val description: StringResource)
+private data class PanelTool(val key: String, val icon: ImageVector, val label: StringResource, val description: StringResource, val options: List<CardOption> = emptyList())
 
 private val PALETTE_TOOL = PanelTool("presets", Icons.Outlined.Palette, MR.string.profile_card_tool_palette, MR.string.profile_card_option_presets)
 
-// After Palette: Photo (size, with the shape row under it), Background, Style, then the rest in their usual order.
-private val TAB_ORDER = listOf(CardOption.PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE, CardOption.BACKGROUND, CardOption.BLOCK_STYLE)
+// After Palette: Photo (size, with the shape row under it), Background, Style, then the rest one tab each in their usual order.
+private val TAB_GROUPS = listOf(
+    listOf(CardOption.PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE),
+    listOf(CardOption.BACKGROUND),
+    listOf(CardOption.BLOCK_STYLE),
+)
 
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
