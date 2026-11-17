@@ -26,25 +26,25 @@ internal suspend fun enqueuePlaintextUpload(
     optimisticMetadata: UploadFileMetadata = request.metadata,
     overPeer: Boolean = false,
 ) {
+    val fileId = optimisticFileId ?: Uuid.random()
     // Staged copies belong to the outbox row once it exists; until then they are ours to delete.
     val staged = mutableListOf<String>()
-    val payloads = try {
-        request.payloads.map { payload ->
+    val sent = try {
+        val stripped = request.payloads.map { payload ->
             withMetadataStripped(payload, fileOps, staged = true).also { if (it.filePath != payload.filePath) staged += it.filePath }
-        }.also { stripped ->
-            val enqueued = outboxSync.tryEnqueue(request.copy(payloads = stripped), overPeer = overPeer)
-            if (!enqueued.enqueued) error("Failed to enqueue upload (outbox: $enqueued)")
         }
+        val sent = PayloadBundle(stripped, request.thumbnails, previewThumbs = emptyList())
+        // Before the enqueue: once the outbox owns the staged copies it may upload and delete them before we read them.
+        payloadCacheSeeder.seed(request.driveId, fileId, sent, encrypted = false)
+        val enqueued = outboxSync.tryEnqueue(request.copy(payloads = stripped), overPeer = overPeer)
+        if (!enqueued.enqueued) error("Failed to enqueue upload (outbox: $enqueued)")
+        sent
     } catch (e: Throwable) {
         staged.forEach { runCatching { fileOps.deleteTempFile(it) } }
         throw e
     }
 
-    val sent = PayloadBundle(payloads, request.thumbnails, previewThumbs = emptyList())
-    val fileId = optimisticFileId ?: Uuid.random()
     try {
-        // Seeded before the row is written, which makes the views read it; over peer the file lives on the peer's drive.
-        if (!overPeer) payloadCacheSeeder.seed(request.driveId, fileId, sent, encrypted = false)
         optimisticWriter.writeNewFile(
             driveId = request.driveId,
             keyHeader = request.keyHeader,
@@ -56,7 +56,7 @@ internal suspend fun enqueuePlaintextUpload(
         )
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = tag) {
-            "optimistic seed/write failed (non-fatal) file=${request.metadata.appData.uniqueId}"
+            "optimistic write failed (non-fatal) file=${request.metadata.appData.uniqueId}"
         }
     }
 }

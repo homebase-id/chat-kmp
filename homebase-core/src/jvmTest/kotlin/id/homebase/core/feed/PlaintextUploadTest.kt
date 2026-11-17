@@ -1,7 +1,6 @@
 package id.homebase.core.feed
 
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -9,8 +8,8 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.OkioFileOperationsProvider
-import id.homebase.core.feed.services.enqueuePlaintextUpload
 import id.homebase.core.feed.services.FeedProtocol
+import id.homebase.core.feed.services.enqueuePlaintextUpload
 import java.io.File
 import java.nio.file.Files
 import kotlin.random.Random
@@ -18,7 +17,9 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import okio.FileSystem
@@ -63,6 +64,12 @@ class PlaintextUploadTest {
             assertContentEquals(photo.readBytes(), assertNotNull(payload).bytes)
             val thumbnail = env.driveFileProvider.getThumbBytesDecrypted(drive, fileId, "pst_mdi0", KeyHeader.empty(), 320, 240)
             assertContentEquals(thumb, assertNotNull(thumbnail).bytes)
+            // Streamed too (playing or saving a video), which mustn't try to decrypt it.
+            var streamed = ByteArray(0)
+            assertTrue(env.driveFileProvider.streamPayloadDecrypted(drive, fileId, "pst_mdi0", KeyHeader.empty()) { flow ->
+                streamed = flow.toList().fold(ByteArray(0), ByteArray::plus)
+            })
+            assertContentEquals(photo.readBytes(), streamed)
 
             // The row lists the seeded size, which is the one the views ask for.
             val row = assertNotNull(

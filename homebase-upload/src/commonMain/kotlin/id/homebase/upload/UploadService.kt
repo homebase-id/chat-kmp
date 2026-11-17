@@ -86,7 +86,7 @@ class UploadService(
         if (spec.seedCache || spec.writeOptimistic) {
             try {
                 if (spec.seedCache) {
-                    payloadCacheSeeder.seed(spec.driveId, spec.optimisticFileId, encryptedBundle)
+                    payloadCacheSeeder.seed(spec.driveId, spec.optimisticFileId, encryptedBundle, encrypted = true)
                 }
                 if (spec.writeOptimistic) {
                     optimisticWriter.writeNewFile(
@@ -189,7 +189,7 @@ class UploadService(
         if (spec.writeOptimistic) {
             try {
                 if (writeThrough != null && spec.seedCache) {
-                    payloadCacheSeeder.seed(spec.driveId, spec.fileId!!, writeThrough)
+                    payloadCacheSeeder.seed(spec.driveId, spec.fileId!!, writeThrough, encrypted = true)
                 }
                 optimisticWriter.writeUpdate(spec.driveId, spec.keyHeader, spec.metadata, optimisticDescriptors)
             } catch (e: Exception) {
@@ -208,11 +208,9 @@ class UploadService(
 }
 
 /**
- * Build the optimistic [PayloadDescriptor]s from an encrypted bundle — the local mirror of what
- * the server will return: per-payload contentType, native thumbnail sizes (bytes are in the
- * seeded cache, not inline), the manual-mode IV, and the embedded preview thumbnail.
+ * The optimistic row's descriptors for [this], encrypted or plaintext: the local mirror of what the server will
+ * return, with the native thumbnail sizes (their bytes are in the seeded cache, not inline).
  */
-/** The optimistic row's descriptors for [this]: what the server will return, with the native thumbnail sizes seeded. */
 fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
     payloads.map { payload ->
         PayloadDescriptor(

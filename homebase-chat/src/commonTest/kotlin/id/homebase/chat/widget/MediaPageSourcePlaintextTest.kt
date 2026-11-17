@@ -65,15 +65,15 @@ class MediaPageSourcePlaintextTest {
     }
 
     @Test
-    fun `an unencrypted file shows the sender's own file`() {
-        // A plaintext upload isn't seeded into the cache, so nothing says when the server has the sent copy.
+    fun `an unencrypted file shows the sent copy, the sender's own file standing in`() {
         val result = resolveMediaPageSource(
             localContext = imageContext("/tmp/photo.jpg"),
             rawIvPresent = false,
             decodedIv = null,
             isEncrypted = false,
         )
-        assertIs<MediaPageSource.LocalFile>(result)
-        assertEquals("/tmp/photo.jpg", result.path)
+        assertIs<MediaPageSource.Remote>(result)
+        assertEquals(null, result.iv)
+        assertEquals("/tmp/photo.jpg", result.standIn)
     }
 }

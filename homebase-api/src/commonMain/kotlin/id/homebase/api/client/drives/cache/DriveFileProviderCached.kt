@@ -346,7 +346,13 @@ class DriveFileProviderCached(
                 ?: return delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
 
         return snapshot.use { snap ->
-            val encryptedFlow = channelFlow<ByteArray> {
+            // A plaintext file (a public post) is cached as the server serves it: decrypting it would throw.
+            val encrypted = fileSystem.read(snap.data) {
+                readInt()
+                readUtf8(readInt().toLong())
+                readByte() == 1.toByte()
+            }
+            val cachedFlow = channelFlow<ByteArray> {
                 val channel = this
                 fileSystem.read(snap.data) {
                     readInt() // skip status
@@ -364,7 +370,7 @@ class DriveFileProviderCached(
                 }
             }
 
-            consume(AesCbc.streamDecryptWithCbc(encryptedFlow, keyHeader.aesKey, keyHeader.iv))
+            consume(if (encrypted) AesCbc.streamDecryptWithCbc(cachedFlow, keyHeader.aesKey, keyHeader.iv) else cachedFlow)
             // Cache hit is local-disk speed — progress jumps straight to done.
             onProgress?.invoke(1f)
             true
