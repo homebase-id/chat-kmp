@@ -19,6 +19,8 @@ data class ConversationUiModel(
     val lastMessage: String,
     val latestMessageTimestamp: Instant, // Timestamp of the last message in this convo
     val unreadCount: Int = 0,
+    /** Unread messages that mention the signed-in identity; group conversations only. */
+    val unreadMentionCount: Int = 0,
     val avatarInitials: String,
     val avatarTiny: EmbeddedThumb?,
     val participants: List<OdinId> = listOf(),

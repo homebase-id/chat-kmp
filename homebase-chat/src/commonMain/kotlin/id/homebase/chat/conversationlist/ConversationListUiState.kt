@@ -76,6 +76,9 @@ data class ConversationListUiState(
 )
 
 @Immutable
+data class NextMention(val messageId: Uuid, val userDateMs: Long, val pendingCount: Int)
+
+@Immutable
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
     /** Action replies left out of [messages] because their card is loaded; the card shows them. */
@@ -110,6 +113,8 @@ data class MessageListUiState(
     val isSendingMessage: Boolean = false,
     val pendingOutgoing: ImmutableList<PendingOutgoingMessage> = persistentListOf(),
     val highlightedMessageId: Uuid? = null,
+    /** Oldest unread mention not yet jumped to; null hides the jump control. */
+    val nextMention: NextMention? = null,
     val pinnedMessages: ImmutableList<MessageUiModel> = persistentListOf(),
     val currentPinIndex: Int = 0,
     /** True if more messages exist before the loaded window's first message.

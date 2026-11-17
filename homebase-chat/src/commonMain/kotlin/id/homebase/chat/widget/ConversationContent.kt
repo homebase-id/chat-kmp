@@ -50,6 +50,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -62,6 +63,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -206,6 +209,7 @@ import id.homebase.resources.chat_not_connected_view_request
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
 import id.homebase.resources.chat_previous_result
+import id.homebase.resources.chat_jump_to_mention
 import id.homebase.resources.chat_scroll_to_bottom
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_send_message_button
@@ -347,6 +351,14 @@ fun ConversationContent(
                 ?: return@snapshotFlow false
             lastVisibleIndex < totalItems - 1
         }.collect { showScrollToBottom = it }
+    }
+
+    val pendingMention = uiState.nextMention?.messageId
+    LaunchedEffect(listState, pendingMention) {
+        if (pendingMention == null) return@LaunchedEffect
+        val key = pendingMention.toString()
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.any { it.key == key } }.first { it }
+        onUiAction(ConversationListUiAction.MentionSeen(pendingMention))
     }
 
     LaunchedEffect(listState) {
@@ -1361,31 +1373,40 @@ fun ConversationContent(
                             }
                         }
 
-                        ScrollToBottomButton(
-                            visible = showScrollToBottom,
-                            unreadCount = conversation.conversation.unreadCount,
+                        Column(
                             modifier = Modifier.align(Alignment.BottomEnd)
                                 .padding(end = 16.dp, bottom = 16.dp),
-                            onClick = {
-                                if (uiState.hasNewerMessages) {
-                                    // Deep in history: the bottom of the loaded
-                                    // window isn't the latest message, so a plain
-                                    // animateScrollToItem(last) would land mid-history.
-                                    // Reload the latest page instead — the VM marks
-                                    // the reload pending-scroll-to-latest and the
-                                    // resulting emission carries a triggerScroll
-                                    // bottom anchor (resolveScrollToLatestPosition)
-                                    // that ConversationMessagesPane scrolls to.
-                                    // (Auto-follow can't do this: it only fires on
-                                    // list growth while already at the bottom, but
-                                    // this reload shrinks the window from up in
-                                    // history.)
-                                    onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
-                                } else {
-                                    coroutineScope.launch { listState.animateScrollToNewestItem() }
-                                }
-                            },
-                        )
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            JumpToMentionButton(
+                                visible = showScrollToBottom && uiState.nextMention != null,
+                                count = uiState.nextMention?.pendingCount ?: 0,
+                                onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
+                            )
+                            ScrollToBottomButton(
+                                visible = showScrollToBottom,
+                                unreadCount = conversation.conversation.unreadCount,
+                                onClick = {
+                                    if (uiState.hasNewerMessages) {
+                                        // Deep in history: the bottom of the loaded
+                                        // window isn't the latest message, so a plain
+                                        // animateScrollToItem(last) would land mid-history.
+                                        // Reload the latest page instead — the VM marks
+                                        // the reload pending-scroll-to-latest and the
+                                        // resulting emission carries a triggerScroll
+                                        // bottom anchor (resolveScrollToLatestPosition)
+                                        // that ConversationMessagesPane scrolls to.
+                                        // (Auto-follow can't do this: it only fires on
+                                        // list growth while already at the bottom, but
+                                        // this reload shrinks the window from up in
+                                        // history.)
+                                        onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
+                                    } else {
+                                        coroutineScope.launch { listState.animateScrollToNewestItem() }
+                                    }
+                                },
+                            )
+                        }
 
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -2337,59 +2358,84 @@ private suspend fun LazyListState.animateScrollToItemUnlessPreempted(index: Int)
 }
 
 @Composable
-private fun ScrollToBottomButton(
+internal fun JumpToMentionButton(
     visible: Boolean,
-    unreadCount: Int,
-    modifier: Modifier = Modifier,
+    count: Int,
     onClick: () -> Unit,
 ) {
     androidx.compose.animation.AnimatedVisibility(
         visible = visible,
-        modifier = modifier,
         enter = fadeIn() + scaleIn(),
         exit = fadeOut() + scaleOut(),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            androidx.compose.animation.AnimatedVisibility(
-                visible = unreadCount > 0,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                val badgeScale = remember { Animatable(1f) }
-                var previousCount by remember { mutableIntStateOf(unreadCount) }
-                LaunchedEffect(unreadCount) {
-                    if (unreadCount > previousCount) {
-                        badgeScale.animateTo(
-                            targetValue = 1f,
-                            animationSpec = keyframes {
-                                durationMillis = 300
-                                1.25f at 100
-                                0.95f at 200
-                                1f at 300
-                            },
-                        )
-                    }
-                    previousCount = unreadCount
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(
-                        modifier = Modifier.graphicsLayer {
-                            scaleX = badgeScale.value
-                            scaleY = badgeScale.value
-                        },
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ) {
-                        Text(
-                            text = if (unreadCount > 999) "999+" else unreadCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
+            BadgedBox(badge = { CountBadge(count) }) {
+                SmallFloatingActionButton(
+                    onClick = onClick,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AlternateEmail,
+                        contentDescription = stringResource(MR.string.chat_jump_to_mention),
+                    )
                 }
             }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun CountBadge(count: Int) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = count > 0,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        val badgeScale = remember { Animatable(1f) }
+        var previousCount by remember { mutableIntStateOf(count) }
+        LaunchedEffect(count) {
+            if (count > previousCount) {
+                badgeScale.animateTo(
+                    targetValue = 1f,
+                    animationSpec = keyframes {
+                        durationMillis = 300
+                        1.25f at 100
+                        0.95f at 200
+                        1f at 300
+                    },
+                )
+            }
+            previousCount = count
+        }
+        Badge(
+            modifier = Modifier.graphicsLayer {
+                scaleX = badgeScale.value
+                scaleY = badgeScale.value
+            },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ) {
+            Text(text = if (count > 999) "999+" else count.toString())
+        }
+    }
+}
+
+@Composable
+internal fun ScrollToBottomButton(
+    visible: Boolean,
+    unreadCount: Int,
+    onClick: () -> Unit,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        BadgedBox(
+            badge = { CountBadge(unreadCount) },
+        ) {
             SmallFloatingActionButton(
                 onClick = onClick,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
