@@ -11,3 +11,7 @@ fun isExpandedLayout(): Boolean =
     currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(
         WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
     )
+
+/** Composer emoji and attachment pickers open as popovers instead of the docked keyboard panel. */
+@Composable
+fun usesComposerPopovers(): Boolean = usesPointerUx() && isExpandedLayout()
