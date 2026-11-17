@@ -171,7 +171,7 @@ internal fun FilesyncInfoContent(
             node.addedMs.takeIf { it > 0 }?.let { InfoRow(MR.string.filesync_info_added, formatDayTime(it)) }
             node.addedBy?.let { InfoRow(MR.string.filesync_info_added_by, it.domainName) }
             node.uploadedMs?.let { InfoRow(MR.string.filesync_info_uploaded, formatDayTime(it)) }
-            node.removedMs?.let { InfoRow(MR.string.filesync_deleted, formatDayTime(it)) }
+            node.shownRemovedMs?.let { InfoRow(MR.string.filesync_deleted, formatDayTime(it)) }
             InfoRow(MR.string.filesync_info_where, where.joinToString(" › "))
         }
 

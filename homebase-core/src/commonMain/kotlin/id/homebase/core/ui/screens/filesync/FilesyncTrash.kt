@@ -22,7 +22,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         fun at(node: FilesyncNode, seen: MutableSet<Uuid>): Long? {
             if (node.nodeId in memo) return memo[node.nodeId]
             val parent = all.nodes[node.parentId]?.takeIf { seen.add(it.nodeId) }
-            val folderAt = parent?.let { if (it.removed) it.updatedMs else at(it, seen) }
+            val folderAt = parent?.let { it.removedMs ?: at(it, seen) }
             return folderAt?.takeIf { wentWith(node, it) }.also { memo[node.nodeId] = it }
         }
         all.nodes.keys.filterTo(mutableSetOf()) { id -> at(all.nodes.getValue(id), mutableSetOf(id)) != null }
@@ -140,7 +140,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
     companion object {
         /** Whether [node], in a folder deleted at [folderDeletedMs], went with it: removed no earlier, or still live and written no later. */
         fun wentWith(node: FilesyncNode, folderDeletedMs: Long): Boolean =
-            if (node.removed) node.updatedMs >= folderDeletedMs else node.updatedMs <= folderDeletedMs
+            node.removedMs?.let { it >= folderDeletedMs } ?: (node.versionMs?.let { it <= folderDeletedMs } == true)
     }
 }
 

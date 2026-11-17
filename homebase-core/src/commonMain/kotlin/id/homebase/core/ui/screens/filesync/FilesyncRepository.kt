@@ -94,7 +94,7 @@ class FilesyncRepository(
             nodeParams(null, FileState.Deleted),
             QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE, ordering = QueryBatchSortOrder.OldestFirst, sorting = QueryBatchSortField.AnyChangeDate),
         ) { page ->
-            val old = page.searchResults.takeWhile { it.fileMetadata.updated.milliseconds < beforeMs }
+            val old = page.searchResults.takeWhile { (it.fileMetadata.versionUpdated?.milliseconds ?: Long.MAX_VALUE) < beforeMs }
             old.mapNotNullTo(found) { it.fileVersionTag() }
             old.size == page.searchResults.size
         }
