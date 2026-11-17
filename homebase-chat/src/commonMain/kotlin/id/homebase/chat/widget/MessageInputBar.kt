@@ -1457,7 +1457,8 @@ fun MessageTextFieldForAttachment(
                             popoverContent = if (emojiPopover) {
                                 {
                                     EmojiSelection(
-                                        modifier = Modifier.fillMaxSize().testTag(ATTACHMENT_EMOJI_PICKER_TAG),
+                                        modifier = Modifier.fillMaxSize().padding(top = 8.dp, start = 16.dp, end = 16.dp)
+                                            .testTag(ATTACHMENT_EMOJI_PICKER_TAG),
                                         messageInputMode = true,
                                         searchFirst = true,
                                         onBackSpace = { state.programmaticBackspace() },
