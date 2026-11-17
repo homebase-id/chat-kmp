@@ -67,8 +67,8 @@ class RemuxHlsToMp4DeviceTest {
             assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, ts.absolutePath, ours.absolutePath))
             val oursMs = System.currentTimeMillis() - started
 
-            // As a save does it: sized while the download writes the TS (fed here in the download's chunk size), then
-            // one read to copy.
+            // As a save does it, roughly: sized as the TS is written (here from 64 KB chunks already in memory; a download
+            // feeds its own, smaller chunks in the same coroutine as its writes), then one read to copy.
             val chunks = ts.readBytes().let { b -> (b.indices step 65_536).map { b.copyOfRange(it, minOf(it + 65_536, b.size)) } }
             val sizingStarted = System.currentTimeMillis()
             val sizing = TsSizing().apply { chunks.forEach { feed(it) } }

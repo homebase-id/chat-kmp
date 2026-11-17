@@ -39,15 +39,32 @@ internal object TsToMp4 {
     private const val CHUNK = 256 * 1024
 }
 
-/** The remux's first pass, fed the TS's bytes in order as they arrive: every sample's size and time, for the index. */
+/**
+ * The remux's first pass, fed the TS's bytes in order as they arrive: every sample's size and time, for the index.
+ * One use: fed once, then [header] once.
+ */
 internal class TsSizing {
     private val table = SampleTable()
     private val demuxer = TsDemuxer(withData = false)
+    private var failure: Exception? = null
+    private var finished = false
 
-    fun feed(chunk: ByteArray) = demuxer.feed(chunk).forEach { table.add(it) }
+    // Fed by a download, which mustn't fail over a bad TS: the error waits for [header], inside the remux's handling.
+    fun feed(chunk: ByteArray) {
+        check(!finished) { "fed after the header was built" }
+        if (failure != null) return
+        try {
+            demuxer.feed(chunk).forEach { table.add(it) }
+        } catch (e: Exception) {
+            failure = e
+        }
+    }
 
     /** The MP4's ftyp and moov, once every byte has been fed. */
     fun header(tsPath: String): ByteArray {
+        check(!finished) { "the header was already built" }
+        finished = true
+        failure?.let { throw it }
         demuxer.finish().forEach { table.add(it) }
         // A saved video without its sound would be worse than a clear failure.
         check(demuxer.unsupportedAudioType < 0) { "audio stream type 0x${demuxer.unsupportedAudioType.toString(16)} isn't AAC" }

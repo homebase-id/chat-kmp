@@ -142,7 +142,7 @@ Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4.
 | Pixel 5 | ffmpeg-kit | 235–349 ms | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | Media3 Transformer, transmux | 5.4 s | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | MediaExtractor + MediaMuxer | 3.4 s | 27.6 MB | 2489 / 2490 | 2026-11-16 |
-| Pixel 5 (debuggable test app) | **ours, sized during the download** (one read of the `.ts`) | **436–659 ms** after the download, against 535–944 ms for two reads in the same runs; the sizing itself, 53–279 ms (53–84 warm), runs while the download writes | 27.3 MB | **2490 / 2490** | 2026-11-17 |
+| Pixel 5 (debuggable test app) | **ours, sized during the download** (one read of the `.ts`) | **436–659 ms** after the download, against 535–944 ms for two reads in the same runs; the sizing itself, 53–279 ms (53–84 warm) from 64 KB chunks in memory, runs in the download's coroutine, so it adds that much CPU to the download | 27.3 MB | **2490 / 2490** | 2026-11-17 |
 
 The 2026-11-17 row is a regenerated synthetic stand-in of the same shape (83 s, 720×1280, H.264 + AAC, 27.4 MB), two rounds of two runs each; the debuggable app's JIT makes single runs noisy, so read the ranges. Both paths write the same MP4, byte for byte.
 
