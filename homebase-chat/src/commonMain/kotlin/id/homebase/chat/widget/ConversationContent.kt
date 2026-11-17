@@ -65,7 +65,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -1376,7 +1375,7 @@ fun ConversationContent(
                                 onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
                             )
                             ScrollToBottomButton(
-                                visible = showScrollToBottom,
+                                visible = showScrollToBottom || uiState.nextMention != null,
                                 unreadCount = conversation.conversation.unreadCount,
                                 onClick = {
                                     if (uiState.hasNewerMessages) {
@@ -2354,17 +2353,16 @@ internal fun JumpToMentionButton(
     visible: Boolean,
     onClick: () -> Unit,
 ) {
-    val motion = MaterialTheme.motionScheme
     androidx.compose.animation.AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(motion.fastEffectsSpec()) + scaleIn(motion.fastSpatialSpec()) + expandVertically(motion.fastSpatialSpec()),
-        exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec()) + shrinkVertically(motion.fastSpatialSpec()),
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            FloatingActionButton(
+            SmallFloatingActionButton(
                 onClick = onClick,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
                 Icon(
                     imageVector = Icons.Outlined.AlternateEmail,
