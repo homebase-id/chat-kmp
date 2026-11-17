@@ -87,6 +87,7 @@ class PostCommentsMutationTest {
         outboxSync = env.outboxSync,
         uploadService = env.uploadService,
         optimisticWriter = env.optimisticWriter,
+        payloadCacheSeeder = env.payloadCacheSeeder,
         fileOps = env.fileOps,
         driveQueryProvider = env.driveQueryProvider,
         scope = scope,

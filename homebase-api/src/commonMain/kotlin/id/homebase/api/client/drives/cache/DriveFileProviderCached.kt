@@ -674,31 +674,28 @@ class DriveFileProviderCached(
     // =======================================================
 
     /**
-     * Seed the payload disk cache with already-encrypted bytes the client
-     * produced locally (e.g. at optimistic send time, before the server has
-     * the file). The bytes must be exactly what the server would return for
-     * `GET payload` — AES-CBC encrypted with the file's [KeyHeader] — so that
-     * [getPayloadBytesRaw]/[getPayloadBytesDecrypted] serve them
-     * transparently. Clears any stale 404 marker for the key so a pre-send
-     * lookup can't shadow the seeded entry.
+     * Seed the payload disk cache with bytes the client produced locally (at optimistic send time, before the server
+     * has the file). The bytes must be exactly what the server would return for `GET payload`: AES-CBC encrypted with
+     * the file's [KeyHeader], or, for a plaintext upload ([encrypted] false), the plain bytes. Clears any stale 404
+     * marker for the key so a pre-send lookup can't shadow the seeded entry.
      */
-    suspend fun cachePayloadBytesEncrypted(
+    suspend fun cachePayloadBytes(
             driveId: Uuid,
             fileId: Uuid,
             key: String,
             bytes: ByteArray,
-            contentType: String
+            contentType: String,
+            encrypted: Boolean = true,
     ) {
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
-        seedCache(payloadDiskCache, cacheKey, "PayloadIO", bytes, contentType)
+        seedCache(payloadDiskCache, cacheKey, "PayloadIO", bytes, contentType, encrypted)
     }
 
     /**
-     * Thumbnail analog of [cachePayloadBytesEncrypted]. `lastModified` defaults
-     * to null to line up with the read path's default for files that have not
-     * synced back from the server yet.
+     * Thumbnail analog of [cachePayloadBytes]. `lastModified` defaults to null to line up with the read path's default
+     * for files that have not synced back from the server yet.
      */
-    suspend fun cacheThumbBytesEncrypted(
+    suspend fun cacheThumbBytes(
             driveId: Uuid,
             fileId: Uuid,
             payloadKey: String,
@@ -706,10 +703,11 @@ class DriveFileProviderCached(
             height: Int,
             bytes: ByteArray,
             contentType: String,
-            lastModified: Long? = null
+            lastModified: Long? = null,
+            encrypted: Boolean = true,
     ) {
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-        seedCache(thumbCacheFor(driveId), cacheKey, "ThumbIO", bytes, contentType)
+        seedCache(thumbCacheFor(driveId), cacheKey, "ThumbIO", bytes, contentType, encrypted)
     }
 
     private suspend fun seedCache(
@@ -717,7 +715,8 @@ class DriveFileProviderCached(
             cacheKey: String,
             logTag: String,
             bytes: ByteArray,
-            contentType: String
+            contentType: String,
+            encrypted: Boolean,
     ) {
         writeToDiskCache(
                 cache,
@@ -725,9 +724,8 @@ class DriveFileProviderCached(
                 logTag,
                 ByteApiResponse(
                         status = 200,
-                        // The payloadencrypted bit is load-bearing: decrypt-on-read
-                        // consults it to know the cached bytes need AES-CBC.
-                        headers = Headers.build { append("payloadencrypted", "true") },
+                        // Load-bearing: decrypt-on-read consults it to know the cached bytes need AES-CBC.
+                        headers = if (encrypted) Headers.build { append("payloadencrypted", "true") } else Headers.Empty,
                         bytes = bytes,
                         contentType = contentType
                 )
@@ -738,7 +736,7 @@ class DriveFileProviderCached(
     /**
      * Move a file's seeded cache entries from the client-minted optimistic
      * fileId to the server-assigned one. Counterpart to
-     * [cachePayloadBytesEncrypted]/[cacheThumbBytesEncrypted]: at optimistic
+     * [cachePayloadBytes]/[cacheThumbBytes]: at optimistic
      * send time entries are seeded under a random local fileId; when the file
      * syncs back the server has assigned a new fileId and readers key by it,
      * so without this the sender re-downloads media it just produced.

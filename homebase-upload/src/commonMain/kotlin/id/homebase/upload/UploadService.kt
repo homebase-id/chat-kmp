@@ -212,7 +212,8 @@ class UploadService(
  * the server will return: per-payload contentType, native thumbnail sizes (bytes are in the
  * seeded cache, not inline), the manual-mode IV, and the embedded preview thumbnail.
  */
-private fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
+/** The optimistic row's descriptors for [this]: what the server will return, with the native thumbnail sizes seeded. */
+fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
     payloads.map { payload ->
         PayloadDescriptor(
             key = payload.key,

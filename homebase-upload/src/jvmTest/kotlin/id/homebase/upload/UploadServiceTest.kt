@@ -443,7 +443,7 @@ private class RecordingSeeder(
 ) : PayloadCacheSeeder(driveFileProvider, fileOperationsProvider) {
     val seededFileIds = mutableListOf<Uuid>()
 
-    override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
+    override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle, encrypted: Boolean) {
         seededFileIds += fileId
     }
 }

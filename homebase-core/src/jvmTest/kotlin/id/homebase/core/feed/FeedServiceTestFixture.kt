@@ -87,12 +87,14 @@ class FeedTestEnv(
         )
     }
 
+    val payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
+
     val uploadService: UploadService =
         UploadService(
             encryptor = payloadBundleEncryptor,
             outboxSync = outboxSync,
             optimisticWriter = OptimisticWriterPort(optimisticWriter),
-            payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps),
+            payloadCacheSeeder = payloadCacheSeeder,
         )
 
     // A MockEngine that 500s: the comment tests only cold-load own posts, so the over-peer query

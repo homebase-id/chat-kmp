@@ -23,15 +23,17 @@ import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.settings.UserPreferences
 import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.PayloadCacheSeeder
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
-import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CoroutineScope
 
 class FeedPostSenderService(
     private val outboxSync: OutboxSync,
     private val uploadService: UploadService,
     private val optimisticWriter: OptimisticWriter,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val fileOps: FileOperationsProvider,
     private val userPreferences: UserPreferences,
     private val scope: CoroutineScope,
@@ -121,6 +123,7 @@ class FeedPostSenderService(
             enqueuePlaintextUpload(
                 outboxSync = outboxSync,
                 optimisticWriter = optimisticWriter,
+                payloadCacheSeeder = payloadCacheSeeder,
                 fileOps = fileOps,
                 request = UploadFileRequest(
                     driveId = channelId,
