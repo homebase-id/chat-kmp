@@ -19,6 +19,7 @@ import java.nio.file.Files
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -31,7 +32,10 @@ import okio.FileSystem
  */
 class HlsDownloadTest {
     private val cache = Files.createTempDirectory("hls-download").toFile()
-    private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath)
+    private val tsReads = mutableListOf<String>()
+    private val fileOps = object : OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath) {
+        override fun readFileAsFlow(path: String, chunkSize: Int) = super.readFileAsFlow(path, chunkSize).also { if (path.endsWith(".ts")) tsReads += path }
+    }
     private val keyHeader = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
     private val clients = mutableListOf<HttpClient>()
 
@@ -55,6 +59,7 @@ class HlsDownloadTest {
 
         val mp4 = assertNotNull(server(stored).downloadHlsAsMp4(DRIVE, FILE, "chat_web0", keyHeader, fileOps))
         assertSameMedia(fileOps, source, File(mp4))
+        assertEquals(1, tsReads.size, "the samples are sized as the download writes the TS, so it's read once, to copy them")
     }
 
     /** A provider whose server holds [stored]: whole, or the byte range a request asks for. */

@@ -47,7 +47,7 @@ Full reads of the file per operation, with the code that ships. Header reads (du
 | Plain MP4, under 5 MB | **1** of the compressed file: encrypt and hash in one pass | **1** | **1** | **1** |
 | **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
 | Photos backup at Original | **1** (read once at hand-off) | | | |
-| Saving a received video to the gallery | **2** of the decrypted `.ts` (`TsToMp4`: size the samples, then copy them behind the index) | **2** | **2** | **2** |
+| Saving a received video to the gallery | **1** of the decrypted `.ts`: the samples are sized as the download writes it (`TsSizing`), then copied behind the index | **1** | **1** | **1** |
 | An HDR photo at HD or Original | the photo is decoded as before; its gain map, the file's tail (a few percent of it), is read **1** more time on its own | same | same | same |
 | Shrinking a GIF sticker | the file is read **1** time into memory, then decoded **2** times per ladder step (palette, then encode), at most 3 steps | same | same | same |
 
@@ -142,6 +142,9 @@ Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4.
 | Pixel 5 | ffmpeg-kit | 235–349 ms | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | Media3 Transformer, transmux | 5.4 s | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | MediaExtractor + MediaMuxer | 3.4 s | 27.6 MB | 2489 / 2490 | 2026-11-16 |
+| Pixel 5 (debuggable test app) | **ours, sized during the download** (one read of the `.ts`) | **436–659 ms** after the download, against 535–944 ms for two reads in the same runs; the sizing itself, 53–279 ms (53–84 warm), runs while the download writes | 27.3 MB | **2490 / 2490** | 2026-11-17 |
+
+The 2026-11-17 row is a regenerated synthetic stand-in of the same shape (83 s, 720×1280, H.264 + AAC, 27.4 MB), two rounds of two runs each; the debuggable app's JIT makes single runs noisy, so read the ranges. Both paths write the same MP4, byte for byte.
 
 Ours is a little smaller because it keeps parameter sets in the index rather than repeating them in-band. ffmpeg decodes ours to the same frames as the source, with the same audio packets and A/V offset (`TsToMp4Test`). On the phone, the test app is debuggable, so ART won't compile it ahead of time; the release app runs it compiled, as the desktop does.
 

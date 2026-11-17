@@ -10,6 +10,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.AndroidFileOperationsProvider
+import id.homebase.api.video.hls.TsSizing
 import java.io.File
 import java.nio.ByteBuffer
 import kotlin.random.Random
@@ -60,16 +61,30 @@ class RemuxHlsToMp4DeviceTest {
         val dir = File(context.cacheDir, "remux-${System.nanoTime()}").apply { mkdirs() }
         try {
             val ts = File(dir, "video.ts").apply { writeBytes(decrypted(segmented)) }
+            val fileOps = AndroidFileOperationsProvider(context)
             val ours = File(dir, "ours.mp4")
             val started = System.currentTimeMillis()
-            assertTrue(VideoCompressionService.remuxTsToMp4(AndroidFileOperationsProvider(context), ts.absolutePath, ours.absolutePath))
+            assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, ts.absolutePath, ours.absolutePath))
             val oursMs = System.currentTimeMillis() - started
+
+            // As a save does it: sized while the download writes the TS (fed here in the download's chunk size), then
+            // one read to copy.
+            val chunks = ts.readBytes().let { b -> (b.indices step 65_536).map { b.copyOfRange(it, minOf(it + 65_536, b.size)) } }
+            val sizingStarted = System.currentTimeMillis()
+            val sizing = TsSizing().apply { chunks.forEach { feed(it) } }
+            val sizingMs = System.currentTimeMillis() - sizingStarted
+            val once = File(dir, "once.mp4")
+            val onceStarted = System.currentTimeMillis()
+            assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, ts.absolutePath, once.absolutePath, sizing))
+            val onceMs = System.currentTimeMillis() - onceStarted
+            assertTrue(ours.readBytes().contentEquals(once.readBytes()), "the same MP4 either way")
 
             val expected = tracks(compressed)
             val got = tracks(ours)
             Log.i(
                 "RemuxBenchmark",
-                "${source.name} ${source.length() / 1000} kB: ${oursMs} ms ${ours.length() / 1000} kB $got; source $expected",
+                "${source.name} ${source.length() / 1000} kB: two reads ${oursMs} ms; sized during download ${sizingMs} ms + one read " +
+                    "${onceMs} ms; ${ours.length() / 1000} kB $got; source $expected",
             )
             assertEquals(expected.size, got.size, "same frame size")
             assertEquals(expected.audio, got.audio, "audio kept")

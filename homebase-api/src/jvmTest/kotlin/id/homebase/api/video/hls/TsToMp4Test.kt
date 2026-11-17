@@ -63,5 +63,12 @@ class TsToMp4Test {
         TsToMp4.remux(fileOps, ts.absolutePath, out.absolutePath)
 
         assertSameMedia(fileOps, source, out)
+
+        // Sized as a download writes it, in whatever chunks arrive: the same file.
+        val sizing = TsSizing()
+        ts.readBytes().asList().chunked(65_537).forEach { sizing.feed(it.toByteArray()) }
+        val fromDownload = File(cache, "$name.sized.mp4")
+        TsToMp4.remux(fileOps, ts.absolutePath, fromDownload.absolutePath, sizing)
+        assertContentEquals(out.readBytes(), fromDownload.readBytes())
     }
 }

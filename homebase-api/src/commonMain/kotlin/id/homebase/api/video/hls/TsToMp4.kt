@@ -15,16 +15,14 @@ import kotlinx.coroutines.flow.flow
 
 /**
  * Copies the H.264 and AAC of an MPEG-TS into an MP4 without re-encoding, as `ffmpeg -c copy -movflags +faststart`
- * does: two reads of the TS, the first to size the samples and build the index, the second to write the file with
- * the index up front. Throws when [tsPath] has no H.264 in MPEG-TS.
+ * does: the samples are sized first ([TsSizing]) so the index can go up front, then copied behind it. Given the
+ * [sizing] a download did as it wrote the TS, this reads the TS once; otherwise it sizes it with a read of its own.
+ * Throws when [tsPath] has no H.264 in MPEG-TS.
  */
 internal object TsToMp4 {
-    suspend fun remux(fileOps: FileOperationsProvider, tsPath: String, outputPath: String) {
-        val table = SampleTable()
-        val tracks = demux(fileOps, tsPath, withData = false) { table.add(it) }
-        // A saved video without its sound would be worse than a clear failure.
-        check(tracks.unsupportedAudioType < 0) { "audio stream type 0x${tracks.unsupportedAudioType.toString(16)} isn't AAC" }
-        val header = table.header(checkNotNull(tracks.avc) { "no H.264 in $tsPath" }, tracks.aac)
+    suspend fun remux(fileOps: FileOperationsProvider, tsPath: String, outputPath: String, sizing: TsSizing? = null) {
+        val sized = sizing ?: TsSizing().also { s -> fileOps.readFileAsFlow(tsPath, CHUNK).collect { s.feed(it) } }
+        val header = sized.header(tsPath)
         fileOps.writeStream(outputPath, flow {
             emit(header)
             val out = ByteBuilder(CHUNK)
@@ -44,6 +42,22 @@ internal object TsToMp4 {
     }
 
     private const val CHUNK = 256 * 1024
+}
+
+/** The remux's first pass, fed the TS's bytes in order as they arrive: every sample's size and time, for the index. */
+internal class TsSizing {
+    private val table = SampleTable()
+    private val demuxer = TsDemuxer(withData = false)
+
+    fun feed(chunk: ByteArray) = demuxer.feed(chunk).forEach { table.add(it) }
+
+    /** The MP4's ftyp and moov, once every byte has been fed. */
+    fun header(tsPath: String): ByteArray {
+        demuxer.finish().forEach { table.add(it) }
+        // A saved video without its sound would be worse than a clear failure.
+        check(demuxer.unsupportedAudioType < 0) { "audio stream type 0x${demuxer.unsupportedAudioType.toString(16)} isn't AAC" }
+        return table.header(checkNotNull(demuxer.avc) { "no H.264 in $tsPath" }, demuxer.aac)
+    }
 }
 
 /** A frame as the MP4 stores it: H.264 with 4-byte NAL lengths, or raw AAC. Times in 90 kHz ticks. */

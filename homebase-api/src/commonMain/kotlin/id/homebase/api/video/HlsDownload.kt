@@ -5,11 +5,14 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.hls.TsSizing
+import kotlinx.coroutines.flow.onEach
 import kotlin.uuid.Uuid
 
 /**
  * A received HLS video as an MP4 in the media scratch folder, to save or share; null, logged, when its download or
- * remux fails. The caller deletes the MP4.
+ * remux fails. The caller deletes the MP4. The remux sizes the samples as the download writes the TS, so the TS is
+ * read only once, to copy them.
  */
 suspend fun DriveFileProvider.downloadHlsAsMp4(
     driveId: Uuid,
@@ -23,11 +26,16 @@ suspend fun DriveFileProvider.downloadHlsAsMp4(
     val tsPath = "$dir/input_hlsdl_$uid.ts"
     val mp4Path = "$dir/hlsdl_$uid.mp4"
     try {
-        if (!streamPayloadDecryptedToPath(driveId, fileId, payloadKey, keyHeader, tsPath, fileOps)) {
+        var sizing: TsSizing? = null
+        val found = streamPayloadDecrypted(driveId, fileId, payloadKey, keyHeader) { bytes ->
+            val sized = TsSizing().also { sizing = it }
+            fileOps.writeDownload(tsPath, bytes.onEach { sized.feed(it) })
+        }
+        if (!found) {
             Logger.e(tag = "HlsSave") { "download/decrypt failed: payload $payloadKey of file $fileId" }
             return null
         }
-        if (!VideoCompressionService.remuxTsToMp4(fileOps, tsPath, mp4Path)) {
+        if (!VideoCompressionService.remuxTsToMp4(fileOps, tsPath, mp4Path, sizing)) {
             Logger.e(tag = "HlsSave") { "remux to MP4 failed: payload $payloadKey of file $fileId" }
             return null
         }
