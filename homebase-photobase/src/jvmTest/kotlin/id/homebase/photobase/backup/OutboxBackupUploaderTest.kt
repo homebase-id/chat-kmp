@@ -1,21 +1,12 @@
 package id.homebase.photobase.backup
 
-import id.homebase.api.serialization.OdinSystemSerializer
-import org.junit.Assume.assumeTrue
-import id.homebase.upload.PayloadBundleEncryptionService
-import id.homebase.api.video.VideoPayloadProcessor
-import id.homebase.api.video.FFmpegBinaryManager
-import id.homebase.api.video.VideoQuality
-import id.homebase.api.image.ImageMetadataScrubber
-import id.homebase.api.image.MediaQuality
-import id.homebase.api.file.contentTypeFromBytes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DescriptorContentV1
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.UploadFileMetadata
@@ -24,16 +15,26 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.plaintextContentHash
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.file.contentTypeFromBytes
+import id.homebase.api.image.ImageMetadataScrubber
+import id.homebase.api.image.MediaQuality
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import id.homebase.api.video.FFmpegBinaryManager
+import id.homebase.api.video.VideoPayloadProcessor
+import id.homebase.api.video.VideoQuality
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.upload.EMPTY_BUNDLE
 import id.homebase.upload.OptimisticLocalWriter
 import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PayloadBundleEncryptionService
 import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.upload.PayloadCacheSeeder
 import id.homebase.upload.UploadService
@@ -41,13 +42,6 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
-import id.homebase.api.file.FileOperationsProvider
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toInstant
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -63,6 +57,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import org.junit.Assume.assumeTrue
 
 class OutboxBackupUploaderTest {
     private val jvmFileOps = JvmFileOperationsProvider()
@@ -523,11 +524,17 @@ private object NeverSends : OutboxUploader {
 }
 
 private object NoEncryption : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+
     override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle =
         error("images don't go through encryptBundle")
 }
 
 private class PreviewingEncryptor : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+
     var calls = 0
 
     override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle {

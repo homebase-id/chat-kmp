@@ -1,7 +1,12 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import co.touchlab.kermit.Logger
+import id.homebase.api.coroutines.supervisedScope
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.safeFileName
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 
 /**
@@ -46,3 +51,43 @@ interface FileSystemHandler {
         onError: (Throwable) -> Unit = {},
     ) = shareFile(file, onError)
 }
+
+// App-lifetime: a save the person started finishes even if they leave the screen.
+private val saveScope = supervisedScope("saveFile")
+
+/**
+ * [FileSystemHandler.saveFile] on every platform: [file] saved through [albumSaver] as a person's save, under
+ * [suggestedName] made safe. [onRefused] gets the file when the album won't take it; by default that's an error saying
+ * why.
+ */
+internal fun saveThroughAlbum(
+    albumSaver: AlbumSaver,
+    fileOps: FileOperationsProvider,
+    file: Path,
+    suggestedName: String,
+    onSuccess: (String) -> Unit,
+    onError: (Throwable) -> Unit,
+    onRefused: (Path, reason: String) -> Unit = { _, reason -> onError(AlbumAccessDeniedException(reason)) },
+) {
+    saveScope.launch {
+        // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
+        val saved = try {
+            albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = "saveFile") { "Failed to save file: ${e.message}" }
+            onError(e)
+            return@launch
+        }
+        when (saved) {
+            is AlbumSaveResult.Saved -> onSuccess(saved.location)
+            AlbumSaveResult.Cancelled -> Unit
+            AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
+            is AlbumSaveResult.Refused -> onRefused(file, saved.reason)
+        }
+    }
+}
+
+// kotlinx.io's Path collapses `content://` to `content:/`; the file providers need it back.
+private fun Path.sourcePath(): String = toString().let { if (it.startsWith("content:/") && !it.startsWith("content://")) "content://${it.removePrefix("content:/")}" else it }

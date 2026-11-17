@@ -7,8 +7,8 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 
 /**
- * Seeds the payload/thumbnail disk cache with the bytes that just went
- * into the outbox, keyed under the optimistic fileId, so a just-sent image shows
+ * Seeds the payload/thumbnail disk cache with the bytes an upload is about to
+ * queue, keyed under the optimistic fileId, so a just-sent image shows
  * its sharp thumbnail through the "finalizing" window instead of the blurry
  * embedded preview — and so a failed send's media stays recoverable.
  *
@@ -82,6 +82,11 @@ open class PayloadCacheSeeder(
                 Logger.w(throwable = e, tag = TAG) { "seed: thumb seed failed (non-fatal) key=${thumb.key} ${thumb.pixelWidth}x${thumb.pixelHeight} fileId=$fileId" }
             }
         }
+    }
+
+    /** Removes what [seed] wrote under [fileId] for [bundle]: the upload it was for never queued. Best-effort. */
+    open suspend fun unseed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
+        driveFileProvider.removeSeededFile(driveId, fileId, bundle.toPayloadDescriptors().orEmpty())
     }
 
     companion object {

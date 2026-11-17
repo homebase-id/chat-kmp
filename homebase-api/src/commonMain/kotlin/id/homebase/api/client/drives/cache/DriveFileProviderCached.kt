@@ -241,7 +241,7 @@ class DriveFileProviderCached(
             ephemeralFiles = if (holders <= 1) ephemeralFiles - fileId else ephemeralFiles + (fileId to holders - 1)
         }
         try {
-            payloadDiskCache.remove(buildPayloadCacheKey(driveId, fileId, key, null, null).toDiskKey())
+            removeCachedPayload(driveId, fileId, key)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -714,6 +714,25 @@ class DriveFileProviderCached(
     ) {
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
         seedCache(thumbCacheFor(driveId), cacheKey, "ThumbIO", bytes, contentType, encrypted)
+    }
+
+    /**
+     * Removes what [cachePayloadBytes]/[cacheThumbBytes] wrote under [fileId] for [payloads], walked as [rekeyCachedFile]
+     * walks them. Per entry and best-effort: one that can't be removed doesn't keep the rest.
+     */
+    fun removeSeededFile(driveId: Uuid, fileId: Uuid, payloads: List<PayloadDescriptor>) {
+        for (descriptor in payloads) {
+            runCatching { removeCachedPayload(driveId, fileId, descriptor.key) }
+            for (thumb in descriptor.thumbnails.orEmpty()) {
+                val w = thumb.pixelWidth ?: continue
+                val h = thumb.pixelHeight ?: continue
+                runCatching { thumbCacheFor(driveId).remove(buildThumbCacheKey(driveId, fileId, descriptor.key, w, h, null).toDiskKey()) }
+            }
+        }
+    }
+
+    private fun removeCachedPayload(driveId: Uuid, fileId: Uuid, key: String) {
+        payloadDiskCache.remove(buildPayloadCacheKey(driveId, fileId, key, null, null).toDiskKey())
     }
 
     private suspend fun seedCache(

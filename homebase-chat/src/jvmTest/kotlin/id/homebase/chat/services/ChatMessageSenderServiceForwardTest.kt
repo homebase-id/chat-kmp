@@ -1,26 +1,27 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.PayloadSizePolicy
+import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.ServerMetadata
+import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.FileMetadata
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.common.BatchResult
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.PayloadSizePolicy
-import id.homebase.api.client.drives.FileState
-import id.homebase.api.client.drives.FileSystemType
-import id.homebase.api.client.drives.ServerMetadata
-import id.homebase.api.client.drives.files.AppFileMetaData
-import id.homebase.api.client.drives.files.FileMetadata
+import id.homebase.upload.EMPTY_BUNDLE
 import id.homebase.upload.PayloadBundle
-import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
-import id.homebase.api.common.SecureByteArray
-import id.homebase.api.serialization.Base64Bytes
 import id.homebase.upload.PayloadBundleEncryptor
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
@@ -29,18 +30,18 @@ import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import kotlin.random.Random
-import kotlin.test.assertContentEquals
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * A contact card is the first typed kind with `allowForward = true`, and a typed kind stores its
@@ -196,6 +197,9 @@ class ChatMessageSenderServiceForwardTest {
     }
 
     private class RecordingEncryptor : PayloadBundleEncryptor {
+        override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+        override suspend fun discardStaged(staged: PayloadBundle) = Unit
+
         val seen = mutableListOf<Map<String, ByteArray>>()
         override suspend fun encryptBundle(
             uniqueId: Uuid,

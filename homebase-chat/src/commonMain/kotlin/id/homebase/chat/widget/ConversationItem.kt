@@ -81,6 +81,7 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.onSecondaryPress
 import id.homebase.core.util.supportsTouchGestures
 import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -190,6 +191,7 @@ fun ConversationItem(
                     onClick = onClick,
                     onLongClick = { showMenu = true }
                 )
+                .onSecondaryPress { showMenu = true }
                 .semantics {
                     selected = isSelected
                     // A screen reader can't perform the swipe.

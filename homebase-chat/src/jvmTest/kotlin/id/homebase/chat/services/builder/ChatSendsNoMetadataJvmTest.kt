@@ -3,12 +3,20 @@ package id.homebase.chat.services.builder
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.video.FFmpegBinaryManager
 import id.homebase.api.video.VideoPayloadProcessor
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.PayloadBundleEncryptionService
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorInfo
@@ -18,12 +26,6 @@ import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import org.junit.Assume.assumeTrue
-import java.io.File
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.uuid.Uuid
 
 // What chat actually sends, decrypted: no photo or video carries the sender's location, at any quality.
 // Photos' side, which keeps it, is OutboxBackupUploaderTest.
@@ -32,6 +34,12 @@ class ChatSendsNoMetadataJvmTest {
     private val fileOps = JvmFileOperationsProvider()
     private val dir = kotlin.io.path.createTempDirectory("hb-chat-metadata").toFile()
     private val filmedAt = "+37.7749-122.4194/"
+    private val encryptor = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
+
+    // Staged copies land in this provider's outbox folder, under the temp dir, never the app's own.
+    private val publicStager = OkioFileOperationsProvider(okio.FileSystem.SYSTEM, dir.absolutePath).let {
+        PayloadBundleEncryptionService(it, VideoPayloadProcessor(it), EventBus())
+    }
 
     private fun file(name: String, bytes: ByteArray) = File(dir, name).apply { writeBytes(bytes) }.path
 
@@ -54,8 +62,7 @@ class ChatSendsNoMetadataJvmTest {
     private suspend fun sent(path: String, contentType: String, quality: MediaQuality): Pair<PayloadBundle, KeyHeader> {
         val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(path, contentType), fileOps, "chat_web0", quality)
         val key = KeyHeader.newRandom16()
-        val encrypted = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
-            .encryptBundle(Uuid.random(), bundle, key.aesKey, kotlinx.coroutines.GlobalScope)
+        val encrypted = encryptor.encryptBundle(Uuid.random(), bundle, key.aesKey, kotlinx.coroutines.GlobalScope)
         return encrypted to key
     }
 
@@ -78,6 +85,23 @@ class ChatSendsNoMetadataJvmTest {
             assertTrue(thumbs.isNotEmpty())
             thumbs.forEach { assertNull(ImageMetadataScrubber.readBlocks(it), "$quality: nor does any thumbnail") }
         }
+    }
+
+    @Test
+    fun aPublicPhotoIsStagedWithoutMetadataAtAnyQuality() = runTest {
+        val source = file("public.jpg", geotaggedJpeg(5000, 3000))
+        for (quality in MediaQuality.entries) {
+            val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(source, "image/jpeg"), fileOps, "chat_web0", quality)
+            val staged = publicStager.stageBundle(bundle)
+            assertNull(ImageMetadataScrubber.readBlocks(File(staged.payloads.single().filePath).readBytes()), "$quality: a public photo goes out without EXIF")
+        }
+    }
+
+    @Test
+    fun aPublicVideoIsRefusedRatherThanSentUnprocessed() = runTest {
+        val clip = file("public.mp4", this::class.java.getResourceAsStream("/test_videos/sample.mp4")!!.readBytes())
+        val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(clip, "video/mp4"), fileOps, "chat_web0", MediaQuality.entries.first())
+        assertFailsWith<IllegalArgumentException> { publicStager.stageBundle(bundle) }
     }
 
     private fun ffmpeg(vararg args: String): String {

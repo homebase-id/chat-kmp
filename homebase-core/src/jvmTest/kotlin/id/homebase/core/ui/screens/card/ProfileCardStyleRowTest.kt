@@ -29,7 +29,7 @@ class ProfileCardStyleRowTest {
         CardDesign.BOARD to listOf("Ocean", "Forest", "Plum", "Terracotta", "Charcoal", "Sky", "Butter", "Blush", "Purple"),
         CardDesign.COLLAGE to listOf("Linen", "Sage", "Mist", "Rose", "Lilac", "Kraft", "Night", "Mono", "Blue", "Slate", "Ink"),
         CardDesign.DOSSIER to listOf("Onyx", "Ink", "Moss", "Oxblood", "Graphite", "Paper", "Blueprint", "Sand", "Plum", "Mist"),
-        CardDesign.LINKS to listOf("Frost", "Cloud", "Slate", "Mint", "Peach", "Lavender", "Navy", "Lemon", "Blue", "Cobalt", "Plum"),
+        CardDesign.LINKS to listOf("Frost", "Slate", "Mint", "Peach", "Lavender", "Navy", "Lemon", "Blue", "Cobalt", "Plum"),
     )
 
     private fun row(design: String, fontScale: Float, dark: Boolean, check: (still: Boolean) -> Unit) =

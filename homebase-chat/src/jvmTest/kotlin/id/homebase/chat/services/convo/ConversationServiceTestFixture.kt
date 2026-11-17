@@ -21,18 +21,19 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.buildTestUploadService
-import id.homebase.upload.PayloadBundle
-import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.chat.services.SendMessageResult
 import id.homebase.chat.services.StatusMessageData
+import id.homebase.chat.services.buildTestUploadService
 import id.homebase.chat.services.outbox.OptimisticWriter
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.test.TestScope
+import id.homebase.upload.EMPTY_BUNDLE
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PayloadBundleEncryptor
 import kotlin.test.assertEquals
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.TestScope
 
 /**
  * Shared setup for ConversationService tests.
@@ -803,6 +804,9 @@ class FakeConversationLoader : ConversationLoader {
 }
 
 class FakePayloadBundleEncryptor : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+
     val calls = mutableListOf<Uuid>()
     override suspend fun encryptBundle(
         uniqueId: Uuid,

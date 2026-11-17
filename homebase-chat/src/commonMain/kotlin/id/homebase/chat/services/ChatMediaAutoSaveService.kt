@@ -15,19 +15,19 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.extensionForMimeType
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.AlbumAccessDeniedException
+import id.homebase.core.util.AlbumSaveResult
 import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.NetworkMonitor
-import id.homebase.api.file.extensionForMimeType
-import id.homebase.core.util.saveAwait
+import id.homebase.core.util.saveFile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.io.files.Path
 
 private const val TAG = "ChatMediaAutoSave"
 
@@ -149,7 +149,11 @@ class ChatMediaAutoSaveService(
         try {
             // The export lands in cacheDir, which the CacheSweeper reaps — hand it straight over
             // and drop it, rather than treating it as the saved copy.
-            val location = albumSaver.saveAwait(Path(path), name)
+            val location = when (val saved = albumSaver.saveFile(path, name, asked = false, fileOperationsProvider)) {
+                is AlbumSaveResult.Saved -> saved.location
+                is AlbumSaveResult.Refused -> throw AlbumAccessDeniedException(saved.reason)
+                AlbumSaveResult.Cancelled, AlbumSaveResult.WriteFailed -> error("couldn't save $name")
+            }
             dbm.autoSavedMedia.markSaved(file.fileId.toString(), payload.key)
             Logger.d(tag = TAG) { "Saved ${payload.key} of ${file.fileId} to $location" }
         } catch (e: AlbumAccessDeniedException) {

@@ -2,10 +2,8 @@ package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.util.toNfc
 import id.homebase.core.filesync.FilesyncProtocol
-import id.homebase.core.filesync.FilesyncRoleFolder
 import id.homebase.api.util.splitExtension
 import id.homebase.api.util.trimToUtf8Boundary
-import kotlin.uuid.Uuid
 
 /** Filesync's name rules (filesync docs/spec/node-schema-v1.md): NFC, at most 255 UTF-8 bytes, no / or NUL, not . or .. */
 internal object FilesyncNames {
@@ -18,16 +16,13 @@ internal object FilesyncNames {
         if (name.all { it < '\u0080' }) name.lowercase()
         else name.toNfc().split('ı').joinToString("ı") { it.lowercase().uppercase().lowercase() }.replace('ς', 'σ').toNfc()
 
-    /** Each computer's own state folder at the top of what it syncs, which no computer syncs: nothing may take its name there. */
+    /** A computer's own state folder's name: computers leave an item of this name out in every folder, so nothing may take it. */
     val stateFolderKey = key(".hbsync")
 
-    /** Where a computer's sync starts: the drive's top, or a role folder, which it syncs in place. */
-    fun isSyncTop(folderId: Uuid): Boolean = folderId == FilesyncProtocol.RootNodeId || FilesyncRoleFolder.of(folderId) != null
-
     /** Recovered files is left out: it is the one renamed in a clash. */
-    fun takenKeys(folderId: Uuid, nodes: Collection<FilesyncNode>): MutableSet<String> =
+    fun takenKeys(nodes: Collection<FilesyncNode>): MutableSet<String> =
         nodes.filter { it.nodeId != FilesyncProtocol.RecoveredFilesNodeId }.mapTo(mutableSetOf()) { it.nameKey }
-            .apply { if (isSyncTop(folderId)) add(stateFolderKey) }
+            .apply { add(stateFolderKey) }
 
     /** [requested] made valid, then numbered "(1)", "(2)"… until no key in [takenKeys] uses it. */
     fun freeName(requested: String, takenKeys: Set<String>): String {

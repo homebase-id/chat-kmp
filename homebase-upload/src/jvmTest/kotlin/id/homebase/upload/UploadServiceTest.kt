@@ -102,6 +102,7 @@ class UploadServiceTest {
             DriveFileProvider(httpClient, creds, DriveFileProviderCached(httpClient, creds, NoopFileOps())),
             NoopFileOps(),
         )
+        seeder.countRows = { db.outbox.count() }
         val writer = RecordingOptimisticWriter()
         val service = UploadService(
             encryptor = encryptor,
@@ -310,6 +311,42 @@ class UploadServiceTest {
     }
 
     @Test
+    fun upload_seedsBeforeTheRowExists_andUnseedsWhenTheEnqueueDoesNotTake() = runTest {
+        // Once queued, any drain may send and delete the files before a later seed read them; until the row exists
+        // nothing can. The seed is under a fresh fileId, so one no row took is only removed.
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        fun spec() = MediaUploadSpec(
+            driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), bundle = bundleOf("p0"),
+            metadata = metadata(uid), seedCache = true, optimisticFileId = Uuid.random(),
+        )
+        val first = spec()
+        assertIs<UploadOutcome.Enqueued>(h.service.upload(first, backgroundScope))
+        assertEquals(listOf(0L), h.seeder.rowsAtSeed, "seeded before the row was queued")
+        assertEquals(emptyList(), h.seeder.unseededFileIds)
+
+        val again = spec()
+        assertIs<UploadOutcome.AlreadyQueued>(h.service.upload(again, backgroundScope))
+        assertEquals(listOf(again.optimisticFileId), h.seeder.unseededFileIds, "a seed no row took is removed")
+    }
+
+    @Test
+    fun updateFile_seedsAfterTheRowIsQueued_underTheFilesOwnId() = runTest {
+        // An update seeds under the file's real id: never before the row is durable, so a rejected update can't touch it.
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        h.service.updateFile(
+            MediaUpdateSpec(
+                driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(),
+                metadata = metadata(uid, versionTag = Uuid.random()),
+                bundle = bundleOf("note_body"), fileId = Uuid.random(), writeOptimistic = true, seedCache = true,
+            ),
+            scope = backgroundScope,
+        )
+        assertEquals(listOf(1L), h.seeder.rowsAtSeed)
+    }
+
+    @Test
     fun updateFile_newPayloadWithoutFileId_preservesExistingDescriptors_andDoesNotSeed() = runTest {
         // No fileId → an incremental/partial update (append a page, add-recipients): must NOT replace
         // the whole descriptor set with the partial one, and must not seed. Keeps the old contract.
@@ -381,6 +418,9 @@ class UploadServiceTest {
 
 /** Fake encryptor: counts calls, echoes the input as "pre-encrypted", or throws a swept source. */
 private class RecordingEncryptor(private val throwMissing: String? = null) : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+
     var callCount = 0
         private set
 
@@ -442,10 +482,18 @@ private class RecordingSeeder(
     fileOperationsProvider: FileOperationsProvider,
 ) : PayloadCacheSeeder(driveFileProvider, fileOperationsProvider) {
     val seededFileIds = mutableListOf<Uuid>()
+    val unseededFileIds = mutableListOf<Uuid>()
+    val rowsAtSeed = mutableListOf<Long>()
+    var countRows: suspend () -> Long = { 0 }
 
     override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle, encrypted: Boolean) {
         assertTrue(encrypted, "UploadService only ever seeds the ciphertext it made")
+        rowsAtSeed += countRows()
         seededFileIds += fileId
+    }
+
+    override suspend fun unseed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
+        unseededFileIds += fileId
     }
 }
 

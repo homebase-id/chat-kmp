@@ -297,6 +297,9 @@ public class DriveFileProvider(
         encrypted: Boolean = true,
     ) = driveCache.cacheThumbBytes(driveId, fileId, payloadKey, width, height, bytes, contentType, lastModified, encrypted)
 
+    fun removeSeededFile(driveId: Uuid, fileId: Uuid, payloads: List<PayloadDescriptor>) =
+        driveCache.removeSeededFile(driveId, fileId, payloads)
+
     /**
      * Move a file's seeded cache entries (payloads + thumbnails) from the
      * optimistic client-minted fileId to the server-assigned one at sync-back,
