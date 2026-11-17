@@ -195,9 +195,14 @@ Same quality number for both (60 at Standard, 80 at HD); a JPEG at the same numb
 
 | Device | Input | Pipeline SDR WebP | Pipeline SDR JPEG | Shared Ultra HDR | Android: SDR / Ultra HDR `compress` | Measured |
 |---|---|---|---|---|---|---|
-| Pixel 5 | Synthetic 12 MP | 2198 kB, 2.65–2.72 s | 1552 kB, 280 ms | 1568 kB (+16 kB), 294–304 ms (+14–24 ms) | 1566 / 1566 kB, 155 / 153 ms (+2 ms scaling the gain map) | 2026-11-16 |
+| Pixel 5 | Synthetic 12 MP | 2198 kB, 2.65–2.72 s | 1552 kB, 280 ms | 1568 kB (+16 kB), 294–304 ms (+14–24 ms) | — / 1566 kB, 153 ms (the SDR row kept the gain map, see below) | 2026-11-16 |
+| Pixel 8 | Synthetic 12 MP | 2198 kB, 2.25–2.30 s | 1552 kB, 242–248 ms | 1568 kB (+16 kB), 252–260 ms (+6–12 ms) | 1552 / 1567 kB, 137–141 / 140–144 ms | 2026-11-17 |
+| Pixel 8 | Camera photo, 2.0 MB | 576 kB, 1.22–1.23 s | 862 kB, 161–199 ms | **880 kB (+18 kB, 2%)**, 167–183 ms | 862 / 879 kB, 91–92 / 91–92 ms | 2026-11-17 |
+| Pixel 8 | Camera photo, 2.0 MB | 653 kB, 1.21–1.22 s | 978 kB, 164–172 ms | **998 kB (+20 kB, 2%)**, 168–170 ms | 978 / 997 kB, 93–98 / 96–97 ms | 2026-11-17 |
 
-The shared writer costs about 15–25 ms for decoding, scaling and encoding the gain map and joining; Android's native encoder hides almost all of that. A smooth synthetic gain map compresses to nearly nothing, so this says nothing about size on real photos yet: to measure on real Pixel 8 photos (the shared writer writes the gain map as a 3-channel JPEG).
+The shared writer costs about 5–25 ms for decoding, scaling and encoding the gain map and joining; Android's native encoder hides almost all of that. On two real Pixel 8 camera photos (4032×2268, both Ultra HDR) the gain map adds **18–20 kB, 2%** of the HD image, and the shared writer's file is within 1 kB of Android's own Ultra HDR encode, though it writes the gain map as a 3-channel JPEG.
+
+The Pixel 5 row's Android SDR figure, measured before 2026-11-17, is left out: `Bitmap.createScaledBitmap` carries a gain map over on Android 14+, so the benchmark's "SDR" encode still wrote it (the same size as the Ultra HDR one). The benchmark now clears it. The pipeline was never affected: it drops the decoded gain map before any encode.
 
 **Decided 2026-11-16: no HDR at Standard.** Standard is for small and fast; HD and Original keep HDR. Reopen if a quality-matched comparison (JPEG quality chosen to look like today's WebP) shows the gap is much smaller.
 
