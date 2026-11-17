@@ -17,6 +17,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import id.homebase.api.common.SecureByteArray
 import kotlin.uuid.Uuid
 
 /**
@@ -60,21 +61,15 @@ class UploadService(
 
     /**
      * Steps 1 and 2: encrypt the payloads, or stage a public post's, and build the request. Payloads handed over
-     * already encrypted (`isPreEncrypted`) become the upload's own from this call on, like the files it makes, and on
-     * a throw everything is deleted. Throws [SourceUnavailableException] for a missing source and
-     * [IllegalArgumentException] for a public upload that can't be staged.
+     * already encrypted (`isPreEncrypted`, with their IV) become the upload's own from this call on, like the files it
+     * makes, and on a throw everything is deleted. Throws [SourceUnavailableException] for a missing source and
+     * [IllegalArgumentException] for a public upload that can't be staged or a payload handed over encrypted that
+     * can't be sent as it is.
      */
     suspend fun prepare(spec: MediaUploadSpec, scope: CoroutineScope): PreparedUpload {
         val encrypted = spec.metadata.isEncrypted
-        // A payload handed over encrypted may never reach the encryptor, which deletes only what it made.
-        var owned = spec.bundle?.let { it.copy(payloads = it.payloads.filter { payload -> payload.isPreEncrypted }) }
+        val fullBundle = sealOrStage(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, encrypted, scope)
         try {
-            val fullBundle = if (encrypted) {
-                encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
-            } else {
-                encryptor.stageBundle(spec.bundle)
-            }
-            owned = fullBundle
             val sent = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
             val request = UploadFileRequest(
                 driveId = spec.driveId,
@@ -89,8 +84,41 @@ class UploadService(
             )
             return PreparedUpload(spec, request, sent, encryptor)
         } catch (e: Throwable) {
-            owned?.let { encryptor.discard(it) }
+            encryptor.discard(fullBundle)
             throw e
+        }
+    }
+
+    /** [bundle] encrypted, or staged when the upload isn't. The encryptor deletes only what it made on a throw. */
+    private suspend fun sealOrStage(
+        uniqueId: Uuid,
+        bundle: PayloadBundle?,
+        aesKey: SecureByteArray,
+        encrypted: Boolean,
+        scope: CoroutineScope,
+    ): PayloadBundle {
+        val handed = bundle?.payloads.orEmpty().filter { it.isPreEncrypted }
+        try {
+            require(handed.all { encrypted && it.iv != null }) { "a payload handed over encrypted needs its IV and an encrypted upload" }
+            return if (encrypted) encryptor.encryptBundle(uniqueId, bundle, aesKey, scope) else encryptor.stageBundle(bundle)
+        } catch (e: Throwable) {
+            if (handed.isNotEmpty()) encryptor.discard(PayloadBundle(handed, emptyList(), emptyList()))
+            throw e
+        }
+    }
+
+    /**
+     * Runs [enqueue] and maps its result; null when a row took the files. On any other way out, a cancelled call
+     * included, [noRow] runs to the end.
+     */
+    private suspend inline fun enqueueOrElse(uniqueId: Uuid, noinline noRow: suspend () -> Unit, enqueue: () -> EnqueueResult): UploadOutcome? {
+        var queued = false
+        try {
+            val result = enqueue()
+            queued = result is EnqueueResult.Enqueued
+            return if (queued) null else result.refused(uniqueId)
+        } finally {
+            if (!queued) withContext(NonCancellable) { noRow() }
         }
     }
 
@@ -101,8 +129,18 @@ class UploadService(
     suspend fun queue(prepared: PreparedUpload): UploadOutcome {
         val spec = prepared.spec
         val sent = prepared.sent
-        var queued = false
-        try {
+        prepared.claim()
+        val noRow: suspend () -> Unit = {
+            if (spec.seedCache) {
+                try {
+                    payloadCacheSeeder.unseed(spec.driveId, spec.optimisticFileId, sent)
+                } catch (e: Exception) {
+                    Logger.e(throwable = e, tag = TAG) { "upload: unseed failed uniqueId=${spec.uniqueId}" }
+                }
+            }
+            prepared.release()
+        }
+        enqueueOrElse(spec.uniqueId, noRow) {
             // 3. Seed the payload cache first: once queued, any drain may send the files, delete them and re-key the
             //    cache before a later seed read them. It's under the fresh optimistic fileId, so nothing else reads it
             //    until the row exists.
@@ -118,29 +156,14 @@ class UploadService(
 
             // 4. Outbox enqueue — the durable success gate. Once accepted, delivery is guaranteed. Not cancellable: a
             //    cancelled insert may have committed, and then the files are the row's.
-            val enqueue = withContext(NonCancellable) {
+            withContext(NonCancellable) {
                 if (spec.replace) {
                     outboxSync.replaceEnqueue(prepared.request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
                 } else {
                     outboxSync.tryEnqueue(prepared.request, spec.priority, spec.dependencyUniqueId, spec.sendNow, spec.overPeer)
                 }
             }
-            queued = enqueue is EnqueueResult.Enqueued
-            if (!queued) return enqueue.refused(spec.uniqueId)
-        } finally {
-            if (!queued) {
-                withContext(NonCancellable) {
-                    if (spec.seedCache) {
-                        try {
-                            payloadCacheSeeder.unseed(spec.driveId, spec.optimisticFileId, sent)
-                        } catch (e: Exception) {
-                            Logger.e(throwable = e, tag = TAG) { "upload: unseed failed uniqueId=${spec.uniqueId}" }
-                        }
-                    }
-                    prepared.discard()
-                }
-            }
-        }
+        }?.let { return it }
 
         // Optimistic mirror of what the server will return; also returned in the outcome so a
         // feature can reuse it for its own optimistic bookkeeping (e.g. the sticker tray).
@@ -194,7 +217,7 @@ class UploadService(
             thumbnails = spec.preEncryptedThumbnails ?: emptyList()
         } else {
             val encrypted = try {
-                encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
+                sealOrStage(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, encrypted = true, scope)
             } catch (e: SourceUnavailableException) {
                 return UploadOutcome.SourceMissing(listOf(e.path))
             }
@@ -203,8 +226,7 @@ class UploadService(
             freshlyEncrypted = encrypted
         }
 
-        var queued = false
-        try {
+        enqueueOrElse(spec.uniqueId, noRow = { encryptor.discard(PayloadBundle(payloads, thumbnails, emptyList())) }) {
             val request = UpdateFileByUniqueIdRequest(
                 driveId = spec.driveId,
                 uniqueId = spec.uniqueId,
@@ -226,18 +248,14 @@ class UploadService(
                 payloads = payloads.ifEmpty { null },
                 thumbnails = thumbnails.ifEmpty { null },
             )
-            val enqueue = withContext(NonCancellable) {
+            withContext(NonCancellable) {
                 if (spec.replace) {
                     outboxSync.replaceEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
                 } else {
                     outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
                 }
             }
-            queued = enqueue is EnqueueResult.Enqueued
-            if (!queued) return enqueue.refused(spec.uniqueId)
-        } finally {
-            if (!queued) encryptor.discard(PayloadBundle(payloads, thumbnails, emptyList()))
-        }
+        }?.let { return it }
 
         // When the caller gave us the existing fileId AND we just encrypted a COMPLETE new payload
         // set (a full-state overwrite — a vault note edit, not an incremental append), write the new

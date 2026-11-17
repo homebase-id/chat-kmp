@@ -29,7 +29,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 
@@ -48,15 +49,20 @@ class UploadServiceFilesTest {
     private val driveId = Uuid.random()
     private val encryptor = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
 
+    private val handedPaths = mutableListOf<String>()
+    private val clients = mutableListOf<HttpClient>()
+
     @AfterTest
     fun close() {
         db.close()
-        made.forEach { File(it).delete() }
+        (made + handedPaths).forEach { File(it).delete() }
+        clients.forEach { it.close() }
         workDir.deleteRecursively()
     }
 
-    private fun seeder(cancelOnSeed: Boolean = false) = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }).let { http ->
-        RecordingSeeder(DriveFileProvider(http, CredentialsManager(), DriveFileProviderCached(http, CredentialsManager(), fileOps)), fileOps, cancelOnSeed)
+    private fun seeder(holdOnSeed: Boolean = false) = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }).let { http ->
+        clients += http
+        RecordingSeeder(DriveFileProvider(http, CredentialsManager(), DriveFileProviderCached(http, CredentialsManager(), fileOps)), fileOps, holdOnSeed)
     }
 
     private fun CoroutineScope.service(seeder: PayloadCacheSeeder = seeder()) = UploadService(
@@ -72,9 +78,9 @@ class UploadServiceFilesTest {
 
     private fun plain(path: String) = PayloadFile(key = "pdf_0", filePath = path, contentType = "application/pdf")
 
-    private suspend fun handedOverEncrypted(): PayloadFile =
-        PayloadFile(key = "enc_0", filePath = jvm.createOutboxStagingPath("handed", ".encrypted"), contentType = "application/pdf", isPreEncrypted = true, iv = ByteArray(16))
-            .also { File(it.filePath).writeText("ciphertext") }
+    private suspend fun handedOverEncrypted(iv: ByteArray? = ByteArray(16)): PayloadFile =
+        PayloadFile(key = "enc_0", filePath = jvm.createOutboxStagingPath("handed", ".encrypted"), contentType = "application/pdf", isPreEncrypted = true, iv = iv)
+            .also { File(it.filePath).writeText("ciphertext"); handedPaths += it.filePath }
 
     private fun metadata(uniqueId: Uuid, encrypted: Boolean = true, versionTag: Uuid? = null) = UploadFileMetadata(
         allowDistribution = false,
@@ -136,16 +142,56 @@ class UploadServiceFilesTest {
     }
 
     @Test
-    fun anUploadCancelledBeforeItsQueuedDeletesItsFilesAndUndoesTheSeed() = runTest {
+    fun anUploadCancelledWhileSeedingDeletesItsFilesAndUndoesTheSeed() = runTest {
         val uid = Uuid.random()
-        val seeder = seeder(cancelOnSeed = true)
+        val seeder = seeder(holdOnSeed = true)
         val upload = spec(uid, bundleOf(plain(source("a.pdf"))), seedCache = true)
+        val service = backgroundScope.service(seeder)
+        val sending = backgroundScope.launch { service.upload(upload, backgroundScope) }
+        seeder.seeding.await()
 
-        assertFailsWith<CancellationException> { backgroundScope.service(seeder).upload(upload, backgroundScope) }
+        sending.cancelAndJoin()
 
         assertFalse(exists(made.single()))
         assertNull(db.outbox.selectByDriveAndUnique(driveId, uid))
         assertEquals(listOf(upload.optimisticFileId), seeder.unseededFileIds)
+    }
+
+    @Test
+    fun aPreparedUploadIsQueuedOnceAndThenTheOutboxsToDelete() = runTest {
+        val service = backgroundScope.service()
+        val prepared = service.prepare(spec(Uuid.random(), bundleOf(plain(source("a.pdf")))), backgroundScope)
+        assertIs<UploadOutcome.Enqueued>(service.queue(prepared))
+
+        prepared.discard()
+
+        assertTrue(exists(made.single()), "the row's file stays")
+        assertFailsWith<IllegalStateException> { service.queue(prepared) }
+    }
+
+    @Test
+    fun aDiscardedPreparedUploadIsGoneAndCantBeQueued() = runTest {
+        val service = backgroundScope.service()
+        val prepared = service.prepare(spec(Uuid.random(), bundleOf(plain(source("a.pdf")))), backgroundScope)
+
+        prepared.discard()
+
+        assertFalse(exists(made.single()))
+        assertFailsWith<IllegalStateException> { service.queue(prepared) }
+    }
+
+    @Test
+    fun aPayloadHandedOverEncryptedThatCantBeSentAsItIsIsRefusedAndDeleted() = runTest {
+        val service = backgroundScope.service()
+        val inAPublicUpload = handedOverEncrypted()
+        val withoutItsIv = handedOverEncrypted(iv = null)
+
+        assertIs<UploadOutcome.Failed>(service.upload(spec(Uuid.random(), bundleOf(inAPublicUpload), encrypted = false), backgroundScope))
+        assertIs<UploadOutcome.Failed>(service.upload(spec(Uuid.random(), bundleOf(withoutItsIv)), backgroundScope))
+
+        assertFalse(exists(inAPublicUpload.filePath))
+        assertFalse(exists(withoutItsIv.filePath))
+        assertTrue(made.isEmpty(), "nothing was encrypted or staged")
     }
 
     @Test
@@ -191,6 +237,16 @@ class UploadServiceFilesTest {
 
         assertTrue(exists(first.filePath))
         assertFalse(exists(second.filePath))
+    }
+
+    @Test
+    fun anUpdateThatFailsDeletesAPayloadItWasHandedEncrypted() = runTest {
+        val handedFile = handedOverEncrypted()
+
+        val outcome = backgroundScope.service().updateFile(update(Uuid.random(), bundleOf(handedFile, plain(File(workDir, "gone.pdf").path))), backgroundScope)
+
+        assertIs<UploadOutcome.SourceMissing>(outcome)
+        assertFalse(exists(handedFile.filePath))
     }
 
     @Test

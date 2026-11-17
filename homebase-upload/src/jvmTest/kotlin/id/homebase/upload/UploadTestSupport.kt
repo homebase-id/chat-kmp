@@ -11,7 +11,9 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.yield
 
 /** Records the optimistic writes the pipeline performs. */
 internal class RecordingOptimisticWriter : OptimisticLocalWriter {
@@ -49,25 +51,31 @@ internal class RecordingOptimisticWriter : OptimisticLocalWriter {
     override suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid): Boolean = true
 }
 
-/** Records the fileId of each seed instead of doing real byte IO; [cancelOnSeed] stops the upload there instead. */
+/** Records the fileId of each seed instead of doing real byte IO; [holdOnSeed] parks the upload there until it's cancelled. */
 internal class RecordingSeeder(
     driveFileProvider: DriveFileProvider,
     fileOperationsProvider: FileOperationsProvider,
-    private val cancelOnSeed: Boolean = false,
+    private val holdOnSeed: Boolean = false,
 ) : PayloadCacheSeeder(driveFileProvider, fileOperationsProvider) {
     val seededFileIds = mutableListOf<Uuid>()
+    val seeding = CompletableDeferred<Unit>()
     val unseededFileIds = mutableListOf<Uuid>()
     val rowsAtSeed = mutableListOf<Long>()
     var countRows: suspend () -> Long = { 0 }
 
     override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle, encrypted: Boolean) {
-        if (cancelOnSeed) throw CancellationException("stopped while seeding")
+        if (holdOnSeed) {
+            seeding.complete(Unit)
+            awaitCancellation()
+        }
         assertTrue(encrypted, "UploadService only ever seeds the ciphertext it made")
         rowsAtSeed += countRows()
         seededFileIds += fileId
     }
 
     override suspend fun unseed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
+        // Suspends, as the real one does: a cancelled caller only gets past it inside NonCancellable.
+        yield()
         unseededFileIds += fileId
     }
 }
