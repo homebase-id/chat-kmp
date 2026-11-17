@@ -8,8 +8,11 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.OkioFileOperationsProvider
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.feed.services.FeedProtocol
-import id.homebase.core.feed.services.enqueuePlaintextUpload
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.UploadOutcome
 import java.io.File
 import java.nio.file.Files
 import kotlin.random.Random
@@ -24,8 +27,8 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import okio.FileSystem
 
-/** A public post's sent copy is in the cache from the start, as an encrypted send's is, so the sender sees it. */
-class PlaintextUploadTest {
+/** A public post goes through [id.homebase.upload.UploadService] as every upload does: sent unencrypted, its sent copy seeded plain. */
+class PublicUploadTest {
     private val drive = SystemDriveConstants.publicPostChannelDrive.alias
 
     @Test
@@ -39,25 +42,31 @@ class PlaintextUploadTest {
             val thumb = Random.nextBytes(300)
             val uniqueId = Uuid.random()
             val fileId = Uuid.random()
-            enqueuePlaintextUpload(
-                outboxSync = env.outboxSync,
-                optimisticWriter = env.optimisticWriter,
-                payloadCacheSeeder = env.payloadCacheSeeder,
-                fileOps = env.fileOps,
-                request = UploadFileRequest(
+            val outcome = env.uploadService.upload(
+                MediaUploadSpec(
                     driveId = drive,
+                    uniqueId = uniqueId,
                     keyHeader = KeyHeader.empty(),
+                    bundle = PayloadBundle(
+                        payloads = listOf(PayloadFile(key = "pst_mdi0", filePath = photo.absolutePath, contentType = "image/jpeg", stripMetadata = false)),
+                        thumbnails = listOf(ThumbnailFile(pixelWidth = 320, pixelHeight = 240, thumbnailBytes = thumb, key = "pst_mdi0")),
+                        previewThumbs = emptyList(),
+                    ),
                     metadata = UploadFileMetadata(
                         allowDistribution = true,
                         isEncrypted = false,
-                        appData = UploadAppFileMetaData(uniqueId = uniqueId, fileType = FeedProtocol.PostFileType),
+                        appData = UploadAppFileMetaData(uniqueId = uniqueId, fileType = FeedProtocol.PostFileType, content = "{\"caption\":\"hi\"}"),
                     ),
-                    payloads = listOf(PayloadFile(key = "pst_mdi0", filePath = photo.absolutePath, contentType = "image/jpeg", stripMetadata = false)),
-                    thumbnails = listOf(ThumbnailFile(pixelWidth = 320, pixelHeight = 240, thumbnailBytes = thumb, key = "pst_mdi0")),
+                    optimisticFileId = fileId,
                 ),
-                tag = "test",
-                optimisticFileId = fileId,
+                scope = this,
             )
+            assertTrue(outcome is UploadOutcome.Enqueued, "$outcome")
+
+            // Sent as it is: no content encryption on a public post.
+            val request = OdinSystemSerializer.deserialize<UploadFileRequest>(assertNotNull(env.outboxRow(drive, uniqueId)).json.decodeToString())
+            assertEquals("{\"caption\":\"hi\"}", request.metadata.appData.content)
+            assertEquals(listOf(photo.absolutePath), request.payloads.map { it.filePath })
 
             // Every network request fails here: bytes back are the seeded entry, served as they are.
             val payload = env.driveFileProvider.getPayloadBytesDecrypted(drive, fileId, "pst_mdi0", KeyHeader.empty(), null, null, null)

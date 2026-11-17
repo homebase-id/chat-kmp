@@ -24,7 +24,6 @@ import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -42,7 +41,6 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.feedLabeledDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.upload.MediaUploadSpec
-import id.homebase.upload.PayloadCacheSeeder
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -64,7 +62,6 @@ class PostCommentsService(
     private val outboxSync: OutboxSync,
     private val uploadService: UploadService,
     private val optimisticWriter: OptimisticWriter,
-    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val fileOps: FileOperationsProvider,
     private val driveQueryProvider: DriveQueryProvider,
     private val scope: CoroutineScope,
@@ -381,62 +378,23 @@ class PostCommentsService(
             remoteTargetDrive = if (isLocalOnly) null else referencedFile.targetDrive,
         )
 
-        val optimisticFileId = Uuid.random()
-        if (isEncrypted) {
-            val outcome = uploadService.upload(
-                MediaUploadSpec(
-                    driveId = uploadDrive,
-                    uniqueId = commentUniqueId,
-                    keyHeader = keyHeader,
-                    bundle = bundle,
-                    metadata = uploadMetadata,
-                    transit = transit,
-                    originalRecipientCount = recipients.size,
-                    requestFileSystemType = FileSystemType.Comment,
-                    writeOptimistic = false,
-                    optimisticFileId = optimisticFileId,
-                    overPeer = overPeer,
-                ),
-                scope = scope,
-            )
-            if (outcome !is UploadOutcome.Enqueued) {
-                error("Failed to enqueue comment for upload (outbox: $outcome)")
-            }
-            try {
-                optimisticWriter.writeNewFile(
-                    driveId = uploadDrive,
-                    keyHeader = keyHeader,
-                    unecryptedMetadata = metadata,
-                    originalRecipientCount = recipients.size,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = outcome.payloadDescriptors,
-                    fileId = optimisticFileId,
-                )
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) {
-                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
-                }
-            }
-        } else {
-            enqueuePlaintextUpload(
-                outboxSync = outboxSync,
-                optimisticWriter = optimisticWriter,
-                payloadCacheSeeder = payloadCacheSeeder,
-                fileOps = fileOps,
-                request = UploadFileRequest(
-                    driveId = uploadDrive,
-                    keyHeader = keyHeader,
-                    metadata = uploadMetadata,
-                    payloads = bundle.payloads,
-                    thumbnails = bundle.thumbnails,
-                    transitOptions = transit,
-                    fileSystemType = FileSystemType.Comment,
-                ),
-                tag = TAG,
-                optimisticFileId = optimisticFileId,
+        val outcome = uploadService.upload(
+            MediaUploadSpec(
+                driveId = uploadDrive,
+                uniqueId = commentUniqueId,
+                keyHeader = keyHeader,
+                bundle = bundle,
+                metadata = uploadMetadata,
                 optimisticMetadata = metadata,
+                transit = transit,
+                originalRecipientCount = recipients.size,
+                requestFileSystemType = FileSystemType.Comment,
                 overPeer = overPeer,
-            )
+            ),
+            scope = scope,
+        )
+        if (outcome !is UploadOutcome.Enqueued) {
+            error("Failed to enqueue comment for upload (outbox: $outcome)")
         }
 
         Logger.d(tag = TAG) {

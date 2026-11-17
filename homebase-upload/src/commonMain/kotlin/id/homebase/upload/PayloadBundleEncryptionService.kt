@@ -26,6 +26,27 @@ class PayloadBundleEncryptionService(
     private val eventBus: EventBus,
 ) : PayloadBundleEncryptor {
 
+    override suspend fun stageBundle(uniqueId: Uuid, bundle: PayloadBundle?): PayloadBundle {
+        if (bundle == null) return super.stageBundle(uniqueId, null)
+        // Video processing (compress, segment) only exists encrypted, and a raw phone video must never go out as is.
+        require(bundle.payloads.none { it.contentType.startsWith("video/") && !it.skipVideoProcessing }) {
+            "an unencrypted upload can't carry a video yet (#2481)"
+        }
+        for (payload in bundle.payloads) {
+            if (!fileOps.sourceExists(payload.filePath)) throw SourceUnavailableException(payload.filePath)
+        }
+        val staged = mutableListOf<String>()
+        try {
+            val payloads = bundle.payloads.map { payload ->
+                withMetadataStripped(payload, fileOps, staged = true).also { if (it.filePath != payload.filePath) staged += it.filePath }
+            }
+            return bundle.copy(payloads = payloads)
+        } catch (e: Throwable) {
+            staged.forEach { runCatching { fileOps.deleteTempFile(it) } }
+            throw e
+        }
+    }
+
     override suspend fun encryptBundle(
         uniqueId: Uuid,
         bundle: PayloadBundle?,

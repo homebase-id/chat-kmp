@@ -269,7 +269,7 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
 - **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder, which hands their EXIF to `onImageMetadata`, then keep their own encrypt-and-hash step and ask the provider to seal; videos go through `UploadService`. A photo's own bytes decide its content type, the library's type only when they name none. At Original each part is the user's file (`o: 1`), a Live Photo's paired video included; at Standard or HD a photo or video is a re-encode that keeps the source's metadata. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS, a video's included, read from the source because an HLS stream can't hold it.
-- Link and location previews take their descriptor from `appDescriptor` (layer 7). Still to fold in: `enqueuePlaintextUpload` for public files.
+- Link and location previews take their descriptor from `appDescriptor` (layer 7). Public (unencrypted) posts and comments go through `UploadService` too: it stages their payloads unencrypted (`stageBundle`) instead of encrypting them.
 
 ## 5. Per app
 

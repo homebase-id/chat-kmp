@@ -145,6 +145,49 @@ class ArchitectureTest {
     }
 
     /**
+     * The media upload spine (encrypt or stage, enqueue, seed the cache, write the optimistic row) lives once, in
+     * `UploadService` (#2482). The guard above keys on `encryptBundle`, so a copy that never encrypts (the old public
+     * post path) slipped past it; this one flags any function building an upload request with payloads. The
+     * exceptions are other designs, not copies of the spine, named by file and function.
+     */
+    @Test
+    fun `upload requests with payloads are built only by UploadService`() {
+        val exceptions = setOf(
+            // Recovery plumbing: re-sends or re-attaches payloads that are already encrypted.
+            "ChatMessageSenderService.updateMessage", "ChatMessageSenderService.resendAsCreate",
+            "ResendHelpers.buildResendUpdateRequest", "ConversationService.updateConversationInternal",
+            "DriveOutboxUploader.retryAsUpdate",
+            // Own designs: WebDrop encrypts under the link's key for an anonymous recipient; Filesync sends with live
+            // progress, re-encrypts on a rejected hash and seals keys for peers.
+            "WebDropService.buildWebDrop", "FilesyncUploader.create", "FilesyncMemberWrites.add",
+            // Temporary: the Photos app's photo uploads move onto UploadService next (its videos already go through it).
+            "BackupRequestBuilder.build",
+        )
+        val request = Regex("""\b(UploadFileRequest|UpdateFileByUniqueIdRequest)\s*\(""")
+        val emptyPayloads = Regex("""^(emptyList\(\)|listOf\(\)|null)$""")
+        fun buildsWithPayloads(text: String): Boolean = request.findAll(text).any { match ->
+            var depth = 1
+            var end = match.range.last + 1
+            while (depth > 0 && end < text.length) {
+                when (text[end]) { '(' -> depth++; ')' -> depth-- }
+                end++
+            }
+            val payloads = Regex("""\bpayloads\s*=\s*([^,\n]+)""").find(text.substring(match.range.last + 1, end))
+            payloads != null && !emptyPayloads.matches(payloads.groupValues[1].trim())
+        }
+        Konsist.scopeFromProject()
+            .files
+            .filter { !it.hasNameEndingWith("Test") && !it.path.contains("/test/") && !it.path.contains("Test/") }
+            .filter { !it.hasNameEndingWith("UploadService") }
+            .functions()
+            .filter { "${it.containingFile.nameWithExtension.removeSuffix(".kt")}.${it.name}" !in exceptions }
+            .assertFalse(
+                additionalMessage = "An upload with payloads must go through UploadService.upload/updateFile (#2482): " +
+                    "it encrypts (or stages a public post), enqueues, seeds the cache and writes the optimistic row."
+            ) { buildsWithPayloads(it.text) }
+    }
+
+    /**
      * Efficacy guard for the non-blocking login (#1231). The connect sequence must resolve the
      * drive registry from the local index and let [AuthConnectionCoordinator]'s background
      * reconcile do the server half — otherwise every login, warm restores included, queues the

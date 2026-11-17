@@ -39,10 +39,15 @@ class UploadService(
      * yields [UploadOutcome.SourceMissing], a failed enqueue yields [UploadOutcome.Failed]).
      */
     suspend fun upload(spec: MediaUploadSpec, scope: CoroutineScope): UploadOutcome {
-        // 1. Encrypt the payloads. Fail soft: a swept/evicted/revoked source throws here, BEFORE
-        //    the enqueue below, so no doomed outbox row is ever created — the caller re-picks.
+        // 1. Encrypt the payloads, or stage a public post's as they are. Fail soft: a swept/evicted/revoked source
+        //    throws here, BEFORE the enqueue below, so no doomed outbox row is ever created — the caller re-picks.
+        val encrypted = spec.metadata.isEncrypted
         val fullBundle = try {
-            encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
+            if (encrypted) {
+                encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
+            } else {
+                encryptor.stageBundle(spec.uniqueId, spec.bundle)
+            }
         } catch (e: SourceUnavailableException) {
             return UploadOutcome.SourceMissing(listOf(e.path))
         }
@@ -53,7 +58,7 @@ class UploadService(
         val request = UploadFileRequest(
             driveId = spec.driveId,
             keyHeader = spec.keyHeader,
-            metadata = metadata.encryptContent(spec.keyHeader),
+            metadata = if (encrypted) metadata.encryptContent(spec.keyHeader) else metadata,
             transitOptions = spec.transit,
             payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails,
@@ -86,13 +91,13 @@ class UploadService(
         if (spec.seedCache || spec.writeOptimistic) {
             try {
                 if (spec.seedCache) {
-                    payloadCacheSeeder.seed(spec.driveId, spec.optimisticFileId, encryptedBundle, encrypted = true)
+                    payloadCacheSeeder.seed(spec.driveId, spec.optimisticFileId, encryptedBundle, encrypted)
                 }
                 if (spec.writeOptimistic) {
                     optimisticWriter.writeNewFile(
                         driveId = spec.driveId,
                         keyHeader = spec.keyHeader,
-                        unecryptedMetadata = metadata,
+                        unecryptedMetadata = spec.optimisticMetadata ?: metadata,
                         originalRecipientCount = spec.originalRecipientCount,
                         fileSystemType = spec.fileSystemType,
                         payloadDescriptors = payloadDescriptors,
@@ -211,7 +216,7 @@ class UploadService(
  * The optimistic row's descriptors for [this], encrypted or plaintext: the local mirror of what the server will
  * return, with the native thumbnail sizes (their bytes are in the seeded cache, not inline).
  */
-fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
+private fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
     payloads.map { payload ->
         PayloadDescriptor(
             key = payload.key,

@@ -21,6 +21,7 @@ import org.junit.Assume.assumeTrue
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -32,6 +33,7 @@ class ChatSendsNoMetadataJvmTest {
     private val fileOps = JvmFileOperationsProvider()
     private val dir = kotlin.io.path.createTempDirectory("hb-chat-metadata").toFile()
     private val filmedAt = "+37.7749-122.4194/"
+    private val encryptor = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
 
     private fun file(name: String, bytes: ByteArray) = File(dir, name).apply { writeBytes(bytes) }.path
 
@@ -54,8 +56,7 @@ class ChatSendsNoMetadataJvmTest {
     private suspend fun sent(path: String, contentType: String, quality: MediaQuality): Pair<PayloadBundle, KeyHeader> {
         val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(path, contentType), fileOps, "chat_web0", quality)
         val key = KeyHeader.newRandom16()
-        val encrypted = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
-            .encryptBundle(Uuid.random(), bundle, key.aesKey, kotlinx.coroutines.GlobalScope)
+        val encrypted = encryptor.encryptBundle(Uuid.random(), bundle, key.aesKey, kotlinx.coroutines.GlobalScope)
         return encrypted to key
     }
 
@@ -78,6 +79,23 @@ class ChatSendsNoMetadataJvmTest {
             assertTrue(thumbs.isNotEmpty())
             thumbs.forEach { assertNull(ImageMetadataScrubber.readBlocks(it), "$quality: nor does any thumbnail") }
         }
+    }
+
+    @Test
+    fun aPublicPhotoIsStagedWithoutMetadataAtAnyQuality() = runTest {
+        val source = file("public.jpg", geotaggedJpeg(5000, 3000))
+        for (quality in MediaQuality.entries) {
+            val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(source, "image/jpeg"), fileOps, "chat_web0", quality)
+            val staged = encryptor.stageBundle(Uuid.random(), bundle)
+            assertNull(ImageMetadataScrubber.readBlocks(File(staged.payloads.single().filePath).readBytes()), "$quality: a public photo goes out without EXIF")
+        }
+    }
+
+    @Test
+    fun aPublicVideoIsRefusedRatherThanSentUnprocessed() = runTest {
+        val clip = file("public.mp4", this::class.java.getResourceAsStream("/test_videos/sample.mp4")!!.readBytes())
+        val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(clip, "video/mp4"), fileOps, "chat_web0", MediaQuality.entries.first())
+        assertFailsWith<IllegalArgumentException> { encryptor.stageBundle(Uuid.random(), bundle) }
     }
 
     private fun ffmpeg(vararg args: String): String {

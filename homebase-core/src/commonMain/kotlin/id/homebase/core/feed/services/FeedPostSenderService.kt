@@ -11,7 +11,6 @@ import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.Md5
 import id.homebase.api.file.FileOperationsProvider
@@ -23,7 +22,6 @@ import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.settings.UserPreferences
 import id.homebase.upload.MediaUploadSpec
-import id.homebase.upload.PayloadCacheSeeder
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
 import kotlin.uuid.Uuid
@@ -33,7 +31,6 @@ class FeedPostSenderService(
     private val outboxSync: OutboxSync,
     private val uploadService: UploadService,
     private val optimisticWriter: OptimisticWriter,
-    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val fileOps: FileOperationsProvider,
     private val userPreferences: UserPreferences,
     private val scope: CoroutineScope,
@@ -106,36 +103,18 @@ class FeedPostSenderService(
             useAppNotification = false,
         )
 
-        if (isEncrypted) {
-            val outcome = uploadService.upload(
-                MediaUploadSpec(
-                    driveId = channelId,
-                    uniqueId = postUniqueId,
-                    keyHeader = keyHeader,
-                    bundle = bundle,
-                    metadata = metadata,
-                    transit = transit,
-                ),
-                scope = scope,
-            )
-            if (outcome !is UploadOutcome.Enqueued) error("Failed to enqueue post for upload (outbox: $outcome)")
-        } else {
-            enqueuePlaintextUpload(
-                outboxSync = outboxSync,
-                optimisticWriter = optimisticWriter,
-                payloadCacheSeeder = payloadCacheSeeder,
-                fileOps = fileOps,
-                request = UploadFileRequest(
-                    driveId = channelId,
-                    keyHeader = keyHeader,
-                    metadata = metadata,
-                    payloads = bundle.payloads,
-                    thumbnails = bundle.thumbnails,
-                    transitOptions = transit,
-                ),
-                tag = TAG,
-            )
-        }
+        val outcome = uploadService.upload(
+            MediaUploadSpec(
+                driveId = channelId,
+                uniqueId = postUniqueId,
+                keyHeader = keyHeader,
+                bundle = bundle,
+                metadata = metadata,
+                transit = transit,
+            ),
+            scope = scope,
+        )
+        if (outcome !is UploadOutcome.Enqueued) error("Failed to enqueue post for upload (outbox: $outcome)")
 
         return CreatePostResult(uniqueId = postUniqueId, slug = slug)
     }
