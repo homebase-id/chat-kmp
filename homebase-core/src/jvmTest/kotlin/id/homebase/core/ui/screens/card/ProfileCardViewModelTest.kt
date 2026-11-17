@@ -1594,6 +1594,26 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun aReloadReadBeforeTheCardWriteLandsDoesNotBringBackTheOldCard() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val (vm, source, host) = circleVm(store)
+        advanceUntilIdle()
+        val write = CompletableDeferred<Unit>().also { store.gate = it }
+        val reply = CompletableDeferred<Unit>()
+        source.liveCards = { store.attributes.also { reply.await() } }
+
+        vm.onOptionSelected(CardOption.ACCENT, "#8B7CF6")
+        vm.onSaveDesign()
+        vm.onScreenShown()
+        write.complete(Unit)
+        reply.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals("#8B7CF6", vm.uiState.value.savedOverrides.palette?.accent)
+        assertEquals("#8B7CF6", host.rendered.last().overrides?.palette?.accent)
+    }
+
+    @Test
     fun aFailedCircleCardSaveKeepsThePreview() = runTest(dispatcher) {
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.BOARD, 0)))
         val (vm, _, _) = circleVm(store)

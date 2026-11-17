@@ -946,6 +946,8 @@ class ProfileCardViewModel(
         }
         _uiState.update { it.copy(loadFailed = false) }
         loadJob = viewModelScope.launch {
+            // A write that lands while the read is out clears unsavedCard, and the read can still answer with the old card.
+            val unsavedAtRead = unsavedCard
             val odinId = source.odinId()
             loadPosts(odinId)
             coroutineScope {
@@ -959,7 +961,7 @@ class ProfileCardViewModel(
                 if (attributes == null) {
                     _uiState.update { it.copy(loadFailed = content == null) }
                 } else {
-                    onLoaded(odinId, attributes, defaults.await() ?: CardSiteDefaults(), stored.await())
+                    onLoaded(odinId, attributes, defaults.await() ?: CardSiteDefaults(), stored.await(), unsavedAtRead ?: unsavedCard)
                 }
             }
         }
@@ -970,6 +972,7 @@ class ProfileCardViewModel(
         attributes: List<ProfileAttribute>,
         defaults: CardSiteDefaults,
         storedDesign: String?,
+        pending: UnsavedCard?,
     ) {
         val photo = attributes.photoFor(CardAudience.Public)?.photoImageData()
         content = CardContent(odinId, attributes, defaults, photo)
@@ -977,11 +980,10 @@ class ProfileCardViewModel(
         val stored = attributes.profileCards()
         val storedPublic = stored.publicCard()
         val cardDesign = storedPublic?.design?.takeIf { it in CardDesign.all }
-        val pending = unsavedCard
         val siteDesign = defaults.design?.takeIf { it in CardDesign.all }
         val useTemplate = storedDesign == null && pending == null && siteDesign == null
         val saved = pending?.design ?: cardDesign ?: storedDesign ?: siteDesign ?: PUBLIC_CARD_TEMPLATE.design
-        if (pending != null && cardJob?.isActive != true) writeCard(pending)
+        if (pending != null && pending == unsavedCard && cardJob?.isActive != true) writeCard(pending)
         val pendingOverrides = pending?.overrides
         val publicCard = (storedPublic ?: ProfileCard(
             Uuid.NIL, Uuid.NIL, CardAudience.Public, saved,
