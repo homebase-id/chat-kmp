@@ -10,12 +10,12 @@ import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.calling.history.CallLogDeleter
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
+import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.testChatMessageStream
 import id.homebase.core.calling.CallsPreferences
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -90,8 +90,6 @@ class CallLogDeleteIntegrationTest {
                 eventBus = f.eventBus,
                 optimisticWriter = OptimisticWriter(f.credentialsManager, f.dbm, f.eventBus, f.outboxSync),
                 scope = backgroundScope,
-                // On the test scheduler, so advanceUntilIdle also waits for the window to apply the delete.
-                mapDispatcher = StandardTestDispatcher(testScheduler),
             )
             stream.loadConversation(convo)
             advanceUntilIdle()
@@ -106,8 +104,11 @@ class CallLogDeleteIntegrationTest {
                 f.dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, f.chatDriveId, id)?.isSoftDeleted() == true,
                 "DriveMainIndex row is soft-deleted",
             )
-            val inChat = stream.messageInWindow(convo, id)
-            assertTrue(inChat == null || inChat.isDeleted, "the chat window drops the message or keeps only a deleted tombstone")
+            // The chat window drops the message or keeps only a deleted tombstone. It gets there on its own coroutine,
+            // which waits on work off the test scheduler, so advanceUntilIdle can return before it does.
+            stream.observeMessages(convo).first { data ->
+                data is ChatMessagesData.Messages && data.window.messages.none { it.id == id && !it.isDeleted }
+            }
             val deletes = f.drainOutbox().filter { it.uploadType == DriveOutboxUploader.DeleteFile }
             val payload = OdinSystemSerializer.deserialize<id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest>(
                 deletes.single().json.decodeToString(),
