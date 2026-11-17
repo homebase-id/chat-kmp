@@ -109,11 +109,11 @@ class MentionBadgeScreenshotTest {
     }
 
     @Test
-    fun aLoneMentionShowsItsCount() {
-        for ((count, badges) in listOf(1 to 1, 2 to 1)) runDesktopComposeUiTest(200, 200) {
+    fun jumpButtonShowsItsCountFromOne() {
+        for (count in 1..2) runDesktopComposeUiTest(200, 200) {
             setContent { HomebaseTheme { JumpToMentionButton(visible = true, count = count, onClick = {}) } }
             waitForIdle()
-            assertEquals(badges, onAllNodes(hasText("$count"), useUnmergedTree = true).fetchSemanticsNodes().size, "count=$count")
+            assertEquals(1, onAllNodes(hasText("$count"), useUnmergedTree = true).fetchSemanticsNodes().size, "count=$count")
         }
     }
 

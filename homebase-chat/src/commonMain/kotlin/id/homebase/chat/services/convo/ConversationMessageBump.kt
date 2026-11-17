@@ -96,8 +96,6 @@ internal fun applyIncomingMessageBump(
     if (m.leavesConversationRow) return null
 
     val increment = if (!m.isEdited && !m.isAuthoredBy(activeDomain)) 1 else 0
-    val mentionIncrement =
-        if (increment == 1 && activeDomain != null && mentionsIdentity(m.content, activeDomain.domainName)) 1 else 0
 
     // Denormalised last-message preview fields, recomputed from `m`. Shared by
     // the "new message" and "same-userDate re-emit" branches so the preview is
@@ -129,7 +127,9 @@ internal fun applyIncomingMessageBump(
                     .copy(
                         unreadCount = existing.unreadCount + increment,
                         unreadMentionCount = existing.unreadMentionCount +
-                            if (existing.isGroup) mentionIncrement else 0,
+                            if (existing.isGroup && increment == 1 && activeDomain != null &&
+                                mentionsIdentity(m.content, activeDomain.domainName)
+                            ) 1 else 0,
                         latestMessageTimestamp = sqlUserDate,
                     )
                     .withPreviewOf()

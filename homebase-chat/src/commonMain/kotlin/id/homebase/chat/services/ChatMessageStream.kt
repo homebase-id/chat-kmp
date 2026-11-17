@@ -17,12 +17,13 @@ import id.homebase.api.common.BatchResult
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.ScannedMessage
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.sync.database.ScannedMessage
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.groodle.GroodleVote
 import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.convo.UnreadMentionIndex
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
@@ -41,7 +42,6 @@ import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
-import id.homebase.chat.services.convo.UnreadMentionIndex
 import kotlin.uuid.Uuid
 
 class ChatMessageStream(
