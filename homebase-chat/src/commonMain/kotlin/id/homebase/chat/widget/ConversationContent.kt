@@ -353,6 +353,14 @@ fun ConversationContent(
         }.collect { showScrollToBottom = it }
     }
 
+    val pendingMention = uiState.nextMention?.messageId
+    LaunchedEffect(listState, pendingMention) {
+        if (pendingMention == null) return@LaunchedEffect
+        val key = pendingMention.toString()
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.any { it.key == key } }.first { it }
+        onUiAction(ConversationListUiAction.MentionSeen(pendingMention))
+    }
+
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
             .collectLatest { scrolling ->
@@ -1371,11 +1379,11 @@ fun ConversationContent(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             JumpToMentionButton(
-                                visible = uiState.nextMention != null,
+                                visible = showScrollToBottom && uiState.nextMention != null,
                                 onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
                             )
                             ScrollToBottomButton(
-                                visible = showScrollToBottom || uiState.nextMention != null,
+                                visible = showScrollToBottom,
                                 unreadCount = conversation.conversation.unreadCount,
                                 onClick = {
                                     if (uiState.hasNewerMessages) {

@@ -251,6 +251,24 @@ class ConversationListViewModel(
     // frozen boundary so opening the conversation (which advances lastRead) does not hide the control.
     private val mentionCursor = mutableMapOf<Uuid, Long>()
 
+    // Signal re-reads its mention count on every conversation change; a mention can arrive while the chat is open.
+    private fun refreshLiveMention() {
+        val id = _uiState.value.selectedConversationId ?: return
+        if (_messagesUiState.value.nextMention != null) return
+        val convo = _uiState.value.activeConversations.find { it.conversation.id == id }?.conversation ?: return
+        if (!convo.isGroup || convo.unreadMentionCount == 0) return
+        mentionCursor.getOrPut(id) { convo.lastRead.toEpochMilliseconds() }
+        refreshNextMention(id)
+    }
+
+    // Signal's model: a mention stops counting once read, so seeing or jumping to it moves on to the next.
+    private fun advancePastMention(target: NextMention) {
+        val conversationId = _uiState.value.selectedConversationId ?: return
+        mentionCursor[conversationId] = target.userDateMs
+        _messagesUiState.update { it.copy(nextMention = null) }
+        refreshNextMention(conversationId)
+    }
+
     private fun refreshNextMention(conversationId: Uuid) {
         val cursor = mentionCursor[conversationId] ?: return
         viewModelScope.launch {
@@ -767,6 +785,7 @@ class ConversationListViewModel(
                         )
                     }
                     updateListContent()
+                    refreshLiveMention()
                 } else if (uiState.value.conversationsContent is ConversationListContentState.Empty) {
                     _uiState.update { it.copy(conversationsContent = ConversationListContentState.Loading) }
                 }
@@ -1454,14 +1473,14 @@ class ConversationListViewModel(
             is ConversationListUiAction.DecryptFile -> mediaDownloadHandler.handleDecryptFile(action)
 
             is ConversationListUiAction.JumpToNextMention -> {
-                val conversationId = _uiState.value.selectedConversationId
-                val target = _messagesUiState.value.nextMention
-                if (conversationId != null && target != null) {
-                    mentionCursor[conversationId] = target.userDateMs
-                    _messagesUiState.update { it.copy(nextMention = null) }
-                    refreshNextMention(conversationId)
+                _messagesUiState.value.nextMention?.let { target ->
+                    advancePastMention(target)
                     onAction(ConversationListUiAction.ScrollToMessageId(target.messageId))
                 }
+            }
+
+            is ConversationListUiAction.MentionSeen -> {
+                _messagesUiState.value.nextMention?.takeIf { it.messageId == action.messageId }?.let(::advancePastMention)
             }
 
             is ConversationListUiAction.ScrollToMessageId -> {
