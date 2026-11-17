@@ -47,7 +47,7 @@ Full reads of the file per operation, with the code that ships. Header reads (du
 | Plain MP4, under 5 MB | **1** of the compressed file: encrypt and hash in one pass | **1** | **1** | **1** |
 | **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
 | Photos backup at Original | **1** (read once at hand-off) | | | |
-| Saving a received video to the gallery | **2** of the decrypted `.ts` (`TsToMp4`: size the samples, then copy them behind the index) | **2** | **2** | **2** |
+| Saving a received video to the gallery | **0**: no `.ts` is written; the decrypted download is remuxed as it arrives, its index written after the samples | **0** | **0** | **0** |
 | An HDR photo at HD or Original | the photo is decoded as before; its gain map, the file's tail (a few percent of it), is read **1** more time on its own | same | same | same |
 | Shrinking a GIF sticker | the file is read **1** time into memory, then decoded **2** times per ladder step (palette, then encode), at most 3 steps | same | same | same |
 
@@ -132,7 +132,7 @@ A Play Store install downloads one ABI: the CI bundle before this was about 53 M
 
 ## Saving a received video: TS back to MP4
 
-Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4. `RemuxHlsToMp4DeviceTest` (`-e remuxBench true` for videos in the test app's `files/bench/`) times it on the phone, and `TsToMp4Test` checks every sample against the source on the desktop. The video is an 83 s, 27.7 MB 720×1280 H.264 + AAC stand-in.
+Saving an HLS video to the gallery copies its H.264 and AAC into an MP4 as the decrypted download arrives (until 2026-11-17, via a `.ts` on disk). `RemuxHlsToMp4DeviceTest` (`-e remuxBench true` for videos in the test app's `files/bench/`) times it on the phone, and `TsToMp4Test` checks every sample against the source on the desktop. The video is an 83 s, 27.7 MB 720×1280 H.264 + AAC stand-in.
 
 | Where | Remux | Time | Output | Frames | Measured |
 |---|---|---|---|---|---|
@@ -142,6 +142,9 @@ Saving an HLS video to the gallery decrypts its `.ts` and copies it into an MP4.
 | Pixel 5 | ffmpeg-kit | 235–349 ms | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | Media3 Transformer, transmux | 5.4 s | 27.6 MB | 2490 / 2490 | 2026-11-16 |
 | Pixel 5 | MediaExtractor + MediaMuxer | 3.4 s | 27.6 MB | 2489 / 2490 | 2026-11-16 |
+| Pixel 5 (debuggable test app) | **ours, streamed from the download** (no `.ts`, index after the samples) | **256–358 ms, while the download runs**; nothing left after it but the index and a 16-byte size. From a `.ts` (the public path, one read): 339–555 ms | 27.3 MB | **2490 / 2490** | 2026-11-17 |
+
+The 2026-11-17 row is a regenerated synthetic stand-in of the same shape (83 s, 720×1280, H.264 + AAC, 27.4 MB), two rounds of two runs each, streamed from 64 KB chunks in memory; the debuggable app's JIT makes single runs noisy, so read the ranges. Streamed and from a `.ts` write the same MP4, byte for byte, and Android's MediaExtractor and ffmpeg read every frame of it. The index now goes after the samples (`ftyp`, `mdat`, `moov`), with the `mdat`'s size written back in place at the end (`FileOperationsProvider.overwrite`): fine for a file played from disk, which is all a saved video is.
 
 Ours is a little smaller because it keeps parameter sets in the index rather than repeating them in-band. ffmpeg decodes ours to the same frames as the source, with the same audio packets and A/V offset (`TsToMp4Test`). On the phone, the test app is debuggable, so ART won't compile it ahead of time; the release app runs it compiled, as the desktop does.
 
