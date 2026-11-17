@@ -127,7 +127,7 @@ internal class JvmFileSystemHandler(
     }
 }
 
-private fun showSaveDialog(suggestedName: String): java.io.File? {
+internal fun showSaveDialog(suggestedName: String): java.io.File? {
     val parent = java.awt.Frame.getFrames().firstOrNull { it.isShowing }
     val dialog = java.awt.FileDialog(parent, "Save File", java.awt.FileDialog.SAVE)
     dialog.file = suggestedName
@@ -137,7 +137,7 @@ private fun showSaveDialog(suggestedName: String): java.io.File? {
     return java.io.File(dir, name)
 }
 
-private fun revealInFileManager(dest: java.io.File) {
+internal fun revealInFileManager(dest: java.io.File) {
     if (Desktop.isDesktopSupported()) {
         val desktop = Desktop.getDesktop()
         if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {

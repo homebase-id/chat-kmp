@@ -189,6 +189,7 @@ class ConversationListViewModel(
     // Nullable so tests can build the VM without the sync engine.
     private val driveSyncManager: id.homebase.api.sync.DriveSyncManager? = null,
     private val optionalDriveActivation: id.homebase.core.sync.OptionalDriveActivation? = null,
+    private val albumSaver: id.homebase.core.util.AlbumSaver,
     private val vaultFileSaver: id.homebase.core.vault.VaultFileSaver? = null,
 ) : ViewModel() {
 
@@ -307,6 +308,7 @@ class ConversationListViewModel(
         viewOnceActions = viewOnceActions,
         chatMessageStream = chatMessageStream,
         localVideoContextStore = localVideoContextStore,
+        albumSaver = albumSaver,
         vaultFileSaver = vaultFileSaver,
         sendEvent = ::sendEvent,
         dispatch = ::onAction,

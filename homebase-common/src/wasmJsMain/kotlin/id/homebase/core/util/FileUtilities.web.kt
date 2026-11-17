@@ -31,14 +31,20 @@ actual fun getUriHandler(): FileSystemHandler {
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
         ) {
-            runCatching { downloadWebFile(file, safeFileName(suggestedName)) }
-                .onSuccess { onSuccess(DOWNLOADS_LOCATION) }
+            runCatching { downloadToDownloads(file, safeFileName(suggestedName)) }
+                .onSuccess(onSuccess)
                 .onFailure(onError)
         }
     }
 }
 
 private const val DOWNLOADS_LOCATION = "Downloads"
+
+/** Hands [file] to the browser as a download named [fileName]; where it went, for a message. */
+internal fun downloadToDownloads(file: Path, fileName: String): String {
+    downloadWebFile(file, fileName)
+    return DOWNLOADS_LOCATION
+}
 
 internal fun downloadWebFile(file: Path, fileName: String) {
     val path = file.toString()
