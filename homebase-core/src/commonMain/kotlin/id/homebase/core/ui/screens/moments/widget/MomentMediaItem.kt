@@ -5,8 +5,6 @@ import id.homebase.chat.services.builder.linkPreviews
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -40,7 +38,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -60,8 +57,9 @@ import id.homebase.chat.services.collectContext
 import id.homebase.chat.widget.DocumentMediaItem
 import id.homebase.chat.widget.LinkPreviewCard
 import id.homebase.chat.widget.LocationPreviewCard
-import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.mediaGestures
+import id.homebase.core.image.LocalFileImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
@@ -205,8 +203,6 @@ fun MomentMediaItem(
                 localContext.imageStandIn,
                 driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted,
             ) {
-                // The sent copy, as everyone else sees it; the local file only while an encrypted post has no IV
-                // yet, or as the stand-in if the sent copy can't be loaded.
                 val localPath = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
@@ -253,35 +249,12 @@ fun MomentMediaItem(
         payload.isImage() -> {
             val localOnly = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
             if (localOnly != null) {
-                var imageModifier = if (onClick != null || onLongPress != null) {
-                    finalModifier.pointerInput(onClick, onLongPress) {
-                        detectTapGestures(
-                            onTap = { onClick?.invoke() },
-                            onLongPress = { offset -> onLongPress?.invoke(offset) },
-                        )
-                    }
-                } else {
-                    finalModifier
-                }
-                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                    with(sharedTransitionScope) {
-                        imageModifier = imageModifier.sharedBounds(
-                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            boundsTransform = { _, _ ->
-                                tween(
-                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                                    easing = FastOutSlowInEasing,
-                                )
-                            },
-                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                        )
-                    }
-                }
-                AsyncImage(
-                    model = localOnly,
+                LocalFileImage(
+                    localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = imageModifier,
+                    modifier = finalModifier.mediaGestures(
+                        onClick, onLongPress, "image-${fileId}-${payload.key}", sharedTransitionScope, animatedVisibilityScope,
+                    ),
                     contentScale = imageContentScale,
                 )
             } else {

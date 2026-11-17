@@ -7,8 +7,6 @@ import id.homebase.chat.widget.preview.chatChipPreviewKind
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -42,9 +40,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
-import coil3.compose.AsyncImage
-import coil3.compose.LocalPlatformContext
-import coil3.request.ImageRequest
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -62,8 +57,9 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
 import id.homebase.common.widget.VideoInfoOverlay
-import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.mediaGestures
+import id.homebase.core.image.LocalFileImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.core.ui.theme.Dimens
@@ -231,44 +227,12 @@ fun MediaItem(
         payload.isImage() -> {
             val localOnly = localContext.localImageOnly(isEncrypted = true, ivPresent = payload.iv != null)
             if (localOnly != null) {
-                var imageModifier = if (onClick != null || onLongPress != null) {
-                    finalModifier.pointerInput(onClick, onLongPress) {
-                        detectTapGestures(
-                            onTap = { onClick?.invoke() },
-                            onLongPress = { offset -> onLongPress?.invoke(offset) },
-                        )
-                    }
-                } else {
-                    finalModifier
-                }
-                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                    with(sharedTransitionScope) {
-                        imageModifier = imageModifier.sharedBounds(
-                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            boundsTransform = { _, _ ->
-                                tween(
-                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                                    easing = FastOutSlowInEasing,
-                                )
-                            },
-                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                        )
-                    }
-                }
-                // Keyed by the file, so a rebuilt row (the real bubble replacing the placeholder) draws Coil's copy in its first frame.
-                val platformContext = LocalPlatformContext.current
-                val localImageRequest = remember(platformContext, localOnly) {
-                    ImageRequest.Builder(platformContext)
-                        .data(localOnly)
-                        .memoryCacheKey(localOnly)
-                        .placeholderMemoryCacheKey(localOnly)
-                        .build()
-                }
-                AsyncImage(
-                    model = localImageRequest,
+                LocalFileImage(
+                    localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = imageModifier,
+                    modifier = finalModifier.mediaGestures(
+                        onClick, onLongPress, "image-${fileId}-${payload.key}", sharedTransitionScope, animatedVisibilityScope,
+                    ),
                     contentScale = imageContentScale,
                 )
             } else {
