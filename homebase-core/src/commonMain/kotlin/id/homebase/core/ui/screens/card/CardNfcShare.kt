@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,23 +51,29 @@ import id.homebase.resources.profile_card_nfc_body
 import id.homebase.resources.profile_card_nfc_off
 import id.homebase.resources.profile_card_nfc_open_settings
 import id.homebase.resources.profile_card_nfc_switch
+import id.homebase.resources.profile_card_nfc_iphone_body
+import id.homebase.resources.profile_card_nfc_iphone_title
 import id.homebase.resources.profile_card_nfc_switch_desc
 import id.homebase.resources.profile_card_nfc_title
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
 interface CardNfc {
+    /** False on iPhone: Apple gives apps no way to act as a tap tag, so only the explanation is shown. */
+    val canShare: Boolean
     val isEnabled: Boolean
     fun openSettings()
 }
 
-/** Null where this device can't act as an NFC tag (no HCE, iOS, desktop, web). */
+/** Null where there is no NFC action at all (desktop, web, Android without card emulation). */
 @Composable
 expect fun rememberCardNfc(): CardNfc?
 
@@ -75,9 +82,10 @@ internal data class CardTapShareGate(
     val tapShareEnabled: Boolean,
     val odinId: String?,
     val design: String?,
+    val sheetOpen: Boolean = false,
 ) {
     val servedUrl: String?
-        get() = if (profileCardEnabled && tapShareEnabled && odinId != null) cardLinkUrl(odinId, design) else null
+        get() = if (profileCardEnabled && (tapShareEnabled || sheetOpen) && odinId != null) cardLinkUrl(odinId, design) else null
 }
 
 class CardTapShare(
@@ -86,14 +94,20 @@ class CardTapShare(
     ownerSessionRepository: OwnerSessionRepository,
 ) {
     private val scope = supervisedScope("card-tap-share", Dispatchers.Default)
+    private val sheetOpen = MutableStateFlow(false)
+
+    fun setSheetOpen(open: Boolean) {
+        sheetOpen.value = open
+    }
 
     val servedUrl: StateFlow<String?> = combine(
         developerPreferences.profileCardEnabled,
         cardPreferences.tapShareEnabled,
         ownerSessionRepository.user,
         cardPreferences.design,
-    ) { profileCardEnabled, tapShareEnabled, user, design ->
-        CardTapShareGate(profileCardEnabled, tapShareEnabled, user?.odinId?.domainName, design).servedUrl
+        sheetOpen,
+    ) { profileCardEnabled, tapShareEnabled, user, design, open ->
+        CardTapShareGate(profileCardEnabled, tapShareEnabled, user?.odinId?.domainName, design, open).servedUrl
     }.stateIn(scope, SharingStarted.Eagerly, null)
 }
 
@@ -114,6 +128,18 @@ internal fun hceSteps(resumed: Boolean, servedUrl: String?, enabled: Boolean, pr
 @Composable
 expect fun CardTapShareDriver(onShared: () -> Unit)
 
+internal enum class CardNfcPanel(val titleRes: StringResource, val bodyRes: StringResource) {
+    AndroidReady(MR.string.profile_card_nfc_title, MR.string.profile_card_nfc_body),
+    AndroidOff(MR.string.profile_card_nfc_title, MR.string.profile_card_nfc_body),
+    Iphone(MR.string.profile_card_nfc_iphone_title, MR.string.profile_card_nfc_iphone_body),
+}
+
+internal fun cardNfcPanel(canShare: Boolean, nfcEnabled: Boolean): CardNfcPanel = when {
+    !canShare -> CardNfcPanel.Iphone
+    nfcEnabled -> CardNfcPanel.AndroidReady
+    else -> CardNfcPanel.AndroidOff
+}
+
 @Composable
 fun CardNfcAction(nfc: CardNfc) {
     var open by remember { mutableStateOf(false) }
@@ -127,8 +153,15 @@ fun CardNfcAction(nfc: CardNfc) {
 
 @Composable
 private fun CardNfcSheet(nfc: CardNfc, onDismiss: () -> Unit) {
-    val toggle = rememberTapShareToggle()
-    val active = nfc.isEnabled && toggle.checked
+    val tapShare = koinInject<CardTapShare>()
+    if (nfc.canShare) {
+        DisposableEffect(tapShare) {
+            tapShare.setSheetOpen(true)
+            onDispose { tapShare.setSheetOpen(false) }
+        }
+    }
+    val panel = cardNfcPanel(nfc.canShare, nfc.isEnabled)
+    val active = panel == CardNfcPanel.AndroidReady
     val motion = MaterialTheme.motionScheme
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
         Column(
@@ -138,7 +171,7 @@ private fun CardNfcSheet(nfc: CardNfc, onDismiss: () -> Unit) {
         ) {
             NfcPulse(active = active)
             AnimatedVisibility(
-                visible = active,
+                visible = panel != CardNfcPanel.AndroidOff,
                 enter = fadeIn(motion.defaultEffectsSpec()) + expandVertically(motion.defaultSpatialSpec()),
                 exit = fadeOut(motion.fastEffectsSpec()) + shrinkVertically(motion.defaultSpatialSpec()),
             ) {
@@ -147,19 +180,19 @@ private fun CardNfcSheet(nfc: CardNfc, onDismiss: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     Text(
-                        text = stringResource(MR.string.profile_card_nfc_title),
+                        text = stringResource(panel.titleRes),
                         style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center,
                     )
                     Text(
-                        text = stringResource(MR.string.profile_card_nfc_body),
+                        text = stringResource(panel.bodyRes),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
                 }
             }
-            if (!nfc.isEnabled) {
+            if (panel == CardNfcPanel.AndroidOff) {
                 Text(
                     text = stringResource(MR.string.profile_card_nfc_off),
                     style = MaterialTheme.typography.bodyLarge,
@@ -169,20 +202,13 @@ private fun CardNfcSheet(nfc: CardNfc, onDismiss: () -> Unit) {
                     Text(stringResource(MR.string.profile_card_nfc_open_settings))
                 }
             }
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                shape = MaterialTheme.shapes.large,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                TapShareRow(toggle = toggle, supportingText = stringResource(MR.string.profile_card_nfc_switch_desc))
-            }
         }
     }
 }
 
 @Composable
 fun CardTapShareSettingsRow() {
-    val nfc = rememberCardNfc() ?: return
+    val nfc = rememberCardNfc()?.takeIf { it.canShare } ?: return
     TapShareRow(
         toggle = rememberTapShareToggle(),
         supportingText = stringResource(if (nfc.isEnabled) MR.string.profile_card_nfc_switch_desc else MR.string.profile_card_nfc_off),
