@@ -26,20 +26,21 @@ interface AlbumSaver {
      * - Android 9: [AlbumTarget.InPlace], a file in the same public folder; throws [AlbumAccessDeniedException] without
      *   the storage permission.
      * - Desktop: [AlbumTarget.InPlace], asked the file the Save dialog picks ([AlbumTarget.Cancelled] if the person
-     *   cancels), otherwise a new file in ~/Pictures (media) or ~/Downloads.
-     * - iOS: [AlbumTarget.FinishedFile], imported by Photos (a photo or video) or copied to Files; its take throws
-     *   [AlbumAccessDeniedException] when Photos access is denied.
+     *   cancels; the location is its full path), otherwise a new file in ~/Pictures (media) or ~/Downloads.
+     * - iOS: [AlbumTarget.FinishedFile], imported by Photos (a photo or video, "Photos") or copied to the app's Files
+     *   folder ("Files"); its take throws [AlbumAccessDeniedException] when Photos access is denied.
      * - Web: asked, [AlbumTarget.FinishedFile] downloaded by the browser; otherwise throws [AlbumAccessDeniedException].
      * An [AlbumTarget.InPlace] path is one [FileOperationsProvider] can `writeStream` and `overwrite`. The location
-     * returned on success is for a message: a folder ("Movies/Homebase", "Photos", "Downloads") or desktop's full path.
+     * returned on success is for a message: a folder ("Movies/Homebase", "Photos", "Downloads") or, asked on desktop, the
+     * file's full path.
      */
     suspend fun target(name: String, asked: Boolean): AlbumTarget
 }
 
 /** The album is not writable for us. Retrying or re-prompting won't change that. */
-class AlbumAccessDeniedException(message: String) : Exception(message)
+class AlbumAccessDeniedException(override val message: String) : Exception(message)
 
-/** Where [saveWritten] puts a new item. */
+/** Where [saveFile]/[saveWritten] put a new item. */
 sealed interface AlbumTarget {
     /** Written in place at [path], a file or Android's `content://` entry; [publish] shows it and says where, [discard] removes it. */
     class InPlace(val path: String, val publish: suspend () -> String, val discard: suspend () -> Unit) : AlbumTarget
@@ -57,7 +58,7 @@ sealed interface AlbumSaveResult {
     data object WriteFailed : AlbumSaveResult
 
     /** The album refused it ([AlbumAccessDeniedException], saying [reason]); [file], named [name], is finished and the caller's to share. */
-    data class Refused(val file: String, val name: String, val reason: String? = null) : AlbumSaveResult
+    data class Refused(val file: String, val name: String, val reason: String) : AlbumSaveResult
 }
 
 /**
@@ -75,16 +76,7 @@ suspend fun AlbumSaver.saveWritten(
     write: suspend (path: String) -> Boolean,
 ): AlbumSaveResult = when (val target = targetOrRefusal(name, asked)) {
     AlbumTarget.Cancelled -> AlbumSaveResult.Cancelled
-    is AlbumTarget.InPlace -> try {
-        // Once written, publishing finishes even if the caller has gone: it's the last step of a complete file.
-        if (write(target.path)) AlbumSaveResult.Saved(withContext(NonCancellable) { target.publish() }) else {
-            withContext(NonCancellable) { target.discard() }
-            AlbumSaveResult.WriteFailed
-        }
-    } catch (e: Throwable) {
-        withContext(NonCancellable) { target.discard() }
-        throw e
-    }
+    is AlbumTarget.InPlace -> target.fill(write)
     is AlbumTarget.FinishedFile -> {
         var handedOver = false
         try {
@@ -114,19 +106,26 @@ suspend fun AlbumSaver.saveWritten(
 suspend fun AlbumSaver.saveFile(file: String, name: String, asked: Boolean, fileOps: FileOperationsProvider): AlbumSaveResult =
     when (val target = targetOrRefusal(name, asked)) {
         AlbumTarget.Cancelled -> AlbumSaveResult.Cancelled
-        is AlbumTarget.InPlace -> try {
-            fileOps.writeStream(target.path, fileOps.readFileAsFlow(file, COPY_CHUNK))
-            AlbumSaveResult.Saved(withContext(NonCancellable) { target.publish() })
-        } catch (e: Throwable) {
-            withContext(NonCancellable) { target.discard() }
-            throw e
-        }
+        is AlbumTarget.InPlace -> target.fill { path -> fileOps.writeStream(path, fileOps.readFileAsFlow(file, COPY_CHUNK)); true }
         is AlbumTarget.FinishedFile -> try {
             AlbumSaveResult.Saved(withContext(NonCancellable) { target.take(file) })
         } catch (e: AlbumAccessDeniedException) {
             AlbumSaveResult.Refused(file, name, e.message)
         }
     }
+
+// Once written, publishing finishes even if the caller has gone: it's the last step of a complete file.
+private suspend fun AlbumTarget.InPlace.fill(write: suspend (path: String) -> Boolean): AlbumSaveResult = try {
+    if (write(path)) {
+        AlbumSaveResult.Saved(withContext(NonCancellable) { publish() })
+    } else {
+        withContext(NonCancellable) { discard() }
+        AlbumSaveResult.WriteFailed
+    }
+} catch (e: Throwable) {
+    withContext(NonCancellable) { discard() }
+    throw e
+}
 
 // A refusal at the target is one at the hand-over: either way the caller ends up with a finished file it may share.
 private suspend fun AlbumSaver.targetOrRefusal(name: String, asked: Boolean): AlbumTarget = try {

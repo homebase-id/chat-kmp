@@ -151,7 +151,7 @@ class ChatMediaAutoSaveService(
             // and drop it, rather than treating it as the saved copy.
             val location = when (val saved = albumSaver.saveFile(path, name, asked = false, fileOperationsProvider)) {
                 is AlbumSaveResult.Saved -> saved.location
-                is AlbumSaveResult.Refused -> throw AlbumAccessDeniedException(saved.reason ?: "The album can't be written to")
+                is AlbumSaveResult.Refused -> throw AlbumAccessDeniedException(saved.reason)
                 AlbumSaveResult.Cancelled, AlbumSaveResult.WriteFailed -> error("couldn't save $name")
             }
             dbm.autoSavedMedia.markSaved(file.fileId.toString(), payload.key)

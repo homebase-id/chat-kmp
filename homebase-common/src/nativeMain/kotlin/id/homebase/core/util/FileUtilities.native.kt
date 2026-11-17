@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import id.homebase.api.file.IOSFileOperationsProvider
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.io.files.Path
@@ -19,7 +20,7 @@ private var shownInteractionController: UIDocumentInteractionController? = null
 
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
-    val fileOps = IOSFileOperationsProvider()
+    val fileOps = remember { IOSFileOperationsProvider() }
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
             val nsUrl = NSURL.URLWithString(url) ?: return

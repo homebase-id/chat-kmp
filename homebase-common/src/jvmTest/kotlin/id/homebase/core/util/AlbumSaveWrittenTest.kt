@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import okio.FileSystem
 
-/** [saveWritten], the one way every platform saves what it produces: in place, or through a scratch file. */
+/** [saveFile] and [saveWritten], the one way every platform saves: in place, or handed over as a finished file. */
 class AlbumSaveWrittenTest {
     private val dir: File = Files.createTempDirectory("album-save").toFile().also { it.deleteOnExit() }
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, dir.absolutePath)

@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import id.homebase.api.file.extensionForContentType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -19,31 +18,30 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.extensionForContentType
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.services.ChatMessageActionService
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.util.AlbumSaveResult
+import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.formatMediumDate
-import id.homebase.core.util.saveFileName
-import id.homebase.core.vault.VaultFileSaver
-import id.homebase.resources.vault_chat_image_name
-import id.homebase.resources.vault_save_failed
-import id.homebase.resources.vault_saved
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.saveReceived
+import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_copy_image
 import id.homebase.resources.chat_image_copied
@@ -51,11 +49,14 @@ import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.file_share_failed
+import id.homebase.resources.vault_chat_image_name
+import id.homebase.resources.vault_save_failed
+import id.homebase.resources.vault_saved
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.uuid.Uuid
 
 /**
  * Full-screen viewer for a shared-media item, laid over [content]. Reuses the chat
@@ -277,43 +278,25 @@ fun rememberSharedMediaSaver(
     val scope: CoroutineScope = rememberCoroutineScope()
     val driveFileProvider = org.koin.compose.koinInject<DriveFileProvider>()
     val fileOps = org.koin.compose.koinInject<FileOperationsProvider>()
+    val albumSaver = org.koin.compose.koinInject<AlbumSaver>()
     val fileSystemHandler = getUriHandler()
     return remember(driveId) {
         { item ->
             scope.launch {
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
-                    val name = saveFileName(item.payload.filename(), item.payload.key, item.payload.contentType)
-                    val outPath = "${AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.EXPORT)}/$name"
-                    val ok = driveFileProvider.streamPayloadDecryptedToPath(
-                        driveId = driveId,
-                        fileId = item.fileId,
-                        key = item.payload.key,
-                        keyHeader = KeyHeader(iv, item.keyHeader.aesKey),
-                        outputPath = outPath,
-                        fileOps = fileOps,
+                    val saved = albumSaver.saveReceived(
+                        driveFileProvider, fileOps, driveId, item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey),
+                        item.payload.filename(), item.payload.contentType, hls = false,
                     )
-                    if (ok) {
-                        fileSystemHandler.saveFile(
-                            file = Path(outPath),
-                            suggestedName = name,
-                            onSuccess = { loc ->
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        TranslationUtil.getString(MR.string.file_saved_to, loc)
-                                    )
-                                }
-                            },
-                            onError = { e ->
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        TranslationUtil.getString(
-                                            MR.string.file_save_failed,
-                                            e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                                        )
-                                    )
-                                }
-                            },
+                    when (saved) {
+                        is AlbumSaveResult.Saved ->
+                            snackbarHostState.showSnackbar(TranslationUtil.getString(MR.string.file_saved_to, saved.location))
+                        // The album won't take it (Android 9 without storage access): the screen's save flow offers it instead.
+                        is AlbumSaveResult.Refused -> fileSystemHandler.saveFile(Path(saved.file), saved.name)
+                        AlbumSaveResult.Cancelled -> Unit
+                        AlbumSaveResult.WriteFailed -> snackbarHostState.showSnackbar(
+                            TranslationUtil.getString(MR.string.file_save_failed, TranslationUtil.getString(MR.string.error_unknown)),
                         )
                     }
                 } catch (e: Exception) {

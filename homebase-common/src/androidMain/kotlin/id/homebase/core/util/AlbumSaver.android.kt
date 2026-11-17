@@ -18,9 +18,11 @@ import kotlinx.coroutines.withContext
 
 private const val ALBUM_FOLDER = "Homebase"
 
-class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
+class AndroidAlbumSaver(context: Context) : AlbumSaver {
+    // A save can outlive the screen that started it.
+    private val context = context.applicationContext
 
-    // MediaStore asks no permission and has no picker, so asked or not is the same here.
+    // There's no picker on Android, so asked or not is the same here.
     override suspend fun target(name: String, asked: Boolean): AlbumTarget {
         val mimeType = detectContentTypeFromExtensionOrHint(name)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return legacyTarget(name, mimeType)
@@ -33,21 +35,25 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
         )
     }
 
-    private fun legacyTarget(name: String, mimeType: String): AlbumTarget {
+    private suspend fun legacyTarget(name: String, mimeType: String): AlbumTarget = withContext(Dispatchers.IO) {
         val granted = ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
         if (!granted) throw AlbumAccessDeniedException("WRITE_EXTERNAL_STORAGE not granted")
         val directory = directoryFor(mimeType)
         @Suppress("DEPRECATION")
         val destDir = File(Environment.getExternalStoragePublicDirectory(directory), ALBUM_FOLDER).apply { mkdirs() }
-        val dest = File(destDir, freeFileName(name) { File(destDir, it).exists() })
-        return AlbumTarget.InPlace(
-            path = dest.absolutePath,
+        // The name is reserved as it's chosen, and written beside it until complete: two saves of one name never share a
+        // file, and a cut-off one never shows in the gallery.
+        val dest = File(destDir, freeFileName(name) { !File(destDir, it).createNewFile() })
+        val partial = File(destDir, ".${dest.name}.part")
+        AlbumTarget.InPlace(
+            path = partial.absolutePath,
             publish = {
+                withContext(Dispatchers.IO) { check(partial.renameTo(dest)) { "couldn't move ${partial.name} into place" } }
                 MediaScannerConnection.scanFile(context, arrayOf(dest.absolutePath), arrayOf(mimeType), null)
                 "$directory/$ALBUM_FOLDER"
             },
-            discard = { withContext(Dispatchers.IO) { dest.delete() } },
+            discard = { withContext(Dispatchers.IO) { partial.delete(); dest.delete() } },
         )
     }
 

@@ -2,12 +2,10 @@ package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
 import co.touchlab.kermit.Logger
+import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.safeFileName
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 
@@ -55,7 +53,7 @@ interface FileSystemHandler {
 }
 
 // App-lifetime: a save the person started finishes even if they leave the screen.
-private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+private val saveScope = supervisedScope("saveFile")
 
 /**
  * [FileSystemHandler.saveFile] on every platform: [file] saved through [albumSaver] as a person's save, under
@@ -69,21 +67,24 @@ internal fun saveThroughAlbum(
     suggestedName: String,
     onSuccess: (String) -> Unit,
     onError: (Throwable) -> Unit,
-    onRefused: (Path, reason: String?) -> Unit = { _, reason -> onError(AlbumAccessDeniedException(reason ?: "The album can't be written to")) },
+    onRefused: (Path, reason: String) -> Unit = { _, reason -> onError(AlbumAccessDeniedException(reason)) },
 ) {
     saveScope.launch {
-        try {
-            when (val saved = albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)) {
-                is AlbumSaveResult.Saved -> onSuccess(saved.location)
-                AlbumSaveResult.Cancelled -> Unit
-                AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
-                is AlbumSaveResult.Refused -> onRefused(file, saved.reason)
-            }
+        // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
+        val saved = try {
+            albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = "saveFile") { "Failed to save file: ${e.message}" }
             onError(e)
+            return@launch
+        }
+        when (saved) {
+            is AlbumSaveResult.Saved -> onSuccess(saved.location)
+            AlbumSaveResult.Cancelled -> Unit
+            AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
+            is AlbumSaveResult.Refused -> onRefused(file, saved.reason)
         }
     }
 }

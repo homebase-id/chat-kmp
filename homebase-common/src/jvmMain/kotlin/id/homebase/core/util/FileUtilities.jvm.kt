@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
-import id.homebase.api.util.safeFileName
 import java.awt.Desktop
 import kotlinx.io.files.Path
 
@@ -14,8 +13,7 @@ private const val TAG = "getUriHandler"
 actual fun getUriHandler(): FileSystemHandler = JvmFileSystemHandler()
 
 internal class JvmFileSystemHandler(
-    private val chooseSaveTarget: (suggestedName: String) -> java.io.File? = ::showSaveDialog,
-    private val reveal: (java.io.File) -> Unit = ::revealInFileManager,
+    private val albumSaver: AlbumSaver = JvmAlbumSaver(),
     private val fileOps: FileOperationsProvider = JvmFileOperationsProvider(),
 ) : FileSystemHandler {
     override fun openUrl(url: String, onError: (Throwable) -> Unit) {
@@ -88,7 +86,7 @@ internal class JvmFileSystemHandler(
         suggestedName: String,
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
-    ) = saveThroughAlbum(JvmAlbumSaver(chooseSaveTarget, reveal), fileOps, file, suggestedName, onSuccess, onError)
+    ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, onSuccess, onError)
 
     override fun shareText(text: String, onError: (Throwable) -> Unit) {
         try {
@@ -102,24 +100,5 @@ internal class JvmFileSystemHandler(
 
     override fun openAppStore(onError: (Throwable) -> Unit) {
         TODO("Not yet implemented")
-    }
-}
-
-internal fun showSaveDialog(suggestedName: String): java.io.File? {
-    val parent = java.awt.Frame.getFrames().firstOrNull { it.isShowing }
-    val dialog = java.awt.FileDialog(parent, "Save File", java.awt.FileDialog.SAVE)
-    dialog.file = suggestedName
-    dialog.isVisible = true
-    val dir = dialog.directory ?: return null
-    val name = dialog.file ?: return null
-    return java.io.File(dir, name)
-}
-
-internal fun revealInFileManager(dest: java.io.File) {
-    if (Desktop.isDesktopSupported()) {
-        val desktop = Desktop.getDesktop()
-        if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
-            desktop.browseFileDirectory(dest)
-        }
     }
 }

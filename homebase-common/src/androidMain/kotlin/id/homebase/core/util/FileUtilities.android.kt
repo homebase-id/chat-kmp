@@ -22,7 +22,7 @@ actual fun getUriHandler(): FileSystemHandler {
 
     return remember {
         val albumSaver = AndroidAlbumSaver(context)
-        val fileOps = AndroidFileOperationsProvider(context)
+        val fileOps = AndroidFileOperationsProvider(context.applicationContext)
         object : FileSystemHandler {
             override fun openUrl(url: String, onError: (Throwable) -> Unit) {
                 val customTabsIntent =

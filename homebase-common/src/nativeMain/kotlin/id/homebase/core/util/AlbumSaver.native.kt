@@ -55,7 +55,7 @@ object IosAlbumSaver : AlbumSaver {
         onError: (Throwable) -> Unit,
     ) {
         val fileUrl = NSURL.fileURLWithPath(file.toString())
-        val safeName = safeFileName(suggestedName)
+        val safeName = suggestedName
         val extension = safeName.substringAfterLast('.', "").lowercase()
         val isImage =
             extension in setOf("jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "bmp", "tiff")
