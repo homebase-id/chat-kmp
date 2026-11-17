@@ -64,6 +64,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.MediaPager
+import id.homebase.core.media.pagerArrowKeys
 import id.homebase.core.media.MediaPendingOverlay
 import id.homebase.core.media.MediaRail
 import id.homebase.core.media.MediaRailItem
@@ -149,6 +150,7 @@ fun FullScreenMediaViewer(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
             .focusRequester(focusRequester)
+            .pagerArrowKeys(pagerState)
             .onKeyEvent { event ->
                 val copy = copyAction?.takeIf { event.isCopyChord() } ?: return@onKeyEvent false
                 copy()
