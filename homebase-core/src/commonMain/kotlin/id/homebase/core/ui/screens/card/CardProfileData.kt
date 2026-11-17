@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.card
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.AclViewer
 import id.homebase.api.client.drives.isVisibleTo
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
@@ -53,16 +54,16 @@ fun buildCardPayload(
     overrides: CardOverrides = CardOverrides.EMPTY,
     visitorPreview: Boolean = false,
 ): CardPayload {
-    val canSee = audience.aclFilter()
+    val viewer = audience.viewer()
     val fields = overrides.fields
     val onCard = attributes.filterNot { fields.hides(it, audience) }
-    val values = onCard.visibleValues(canSee)
+    val values = onCard.visibleValues(viewer)
     val socialIds = cardSocialFields.mapValues { (_, social) -> onCard.firstOrNull { it.type == social.attributeType }?.id?.toString() }
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
-    val statusRecord = onCard.visibleAttribute(ProfileAttributeTypes.STATUS, canSee, listOf(ProfileAttributeTypes.KEY_STATUS))
+    val statusRecord = onCard.visibleAttribute(ProfileAttributeTypes.STATUS, viewer, listOf(ProfileAttributeTypes.KEY_STATUS))
     val status = statusRecord?.string(ProfileAttributeTypes.KEY_STATUS)?.trim()?.ifEmpty { null }
     // A status scoped narrower than Public is more specific than the homepage tagLine.
-    val ownStatus = status.takeIf { statusRecord?.acl?.isVisibleTo(ProfileVisibility.ANONYMOUS) == false }
+    val ownStatus = status.takeIf { statusRecord?.acl?.isVisibleTo(AclViewer(ProfileVisibility.ANONYMOUS)) == false }
     return CardPayload(
         design = design,
         audience = audience.toPayload(),
@@ -75,10 +76,10 @@ fun buildCardPayload(
             displayName = profileNameValue(values)?.trim(),
             headline = ownStatus ?: tagLine?.trim()?.ifEmpty { null } ?: status,
             // The public site's card shows the summary, never the full bio.
-            bio = onCard.visibleBio(canSee)?.trim()?.ifEmpty { null },
+            bio = onCard.visibleBio(viewer)?.trim()?.ifEmpty { null },
             photo = photoSrc?.ifBlank { null }?.let(::CardImage),
             header = headerSrc?.ifBlank { null }?.let(::CardImage),
-            links = cardLinks(onCard.visibleLinks(canSee).inCardOrder(fields) { it.id.toString() }),
+            links = cardLinks(onCard.visibleLinks(viewer).inCardOrder(fields) { it.id.toString() }),
             socials = cardSocialFields.mapNotNull { (type, social) ->
                 text(social.field)?.let { socialUsername(type, it) }?.let { CardSocial(type = type, username = it) }
             }.inCardOrder(fields) { socialIds[it.type].orEmpty() },

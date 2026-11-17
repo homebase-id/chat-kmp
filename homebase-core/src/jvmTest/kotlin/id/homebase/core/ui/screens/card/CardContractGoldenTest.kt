@@ -4,6 +4,7 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileWriteOptions
 import id.homebase.api.serialization.OdinSystemSerializer
 import java.io.File
 import kotlin.test.Test
@@ -89,7 +90,7 @@ class CardContractGoldenTest {
     @Test
     fun savePublicCardEdit() = runTest {
         golden("save-public-card-edit.json", captured {
-            store(it).save(publicCard.toData(), ProfileVisibility.ANONYMOUS, publicId, publicTag, publicCard.priority)
+            store(it).save(publicCard.toData(), ProfileVisibility.ANONYMOUS, publicId, publicTag, ProfileWriteOptions(publicCard.priority))
         })
     }
 
@@ -97,7 +98,7 @@ class CardContractGoldenTest {
     fun saveCircleCard() = runTest {
         val card = circleCard(friendsCircle, "Friends", "dossier", 0)
         golden("save-circle-card.json", captured {
-            store(it).save(card.toData(), ProfileVisibility.CONNECTED, null, null, card.priority)
+            store(it).save(card.toData(), ProfileVisibility.CONNECTED, null, null, ProfileWriteOptions(card.priority))
         })
     }
 
@@ -109,7 +110,7 @@ class CardContractGoldenTest {
         )
         val card = circleCard(friendsCircle, "Friends", "dossier", 0).copy(overrides = CardOverrides(socials = "bar", fields = fields))
         golden("save-circle-card-fields.json", captured {
-            store(it).save(card.toData(), ProfileVisibility.CONNECTED, null, null, card.priority)
+            store(it).save(card.toData(), ProfileVisibility.CONNECTED, null, null, ProfileWriteOptions(card.priority))
         })
     }
 

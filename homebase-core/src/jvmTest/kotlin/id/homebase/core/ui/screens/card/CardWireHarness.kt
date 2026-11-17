@@ -12,6 +12,7 @@ import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileProvider
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileWriteOptions
 import id.homebase.api.client.profile.ProfileWriteResponse
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -281,7 +282,9 @@ internal class FakeCardStore(var attributes: List<ProfileAttribute> = emptyList(
 
     override suspend fun load() = attributes
 
-    override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, priority: Int, circleIds: List<String>): ProfileWriteResponse {
+    override suspend fun save(data: JsonObject, visibility: ProfileVisibility, id: Uuid?, versionTag: Uuid?, options: ProfileWriteOptions): ProfileWriteResponse {
+        val priority = options.priority ?: 0
+        val circleIds = options.circleIds
         saveCalls++
         gate?.await()
         failWith?.let { throw it }

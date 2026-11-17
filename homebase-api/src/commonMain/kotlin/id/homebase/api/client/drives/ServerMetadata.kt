@@ -34,15 +34,18 @@ data class AccessControlList(
     // Add fields as needed from the C# AccessControlList
 )
 
+/** Who is reading: their [tier] and the circles they belong to (only meaningful from [ProfileVisibility.CONNECTED]). */
+data class AclViewer(val tier: ProfileVisibility, val circleIds: Set<String> = emptySet())
+
 /**
  * Whether [viewer] can read a file with this ACL, mirroring Odin's DriveAclAuthorizationService for
  * an anonymous visitor ([ProfileVisibility.ANONYMOUS]), a logged-in stranger or unreviewed
- * connection ([ProfileVisibility.AUTHENTICATED]) or a reviewed connection in no circle
- * ([ProfileVisibility.CONNECTED]). A missing ACL or an unknown group is
- * visible to the owner only.
+ * connection ([ProfileVisibility.AUTHENTICATED]) or a reviewed connection ([ProfileVisibility.CONNECTED]),
+ * who also reads what is limited to a circle they are in. A missing ACL or an unknown group is visible to
+ * the owner only.
  */
-fun AccessControlList?.isVisibleTo(viewer: ProfileVisibility): Boolean {
-    if (viewer == ProfileVisibility.OWNER) return true
+fun AccessControlList?.isVisibleTo(viewer: AclViewer): Boolean {
+    if (viewer.tier == ProfileVisibility.OWNER) return true
     if (this == null || !odinIdList.isNullOrEmpty()) return false
     val required = when (requiredSecurityGroup?.lowercase()) {
         "anonymous" -> ProfileVisibility.ANONYMOUS
@@ -50,19 +53,9 @@ fun AccessControlList?.isVisibleTo(viewer: ProfileVisibility): Boolean {
         "connected", "autoconnected" -> ProfileVisibility.CONNECTED
         else -> return false
     }
-    if (viewer < required) return false
-    return circleIdList.isNullOrEmpty()
-}
-
-fun AccessControlList?.isVisibleToCircle(circleId: String): Boolean {
-    if (this == null || !odinIdList.isNullOrEmpty()) return false
-    when (requiredSecurityGroup?.lowercase()) {
-        "anonymous", "authenticated", "connected", "autoconnected" -> Unit
-        else -> return false
-    }
+    if (viewer.tier < required) return false
     val circles = circleIdList.orEmpty()
-    if (circles.isEmpty()) return true
-    return circles.any { compareStringUuId(it, circleId) }
+    return circles.isEmpty() || circles.any { acl -> viewer.circleIds.any { compareStringUuId(acl, it) } }
 }
 
 private fun securityRank(group: String?): Int = when (group?.lowercase()) {

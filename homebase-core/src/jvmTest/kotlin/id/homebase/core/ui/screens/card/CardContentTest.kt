@@ -170,7 +170,7 @@ class CardContentTest {
         assertEquals(1, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.EMAIL })
 
         val stored = wire.profileRepository().loadAttributes()
-        fun emailOn(card: CardAudience) = stored.visibleValues(card.aclFilter())[ProfileField.EMAIL]
+        fun emailOn(card: CardAudience) = stored.visibleValues(card.viewer())[ProfileField.EMAIL]
         assertEquals("frodo@shire.me", emailOn(work))
         assertEquals("", emailOn(friends))
         assertEquals("", emailOn(family))
