@@ -85,6 +85,9 @@ class HdrDisplayDeviceTest {
         val decoded = ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { d, _, _ -> d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE }
         val scaled = Bitmap.createScaledBitmap(decoded, width, height, true)
         val source = checkNotNull(decoded.gainmap)
+        // createScaledBitmap carries the gain map over (Android 14+): without this the "SDR" encode is Ultra HDR too.
+        Log.i("HdrBench", "scaled bitmap had a gain map: ${scaled.hasGainmap()}")
+        scaled.gainmap = null
         val scaleStarted = System.nanoTime()
         val contents = source.gainmapContents
         val mapWidth = contents.width * width / decoded.width
