@@ -373,6 +373,40 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.DOSSIER, host.rendered.single().design)
     }
 
+    private fun openCardSavedWith(palette: String): ProfileCardViewModel {
+        val data = Json.parseToJsonElement("""{"design":"links","overrides":{"palette":{$palette}}}""").jsonObject
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(profileCardAttribute(data)))
+        val source = FakeSource(profile, cardRepository = CardRepository(store)).apply { liveCards = { store.attributes } }
+        return viewModel(FakeHost(), source)
+    }
+
+    private val oldCloudPalette =
+        """"ground":"#F1F3F6","ink":"#1B1F24","muted":"#5C6673","surface":"#FFFFFF","surfaceInk":"#1B1F24""""
+
+    @Test
+    fun aCardSavedWithTheOldCloudPaletteStillLoadsAsTheDefaultStyle() = runTest(dispatcher) {
+        val vm = openCardSavedWith(oldCloudPalette)
+
+        val overrides = vm.uiState.value.overrides
+        assertEquals(CardDesign.LINKS, vm.uiState.value.design)
+        val styles = cardStylesFor(CardDesign.LINKS)
+        val matched = styles.first { it.matches(overrides) }
+        assertEquals(DEFAULT_STYLE_ID, matched.id)
+        assertTrue(matched.isDefault)
+        assertNull(customStyle(styles, overrides, CardDesign.LINKS))
+    }
+
+    @Test
+    fun theSameOldCloudCardWithAnAccentResolvesToCustom() = runTest(dispatcher) {
+        val vm = openCardSavedWith("""$oldCloudPalette,"accent":"#2E6FB5"""")
+
+        val overrides = vm.uiState.value.overrides
+        assertEquals(CardDesign.LINKS, vm.uiState.value.design)
+        val styles = cardStylesFor(CardDesign.LINKS)
+        assertTrue(styles.none { it.matches(overrides) })
+        assertEquals(CUSTOM_STYLE_ID, customStyle(styles, overrides, CardDesign.LINKS)?.id)
+    }
+
     @Test
     fun anUnknownStoredDesignFallsBackToTheTemplate() = runTest(dispatcher) {
         val vm = viewModel(FakeHost(), FakeSource(profile + cardAttribute("hologram")))
