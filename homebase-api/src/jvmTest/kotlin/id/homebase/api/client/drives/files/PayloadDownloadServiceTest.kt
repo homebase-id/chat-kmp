@@ -216,6 +216,8 @@ class PayloadDownloadServiceTest {
         val keyHeader = KeyHeader.newRandom16()
         val plaintext = ByteArray(100_000).also { Random.nextBytes(it) }
         nextBody = keyHeader.encryptDataAes(plaintext)
+        // As odin-core always says: the cached entry keeps the flag, and a cache hit decrypts by it.
+        nextHeaders = headersOf("payloadencrypted", "True")
 
         // Warm the cache the way VideoPreloader.prefetchPayload does — a full
         // read through the same provider stack, cached under the :full:full key.

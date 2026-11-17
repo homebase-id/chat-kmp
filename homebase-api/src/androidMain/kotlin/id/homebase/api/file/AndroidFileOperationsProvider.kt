@@ -140,4 +140,20 @@ class AndroidFileOperationsProvider(
             } ?: throw IllegalArgumentException("Unable to open content URI for write: $path")
         }
     }
+
+    override suspend fun overwrite(path: String, offset: Long, bytes: ByteArray) {
+        if (!isContentUri(path)) return super.overwrite(path, offset, bytes)
+        withContext(Dispatchers.IO) {
+            val descriptor = context.contentResolver.openFileDescriptor(path.toUri(), "rw")
+                ?: throw IllegalArgumentException("Unable to open content URI for write: $path")
+            descriptor.use { fd ->
+                java.io.FileOutputStream(fd.fileDescriptor).channel.use { channel ->
+                    require(offset >= 0 && offset + bytes.size <= channel.size()) { "overwrite past the end of $path" }
+                    val buffer = java.nio.ByteBuffer.wrap(bytes)
+                    var at = offset
+                    while (buffer.hasRemaining()) at += channel.write(buffer, at)
+                }
+            }
+        }
+    }
 }

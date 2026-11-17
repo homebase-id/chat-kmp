@@ -21,8 +21,9 @@ class SentImageRuleTest {
     }
 
     @Test
-    fun aPlaintextImageShowsTheSendersFile() {
-        assertEquals("/tmp/photo.jpg", image.localImageOnly(isEncrypted = false, ivPresent = false))
+    fun aPlaintextImageShowsTheSentCopyItNeedsNoIv() {
+        assertNull(image.localImageOnly(isEncrypted = false, ivPresent = false))
+        assertEquals("/tmp/photo.jpg", image.imageStandIn, "while it loads, and if it can't")
     }
 
     @Test
