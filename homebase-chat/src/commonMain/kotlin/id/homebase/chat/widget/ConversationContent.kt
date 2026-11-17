@@ -162,8 +162,7 @@ import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
-import id.homebase.core.util.usesPointerUx
-import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.usesComposerPopovers
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.keyboardPanelAnchoredList
@@ -293,7 +292,7 @@ fun ConversationContent(
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
-    val composerPopovers = usesPointerUx() && isExpandedLayout()
+    val composerPopovers = usesComposerPopovers()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
