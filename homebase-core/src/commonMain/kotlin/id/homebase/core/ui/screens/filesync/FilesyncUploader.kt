@@ -48,6 +48,28 @@ class FilesyncUploader internal constructor(
         return nodeId to keyHeader
     }
 
+    /**
+     * Recovered files at the top under its fixed id, for a restore that breaks a loop; false when that id is taken (made
+     * meanwhile, or a node this device can't read). Sent once: a retry's "taken" couldn't tell those from an earlier attempt.
+     */
+    suspend fun createRecoveredFiles(): Boolean =
+        try {
+            val keyHeader = KeyHeader.newRandom16()
+            val content = FilesyncNodeContent(v = CONTENT_VERSION, name = FilesyncProtocol.RecoveredFilesName)
+            val metadata = nodeMetadata(FilesyncProtocol.RecoveredFilesNodeId, FilesyncProtocol.RootNodeId, FilesyncProtocol.FolderFileType, content, keyHeader)
+            val request = UploadFileRequest(
+                driveId = FilesyncProtocol.DriveAlias,
+                keyHeader = keyHeader,
+                metadata = metadata,
+                payloads = emptyList(),
+            )
+            sendUpload(request, null)
+            true
+        } catch (e: ClientException) {
+            if (!e.isExistingFileWithUniqueId()) throw e
+            false
+        }
+
     suspend fun uploadFile(
         nodeId: Uuid,
         parentId: Uuid,
@@ -76,12 +98,10 @@ class FilesyncUploader internal constructor(
         payload: PayloadFile? = null,
         onProgress: ((Float) -> Unit)? = null,
     ) {
-        val metadata = filesyncMetadata(nodeId, parentId, fileType, OdinSystemSerializer.serialize(content), ArchivalStatus.None)
-            .encryptContent(keyHeader)
         val request = UploadFileRequest(
             driveId = FilesyncProtocol.DriveAlias,
             keyHeader = keyHeader,
-            metadata = metadata,
+            metadata = nodeMetadata(nodeId, parentId, fileType, content, keyHeader),
             payloads = listOfNotNull(payload),
         )
 
@@ -96,6 +116,9 @@ class FilesyncUploader internal constructor(
             Unit
         }.getOrThrow()
     }
+
+    private suspend fun nodeMetadata(nodeId: Uuid, parentId: Uuid, fileType: Int, content: FilesyncNodeContent, keyHeader: KeyHeader) =
+        filesyncMetadata(nodeId, parentId, fileType, OdinSystemSerializer.serialize(content), ArchivalStatus.None).encryptContent(keyHeader)
 
     private companion object {
         const val TAG = "FilesyncUploader"

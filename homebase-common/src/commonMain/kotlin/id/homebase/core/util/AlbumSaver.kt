@@ -7,58 +7,40 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
 import id.homebase.api.util.safeFileName
 import id.homebase.api.video.downloadHlsAsMp4
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.io.files.Path
 
 /**
- * The platform "save this file where the user keeps their photos" implementation, reachable from a
- * plain coroutine — [FileSystemHandler] is only obtainable from a Composable, so background callers
- * (auto-save) cannot use it.
+ * Where a platform keeps what people save: its photo album, or the nearest thing it has. Each platform says only where a
+ * new item goes ([target]); [saveFile] and [saveWritten] do the writing, publishing and clean-up the same way on all.
+ * Reachable from a plain coroutine, so background callers (auto-save) use it as the screens do.
  */
 interface AlbumSaver {
-    /** [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). */
-    fun save(
-        file: Path,
-        suggestedName: String,
-        onSuccess: (String) -> Unit = {},
-        onError: (Throwable) -> Unit = {},
-    )
-
     /**
-     * Where a new item a person asked to save goes, for [saveWritten]. [name] is already a safe file name; the platform
-     * may change it to avoid a clash (MediaStore and the browser number it; desktop's Save dialog asks first).
+     * Where a new item goes, for [saveFile]/[saveWritten]. [name] is already a safe file name; the platform may change it
+     * to avoid a clash (MediaStore and the browser number it; desktop's Save dialog asks first). [asked]: a person
+     * tapped Save, so a platform that lets them choose the place asks; otherwise nothing prompts.
      * - Android 10+: [AlbumTarget.InPlace], a hidden MediaStore entry under Pictures, Movies or Downloads by type. It
      *   exists from this call, so [AlbumTarget.InPlace.discard] must run unless it's published.
-     * - Desktop: [AlbumTarget.InPlace], the file the Save dialog picks; [AlbumTarget.Cancelled] when the person cancels.
-     * - iOS, and Android 9: this default, a finished file through [save] (Photos imports one; Android 9 checks its
-     *   storage permission there).
-     * - Web: [AlbumTarget.FinishedFile], downloaded by the browser.
+     * - Android 9: [AlbumTarget.InPlace], a file in the same public folder; throws [AlbumAccessDeniedException] without
+     *   the storage permission.
+     * - Desktop: [AlbumTarget.InPlace], asked the file the Save dialog picks ([AlbumTarget.Cancelled] if the person
+     *   cancels; the location is its full path), otherwise a new file in ~/Pictures (media) or ~/Downloads.
+     * - iOS: [AlbumTarget.FinishedFile], imported by Photos (a photo or video, "Photos") or copied to the app's Files
+     *   folder ("Files"); its take throws [AlbumAccessDeniedException] when Photos access is denied.
+     * - Web: asked, [AlbumTarget.FinishedFile] downloaded by the browser; otherwise throws [AlbumAccessDeniedException].
      * An [AlbumTarget.InPlace] path is one [FileOperationsProvider] can `writeStream` and `overwrite`. The location
-     * returned on success is for a message: a folder ("Movies/Homebase", "Photos", "Downloads") or desktop's full path.
+     * returned on success is for a message: a folder ("Movies/Homebase", "Photos", "Downloads") or, asked on desktop, the
+     * file's full path.
      */
-    suspend fun target(name: String): AlbumTarget = AlbumTarget.FinishedFile { file -> saveAwait(Path(file), name) }
+    suspend fun target(name: String, asked: Boolean): AlbumTarget
 }
 
 /** The album is not writable for us. Retrying or re-prompting won't change that. */
-class AlbumAccessDeniedException(message: String) : Exception(message)
+class AlbumAccessDeniedException(override val message: String) : Exception(message)
 
-/** Suspends until the save completes, so the caller can delete its temp file afterwards. */
-suspend fun AlbumSaver.saveAwait(file: Path, suggestedName: String): String =
-    suspendCancellableCoroutine { continuation ->
-        save(
-            file = file,
-            suggestedName = suggestedName,
-            onSuccess = { continuation.resume(it) },
-            onError = { continuation.resumeWithException(it) },
-        )
-    }
-
-/** Where [saveWritten] puts a new item. */
+/** Where [saveFile]/[saveWritten] put a new item. */
 sealed interface AlbumTarget {
     /** Written in place at [path], a file or Android's `content://` entry; [publish] shows it and says where, [discard] removes it. */
     class InPlace(val path: String, val publish: suspend () -> String, val discard: suspend () -> Unit) : AlbumTarget
@@ -75,8 +57,8 @@ sealed interface AlbumSaveResult {
     data object Cancelled : AlbumSaveResult
     data object WriteFailed : AlbumSaveResult
 
-    /** The album refused it ([AlbumAccessDeniedException]); [file], named [name], is finished and now the caller's to share. */
-    data class Refused(val file: String, val name: String) : AlbumSaveResult
+    /** The album refused it ([AlbumAccessDeniedException], saying [reason]); [file], named [name], is finished and the caller's to share. */
+    data class Refused(val file: String, val name: String, val reason: String) : AlbumSaveResult
 }
 
 /**
@@ -90,19 +72,11 @@ suspend fun AlbumSaver.saveWritten(
     name: String,
     scratchPath: String,
     fileOps: FileOperationsProvider,
+    asked: Boolean = true,
     write: suspend (path: String) -> Boolean,
-): AlbumSaveResult = when (val target = target(name)) {
+): AlbumSaveResult = when (val target = targetOrRefusal(name, asked)) {
     AlbumTarget.Cancelled -> AlbumSaveResult.Cancelled
-    is AlbumTarget.InPlace -> try {
-        // Once written, publishing finishes even if the caller has gone: it's the last step of a complete file.
-        if (write(target.path)) AlbumSaveResult.Saved(withContext(NonCancellable) { target.publish() }) else {
-            withContext(NonCancellable) { target.discard() }
-            AlbumSaveResult.WriteFailed
-        }
-    } catch (e: Throwable) {
-        withContext(NonCancellable) { target.discard() }
-        throw e
-    }
+    is AlbumTarget.InPlace -> target.fill(write)
     is AlbumTarget.FinishedFile -> {
         var handedOver = false
         try {
@@ -114,7 +88,7 @@ suspend fun AlbumSaver.saveWritten(
                     AlbumSaveResult.Saved(withContext(NonCancellable) { target.take(scratchPath) })
                 } catch (e: AlbumAccessDeniedException) {
                     handedOver = true
-                    AlbumSaveResult.Refused(scratchPath, name)
+                    AlbumSaveResult.Refused(scratchPath, name, e.message)
                 }
             }
         } finally {
@@ -122,6 +96,45 @@ suspend fun AlbumSaver.saveWritten(
         }
     }
 }
+
+/**
+ * Saves the finished [file] as a new item named [name] (a safe file name), the same way on every platform: copied
+ * straight into the album where it's written in place, otherwise handed over as it is. Nothing is left behind unless
+ * it's [AlbumSaveResult.Saved], even when the caller is cancelled; on [AlbumSaveResult.Refused] the caller still has
+ * [file] to offer another way. Any other platform error is thrown.
+ */
+suspend fun AlbumSaver.saveFile(file: String, name: String, asked: Boolean, fileOps: FileOperationsProvider): AlbumSaveResult =
+    when (val target = targetOrRefusal(name, asked)) {
+        AlbumTarget.Cancelled -> AlbumSaveResult.Cancelled
+        is AlbumTarget.InPlace -> target.fill { path -> fileOps.writeStream(path, fileOps.readFileAsFlow(file, COPY_CHUNK)); true }
+        is AlbumTarget.FinishedFile -> try {
+            AlbumSaveResult.Saved(withContext(NonCancellable) { target.take(file) })
+        } catch (e: AlbumAccessDeniedException) {
+            AlbumSaveResult.Refused(file, name, e.message)
+        }
+    }
+
+// Once written, publishing finishes even if the caller has gone: it's the last step of a complete file.
+private suspend fun AlbumTarget.InPlace.fill(write: suspend (path: String) -> Boolean): AlbumSaveResult = try {
+    if (write(path)) {
+        AlbumSaveResult.Saved(withContext(NonCancellable) { publish() })
+    } else {
+        withContext(NonCancellable) { discard() }
+        AlbumSaveResult.WriteFailed
+    }
+} catch (e: Throwable) {
+    withContext(NonCancellable) { discard() }
+    throw e
+}
+
+// A refusal at the target is one at the hand-over: either way the caller ends up with a finished file it may share.
+private suspend fun AlbumSaver.targetOrRefusal(name: String, asked: Boolean): AlbumTarget = try {
+    target(name, asked)
+} catch (e: AlbumAccessDeniedException) {
+    AlbumTarget.FinishedFile { throw e }
+}
+
+private const val COPY_CHUNK = 256 * 1024
 
 /**
  * A received payload saved through [saveWritten], named for the person; an HLS video ([hls]) is remuxed into an `.mp4`

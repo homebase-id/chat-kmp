@@ -138,6 +138,7 @@ import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_restore_failed
 import id.homebase.resources.filesync_restore_try_again
 import id.homebase.resources.filesync_restored
+import id.homebase.resources.filesync_restored_into_recovered
 import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_role_folder_returns
@@ -255,6 +256,7 @@ internal fun FilesyncEventsEffect(
                     when (event.notice) {
                         FilesyncNotice.Restored -> MR.string.filesync_restored
                         FilesyncNotice.RestoredToRecovered -> MR.string.filesync_restored_to_recovered
+                        FilesyncNotice.RestoredIntoRecovered -> MR.string.filesync_restored_into_recovered
                         FilesyncNotice.DeletedForever -> MR.string.filesync_deleted_forever
                         FilesyncNotice.ChangedElsewhere -> MR.string.filesync_changed_elsewhere
                         FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again

@@ -301,8 +301,8 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.AskMove -> if (action.nodes.isNotEmpty()) {
-                // Starts where the browser is, unless that is a deleted folder, where nothing may go.
-                val path = _uiState.value.path.takeWhile { it.removedMs == null }
+                // Starts where the browser is, unless that is a deleted folder or in one computers leave out, where nothing may go.
+                val path = _uiState.value.path.takeWhile { it.removedMs == null && !it.notOnComputers }
                 showMoveFolder(FilesyncMovePicker(action.nodes, path))
             }
 

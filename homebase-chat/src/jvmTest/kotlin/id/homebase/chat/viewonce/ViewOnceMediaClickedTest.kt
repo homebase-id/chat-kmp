@@ -75,8 +75,7 @@ class ViewOnceMediaClickedTest {
             chatMessageStream = unusedStream(),
             localVideoContextStore = LocalAttachmentContextStore(fixture.eventBus, scope.backgroundScope),
             albumSaver = object : id.homebase.core.util.AlbumSaver {
-                override fun save(file: kotlinx.io.files.Path, suggestedName: String, onSuccess: (String) -> Unit, onError: (Throwable) -> Unit) =
-                    error("view-once media is never saved")
+                override suspend fun target(name: String, asked: Boolean) = error("view-once media is never saved")
             },
             sendEvent = {},
             dispatch = {},

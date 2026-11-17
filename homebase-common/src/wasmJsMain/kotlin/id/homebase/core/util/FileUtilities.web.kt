@@ -1,15 +1,17 @@
 package id.homebase.core.util
 
-import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import id.homebase.api.file.WebFileOperationsProvider
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.api.file.readWebFileBytes
-import id.homebase.api.util.safeFileName
 import id.homebase.api.util.toBlobObjectUrl
 import kotlinx.browser.window
 import kotlinx.io.files.Path
 
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
+    val fileOps = remember { WebFileOperationsProvider() }
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
             runCatching { window.open(url, "_blank") }.onFailure { onError(it) }
@@ -30,21 +32,11 @@ actual fun getUriHandler(): FileSystemHandler {
             suggestedName: String,
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
-        ) {
-            runCatching { downloadToDownloads(file, safeFileName(suggestedName)) }
-                .onSuccess(onSuccess)
-                .onFailure(onError)
-        }
+        ) = saveThroughAlbum(WebAlbumSaver, fileOps, file, suggestedName, onSuccess, onError)
     }
 }
 
-private const val DOWNLOADS_LOCATION = "Downloads"
 
-/** Hands [file] to the browser as a download named [fileName]; where it went, for a message. */
-internal fun downloadToDownloads(file: Path, fileName: String): String {
-    downloadWebFile(file, fileName)
-    return DOWNLOADS_LOCATION
-}
 
 internal fun downloadWebFile(file: Path, fileName: String) {
     val path = file.toString()

@@ -33,13 +33,15 @@ class JvmFileSystemHandlerShareTest {
         val name = AtomicReference<String>()
 
         val handler = JvmFileSystemHandler(
-            chooseSaveTarget = {
-                onEdt.set(SwingUtilities.isEventDispatchThread())
-                detached.set(returned.get())
-                name.set(it)
-                target
-            },
-            reveal = { revealedFile.set(it); revealed.countDown() },
+            JvmAlbumSaver(
+                chooseSaveTarget = {
+                    onEdt.set(SwingUtilities.isEventDispatchThread())
+                    detached.set(returned.get())
+                    name.set(it)
+                    target
+                },
+                reveal = { revealedFile.set(it); revealed.countDown() },
+            ),
         )
         SwingUtilities.invokeAndWait {
             handler.shareFile(Path(src.path))
@@ -59,10 +61,7 @@ class JvmFileSystemHandlerShareTest {
         val src = File(dir, "a.log").apply { writeText("x") }
         val failed = CountDownLatch(1)
         val error = AtomicReference<Throwable>()
-        val handler = JvmFileSystemHandler(
-            chooseSaveTarget = { throw HeadlessException() },
-            reveal = {},
-        )
+        val handler = JvmFileSystemHandler(JvmAlbumSaver(chooseSaveTarget = { throw HeadlessException() }, reveal = {}))
         handler.shareFile(Path(src.path), onError = { error.set(it); failed.countDown() })
 
         assertTrue(failed.await(5, TimeUnit.SECONDS))

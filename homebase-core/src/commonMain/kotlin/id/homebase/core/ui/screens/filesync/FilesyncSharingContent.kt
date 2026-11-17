@@ -629,6 +629,7 @@ private fun IncomingFiles(
     listModifier: Modifier,
 ) {
     if (uploads.isNotEmpty()) UploadStrip(uploads, onAction, Modifier.padding(horizontal = gutter).padding(bottom = 8.dp))
+    if (sharing.sharerPath.any { it.notOnComputers }) NotOnComputersBanner()
     SharedFilesBody(sharing.sharedFilesFailed, sharing.sharedFiles?.size, MR.string.filesync_shared_by_none) {
         LazyColumn(modifier = listModifier) {
             items(sharing.sharedFiles.orEmpty(), key = { it.nodeId }) { node ->
