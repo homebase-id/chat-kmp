@@ -8,8 +8,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
-import kotlinx.io.files.Path
 import okio.FileSystem
 
 /** [saveWritten], the one way every platform saves what it produces: in place, or through a scratch file. */
@@ -20,8 +20,7 @@ class AlbumSaveWrittenTest {
     private val events = mutableListOf<String>()
 
     private fun saver(target: AlbumTarget) = object : AlbumSaver {
-        override fun save(file: Path, suggestedName: String, onSuccess: (String) -> Unit, onError: (Throwable) -> Unit) = error("unused")
-        override suspend fun target(name: String) = target
+        override suspend fun target(name: String, asked: Boolean) = target
     }
 
     private fun inPlace(file: File) = AlbumTarget.InPlace(
@@ -126,7 +125,59 @@ class AlbumSaveWrittenTest {
     fun aRefusedSaveHandsTheFinishedFileBack() = runTest {
         val target = AlbumTarget.FinishedFile { throw AlbumAccessDeniedException("WRITE_EXTERNAL_STORAGE not granted") }
         val result = saver(target).saveWritten("v.mp4", scratch.absolutePath, fileOps) { path -> File(path).writeText("video"); true }
-        assertEquals(AlbumSaveResult.Refused(scratch.absolutePath, "v.mp4"), result)
+        assertEquals(AlbumSaveResult.Refused(scratch.absolutePath, "v.mp4", "WRITE_EXTERNAL_STORAGE not granted"), result)
         assertEquals("video", scratch.readText(), "kept for the share sheet")
+    }
+
+    @Test
+    fun aFinishedFileIsCopiedInPlaceAndPublished() = runTest {
+        val source = File(dir, "photo.jpg").apply { writeText("photo") }
+        val dest = File(dir, "album.jpg")
+        assertEquals(AlbumSaveResult.Saved("Movies/Homebase"), saver(inPlace(dest)).saveFile(source.absolutePath, "photo.jpg", asked = true, fileOps))
+        assertEquals("photo", dest.readText())
+        assertTrue(source.exists(), "the caller's file is copied, not moved")
+        assertEquals(listOf("publish"), events)
+    }
+
+    @Test
+    fun aCopyThatFailsLeavesNothing() = runTest {
+        val dest = File(dir, "album.jpg")
+        assertFailsWith<Exception> { saver(inPlace(dest)).saveFile(File(dir, "gone.jpg").absolutePath, "gone.jpg", asked = true, fileOps) }
+        assertFalse(dest.exists())
+        assertEquals(listOf("discard"), events)
+    }
+
+    @Test
+    fun aRefusalHandsTheFileBackWithItsReason() = runTest {
+        val source = File(dir, "photo.jpg").apply { writeText("photo") }
+        val refusing = object : AlbumSaver {
+            override suspend fun target(name: String, asked: Boolean): AlbumTarget = throw AlbumAccessDeniedException("WRITE_EXTERNAL_STORAGE not granted")
+        }
+        assertEquals(
+            AlbumSaveResult.Refused(source.absolutePath, "photo.jpg", "WRITE_EXTERNAL_STORAGE not granted"),
+            refusing.saveFile(source.absolutePath, "photo.jpg", asked = true, fileOps),
+        )
+        // What saveWritten produced is handed back the same way, finished, for the caller to share.
+        val written = refusing.saveWritten("v.mp4", scratch.absolutePath, fileOps) { path -> File(path).writeText("video"); true }
+        assertEquals(AlbumSaveResult.Refused(scratch.absolutePath, "v.mp4", "WRITE_EXTERNAL_STORAGE not granted"), written)
+        assertEquals("video", scratch.readText())
+    }
+
+    @Test
+    fun desktopsAutomaticSaveGoesToPicturesWithoutADialog() = runTest {
+        val home = File(dir, "home").apply { mkdirs() }
+        val realHome = System.getProperty("user.home")
+        System.setProperty("user.home", home.absolutePath)
+        try {
+            val source = File(dir, "auto.jpg").apply { writeText("photo") }
+            val saver = JvmAlbumSaver(chooseSaveTarget = { error("no dialog for an automatic save") }, reveal = { error("nor a reveal") })
+            assertEquals(AlbumSaveResult.Saved("Pictures"), saver.saveFile(source.absolutePath, "auto.jpg", asked = false, fileOps))
+            assertEquals(listOf("auto.jpg"), File(home, "Pictures").list()!!.toList(), "no partial file left")
+            assertEquals("photo", File(home, "Pictures/auto.jpg").readText())
+            saver.saveFile(source.absolutePath, "notes.pdf", asked = false, fileOps)
+            assertTrue(File(home, "Downloads/notes.pdf").exists(), "anything not a photo or video goes to Downloads")
+        } finally {
+            System.setProperty("user.home", realHome)
+        }
     }
 }

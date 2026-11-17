@@ -1,6 +1,5 @@
 package id.homebase.core.util
 
-import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import android.content.ComponentName
 import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent
@@ -10,8 +9,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
-import kotlinx.io.files.Path
+import id.homebase.api.file.AndroidFileOperationsProvider
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import java.io.File
+import kotlinx.io.files.Path
 
 private const val TAG = "getUriHandler"
 
@@ -21,6 +22,7 @@ actual fun getUriHandler(): FileSystemHandler {
 
     return remember {
         val albumSaver = AndroidAlbumSaver(context)
+        val fileOps = AndroidFileOperationsProvider(context)
         object : FileSystemHandler {
             override fun openUrl(url: String, onError: (Throwable) -> Unit) {
                 val customTabsIntent =
@@ -104,10 +106,11 @@ actual fun getUriHandler(): FileSystemHandler {
                 suggestedName: String,
                 onSuccess: (String) -> Unit,
                 onError: (Throwable) -> Unit,
-            ) = albumSaver.save(file, suggestedName, onSuccess) { e ->
+            ) = saveThroughAlbum(
+                albumSaver, fileOps, file, suggestedName, onSuccess, onError,
                 // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to.
-                if (e is AlbumAccessDeniedException) shareFile(file, onError) else onError(e)
-            }
+                onRefused = { refused, _ -> shareFile(refused, onError) },
+            )
 
             override fun shareText(text: String, onError: (Throwable) -> Unit) {
                 try {

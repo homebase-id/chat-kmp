@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import id.homebase.api.file.IOSFileOperationsProvider
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.io.files.Path
 import platform.CoreGraphics.CGRectGetMidX
@@ -18,6 +19,7 @@ private var shownInteractionController: UIDocumentInteractionController? = null
 
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
+    val fileOps = IOSFileOperationsProvider()
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
             val nsUrl = NSURL.URLWithString(url) ?: return
@@ -106,7 +108,7 @@ actual fun getUriHandler(): FileSystemHandler {
             suggestedName: String,
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
-        ) = IosAlbumSaver.save(file, suggestedName, onSuccess, onError)
+        ) = saveThroughAlbum(IosAlbumSaver, fileOps, file, suggestedName, onSuccess, onError)
 
         override fun shareText(text: String, onError: (Throwable) -> Unit) {
             try {

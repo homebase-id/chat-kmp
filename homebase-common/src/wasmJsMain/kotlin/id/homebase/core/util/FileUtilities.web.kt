@@ -1,7 +1,8 @@
 package id.homebase.core.util
 
-import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import androidx.compose.runtime.Composable
+import id.homebase.api.file.WebFileOperationsProvider
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.api.file.readWebFileBytes
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.toBlobObjectUrl
@@ -10,6 +11,7 @@ import kotlinx.io.files.Path
 
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
+    val fileOps = WebFileOperationsProvider()
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
             runCatching { window.open(url, "_blank") }.onFailure { onError(it) }
@@ -30,11 +32,7 @@ actual fun getUriHandler(): FileSystemHandler {
             suggestedName: String,
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
-        ) {
-            runCatching { downloadToDownloads(file, safeFileName(suggestedName)) }
-                .onSuccess(onSuccess)
-                .onFailure(onError)
-        }
+        ) = saveThroughAlbum(WebAlbumSaver, fileOps, file, suggestedName, onSuccess, onError)
     }
 }
 
