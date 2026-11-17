@@ -3249,6 +3249,7 @@
     <string name="filesync_restore">Restore</string>
     <string name="filesync_restore_confirm">Restore %1$s?</string>
     <string name="filesync_restored">Restored</string>
+    <string name="filesync_restored_into_recovered">Restored. Folders that were inside each other are back in Recovered files.</string>
     <string name="filesync_restored_to_recovered">Restored. Items whose folder was deleted for good will appear in Recovered files once one of your computers syncs.</string>
     <string name="filesync_restore_failed">Couldn't restore it.</string>
     <string name="filesync_reactions">Reactions</string>
