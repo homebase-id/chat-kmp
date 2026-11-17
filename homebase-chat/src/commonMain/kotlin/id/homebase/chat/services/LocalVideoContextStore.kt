@@ -164,9 +164,12 @@ fun LocalAttachmentContextStore.collectContext(messageId: Uuid, payloadKey: Stri
     return flow.collectAsStateWithLifecycle(initialValue = initial)
 }
 
-/** The sender's own image file, when only it can be shown: an encrypted payload has no IV, so the sent copy can't be requested yet. */
+/**
+ * The sender's own image file, when only it can be shown: an encrypted payload with no IV yet can't be requested, and
+ * a plaintext upload (a public post) isn't seeded into the cache, so nothing tells when the server has it.
+ */
 fun LocalAttachmentContext?.localImageOnly(isEncrypted: Boolean, ivPresent: Boolean): String? =
-    imageStandIn?.takeIf { isEncrypted && !ivPresent }
+    imageStandIn?.takeIf { !isEncrypted || !ivPresent }
 
 /** The sender's own image file, to stand in for the sent copy while it loads or if it can't. */
 val LocalAttachmentContext?.imageStandIn: String?

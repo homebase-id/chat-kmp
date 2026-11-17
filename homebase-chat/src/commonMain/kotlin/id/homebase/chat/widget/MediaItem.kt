@@ -76,6 +76,7 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+import id.homebase.core.image.mediaSharedKey
 
 /**
  * Composable that renders a single media item based on the payload's content type.
@@ -231,7 +232,7 @@ fun MediaItem(
                     localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
                     modifier = finalModifier.mediaGestures(
-                        onClick, onLongPress, "image-${fileId}-${payload.key}", sharedTransitionScope, animatedVisibilityScope,
+                        onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope, animatedVisibilityScope,
                     ),
                     contentScale = imageContentScale,
                 )
@@ -241,7 +242,7 @@ fun MediaItem(
                 // Remember the image data to avoid creating a new instance on every recomposition,
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, contentType) {
+                    remember(driveId, fileId, payload.key, payload.lastModified, contentType, payload.iv != null) {
                         val payloadIv = payload.iv?.bytes ?: return@remember null
                         HomebaseImageData.from(
                             driveId = driveId,
@@ -343,17 +344,8 @@ fun MediaItem(
                             videoLocalContext.thumbnailBytes.toImageBitmap()
                         }
                         if (uploadBitmap != null) {
-                            val thumbBaseModifier = Modifier.fillMaxSize()
-                            val thumbModifier = if (onClick != null || onLongPress != null) {
-                                thumbBaseModifier.pointerInput(onClick, onLongPress) {
-                                    detectTapGestures(
-                                        onTap = { onClick?.invoke() },
-                                        onLongPress = { offset -> onLongPress?.invoke(offset) },
-                                    )
-                                }
-                            } else {
-                                thumbBaseModifier
-                            }
+                            val thumbModifier = Modifier.fillMaxSize()
+                                .mediaGestures(onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope = null, animatedVisibilityScope = null)
                             Image(
                                 bitmap = uploadBitmap,
                                 contentDescription = stringResource(MR.string.chat_message_video_thumbnail),

@@ -7,7 +7,6 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +33,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,6 +71,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+import id.homebase.core.image.mediaSharedKey
 
 // Moments-specific clone of `id.homebase.chat.widget.MediaItem`, free to diverge from chat's copy.
 @Composable
@@ -241,7 +240,7 @@ fun MomentMediaItem(
                 // path, like chat) — see ZoomableSubSamplingImage docs.
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
-                sharedContentStateKey = "image-${fileId}-${payload.key}",
+                sharedContentStateKey = mediaSharedKey(fileId, payload.key),
                 showsHdr = showsHdr,
             )
         }
@@ -253,7 +252,7 @@ fun MomentMediaItem(
                     localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
                     modifier = finalModifier.mediaGestures(
-                        onClick, onLongPress, "image-${fileId}-${payload.key}", sharedTransitionScope, animatedVisibilityScope,
+                        onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope, animatedVisibilityScope,
                     ),
                     contentScale = imageContentScale,
                 )
@@ -357,17 +356,8 @@ fun MomentMediaItem(
                         videoLocalContext.thumbnailBytes.toImageBitmap()
                     }
                     if (uploadBitmap != null) {
-                        val thumbBaseModifier = Modifier.fillMaxSize()
-                        val thumbModifier = if (onClick != null || onLongPress != null) {
-                            thumbBaseModifier.pointerInput(onClick, onLongPress) {
-                                detectTapGestures(
-                                    onTap = { onClick?.invoke() },
-                                    onLongPress = { offset -> onLongPress?.invoke(offset) },
-                                )
-                            }
-                        } else {
-                            thumbBaseModifier
-                        }
+                        val thumbModifier = Modifier.fillMaxSize()
+                            .mediaGestures(onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope = null, animatedVisibilityScope = null)
                         Image(
                             bitmap = uploadBitmap,
                             contentDescription = stringResource(MR.string.chat_message_video_thumbnail),

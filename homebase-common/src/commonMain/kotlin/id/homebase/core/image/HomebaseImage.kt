@@ -139,7 +139,7 @@ fun HomebaseImage(
     }
 
     val customModified = modifier.mediaGestures(
-        onClick, onLongPress, "image-${imageData.fileId}-${imageData.payloadKey}", sharedTransitionScope, animatedVisibilityScope,
+        onClick, onLongPress, mediaSharedKey(imageData.fileId, imageData.payloadKey), sharedTransitionScope, animatedVisibilityScope,
     )
 
     @Composable
@@ -158,10 +158,14 @@ fun HomebaseImage(
         }
     }
 
+    // A stand-in that can't be read (a swept temp file, a lapsed picker grant) gives way to the preview and error icon.
+    var standInFailed by remember(standIn) { mutableStateOf(false) }
+    val showsStandIn = standIn != null && !standInFailed
+
     @Composable
     fun StandInOrPreview(blur: Modifier) {
-        if (standIn != null) {
-            LocalFileImage(standIn, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter)
+        if (showsStandIn) {
+            LocalFileImage(standIn!!, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
         } else {
             PreviewOrPlaceholder(Modifier.fillMaxSize().then(blur))
         }
@@ -213,7 +217,7 @@ fun HomebaseImage(
 
         // Blur only the low-res embedded preview; cached thumbnails and full
         // images are already sharp so the target is 0f for those states.
-        val hasSharpImage = state is AsyncImagePainter.State.Success ||
+        val hasSharpImage = showsStandIn || state is AsyncImagePainter.State.Success ||
             (state is AsyncImagePainter.State.Loading &&
                 (state as AsyncImagePainter.State.Loading).painter != null)
 
@@ -266,7 +270,7 @@ fun HomebaseImage(
                 )
             }
 
-            is AsyncImagePainter.State.Error -> if (standIn != null) {
+            is AsyncImagePainter.State.Error -> if (showsStandIn) {
                 StandInOrPreview(blurMod)
             } else {
                 val errorState = state as AsyncImagePainter.State.Error

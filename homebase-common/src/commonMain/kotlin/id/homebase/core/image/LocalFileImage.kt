@@ -27,6 +27,7 @@ fun LocalFileImage(
     contentScale: ContentScale = ContentScale.Fit,
     alignment: Alignment = Alignment.Center,
     colorFilter: ColorFilter? = null,
+    onError: (() -> Unit)? = null,
 ) {
     val platformContext = LocalPlatformContext.current
     val request = remember(platformContext, path) {
@@ -39,8 +40,12 @@ fun LocalFileImage(
         contentScale = contentScale,
         alignment = alignment,
         colorFilter = colorFilter,
+        onError = onError?.let { callback -> { _ -> callback() } },
     )
 }
+
+/** The key a media image and its full-screen viewer share, so one opens into the other. */
+fun mediaSharedKey(fileId: Any, payloadKey: String): String = "image-$fileId-$payloadKey"
 
 /** A media image's taps and long presses, and the bounds it shares with its full-screen viewer as that opens. */
 @Composable
