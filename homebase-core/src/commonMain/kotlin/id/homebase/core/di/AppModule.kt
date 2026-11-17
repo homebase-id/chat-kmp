@@ -1031,7 +1031,7 @@ val appModule = module {
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::CardPreferences)
     single { CardRepository(ProfileRepositoryCardStore(get())) }
-    singleOf(::CardTapShare)
+    single { CardTapShare(get<DeveloperPreferences>(), get<CardPreferences>(), get<OwnerSessionRepository>()) }
     singleOf(::ChatMessageActionService)
     single { ViewOnceActions(get(), get()) }
     single {

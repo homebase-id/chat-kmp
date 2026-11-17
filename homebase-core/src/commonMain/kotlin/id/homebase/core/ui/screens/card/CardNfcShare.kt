@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.core.settings.DeveloperPreferences
@@ -120,11 +121,17 @@ internal data class CardTapShareGate(
         get() = if (profileCardEnabled && (tapShareEnabled || sheetOpen) && odinId != null) cardLinkUrl(odinId, design) else null
 }
 
-class CardTapShare(
+class CardTapShare internal constructor(
     developerPreferences: DeveloperPreferences,
     cardPreferences: CardPreferences,
-    ownerSessionRepository: OwnerSessionRepository,
+    user: StateFlow<OwnerSession?>,
 ) {
+    constructor(
+        developerPreferences: DeveloperPreferences,
+        cardPreferences: CardPreferences,
+        ownerSessionRepository: OwnerSessionRepository,
+    ) : this(developerPreferences, cardPreferences, ownerSessionRepository.user)
+
     private val scope = supervisedScope("card-tap-share", Dispatchers.Default)
     private val sheetOpen = MutableStateFlow(false)
 
@@ -135,7 +142,7 @@ class CardTapShare(
     val servedUrl: StateFlow<String?> = combine(
         developerPreferences.profileCardEnabled,
         cardPreferences.tapShareEnabled,
-        ownerSessionRepository.user,
+        user,
         cardPreferences.design,
         sheetOpen,
     ) { profileCardEnabled, tapShareEnabled, user, design, open ->
@@ -335,7 +342,6 @@ private fun TapCompatibility(container: Color, modifier: Modifier = Modifier) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp).semantics(mergeDescendants = true) {},
                 ) {
-                    // Mirrors the content editor's shown badge: off is an outlined circle, on is a filled cookie.
                     val colors = MaterialTheme.colorScheme
                     Box(
                         modifier = Modifier
@@ -395,7 +401,6 @@ private fun TapShareRow(toggle: SettingsRowAction.Toggle, supportingText: String
     )
 }
 
-// Waiting is a plain circle; sharing morphs it into the cookie on the spatial spring, as the card's other live badges do.
 @Composable
 private fun NfcPulse(active: Boolean, idle: Color) {
     val motion = MaterialTheme.motionScheme

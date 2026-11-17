@@ -2742,7 +2742,7 @@
     <string name="profile_card_nfc_off">NFC is turned off. Turn it on to share your card by tapping phones.</string>
     <string name="profile_card_nfc_open_settings">Open NFC settings</string>
     <string name="profile_card_nfc_switch">Always share by tap while Homebase is open</string>
-    <string name="profile_card_nfc_switch_desc">Keeps tap sharing on even when this panel is closed</string>
+    <string name="profile_card_nfc_switch_desc">Other phones can open your card whenever Homebase is open, not only while the tap panel is open</string>
     <string name="profile_card_nfc_iphone_title">iPhones can't share by tapping</string>
     <string name="profile_card_nfc_iphone_body">Apple doesn't let apps share by tapping phones together.</string>
     <string name="profile_card_nfc_live">Sharing while this is open</string>

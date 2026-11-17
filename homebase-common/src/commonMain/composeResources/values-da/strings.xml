@@ -1919,7 +1919,7 @@
     <string name="profile_card_nfc_off">NFC er slået fra. Slå det til for at dele dit kort ved at holde telefonerne sammen.</string>
     <string name="profile_card_nfc_open_settings">Åbn NFC-indstillinger</string>
     <string name="profile_card_nfc_switch">Del altid ved berøring, mens Homebase er åben</string>
-    <string name="profile_card_nfc_switch_desc">Holder deling ved berøring tændt, også når dette panel er lukket</string>
+    <string name="profile_card_nfc_switch_desc">Andre telefoner kan åbne dit kort, når Homebase er åben, ikke kun mens panelet til deling ved berøring er åbent</string>
     <string name="profile_card_nfc_iphone_title">iPhones kan ikke dele ved berøring</string>
     <string name="profile_card_nfc_iphone_body">Apple lader ikke apps dele ved at holde telefonerne sammen.</string>
     <string name="profile_card_nfc_live">Deler, mens dette er åbent</string>
