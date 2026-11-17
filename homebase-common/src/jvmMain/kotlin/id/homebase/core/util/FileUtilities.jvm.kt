@@ -2,9 +2,10 @@ package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
 import co.touchlab.kermit.Logger
-import id.homebase.api.util.safeFileName
-import kotlinx.io.files.Path
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.JvmFileOperationsProvider
 import java.awt.Desktop
+import kotlinx.io.files.Path
 
 private const val TAG = "getUriHandler"
 
@@ -12,8 +13,8 @@ private const val TAG = "getUriHandler"
 actual fun getUriHandler(): FileSystemHandler = JvmFileSystemHandler()
 
 internal class JvmFileSystemHandler(
-    private val chooseSaveTarget: (suggestedName: String) -> java.io.File? = ::showSaveDialog,
-    private val reveal: (java.io.File) -> Unit = ::revealInFileManager,
+    private val albumSaver: AlbumSaver = JvmAlbumSaver(),
+    private val fileOps: FileOperationsProvider = JvmFileOperationsProvider(),
 ) : FileSystemHandler {
     override fun openUrl(url: String, onError: (Throwable) -> Unit) {
         try {
@@ -85,32 +86,7 @@ internal class JvmFileSystemHandler(
         suggestedName: String,
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
-    ) {
-        // Must stay detached: callers reach us from a Compose effect dispatched on
-        // FlushCoroutineDispatcher (= the EDT), and a modal FileDialog's nested AWT loop
-        // re-enters Compose's per-frame flush from inside that dispatch, which is fatal.
-        javax.swing.SwingUtilities.invokeLater {
-            val dest: java.io.File
-            try {
-                dest = chooseSaveTarget(safeFileName(suggestedName)) ?: return@invokeLater
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "Failed to show save dialog: ${e.message}" }
-                onError(e)
-                return@invokeLater
-            }
-
-            Thread({
-                try {
-                    java.io.File(file.toString()).copyTo(dest, overwrite = true)
-                    onSuccess(dest.absolutePath)
-                    reveal(dest)
-                } catch (e: Exception) {
-                    Logger.e(throwable = e, tag = TAG) { "Failed to save file: ${e.message}" }
-                    onError(e)
-                }
-            }, "homebase-save-file").apply { isDaemon = true }.start()
-        }
-    }
+    ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, onSuccess, onError)
 
     override fun shareText(text: String, onError: (Throwable) -> Unit) {
         try {
@@ -124,24 +100,5 @@ internal class JvmFileSystemHandler(
 
     override fun openAppStore(onError: (Throwable) -> Unit) {
         TODO("Not yet implemented")
-    }
-}
-
-internal fun showSaveDialog(suggestedName: String): java.io.File? {
-    val parent = java.awt.Frame.getFrames().firstOrNull { it.isShowing }
-    val dialog = java.awt.FileDialog(parent, "Save File", java.awt.FileDialog.SAVE)
-    dialog.file = suggestedName
-    dialog.isVisible = true
-    val dir = dialog.directory ?: return null
-    val name = dialog.file ?: return null
-    return java.io.File(dir, name)
-}
-
-internal fun revealInFileManager(dest: java.io.File) {
-    if (Desktop.isDesktopSupported()) {
-        val desktop = Desktop.getDesktop()
-        if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
-            desktop.browseFileDirectory(dest)
-        }
     }
 }

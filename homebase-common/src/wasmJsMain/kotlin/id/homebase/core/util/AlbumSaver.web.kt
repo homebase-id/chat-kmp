@@ -3,12 +3,8 @@ package id.homebase.core.util
 import kotlinx.io.files.Path
 
 object WebAlbumSaver : AlbumSaver {
-    override fun save(
-        file: Path,
-        suggestedName: String,
-        onSuccess: (String) -> Unit,
-        onError: (Throwable) -> Unit,
-    ) = onError(AlbumAccessDeniedException("The browser has no photo album to write to"))
-
-    override suspend fun target(name: String): AlbumTarget = AlbumTarget.FinishedFile { file -> downloadToDownloads(Path(file), name) }
+    override suspend fun target(name: String, asked: Boolean): AlbumTarget {
+        if (!asked) throw AlbumAccessDeniedException("The browser has no photo album to write to")
+        return AlbumTarget.FinishedFile { file -> downloadWebFile(Path(file), name); "Downloads" }
+    }
 }
