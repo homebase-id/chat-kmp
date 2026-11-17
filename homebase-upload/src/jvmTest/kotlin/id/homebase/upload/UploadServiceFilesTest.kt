@@ -3,10 +3,8 @@ package id.homebase.upload
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
@@ -15,9 +13,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OdinDatabase
-import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.video.VideoPayloadProcessor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -59,10 +55,14 @@ class UploadServiceFilesTest {
         workDir.deleteRecursively()
     }
 
-    private fun CoroutineScope.service(seeder: PayloadCacheSeeder = UnseedRecorder(fileOps)) = UploadService(
+    private fun seeder(cancelOnSeed: Boolean = false) = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }).let { http ->
+        RecordingSeeder(DriveFileProvider(http, CredentialsManager(), DriveFileProviderCached(http, CredentialsManager(), fileOps)), fileOps, cancelOnSeed)
+    }
+
+    private fun CoroutineScope.service(seeder: PayloadCacheSeeder = seeder()) = UploadService(
         encryptor = encryptor,
-        outboxSync = OutboxSync(db, OfflineUploader, EventBus(), this).also { it.setOnline(false) },
-        optimisticWriter = NoOptimisticRows,
+        outboxSync = OutboxSync(db, ThrowingUploader, EventBus(), this).also { it.setOnline(false) },
+        optimisticWriter = RecordingOptimisticWriter(),
         payloadCacheSeeder = seeder,
     )
 
@@ -138,14 +138,14 @@ class UploadServiceFilesTest {
     @Test
     fun anUploadCancelledBeforeItsQueuedDeletesItsFilesAndUndoesTheSeed() = runTest {
         val uid = Uuid.random()
-        val seeder = UnseedRecorder(fileOps, cancelOnSeed = true)
+        val seeder = seeder(cancelOnSeed = true)
         val upload = spec(uid, bundleOf(plain(source("a.pdf"))), seedCache = true)
 
         assertFailsWith<CancellationException> { backgroundScope.service(seeder).upload(upload, backgroundScope) }
 
         assertFalse(exists(made.single()))
         assertNull(db.outbox.selectByDriveAndUnique(driveId, uid))
-        assertEquals(listOf(upload.optimisticFileId), seeder.unseeded)
+        assertEquals(listOf(upload.optimisticFileId), seeder.unseededFileIds)
     }
 
     @Test
@@ -214,42 +214,5 @@ class UploadServiceFilesTest {
         encryptor.discard(bundleOf(PayloadFile(key = "vid_0", filePath = segments.path, contentType = "video/mp2t", isPreEncrypted = true)))
 
         assertFalse(hls.exists())
-    }
-}
-
-private object OfflineUploader : OutboxUploader {
-    override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) = error("the outbox is offline in these tests")
-}
-
-private object NoOptimisticRows : OptimisticLocalWriter {
-    override suspend fun writeNewFile(
-        driveId: Uuid,
-        keyHeader: KeyHeader,
-        unecryptedMetadata: UploadFileMetadata,
-        originalRecipientCount: Int,
-        fileSystemType: FileSystemType,
-        payloadDescriptors: List<PayloadDescriptor>?,
-        fileId: Uuid,
-    ): Uuid = fileId
-
-    override suspend fun writeUpdate(driveId: Uuid, keyHeader: KeyHeader, unecryptedMetadata: UploadFileMetadata, payloadDescriptors: List<PayloadDescriptor>?) = Unit
-
-    override suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid): Boolean = true
-}
-
-private class UnseedRecorder(fileOps: FileOperationsProvider, private val cancelOnSeed: Boolean = false) : PayloadCacheSeeder(
-    HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }).let { http ->
-        DriveFileProvider(http, CredentialsManager(), DriveFileProviderCached(http, CredentialsManager(), fileOps))
-    },
-    fileOps,
-) {
-    val unseeded = mutableListOf<Uuid>()
-
-    override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle, encrypted: Boolean) {
-        if (cancelOnSeed) throw CancellationException("stopped while seeding")
-    }
-
-    override suspend fun unseed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
-        unseeded += fileId
     }
 }

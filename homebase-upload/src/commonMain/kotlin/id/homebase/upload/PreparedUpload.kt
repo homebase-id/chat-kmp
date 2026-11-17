@@ -1,8 +1,6 @@
 package id.homebase.upload
 
 import id.homebase.api.client.drives.upload.UploadFileRequest
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 
 /**
  * A new file ready to send: [request] and the files its payloads point at, which this owns until an outbox row takes
@@ -17,5 +15,5 @@ class PreparedUpload internal constructor(
     private val encryptor: PayloadBundleEncryptor,
 ) {
     /** Deletes the files, a video's HLS folder included. Runs to the end even when the caller is cancelled. */
-    suspend fun discard() = withContext(NonCancellable) { encryptor.discard(sent) }
+    suspend fun discard() = encryptor.discard(sent)
 }

@@ -17,15 +17,18 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlin.uuid.Uuid
 
 /**
  * The one shared, feature-agnostic upload pipeline (issue #844 Deliverable B). Every media
- * upload — chat, moments, vault, stickers, location — routes its new-file send through here so
+ * upload — chat, moments, vault, stickers, location, Photos — routes its new-file send through here so
  * the bucket policies live once:
  *
- *   encrypt, or stage a public upload (fail soft on a missing source) → encrypt metadata content when
- *   encrypted → build the request → seed the payload cache (a new file; an update seeds after) → durable
+ *   [prepare]: encrypt, or stage a public upload (fail soft on a missing source) → encrypt metadata content when
+ *   encrypted → build the request; [queue]: seed the payload cache (a new file; an update seeds after) → durable
  *   outbox enqueue (the success gate) → optimistic local write.
+ *
+ * It owns the files a request sends until an outbox row takes them, and deletes them on every other way out.
  *
  * Feature-specific source prep and post-enqueue bookkeeping stay in the feature; this owns only
  * the spine above. Platform specifics sit behind homebase-api primitives (FileOperationsProvider,
@@ -63,8 +66,7 @@ class UploadService(
      */
     suspend fun prepare(spec: MediaUploadSpec, scope: CoroutineScope): PreparedUpload {
         val encrypted = spec.metadata.isEncrypted
-        // A payload handed over encrypted may never reach the encryptor; what the encryptor makes, it deletes itself
-        // if it throws.
+        // A payload handed over encrypted may never reach the encryptor, which deletes only what it made.
         var owned = spec.bundle?.let { it.copy(payloads = it.payloads.filter { payload -> payload.isPreEncrypted }) }
         try {
             val fullBundle = if (encrypted) {
@@ -87,7 +89,7 @@ class UploadService(
             )
             return PreparedUpload(spec, request, sent, encryptor)
         } catch (e: Throwable) {
-            owned?.let { withContext(NonCancellable) { encryptor.discard(it) } }
+            owned?.let { encryptor.discard(it) }
             throw e
         }
     }
@@ -124,12 +126,7 @@ class UploadService(
                 }
             }
             queued = enqueue is EnqueueResult.Enqueued
-            when (enqueue) {
-                is EnqueueResult.Enqueued -> Unit
-                is EnqueueResult.AlreadyQueued -> return UploadOutcome.AlreadyQueued(spec.uniqueId)
-                is EnqueueResult.WouldStrandCreate -> return UploadOutcome.WouldStrandCreate
-                is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
-            }
+            if (!queued) return enqueue.refused(spec.uniqueId)
         } finally {
             if (!queued) {
                 withContext(NonCancellable) {
@@ -206,8 +203,6 @@ class UploadService(
             freshlyEncrypted = encrypted
         }
 
-        // As with a new file, the request's files are the update's own, those handed over encrypted included:
-        // deleted unless a row takes them.
         var queued = false
         try {
             val request = UpdateFileByUniqueIdRequest(
@@ -239,14 +234,9 @@ class UploadService(
                 }
             }
             queued = enqueue is EnqueueResult.Enqueued
-            when (enqueue) {
-                is EnqueueResult.Enqueued -> Unit
-                is EnqueueResult.AlreadyQueued -> return UploadOutcome.AlreadyQueued(spec.uniqueId)
-                is EnqueueResult.WouldStrandCreate -> return UploadOutcome.WouldStrandCreate
-                is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
-            }
+            if (!queued) return enqueue.refused(spec.uniqueId)
         } finally {
-            if (!queued) withContext(NonCancellable) { encryptor.discard(PayloadBundle(payloads, thumbnails, emptyList())) }
+            if (!queued) encryptor.discard(PayloadBundle(payloads, thumbnails, emptyList()))
         }
 
         // When the caller gave us the existing fileId AND we just encrypted a COMPLETE new payload
@@ -272,6 +262,13 @@ class UploadService(
         }
 
         return UploadOutcome.Enqueued(spec.uniqueId, optimisticFileId = null, payloadDescriptors = optimisticDescriptors)
+    }
+
+    private fun EnqueueResult.refused(uniqueId: Uuid): UploadOutcome = when (this) {
+        is EnqueueResult.AlreadyQueued -> UploadOutcome.AlreadyQueued(uniqueId)
+        is EnqueueResult.WouldStrandCreate -> UploadOutcome.WouldStrandCreate
+        is EnqueueResult.Failed -> UploadOutcome.Failed(cause)
+        is EnqueueResult.Enqueued -> error("queued, not refused")
     }
 
     private companion object {
