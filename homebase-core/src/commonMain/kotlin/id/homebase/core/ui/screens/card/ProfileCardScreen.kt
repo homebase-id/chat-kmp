@@ -391,7 +391,8 @@ internal fun ProfileCardPager(
         }
     }
     val hasCards = uiState.cards.isNotEmpty()
-    BackHandler { if (!sheeted && !overview && hasCards) overview = true else leave() }
+    val back = { if (!sheeted && !overview && hasCards) overview = true else leave() }
+    BackHandler(onBack = back)
     if (sheeted) {
         LaunchedEffect(sheetHeightPx) {
             sheet.updateAnchors(DraggableAnchors { SheetValue.Open at 0f; SheetValue.Dismissed at sheetHeightPx })
@@ -512,7 +513,8 @@ internal fun ProfileCardPager(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 SnackbarHost(hostState = snackbarHostState) { data ->
-                                    ReportOverlay()
+                                    // Floating chrome already sizes its window to the snackbar; only an inline card steps aside.
+                                    if (cardBands) ReportOverlay()
                                     Snackbar(data, Modifier.padding(8.dp))
                                 }
                                 ShareToolbar(
@@ -537,7 +539,7 @@ internal fun ProfileCardPager(
                 ) {
                     SheetTopChrome(
                         uiState = uiState,
-                        onClose = leave.takeIf { !sheeted },
+                        onClose = back.takeIf { !sheeted },
                         onEdit = { viewModel.onLeftForEditor(); onEdit() }.takeIf { !overview },
                         onChangeDesign = { viewModel.onLeftForEditor(); onChangeDesign() },
                         onExplainReadOnly = { explainReadOnly = true },

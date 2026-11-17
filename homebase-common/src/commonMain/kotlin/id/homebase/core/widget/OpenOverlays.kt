@@ -20,6 +20,9 @@ class OpenOverlays {
 
     fun covers(area: Rect): Boolean = areas.values.any { it.overlaps(area) }
 
+    /** True while an overlay reported over the whole window, such as a menu or dialog, is open. */
+    fun coversWindow(): Boolean = Everywhere in areas.values
+
     internal fun put(key: Any, area: Rect) {
         areas[key] = area
     }
