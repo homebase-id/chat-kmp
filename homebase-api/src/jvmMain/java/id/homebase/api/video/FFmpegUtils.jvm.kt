@@ -257,36 +257,6 @@ actual object FFmpegUtils {
         return "$whole.${frac.toString().padStart(3, '0')}"
     }
 
-
-    actual suspend fun segmentVideo(
-        inputPath: String,
-        onProgress: ((Float) -> Unit)?
-    ): Pair<String, String>? =
-        withContext(Dispatchers.IO) {
-            if (!FFmpegBinaryManager.isAvailable()) {
-                Logger.w(tag = LOG_TAG) { "FFmpeg binaries not available for this platform" }
-                return@withContext null
-            }
-
-            val outputDir = File(
-                hlsScratchDirPath,
-                "${AppCacheDirs.HLS_DIR_PREFIX}${UUID.randomUUID()}"
-            ).apply { mkdirs() }
-
-            try {
-                segmentInternal(
-                    inputPath = inputPath,
-                    outputDir = outputDir,
-                    onProgress = onProgress
-                )
-            } catch (e: Throwable) {
-                // segmentInternal throws on FFmpeg failure — delete the leftover
-                // hls_<uuid>/ dir before the exception propagates (see #5).
-                deleteFailedFfmpegOutput(outputDir.absolutePath)
-                throw e
-            }
-        }
-
     actual suspend fun segmentAndEncryptVideo(
         inputPath: String,
         keyHeader: KeyHeader,
@@ -424,7 +394,6 @@ actual object FFmpegUtils {
 
         return playlistPath to segmentPath
     }
-
 
     internal suspend fun runProcess(command: List<String>, timeoutMs: Long? = null): Int {
         Logger.d(tag = LOG_TAG) { "Running: ${command.joinToString(" ")}" }
