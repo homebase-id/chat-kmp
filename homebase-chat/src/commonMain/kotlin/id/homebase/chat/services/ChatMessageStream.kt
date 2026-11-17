@@ -41,6 +41,7 @@ import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
+import id.homebase.chat.services.convo.UnreadMentionIndex
 import kotlin.uuid.Uuid
 
 class ChatMessageStream(
@@ -433,10 +434,12 @@ class ChatMessageStream(
         }
     }
 
-    suspend fun nextUnreadMention(conversationId: Uuid, afterUserDateMs: Long): ScannedMessage? =
-        dbm.chatMentionIndex.selectOldestMentionAfter(
-            credentialsManager.requireActiveCredentials().getIdentityId(), conversationId, afterUserDateMs,
-        )
+    suspend fun nextUnreadMention(conversationId: Uuid, afterUserDateMs: Long): ScannedMessage? {
+        val c = credentialsManager.requireActiveCredentials()
+        // Live arrivals bump the row's mention count without scanning, so the index can lag the badge.
+        UnreadMentionIndex(dbm).scan(c.getIdentityId(), c.domain.domainName)
+        return dbm.chatMentionIndex.selectOldestMentionAfter(c.getIdentityId(), conversationId, afterUserDateMs)
+    }
 
     /**
      * True when [messageId] is present in the cached in-memory window for

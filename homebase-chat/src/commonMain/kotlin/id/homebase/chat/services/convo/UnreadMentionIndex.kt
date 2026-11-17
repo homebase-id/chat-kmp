@@ -13,6 +13,11 @@ import kotlin.uuid.Uuid
 
 internal class UnreadMentionIndex(private val dbm: DatabaseManager) {
     suspend fun refresh(identityId: Uuid, selfDomain: String): Map<Uuid, Int> {
+        scan(identityId, selfDomain)
+        return dbm.chatMentionIndex.selectUnreadMentionCounts(identityId)
+    }
+
+    suspend fun scan(identityId: Uuid, selfDomain: String) {
         val pending = dbm.chatMentionIndex.selectUnscannedUnread(identityId, selfDomain)
         if (pending.isNotEmpty()) {
             val rows = withContext(Dispatchers.Default) {
@@ -22,7 +27,6 @@ internal class UnreadMentionIndex(private val dbm: DatabaseManager) {
             }
             dbm.chatMentionIndex.record(identityId, rows)
         }
-        return dbm.chatMentionIndex.selectUnreadMentionCounts(identityId)
     }
 }
 
