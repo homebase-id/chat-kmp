@@ -2369,7 +2369,8 @@ internal fun JumpToMentionButton(
         exit = fadeOut() + scaleOut(),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            BadgedBox(badge = { CountBadge(count) }) {
+            // Owner's call: a lone mention is the @ itself; the count only adds information from 2 up.
+            BadgedBox(badge = { CountBadge(if (count >= 2) count else 0) }) {
                 SmallFloatingActionButton(
                     onClick = onClick,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

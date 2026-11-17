@@ -16,6 +16,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -105,6 +106,15 @@ class MentionBadgeScreenshotTest {
         for (x in 0 until image.width step 7) for (y in 0 until image.height step 7) colors += image.getRGB(x, y)
         assertTrue(colors.size > 8, "$name rendered blank")
         ImageIO.write(image, "png", File(outDir, "$name.png"))
+    }
+
+    @Test
+    fun aLoneMentionShowsNoCount() {
+        for ((count, badges) in listOf(1 to 0, 2 to 1)) runDesktopComposeUiTest(200, 200) {
+            setContent { HomebaseTheme { JumpToMentionButton(visible = true, count = count, onClick = {}) } }
+            waitForIdle()
+            assertEquals(badges, onAllNodes(hasText("$count"), useUnmergedTree = true).fetchSemanticsNodes().size, "count=$count")
+        }
     }
 
     @Test
