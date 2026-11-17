@@ -94,7 +94,7 @@ class FilesyncNamesTest {
 
     @Test
     fun recoveredFilesLeavesItsNameFreeForAPlainFolder() {
-        fun folder(id: Uuid, name: String) = FilesyncNode(id, FilesyncProtocol.RootNodeId, true, name, null, null, updatedMs = 1)
+        fun folder(id: Uuid, name: String) = FilesyncNode(id, FilesyncProtocol.RootNodeId, true, name, null, null, versionMs = 1)
         val nodes = listOf(folder(FilesyncProtocol.RecoveredFilesNodeId, "Recovered files"), folder(Uuid.random(), "Photos"))
         val taken = FilesyncNames.takenKeys(nodes)
         assertEquals("Recovered files", FilesyncNames.freeName("Recovered files", taken))
@@ -125,7 +125,7 @@ class FilesyncNamesTest {
 
     @Test
     fun theStateFolderNameIsNotOnComputersInAnyFolder() {
-        fun node(parent: Uuid, name: String, folder: Boolean = true) = FilesyncNode(Uuid.random(), parent, folder, name, null, null, updatedMs = 1)
+        fun node(parent: Uuid, name: String, folder: Boolean = true) = FilesyncNode(Uuid.random(), parent, folder, name, null, null, versionMs = 1)
         assertTrue(node(FilesyncProtocol.RootNodeId, ".HBSYNC").notOnComputers)
         assertTrue(node(FilesyncRoleFolder.Pictures.nodeId, ".hbsync").notOnComputers)
         assertTrue(node(Uuid.random(), ".HbSync").notOnComputers)

@@ -165,6 +165,7 @@ class FilesyncRestoreTest {
             sharedSecretEncryptedKeyHeader = EncryptedKeyHeader.encryptKeyHeaderAes(row.key, ByteArray(16) { 9 }, SecureByteArray(secret)),
             fileMetadata = FileMetadata(
                 updated = UnixTimeUtc(row.updated),
+                versionUpdated = UnixTimeUtc(row.updated),
                 isEncrypted = true,
                 versionTag = row.versionTag,
                 payloads = if (row.folder) null else listOf(

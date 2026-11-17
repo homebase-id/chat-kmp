@@ -115,7 +115,7 @@ private fun RecentList(
     uiState: FilesyncRecentUiState,
     onAction: (FilesyncRecentAction) -> Unit,
 ) {
-    val timeOf = { node: FilesyncNode -> node.removedMs ?: node.addedMs }
+    val timeOf = { node: FilesyncNode -> node.shownRemovedMs ?: node.addedMs }
     // Waiting out a double-click would hold up every tap on a phone.
     val mouse = isExpandedLayout()
     val days = remember(files) {

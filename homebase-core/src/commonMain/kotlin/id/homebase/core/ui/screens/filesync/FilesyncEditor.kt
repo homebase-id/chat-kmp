@@ -296,7 +296,7 @@ class FilesyncEditor(
         var failed: Exception? = null
         val expired = try {
             // Most runs find nothing old enough: only then is the walk below removed folders worth it.
-            if (removed.nodes.values.none { it.updatedMs < before }) {
+            if (removed.nodes.values.none { (it.removedMs ?: Long.MAX_VALUE) < before }) {
                 FilesyncWriteResult(0, 0)
             } else {
                 val trash = FilesyncTrash(repository.listDeleted(removed))

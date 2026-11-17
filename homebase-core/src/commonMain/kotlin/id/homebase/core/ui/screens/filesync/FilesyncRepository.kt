@@ -94,6 +94,7 @@ class FilesyncRepository(
             nodeParams(null, FileState.Deleted),
             QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE, ordering = QueryBatchSortOrder.OldestFirst, sorting = QueryBatchSortField.AnyChangeDate),
         ) { page ->
+            // The feed's order: versionUpdated <= updated, so this is exact and a row without versionUpdated can't stop the walk.
             val old = page.searchResults.takeWhile { it.fileMetadata.updated.milliseconds < beforeMs }
             old.mapNotNullTo(found) { it.fileVersionTag() }
             old.size == page.searchResults.size

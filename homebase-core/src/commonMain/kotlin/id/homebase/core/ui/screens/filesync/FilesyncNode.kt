@@ -48,7 +48,8 @@ data class FilesyncNode(
     val tags: List<FilesyncTag> = emptyList(),
     val uploadedMs: Long? = null,
     val hashAlgorithm: PayloadHashAlgorithm? = null,
-    val updatedMs: Long = 0,
+    /** When its current version was written (the header's versionUpdated); null when the server didn't say. */
+    val versionMs: Long? = null,
     /** Who put it here, when that isn't the drive's owner: a connection or a group member. */
     val addedBy: OdinId? = null,
 ) {
@@ -65,8 +66,11 @@ data class FilesyncNode(
 
     internal val notOnComputers: Boolean = nameKey == FilesyncNames.stateFolderKey
 
-    /** Set while it's in Recently deleted: nothing writes to a removed node, so its last write is its removal. */
-    val removedMs: Long? get() = updatedMs.takeIf { removed }
+    /** Set while it's in Recently deleted: nothing writes to a removed node, so its last version is its removal. An unknown time is the newest: never old enough to purge. */
+    val removedMs: Long? get() = if (removed) versionMs ?: Long.MAX_VALUE else null
+
+    /** [removedMs] to show, null when unknown. */
+    val shownRemovedMs: Long? get() = versionMs?.takeIf { removed }
 }
 
 /** What a download of a file node needs. */
@@ -165,7 +169,7 @@ internal fun HomebaseFile.toFilesyncNode(addedByOtherThan: OdinId? = null): Pair
         tags = tagsOf(raw),
         uploadedMs = descriptor?.lastModified,
         hashAlgorithm = payload?.hash?.knownAlgorithm,
-        updatedMs = fileMetadata.updated.milliseconds,
+        versionMs = fileMetadata.versionUpdated?.milliseconds,
         addedBy = fileMetadata.senderOdinId?.takeIf { addedByOtherThan != null && !it.domainName.equals(addedByOtherThan.domainName, ignoreCase = true) },
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType

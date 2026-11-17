@@ -10,11 +10,11 @@ import kotlin.uuid.Uuid
 /** filesync's node schema, "Recently deleted": who went with whom is the server's time. */
 class FilesyncTrashTest {
 
-    private fun removed(name: String, parent: Uuid, folder: Boolean, at: Long, id: Uuid = Uuid.random()) =
-        FilesyncNode(id, parent, folder, name, null, null, removed = true, updatedMs = at)
+    private fun removed(name: String, parent: Uuid, folder: Boolean, at: Long?, id: Uuid = Uuid.random()) =
+        FilesyncNode(id, parent, folder, name, null, null, removed = true, versionMs = at)
 
-    private fun live(name: String, parent: Uuid, folder: Boolean, written: Long) =
-        FilesyncNode(Uuid.random(), parent, folder, name, null, null, updatedMs = written)
+    private fun live(name: String, parent: Uuid, folder: Boolean, written: Long?) =
+        FilesyncNode(Uuid.random(), parent, folder, name, null, null, versionMs = written)
 
     // Photos/ removed at 200, then a.jpg at 210; Photos/old.jpg removed on its own at 100; notes.txt at the top at 300.
     private val photosId = Uuid.random()
@@ -63,7 +63,18 @@ class FilesyncTrashTest {
         val trash = trash(nodes.plus(edited))
         assertNull(trash.itemOf[edited.nodeId])
         assertEquals(setOf(photos.nodeId, a.nodeId, old.nodeId, notes.nodeId), trash.itemOf.keys)
-        assertFalse(FilesyncTrash.wentWith(edited, photos.updatedMs))
+        assertFalse(FilesyncTrash.wentWith(edited, photos.removedMs!!))
+    }
+
+    @Test
+    fun aRemovalAtAnUnknownTimeIsNeverOldEnoughToPurgeAndALiveNodeAtOneKeepsItsFolder() {
+        val unknown = removed("unknown.jpg", FilesyncProtocol.RootNodeId, folder = false, at = null)
+        val unknownInPhotos = removed("u.jpg", photosId, folder = false, at = null)
+        val liveUnknown = live("d.jpg", photosId, folder = false, written = null)
+        val trash = trash(nodes.plus(unknown, unknownInPhotos, liveUnknown))
+        assertEquals(photosId, trash.itemOf[unknownInPhotos.nodeId])
+        assertNull(trash.itemOf[liveUnknown.nodeId])
+        assertEquals(setOf(old.nodeId, notes.nodeId), trash.removedBefore(Long.MAX_VALUE - 1))
     }
 
     @Test
