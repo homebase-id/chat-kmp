@@ -8,6 +8,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -45,6 +46,12 @@ abstract class FileOperationsContractTest {
         p.writeStream(path, flowOf(bytes("0123")))
         assertFailsWith<IllegalArgumentException> { p.overwrite(path, 2, bytes("abc")) }
         assertEquals("0123", p.readFileBytes(path).decodeToString())
+    }
+
+    @Test
+    fun overwriteOfAMissingFileFails() = runTest {
+        assertFails { provider().overwrite(path("missing.bin"), 0, bytes("a")) }
+        assertEquals(0L, provider().getFileSize(path("missing.bin")), "nor created")
     }
 
     @Test

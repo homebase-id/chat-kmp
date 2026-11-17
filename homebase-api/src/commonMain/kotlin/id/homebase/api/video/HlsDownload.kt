@@ -8,8 +8,9 @@ import id.homebase.api.file.FileOperationsProvider
 import kotlin.uuid.Uuid
 
 /**
- * A received HLS video as an MP4 in the media scratch folder, to save or share; null, logged, when its download or
- * remux fails. The caller deletes the MP4.
+ * A received HLS video as an MP4 in the media scratch folder, to save or share; null, logged, when the payload isn't
+ * there or isn't H.264/AAC in MPEG-TS. A failed download, decrypt or write throws, as any download does. The caller
+ * deletes the MP4.
  */
 suspend fun DriveFileProvider.downloadHlsAsMp4(
     driveId: Uuid,
@@ -29,9 +30,5 @@ suspend fun DriveFileProvider.downloadHlsAsMp4(
         Logger.e(tag = "HlsSave") { "download/decrypt failed: $label" }
         return null
     }
-    if (!remuxed) {
-        Logger.e(tag = "HlsSave") { "remux to MP4 failed: $label" }
-        return null
-    }
-    return mp4Path
+    return mp4Path.takeIf { remuxed }
 }

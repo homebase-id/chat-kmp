@@ -17,37 +17,47 @@ import kotlinx.coroutines.flow.flow
 /**
  * Copies the H.264 and AAC of an MPEG-TS into an MP4 without re-encoding, in one pass as the TS arrives: `ftyp`, the
  * samples in one `mdat`, then the `moov` indexing them, and last the `mdat`'s size, written back in place. The index at
- * the end is fine for a file played from disk; only streaming over HTTP wants it first. Throws when the TS has no
- * H.264, or audio that isn't AAC; [label] names the TS in that error.
+ * the end is fine for a file played from disk; only streaming over HTTP wants it first.
+ *
+ * Throws [NotRemuxableException] when the bytes aren't H.264 (and AAC) in MPEG-TS; anything thrown while reading [ts]
+ * (a dropped download, a failed decrypt, a write over the platform's limit) comes through as it was. [label] names the
+ * TS in the error.
  */
 internal object TsToMp4 {
-    suspend fun remux(fileOps: FileOperationsProvider, tsPath: String, outputPath: String) =
-        remux(fileOps, fileOps.readFileAsFlow(tsPath, CHUNK), outputPath, tsPath)
-
     suspend fun remux(fileOps: FileOperationsProvider, ts: Flow<ByteArray>, outputPath: String, label: String) {
         val demuxer = TsDemuxer()
         val table = SampleTable()
-        fileOps.writeStream(outputPath, flow {
-            emit(SampleTable.FTYP + SampleTable.mdatHeader(0))
+        fun <T> format(step: () -> T): T = try {
+            step()
+        } catch (e: Exception) {
+            throw NotRemuxableException("$label isn't H.264/AAC in MPEG-TS", e)
+        }
+        // writeDownload, so a platform that holds files in memory (web) refuses one over its limit.
+        fileOps.writeDownload(outputPath, flow {
+            emit(SampleTable.head())
             val out = ByteBuilder(CHUNK)
             suspend fun copy(samples: List<TsSample>) = samples.forEach { sample ->
                 table.add(sample)
                 out.add(sample.data)
                 if (out.size >= CHUNK) emit(out.take())
             }
-            ts.collect { copy(demuxer.feed(it)) }
-            copy(demuxer.finish())
+            ts.collect { chunk -> copy(format { demuxer.feed(chunk) }) }
+            copy(format { demuxer.finish() })
             if (out.size > 0) emit(out.take())
-            // A saved video without its sound would be worse than a clear failure.
-            check(demuxer.unsupportedAudioType < 0) { "audio stream type 0x${demuxer.unsupportedAudioType.toString(16)} isn't AAC" }
-            val avc = checkNotNull(demuxer.avc) { "no H.264 in $label" }
-            emit(table.moov(avc, demuxer.aac, firstOffset = (SampleTable.FTYP.size + SampleTable.MDAT_HEADER).toLong()))
+            emit(format {
+                // A saved video without its sound would be worse than a clear failure.
+                check(demuxer.unsupportedAudioType < 0) { "audio stream type 0x${demuxer.unsupportedAudioType.toString(16)} isn't AAC" }
+                table.moov(checkNotNull(demuxer.avc) { "no H.264" }, demuxer.aac)
+            })
         })
-        fileOps.overwrite(outputPath, SampleTable.FTYP.size.toLong(), SampleTable.mdatHeader(table.dataBytes))
+        fileOps.overwrite(outputPath, SampleTable.MDAT_HEADER_AT, table.mdatHeader())
     }
 
-    private const val CHUNK = 256 * 1024
+    const val CHUNK = 256 * 1024
 }
+
+/** The bytes given to [TsToMp4] aren't H.264 (and AAC) in MPEG-TS. */
+internal class NotRemuxableException(message: String, cause: Throwable) : Exception(message, cause)
 
 /** A frame as the MP4 stores it: H.264 with 4-byte NAL lengths, or raw AAC. Times in 90 kHz ticks. */
 internal class TsSample(val video: Boolean, val dts: Long, val pts: Long, val isKey: Boolean, val size: Int, val data: ByteArray)

@@ -14,8 +14,8 @@ internal class SampleTable {
         dataBytes += sample.size
     }
 
-    /** The `moov` for the samples, stored one after another from [firstOffset] in the file. */
-    fun moov(avc: Mp4Track.Avc, aac: Mp4Track.Aac?, firstOffset: Long): ByteArray {
+    /** The `moov` for the samples, stored one after another from [DATA_AT] in the file. */
+    fun moov(avc: Mp4Track.Avc, aac: Mp4Track.Aac?): ByteArray {
         val video = entries.filter { it.video }
         val audio = entries.filter { !it.video }
         check(video.isNotEmpty()) { "no H.264 frames" }
@@ -24,33 +24,42 @@ internal class SampleTable {
         val sps = readSps(avc.sps.first()) ?: error("unreadable SPS")
         val videoOffsets = LongArray(video.size)
         val audioOffsets = LongArray(audio.size)
-        var at = firstOffset
+        var at = DATA_AT
         var v = 0
         var a = 0
         for (e in entries) {
             if (e.video) videoOffsets[v++] = at else audioOffsets[a++] = at
             at += e.size
         }
-        return moov(video, audio, avc, sps, aac, sps.width, sps.height, base, videoOffsets, audioOffsets, wide = at > 0xFFFFFFFFL)
+        return moov(video, audio, avc, sps, aac, base, videoOffsets, audioOffsets, wide = at > 0xFFFFFFFFL)
     }
 
+    /** The `mdat` header with its real size, to write back at [MDAT_HEADER_AT] once every sample is in. */
+    fun mdatHeader(): ByteArray = mdatHeader(dataBytes)
+
     companion object {
-        val FTYP: ByteArray = Boxes().apply {
+        private val FTYP: ByteArray = Boxes().apply {
             box("ftyp") { type("isom"); u32(0x200); type("isom"); type("iso2"); type("avc1"); type("mp41") }
         }.bytes()
 
-        /** The `mdat` header: 64-bit, since its size is only known after its data, and written back then. */
-        const val MDAT_HEADER = 16
+        // 64-bit, since its size is only known after its data.
+        private fun mdatHeader(dataBytes: Long): ByteArray = Boxes().apply { u32(1); type("mdat"); u64(dataBytes + 16) }.bytes()
 
-        fun mdatHeader(dataBytes: Long): ByteArray = Boxes().apply { u32(1); type("mdat"); u64(dataBytes + MDAT_HEADER) }.bytes()
+        val MDAT_HEADER_AT = FTYP.size.toLong()
+        private val DATA_AT = MDAT_HEADER_AT + 16
+
+        /** What the file starts with: `ftyp`, and an `mdat` header whose size [mdatHeader] fills in at the end. */
+        fun head(): ByteArray = FTYP + mdatHeader(0)
 
         private val NO_DATA = ByteArray(0)
     }
 
     private fun moov(
-        video: List<TsSample>, audio: List<TsSample>, avc: Mp4Track.Avc, sps: Sps, aac: Mp4Track.Aac?, width: Int, height: Int,
+        video: List<TsSample>, audio: List<TsSample>, avc: Mp4Track.Avc, sps: Sps, aac: Mp4Track.Aac?,
         base: Long, videoOffsets: LongArray, audioOffsets: LongArray, wide: Boolean,
     ): ByteArray = Boxes().apply {
+        val width = sps.width
+        val height = sps.height
         val videoDurations = LongArray(video.size) { i ->
             if (i + 1 < video.size) video[i + 1].dts - video[i].dts else if (i > 0) video[i].dts - video[i - 1].dts else 3000
         }

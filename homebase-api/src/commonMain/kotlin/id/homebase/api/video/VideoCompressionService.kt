@@ -3,6 +3,7 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.hls.NotRemuxableException
 import id.homebase.api.video.hls.TsToMp4
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -132,22 +133,22 @@ object VideoCompressionService : VideoCompressor, VideoProber {
      * platform. False, logged, when [tsPath] isn't H.264 (and AAC) in MPEG-TS; nothing is left at [outputPath] then.
      */
     suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, tsPath: String, outputPath: String): Boolean =
-        remuxing(fileOps, outputPath, tsPath) { TsToMp4.remux(fileOps, tsPath, outputPath) }
+        remuxTsToMp4(fileOps, fileOps.readFileAsFlow(tsPath, TsToMp4.CHUNK), outputPath, tsPath)
 
-    /** [remuxTsToMp4] on the TS as it arrives (a download's decrypted stream), with no `.ts` written at all. */
-    internal suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, ts: Flow<ByteArray>, outputPath: String, label: String): Boolean =
-        remuxing(fileOps, outputPath, label) { TsToMp4.remux(fileOps, ts, outputPath, label) }
-
-    private suspend fun remuxing(fileOps: FileOperationsProvider, outputPath: String, label: String, remux: suspend () -> Unit): Boolean = try {
-        remux()
+    /**
+     * [remuxTsToMp4] on the TS as it arrives (a download's decrypted stream), with no `.ts` written. Whatever the stream
+     * throws (a dropped download, a failed decrypt, a file over the platform's limit) is rethrown, the output deleted.
+     */
+    internal suspend fun remuxTsToMp4(fileOps: FileOperationsProvider, ts: Flow<ByteArray>, outputPath: String, label: String): Boolean = try {
+        TsToMp4.remux(fileOps, ts, outputPath, label)
         true
-    } catch (e: CancellationException) {
-        fileOps.deleteTempFile(outputPath)
-        throw e
-    } catch (e: Exception) {
+    } catch (e: NotRemuxableException) {
         Logger.e(tag = "VideoCompressionService", throwable = e) { "remux of $label failed" }
         fileOps.deleteTempFile(outputPath)
         false
+    } catch (e: Throwable) {
+        fileOps.deleteTempFile(outputPath)
+        throw e
     }
 
     override suspend fun getDurationMs(inputPath: String): Long =

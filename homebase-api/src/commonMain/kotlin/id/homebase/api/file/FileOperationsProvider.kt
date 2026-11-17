@@ -176,16 +176,13 @@ interface FileOperationsProvider {
     suspend fun writeDownload(path: String, data: Flow<ByteArray>) = writeStream(path, data)
 
     /**
-     * Writes [bytes] over the existing file at [path] from [offset], leaving the rest as it is: for a size a writer only
-     * knows at the end. The file must reach `offset + bytes.size` already. This default rewrites the whole file;
-     * providers that can seek write just the bytes.
+     * Writes [bytes] over the existing file at [path] from [offset], in place, leaving every other byte as it is: for a
+     * size a writer only knows at the end. Throws [IllegalArgumentException], changing nothing, when the file doesn't
+     * reach `offset + bytes.size`, and an I/O error when it doesn't exist. Okio's provider, which every platform's
+     * extends, implements it; anything else must.
      */
-    suspend fun overwrite(path: String, offset: Long, bytes: ByteArray) {
-        val all = readFileBytes(path)
-        require(offset >= 0 && offset + bytes.size <= all.size) { "overwrite past the end of $path" }
-        bytes.copyInto(all, offset.toInt())
-        writeStream(path, flowOf(all))
-    }
+    suspend fun overwrite(path: String, offset: Long, bytes: ByteArray): Unit =
+        throw UnsupportedOperationException("overwrite isn't supported by ${this::class.simpleName}")
 
     /**
      * Resolves a path that may be a content URI (Android) to a real filesystem path
