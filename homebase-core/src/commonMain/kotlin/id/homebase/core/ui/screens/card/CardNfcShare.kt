@@ -68,6 +68,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -235,16 +236,7 @@ internal fun CardNfcPanelContent(panel: CardNfcPanel, onOpenSettings: () -> Unit
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp),
             )
-            Button(
-                onClick = onOpenSettings,
-                shapes = ButtonDefaults.shapes(),
-                modifier = Modifier.padding(top = 24.dp).heightIn(min = ButtonDefaults.MediumContainerHeight),
-                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
-            ) {
-                Icon(Icons.Outlined.Settings, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MediumContainerHeight)))
-                Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(ButtonDefaults.MediumContainerHeight)))
-                Text(stringResource(MR.string.profile_card_nfc_open_settings), style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight))
-            }
+            MediumButton(Icons.Outlined.Settings, stringResource(MR.string.profile_card_nfc_open_settings), onOpenSettings, Modifier.padding(top = 24.dp))
             return@Column
         }
         Text(
@@ -272,18 +264,24 @@ internal fun CardNfcPanelContent(panel: CardNfcPanel, onOpenSettings: () -> Unit
                 modifier = Modifier.padding(top = 20.dp),
             )
             if (onShareInstead != null) {
-                Button(
-                    onClick = onShareInstead,
-                    shapes = ButtonDefaults.shapes(),
-                    modifier = Modifier.padding(top = 16.dp).heightIn(min = ButtonDefaults.MediumContainerHeight),
-                    contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MediumContainerHeight),
-                ) {
-                    Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MediumContainerHeight)))
-                    Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(ButtonDefaults.MediumContainerHeight)))
-                    Text(stringResource(MR.string.profile_card_share), style = ButtonDefaults.textStyleFor(ButtonDefaults.MediumContainerHeight))
-                }
+                MediumButton(Icons.Outlined.Share, stringResource(MR.string.profile_card_share), onShareInstead, Modifier.padding(top = 16.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun MediumButton(icon: ImageVector, text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val height = ButtonDefaults.MediumContainerHeight
+    Button(
+        onClick = onClick,
+        shapes = ButtonDefaults.shapes(),
+        modifier = modifier.heightIn(min = height),
+        contentPadding = ButtonDefaults.contentPaddingFor(height),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)))
+        Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(height)))
+        Text(text, style = ButtonDefaults.textStyleFor(height))
     }
 }
 

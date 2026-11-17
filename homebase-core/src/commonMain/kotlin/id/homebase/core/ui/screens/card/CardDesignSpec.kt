@@ -183,7 +183,7 @@ object CardDesignSpecs {
     fun schemeFor(design: String, ground: String?): CardColourScheme? =
         of(design)?.schemes?.firstOrNull { it.ground.equals(ground, ignoreCase = true) }
 
-    /** The accents on offer under [ground]; with no scheme picked the design's first scheme stands in, as the preset has none of its own. */
+    /** The accents on offer under [ground]; with no scheme picked, the preset's own accents, else the design's first scheme's. */
     fun accentsFor(design: String, ground: String?): List<String> =
         schemeFor(design, ground)?.accents ?: of(design)?.let { it.presetAccents.ifEmpty { it.schemes.firstOrNull()?.accents.orEmpty() } }.orEmpty()
 
