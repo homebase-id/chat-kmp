@@ -42,7 +42,7 @@ fun CardOverrides.with(
     CardOption.DISPLAY_FONT -> copy(type = (type ?: CardTypeface()).copy(display = value).takeUnless { it == CardTypeface() })
     CardOption.TEXT_FONT -> copy(type = (type ?: CardTypeface()).copy(text = value).takeUnless { it == CardTypeface() })
     CardOption.PORTRAIT_SHAPE -> withPortrait { it.copy(shape = value) }
-    CardOption.PORTRAIT_SIZE -> withPortrait { it.copy(size = value) }
+    CardOption.PORTRAIT_SIZE -> withPortrait { it.copy(size = value?.takeUnless { v -> v == CardDesignSpecs.DEFAULT_PORTRAIT_SIZE }) }
     CardOption.SOCIALS_STYLE -> copy(socials = value)
     CardOption.BLOCK_ORDER -> this
     CardOption.BLOCK_STYLE -> withBlockStyle(value, presetOrder)
