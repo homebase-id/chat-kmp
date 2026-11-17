@@ -13,8 +13,9 @@ import kotlin.uuid.Uuid
  * lookup, push-notification options, dependency chaining) stays in the feature and is passed
  * in here already resolved — the spec is a plain hand-off, not a place for feature logic.
  *
- * Note: [metadata] is the UNENCRYPTED metadata. [UploadService] applies `encryptContent` for
- * the upload request and passes the unencrypted copy to the optimistic write. Build its
+ * Note: [metadata] is the UNENCRYPTED metadata. When it says `isEncrypted`, [UploadService] encrypts the payloads and
+ * applies `encryptContent` for the upload request; otherwise (a public post) it sends them as they are, metadata
+ * stripped. The optimistic write gets the unencrypted copy. Build its
  * `previewThumbnail` from the plaintext [bundle]'s `previewThumbs` (encryption passes those
  * through unchanged), so the spec has no dependency on the encrypted result.
  */
@@ -24,8 +25,10 @@ data class MediaUploadSpec(
     val keyHeader: KeyHeader,
     /** Plaintext payloads; null for a header-only upload. */
     val bundle: PayloadBundle?,
-    /** Unencrypted metadata; UploadService encrypts a copy for the request. */
+    /** Unencrypted metadata; UploadService encrypts a copy for the request when it says `isEncrypted`. */
     val metadata: UploadFileMetadata,
+    /** The optimistic row's metadata, when it differs from what's sent (a comment keeps its groupId locally). */
+    val optimisticMetadata: UploadFileMetadata? = null,
     val transit: TransitOptions? = null,
     val dependencyUniqueId: Uuid? = null,
     val priority: Long = 1,

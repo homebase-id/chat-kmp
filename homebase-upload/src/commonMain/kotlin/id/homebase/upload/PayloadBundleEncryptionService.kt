@@ -26,6 +26,36 @@ class PayloadBundleEncryptionService(
     private val eventBus: EventBus,
 ) : PayloadBundleEncryptor {
 
+    override suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle {
+        if (bundle == null) return EMPTY_BUNDLE
+        // Video processing (compress, segment) only exists encrypted, and a raw phone video must never go out as is.
+        require(bundle.payloads.none { it.contentType.startsWith("video/") && !it.skipVideoProcessing }) {
+            "an unencrypted upload can't carry a video yet (#2481)"
+        }
+        requireSources(bundle)
+        val staged = mutableListOf<String>()
+        try {
+            // Always a copy: the outbox deletes a row's payload files once sent, and the source may be the person's own.
+            val payloads = bundle.payloads.map { payload ->
+                val stripped = withMetadataStripped(payload, fileOps, staged = true)
+                val copy = if (stripped.filePath != payload.filePath) stripped else {
+                    val path = fileOps.createOutboxStagingPath("public_", ".bin")
+                    fileOps.writeStream(path, fileOps.readFileAsFlow(payload.filePath, STAGE_CHUNK))
+                    payload.copy(filePath = path)
+                }
+                copy.also { staged += it.filePath }
+            }
+            return bundle.copy(payloads = payloads)
+        } catch (e: Throwable) {
+            staged.forEach { runCatching { fileOps.deleteTempFile(it) } }
+            throw e
+        }
+    }
+
+    override suspend fun discardStaged(staged: PayloadBundle) {
+        staged.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+    }
+
     override suspend fun encryptBundle(
         uniqueId: Uuid,
         bundle: PayloadBundle?,
@@ -33,11 +63,7 @@ class PayloadBundleEncryptionService(
         scope: CoroutineScope
     ): PayloadBundle {
 
-        if (bundle == null) {
-            return PayloadBundle(
-                payloads = emptyList(), thumbnails = emptyList(), previewThumbs = emptyList()
-            )
-        }
+        if (bundle == null) return EMPTY_BUNDLE
 
         // Fail soft: these raw sources are disposable pre-encryption temps. If one was
         // swept by the CacheSweeper, OS-evicted, or had its content://`/`ph:// grant
@@ -48,11 +74,7 @@ class PayloadBundleEncryptionService(
         // resolved+streamed inside VideoPayloadProcessor (and can be web blob URLs that
         // aren't probe-able as files), so they're left to their own failure surface;
         // encryptFile re-checks per file below to close the swept-mid-send race.
-        for (payload in bundle.payloads) {
-            if (!payload.contentType.startsWith("video/") && !fileOps.sourceExists(payload.filePath)) {
-                throw SourceUnavailableException(payload.filePath)
-            }
-        }
+        requireSources(bundle)
 
         // Note: the incoming payloads from the bundle will
         // be unencrypted and ordered
@@ -165,5 +187,18 @@ class PayloadBundleEncryptionService(
     ): ByteArray {
         val encrypted = keyHeader.encryptDataAes(data = plainBytes)
         return encrypted
+    }
+
+    // Video sources are resolved and streamed by VideoPayloadProcessor (and may be web blob URLs), so they aren't probed.
+    private suspend fun requireSources(bundle: PayloadBundle) {
+        for (payload in bundle.payloads) {
+            if (!payload.contentType.startsWith("video/") && !fileOps.sourceExists(payload.filePath)) {
+                throw SourceUnavailableException(payload.filePath)
+            }
+        }
+    }
+
+    private companion object {
+        const val STAGE_CHUNK = 256 * 1024
     }
 }
