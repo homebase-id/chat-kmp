@@ -462,10 +462,8 @@ fun ConversationContent(
     DisposableEffect(conversation.conversation.id) {
         focusManager.clearFocus()
 
-        onDispose {
-            focusManager.clearFocus()
-            keyboardController?.hide()
-        }
+        // No clearFocus here: by dispose, focus may already belong to what replaced this, like the media viewer.
+        onDispose { keyboardController?.hide() }
     }
 
     // Build a lookup map of reply target ID -> MessageUiModel for reply image thumbnails.
