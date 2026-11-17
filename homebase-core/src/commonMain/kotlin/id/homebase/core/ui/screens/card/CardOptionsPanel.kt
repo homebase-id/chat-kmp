@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
@@ -38,7 +40,6 @@ import id.homebase.resources.profile_card_colours_blueprint
 import id.homebase.resources.profile_card_colours_blush
 import id.homebase.resources.profile_card_colours_butter
 import id.homebase.resources.profile_card_colours_charcoal
-import id.homebase.resources.profile_card_colours_cloud
 import id.homebase.resources.profile_card_colours_cobalt
 import id.homebase.resources.profile_card_colours_forest
 import id.homebase.resources.profile_card_colours_graphite
@@ -186,6 +187,11 @@ import id.homebase.resources.profile_card_option_drag
 import id.homebase.resources.profile_card_option_move_down
 import id.homebase.resources.profile_card_option_move_up
 import id.homebase.resources.profile_card_option_portrait_shape
+import id.homebase.resources.profile_card_option_portrait_size
+import id.homebase.resources.profile_card_size_large
+import id.homebase.resources.profile_card_size_medium
+import id.homebase.resources.profile_card_size_small
+import id.homebase.resources.profile_card_tool_photo
 import id.homebase.resources.profile_card_option_socials_style
 import id.homebase.resources.profile_card_option_text_font
 import id.homebase.resources.profile_card_shape_circle
@@ -223,6 +229,8 @@ private val OPTION_SIDE_INSET = 16.dp
 private val TOOLBAR_SIDE_INSET = 0.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private const val REVEAL_MARGIN = 0.6f
+private val PHOTO_ROWS_GAP = 16.dp
+private val SIZE_GLYPH_GAP = 6.dp
 private val BLOCK_TILE_SPACING = 6.dp
 private val BLOCK_TILE_CORNER = 12.dp
 
@@ -246,7 +254,7 @@ internal fun CardOptionsPanel(
     val tools = remember(options, styles.isEmpty()) {
         // The presets are the design's colour schemes, so they are the one Palette tab.
         val palette = styles.isNotEmpty()
-        val shown = options.filter { !(palette && it == CardOption.COLOURS) }.sortedBy { TAB_ORDER.indexOf(it).let { i -> if (i < 0) TAB_ORDER.size else i } }
+        val shown = options.filter { !(palette && it == CardOption.COLOURS) && !(it == CardOption.PORTRAIT_SHAPE && CardOption.PORTRAIT_SIZE in options) }.sortedBy { TAB_ORDER.indexOf(it).let { i -> if (i < 0) TAB_ORDER.size else i } }
         listOfNotNull(PALETTE_TOOL.takeIf { palette }) + shown.map { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it)) }
     }
     var picked by rememberSaveable(design) { mutableStateOf(tools.firstOrNull()?.key.orEmpty()) }
@@ -310,6 +318,27 @@ private fun OptionControl(
             onSelect = { onOption(option, it.takeIf { v -> v != preset }) },
         ) { shape ->
             ShapeGlyph(shape.orEmpty())
+        }
+        CardOption.PORTRAIT_SIZE -> Column(verticalArrangement = Arrangement.spacedBy(PHOTO_ROWS_GAP)) {
+            val portraitShape = CardDesignSpecs.selectedValue(design, CardOption.PORTRAIT_SHAPE, overrides.valueOf(CardOption.PORTRAIT_SHAPE)).orEmpty()
+            // Large text needs the room; the words alone still name each size.
+            val sizeGlyphs = LocalDensity.current.fontScale <= LARGE_TEXT_SCALE
+            SegmentedChoices(
+                values = CardDesignSpecs.PORTRAIT_SIZES,
+                selected = CardDesignSpecs.selectedValue(design, option, overrides.valueOf(option)),
+                enabled = enabled,
+                chipHeight = chipHeight,
+                onSelect = { onOption(option, it.takeIf { v -> v != CardDesignSpecs.DEFAULT_PORTRAIT_SIZE }) },
+            ) { size ->
+                if (sizeGlyphs) {
+                    SizeGlyph(portraitShape, size.orEmpty())
+                    Spacer(Modifier.width(SIZE_GLYPH_GAP))
+                }
+                SegmentLabel(stringResource(sizeLabel(size.orEmpty())))
+            }
+            if (CardOption.PORTRAIT_SHAPE in CardDesignSpecs.of(design)?.options.orEmpty()) {
+                OptionControl(CardOption.PORTRAIT_SHAPE, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
+            }
         }
         CardOption.BLOCK_STYLE -> SegmentedChoices(
             values = CardDesignSpecs.presetFirst(design, option, CardDesignSpecs.PRESENTATIONS),
@@ -641,6 +670,22 @@ private fun ShapeGlyph(shape: String) {
     }
 }
 
+// The photo drawn at each size in its picked shape, so the size row previews the portrait the shape row below shapes.
+@Composable
+private fun SizeGlyph(shape: String, size: String) {
+    val color = LocalContentColor.current
+    val scale = when (size) {
+        "small" -> 0.5f
+        "large" -> 1f
+        else -> 0.72f
+    }
+    Box(modifier = Modifier.size(GLYPH_SIZE), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.size(GLYPH_SIZE * scale)) {
+            drawPortraitShape(shape, color)
+        }
+    }
+}
+
 private fun DrawScope.drawPortraitShape(shape: String, color: Color) {
     when (shape) {
         "square" -> drawRect(color)
@@ -794,8 +839,8 @@ private data class PanelTool(val key: String, val icon: ImageVector, val label: 
 
 private val PALETTE_TOOL = PanelTool("presets", Icons.Outlined.Palette, MR.string.profile_card_tool_palette, MR.string.profile_card_option_presets)
 
-// After Palette: Portrait, Background, Style, then the rest in their usual order.
-private val TAB_ORDER = listOf(CardOption.PORTRAIT_SHAPE, CardOption.BACKGROUND, CardOption.BLOCK_STYLE)
+// After Palette: Photo (size, with the shape row under it), Background, Style, then the rest in their usual order.
+private val TAB_ORDER = listOf(CardOption.PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE, CardOption.BACKGROUND, CardOption.BLOCK_STYLE)
 
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
@@ -804,6 +849,7 @@ private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.DISPLAY_FONT -> MR.string.profile_card_option_display_font
     CardOption.TEXT_FONT -> MR.string.profile_card_option_text_font
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_option_portrait_shape
+    CardOption.PORTRAIT_SIZE -> MR.string.profile_card_option_portrait_size
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_option_socials_style
     CardOption.BLOCK_ORDER -> MR.string.profile_card_option_block_order
     CardOption.BLOCK_STYLE -> MR.string.profile_card_option_block_style
@@ -816,6 +862,7 @@ private fun toolLabel(option: CardOption): StringResource = when (option) {
     CardOption.DISPLAY_FONT -> MR.string.profile_card_tool_heading
     CardOption.TEXT_FONT -> MR.string.profile_card_tool_body
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_tool_portrait
+    CardOption.PORTRAIT_SIZE -> MR.string.profile_card_tool_photo
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_tool_socials
     CardOption.BLOCK_ORDER -> MR.string.profile_card_tool_order
     CardOption.BLOCK_STYLE -> MR.string.profile_card_tool_style
@@ -827,7 +874,7 @@ private fun optionIcon(option: CardOption): ImageVector = when (option) {
     CardOption.ACCENT -> Icons.Outlined.Colorize
     CardOption.DISPLAY_FONT -> Icons.Outlined.Title
     CardOption.TEXT_FONT -> Icons.Outlined.FormatSize
-    CardOption.PORTRAIT_SHAPE -> Icons.Outlined.AccountCircle
+    CardOption.PORTRAIT_SHAPE, CardOption.PORTRAIT_SIZE -> Icons.Outlined.AccountCircle
     CardOption.SOCIALS_STYLE -> Icons.Outlined.AlternateEmail
     CardOption.BLOCK_ORDER -> Icons.Outlined.ViewAgenda
     CardOption.BLOCK_STYLE -> Icons.Outlined.Style
@@ -848,6 +895,12 @@ private fun shapeLabel(shape: String): StringResource = when (shape) {
     "rounded" -> MR.string.profile_card_shape_rounded
     "ellipse" -> MR.string.profile_card_shape_ellipse
     else -> MR.string.profile_card_shape_circle
+}
+
+private fun sizeLabel(size: String): StringResource = when (size) {
+    "small" -> MR.string.profile_card_size_small
+    "large" -> MR.string.profile_card_size_large
+    else -> MR.string.profile_card_size_medium
 }
 
 private fun socialsLabel(style: String): StringResource = when (style) {
@@ -899,7 +952,6 @@ internal fun schemeLabel(id: String): StringResource = when (id) {
     "paper" -> MR.string.profile_card_colours_paper
     "blueprint" -> MR.string.profile_card_colours_blueprint
     "sand" -> MR.string.profile_card_colours_sand
-    "cloud" -> MR.string.profile_card_colours_cloud
     "mint" -> MR.string.profile_card_colours_mint
     "peach" -> MR.string.profile_card_colours_peach
     "lavender" -> MR.string.profile_card_colours_lavender

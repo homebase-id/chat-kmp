@@ -56,7 +56,7 @@ class CardColourSchemeTest {
         CardDesign.BOARD to listOf("#1E5B45", "#5B2A6E", "#9A3B26", "#23262B", "#DCEBFA", "#F7E7A6", "#F6D6D9"),
         CardDesign.COLLAGE to listOf("#DDE5D3", "#DCE6F0", "#F3DCDC", "#E6DFF0", "#C9A882", "#1F1C19", "#EDEDED"),
         CardDesign.DOSSIER to listOf("#0D1B2A", "#0F1A14", "#1C0F10", "#2A2D33", "#F4F1EA", "#12355B", "#E8DCC6"),
-        CardDesign.LINKS to listOf("#F1F3F6", "#1B1F24", "#DDF0E6", "#FBE3D6", "#E7E3F7", "#14213D", "#F8F2C8"),
+        CardDesign.LINKS to listOf("#1B1F24", "#DDF0E6", "#FBE3D6", "#E7E3F7", "#14213D", "#F8F2C8"),
     )
 
     @Test
@@ -68,6 +68,24 @@ class CardColourSchemeTest {
                 val saved = CardOverrides(palette = scheme.applyTo(CardPalette(accent = scheme.accents.first().takeIf { CardOption.ACCENT in spec.options })))
                 assertEquals(saved, CardOverrides.fromJson(saved.toJson()).prunedFor(design), "$design/${scheme.id}")
             }
+        }
+    }
+
+    // odin-js presets.ts: ground, ink and surface each page draws with nothing set; Poster's surface is translucent, so it never matches a hex.
+    private val ownLook = mapOf(
+        CardDesign.POSTER to Triple("#14120F", "#F4F0EA", null),
+        CardDesign.BOARD to Triple("#1F4E8C", "#FFFFFF", "#FFFFFF"),
+        CardDesign.COLLAGE to Triple("#F3EADB", "#3A2E22", "#FFFFFF"),
+        CardDesign.DOSSIER to Triple("#0E1013", "#E9ECF1", "#22262E"),
+        CardDesign.LINKS to Triple("#F1F3F6", "#1B1F24", "#FFFFFF"),
+    )
+
+    @Test
+    fun noSchemeRepeatsItsDesignsOwnLook() {
+        for ((design, scheme) in schemes) {
+            val (ground, ink, surface) = ownLook.getValue(design)
+            val same = scheme.ground.equals(ground, true) && scheme.ink.equals(ink, true) && (surface == null || scheme.surface.equals(surface, true))
+            assertTrue(!same, "$design/${scheme.id} is the same swatch as the design's own style")
         }
     }
 

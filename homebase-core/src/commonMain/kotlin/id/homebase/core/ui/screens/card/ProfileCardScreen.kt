@@ -517,12 +517,13 @@ internal fun ProfileCardPager(
                                     if (cardBands) ReportOverlay()
                                     Snackbar(data, Modifier.padding(8.dp))
                                 }
+                                val onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() }
                                 ShareToolbar(
                                     isExporting = uiState.isExporting,
                                     canShare = uiState.canShare,
                                     saveInsteadOfShare = saveInsteadOfShare,
-                                    onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
-                                    extraActions = { nfc?.let { CardNfcAction(it) } },
+                                    onShare = onShare,
+                                    extraActions = { nfc?.let { CardNfcAction(it, onShareInstead = onShare.takeIf { uiState.canShare }) } },
                                 )
                             }
                         }
