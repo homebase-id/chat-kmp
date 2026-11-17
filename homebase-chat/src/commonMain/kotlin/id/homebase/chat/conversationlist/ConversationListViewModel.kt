@@ -260,7 +260,7 @@ class ConversationListViewModel(
         val convo = _uiState.value.activeConversations.find { it.conversation.id == id }?.conversation ?: return
         if (!shouldRefreshLiveMention(_messagesUiState.value.nextMention, convo.isGroup, convo.unreadMentionCount, mentionCountAtRefresh)) return
         mentionCountAtRefresh = convo.unreadMentionCount
-        mentionCursor.getOrPut(id) { convo.lastRead.toEpochMilliseconds() }
+        mentionCursor.getOrPut(id) { mentionCursorSeed(frozenUnreadBoundary[id], convo.lastRead) }
         refreshNextMention(id)
     }
 
@@ -272,9 +272,13 @@ class ConversationListViewModel(
         refreshNextMention(conversationId)
     }
 
+    private var mentionRefreshJob: Job? = null
+
     private fun refreshNextMention(conversationId: Uuid) {
         val cursor = mentionCursor[conversationId] ?: return
-        viewModelScope.launch {
+        // Two refreshes can share a cursor, so only the latest may publish.
+        mentionRefreshJob?.cancel()
+        mentionRefreshJob = viewModelScope.launch {
             val pending = chatMessageStream.nextUnreadMention(conversationId, cursor)?.let {
                 NextMention(it.uniqueId, it.userDateMs, chatMessageStream.countUnreadMentions(conversationId, cursor))
             }
@@ -2530,3 +2534,6 @@ internal fun shouldRefreshLiveMention(
     unreadMentionCount: Int,
     countAtLastRefresh: Int?,
 ): Boolean = isGroup && unreadMentionCount > 0 && (pending == null || unreadMentionCount != countAtLastRefresh)
+
+internal fun mentionCursorSeed(frozenUnreadBoundary: Instant?, lastRead: Instant): Long =
+    (frozenUnreadBoundary ?: lastRead).toEpochMilliseconds()
