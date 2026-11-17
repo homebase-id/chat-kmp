@@ -40,6 +40,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
@@ -127,7 +128,11 @@ class ProfileCardViewModelTest {
 
         override suspend fun odinId() = OdinId("frodo.dotyou.cloud")
         var liveCards: (suspend () -> List<ProfileAttribute>)? = null
-        override suspend fun attributes() = attributes + liveCards?.invoke().orEmpty()
+        var attributeLoads = 0
+        override suspend fun attributes(): List<ProfileAttribute> {
+            attributeLoads++
+            return attributes + liveCards?.invoke().orEmpty()
+        }
 
         var circleList: List<CardCircle> = listOf(CardCircle(FRIENDS_CIRCLE_ID, "Friends"), CardCircle(FAMILY_CIRCLE_ID, "Family"))
         override val supportsCircleCards: Boolean get() = cardRepository?.supportsCircleCards ?: true
@@ -194,9 +199,9 @@ class ProfileCardViewModelTest {
 
         val cardWrites = MutableStateFlow(0)
 
-        override suspend fun savePublicCard(design: String, overrides: CardOverrides?) {
+        override suspend fun savePublicCard(design: String, overrides: CardOverrides?, known: List<ProfileCard>?): ProfileCard? {
             try {
-                cardRepository?.savePublic(design, overrides)
+                return cardRepository?.savePublicCard(design, overrides, known)
             } finally {
                 cardWrites.update { it + 1 }
             }
@@ -1633,6 +1638,77 @@ class ProfileCardViewModelTest {
 
         assertTrue(store.writes.isEmpty())
         assertEquals("bar", host.rendered.last().overrides?.socials)
+    }
+
+    @Test
+    fun anOptionChangeReusesTheLastPayloadsData() = runTest(dispatcher) {
+        val (vm, host, _) = boardVm()
+        advanceUntilIdle()
+        val full = host.rendered.last()
+
+        vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")
+
+        val sent = host.rendered.last()
+        assertSame(full.data, sent.data)
+        assertEquals("#F26B5B", sent.overrides?.palette?.accent)
+    }
+
+    @Test
+    fun savingACircleCardDoesNotReloadTheProfile() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute, circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.BOARD, 2)))
+        val (vm, source, _) = circleVm(store)
+        vm.onCardOpened(friends)
+        advanceUntilIdle()
+        val loads = source.attributeLoads
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(1, store.writes.size)
+        assertEquals(loads, source.attributeLoads)
+    }
+
+    @Test
+    fun aPublicCardWriteReadsNoProfileAndAnEditUsesTheTagItWrote() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val (vm, _, _) = circleVm(store)
+        advanceUntilIdle()
+        val loads = store.loads
+
+        vm.onDesignSelected(CardDesign.POSTER)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+        vm.onDesignSelected(CardDesign.BOARD)
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(loads, store.loads)
+        val (first, second) = store.writes
+        assertEquals(publicCardAttribute.id, first.id)
+        assertEquals(publicCardAttribute.versionTag, first.versionTag)
+        assertEquals(publicCardAttribute.id, second.id)
+        assertTrue(second.versionTag != publicCardAttribute.versionTag)
+    }
+
+    @Test
+    fun aReloadReadBeforeTheCardWriteLandsDoesNotBringBackTheOldCard() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val (vm, source, host) = circleVm(store)
+        advanceUntilIdle()
+        val write = CompletableDeferred<Unit>().also { store.gate = it }
+        val reply = CompletableDeferred<Unit>()
+        source.liveCards = { store.attributes.also { reply.await() } }
+
+        vm.onOptionSelected(CardOption.ACCENT, "#8B7CF6")
+        vm.onSaveDesign()
+        vm.onScreenShown()
+        write.complete(Unit)
+        reply.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals("#8B7CF6", vm.uiState.value.savedOverrides.palette?.accent)
+        assertEquals("#8B7CF6", host.rendered.last().overrides?.palette?.accent)
     }
 
     @Test
