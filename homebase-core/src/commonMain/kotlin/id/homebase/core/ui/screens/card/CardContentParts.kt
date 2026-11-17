@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Link
+import id.homebase.resources.profile_card_content_cant_go
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.MoreHoriz
@@ -411,6 +413,7 @@ internal fun ContentSheet(
                     }
                 }
             }
+            if (shownType !in CARD_RENDERED_TYPES) NotOnCardNote()
             if (editing == null) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     AudienceBadge(audience = audience, circles = circles)
@@ -420,8 +423,6 @@ internal fun ContentSheet(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    } else {
-                        NotOnCardNote()
                     }
                 }
             } else {
@@ -429,7 +430,6 @@ internal fun ContentSheet(
                     text = stringResource(MR.string.profile_card_sheet_available_on),
                     style = MaterialTheme.typography.labelLarge,
                 )
-                if (shownType !in CARD_RENDERED_TYPES) NotOnCardNote()
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val pills = listOf<Triple<CardAudience, String, String?>>(
                         Triple(CardAudience.Public, stringResource(MR.string.profile_card_audience_public), null),
@@ -477,11 +477,28 @@ internal fun ContentSheet(
 
 @Composable
 private fun NotOnCardNote() {
-    Text(
-        text = stringResource(MR.string.profile_card_sheet_not_on_card),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(GROUP_OUTER_CORNER))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Block, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = stringResource(MR.string.profile_card_content_cant_go),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(MR.string.profile_card_sheet_not_on_card),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 private fun addLabel(kind: AddKind) = when (kind) {
