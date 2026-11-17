@@ -120,6 +120,7 @@ those exist only on the application modules (`androidApp`). Using them on a libr
 ./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
 
 # Platform-specific
+./gradlew testAndroidHostTest            # library modules' Android host tests (Robolectric; CI runs these)
 ./gradlew androidApp:testDebugUnitTest
 ./gradlew desktopApp:desktopTest
 ./gradlew iosSimulatorArm64Test          # requires booted iOS simulator

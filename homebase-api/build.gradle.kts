@@ -325,6 +325,10 @@ kotlin {
         // If any of them ever genuinely needs device-side coverage, copy it directly into
         // androidDeviceTest rather than trying to wire the inheritance.
         getByName("androidHostTest").dependsOn(jvmAndNativeTest)
+        // The JVM test code that both JVMs (desktop's and Android host tests') share, so neither keeps a copy.
+        val jvmHostTest = create("jvmHostTest") { dependsOn(jvmAndNativeTest) }
+        jvmTest.get().dependsOn(jvmHostTest)
+        getByName("androidHostTest").dependsOn(jvmHostTest)
         // DatabaseConnectionContractTest runs on the real driver of every target with a file
         // database; a shared directory, since androidDeviceTest can't depend on a common test set.
         listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/dbContractTest/kotlin") }
