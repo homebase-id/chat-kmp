@@ -157,6 +157,21 @@ class UploadServiceFilesTest {
     }
 
     @Test
+    fun aHashThatCantBeCheckedIsRefusedNotSkipped() = runTest {
+        val pdf = plain(source("a.pdf"))
+        for (key in listOf("no_such_payload", "enc_0")) {
+            val handed = handedOverEncrypted()
+            val hashes = ContentHashes(PayloadHashAlgorithm.Blake3, mapOf(key to ByteArray(32)))
+
+            val outcome = backgroundScope.service().upload(spec(Uuid.random(), bundleOf(pdf, handed)).copy(contentHashes = hashes), backgroundScope)
+
+            assertIs<IllegalArgumentException>(assertIs<UploadOutcome.Failed>(outcome).cause, key)
+            assertFalse(exists(handed.filePath))
+        }
+        assertTrue(made.isEmpty())
+    }
+
+    @Test
     fun aQueuedUploadLeavesItsFileForTheOutbox() = runTest {
         val uid = Uuid.random()
 

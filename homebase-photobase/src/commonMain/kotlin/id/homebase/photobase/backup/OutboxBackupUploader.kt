@@ -69,8 +69,8 @@ class OutboxBackupUploader(
     } catch (_: ContentChangedException) {
         null
     } catch (e: SourceUnavailableException) {
-        // A file staged for this attempt; the next one exports again, and the export says if the asset is gone.
-        throw BackupEnqueueFailedException("a staged file is gone: ${e.path}", e)
+        // Retried: the next attempt exports again, and the export says if the asset is gone.
+        throw BackupEnqueueFailedException("a file to send is gone: ${e.path}", e)
     }
 
     private suspend fun send(spec: MediaUploadSpec): HandOffResult {
@@ -123,7 +123,9 @@ class OutboxBackupUploader(
             fileOps,
         ) { PhotobaseProtocol.VideoPayloadKey }
         val expected = if (untouched || options.originalVideo) mapOf(PhotobaseProtocol.VideoPayloadKey to expectedDigest) else emptyMap()
-        val hashes = ContentHashes(PayloadHashAlgorithm.Blake3, expected) { _, chunk, offset, length -> reader.feed(chunk, offset, length) }
+        val hashes = ContentHashes(PayloadHashAlgorithm.Blake3, expected) { key, chunk, offset, length ->
+            if (key == PhotobaseProtocol.VideoPayloadKey) reader.feed(chunk, offset, length)
+        }
         fun metadata() = reader.location.let { location ->
             val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
             photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content)

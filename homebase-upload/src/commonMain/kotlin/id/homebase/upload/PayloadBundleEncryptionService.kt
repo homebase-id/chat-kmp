@@ -82,6 +82,12 @@ class PayloadBundleEncryptionService(
         // aren't probe-able as files), so they're left to their own failure surface;
         // encryptFile re-checks per file below to close the swept-mid-send race.
         requireSources(bundle)
+        hashes?.expected?.keys?.forEach { key ->
+            val payload = bundle.payloads.singleOrNull { it.key == key }
+            require(payload != null && !payload.isPreEncrypted && (payload.skipVideoProcessing || !payload.contentType.startsWith("video/"))) {
+                "payload $key can't be checked against its hash: it's missing, already encrypted or transcoded"
+            }
+        }
 
         // Note: the incoming payloads from the bundle will
         // be unencrypted and ordered
@@ -104,7 +110,6 @@ class PayloadBundleEncryptionService(
                     newPayloads += payload
                     newThumbnails += bundle.thumbnails.filter { it.key == payload.key }.map { it.copy(thumbnailBytes = encryptBytes(it.thumbnailBytes, keyHeader)) }
                 } else if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
-                    require(hashes?.expected?.containsKey(payload.key) != true) { "a transcoded video can't be checked against its source's hash" }
 
                     val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
                         scope.launch {
