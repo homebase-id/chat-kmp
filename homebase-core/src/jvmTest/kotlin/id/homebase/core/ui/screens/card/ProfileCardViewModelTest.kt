@@ -1916,6 +1916,21 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun pickingThePhotoSizeAlreadyShownIsNotAChange() = runTest(dispatcher) {
+        val (vm, _, _) = boardVm()
+
+        vm.onOptionSelected(CardOption.PORTRAIT_SIZE, CardDesignSpecs.DEFAULT_PORTRAIT_SIZE)
+        assertFalse(vm.uiState.value.hasUnsavedChanges)
+        assertFalse(vm.uiState.value.canSaveDesign)
+
+        vm.onOptionSelected(CardOption.PORTRAIT_SIZE, "large")
+        assertTrue(vm.uiState.value.canSaveDesign)
+        vm.onOptionSelected(CardOption.PORTRAIT_SIZE, CardDesignSpecs.DEFAULT_PORTRAIT_SIZE)
+        assertFalse(vm.uiState.value.hasUnsavedChanges)
+        assertFalse(vm.uiState.value.canSaveDesign)
+    }
+
+    @Test
     fun anOverridesOnlySaveWritesTheCard() = runTest(dispatcher) {
         val store = FakeCardStore(listOf(cardAttribute(CardDesign.BOARD)))
         val source = FakeSource(profile + store.attributes, cardRepository = CardRepository(store))
