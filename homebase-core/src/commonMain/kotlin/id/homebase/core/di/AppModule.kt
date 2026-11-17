@@ -1160,7 +1160,7 @@ val appModule = module {
     single { FilesyncMemberWrites(get<FilesyncSharing>(), get(), get()) }
     single { FilesyncPeerSends(get(), get<FilesyncSharing>(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit, get(), get()) }
-    single { FilesyncEditor(get(), get(), get()) }
+    single { FilesyncEditor(get(), get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
 

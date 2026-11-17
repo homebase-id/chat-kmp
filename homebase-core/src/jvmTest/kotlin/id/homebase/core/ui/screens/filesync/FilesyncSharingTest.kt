@@ -22,7 +22,6 @@ import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.drives.files.SecurityGroupType
-import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.serialization.Base64Bytes
@@ -650,9 +649,7 @@ class FilesyncSharingTest {
 
     // The fileMetadata a marker write sent and its content, opened with the key it was sent under ([key]: the marker's own).
     private suspend fun sentMarker(write: Call, key: KeyHeader? = null): Pair<JsonObject, JsonElement> {
-        val parts = multipart(write.body, write.request)
-        val transferIv = Base64.decode(Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject["transferIv"]!!.jsonPrimitive.content)
-        val descriptor = Json.parseToJsonElement(AesCbc.decrypt(parts.getValue("metadata"), appSecret, transferIv).decodeToString()).jsonObject
+        val descriptor = uploadDescriptor(write.body, write.request, appSecret)
         val sentKey = OdinSystemSerializer.json.decodeFromJsonElement(EncryptedKeyHeader.serializer(), descriptor["encryptedKeyHeader"]!!)
             .decryptAesToKeyHeader(SecureByteArray(appSecret))
         if (key != null) assertTrue(sentKey.aesKey.toByteArray().contentEquals(key.aesKey.toByteArray()), "the marker keeps its key")
@@ -669,10 +666,7 @@ class FilesyncSharingTest {
         val kept = calls.single { it.path.endsWith("/files") }
         assertEquals("/api/v2/drives/${FilesyncProtocol.DriveAlias}/files", kept.path)
         assertTrue(!kept.asFilesync)
-        val parts = multipart(kept.body, kept.request)
-        val instructions = Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject
-        val transferIv = Base64.decode(instructions["transferIv"]!!.jsonPrimitive.content)
-        val descriptor = Json.parseToJsonElement(AesCbc.decrypt(parts.getValue("metadata"), appSecret, transferIv).decodeToString()).jsonObject
+        val descriptor = uploadDescriptor(kept.body, kept.request, appSecret)
         val appData = descriptor["fileMetadata"]!!.jsonObject["appData"]!!.jsonObject
         assertEquals(FilesyncSharing.markerId(sam, frodo).toString(), appData["uniqueId"]!!.jsonPrimitive.content)
         assertEquals(FilesyncProtocol.MarkerFileType, appData["fileType"]!!.jsonPrimitive.int)

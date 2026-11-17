@@ -303,7 +303,7 @@ enum class FilesyncError {
 }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
-enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon, Shared }
+enum class FilesyncNotice { Restored, RestoredToRecovered, RestoredIntoRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon, Shared }
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent
