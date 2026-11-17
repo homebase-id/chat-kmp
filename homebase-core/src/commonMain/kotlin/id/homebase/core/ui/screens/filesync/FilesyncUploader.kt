@@ -54,11 +54,16 @@ class FilesyncUploader internal constructor(
      */
     suspend fun createRecoveredFiles(): Boolean =
         try {
-            sendUpload(
-                createRequest(FilesyncProtocol.RecoveredFilesNodeId, FilesyncProtocol.RootNodeId, FilesyncProtocol.FolderFileType,
-                    FilesyncNodeContent(v = CONTENT_VERSION, name = FilesyncProtocol.RecoveredFilesName), KeyHeader.newRandom16()),
-                null,
+            val keyHeader = KeyHeader.newRandom16()
+            val content = FilesyncNodeContent(v = CONTENT_VERSION, name = FilesyncProtocol.RecoveredFilesName)
+            val metadata = nodeMetadata(FilesyncProtocol.RecoveredFilesNodeId, FilesyncProtocol.RootNodeId, FilesyncProtocol.FolderFileType, content, keyHeader)
+            val request = UploadFileRequest(
+                driveId = FilesyncProtocol.DriveAlias,
+                keyHeader = keyHeader,
+                metadata = metadata,
+                payloads = emptyList(),
             )
+            sendUpload(request, null)
             true
         } catch (e: ClientException) {
             if (!e.isExistingFileWithUniqueId()) throw e
@@ -93,7 +98,12 @@ class FilesyncUploader internal constructor(
         payload: PayloadFile? = null,
         onProgress: ((Float) -> Unit)? = null,
     ) {
-        val request = createRequest(nodeId, parentId, fileType, content, keyHeader, payload)
+        val request = UploadFileRequest(
+            driveId = FilesyncProtocol.DriveAlias,
+            keyHeader = keyHeader,
+            metadata = nodeMetadata(nodeId, parentId, fileType, content, keyHeader),
+            payloads = listOfNotNull(payload),
+        )
 
         // The node id is new to this upload and kept across every retry, the user's too: a 4105 can only mean an earlier attempt landed.
         withRetryResult(RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException }), TAG) {
@@ -107,19 +117,8 @@ class FilesyncUploader internal constructor(
         }.getOrThrow()
     }
 
-    private suspend fun createRequest(
-        nodeId: Uuid,
-        parentId: Uuid,
-        fileType: Int,
-        content: FilesyncNodeContent,
-        keyHeader: KeyHeader,
-        payload: PayloadFile? = null,
-    ) = UploadFileRequest(
-        driveId = FilesyncProtocol.DriveAlias,
-        keyHeader = keyHeader,
-        metadata = filesyncMetadata(nodeId, parentId, fileType, OdinSystemSerializer.serialize(content), ArchivalStatus.None).encryptContent(keyHeader),
-        payloads = listOfNotNull(payload),
-    )
+    private suspend fun nodeMetadata(nodeId: Uuid, parentId: Uuid, fileType: Int, content: FilesyncNodeContent, keyHeader: KeyHeader) =
+        filesyncMetadata(nodeId, parentId, fileType, OdinSystemSerializer.serialize(content), ArchivalStatus.None).encryptContent(keyHeader)
 
     private companion object {
         const val TAG = "FilesyncUploader"

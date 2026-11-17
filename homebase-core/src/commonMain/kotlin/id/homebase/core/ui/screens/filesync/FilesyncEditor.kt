@@ -75,7 +75,8 @@ class FilesyncEditor(
         val breaks = trash.loopBreaks(tops, plans)
         val breaking = breaks.atTop + breaks.toExit
         val exit = if (breaks.toExit.isEmpty()) null else loopExit(trash)
-        val recoveredInTrash = exit?.folder == FilesyncProtocol.RecoveredFilesNodeId && trash.all.nodes[FilesyncProtocol.RecoveredFilesNodeId]?.removed == true
+        val recoveredInTrash = exit?.folder == FilesyncProtocol.RecoveredFilesNodeId &&
+            trash.all.nodes[FilesyncProtocol.RecoveredFilesNodeId]?.removed == true
         // The top instead once Recovered files' id proves taken.
         var exitFolder = exit?.folder
         var toMake = exit?.make == true
@@ -96,15 +97,19 @@ class FilesyncEditor(
             (planned[into(node)]?.let { levelOf(it) + 1 } ?: 0).also { level[node.nodeId] = it }
         }
         plan.forEach(::levelOf)
-        val liveParents = repository.findNodes(plan.map(::into).filter { it !in level }, FilesyncStatus.Live).nodes.keys
+        // Recovered files to be made counts as live: what comes back into it takes a free name there.
+        val liveParents = repository.findNodes(plan.map(::into).filter { it !in level }, FilesyncStatus.Live).nodes.keys +
+            listOfNotNull(FilesyncProtocol.RecoveredFilesNodeId.takeIf { toMake })
 
         val restored = mutableSetOf<Uuid>()
         // Folders of the plan deleted for good while it ran.
         val wentForGood = mutableSetOf<Uuid>()
         // In a Recovered files still in Recently deleted, it shows only once a computer brings that back.
-        val intoRecovered = if (recoveredInTrash) breaks.toExit.toMutableSet() else mutableSetOf()
+        val intoRecovered = if (recoveredInTrash && FilesyncProtocol.RecoveredFilesNodeId !in level) breaks.toExit.toMutableSet() else mutableSetOf()
         val takenByFolder = mutableMapOf<Uuid, MutableSet<String>>()
         suspend fun taken(folder: Uuid) = takenByFolder.getOrPut(folder) { repository.takenNames(folder) }
+        // Before the first wave, so nothing comes back at the top under the name of the Recovered files made later.
+        if (toMake) taken(FilesyncProtocol.RootNodeId).add(FilesyncNames.key(FilesyncProtocol.RecoveredFilesName))
         var skipped = gone
         var sent = false
         var tryAgainSoon = false
@@ -168,11 +173,7 @@ class FilesyncEditor(
                     if (toMake && node.nodeId in breaks.toExit) {
                         toMake = false
                         sent = true
-                        if (uploader.createRecoveredFiles()) {
-                            taken(FilesyncProtocol.RootNodeId).add(FilesyncNames.key(FilesyncProtocol.RecoveredFilesName))
-                        } else {
-                            exitFolder = FilesyncProtocol.RootNodeId
-                        }
+                        if (!uploader.createRecoveredFiles()) exitFolder = FilesyncProtocol.RootNodeId
                     }
                     val parent = into(node)
                     val taken = taken(parent)
@@ -207,7 +208,8 @@ class FilesyncEditor(
         }
         FilesyncWriteResult(
             restored.size, skipped, recovered = (intoRecovered intersect restored).size, tryAgainSoon = tryAgainSoon,
-            loopsIntoRecovered = exitFolder == FilesyncProtocol.RecoveredFilesNodeId && !recoveredInTrash && breaks.toExit.any { it in restored },
+            loopsIntoRecovered = exitFolder == FilesyncProtocol.RecoveredFilesNodeId &&
+                (!recoveredInTrash || FilesyncProtocol.RecoveredFilesNodeId in restored) && breaks.toExit.any { it in restored },
         )
     }
 

@@ -245,6 +245,53 @@ class FilesyncRestoreTest {
     }
 
     @Test
+    fun aPlainFolderNamedRecoveredFilesComingBackBesideTheOneMadeIsRenamed() = runTest {
+        val plain = add("Recovered files", FilesyncProtocol.RootNodeId, removedAt = 100)
+        val (a, _) = loop()
+
+        editor.restore(setOf(a.nodeId, plain.nodeId))
+
+        assertTrue(rows.getValue(FilesyncProtocol.RecoveredFilesNodeId).created)
+        assertTrue(plain.isLiveIn(FilesyncProtocol.RootNodeId) && plain.name == "Recovered files (restored)")
+    }
+
+    @Test
+    fun aRecoveredFilesRestoredWithTheLoopShowsTheLoopAtOnce() = runTest {
+        val recovered = add("Recovered files", FilesyncProtocol.RootNodeId, removedAt = 50, id = FilesyncProtocol.RecoveredFilesNodeId)
+        val (a, _) = loop()
+
+        val result = editor.restore(setOf(a.nodeId, recovered.nodeId))
+
+        assertTrue(live(recovered) && a.isLiveIn(FilesyncProtocol.RecoveredFilesNodeId))
+        assertEquals(0, result.recovered)
+        assertTrue(result.loopsIntoRecovered)
+    }
+
+    @Test
+    fun whatComesBackIntoTheRecoveredFilesToBeMadeTakesAFreeName() = runTest {
+        // Recovered files went for good; R still names it as its folder.
+        val r = add("A", FilesyncProtocol.RecoveredFilesNodeId, removedAt = 100)
+        val (a, _) = loop()
+
+        editor.restore(setOf(a.nodeId, r.nodeId))
+
+        assertTrue(r.isLiveIn(FilesyncProtocol.RecoveredFilesNodeId) && a.isLiveIn(FilesyncProtocol.RecoveredFilesNodeId))
+        assertEquals(setOf("A", "A (restored)"), setOf(r.name, a.name))
+    }
+
+    @Test
+    fun twoItemsOfOneLoopBreakItOnce() = runTest {
+        val (a, b) = loop()
+
+        editor.restore(setOf(a.nodeId, b.nodeId))
+
+        val inRecovered = listOf(a, b).filter { it.isLiveIn(FilesyncProtocol.RecoveredFilesNodeId) }
+        assertEquals(1, inRecovered.size, "one folder breaks it")
+        val other = (listOf(a, b) - inRecovered.single()).single()
+        assertTrue(other.isLiveIn(inRecovered.single().nodeId))
+    }
+
+    @Test
     fun aFolderInItselfComesBackIntoRecoveredFiles() = runTest {
         val id = Uuid.random()
         val self = add("Self", id, removedAt = 100, id = id)
