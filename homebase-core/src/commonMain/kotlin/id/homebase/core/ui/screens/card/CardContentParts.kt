@@ -102,6 +102,8 @@ import id.homebase.resources.profile_card_content_edit_title
 import id.homebase.resources.profile_card_content_delete
 import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_card_sheet_available_on
+import id.homebase.resources.profile_card_sheet_not_on_card
+import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.platform.testTag
 import id.homebase.resources.profile_card_content_more
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
@@ -347,22 +349,24 @@ internal fun ContentSheet(
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
         var shownType by remember { mutableStateOf(type) }
-        val data = remember(shownType) { mutableStateMapOf<String, String>().apply { editing?.let { putAll(it.data) } } }
+        val region = Locale.current.region
+        val original = remember(editing?.id) { editing?.asEdited(region) }
+        val data = remember(shownType) { mutableStateMapOf<String, String>().apply { original?.let { putAll(it.data) } } }
         var audience by remember(editing?.id) { mutableStateOf(editing?.audience ?: card.newItemAudience()) }
         val link = shownType == ProfileAttributeTypes.LINK
-        val linkUrl = data[ProfileAttributeTypes.KEY_LINK_TARGET].orEmpty().trim().let { if (it.isEmpty() || "://" in it) it else "https://$it" }
+        val linkUrl = normalizedLinkTarget(data[ProfileAttributeTypes.KEY_LINK_TARGET].orEmpty())
         val fields = PROFILE_TYPE_FIELDS[shownType].orEmpty()
         fun value(field: ProfileField) = fields.firstOrNull { it.first == field }?.let { data[it.second] }.orEmpty()
         val main = fields.firstOrNull()?.first
         val filled = if (link) linkUrl.isNotEmpty() && isWebUrl(linkUrl) else main != null && value(main).isNotBlank()
         // Outside the &&: a memoized ::value there only gets a group once filled, so the first character rebuilt the sheet.
         val valid = isAttributeValid(shownType, ::value)
-        val canSave = filled && valid && audience.isSavableWith(circles)
         val updates = if (link) {
             mapOf(ProfileAttributeTypes.KEY_LINK_TEXT to data[ProfileAttributeTypes.KEY_LINK_TEXT].orEmpty(), ProfileAttributeTypes.KEY_LINK_TARGET to linkUrl)
         } else {
             fields.associate { (_, key) -> key to data[key].orEmpty() }
         }
+        val canSave = filled && valid && audience.isSavableWith(circles) && (original == null || original.differsFrom(updates, audience))
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -410,17 +414,22 @@ internal fun ContentSheet(
             if (editing == null) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     AudienceBadge(audience = audience, circles = circles)
-                    Text(
-                        text = stringResource(MR.string.profile_card_content_add_visible, audienceLabel(card)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (shownType in CARD_RENDERED_TYPES) {
+                        Text(
+                            text = stringResource(MR.string.profile_card_content_add_visible, audienceLabel(card)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        NotOnCardNote()
+                    }
                 }
             } else {
                 Text(
                     text = stringResource(MR.string.profile_card_sheet_available_on),
                     style = MaterialTheme.typography.labelLarge,
                 )
+                if (shownType !in CARD_RENDERED_TYPES) NotOnCardNote()
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val pills = listOf<Triple<CardAudience, String, String?>>(
                         Triple(CardAudience.Public, stringResource(MR.string.profile_card_audience_public), null),
@@ -464,6 +473,15 @@ internal fun ContentSheet(
             )
         }
     }
+}
+
+@Composable
+private fun NotOnCardNote() {
+    Text(
+        text = stringResource(MR.string.profile_card_sheet_not_on_card),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 private fun addLabel(kind: AddKind) = when (kind) {
