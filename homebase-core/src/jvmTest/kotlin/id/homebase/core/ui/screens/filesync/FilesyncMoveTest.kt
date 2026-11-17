@@ -50,9 +50,8 @@ class FilesyncMoveTest {
     }
 
     @Test
-    fun theStateFolderNameIsNumberedAtASyncTop() {
-        val plan = planMove(listOf(node(".hbsync", folder = true)), handles, listOf(FilesyncProtocol.RootNodeId),
-            FilesyncNames.takenKeys(FilesyncProtocol.RootNodeId, emptyList()))
+    fun theStateFolderNameIsNumberedInAnyFolder() {
+        val plan = planMove(listOf(node(".hbsync", folder = true)), handles, listOf(FilesyncProtocol.RootNodeId, target), FilesyncNames.takenKeys(emptyList()))
         assertEquals(listOf(".hbsync (1)"), plan.moves.map { it.second })
     }
 

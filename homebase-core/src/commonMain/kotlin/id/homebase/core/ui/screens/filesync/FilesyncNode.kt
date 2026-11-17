@@ -63,7 +63,7 @@ data class FilesyncNode(
     internal fun takesMoves(writable: Boolean): Boolean =
         isFolder && removedMs == null && writable && nodeId != FilesyncProtocol.RecoveredFilesNodeId && !notOnComputers
 
-    internal val notOnComputers: Boolean = nameKey == FilesyncNames.stateFolderKey && FilesyncNames.isSyncTop(parentId)
+    internal val notOnComputers: Boolean = nameKey == FilesyncNames.stateFolderKey
 
     /** Set while it's in Recently deleted: nothing writes to a removed node, so its last write is its removal. */
     val removedMs: Long? get() = updatedMs.takeIf { removed }

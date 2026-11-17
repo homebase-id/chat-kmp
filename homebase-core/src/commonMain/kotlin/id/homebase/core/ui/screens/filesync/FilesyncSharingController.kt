@@ -391,7 +391,7 @@ internal class FilesyncSharingController(
         val owner = state().sharer ?: return null
         val folderId = state().sharerPath.lastOrNull()?.nodeId ?: return null
         val folder = addableFolder(folderId) ?: return null
-        val taken = sharedNodes.filter { it.parentId == folderId }.mapTo(HashSet()) { it.nameKey }
+        val taken = FilesyncNames.takenKeys(sharedNodes.filter { it.parentId == folderId })
         return FilesyncPeerTarget.Add(owner, folderId, folder, taken)
     }
 
