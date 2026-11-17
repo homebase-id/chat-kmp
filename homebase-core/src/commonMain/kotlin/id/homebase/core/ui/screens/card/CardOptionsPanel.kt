@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
@@ -228,6 +230,7 @@ private val TOOLBAR_SIDE_INSET = 0.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private const val REVEAL_MARGIN = 0.6f
 private val PHOTO_ROWS_GAP = 16.dp
+private val SIZE_GLYPH_GAP = 6.dp
 private val BLOCK_TILE_SPACING = 6.dp
 private val BLOCK_TILE_CORNER = 12.dp
 
@@ -317,6 +320,9 @@ private fun OptionControl(
             ShapeGlyph(shape.orEmpty())
         }
         CardOption.PORTRAIT_SIZE -> Column(verticalArrangement = Arrangement.spacedBy(PHOTO_ROWS_GAP)) {
+            val portraitShape = CardDesignSpecs.selectedValue(design, CardOption.PORTRAIT_SHAPE, overrides.valueOf(CardOption.PORTRAIT_SHAPE)).orEmpty()
+            // Large text needs the room; the words alone still name each size.
+            val sizeGlyphs = LocalDensity.current.fontScale <= LARGE_TEXT_SCALE
             SegmentedChoices(
                 values = CardDesignSpecs.PORTRAIT_SIZES,
                 selected = CardDesignSpecs.selectedValue(design, option, overrides.valueOf(option)),
@@ -324,6 +330,10 @@ private fun OptionControl(
                 chipHeight = chipHeight,
                 onSelect = { onOption(option, it.takeIf { v -> v != CardDesignSpecs.DEFAULT_PORTRAIT_SIZE }) },
             ) { size ->
+                if (sizeGlyphs) {
+                    SizeGlyph(portraitShape, size.orEmpty())
+                    Spacer(Modifier.width(SIZE_GLYPH_GAP))
+                }
                 SegmentLabel(stringResource(sizeLabel(size.orEmpty())))
             }
             if (CardOption.PORTRAIT_SHAPE in CardDesignSpecs.of(design)?.options.orEmpty()) {
@@ -657,6 +667,22 @@ private fun ShapeGlyph(shape: String) {
     val color = LocalContentColor.current
     Canvas(modifier = Modifier.size(GLYPH_SIZE)) {
         drawPortraitShape(shape, color)
+    }
+}
+
+// The photo drawn at each size in its picked shape, so the size row previews the portrait the shape row below shapes.
+@Composable
+private fun SizeGlyph(shape: String, size: String) {
+    val color = LocalContentColor.current
+    val scale = when (size) {
+        "small" -> 0.5f
+        "large" -> 1f
+        else -> 0.72f
+    }
+    Box(modifier = Modifier.size(GLYPH_SIZE), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.size(GLYPH_SIZE * scale)) {
+            drawPortraitShape(shape, color)
+        }
     }
 }
 

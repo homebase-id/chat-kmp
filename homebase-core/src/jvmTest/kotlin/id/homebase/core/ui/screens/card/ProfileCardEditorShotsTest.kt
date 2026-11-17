@@ -485,6 +485,44 @@ class ProfileCardEditorShotsTest {
     }
 
 
+    private val photoTool = tool("Photo size")
+    private val links = base.copy(previewDesign = CardDesign.LINKS)
+    private fun photoShot(name: String, state: ProfileCardUiState, widthDp: Int = REDMI_W, fontScale: Float = 1f, rtl: Boolean = false) =
+        Shot(name, state, EditorStep.Customise, widthDp = widthDp, heightDp = REDMI_H, fontScale = fontScale, rtl = rtl, act = photoTool)
+
+    private val k18Shots = listOf(
+        photoShot("k18-01-photo-board-default", base),
+        photoShot(
+            "k18-02-photo-board-large-rounded",
+            base.copy(previewOverrides = CardOverrides().with(CardOption.PORTRAIT_SIZE, "large").with(CardOption.PORTRAIT_SHAPE, "rounded")),
+        ),
+        photoShot("k18-03-photo-collage-small", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = CardOverrides().with(CardOption.PORTRAIT_SIZE, "small"))),
+        photoShot("k18-04-photo-dossier", base.copy(previewDesign = CardDesign.DOSSIER)),
+        photoShot("k18-05-photo-links", links),
+        photoShot("k18-06-photo-font-scale", base, fontScale = 1.6f),
+        photoShot("k18-07-photo-rtl", base, rtl = true),
+        photoShot("k18-08-photo-narrow", base, widthDp = 360),
+        photoShot("k18-09-photo-saving", base.copy(isSavingDesign = true)),
+        photoShot("k18-10-photo-long-circle", base.copy(cards = listOf(public, card(longCircle)), selectedAudience = longCircle)),
+        photoShot("k18-11-photo-wide", base, widthDp = 900),
+        Shot("k18-12-links-palette", links, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot(
+            "k18-13-links-palette-old-cloud",
+            links.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#F1F3F6")),
+            EditorStep.Customise,
+            widthDp = REDMI_W,
+            heightDp = REDMI_H,
+        ),
+        Shot("k18-14-poster-no-photo", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+    )
+
+    @Test
+    fun k18PhotoSizeRendersEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in k18Shots) render(shot, dark)
+        }
+    }
+
     @Test
     fun polishedCreateCircleSheetRendersEveryState() {
         val filled = CreateCircleUiState(open = true, name = "Climbing", emoji = "\uD83E\uDDD7", description = "Tuesday gym night")
