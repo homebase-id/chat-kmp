@@ -85,6 +85,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 import id.homebase.chat.services.collectContext
+import id.homebase.core.image.mediaSharedKey
 
 internal fun imageOnlyAction(contentType: String?, action: (() -> Unit)?): (() -> Unit)? =
     action.takeIf { contentType?.startsWith("image/") == true }
@@ -191,7 +192,7 @@ fun FullScreenMediaViewer(
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
                         showsHdr = isSettled,
                     )
                 }
@@ -218,7 +219,7 @@ fun FullScreenMediaViewer(
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
                         showsHdr = isSettled,
                     )
                 }

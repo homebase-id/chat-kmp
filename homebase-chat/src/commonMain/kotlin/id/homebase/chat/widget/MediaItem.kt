@@ -7,8 +7,6 @@ import id.homebase.chat.widget.preview.chatChipPreviewKind
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -42,9 +40,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
-import coil3.compose.AsyncImage
-import coil3.compose.LocalPlatformContext
-import coil3.request.ImageRequest
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -56,12 +51,15 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.localImageOnly
+import id.homebase.chat.services.imageStandIn
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
 import id.homebase.common.widget.VideoInfoOverlay
-import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.mediaGestures
+import id.homebase.core.image.LocalFileImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.core.ui.theme.Dimens
@@ -78,6 +76,7 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+import id.homebase.core.image.mediaSharedKey
 
 /**
  * Composable that renders a single media item based on the payload's content type.
@@ -227,46 +226,14 @@ fun MediaItem(
         }
 
         payload.isImage() -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
-            if (imageLocalContext != null) {
-                var imageModifier = if (onClick != null || onLongPress != null) {
-                    finalModifier.pointerInput(onClick, onLongPress) {
-                        detectTapGestures(
-                            onTap = { onClick?.invoke() },
-                            onLongPress = { offset -> onLongPress?.invoke(offset) },
-                        )
-                    }
-                } else {
-                    finalModifier
-                }
-                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                    with(sharedTransitionScope) {
-                        imageModifier = imageModifier.sharedBounds(
-                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            boundsTransform = { _, _ ->
-                                tween(
-                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                                    easing = FastOutSlowInEasing,
-                                )
-                            },
-                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                        )
-                    }
-                }
-                // Keyed by the file, so a rebuilt row (the real bubble replacing the placeholder) draws Coil's copy in its first frame.
-                val platformContext = LocalPlatformContext.current
-                val localImageRequest = remember(platformContext, imageLocalContext.localFilePath) {
-                    ImageRequest.Builder(platformContext)
-                        .data(imageLocalContext.localFilePath)
-                        .memoryCacheKey(imageLocalContext.localFilePath)
-                        .placeholderMemoryCacheKey(imageLocalContext.localFilePath)
-                        .build()
-                }
-                AsyncImage(
-                    model = localImageRequest,
+            val localOnly = localContext.localImageOnly(isEncrypted = true, ivPresent = payload.iv != null)
+            if (localOnly != null) {
+                LocalFileImage(
+                    localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = imageModifier,
+                    modifier = finalModifier.mediaGestures(
+                        onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope, animatedVisibilityScope,
+                    ),
                     contentScale = imageContentScale,
                 )
             } else {
@@ -275,7 +242,7 @@ fun MediaItem(
                 // Remember the image data to avoid creating a new instance on every recomposition,
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, contentType) {
+                    remember(driveId, fileId, payload.key, payload.lastModified, contentType, payload.iv != null) {
                         val payloadIv = payload.iv?.bytes ?: return@remember null
                         HomebaseImageData.from(
                             driveId = driveId,
@@ -290,6 +257,7 @@ fun MediaItem(
                 if (imageData != null) {
                     HomebaseImage(
                         imageData = imageData,
+                        standIn = localContext.imageStandIn,
                         modifier = finalModifier,
                         contentScale = imageContentScale,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
@@ -376,17 +344,8 @@ fun MediaItem(
                             videoLocalContext.thumbnailBytes.toImageBitmap()
                         }
                         if (uploadBitmap != null) {
-                            val thumbBaseModifier = Modifier.fillMaxSize()
-                            val thumbModifier = if (onClick != null || onLongPress != null) {
-                                thumbBaseModifier.pointerInput(onClick, onLongPress) {
-                                    detectTapGestures(
-                                        onTap = { onClick?.invoke() },
-                                        onLongPress = { offset -> onLongPress?.invoke(offset) },
-                                    )
-                                }
-                            } else {
-                                thumbBaseModifier
-                            }
+                            val thumbModifier = Modifier.fillMaxSize()
+                                .mediaGestures(onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope = null, animatedVisibilityScope = null)
                             Image(
                                 bitmap = uploadBitmap,
                                 contentDescription = stringResource(MR.string.chat_message_video_thumbnail),

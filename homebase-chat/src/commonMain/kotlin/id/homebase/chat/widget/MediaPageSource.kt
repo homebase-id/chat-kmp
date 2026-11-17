@@ -1,6 +1,8 @@
 package id.homebase.chat.widget
 
 import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.localImageOnly
+import id.homebase.chat.services.imageStandIn
 
 /**
  * Which image source the full-screen viewer should use for a page.
@@ -41,11 +43,12 @@ internal fun resolveMediaPageSource(
     decodedIv: ByteArray?,
     isEncrypted: Boolean = true,
 ): MediaPageSource {
-    val localPath = (localContext as? LocalAttachmentContext.Image)?.localFilePath
+    val standIn = localContext.imageStandIn
+    val localOnly = localContext.localImageOnly(isEncrypted, ivPresent = decodedIv != null)
     return when {
-        decodedIv != null -> MediaPageSource.Remote(decodedIv, standIn = localPath)
-        !isEncrypted -> MediaPageSource.Remote(iv = null, standIn = localPath) // plaintext post → no IV, not pending
-        localPath != null -> MediaPageSource.LocalFile(localPath)
+        localOnly != null -> MediaPageSource.LocalFile(localOnly)
+        decodedIv != null -> MediaPageSource.Remote(decodedIv, standIn)
+        !isEncrypted -> MediaPageSource.Remote(iv = null, standIn = standIn) // plaintext post → no IV, not pending
         rawIvPresent -> MediaPageSource.Unavailable // IV present but won't decode → corrupt
         else -> MediaPageSource.Pending // no IV yet → still uploading / not ready
     }

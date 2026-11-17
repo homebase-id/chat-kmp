@@ -5,11 +5,8 @@ import id.homebase.chat.services.builder.linkPreviews
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,11 +33,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -53,13 +48,16 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.localImageOnly
+import id.homebase.chat.services.imageStandIn
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.collectContext
 import id.homebase.chat.widget.DocumentMediaItem
 import id.homebase.chat.widget.LinkPreviewCard
 import id.homebase.chat.widget.LocationPreviewCard
-import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.mediaGestures
+import id.homebase.core.image.LocalFileImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
@@ -73,6 +71,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+import id.homebase.core.image.mediaSharedKey
 
 // Moments-specific clone of `id.homebase.chat.widget.MediaItem`, free to diverge from chat's copy.
 @Composable
@@ -199,14 +198,11 @@ fun MomentMediaItem(
         }
 
         payload.isImage() && enableZoom -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
-                imageLocalContext?.localFilePath,
+                localContext.imageStandIn,
                 driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted,
             ) {
-                // The sent copy, as everyone else sees it; the local file only while an encrypted post has no IV
-                // yet, or as the stand-in if the sent copy can't be loaded.
-                val localPath = imageLocalContext?.localFilePath?.takeIf { isEncrypted && payload.iv == null }
+                val localPath = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {
@@ -228,7 +224,7 @@ fun MomentMediaItem(
                         // pinched photo shows real detail, not an upscaled thumb.
                         loadFullPayload = true,
                     )
-                    SubSamplingImageSource.Remote(imageData, standIn = imageLocalContext?.localFilePath)
+                    SubSamplingImageSource.Remote(imageData, standIn = localContext.imageStandIn)
                 }
             }
             ZoomableSubSamplingImage(
@@ -244,43 +240,20 @@ fun MomentMediaItem(
                 // path, like chat) — see ZoomableSubSamplingImage docs.
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
-                sharedContentStateKey = "image-${fileId}-${payload.key}",
+                sharedContentStateKey = mediaSharedKey(fileId, payload.key),
                 showsHdr = showsHdr,
             )
         }
 
         payload.isImage() -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
-            if (imageLocalContext != null) {
-                var imageModifier = if (onClick != null || onLongPress != null) {
-                    finalModifier.pointerInput(onClick, onLongPress) {
-                        detectTapGestures(
-                            onTap = { onClick?.invoke() },
-                            onLongPress = { offset -> onLongPress?.invoke(offset) },
-                        )
-                    }
-                } else {
-                    finalModifier
-                }
-                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                    with(sharedTransitionScope) {
-                        imageModifier = imageModifier.sharedBounds(
-                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            boundsTransform = { _, _ ->
-                                tween(
-                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                                    easing = FastOutSlowInEasing,
-                                )
-                            },
-                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                        )
-                    }
-                }
-                AsyncImage(
-                    model = imageLocalContext.localFilePath,
+            val localOnly = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
+            if (localOnly != null) {
+                LocalFileImage(
+                    localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = imageModifier,
+                    modifier = finalModifier.mediaGestures(
+                        onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope, animatedVisibilityScope,
+                    ),
                     contentScale = imageContentScale,
                 )
             } else {
@@ -305,6 +278,7 @@ fun MomentMediaItem(
 
                 HomebaseImage(
                     imageData = imageData,
+                    standIn = localContext.imageStandIn,
                     stepUpToPayload = stepUpToPayload,
                     modifier = finalModifier,
                     contentScale = imageContentScale,
@@ -382,17 +356,8 @@ fun MomentMediaItem(
                         videoLocalContext.thumbnailBytes.toImageBitmap()
                     }
                     if (uploadBitmap != null) {
-                        val thumbBaseModifier = Modifier.fillMaxSize()
-                        val thumbModifier = if (onClick != null || onLongPress != null) {
-                            thumbBaseModifier.pointerInput(onClick, onLongPress) {
-                                detectTapGestures(
-                                    onTap = { onClick?.invoke() },
-                                    onLongPress = { offset -> onLongPress?.invoke(offset) },
-                                )
-                            }
-                        } else {
-                            thumbBaseModifier
-                        }
+                        val thumbModifier = Modifier.fillMaxSize()
+                            .mediaGestures(onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope = null, animatedVisibilityScope = null)
                         Image(
                             bitmap = uploadBitmap,
                             contentDescription = stringResource(MR.string.chat_message_video_thumbnail),

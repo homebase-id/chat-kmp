@@ -23,9 +23,9 @@ import kotlin.uuid.Uuid
  * Entries are keyed by (messageId, payloadKey) so each payload in a multi-
  * attachment message gets its own preview.
  *
- * Entries persist for the app session once upload completes, so the bubble
- * keeps showing the crisp local bitmap forever rather than swapping to the
- * progressively-loaded server copy.
+ * An image's entry is shown on its own only until the sent copy can be requested ([localImageOnly]). After that,
+ * the sender sees what everyone else gets, from the cache seeded at send, and the entry is the [imageStandIn]: drawn
+ * while the sent copy loads, so there's no blurred flash, and if it can't load.
  */
 sealed interface LocalAttachmentContext {
     val aspectRatio: Float?
@@ -163,3 +163,14 @@ fun LocalAttachmentContextStore.collectContext(messageId: Uuid, payloadKey: Stri
     val initial = remember(this, messageId, payloadKey) { get(messageId, payloadKey) }
     return flow.collectAsStateWithLifecycle(initialValue = initial)
 }
+
+/**
+ * The sender's own image file, when only it can be shown: an encrypted payload with no IV yet can't be requested, and
+ * a plaintext upload (a public post) isn't seeded into the cache, so nothing tells when the server has it.
+ */
+fun LocalAttachmentContext?.localImageOnly(isEncrypted: Boolean, ivPresent: Boolean): String? =
+    imageStandIn?.takeIf { !isEncrypted || !ivPresent }
+
+/** The sender's own image file, to stand in for the sent copy while it loads or if it can't. */
+val LocalAttachmentContext?.imageStandIn: String?
+    get() = (this as? LocalAttachmentContext.Image)?.localFilePath
