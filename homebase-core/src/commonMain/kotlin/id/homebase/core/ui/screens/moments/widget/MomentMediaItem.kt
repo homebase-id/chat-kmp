@@ -53,6 +53,8 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.localImageOnly
+import id.homebase.chat.services.imageStandIn
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.collectContext
 import id.homebase.chat.widget.DocumentMediaItem
@@ -199,14 +201,13 @@ fun MomentMediaItem(
         }
 
         payload.isImage() && enableZoom -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
-                imageLocalContext?.localFilePath,
+                localContext.imageStandIn,
                 driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted,
             ) {
                 // The sent copy, as everyone else sees it; the local file only while an encrypted post has no IV
                 // yet, or as the stand-in if the sent copy can't be loaded.
-                val localPath = imageLocalContext?.localFilePath?.takeIf { isEncrypted && payload.iv == null }
+                val localPath = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {
@@ -228,7 +229,7 @@ fun MomentMediaItem(
                         // pinched photo shows real detail, not an upscaled thumb.
                         loadFullPayload = true,
                     )
-                    SubSamplingImageSource.Remote(imageData, standIn = imageLocalContext?.localFilePath)
+                    SubSamplingImageSource.Remote(imageData, standIn = localContext.imageStandIn)
                 }
             }
             ZoomableSubSamplingImage(
@@ -250,8 +251,8 @@ fun MomentMediaItem(
         }
 
         payload.isImage() -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
-            if (imageLocalContext != null) {
+            val localOnly = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
+            if (localOnly != null) {
                 var imageModifier = if (onClick != null || onLongPress != null) {
                     finalModifier.pointerInput(onClick, onLongPress) {
                         detectTapGestures(
@@ -278,7 +279,7 @@ fun MomentMediaItem(
                     }
                 }
                 AsyncImage(
-                    model = imageLocalContext.localFilePath,
+                    model = localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
                     modifier = imageModifier,
                     contentScale = imageContentScale,
@@ -305,6 +306,7 @@ fun MomentMediaItem(
 
                 HomebaseImage(
                     imageData = imageData,
+                    standIn = localContext.imageStandIn,
                     stepUpToPayload = stepUpToPayload,
                     modifier = finalModifier,
                     contentScale = imageContentScale,

@@ -37,6 +37,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
+import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
 import coil3.compose.SubcomposeAsyncImage
@@ -94,6 +95,11 @@ fun HomebaseImage(
     stepUpToPayload: Boolean = true,
     /** Shows only the embedded preview and fetches nothing, unless the thumbnail is already in memory. */
     deferLoad: Boolean = false,
+    /**
+     * The sender's own file for an image they sent: drawn sharp instead of the blurred preview while the sent copy
+     * loads, and instead of the error icon if it can't, so their bubble never flashes or breaks.
+     */
+    standIn: String? = null,
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
@@ -175,6 +181,22 @@ fun HomebaseImage(
         }
     }
 
+    // Keyed by the file, like the bubble's own local image, so a rebuilt row draws Coil's copy in its first frame.
+    @Composable
+    fun StandIn(path: String, modifier: Modifier) {
+        val request = remember(platformContext, path) {
+            ImageRequest.Builder(platformContext).data(path).memoryCacheKey(path).placeholderMemoryCacheKey(path).build()
+        }
+        AsyncImage(
+            model = request,
+            contentDescription = contentDescription,
+            contentScale = contentScale,
+            alignment = alignment,
+            colorFilter = colorFilter,
+            modifier = modifier,
+        )
+    }
+
     @Composable
     fun PreviewOrPlaceholder(modifier: Modifier, colorFilter: ColorFilter? = null) {
         if (previewBitmap != null) {
@@ -194,7 +216,8 @@ fun HomebaseImage(
     val deferred = deferLoad && !imageData.isPending &&
         remember(thumbnailKey) { imageLoader.memoryCache?.get(MemoryCache.Key(thumbnailKey)) == null }
     if (deferred) {
-        PreviewOrPlaceholder(customModified.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }), colorFilter)
+        if (standIn != null) StandIn(standIn, customModified)
+        else PreviewOrPlaceholder(customModified.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }), colorFilter)
         return
     }
 
@@ -275,12 +298,15 @@ fun HomebaseImage(
                         alignment = alignment,
                         modifier = Modifier.fillMaxSize().then(blurMod)
                     )
+                } else if (standIn != null) {
+                    StandIn(standIn, Modifier.fillMaxSize())
                 } else {
                     PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
                 }
             }
 
-            is AsyncImagePainter.State.Empty -> PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
+            is AsyncImagePainter.State.Empty ->
+                if (standIn != null) StandIn(standIn, Modifier.fillMaxSize()) else PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
 
             is AsyncImagePainter.State.Success -> {
                 SubcomposeAsyncImageContent(
@@ -290,7 +316,9 @@ fun HomebaseImage(
                 )
             }
 
-            is AsyncImagePainter.State.Error -> {
+            is AsyncImagePainter.State.Error -> if (standIn != null) {
+                StandIn(standIn, Modifier.fillMaxSize())
+            } else {
                 val errorState = state as AsyncImagePainter.State.Error
                 println("HomebaseImage Error: ${errorState.result.throwable.message}")
 

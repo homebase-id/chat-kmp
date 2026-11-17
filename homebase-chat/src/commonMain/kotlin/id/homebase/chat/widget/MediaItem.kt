@@ -56,6 +56,8 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.localImageOnly
+import id.homebase.chat.services.imageStandIn
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
@@ -227,8 +229,8 @@ fun MediaItem(
         }
 
         payload.isImage() -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
-            if (imageLocalContext != null) {
+            val localOnly = localContext.localImageOnly(isEncrypted = true, ivPresent = payload.iv != null)
+            if (localOnly != null) {
                 var imageModifier = if (onClick != null || onLongPress != null) {
                     finalModifier.pointerInput(onClick, onLongPress) {
                         detectTapGestures(
@@ -256,11 +258,11 @@ fun MediaItem(
                 }
                 // Keyed by the file, so a rebuilt row (the real bubble replacing the placeholder) draws Coil's copy in its first frame.
                 val platformContext = LocalPlatformContext.current
-                val localImageRequest = remember(platformContext, imageLocalContext.localFilePath) {
+                val localImageRequest = remember(platformContext, localOnly) {
                     ImageRequest.Builder(platformContext)
-                        .data(imageLocalContext.localFilePath)
-                        .memoryCacheKey(imageLocalContext.localFilePath)
-                        .placeholderMemoryCacheKey(imageLocalContext.localFilePath)
+                        .data(localOnly)
+                        .memoryCacheKey(localOnly)
+                        .placeholderMemoryCacheKey(localOnly)
                         .build()
                 }
                 AsyncImage(
@@ -290,6 +292,7 @@ fun MediaItem(
                 if (imageData != null) {
                     HomebaseImage(
                         imageData = imageData,
+                        standIn = localContext.imageStandIn,
                         modifier = finalModifier,
                         contentScale = imageContentScale,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
