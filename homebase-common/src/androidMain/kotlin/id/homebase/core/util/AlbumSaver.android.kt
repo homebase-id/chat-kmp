@@ -16,6 +16,7 @@ import id.homebase.api.util.freeFileName
 import id.homebase.api.util.safeFileName
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 
@@ -111,11 +112,10 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
         }.start()
     }
 
-    // API 29+: MediaStore needs no permission. Below that, a finished file goes through [save] and its permission check.
-    override suspend fun target(name: String, asked: Boolean): AlbumTarget {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return super.target(name, asked)
-        val safeName = safeFileName(name)
-        val (uri, relativePath) = withContext(Dispatchers.IO) { insertPending(safeName, detectContentTypeFromExtensionOrHint(safeName)) }
+    override suspend fun target(name: String): AlbumTarget {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return super.target(name)
+        // Non-cancellable: once inserted, the entry must reach the caller, whose discard removes it.
+        val (uri, relativePath) = withContext(Dispatchers.IO + NonCancellable) { insertPending(name, detectContentTypeFromExtensionOrHint(name)) }
         return AlbumTarget.InPlace(
             path = uri.toString(),
             publish = { withContext(Dispatchers.IO) { publish(uri) }; relativePath },

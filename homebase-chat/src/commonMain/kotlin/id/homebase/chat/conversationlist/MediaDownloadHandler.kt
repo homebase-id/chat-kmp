@@ -10,9 +10,7 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.FileTooLargeForMemoryException
 import id.homebase.api.file.extensionForContentType
-import id.homebase.api.util.safeFileName
 import id.homebase.api.video.VideoMetadata
-import id.homebase.api.video.downloadHlsAsMp4
 import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.agentui.agentUiImagePayloads
 import id.homebase.chat.conversationlist.ConversationListUiEvent.FileSaved
@@ -36,8 +34,7 @@ import id.homebase.core.util.AlbumSaveResult
 import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.isMobile
-import id.homebase.core.util.saveFileName
-import id.homebase.core.util.saveVideo
+import id.homebase.core.util.saveReceived
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_convert_video
@@ -66,6 +63,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
+import org.jetbrains.compose.resources.StringResource
 
 /**
  * Handles media-related action arms (share / download / decrypt / open in
@@ -226,28 +224,15 @@ internal class MediaDownloadHandler(
                         "encrypted payload requires key header"
                     )).bytes
 
-                val fullName = saveFileName(
-                    payload.filename(), payload.key, payload.contentType
-                )
-                val filePath =
-                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
-
-                val success = withContext(ioDispatcher) {
-                    driveFileProvider.streamPayloadDecryptedToPath(
-                        driveId = chatTargetDrive.alias,
-                        fileId = message.fileId,
-                        key = action.payloadKey,
-                        keyHeader = KeyHeader(payloadIv, message.keyHeader.aesKey),
-                        outputPath = filePath,
-                        fileOps = fileOperationsProvider,
+                val saved = withContext(ioDispatcher) {
+                    albumSaver.saveReceived(
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, message.fileId, action.payloadKey,
+                        KeyHeader(payloadIv, message.keyHeader.aesKey), payload.filename(), payload.contentType, hls = false,
                     )
                 }
-
-                if (success) {
-                    sendEvent(SaveFileToDevice(filePath, fullName))
-                } else {
-                    sendEvent(ShowErrorMessage(MR.string.chat_error_download_file))
-                }
+                report(saved, MR.string.chat_error_download_file)
+            } catch (e: FileTooLargeForMemoryException) {
+                sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
             } catch (e: Exception) {
                 sendEvent(
                     ShowErrorMessage(
@@ -275,43 +260,13 @@ internal class MediaDownloadHandler(
                     keyHeader = action.keyHeader,
                 )
 
-                if (hlsMetadata != null) {
-                    val saved = withContext(ioDispatcher) {
-                        albumSaver.saveVideo(fileOperationsProvider, action.payload.filename()) { path ->
-                            driveFileProvider.downloadHlsAsMp4(
-                                chatTargetDrive.alias, action.fileId, action.payloadKey, action.keyHeader, fileOperationsProvider, path,
-                            )
-                        }
-                    }
-                    when (saved) {
-                        is AlbumSaveResult.Saved -> sendEvent(FileSaved(saved.location))
-                        AlbumSaveResult.Cancelled -> Unit
-                        AlbumSaveResult.WriteFailed -> sendEvent(ShowErrorMessage(MR.string.chat_error_convert_video))
-                    }
-                } else {
-                    val fullName = saveFileName(
-                        action.payload.filename(), action.payloadKey, action.payload.contentType
+                val saved = withContext(ioDispatcher) {
+                    albumSaver.saveReceived(
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payloadKey,
+                        action.keyHeader, action.payload.filename(), action.payload.contentType, hls = hlsMetadata != null,
                     )
-                    val filePath =
-                        "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
-
-                    val success = withContext(ioDispatcher) {
-                        driveFileProvider.streamPayloadDecryptedToPath(
-                            driveId = chatTargetDrive.alias,
-                            fileId = action.fileId,
-                            key = action.payloadKey,
-                            keyHeader = action.keyHeader,
-                            outputPath = filePath,
-                            fileOps = fileOperationsProvider,
-                        )
-                    }
-
-                    if (success) {
-                        sendEvent(SaveFileToDevice(filePath, fullName))
-                    } else {
-                        sendEvent(ShowErrorMessage(MR.string.chat_error_download_file))
-                    }
                 }
+                report(saved, if (hlsMetadata != null) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
             } catch (e: FileTooLargeForMemoryException) {
                 sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
             } catch (e: Exception) {
@@ -320,6 +275,14 @@ internal class MediaDownloadHandler(
                 messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles - fileKey) }
             }
         }
+    }
+
+    // Refused: the album won't take it (Android 9 without storage access), so the screen's save flow offers it instead.
+    private fun report(saved: AlbumSaveResult, failed: StringResource) = when (saved) {
+        is AlbumSaveResult.Saved -> sendEvent(FileSaved(saved.location))
+        AlbumSaveResult.Cancelled -> Unit
+        AlbumSaveResult.WriteFailed -> sendEvent(ShowErrorMessage(failed))
+        is AlbumSaveResult.Refused -> sendEvent(SaveFileToDevice(saved.file, saved.name))
     }
 
     private fun closePreviewOf(fileId: Uuid, payloadKey: String) {

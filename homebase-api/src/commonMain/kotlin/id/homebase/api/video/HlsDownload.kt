@@ -8,8 +8,8 @@ import kotlin.uuid.Uuid
 
 /**
  * A received HLS video, downloaded and remuxed into an MP4 at [outputPath] (a file, or a `content://` entry [fileOps]
- * can write). False, logged, when the payload isn't there or isn't H.264/AAC in MPEG-TS; nothing is left at
- * [outputPath] then. A failed download, decrypt or write throws, as any download does.
+ * can write). False, logged, when the payload isn't there or isn't H.264/AAC in MPEG-TS; a file at [outputPath] is then
+ * deleted, a `content://` entry is the caller's to discard. A failed download, decrypt or write throws.
  */
 suspend fun DriveFileProvider.downloadHlsAsMp4(
     driveId: Uuid,

@@ -47,7 +47,7 @@ Full reads of the file per operation, with the code that ships. Header reads (du
 | Plain MP4, under 5 MB | **1** of the compressed file: encrypt and hash in one pass | **1** | **1** | **1** |
 | **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
 | Photos backup at Original | **1** (read once at hand-off) | | | |
-| Saving a received video to the gallery | **0**: no `.ts` is written; the decrypted download is remuxed as it arrives, its index written after the samples | **0** | **0** | **0** |
+| Saving a received video to the gallery | **0**: no `.ts` is written; the decrypted download is remuxed as it arrives, its index written after the samples, straight into the MediaStore entry (`AlbumSaver.saveWritten`) | **1** of the MP4: written to a scratch file that Photos imports | **0**: straight into the file the Save dialog chose | **1** of the MP4: the browser download reads it |
 | An HDR photo at HD or Original | the photo is decoded as before; its gain map, the file's tail (a few percent of it), is read **1** more time on its own | same | same | same |
 | Shrinking a GIF sticker | the file is read **1** time into memory, then decoded **2** times per ladder step (palette, then encode), at most 3 steps | same | same | same |
 

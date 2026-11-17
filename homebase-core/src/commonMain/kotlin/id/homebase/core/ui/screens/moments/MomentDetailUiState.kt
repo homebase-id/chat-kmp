@@ -405,11 +405,7 @@ sealed interface MomentDetailUiEvent {
     ) : MomentDetailUiEvent
     data class ShareFailed(val message: String?) : MomentDetailUiEvent
 
-    /**
-     * Decrypted (and, for HLS, remuxed) payload is written to [filePath]; the
-     * screen should hand it + [suggestedName] to `FileSystemHandler.saveFile`
-     * to write it into the device gallery / Downloads.
-     */
+    /** The album refused the save (Android 9 without storage access): the screen offers [filePath] through `FileSystemHandler.saveFile`. */
     data class MediaSaveReady(
         val filePath: String,
         val suggestedName: String,

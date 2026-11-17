@@ -12,10 +12,8 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
-import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.extensionForContentType
-import id.homebase.api.util.safeFileName
 import id.homebase.api.video.VideoMetadata
 import id.homebase.api.video.downloadHlsAsMp4
 import id.homebase.api.video.videoMetadataFrom
@@ -40,8 +38,7 @@ import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.AlbumSaveResult
 import id.homebase.core.util.AlbumSaver
-import id.homebase.core.util.saveFileName
-import id.homebase.core.util.saveVideo
+import id.homebase.core.util.saveReceived
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -705,7 +702,7 @@ class MomentDetailViewModel(
                 )
                 val sharePath = if (hlsMetadata != null) {
                     // The share sheet takes a finished file.
-                    val mp4Path = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)}/hlsdl_${Uuid.random().toString().take(8)}.mp4"
+                    val mp4Path = fileOperationsProvider.createShareOutboundPath(".mp4")
                     val remuxed = withContext(ioDispatcher) {
                         driveFileProvider.downloadHlsAsMp4(moment.driveId, moment.fileId, payloadKey, keyHeader, fileOperationsProvider, mp4Path)
                     }
@@ -740,16 +737,8 @@ class MomentDetailViewModel(
     }
 
     /**
-     * "Save current" — decrypt the visible carousel payload to a cache file and
-     * surface its path so the screen can write it into the device gallery via
-     * `FileSystemHandler.saveFile`. Mirrors `MediaDownloadHandler`'s download
-     * arms on the chat side: an HLS (segmented) video is remuxed to a playable
-     * MP4 first (a raw .ts segment saved as-is wouldn't open in Photos); images
-     * and progressive MP4s stream straight to the cache file.
-     *
-     * [isSavingMedia] gates the overflow-menu spinner over the whole
-     * decrypt/remux — the device write that follows (driven off
-     * [MomentDetailUiEvent.MediaSaveReady]) is near-instant.
+     * "Save current": the visible payload saved through the shared album path ([saveReceived]); an HLS video is remuxed
+     * into an MP4 on the way. [isSavingMedia] gates the overflow-menu spinner over all of it.
      */
     @OptIn(ExperimentalEncodingApi::class)
     private fun saveMedia(payloadKey: String) {
@@ -772,37 +761,20 @@ class MomentDetailViewModel(
                     fileId = moment.fileId,
                     keyHeader = keyHeader,
                 )
-                if (hlsMetadata != null) {
-                    val saved = withContext(ioDispatcher) {
-                        albumSaver.saveVideo(fileOperationsProvider, payload.filename()) { path ->
-                            driveFileProvider.downloadHlsAsMp4(moment.driveId, moment.fileId, payloadKey, keyHeader, fileOperationsProvider, path)
-                        }
-                    }
-                    when (saved) {
-                        is AlbumSaveResult.Saved -> _events.tryEmit(MomentDetailUiEvent.MediaSaved(saved.location))
-                        AlbumSaveResult.Cancelled -> Unit
-                        AlbumSaveResult.WriteFailed -> _events.tryEmit(MomentDetailUiEvent.MediaSaveFailed("Could not convert video"))
-                    }
-                } else {
-                    val fullName = saveFileName(
-                        payload.filename(), payloadKey, payload.contentType,
+                val saved = withContext(ioDispatcher) {
+                    albumSaver.saveReceived(
+                        driveFileProvider, fileOperationsProvider, moment.driveId, moment.fileId, payloadKey, keyHeader,
+                        payload.filename(), payload.contentType, hls = hlsMetadata != null,
                     )
-                    val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
-                    val success = withContext(ioDispatcher) {
-                        driveFileProvider.streamPayloadDecryptedToPath(
-                            driveId = moment.driveId,
-                            fileId = moment.fileId,
-                            key = payloadKey,
-                            keyHeader = keyHeader,
-                            outputPath = filePath,
-                            fileOps = fileOperationsProvider,
-                        )
-                    }
-                    if (!success) {
-                        _events.tryEmit(MomentDetailUiEvent.MediaSaveFailed("Could not download file"))
-                        return@launch
-                    }
-                    _events.tryEmit(MomentDetailUiEvent.MediaSaveReady(filePath, fullName))
+                }
+                when (saved) {
+                    is AlbumSaveResult.Saved -> _events.tryEmit(MomentDetailUiEvent.MediaSaved(saved.location))
+                    AlbumSaveResult.Cancelled -> Unit
+                    AlbumSaveResult.WriteFailed -> _events.tryEmit(
+                        MomentDetailUiEvent.MediaSaveFailed(if (hlsMetadata != null) "Could not convert video" else "Could not download file"),
+                    )
+                    // The album won't take it (Android 9 without storage access): the screen's save flow offers it instead.
+                    is AlbumSaveResult.Refused -> _events.tryEmit(MomentDetailUiEvent.MediaSaveReady(saved.file, saved.name))
                 }
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "saveMedia failed: ${t.message}" }
