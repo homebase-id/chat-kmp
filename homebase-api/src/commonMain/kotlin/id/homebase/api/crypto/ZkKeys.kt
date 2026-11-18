@@ -24,6 +24,7 @@ internal inline fun <T> opening(open: () -> T): T =
 object ZkLock {
     private const val IV_LENGTH = 12
     private const val TAG_LENGTH = 16
+    const val OVERHEAD = IV_LENGTH + TAG_LENGTH
 
     suspend fun lock(data: ByteArray, key: ByteArray): ByteArray {
         val iv = ByteArrayUtil.getRndByteArray(IV_LENGTH)
@@ -31,7 +32,7 @@ object ZkLock {
     }
 
     suspend fun open(locked: ByteArray, key: ByteArray): ByteArray {
-        if (locked.size <= IV_LENGTH + TAG_LENGTH) throw ZkOpenException("Not a zkLock value")
+        if (locked.size <= OVERHEAD) throw ZkOpenException("Not a zkLock value")
         return opening { AesGcm.decrypt(locked.copyOfRange(IV_LENGTH, locked.size), key, locked.copyOf(IV_LENGTH)) }
     }
 }

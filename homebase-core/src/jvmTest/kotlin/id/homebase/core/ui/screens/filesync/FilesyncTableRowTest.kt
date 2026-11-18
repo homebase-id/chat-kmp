@@ -124,7 +124,7 @@ class FilesyncTableRowTest {
         val actions = mutableListOf<FilesyncUiAction>()
         val restoring = mutableListOf<FilesyncNode>()
         val browser = FilesyncBrowserActions(onAction = { actions += it }, onAskRestore = { restoring += it })
-        val deleted = node.copy(removed = true, updatedMs = 1)
+        val deleted = node.copy(removed = true, versionMs = 1)
         listOf(node, folder, deleted).forEach(browser::click)
         assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.NodeClicked(node), FilesyncUiAction.NodeClicked(folder)), actions)
         assertEquals(listOf(deleted), restoring)

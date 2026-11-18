@@ -8,16 +8,21 @@ import id.homebase.api.client.drives.upload.cleanupHlsScratch
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
-import co.touchlab.kermit.Logger
 import id.homebase.api.crypto.ByteArrayUtil
-import id.homebase.api.crypto.encryptFileStreaming
+import id.homebase.api.client.drives.files.PayloadHash
+import id.homebase.api.crypto.encryptStreaming
+import id.homebase.api.crypto.slicedFlow
+import id.homebase.api.media.MediaMetadataStripper
+import kotlinx.coroutines.flow.Flow
+import id.homebase.api.crypto.encryptWithPayloadHash
+import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
-import id.homebase.api.lib.image.ImageFormatDetector
-import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.video.VideoPayloadProgressPhase
 import id.homebase.api.video.VideoPayloadProcessor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -28,19 +33,45 @@ class PayloadBundleEncryptionService(
     private val videoProcessor: VideoPayloadProcessor,
     private val eventBus: EventBus,
 ) : PayloadBundleEncryptor {
+    private val stripper = MediaMetadataStripper(fileOps)
+
+    override suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle {
+        if (bundle == null) return EMPTY_BUNDLE
+        // Video processing (compress, segment) only exists encrypted, and a raw phone video must never go out as is.
+        require(bundle.payloads.none { it.contentType.startsWith("video/") && !it.skipVideoProcessing }) {
+            "an unencrypted upload can't carry a video yet (#2481)"
+        }
+        requireSources(bundle)
+        val staged = mutableListOf<String>()
+        try {
+            // Always a copy: the outbox deletes a row's payload files once sent, and the source may be the person's own.
+            val payloads = bundle.payloads.map { payload ->
+                val path = fileOps.createOutboxStagingPath("public_", ".bin")
+                staged += path
+                fileOps.writeStream(path, plaintextOf(payload, STAGE_CHUNK))
+                payload.copy(filePath = path)
+            }
+            return bundle.copy(payloads = payloads)
+        } catch (e: Throwable) {
+            staged.forEach { runCatching { fileOps.deleteTempFile(it) } }
+            throw e
+        }
+    }
+
+    override suspend fun discard(bundle: PayloadBundle) = withContext(NonCancellable) {
+        bundle.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+        cleanupHlsScratch(bundle.payloads)
+    }
 
     override suspend fun encryptBundle(
         uniqueId: Uuid,
         bundle: PayloadBundle?,
         aesKey: SecureByteArray,
-        scope: CoroutineScope
+        scope: CoroutineScope,
+        hashes: ContentHashes?,
     ): PayloadBundle {
 
-        if (bundle == null) {
-            return PayloadBundle(
-                payloads = emptyList(), thumbnails = emptyList(), previewThumbs = emptyList()
-            )
-        }
+        if (bundle == null) return EMPTY_BUNDLE
 
         // Fail soft: these raw sources are disposable pre-encryption temps. If one was
         // swept by the CacheSweeper, OS-evicted, or had its content://`/`ph:// grant
@@ -51,9 +82,11 @@ class PayloadBundleEncryptionService(
         // resolved+streamed inside VideoPayloadProcessor (and can be web blob URLs that
         // aren't probe-able as files), so they're left to their own failure surface;
         // encryptFile re-checks per file below to close the swept-mid-send race.
-        for (payload in bundle.payloads) {
-            if (!payload.contentType.startsWith("video/") && !fileOps.sourceExists(payload.filePath)) {
-                throw SourceUnavailableException(payload.filePath)
+        requireSources(bundle)
+        hashes?.expected?.keys?.forEach { key ->
+            val payload = bundle.payloads.singleOrNull { it.key == key }
+            require(payload != null && !payload.isPreEncrypted && (payload.skipVideoProcessing || !payload.contentType.startsWith("video/"))) {
+                "payload $key can't be checked against its hash: it's missing, already encrypted or transcoded"
             }
         }
 
@@ -66,13 +99,18 @@ class PayloadBundleEncryptionService(
             var index = 0;
             for (payload in bundle.payloads) {
 
+                // Its caller encrypted it with this key and its own IV, and vouches for its bytes.
+                val preEncryptedIv = payload.iv?.takeIf { payload.isPreEncrypted }
                 // payloads get their own IV
                 val keyHeader = KeyHeader(
                     aesKey = aesKey,
-                    iv = ByteArrayUtil.getRndByteArray(16)
+                    iv = preEncryptedIv ?: ByteArrayUtil.getRndByteArray(16)
                 )
 
-                if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
+                if (preEncryptedIv != null) {
+                    newPayloads += payload
+                    newThumbnails += bundle.thumbnails.filter { it.key == payload.key }.map { it.copy(thumbnailBytes = encryptBytes(it.thumbnailBytes, keyHeader)) }
+                } else if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
 
                     val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
                         scope.launch {
@@ -91,7 +129,8 @@ class PayloadBundleEncryptionService(
                         payload = payload,
                         keyHeader = keyHeader,
                         onProgress = progress,
-                        descriptorContentPayloadKey = "${HomebaseProtocol.PayloadDescriptorKeyPrefix}$index",
+                        descriptorContentPayloadKey = HomebaseProtocol.payloadDescriptorKey(index),
+                        playlistPayloadKey = HomebaseProtocol.playlistPayloadKey(index),
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,
                         inputBlobUrl = payload.inputBlobUrl,
@@ -101,15 +140,12 @@ class PayloadBundleEncryptionService(
                     newPayloads += result.payloads
                     newThumbnails += result.thumbnails
                 } else {
-                    val sourcePath = scrubImageMetadata(payload)
-                    val encryptedFile = encryptFile(sourcePath, keyHeader)
-                    if (sourcePath != payload.filePath) {
-                        runCatching { fileOps.deleteTempFile(sourcePath) }
-                    }
+                    val encrypted = encryptFile(payload, keyHeader, hashes)
                     newPayloads += payload.copy(
-                        filePath = encryptedFile,
+                        filePath = encrypted.path,
                         iv = keyHeader.iv,
-                        isPreEncrypted = true
+                        isPreEncrypted = true,
+                        hash = encrypted.hash,
                     )
 
                     val encryptedThumbnails =
@@ -127,11 +163,7 @@ class PayloadBundleEncryptionService(
             // or a video whose transcode failed (VideoCompressionFailedException). Reap the
             // encrypted temps produced so far so the failed send leaves no orphaned
             // enc*/video temps, then rethrow to fail soft.
-            newPayloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
-            // The per-file delete above reaps a staged HLS index.ts but leaves its
-            // hls_<uuid>/ parent (and sibling playlist). In the durable staging dir that
-            // would linger until the idle reap instead of the next startup sweep (#842).
-            runCatching { cleanupHlsScratch(newPayloads) }
+            discard(bundle.copy(payloads = newPayloads))
             throw e
         }
 
@@ -140,56 +172,35 @@ class PayloadBundleEncryptionService(
         )
     }
 
-    /**
-     * Returns a path to [payload]'s bytes with EXIF/XMP metadata removed, or its own
-     * `filePath` when there was nothing to strip. The caller reaps the temp.
-     *
-     * Images are uploaded byte-for-byte — nothing on the send path re-encodes them — so a
-     * camera JPEG otherwise reached the recipient carrying GPS, capture time and camera
-     * serial (#1297). Stripping the metadata segments keeps the compressed pixel data
-     * bit-identical, unlike a re-encode.
-     *
-     * Fail-soft by design: a file that can't be read, isn't a format the scrubber handles, or
-     * couldn't be parsed goes out as it is rather than failing the send. The cost of that is a
-     * leak, not a crash, so it is logged loudly.
-     */
-    private suspend fun scrubImageMetadata(payload: PayloadFile): String {
-        if (!payload.contentType.startsWith("image/")) return payload.filePath
-        val original = try {
-            fileOps.readFileBytes(payload.filePath)
-        } catch (t: Throwable) {
-            Logger.w(throwable = t, tag = TAG) {
-                "metadata scrub skipped — could not read ${payload.filePath}"
-            }
-            return payload.filePath
-        }
-        val why = when (val outcome = ImageMetadataScrubber.scrubWithOutcome(original)) {
-            is ImageMetadataScrubber.Outcome.Scrubbed -> return fileOps.writeBytesToTempFile(outcome.bytes, "scrubbed_", ".img")
-            ImageMetadataScrubber.Outcome.NothingToStrip -> return payload.filePath
-            ImageMetadataScrubber.Outcome.UnsupportedFormat -> "isn't a format the scrubber handles"
-            ImageMetadataScrubber.Outcome.Unparseable -> "couldn't be parsed"
-        }
-        Logger.w(tag = TAG) {
-            "metadata scrub skipped — ${payload.contentType} (sniffed ${ImageFormatDetector.detectFormat(original)}) " +
-                "$why; any EXIF/XMP goes out intact"
-        }
-        return payload.filePath
-    }
+    private class Encrypted(val path: String, val hash: PayloadHash?)
 
-    private suspend fun encryptFile(
-        inputFile: String, keyHeader: KeyHeader
-    ): String {
+    private suspend fun encryptFile(payload: PayloadFile, keyHeader: KeyHeader, hashes: ContentHashes?): Encrypted {
         // Defense-in-depth for the swept-mid-send race: the up-front probe in
         // encryptBundle already rejected a missing source, but it could be swept
         // between that probe and this read. A typed throw keeps the send fail-soft.
-        if (!fileOps.sourceExists(inputFile)) throw SourceUnavailableException(inputFile)
+        if (!fileOps.sourceExists(payload.filePath)) throw SourceUnavailableException(payload.filePath)
+        val plaintext = plaintextOf(payload)
 
         // The durable outbox staging dir, not upload-temp: this file rides an outbox row until
         // the send completes and must survive sweeps; the outbox reaps it on success or drop.
         val path = fileOps.createOutboxStagingPath(prefix = "enc", suffix = ".encrypted")
-        fileOps.encryptFileStreaming(inputFile, path, keyHeader)
+        if (hashes == null) {
+            fileOps.encryptStreaming(plaintext, path, keyHeader)
+            return Encrypted(path, null)
+        }
+        val hash = fileOps.encryptWithPayloadHash(plaintext, path, keyHeader, hashes.algorithm)
+        val expected = hashes.expected[payload.key]
+        if (expected != null && !expected.contentEquals(hash.plaintextContentHash(keyHeader))) {
+            runCatching { fileOps.deleteTempFile(path) }
+            throw ContentChangedException(payload.key)
+        }
+        return Encrypted(path, hash)
+    }
 
-        return path
+    // A stripped image is sent from the bytes the strip read; anything else streams from its file. One read either way.
+    private suspend fun plaintextOf(payload: PayloadFile, chunkSize: Int = FileOperationsProvider.DEFAULT_HEADER_BYTES): Flow<ByteArray> {
+        val stripped = if (payload.stripMetadata) stripper.image(payload.filePath, payload.contentType) else null
+        return if (stripped != null) slicedFlow(stripped, chunkSize) else fileOps.readFileAsFlow(payload.filePath, chunkSize)
     }
 
     private suspend fun encryptBytes(
@@ -198,5 +209,18 @@ class PayloadBundleEncryptionService(
     ): ByteArray {
         val encrypted = keyHeader.encryptDataAes(data = plainBytes)
         return encrypted
+    }
+
+    // Video sources are resolved and streamed by VideoPayloadProcessor (and may be web blob URLs), so they aren't probed.
+    private suspend fun requireSources(bundle: PayloadBundle) {
+        for (payload in bundle.payloads) {
+            if (!payload.contentType.startsWith("video/") && !fileOps.sourceExists(payload.filePath)) {
+                throw SourceUnavailableException(payload.filePath)
+            }
+        }
+    }
+
+    private companion object {
+        const val STAGE_CHUNK = 256 * 1024
     }
 }

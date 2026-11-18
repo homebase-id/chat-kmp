@@ -107,6 +107,11 @@ kotlin {
         jvmMain.get().dependsOn(nonWebMain)
         nativeMain.get().dependsOn(nonWebMain)
 
+        val skiaMain = create("skiaMain") { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(skiaMain)
+        nativeMain.get().dependsOn(skiaMain)
+        wasmJsMain.get().dependsOn(skiaMain)
+
         commonMain.dependencies {
             // Use api so it can be exported to Swift
             api(project(":homebase-api"))
@@ -216,6 +221,9 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(compose.desktop.currentOs)
+            implementation(libs.koin.test)
+            implementation(libs.androidx.navigationevent)
+            implementation(libs.androidx.navigationevent.compose)
         }
         iosTest.dependencies {
             implementation(libs.sqldelight.native.driver)

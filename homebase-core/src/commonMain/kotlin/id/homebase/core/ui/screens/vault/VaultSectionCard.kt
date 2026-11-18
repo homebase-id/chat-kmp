@@ -1,7 +1,11 @@
 package id.homebase.core.ui.screens.vault
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -50,6 +54,11 @@ import id.homebase.resources.vault_section_menu
 import id.homebase.resources.vault_section_move_down
 import id.homebase.resources.vault_section_move_up
 import id.homebase.resources.vault_section_rename
+import id.homebase.chat.widget.FileDropPreview
+import id.homebase.chat.widget.fileDropTarget
+import id.homebase.resources.chat_drop_files_title
+import id.homebase.resources.chat_drop_folders_title
+import io.github.vinceglb.filekit.PlatformFile
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -62,6 +71,7 @@ fun VaultSectionCard(
     onMoveDown: () -> Unit,
     onRenameSection: () -> Unit,
     onDeleteSection: () -> Unit,
+    onFilesDropped: (List<PlatformFile>) -> Unit,
     modifier: Modifier = Modifier,
     // Hoisted by the caller so the row's horizontal scroll survives the
     // full-screen overlay open/close; defaults to a local state for previews.
@@ -69,63 +79,89 @@ fun VaultSectionCard(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
+    var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
     ElevatedCard(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().fileDropTarget(
+            enabled = true,
+            onDragPreviewChanged = { dropPreview = it },
+            onFilesDropped = onFilesDropped,
+        ),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     ) {
-        Column(
-            modifier = Modifier
-                .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // Header row: title + add button + 3-dot menu
-            SectionHeader(
-                title = section.title,
-                isFirst = section.isFirst,
-                isLast = section.isLast,
-                onAddEntry = onAddEntry,
-                onMoveUp = onMoveUp,
-                onMoveDown = onMoveDown,
-                onRenameSection = onRenameSection,
-                onDeleteSection = onDeleteSection,
-            )
-
-            // Empty hint when no entries
-            if (section.entries.isEmpty()) {
-                Text(
-                    text = stringResource(MR.string.vault_section_empty_hint, section.title),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp),
+        Box {
+            Column(
+                modifier = Modifier
+                    .animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // Header row: title + add button + 3-dot menu
+                SectionHeader(
+                    title = section.title,
+                    isFirst = section.isFirst,
+                    isLast = section.isLast,
+                    onAddEntry = onAddEntry,
+                    onMoveUp = onMoveUp,
+                    onMoveDown = onMoveDown,
+                    onRenameSection = onRenameSection,
+                    onDeleteSection = onDeleteSection,
                 )
-            }
 
-            // Entry cards row
-            if (section.entries.isNotEmpty()) {
-                LazyRow(
-                    state = rowState,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(end = 4.dp),
-                ) {
-                    items(section.entries, key = { it.uniqueId }) { entry ->
-                        VaultEntryCard(
-                            modifier = Modifier.animateItem(),
-                            file = entry,
-                            sectionTitle = section.title,
-                            localAttachmentStore = localAttachmentStore,
-                            onClick = { onEntryClick(entry) },
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
+                // Empty hint when no entries
+                if (section.entries.isEmpty()) {
+                    Text(
+                        text = stringResource(MR.string.vault_section_empty_hint, section.title),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+
+                // Entry cards row
+                if (section.entries.isNotEmpty()) {
+                    LazyRow(
+                        state = rowState,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(end = 4.dp),
+                    ) {
+                        items(section.entries, key = { it.uniqueId }) { entry ->
+                            VaultEntryCard(
+                                modifier = Modifier.animateItem(),
+                                file = entry,
+                                sectionTitle = section.title,
+                                localAttachmentStore = localAttachmentStore,
+                                onClick = { onEntryClick(entry) },
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                            )
+                        }
                     }
                 }
             }
+            dropPreview?.let { SectionDropOverlay(it, Modifier.matchParentSize()) }
         }
+    }
+}
+
+@Composable
+private fun SectionDropOverlay(preview: FileDropPreview, modifier: Modifier = Modifier) {
+    val rejected = preview is FileDropPreview.Rejected
+    val accent = if (rejected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .background(accent.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
+            .border(BorderStroke(2.dp, accent), RoundedCornerShape(16.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(if (rejected) MR.string.chat_drop_folders_title else MR.string.chat_drop_files_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = accent,
+        )
     }
 }
 

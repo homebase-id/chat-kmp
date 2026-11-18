@@ -75,6 +75,6 @@ fun findMentions(text: String): List<Mention> {
     return mentions ?: emptyList()
 }
 
-/** Body-level [Mention.isIdentity]. No production caller yet; #1417's notification gate is it. */
+/** Body-level [Mention.isIdentity]. Misses mentions past the 400-code-point preview of an over-budget body. */
 fun mentionsIdentity(text: String, odinId: String): Boolean =
     findMentions(text).any { it.isIdentity(odinId) }

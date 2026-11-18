@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
@@ -115,6 +116,7 @@ class EditedItemLostAckRetryIsDroppedTest {
         reactionProvider = DriveFileGroupReactionProvider(httpClient, credentialsManager),
         databaseManager = dbm,
         credentialsManager = credentialsManager,
+        peerUploadProvider = PeerDriveUploadProvider(httpClient, credentialsManager, fileOps),
     )
 
     /** A queued *edit* on its second attempt (checkOutCount=1) — an `UpdateFile`

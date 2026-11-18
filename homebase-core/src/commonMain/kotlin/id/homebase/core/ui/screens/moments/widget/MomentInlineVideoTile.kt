@@ -65,7 +65,6 @@ import org.koin.compose.koinInject
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_play_video
 import id.homebase.resources.chat_message_video_thumbnail
@@ -196,6 +195,7 @@ fun MomentInlineVideoTile(
             payloadKey = payload.key,
             keyHeader = perPayloadKeyHeader,
             descriptorContent = payload.descriptorContent,
+            contentType = payload.contentType,
         )
     }
     val videoDescriptor = remember(payload.descriptorContent) {
@@ -254,7 +254,6 @@ fun MomentInlineVideoTile(
             descriptor = payload,
             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                 ?: previewThumbnail,
-            requestedSize = ImageSize.THUMB_MEDIUM,
             keyHeader = perPayloadKeyHeader,
         )
     }

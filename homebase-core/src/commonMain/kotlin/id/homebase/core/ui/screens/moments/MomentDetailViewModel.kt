@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.api.video.isHlsVideo
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -10,14 +11,11 @@ import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
-import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoCompressionService
-import id.homebase.api.video.VideoMetadata
-import id.homebase.core.util.extensionForMimeType
+import id.homebase.api.file.extensionForContentType
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.toChatDeliveryStatus
@@ -34,24 +32,25 @@ import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
 import id.homebase.core.settings.UserPreferences
-import id.homebase.chat.data.ConversationUiModel
+import id.homebase.core.util.AlbumSaveResult
+import id.homebase.core.util.AlbumSaver
+import id.homebase.core.util.saveReceived
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.time.Instant
-import kotlin.uuid.Uuid
 
 private const val TAG = "MomentDetailViewModel"
 
@@ -86,6 +85,7 @@ class MomentDetailViewModel(
     private val fileOperationsProvider: FileOperationsProvider,
     private val recipientLookup: MomentsRecipientLookupService,
     private val payloadDownloadService: PayloadDownloadService,
+    private val albumSaver: AlbumSaver,
 ) : ViewModel() {
 
     private val _overlay = MutableStateFlow<FullScreenOverlay?>(null)
@@ -662,17 +662,8 @@ class MomentDetailViewModel(
     }
 
     /**
-     * Decrypt the selected payload to a cleartext file and surface it (with the
-     * moment's caption) so the screen can hand it to the platform share sheet.
-     *
-     * Images / progressive video stream into the share_outbound sweep dir, so
-     * the cold-start + foreground sweepers reap the cleartext copy. A segmented
-     * HLS video is first remuxed to a playable MP4 (a raw .ts segment shared
-     * as-is won't open in the target app) — the same path `saveMedia` takes;
-     * that MP4 lands in the cache dir and is reaped by the cache sweeper.
-     *
-     * [isSharingMedia] gates the overflow-menu spinner over the decrypt/remux,
-     * which is the slow part (videos especially) before the sheet opens.
+     * The selected payload as a file for the share sheet, with the moment's caption ([PayloadDownloadService.exportPlayable]:
+     * an HLS video becomes an MP4). [isSharingMedia] gates the spinner over the export, the slow part.
      */
     @OptIn(ExperimentalEncodingApi::class)
     private fun shareMedia(payloadKey: String) {
@@ -690,44 +681,15 @@ class MomentDetailViewModel(
         _screenLocal.update { it.copy(isSharingMedia = true) }
         viewModelScope.launch {
             try {
-                val hlsMetadata = resolveHlsVideoMetadata(
-                    descriptorContent = payload.descriptorContent,
-                    driveId = moment.driveId,
-                    fileId = moment.fileId,
-                    keyHeader = keyHeader,
-                )
-                val sharePath = if (hlsMetadata != null) {
-                    val remuxed = withContext(ioDispatcher) {
-                        downloadAndRemuxHlsToMp4(
-                            driveId = moment.driveId,
-                            fileId = moment.fileId,
-                            payloadKey = payloadKey,
-                            keyHeader = keyHeader,
-                            metadata = hlsMetadata,
-                            suggestedBaseName = payload.filename(),
-                        )
-                    }
-                    if (remuxed == null) {
-                        _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not convert video"))
-                        return@launch
-                    }
-                    remuxed.first
-                } else {
-                    val extension = payload.contentType?.let { extensionForMimeType(it) }
-                        ?: payload.contentType?.substringAfter("/")
-                        ?: "bin"
-                    val exported = payloadDownloadService.exportToTemp(
-                        driveId = moment.driveId,
-                        fileId = moment.fileId,
-                        key = payloadKey,
-                        keyHeader = keyHeader,
-                        destination = ExportDestination.ShareOutbound(".$extension"),
+                val sharePath = withContext(ioDispatcher) {
+                    payloadDownloadService.exportPlayable(
+                        moment.driveId, moment.fileId, payload, keyHeader,
+                        ExportDestination.ShareOutbound(".${extensionForContentType(payload.contentType)}"),
                     )
-                    if (exported == null) {
-                        _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
-                        return@launch
-                    }
-                    exported
+                }
+                if (sharePath == null) {
+                    _events.tryEmit(MomentDetailUiEvent.ShareFailed(if (payload.isHlsVideo) "Could not convert video" else "Could not download file"))
+                    return@launch
                 }
                 _events.tryEmit(MomentDetailUiEvent.ShareFileReady(sharePath, caption))
             } catch (t: Throwable) {
@@ -740,16 +702,8 @@ class MomentDetailViewModel(
     }
 
     /**
-     * "Save current" — decrypt the visible carousel payload to a cache file and
-     * surface its path so the screen can write it into the device gallery via
-     * `FileSystemHandler.saveFile`. Mirrors `MediaDownloadHandler`'s download
-     * arms on the chat side: an HLS (segmented) video is remuxed to a playable
-     * MP4 first (a raw .ts segment saved as-is wouldn't open in Photos); images
-     * and progressive MP4s stream straight to the cache file.
-     *
-     * [isSavingMedia] gates the overflow-menu spinner over the whole
-     * decrypt/remux — the device write that follows (driven off
-     * [MomentDetailUiEvent.MediaSaveReady]) is near-instant.
+     * "Save current": the visible payload saved through the shared album path ([saveReceived]); an HLS video is remuxed
+     * into an MP4 on the way. [isSavingMedia] gates the overflow-menu spinner over all of it.
      */
     @OptIn(ExperimentalEncodingApi::class)
     private fun saveMedia(payloadKey: String) {
@@ -766,50 +720,16 @@ class MomentDetailViewModel(
         _screenLocal.update { it.copy(isSavingMedia = true) }
         viewModelScope.launch {
             try {
-                val hlsMetadata = resolveHlsVideoMetadata(
-                    descriptorContent = payload.descriptorContent,
-                    driveId = moment.driveId,
-                    fileId = moment.fileId,
-                    keyHeader = keyHeader,
-                )
-                if (hlsMetadata != null) {
-                    val remuxed = withContext(ioDispatcher) {
-                        downloadAndRemuxHlsToMp4(
-                            driveId = moment.driveId,
-                            fileId = moment.fileId,
-                            payloadKey = payloadKey,
-                            keyHeader = keyHeader,
-                            metadata = hlsMetadata,
-                            suggestedBaseName = payload.filename(),
-                        )
-                    }
-                    if (remuxed == null) {
-                        _events.tryEmit(MomentDetailUiEvent.MediaSaveFailed("Could not convert video"))
-                        return@launch
-                    }
-                    _events.tryEmit(
-                        MomentDetailUiEvent.MediaSaveReady(remuxed.first, remuxed.second),
+                val saved = withContext(ioDispatcher) {
+                    albumSaver.saveReceived(driveFileProvider, fileOperationsProvider, moment.driveId, moment.fileId, payload, keyHeader)
+                }
+                when (saved) {
+                    is AlbumSaveResult.Saved -> _events.tryEmit(MomentDetailUiEvent.MediaSaved(saved.location))
+                    AlbumSaveResult.Cancelled -> Unit
+                    AlbumSaveResult.WriteFailed -> _events.tryEmit(
+                        MomentDetailUiEvent.MediaSaveFailed(if (payload.isHlsVideo) "Could not convert video" else "Could not download file"),
                     )
-                } else {
-                    val fullName = resolveDownloadFileName(
-                        payload.filename(), payloadKey, payload.contentType,
-                    )
-                    val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
-                    val success = withContext(ioDispatcher) {
-                        driveFileProvider.streamPayloadDecryptedToPath(
-                            driveId = moment.driveId,
-                            fileId = moment.fileId,
-                            key = payloadKey,
-                            keyHeader = keyHeader,
-                            outputPath = filePath,
-                            fileOps = fileOperationsProvider,
-                        )
-                    }
-                    if (!success) {
-                        _events.tryEmit(MomentDetailUiEvent.MediaSaveFailed("Could not download file"))
-                        return@launch
-                    }
-                    _events.tryEmit(MomentDetailUiEvent.MediaSaveReady(filePath, fullName))
+                    is AlbumSaveResult.Refused -> _events.tryEmit(MomentDetailUiEvent.MediaSaveRefused(saved))
                 }
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "saveMedia failed: ${t.message}" }
@@ -818,133 +738,6 @@ class MomentDetailViewModel(
                 _screenLocal.update { it.copy(isSavingMedia = false) }
             }
         }
-    }
-
-    /**
-     * Resolve a segmented-video payload's full [VideoMetadata] (with the HLS
-     * playlist) from its descriptor, fetching the out-of-line descriptor blob
-     * when the header copy is a stub. Returns null for non-HLS payloads (images,
-     * progressive MP4) — those take the plain decrypt-to-file path above.
-     * Mirrors `MediaDownloadHandler.resolveHlsVideoMetadata`.
-     */
-    private suspend fun resolveHlsVideoMetadata(
-        descriptorContent: String?,
-        driveId: Uuid,
-        fileId: Uuid,
-        keyHeader: KeyHeader,
-    ): VideoMetadata? {
-        val stub = descriptorContent?.let {
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(it)
-            } catch (_: Exception) {
-                null
-            }
-        } ?: return null
-
-        if (!stub.isSegmented) return null
-
-        val full = if (stub.isDescriptorContentComplete) {
-            stub
-        } else {
-            val json = payloadDownloadService.renderBytes(
-                driveId = driveId,
-                fileId = fileId,
-                key = stub.key,
-                keyHeader = keyHeader,
-            )?.decodeToString() ?: return null
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(json)
-            } catch (_: Exception) {
-                return null
-            }
-        }
-
-        return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
-    }
-
-    /**
-     * Decrypt the HLS segment payload, synthesize a local playlist pointing at
-     * it, and remux into an MP4 via stream-copy (no re-encode). Returns
-     * (mp4Path, suggestedName) or null on failure. Mirrors
-     * `MediaDownloadHandler.downloadAndRemuxHlsToMp4`.
-     */
-    private suspend fun downloadAndRemuxHlsToMp4(
-        driveId: Uuid,
-        fileId: Uuid,
-        payloadKey: String,
-        keyHeader: KeyHeader,
-        metadata: VideoMetadata,
-        suggestedBaseName: String?,
-    ): Pair<String, String>? {
-        val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
-        val uid = Uuid.random().toString().take(8)
-        val tsFileName = "input_hlsdl_${uid}.ts"
-        val tsPath = "$cacheDir/$tsFileName"
-        val mp4Path = "$cacheDir/hlsdl_${uid}.mp4"
-
-        val tsOk = driveFileProvider.streamPayloadDecryptedToPath(
-            driveId = driveId,
-            fileId = fileId,
-            key = payloadKey,
-            keyHeader = keyHeader,
-            outputPath = tsPath,
-            fileOps = fileOperationsProvider,
-        )
-        if (!tsOk) return null
-
-        // Strip EXT-X-KEY (segments are already decrypted on disk) and rewrite
-        // segment references to point at the local .ts file we just wrote.
-        val rewrittenPlaylist = metadata.hlsPlaylist!!.lines()
-            .filter { !it.startsWith("#EXT-X-KEY") }
-            .joinToString("\n") { line ->
-                if (line.isNotBlank() && !line.startsWith("#")) tsFileName else line
-            }
-
-        // cacheInputVideo writes to "<cacheDir>/input_<fileName>", the same
-        // directory as tsPath, so the playlist's relative segment ref resolves.
-        val playlistPath = VideoCompressionService.cacheInputVideo(
-            fileName = "hlsdl_${uid}.m3u8",
-            data = rewrittenPlaylist.encodeToByteArray(),
-        )
-
-        val ok = VideoCompressionService.remuxHlsToMp4(
-            playlistPath = playlistPath,
-            outputPath = mp4Path,
-        )
-
-        runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
-        runCatching { fileOperationsProvider.deleteTempFile(playlistPath) }
-
-        if (!ok) return null
-
-        val base = suggestedBaseName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "video"
-        val safeBase = base.replace('/', '_').replace('\\', '_').replace(' ', '_')
-        return mp4Path to "$safeBase.mp4"
-    }
-
-    /**
-     * Safe filename for a saved payload. Trusts the descriptor's original
-     * filename when it carries an extension; otherwise derives one from the
-     * content type. Mirrors `MediaDownloadHandler.resolveDownloadFileName`.
-     */
-    private fun resolveDownloadFileName(
-        originalName: String?,
-        fallbackKey: String,
-        contentType: String?,
-    ): String {
-        val safeName = originalName
-            ?.replace('/', '_')
-            ?.replace('\\', '_')
-            ?.replace(' ', '_')
-
-        if (safeName != null && safeName.contains('.')) return safeName
-
-        val name = safeName ?: fallbackKey
-        val ext = contentType?.let { extensionForMimeType(it) }
-            ?: contentType?.substringAfter("/")
-                ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
-            ?: "bin"
-        return "$name.$ext"
     }
 
     /**

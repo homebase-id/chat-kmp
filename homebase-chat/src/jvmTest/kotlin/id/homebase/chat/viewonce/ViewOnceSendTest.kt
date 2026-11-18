@@ -1,6 +1,6 @@
 package id.homebase.chat.viewonce
 
-import id.homebase.api.serialization.Base64Bytes
+import id.homebase.upload.ContentHashes
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -8,6 +8,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.image.MediaQuality
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.chat.services.ChatMessageSenderServiceTestFixture
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
@@ -15,6 +16,7 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.mapToMessageData
+import id.homebase.upload.EMPTY_BUNDLE
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.PayloadBundleEncryptor
 import java.awt.image.BufferedImage
@@ -27,19 +29,23 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
-import kotlin.uuid.Uuid
 
 class ViewOnceSendTest {
 
     /** Stands in for the real encryptor, and for the video processor when [simulateVideoProcessor]. */
     private class PassThroughEncryptor(private val simulateVideoProcessor: Boolean) : PayloadBundleEncryptor {
+        override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+        override suspend fun discard(bundle: PayloadBundle) = Unit
+
         override suspend fun encryptBundle(
             uniqueId: Uuid,
             bundle: PayloadBundle?,
             aesKey: SecureByteArray,
             scope: CoroutineScope,
+            hashes: ContentHashes?,
         ): PayloadBundle {
             val b = bundle ?: return PayloadBundle(emptyList(), emptyList(), emptyList())
             if (!simulateVideoProcessor) return b

@@ -41,7 +41,7 @@ internal fun GifPasteSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .padding(top = 16.dp, bottom = 24.dp),
+                .padding(top = if (isDialog) 0.dp else 16.dp, bottom = 24.dp),
         ) {
             Text(
                 text = stringResource(MR.string.chat_gif_paste_title),

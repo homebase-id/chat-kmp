@@ -46,7 +46,7 @@ All platforms use `libx264 -preset veryfast` (iOS additionally tries
 ## Baseline benchmarks — Desktop JVM, Windows
 
 Captured **2026-05-18** on Windows laptop, single-run, against
-`archive/transcoder_v2/test-fixtures/bbb_1080p_2mb.mp4` (1920×1080
+`test-fixtures/video/bbb_1080p_2mb.mp4` (1920×1080
 H.264, ~2 MB) with `trim=(0, 5000 ms)` to force a real re-encode.
 
 | Branch | Quality | Output | Wall time |

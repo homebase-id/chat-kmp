@@ -21,6 +21,18 @@ class VideoStatsLogTest {
     }
 
     @Test
+    fun theChosenPairShowsWhetherEachEndIsDirectOrRelayed() {
+        val lines = videoStatsLines(
+            listOf(
+                StatsEntry("candidate-pair", mapOf("nominated" to true, "state" to "succeeded", "localCandidateId" to "L", "remoteCandidateId" to "R")),
+                StatsEntry("local-candidate", mapOf("candidateType" to "relay", "relayProtocol" to "udp"), id = "L"),
+                StatsEntry("remote-candidate", mapOf("candidateType" to "srflx"), id = "R"),
+            ),
+        )
+        assertTrue(lines.single().endsWith("route=relay/udp-srflx"), lines.single())
+    }
+
+    @Test
     fun audioEntriesAndUnnominatedPairsAreLeftOut() {
         val lines = videoStatsLines(
             listOf(

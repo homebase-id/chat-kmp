@@ -629,6 +629,7 @@ private fun IncomingFiles(
     listModifier: Modifier,
 ) {
     if (uploads.isNotEmpty()) UploadStrip(uploads, onAction, Modifier.padding(horizontal = gutter).padding(bottom = 8.dp))
+    if (sharing.sharerPath.any { it.notOnComputers }) NotOnComputersBanner()
     SharedFilesBody(sharing.sharedFilesFailed, sharing.sharedFiles?.size, MR.string.filesync_shared_by_none) {
         LazyColumn(modifier = listModifier) {
             items(sharing.sharedFiles.orEmpty(), key = { it.nodeId }) { node ->
@@ -703,7 +704,7 @@ internal fun FilesyncSharedFilesSheet(
     val writes = rememberSharedWrites(onAction)
     AdaptiveSheet(onDismiss = { onAction(FilesyncUiAction.CloseShareView) }, maxWidth = 520.dp) {
         Column(modifier = Modifier.padding(bottom = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = if (isDialog) 0.dp else 12.dp, bottom = 12.dp)) {
                 val path = sharing.sharerPath
                 if (path.isNotEmpty()) {
                     IconButton(onClick = { onAction(FilesyncUiAction.OpenSharedFolder(path.dropLast(1))) }) {

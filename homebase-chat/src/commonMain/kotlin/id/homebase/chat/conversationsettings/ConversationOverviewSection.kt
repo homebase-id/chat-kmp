@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.chat.widget.MediaItem
 import id.homebase.chat.widget.SharedMediaHero
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.contact_info_recent_media
 import id.homebase.resources.conversation_media_see_all
@@ -91,7 +90,6 @@ fun ConversationOverviewSection(
                         driveId = chatTargetDrive.alias,
                         previewThumbnail = item.previewThumbnail,
                         keyHeader = item.keyHeader,
-                        imageSize = ImageSize.THUMB_MEDIUM,
                         isSticker = item.isSticker,
                         modifier = Modifier.fillMaxSize(),
                         shape = RoundedCornerShape(12.dp),

@@ -100,7 +100,7 @@ which loads the full payload and pages through the card's images only, with no c
 | `list` | `children`, `direction`: vertical, horizontal |
 | `table` | `header` (strings), `rows` (arrays of strings) |
 | `progress` | `value` 0..1 or null (indeterminate), `label?` |
-| `button` | `label`, `style`: filled, tonal, outlined, text, destructive; `action` |
+| `button` | `label` (required: a blank label refuses the tree), `style`: filled, tonal, outlined, text, destructive; `action`, or `copy` (a non-blank string of at most 2000 code points, copied to the clipboard on the device and never sent; `copy` with `action` refuses the tree) |
 | `toggle` | `label`, `value`, `action?` (fires on change) |
 | `textInput` | `label`, `value`, `multiline`, `maxLength`, `action?` (single-line only: fires on the keyboard's send key) |
 | `select` | `label`, `options` `[{id,label}]`, `value?`, `action?` (fires on pick) |
@@ -126,6 +126,7 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 | images | 10 | tree invalid |
 | each ref'd id used once (no cycle, no diamond), ids unique, root present | | tree invalid |
 | something visible: non-blank text, a labelled chip, a table, an image, an input, a button, or an unknown node with a fallback | | tree invalid |
+| button `label` non-blank; `copy` non-blank, at most 2000 code points, not with `action` | | tree invalid |
 | text / fallback | 2000 code points | clamped |
 | labels, table cells, alt | 200 code points | clamped |
 | table | 20 rows x 8 columns | clamped |
@@ -134,7 +135,10 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 | `include` | 19 ids (the acting node makes 20) | clamped |
 | input value | 1000 code points (`maxLength` 1 to 1000) | clamped |
 
-An invalid tree shows the header `fallback`. Missing child ids are dropped. `AgentUiTree.decode`
+An invalid tree shows the header `fallback`. Missing child ids are dropped. The `Invalid` reason
+names the node and field (`text node 't0' has no markdown (it has "text"; put it in "markdown")`);
+"nothing to show" and a missing root list up to five things the decoder dropped or found empty.
+Unknown props are ignored, never refused. `AgentUiTree.decode`
 is pure, common and never throws, so the agent can use it to validate before sending.
 
 ### 6. Action reply (dataType 220): `AgentUiActionDescriptor`
@@ -164,7 +168,28 @@ by `lastModified`). Typed text survives an edit unless that input's default chan
 
 An action whose `rev` is older than the card's is stale: the agent must reject it. After a terminal
 action (for example Approve posts something) the agent must edit the card to remove the buttons.
-The app disables an action after one send per `rev`, and re-enables it if the send fails.
+The app disables an action after one send per `rev`, and re-enables it if the send fails. While the
+send is in flight the control shows a spinner; after it succeeds the button shows a check and stays
+disabled (saved with the list item). The app also treats your own replies in the loaded conversation
+(`AgentUiConversation.answeredByYou`, same target and `rev`) as sent, so reopening the chat neither
+spins nor sends the same action again. A reply whose card is loaded is folded onto it, like a poll
+vote (`foldAgentUiReplies` before clustering, so it never splits the agent's cluster): the card lists
+each sender's latest choice at its `rev` above the footer (`AgentUiConversation.choices`, yours first,
+three then "+N more"). A reply whose card is not loaded renders as a muted line with short values;
+tapping it scrolls to the card. Replies are never the chat list's last message or its sort key
+(`dataType NOT IN (202, 220)` in `selectAllConversationPlusLastMessage`, `leavesConversationRow` on
+the live path), never count as unread, and push no notification (`pushesToRecipient = false`, also on
+desktop).
+
+### Card as a message bubble
+
+A card sits in the same message wrapper as a text bubble and takes no gesture of its own: long-press
+(touch), double-tap to react and right-click (pointer) open the usual message menu, and the card
+never highlights as a whole. Its text and tables are selectable on a pointer device; buttons, inputs
+and images keep their own taps, and right-click on an image opens that image's menu. The card takes
+the cluster corners, the group sender name and the timestamp footer ("edited" once `rev` is above 0).
+Copy in the menu copies the card's title, text and table rows (the `fallback` while a payload tree
+is not loaded).
 
 ### 8. Reference: draft-post card
 
@@ -199,6 +224,7 @@ BiDi and zero-width characters are clamped by length only and render as content.
 ## Known gaps
 
 - Text input in the message list: verify the IME does not cover the field on Android, and focus on web.
-- Pending-action and typed text are saved with the list item (`rememberSaveable`), so they survive
-  scrolling away and back, but not leaving the chat; the agent still rejects stale or duplicate
-  actions by `rev`.
+- Typed text is saved with the list item (`rememberSaveable`), so it survives scrolling away and
+  back, but not leaving the chat. A sent action is also recovered from your replies in the loaded
+  conversation slice; a reply older than that slice is not, so the agent still rejects stale or
+  duplicate actions by `rev`.

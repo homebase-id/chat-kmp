@@ -12,7 +12,10 @@ import kotlin.uuid.Uuid
 
 /** One step of the breadcrumb trail; [name] is null for the top level, [removedMs] set when it's in Recently deleted. */
 @Immutable
-data class FilesyncCrumb(val nodeId: Uuid, val name: String?, val removedMs: Long? = null)
+data class FilesyncCrumb(val nodeId: Uuid, val name: String?, val removedMs: Long? = null) {
+    /** Named `.hbsync`: computers leave it out, with all in it. */
+    val notOnComputers: Boolean get() = name != null && FilesyncNames.key(name) == FilesyncNames.stateFolderKey
+}
 
 /** A download under way: of the node [nodeId], or of a ZIP when null, whose [totalBytes] are known once it's listed. */
 @Immutable
@@ -52,8 +55,9 @@ data class FilesyncMovePicker(
     /** A folder being moved can't take itself: it isn't opened, and nothing moves below it. */
     fun isMoving(folderId: Uuid): Boolean = folderId in movingIds
 
+    // Moved into a folder computers leave out, an item is deleted on every computer that synced it.
     val canMoveHere: Boolean
-        get() = !loading && !loadFailed && path.none { isMoving(it.nodeId) } && nodes.any { it.parentId != path.last().nodeId }
+        get() = !loading && !loadFailed && path.none { isMoving(it.nodeId) || it.notOnComputers } && nodes.any { it.parentId != path.last().nodeId }
 }
 
 @Immutable
@@ -234,7 +238,7 @@ sealed interface FilesyncUiAction {
     data class ShareTo(val target: FilesyncShareTarget) : FilesyncUiAction
     data object DismissShare : FilesyncUiAction
     data object CancelTransfer : FilesyncUiAction
-    data class SaveHandedOff(val path: String) : FilesyncUiAction
+    data class PreviewGone(val path: String) : FilesyncUiAction
     data class FilesPicked(val files: List<PlatformFile>) : FilesyncUiAction
     data class CreateFolder(val name: String) : FilesyncUiAction
     data class RetryUpload(val id: Uuid) : FilesyncUiAction
@@ -303,7 +307,7 @@ enum class FilesyncError {
 }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
-enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon, Shared }
+enum class FilesyncNotice { Restored, RestoredToRecovered, RestoredIntoRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon, Shared }
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent

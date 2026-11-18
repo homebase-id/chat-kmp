@@ -25,7 +25,8 @@ class VideoFrameImage internal constructor(internal val bitmap: Bitmap, val imag
 
 class JvmVideoHandle(mirrored: Boolean = false) : VideoHandle {
     var mirrored by mutableStateOf(mirrored)
-    override val frameSize: StateFlow<Pair<Int, Int>?> = MutableStateFlow(null)
+    private val _frameSize = MutableStateFlow<Pair<Int, Int>?>(null)
+    override val frameSize: StateFlow<Pair<Int, Int>?> = _frameSize.asStateFlow()
     private val _frame = MutableStateFlow<VideoFrameImage?>(null)
     val frame: StateFlow<VideoFrameImage?> = _frame.asStateFlow()
 
@@ -56,6 +57,7 @@ class JvmVideoHandle(mirrored: Boolean = false) : VideoHandle {
             if (runCatching { VideoBufferConverter.convertFromI420(buffer, target.pixels.rewind(), FourCC.ARGB) }.isFailure) return
             target.bitmap.notifyPixelsChanged()
             _frame.value = VideoFrameImage(target.bitmap, target.image, videoFrame.rotation)
+            _frameSize.value = if (videoFrame.rotation % 180 != 0) buffer.height to buffer.width else buffer.width to buffer.height
         }
     }
 

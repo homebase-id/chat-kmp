@@ -12,9 +12,8 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
-import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import id.homebase.api.file.CONTENT_TYPE_MARKDOWN
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -73,8 +72,13 @@ data class VaultEntry(
             return (descriptor.descriptorInfo() as? DescriptorContent.NoteFile)?.preview
         }
 
+    /** The index after the highest page key; the uploader and the placeholder rows must agree on it. */
+    fun nextPageIndex(): Int = (payloadDescriptors.mapNotNull { it.key.removePrefix(PAGE_KEY_PREFIX).toIntOrNull() }.maxOrNull() ?: -1) + 1
+
     companion object {
-        const val DEFAULT_PAYLOAD_KEY = "vlt_pg_00"
+        private const val PAGE_KEY_PREFIX = "vlt_pg_"
+        fun pageKey(index: Int): String = PAGE_KEY_PREFIX + index.toString().padStart(2, '0')
+        val DEFAULT_PAYLOAD_KEY = pageKey(0)
     }
 }
 
@@ -133,7 +137,6 @@ fun VaultEntry.imageDataFor(
     descriptor: PayloadDescriptor,
     loadFullPayload: Boolean,
     previewThumbnail: EmbeddedThumb? = null,
-    requestedSize: ImageSize? = null,
 ): HomebaseImageData? {
     val ivBytes = descriptor.iv?.bytes ?: return null
     return HomebaseImageData.from(
@@ -141,7 +144,6 @@ fun VaultEntry.imageDataFor(
         fileId = fileId,
         descriptor = descriptor,
         previewThumbnail = previewThumbnail,
-        requestedSize = requestedSize,
         loadFullPayload = loadFullPayload,
         isEncrypted = isEncrypted,
         keyHeader = KeyHeader(iv = ivBytes, aesKey = keyHeader.aesKey),

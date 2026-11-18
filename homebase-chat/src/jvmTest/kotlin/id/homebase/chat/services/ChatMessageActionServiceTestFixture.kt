@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
@@ -198,6 +199,7 @@ class ChatMessageActionServiceTestFixture(
                 reactionProvider = reactionProvider,
                 databaseManager = dbm,
                 credentialsManager = credentialsManager,
+                peerUploadProvider = PeerDriveUploadProvider(httpClient, credentialsManager, NoopFileOperationsProvider()),
             )
         } else {
             ThrowingOutboxUploader

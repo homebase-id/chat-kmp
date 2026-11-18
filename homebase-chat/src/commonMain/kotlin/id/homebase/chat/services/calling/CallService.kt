@@ -3,7 +3,6 @@ package id.homebase.chat.services.calling
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import kotlinx.coroutines.CancellationException
@@ -25,7 +24,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The one [CallController] per signed-in identity. UI, push receivers and the CallKit/Telecom glue
@@ -38,10 +36,11 @@ class CallService(
     private val eventBus: EventBus,
     private val relay: LiveRelaySend,
     private val engineFactory: CallEngineFactory?,
-    private val stunUrls: StunUrlStore,
+    private val iceServers: suspend (peer: String) -> CallIceServers,
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val onCallActiveChanged: (Boolean) -> Unit = {},
+    private val ringback: RingbackTone = platformRingbackTone(),
 ) : CallSession, CallPushTarget {
     val available: Boolean get() = engineFactory != null
 
@@ -71,6 +70,7 @@ class CallService(
         if (engineFactory != null) {
             scope.launch { recordCallEvents(transitions, recordEvent) }
             scope.launch { transitions.callActiveChanges().collect(onCallActiveChanged) }
+            scope.launch { state.driveRingback(ringback) }
             scope.launch {
                 for (push in pushes) {
                     val target = controller.filterNotNull().first()
@@ -110,7 +110,7 @@ class CallService(
             signaling = LiveRelayCallSignaling(selfOdinId, relay, eventBus),
             engineFactory = engineFactory,
             scope = CoroutineScope(scope.coroutineContext + job),
-            stunUrls = { stunUrls.urls.awaitStunUrls() },
+            iceServers = iceServers,
         )
     }
 
@@ -167,11 +167,5 @@ internal fun callEventFor(reason: CallEndReason, state: CallState): CallEventDes
         else -> null
     }
 }
-
-/** The URLs arrive with the websocket handshake, which a call placed or answered right after a cold push wake can beat. */
-internal suspend fun StateFlow<List<String>>.awaitStunUrls(timeoutMs: Long = STUN_WAIT_MS): List<String> =
-    value.ifEmpty { withTimeoutOrNull(timeoutMs) { first { it.isNotEmpty() } } ?: emptyList() }
-
-private const val STUN_WAIT_MS = 3_000L
 
 internal fun Flow<CallState>.callActiveChanges(): Flow<Boolean> = map { it.isActive }.distinctUntilChanged()

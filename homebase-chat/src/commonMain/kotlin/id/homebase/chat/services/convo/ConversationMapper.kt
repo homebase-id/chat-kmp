@@ -16,7 +16,6 @@ import id.homebase.chat.services.mapToMessageData
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.util.initials
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -452,7 +451,6 @@ class ConversationMapper(
                             iv = (imagePayload.iv ?: error("encrypted payload requires key header")).bytes,
                             aesKey = conversation.keyHeader.aesKey
                         ),
-                    requestedSize = ImageSize.THUMB_MEDIUM,
                     availableThumbSizes = emptyList(),
                 )
 

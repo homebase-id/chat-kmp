@@ -5,6 +5,7 @@ package id.homebase.core.ui.screens.card
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
+import id.homebase.core.ui.screens.contactbook.components.normalizedPhone
 import id.homebase.core.ui.screens.profile.LoadedProfileAttributes
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.ProfileField
@@ -35,6 +36,19 @@ internal data class CardContentItem(
     val orderable: Boolean get() = isOrderableType(type)
     val onCard: Boolean get() = shown && renderable && !hidden
 }
+
+internal fun normalizedLinkTarget(raw: String): String = raw.trim().let { if (it.isEmpty() || "://" in it) it else "https://$it" }
+
+/** The item as the sheet's fields show it once they have tidied its stored phone number and link target. */
+internal fun CardContentItem.asEdited(region: String?): CardContentItem = when (type) {
+    ProfileAttributeTypes.PHONE -> copy(data = data + (ProfileAttributeTypes.KEY_PHONE to normalizedPhone(data[ProfileAttributeTypes.KEY_PHONE].orEmpty(), region)))
+    ProfileAttributeTypes.LINK -> copy(data = data + (ProfileAttributeTypes.KEY_LINK_TARGET to normalizedLinkTarget(data[ProfileAttributeTypes.KEY_LINK_TARGET].orEmpty())))
+    else -> this
+}
+
+/** Whether saving [updates] and [audience] would change this item, by the same trimming the write applies. */
+internal fun CardContentItem.differsFrom(updates: Map<String, String>, audience: ProfileAudience): Boolean =
+    audience != this.audience || updates.any { (key, value) -> value.trim() != data[key].orEmpty().trim() }
 
 /** The Public card can't render without a name, so nothing hides it there. */
 internal fun CardFields?.hides(attribute: ProfileAttribute, card: CardAudience): Boolean =

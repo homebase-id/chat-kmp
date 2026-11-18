@@ -62,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.widget.AdaptiveSheet
+import id.homebase.core.widget.ReportOverlay
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.resources.MR
 import id.homebase.resources.circle_create_access_check_failed
@@ -102,6 +103,7 @@ fun rememberNewCircleAction(onCreated: (String) -> Unit): () -> Unit {
     }
     viewModel.permission?.let { ExtendPermissionDialog(viewModel = it) }
     if (state.accessCheckFailed) {
+        ReportOverlay()
         AlertDialog(
             onDismissRequest = viewModel::onAccessFailureAcknowledged,
             text = { Text(stringResource(MR.string.circle_create_access_check_failed)) },

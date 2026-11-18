@@ -8,6 +8,8 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -27,6 +29,30 @@ abstract class FileOperationsContractTest {
 
     private fun path(name: String) = "${tempDir()}/$name"
     private fun bytes(s: String) = s.encodeToByteArray()
+
+    @Test
+    fun overwriteReplacesBytesInPlaceAndKeepsTheRest() = runTest {
+        val p = provider()
+        val path = path("overwrite.bin")
+        p.writeStream(path, flowOf(bytes("0123456789")))
+        p.overwrite(path, 3, bytes("abc"))
+        assertEquals("012abc6789", p.readFileBytes(path).decodeToString())
+    }
+
+    @Test
+    fun overwritePastTheEndIsRefused() = runTest {
+        val p = provider()
+        val path = path("overwrite-short.bin")
+        p.writeStream(path, flowOf(bytes("0123")))
+        assertFailsWith<IllegalArgumentException> { p.overwrite(path, 2, bytes("abc")) }
+        assertEquals("0123", p.readFileBytes(path).decodeToString())
+    }
+
+    @Test
+    fun overwriteOfAMissingFileFails() = runTest {
+        assertFails { provider().overwrite(path("missing.bin"), 0, bytes("a")) }
+        assertEquals(0L, provider().getFileSize(path("missing.bin")), "nor created")
+    }
 
     @Test
     fun writeStreamReplacesExistingFile() = runTest {
@@ -83,6 +109,32 @@ abstract class FileOperationsContractTest {
         p.writeStream(path, flowOf(data))
         assertContentEquals(data.copyOf(100), p.readFileHeaderBytes(path, 100))
         assertContentEquals(data, p.readFileHeaderBytes(path, 5000))
+    }
+
+    @Test
+    fun readFileRangeReturnsTheRangeAndFewerAtTheEnd() = runTest {
+        val p = provider()
+        val path = path("range.bin")
+        val data = ByteArray(300_000) { (it % 251).toByte() }
+        p.writeStream(path, flowOf(data))
+        assertContentEquals(data.copyOfRange(123_456, 123_556), p.readFileRange(path, 123_456, 100))
+        assertContentEquals(data.copyOfRange(299_990, 300_000), p.readFileRange(path, 299_990, 100))
+        assertContentEquals(ByteArray(0), p.readFileRange(path, 400_000, 100))
+    }
+
+    @Test
+    fun aFileOpenedForRangesReadsEachAsReadFileRangeWould() = runTest {
+        val p = provider()
+        val path = path("opened.bin")
+        val data = ByteArray(300_000) { (it % 251).toByte() }
+        p.writeStream(path, flowOf(data))
+        p.openRanges(path).use { ranges ->
+            assertContentEquals(data.copyOfRange(299_990, 300_000), ranges.read(299_990, 100), "fewer at the end")
+            assertContentEquals(data.copyOfRange(0, 16), ranges.read(0, 16), "any order")
+            assertContentEquals(data.copyOfRange(123_456, 123_556), ranges.read(123_456, 100))
+            assertContentEquals(ByteArray(0), ranges.read(400_000, 100))
+            assertEquals(300_000L, ranges.size())
+        }
     }
 
     @Test

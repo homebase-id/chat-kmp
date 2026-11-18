@@ -9,6 +9,9 @@ import id.homebase.api.crypto.hashedBy
 import id.homebase.api.crypto.newHasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.writePlayable
+import id.homebase.api.video.isHlsVideo
+import id.homebase.api.video.playableContentType
 import kotlinx.coroutines.flow.Flow
 import kotlin.uuid.Uuid
 
@@ -27,6 +30,12 @@ sealed interface ExportDestination {
     data class ShareOutbound(val suffix: String) : ExportDestination
     data class UploadTemp(val prefix: String, val suffix: String) : ExportDestination
     data class Scratch(val prefix: String, val suffix: String) : ExportDestination
+}
+
+private fun ExportDestination.withSuffix(suffix: String): ExportDestination = when (this) {
+    is ExportDestination.ShareOutbound -> copy(suffix = suffix)
+    is ExportDestination.UploadTemp -> copy(suffix = suffix)
+    is ExportDestination.Scratch -> copy(suffix = suffix)
 }
 
 /**
@@ -93,6 +102,20 @@ class PayloadDownloadService(
         onProgress: ((Float) -> Unit)? = null,
     ): String? = exportWith(destination) { path ->
         driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOperationsProvider.writeDownload(path, it) }
+    }
+
+    /**
+     * [payload] exported as a file people can open, for handing to another app ([writePlayable]); an HLS video's ends
+     * in `.mp4` whatever [destination]'s suffix, and its type is [playableContentType]. Null when it can't be.
+     */
+    suspend fun exportPlayable(
+        driveId: Uuid,
+        fileId: Uuid,
+        payload: PayloadDescriptor,
+        keyHeader: KeyHeader,
+        destination: ExportDestination,
+    ): String? = exportWith(if (payload.isHlsVideo) destination.withSuffix(".mp4") else destination) { path ->
+        driveFileProvider.writePlayable(driveId, fileId, payload, keyHeader, fileOperationsProvider, path)
     }
 
     /** [exportToTemp] that checks the plaintext against [hash] as it streams; [keyHeader] is the payload's key. */

@@ -1,65 +1,69 @@
 package id.homebase.chat.conversationlist
 
-import id.homebase.api.file.FileTooLargeForMemoryException
-import kotlinx.coroutines.CancellationException
-import id.homebase.chat.widget.preview.chatChipPreviewKind
-import id.homebase.chat.widget.preview.decryptedCopyName
-import id.homebase.resources.chat_error_file_too_large_here
+import id.homebase.api.video.isHlsVideo
+import id.homebase.api.video.playableContentType
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoCompressionService
-import id.homebase.core.util.extensionForMimeType
-import id.homebase.core.util.formatMediumDate
-import id.homebase.resources.chat_error_copy_image
-import id.homebase.resources.chat_image_copied
-import id.homebase.core.util.isMobile
-import id.homebase.core.vault.VaultFileSaver
-import id.homebase.resources.vault_chat_image_name
-import id.homebase.resources.vault_save_failed
-import id.homebase.resources.vault_saved
-import id.homebase.api.video.VideoMetadata
+import id.homebase.api.file.FileTooLargeForMemoryException
+import id.homebase.api.file.extensionForContentType
+import id.homebase.chat.agentui.agentUiImagePayloads
+import id.homebase.chat.conversationlist.ConversationListUiEvent.FileSaved
+import id.homebase.chat.conversationlist.ConversationListUiEvent.OfferRefusedSave
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
-import id.homebase.chat.services.content.MessageContent
-import id.homebase.chat.viewonce.ViewOnceActions
-import id.homebase.chat.viewonce.viewOnceViewerFor
-import kotlin.time.Clock
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceActions
+import id.homebase.chat.viewonce.viewOnceViewerFor
+import id.homebase.chat.widget.preview.chatChipPreviewKind
+import id.homebase.chat.widget.preview.decryptedCopyName
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.chat.agentui.agentUiImagePayloads
-import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.util.AlbumSaveResult
+import id.homebase.core.util.AlbumSaver
+import id.homebase.core.util.formatMediumDate
+import id.homebase.core.util.isMobile
+import id.homebase.core.util.saveReceived
+import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_convert_video
+import id.homebase.resources.chat_error_copy_image
 import id.homebase.resources.chat_error_download_file
 import id.homebase.resources.chat_error_download_for_sharing
 import id.homebase.resources.chat_error_downloading_file
 import id.homebase.resources.chat_error_downloading_file_detail
+import id.homebase.resources.chat_error_file_too_large_here
 import id.homebase.resources.chat_error_media_click
 import id.homebase.resources.chat_error_share
+import id.homebase.resources.chat_image_copied
 import id.homebase.resources.contactbook_self_you
+import id.homebase.resources.vault_chat_image_name
+import id.homebase.resources.vault_save_failed
+import id.homebase.resources.vault_saved
 import io.github.vinceglb.filekit.name
+import kotlin.time.Clock
+import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
-import kotlin.uuid.Uuid
+import org.jetbrains.compose.resources.StringResource
 
 /**
  * Handles media-related action arms (share / download / decrypt / open in
@@ -77,6 +81,7 @@ internal class MediaDownloadHandler(
     private val viewOnceActions: ViewOnceActions,
     private val chatMessageStream: ChatMessageStream,
     private val localVideoContextStore: LocalAttachmentContextStore,
+    private val albumSaver: AlbumSaver,
     private val vaultFileSaver: VaultFileSaver? = null,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
@@ -95,18 +100,10 @@ internal class MediaDownloadHandler(
                 val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
                     )).bytes
-                val extension = payload.contentType?.let { extensionForMimeType(it) }
-                    ?: payload.contentType?.substringAfter("/")
-                    ?: "bin"
-                // Cleartext copy of an end-to-end-encrypted Homebase payload —
-                // STREAM-decrypted straight into the share_outbound subdir (#845:
-                // bounded RAM for any payload size, LRU untouched; the old
-                // getPayloadBytes path buffered ~2× the payload in RAM). The
-                // subdir keeps the sweep story: reaped as a single unit on
-                // cold start + foreground, bounding its on-disk lifetime.
-                val tempPath = chatMessageActionService.streamPayloadToShareOutbound(
+                val extension = extensionForContentType(payload.contentType)
+                val tempPath = chatMessageActionService.exportToShareOutbound(
                     message.fileId,
-                    action.payloadKey,
+                    payload,
                     KeyHeader(payloadIv, message.keyHeader.aesKey),
                     ".$extension",
                 )
@@ -141,12 +138,12 @@ internal class MediaDownloadHandler(
                     messagesUiState.value.messageById(action.messageId) ?: return@launch
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val contentType = payload.contentType ?: return@launch
+                val contentType = payload.playableContentType ?: return@launch
                 val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
-                val extension = extensionForMimeType(contentType) ?: contentType.substringAfter("/")
-                val tempPath = chatMessageActionService.streamPayloadToUploadTemp(
+                val extension = extensionForContentType(payload.contentType)
+                val tempPath = chatMessageActionService.exportToUploadTemp(
                     message.fileId,
-                    action.payloadKey,
+                    payload,
                     KeyHeader(payloadIv, message.keyHeader.aesKey),
                     "vault_",
                     ".$extension",
@@ -221,28 +218,15 @@ internal class MediaDownloadHandler(
                         "encrypted payload requires key header"
                     )).bytes
 
-                val fullName = resolveDownloadFileName(
-                    payload.filename(), payload.key, payload.contentType
-                )
-                val filePath =
-                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
-
-                val success = withContext(ioDispatcher) {
-                    driveFileProvider.streamPayloadDecryptedToPath(
-                        driveId = chatTargetDrive.alias,
-                        fileId = message.fileId,
-                        key = action.payloadKey,
-                        keyHeader = KeyHeader(payloadIv, message.keyHeader.aesKey),
-                        outputPath = filePath,
-                        fileOps = fileOperationsProvider,
+                val saved = withContext(ioDispatcher) {
+                    albumSaver.saveReceived(
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, message.fileId, payload,
+                        KeyHeader(payloadIv, message.keyHeader.aesKey),
                     )
                 }
-
-                if (success) {
-                    sendEvent(SaveFileToDevice(filePath, fullName))
-                } else {
-                    sendEvent(ShowErrorMessage(MR.string.chat_error_download_file))
-                }
+                report(saved, if (payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
+            } catch (e: FileTooLargeForMemoryException) {
+                sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
             } catch (e: Exception) {
                 sendEvent(
                     ShowErrorMessage(
@@ -264,50 +248,12 @@ internal class MediaDownloadHandler(
 
         scope.launch {
             try {
-                val hlsMetadata = resolveHlsVideoMetadata(
-                    descriptorContent = action.payload.descriptorContent,
-                    fileId = action.fileId,
-                    keyHeader = action.keyHeader,
-                )
-
-                if (hlsMetadata != null) {
-                    val (mp4Path, mp4Name) = withContext(ioDispatcher) {
-                        downloadAndRemuxHlsToMp4(
-                            fileId = action.fileId,
-                            payloadKey = action.payloadKey,
-                            keyHeader = action.keyHeader,
-                            metadata = hlsMetadata,
-                            suggestedBaseName = action.payload.filename(),
-                        )
-                    } ?: run {
-                        sendEvent(ShowErrorMessage(MR.string.chat_error_convert_video))
-                        return@launch
-                    }
-                    sendEvent(SaveFileToDevice(mp4Path, mp4Name))
-                } else {
-                    val fullName = resolveDownloadFileName(
-                        action.payload.filename(), action.payloadKey, action.payload.contentType
+                val saved = withContext(ioDispatcher) {
+                    albumSaver.saveReceived(
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader,
                     )
-                    val filePath =
-                        "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$fullName"
-
-                    val success = withContext(ioDispatcher) {
-                        driveFileProvider.streamPayloadDecryptedToPath(
-                            driveId = chatTargetDrive.alias,
-                            fileId = action.fileId,
-                            key = action.payloadKey,
-                            keyHeader = action.keyHeader,
-                            outputPath = filePath,
-                            fileOps = fileOperationsProvider,
-                        )
-                    }
-
-                    if (success) {
-                        sendEvent(SaveFileToDevice(filePath, fullName))
-                    } else {
-                        sendEvent(ShowErrorMessage(MR.string.chat_error_download_file))
-                    }
                 }
+                report(saved, if (action.payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
             } catch (e: FileTooLargeForMemoryException) {
                 sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
             } catch (e: Exception) {
@@ -316,6 +262,13 @@ internal class MediaDownloadHandler(
                 messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles - fileKey) }
             }
         }
+    }
+
+    private fun report(saved: AlbumSaveResult, failed: StringResource) = when (saved) {
+        is AlbumSaveResult.Saved -> sendEvent(FileSaved(saved.location))
+        AlbumSaveResult.Cancelled -> Unit
+        AlbumSaveResult.WriteFailed -> sendEvent(ShowErrorMessage(failed))
+        is AlbumSaveResult.Refused -> sendEvent(OfferRefusedSave(saved))
     }
 
     private fun closePreviewOf(fileId: Uuid, payloadKey: String) {
@@ -462,7 +415,7 @@ internal class MediaDownloadHandler(
                 // descriptorContent {"isSticker":true}). Regular images fall through to the
                 // fullscreen path unchanged.
                 val isSticker =
-                    (selectedPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+                    selectedPayload.imageFile()?.isSticker == true
                 when {
                     selectedPayload.isImage() && isSticker -> {
                         dispatch(
@@ -623,128 +576,6 @@ internal class MediaDownloadHandler(
         (messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData)?.attachments
             ?.forEach { if (it is AttachmentPendingFile.FileVideo) it.playablePath?.let(::revokePlayableUrl) }
         messagesUiState.update { it.copy(fullScreenOverlay = null) }
-    }
-
-    private suspend fun resolveHlsVideoMetadata(
-        descriptorContent: String?,
-        fileId: Uuid,
-        keyHeader: KeyHeader,
-    ): VideoMetadata? {
-        val stub = descriptorContent?.let {
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(it)
-            } catch (_: Exception) {
-                null
-            }
-        } ?: return null
-
-        if (!stub.isSegmented) return null
-
-        val full = if (stub.isDescriptorContentComplete) {
-            stub
-        } else {
-            val json = driveFileProvider.getPayloadBytesDecrypted(
-                driveId = chatTargetDrive.alias,
-                fileId = fileId,
-                key = stub.key,
-                keyHeader = keyHeader,
-            )?.bytes?.decodeToString() ?: return null
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(json)
-            } catch (_: Exception) {
-                return null
-            }
-        }
-
-        return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
-    }
-
-    /**
-     * Decrypts the HLS segment payload + synthesizes a local playlist, then remuxes into an MP4
-     * using stream copy (no re-encoding). Returns (mp4Path, suggestedName) or null on failure.
-     */
-    private suspend fun downloadAndRemuxHlsToMp4(
-        fileId: Uuid,
-        payloadKey: String,
-        keyHeader: KeyHeader,
-        metadata: VideoMetadata,
-        suggestedBaseName: String?,
-    ): Pair<String, String>? {
-        val cacheDir = AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.MEDIA_WORK)
-        val uid = Uuid.random().toString().take(8)
-        val tsFileName = "input_hlsdl_${uid}.ts"
-        val tsPath = "$cacheDir/$tsFileName"
-        val mp4Path = "$cacheDir/hlsdl_${uid}.mp4"
-
-        val tsOk = driveFileProvider.streamPayloadDecryptedToPath(
-            driveId = chatTargetDrive.alias,
-            fileId = fileId,
-            key = payloadKey,
-            keyHeader = keyHeader,
-            outputPath = tsPath,
-            fileOps = fileOperationsProvider,
-        )
-        if (!tsOk) {
-            Logger.e(tag = "HlsSave") { "HLS save failed at download/decrypt of payload $payloadKey (file $fileId)" }
-            return null
-        }
-
-        // Strip EXT-X-KEY (segments are already decrypted on disk) and rewrite segment
-        // references to point at the local .ts file we just wrote.
-        val rewrittenPlaylist = metadata.hlsPlaylist!!.lines()
-            .filter { !it.startsWith("#EXT-X-KEY") }
-            .joinToString("\n") { line ->
-                if (line.isNotBlank() && !line.startsWith("#")) tsFileName else line
-            }
-
-        // cacheInputVideo writes to "<cacheDir>/input_<fileName>" on all platforms, which is the
-        // same directory as tsPath — the playlist's relative segment reference resolves correctly.
-        val playlistPath = VideoCompressionService.cacheInputVideo(
-            fileName = "hlsdl_${uid}.m3u8",
-            data = rewrittenPlaylist.encodeToByteArray(),
-        )
-
-        val ok = VideoCompressionService.remuxHlsToMp4(playlistPath = playlistPath, outputPath = mp4Path)
-
-        // Clean up intermediates regardless of success
-        runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
-        runCatching { fileOperationsProvider.deleteTempFile(playlistPath) }
-
-        if (!ok) {
-            Logger.e(tag = "HlsSave") { "HLS save failed at remux to mp4 (payload $payloadKey, file $fileId)" }
-            return null
-        }
-
-        val base = suggestedBaseName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "video"
-        val safeBase = base.replace('/', '_').replace('\\', '_').replace('\u0000', '_')
-        return mp4Path to "$safeBase.mp4"
-    }
-
-    /**
-     * Returns a safe filename for saving a downloaded file.
-     * If the original filename (from descriptorContent) has an extension, uses it as-is.
-     * Only derives an extension from contentType when there's no original filename or no extension.
-     */
-    private fun resolveDownloadFileName(
-        originalName: String?,
-        fallbackKey: String,
-        contentType: String?,
-    ): String {
-        val safeName = originalName
-            ?.replace('/', '_')
-            ?.replace('\\', '_')
-            ?.replace('\u0000', '_')
-
-        // If the original filename has an extension, trust it completely
-        if (safeName != null && safeName.contains('.')) return safeName
-
-        // No extension in name — derive one from contentType
-        val name = safeName ?: fallbackKey
-        val ext = contentType?.let { extensionForMimeType(it) }
-            ?: contentType?.substringAfter("/")
-                ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
-            ?: "bin"
-        return "$name.$ext"
     }
 }
 

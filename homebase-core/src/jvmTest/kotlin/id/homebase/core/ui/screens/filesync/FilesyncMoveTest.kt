@@ -50,9 +50,8 @@ class FilesyncMoveTest {
     }
 
     @Test
-    fun theStateFolderNameIsNumberedAtASyncTop() {
-        val plan = planMove(listOf(node(".hbsync", folder = true)), handles, listOf(FilesyncProtocol.RootNodeId),
-            FilesyncNames.takenKeys(FilesyncProtocol.RootNodeId, emptyList()))
+    fun theStateFolderNameIsNumberedInAnyFolder() {
+        val plan = planMove(listOf(node(".hbsync", folder = true)), handles, listOf(FilesyncProtocol.RootNodeId, target), FilesyncNames.takenKeys(emptyList()))
         assertEquals(listOf(".hbsync (1)"), plan.moves.map { it.second })
     }
 
@@ -87,5 +86,15 @@ class FilesyncMoveTest {
         assertFalse(picker.copy(path = listOf(root, FilesyncCrumb(folder.nodeId, "Docs"))).canMoveHere, "into a folder being moved")
         assertFalse(picker.copy(path = listOf(root, FilesyncCrumb(target, "Other")), loading = true).canMoveHere)
         assertTrue(picker.isMoving(folder.nodeId))
+    }
+
+    @Test
+    fun nothingMovesIntoAStateFolderOrBelowOne() {
+        val root = FilesyncCrumb(here, null)
+        val picker = FilesyncMovePicker(listOf(node("a.txt")), listOf(root), loading = false)
+        assertFalse(picker.copy(path = listOf(root, FilesyncCrumb(target, ".HbSync"))).canMoveHere)
+        assertFalse(picker.copy(path = listOf(root, FilesyncCrumb(target, ".hbsync"), FilesyncCrumb(Uuid.random(), "inner"))).canMoveHere)
+        assertTrue(picker.copy(path = listOf(root, FilesyncCrumb(target, ".hbsync (1)"))).canMoveHere)
+        assertFalse(root.notOnComputers)
     }
 }

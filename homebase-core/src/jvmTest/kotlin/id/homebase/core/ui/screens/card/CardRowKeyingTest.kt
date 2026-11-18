@@ -47,7 +47,7 @@ class CardRowKeyingTest {
                     circles = circles,
                     photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
                     enabled = true,
-                    showCardsButton = true,
+                    showCardsButton = false,
                     onAudience = { _, _ -> },
                     onEdit = { _, _, _ -> },
                     onDelete = {},
@@ -59,7 +59,7 @@ class CardRowKeyingTest {
         }
 
         onNodeWithTag("not_visible_toggle").performClick()
-        onAllNodesWithTag("cards_button")[0].performClick()
+        onAllNodesWithTag("field_add", useUnmergedTree = true)[0].performClick()
         onNodeWithTag("cards_sheet_done").assertExists()
 
         attributes = listOf(second)

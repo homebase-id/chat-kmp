@@ -595,30 +595,12 @@ class ChatMessageActionService(
             false
         }
 
-    /**
-     * Stream-decrypt a chat payload into a fresh `share_outbound/` file and return
-     * its path, or null when the payload 404s. Bounded RAM (~64 KB chunks) for ANY
-     * payload size — the EXPORT-side counterpart of [getPayloadBytes], which is a
-     * RENDER read capped at PayloadSizePolicy.RENDER_LIMIT_BYTES (#845). Sharing a
-     * 1 GB attachment used to buffer ~2× its size in RAM through getPayloadBytes.
-     */
-    suspend fun streamPayloadToShareOutbound(
-        fileId: Uuid, payloadKey: String, keyHeader: KeyHeader, suffix: String
-    ): String? = payloadDownloadService.exportToTemp(
-        driveId = chatTargetDrive.alias,
-        fileId = fileId,
-        key = payloadKey,
-        keyHeader = keyHeader,
-        destination = ExportDestination.ShareOutbound(suffix),
-    )
+    /** A chat payload as a file for another app, in `share_outbound/` ([PayloadDownloadService.exportPlayable]). */
+    suspend fun exportToShareOutbound(
+        fileId: Uuid, payload: PayloadDescriptor, keyHeader: KeyHeader, suffix: String
+    ): String? = payloadDownloadService.exportPlayable(chatTargetDrive.alias, fileId, payload, keyHeader, ExportDestination.ShareOutbound(suffix))
 
-    suspend fun streamPayloadToUploadTemp(
-        fileId: Uuid, payloadKey: String, keyHeader: KeyHeader, prefix: String, suffix: String
-    ): String? = payloadDownloadService.exportToTemp(
-        driveId = chatTargetDrive.alias,
-        fileId = fileId,
-        key = payloadKey,
-        keyHeader = keyHeader,
-        destination = ExportDestination.UploadTemp(prefix, suffix),
-    )
+    suspend fun exportToUploadTemp(
+        fileId: Uuid, payload: PayloadDescriptor, keyHeader: KeyHeader, prefix: String, suffix: String
+    ): String? = payloadDownloadService.exportPlayable(chatTargetDrive.alias, fileId, payload, keyHeader, ExportDestination.UploadTemp(prefix, suffix))
 }

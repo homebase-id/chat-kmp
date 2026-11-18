@@ -14,6 +14,13 @@ class PayloadDescriptorInternalDescriptorTest {
     }
 
     @Test
+    fun aVideosPlaylistIsNotAnAttachmentOfItsOwn() {
+        val playlist = PayloadDescriptor(key = "pls_0003", contentType = "application/vnd.apple.mpegurl")
+        assertTrue(playlist.isInternalDescriptor())
+        assertEquals(emptyList(), listOf(playlist).withoutInternalDescriptors())
+    }
+
+    @Test
     fun ordinaryKeys_areNotInternal() {
         assertFalse(PayloadDescriptor(key = "chat_web0").isInternalDescriptor())
         assertFalse(PayloadDescriptor(key = "vlt_pg_00").isInternalDescriptor())

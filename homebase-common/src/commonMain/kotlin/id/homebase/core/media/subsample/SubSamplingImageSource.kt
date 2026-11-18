@@ -3,6 +3,7 @@ package id.homebase.core.media.subsample
 import androidx.compose.runtime.Immutable
 import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.mediaSharedKey
 
 sealed interface SubSamplingImageSource {
 
@@ -10,6 +11,8 @@ sealed interface SubSamplingImageSource {
     @Immutable
     class Remote(
         val imageData: HomebaseImageData,
+        /** The sender's own file, shown when the sent copy can't be loaded yet: not uploaded, not in the cache. */
+        val standIn: String? = null,
     ) : SubSamplingImageSource
 
     class LocalFile(
@@ -28,7 +31,7 @@ sealed interface SubSamplingImageSource {
  * `HomebaseImage` registers, or a drive-backed image and its full-screen viewer won't match.
  */
 fun SubSamplingImageSource.sharedElementKey(): String? = when (this) {
-    is SubSamplingImageSource.Remote -> "image-${imageData.fileId}-${imageData.payloadKey}"
+    is SubSamplingImageSource.Remote -> mediaSharedKey(imageData.fileId, imageData.payloadKey)
     is SubSamplingImageSource.Avatar -> avatarSharedElementKey(odinId)
     is SubSamplingImageSource.LocalFile -> null
 }

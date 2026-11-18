@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.calling.CallIceServer
 import com.shepeliev.webrtckmp.DataChannel
 import com.shepeliev.webrtckmp.IceCandidate
 import com.shepeliev.webrtckmp.FacingMode
@@ -58,11 +59,14 @@ class KmpVideoHandle(
     override val frameSize = MutableStateFlow<Pair<Int, Int>?>(null)
 }
 
+// Every server as given by the device's own server; nothing is derived or added.
+private fun CallIceServer.toKmp() = IceServer(urls = urls, username = username.orEmpty(), password = credential.orEmpty())
+
 internal fun List<VideoHandle>.kmpTracks(): Set<VideoTrack> = mapNotNullTo(HashSet()) { (it as? KmpVideoHandle)?.track }
 
 /** Android and iOS engine over webrtc-kmp. Platform audio routing is delegated to [CallAudioRouter]. */
 @OptIn(ExperimentalAtomicApi::class)
-class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
+class WebRtcKmpCallEngine(iceServers: List<CallIceServer>) : CallEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val router = CallAudioRouter()
 
@@ -78,10 +82,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         configureWebRtc()
     }
 
-    // Every URL as given by the device's own server; nothing is derived or added.
-    private val peer = PeerConnection(
-        RtcConfiguration(iceServers = if (stunUrls.isEmpty()) emptyList() else listOf(IceServer(urls = stunUrls))),
-    )
+    private val peer = PeerConnection(RtcConfiguration(iceServers = iceServers.map { it.toKmp() }))
 
     private var stream: MediaStream? = null
     private var audioTrack: MediaStreamTrack? = null
@@ -322,6 +323,9 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         val sender = videoSender ?: return
         Logger.i(tag = "WebRtcKmp") { "video sender ${describeVideoSender(sender)}" }
     }
+
+    override fun setIceServers(iceServers: List<CallIceServer>): Boolean =
+        !closed.load() && peer.setConfiguration(RtcConfiguration(iceServers = iceServers.map { it.toKmp() }))
 
     override suspend fun restartIce(): String = offer(OfferAnswerOptions(iceRestart = true))
 

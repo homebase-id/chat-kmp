@@ -9,8 +9,7 @@ package id.homebase.api.video
  * the per-platform compress actuals to feed [FfmpegCompressPlanner]; it stays on
  * [FFmpegUtils].
  *
- * The production implementation is [FFmpegVideoProber], reached through
- * [VideoCompressionService].
+ * Each platform's is [platformVideoProber], reached through [VideoCompressionService].
  *
  * Named `VideoProber` (the actor) rather than `VideoProbe` to avoid colliding with the
  * web-only `FFmpegBridge.VideoProbe` probe-*result* data class on the wasmJs target (both
@@ -33,3 +32,17 @@ interface VideoProber {
      */
     suspend fun probeVideo(inputPath: String): VideoTrackInfo?
 }
+
+/**
+ * The first video track of a file, as [VideoProber.probeVideo] reads it. Null fields and 0 dimensions mean the
+ * probe couldn't tell.
+ */
+data class VideoTrackInfo(
+    val codec: String?,
+    val widthPx: Int,
+    val heightPx: Int,
+    /** Luma bit depth; null must be treated as possibly 10-bit (fail closed). */
+    val bitDepth: Int?,
+    /** HDR flag, or null when the probe couldn't determine it (fail closed, as with [bitDepth]). */
+    val isHdr: Boolean?,
+)

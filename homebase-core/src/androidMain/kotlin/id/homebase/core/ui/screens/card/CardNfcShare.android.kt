@@ -108,6 +108,8 @@ private fun hceAdapter(context: Context): NfcAdapter? {
 }
 
 private class AndroidCardNfc(private val activity: Activity, private val adapter: NfcAdapter) : CardNfc {
+    override val canShare = true
+
     override var isEnabled by mutableStateOf(adapter.isEnabled)
         private set
 

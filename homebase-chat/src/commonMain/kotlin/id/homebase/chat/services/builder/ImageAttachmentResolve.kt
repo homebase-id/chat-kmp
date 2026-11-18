@@ -2,7 +2,7 @@ package id.homebase.chat.services.builder
 
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.files.toUploadPath
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 

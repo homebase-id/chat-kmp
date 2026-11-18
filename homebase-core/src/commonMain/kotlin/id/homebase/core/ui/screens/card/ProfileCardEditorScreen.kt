@@ -3,7 +3,6 @@
 package id.homebase.core.ui.screens.card
 
 import id.homebase.resources.storage_full_upload_failed
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialShapes
@@ -21,15 +20,8 @@ import id.homebase.resources.profile_card_design_locked_title
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.text.TextAutoSize
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,24 +51,24 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
@@ -106,6 +98,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
+import id.homebase.core.widget.WithTooltip
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.Smartphone
+import androidx.compose.ui.semantics.role
+import id.homebase.core.widget.connectedButtonShapes
+import id.homebase.core.widget.ProvideOpenOverlays
+import id.homebase.core.widget.ReportOverlay
 import id.homebase.core.util.isDesktopOrWeb
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Brush
@@ -141,7 +142,8 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.close
 import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_preview
-import id.homebase.resources.profile_card_change_design_to
+import id.homebase.resources.profile_card_preview_desktop
+import id.homebase.resources.profile_card_preview_mobile
 import id.homebase.resources.profile_card_audience_editing
 import id.homebase.resources.profile_card_design_save_failed
 import id.homebase.resources.profile_card_discard_confirm
@@ -150,9 +152,6 @@ import id.homebase.resources.profile_card_discard_message
 import id.homebase.resources.profile_card_discard_title
 import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.profile_card_error
-import id.homebase.resources.profile_card_step_count
-import id.homebase.resources.profile_card_step_customise
-import id.homebase.resources.profile_card_step_design_title
 import id.homebase.resources.save
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -174,7 +173,6 @@ import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.cancel
 import id.homebase.resources.profile_edit_title
 
-private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val COMPACT_HEIGHT = 760.dp
 private val COMPACT_TILE_WIDTH = 88.dp
 private val COMPACT_TILE_CORNER = 16.dp
@@ -193,9 +191,12 @@ private val WIDE_PANEL_WIDTH = 440.dp
 private val ROOMY_PANEL_WIDTH = 488.dp
 private val ROOMY_LAYOUT_MIN_WIDTH = 1080.dp
 private val PREVIEW_MAX_WIDTH = 440.dp
+// Past the site's 768 CSS px breakpoint, where it lays the card out as its wide page.
+private val DESKTOP_PREVIEW_WIDTH = 1024.dp
 private val PREVIEW_SIDE_INSET = 16.dp
 private val PREVIEW_FADE_HEIGHT = 40.dp
 private val DESIGN_LABEL_HEIGHT = 24.dp
+private val DESIGN_STRIP_HEIGHT = 136.dp
 private val DESIGN_TILE_MIN_WIDTH = 80.dp
 private val DESIGN_TILE_MAX_WIDTH = 128.dp
 private val DESIGN_TILE_SPACING = 12.dp
@@ -222,6 +223,20 @@ fun ProfileCardEditorScreen(
     // Opened straight on the design picker, back leaves the editor instead of stepping to the content list.
     openDesign: Boolean = false,
 ) {
+    ProvideOpenOverlays {
+        ProfileCardEditor(viewModel, avatarViewModel, onBack, onNavigateToCropper, cardsEnabled, openDesign)
+    }
+}
+
+@Composable
+private fun ProfileCardEditor(
+    viewModel: ProfileCardViewModel,
+    avatarViewModel: ProfileAvatarEditViewModel,
+    onBack: () -> Unit,
+    onNavigateToCropper: (Uuid) -> Unit,
+    cardsEnabled: Boolean,
+    openDesign: Boolean,
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
@@ -238,7 +253,7 @@ fun ProfileCardEditorScreen(
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
     val errContent = stringResource(MR.string.profile_card_content_save_failed)
 
-    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = false) }
+    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id) }
     LaunchedEffect(viewModel) {
         if (cardsEnabled) viewModel.startHost()
         viewModel.onContentEditorShown()
@@ -255,7 +270,6 @@ fun ProfileCardEditorScreen(
         onBack()
     }
     var mode by rememberSaveable { mutableStateOf(if (openDesign && cardsEnabled) EditorMode.Design else EditorMode.Content) }
-    var step by rememberSaveable { mutableStateOf(EditorStep.Design) }
     var designOpened by remember { mutableStateOf(false) }
     LaunchedEffect(mode) {
         if (mode == EditorMode.Design) {
@@ -268,14 +282,12 @@ fun ProfileCardEditorScreen(
     var confirmDiscard by remember { mutableStateOf(false) }
     val backToContent = {
         viewModel.onPreviewDiscarded()
-        step = EditorStep.Design
         mode = EditorMode.Content
     }
     val closeDesign = if (openDesign) leave else backToContent
     val requestBack = {
         when {
             mode == EditorMode.Content -> leave()
-            step == EditorStep.Customise -> step = EditorStep.Design
             uiState.hasUnsavedChanges && !uiState.isSavingDesign -> confirmDiscard = true
             else -> closeDesign()
         }
@@ -314,7 +326,7 @@ fun ProfileCardEditorScreen(
                     )
                     if (result == SnackbarResult.ActionPerformed) viewModel.onAudienceUndone()
                 }
-                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
+                is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.CircleDeleteFailed -> Unit
             }
         }
     }
@@ -361,8 +373,6 @@ fun ProfileCardEditorScreen(
         ProfileCardEditorContent(
             uiState = uiState,
             mode = mode,
-            step = step,
-            onStep = { step = it },
             onBack = requestBack,
             onSelect = viewModel::onDesignSelected,
             onOption = viewModel::onOptionSelected,
@@ -404,11 +414,13 @@ fun ProfileCardEditorScreen(
                 paintWhileAttached = viewModel::paintWhileAttached,
                 modifier = Modifier.fillMaxSize(),
                 layoutWidth = layoutWidth,
+                shape = MaterialTheme.shapes.extraLargeIncreased,
                 cover = designCover,
                 coverHeld = uiState.isSwitchingDesign,
                 skeleton = true,
             )
         }
+        if (avatarState.removalToConfirm != null) ReportOverlay()
         PhotoRemovalConfirmDialog(avatarState.removalToConfirm, avatarViewModel::onAction)
         uiState.pendingPublic?.let { pending ->
             MakePublicDialog(itemLabel = pending.itemLabel, onConfirm = viewModel::onPublicConfirmed, onDismiss = viewModel::onPublicCancelled)
@@ -421,6 +433,7 @@ fun ProfileCardEditorScreen(
 
 @Composable
 internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
@@ -437,6 +450,7 @@ internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismis
 
 @Composable
 internal fun NamelessPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
@@ -455,8 +469,6 @@ internal fun NamelessPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) 
 @Composable
 internal fun ProfileCardEditorContent(
     uiState: ProfileCardUiState,
-    step: EditorStep,
-    onStep: (EditorStep) -> Unit,
     onBack: () -> Unit,
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
@@ -499,6 +511,7 @@ internal fun ProfileCardEditorContent(
             val cardWidth = minOf(maxWidth, WIDE_SHEET_MAX_WIDTH)
             val contentOpen = mode == EditorMode.Content
             var previewOpen by rememberSaveable { mutableStateOf(false) }
+            var previewWidth by rememberSaveable { mutableStateOf(PreviewWidth.Desktop) }
             val previewing = previewOpen && contentOpen && showCard
             @Suppress("DEPRECATION") BackHandler(enabled = previewing) { previewOpen = false }
             val density = LocalDensity.current
@@ -514,15 +527,10 @@ internal fun ProfileCardEditorContent(
                 heroPulse.animateTo(HERO_PULSE_SCALE, pulseIn)
                 heroPulse.animateTo(1f, pulseOut)
             }
-            val previewEdge by cardEdgeColor(
-                uiState.cardBottomArgb ?: uiState.overrides.palette?.ground?.let(::hexToArgb),
-                uiState.design,
-            )
+            val previewEdge by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val panel: @Composable (Modifier, Shape) -> Unit = { modifier, shape ->
                 EditorPanel(
                     uiState = uiState,
-                    step = step,
-                    onStep = onStep,
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
@@ -610,13 +618,13 @@ internal fun ProfileCardEditorContent(
                     }
                 } else if (contentOpen && contentLayout == ContentLayout.CompactHeader) {
                     val selectedCard = uiState.cards.firstOrNull { it.audience == uiState.selectedAudience }
-                    val capturing = host != null && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+                    val capturing = host != null && uiState.cards.isNotEmpty()
                     LaunchedEffect(capturing, host, uiState.contentSaves, uiState.selectedAudience, uiState.cards) {
                         if (capturing) onCaptureTiles()
                     }
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         // Occluded by the opaque column above it: the host only has to be attached for the snapshot.
-                        if (capturing && host != null) {
+                        if (capturing && host != null && !isDesktopOrWeb()) {
                             CardHostView(
                                 host = host,
                                 modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
@@ -655,6 +663,7 @@ internal fun ProfileCardEditorContent(
                         }
                     }
                 } else if (wide) {
+                    val desktopPreview = previewWidth == PreviewWidth.Desktop
                     // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
                     Row(
                         modifier = Modifier
@@ -666,29 +675,35 @@ internal fun ProfileCardEditorContent(
                         verticalAlignment = Alignment.Top,
                     ) {
                         Column(
-                            modifier = Modifier.weight(1f, fill = false).fillMaxHeight(),
+                            modifier = Modifier.weight(1f, fill = desktopPreview).fillMaxHeight(),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(WIDE_CHIP_GAP),
                         ) {
                             val chipDescription = stringResource(MR.string.profile_card_audience_editing, audienceLabel(uiState.selectedAudience))
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.widthIn(max = with(density) { wideCard.width.toDp() }.takeIf { it > 0.dp } ?: Dp.Unspecified),
+                            ) {
                                 AudienceChip(
                                     audience = uiState.selectedAudience,
                                     locked = uiState.isCircleReadOnly,
                                     unsaved = uiState.isUnsavedCard,
                                     elevated = false,
                                     modifier = Modifier
-                                        .widthIn(max = with(density) { wideCard.width.toDp() }.takeIf { it > 0.dp } ?: Dp.Unspecified)
+                                        .weight(1f, fill = false)
                                         .clearAndSetSemantics { contentDescription = chipDescription },
                                 )
+                                PreviewWidthToggle(selected = previewWidth, onSelect = { previewWidth = it })
                                 if (contentOpen && onDesign != null) DesignButton(onDesign)
                             }
                             CardPreviewFrame(
-                                keepProportions = true,
+                                keepProportions = !desktopPreview,
+                                maxWidth = if (desktopPreview) Dp.Infinity else PREVIEW_MAX_WIDTH,
                                 alignment = Alignment.TopCenter,
                                 onCardSize = { wideCard = it },
-                                modifier = Modifier.weight(1f),
-                            ) { preview(cardWidth) }
+                                modifier = Modifier.weight(1f).then(if (desktopPreview) Modifier.fillMaxWidth() else Modifier),
+                            ) { preview(if (desktopPreview) DESKTOP_PREVIEW_WIDTH else cardWidth) }
                         }
                         panel(
                             Modifier.width(widePanelWidth).then(if (contentOpen) Modifier.verticalScroll(rememberScrollState()) else Modifier),
@@ -744,7 +759,6 @@ private fun ContentPage(
     }
 }
 
-/** [body] is shared by both steps so the card above never resizes when the step changes. */
 private class PanelMetrics(val body: Dp, val gap: Dp, val edge: Dp) {
     companion object {
         val Regular = PanelMetrics(body = 144.dp, gap = 8.dp, edge = 16.dp)
@@ -761,6 +775,7 @@ private class PanelMetrics(val body: Dp, val gap: Dp, val edge: Dp) {
 private fun CardPreviewFrame(
     keepProportions: Boolean,
     modifier: Modifier = Modifier,
+    maxWidth: Dp = PREVIEW_MAX_WIDTH,
     alignment: Alignment = Alignment.Center,
     fadeInto: (() -> Color)? = null,
     onCardSize: ((IntSize) -> Unit)? = null,
@@ -770,7 +785,7 @@ private fun CardPreviewFrame(
     Box(modifier = modifier, contentAlignment = alignment) {
         Box(
             modifier = Modifier
-                .widthIn(max = PREVIEW_MAX_WIDTH)
+                .widthIn(max = maxWidth)
                 .then(
                     if (keepProportions) Modifier.aspectRatio(CARD_THUMB_ASPECT, matchHeightConstraintsFirst = true)
                     else Modifier.fillMaxSize(),
@@ -793,6 +808,42 @@ private fun CardPreviewFrame(
                             drawRect(Brush.verticalGradient(listOf(color.copy(alpha = 0f), color)))
                         },
                 )
+            }
+        }
+    }
+}
+
+internal enum class PreviewWidth { Desktop, Mobile }
+
+@Composable
+private fun PreviewWidthToggle(selected: PreviewWidth, onSelect: (PreviewWidth) -> Unit) {
+    val options = PreviewWidth.entries
+    Row(
+        modifier = Modifier.selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+    ) {
+        options.forEachIndexed { index, option ->
+            val label = stringResource(
+                when (option) {
+                    PreviewWidth.Desktop -> MR.string.profile_card_preview_desktop
+                    PreviewWidth.Mobile -> MR.string.profile_card_preview_mobile
+                },
+            )
+            WithTooltip(label) {
+                ToggleButton(
+                    checked = option == selected,
+                    onCheckedChange = { onSelect(option) },
+                    shapes = connectedButtonShapes(index, options.size),
+                    modifier = Modifier.semantics { role = Role.RadioButton },
+                ) {
+                    Icon(
+                        imageVector = when (option) {
+                            PreviewWidth.Desktop -> Icons.Outlined.Computer
+                            PreviewWidth.Mobile -> Icons.Outlined.Smartphone
+                        },
+                        contentDescription = label,
+                    )
+                }
             }
         }
     }
@@ -862,8 +913,11 @@ private fun EditorTopBar(
             }
             if (onDesign != null) DesignButton(onDesign)
             if (onPreview != null) {
-                IconButton(onClick = onPreview, shapes = IconButtonDefaults.shapes()) {
-                    Icon(Icons.Outlined.Visibility, contentDescription = stringResource(MR.string.profile_card_preview))
+                val previewLabel = stringResource(MR.string.profile_card_preview)
+                WithTooltip(previewLabel, below = true) {
+                    IconButton(onClick = onPreview, shapes = IconButtonDefaults.shapes()) {
+                        Icon(Icons.Outlined.Visibility, contentDescription = previewLabel)
+                    }
                 }
             } else if (onSave != null) {
                 FilledIconButton(
@@ -885,8 +939,6 @@ private fun EditorTopBar(
 @Composable
 private fun EditorPanel(
     uiState: ProfileCardUiState,
-    step: EditorStep,
-    onStep: (EditorStep) -> Unit,
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
@@ -908,7 +960,6 @@ private fun EditorPanel(
     shape: Shape,
     modifier: Modifier = Modifier,
 ) {
-    val motion = MaterialTheme.motionScheme
     val fontScale = LocalDensity.current.fontScale
     val design = uiState.design
     val isSaving = uiState.isSavingDesign
@@ -918,7 +969,8 @@ private fun EditorPanel(
     val custom = remember(styles, uiState.overrides, design) { customStyle(styles, uiState.overrides, design) }
     val control = if (styles.isEmpty()) CHIP_HEIGHT * grow else maxOf(CHIP_HEIGHT * grow, styleRowHeight(fontScale))
     val optionsNeeded = CAPTION_LINE * fontScale + control + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
-    val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
+    val designsNeeded = DESIGN_STRIP_HEIGHT * fontScale.coerceAtLeast(1f) + metrics.gap * 2 + TOOLBAR_HEIGHT
+    val body = maxOf(metrics.body, optionsNeeded, designsNeeded)
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience, uiState.cards) { uiState.contentItems }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -966,169 +1018,21 @@ private fun EditorPanel(
                 ReadOnlyCard(designName = stringResource(designLabel(design)), modifier = Modifier.padding(horizontal = 16.dp))
                 return@Column
             }
-            StepHeader(
-                step = step,
+            CardOptionsPanel(
                 design = design,
-                isSaving = isSaving,
-                canCustomise = !uiState.loadFailed,
-                onStep = onStep,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-            )
-            AnimatedContent(
-                targetState = step,
-                transitionSpec = {
-                    val forward = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                    (slideInHorizontally(motion.defaultSpatialSpec()) { it / 3 * forward } + fadeIn(motion.defaultEffectsSpec()))
-                        .togetherWith(slideOutHorizontally(motion.defaultSpatialSpec()) { -it / 3 * forward } + fadeOut(motion.fastEffectsSpec()))
-                },
+                overrides = uiState.overrides,
+                enabled = !isSaving,
+                onOption = onOption,
+                onBlockOrder = onBlockOrder,
+                styles = styles,
+                custom = custom,
+                onStyle = onStyle,
+                onSelect = onSelect,
+                designsEnabled = !uiState.loadFailed,
+                gap = metrics.gap,
+                hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
                 modifier = Modifier.fillMaxWidth().height(body),
-                contentAlignment = Alignment.Center,
-            ) { shown ->
-                when (shown) {
-                    EditorStep.Design -> DesignStrip(
-                        selected = design,
-                        enabled = !uiState.loadFailed,
-                        dimmed = uiState.loadFailed,
-                        onSelect = onSelect,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    EditorStep.Customise -> CardOptionsPanel(
-                        design = design,
-                        overrides = uiState.overrides,
-                        enabled = !isSaving,
-                        onOption = onOption,
-                        onBlockOrder = onBlockOrder,
-                        styles = styles,
-                        custom = custom,
-                        onStyle = onStyle,
-                        gap = metrics.gap,
-                        hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-        }
-    }
-}
-
-// One filled action per step: Customise on the first; the second swaps designs, and Save lives in the top bar.
-@Composable
-private fun StepHeader(
-    step: EditorStep,
-    design: String,
-    isSaving: Boolean,
-    canCustomise: Boolean,
-    onStep: (EditorStep) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val motion = MaterialTheme.motionScheme
-    val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
-    val designName = stringResource(designLabel(design))
-    AnimatedContent(
-        targetState = step,
-        transitionSpec = {
-            val forward = if (targetState.ordinal > initialState.ordinal) 1 else -1
-            (slideInVertically(motion.defaultSpatialSpec()) { it / 2 * forward } + fadeIn(motion.defaultEffectsSpec()))
-                .togetherWith(slideOutVertically(motion.defaultSpatialSpec()) { -it / 2 * forward } + fadeOut(motion.fastEffectsSpec()))
-        },
-        contentAlignment = Alignment.CenterStart,
-        modifier = modifier,
-    ) { shown ->
-        if (shown == EditorStep.Design) {
-            DesignStepHeader(
-                count = count,
-                canCustomise = canCustomise,
-                onCustomise = { if (!isSaving) onStep(EditorStep.Customise) },
             )
-            return@AnimatedContent
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            when (shown) {
-                EditorStep.Design -> Unit
-                // The design's name is the way back to step one, so the step reads as "this design, adjusted".
-                EditorStep.Customise -> {
-                    val description = stringResource(MR.string.profile_card_change_design_to, designName)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        FilledTonalButton(
-                            onClick = { if (!isSaving) onStep(EditorStep.Design) },
-                            enabled = !isSaving,
-                            shapes = ButtonDefaults.shapes(),
-                            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .heightIn(min = ACTION_HEIGHT)
-                                .semantics {
-                                    heading()
-                                    contentDescription = "$description, $count"
-                                },
-                        ) {
-                            Icon(
-                                Icons.Outlined.SwapHoriz,
-                                contentDescription = null,
-                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                            )
-                            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                            ActionLabel(designName)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DesignStepHeader(
-    count: String,
-    canCustomise: Boolean,
-    onCustomise: () -> Unit,
-) {
-    val compact = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
-    val title = stringResource(MR.string.profile_card_step_design_title)
-    val customise = stringResource(MR.string.profile_card_step_customise)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = ACTION_HEIGHT),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLargeEmphasized,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            autoSize = TextAutoSize.StepBased(
-                minFontSize = MaterialTheme.typography.titleSmall.fontSize,
-                maxFontSize = MaterialTheme.typography.titleLargeEmphasized.fontSize,
-            ),
-            modifier = Modifier.weight(1f).semantics {
-                heading()
-                contentDescription = "$title, $count"
-            },
-        )
-        Button(
-            onClick = onCustomise,
-            enabled = canCustomise,
-            shapes = ButtonDefaults.shapes(),
-            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-            modifier = Modifier.heightIn(min = ACTION_HEIGHT),
-        ) {
-            ActionLabel(customise)
-            // Large text keeps the word and drops the arrow, so the title keeps its line.
-            if (!compact) {
-                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                )
-            }
         }
     }
 }
@@ -1197,17 +1101,7 @@ private fun SaveGlyph(isSaving: Boolean, size: Dp) {
 }
 
 @Composable
-private fun ActionLabel(label: String) {
-    Text(
-        text = label,
-        style = ButtonDefaults.textStyleFor(ACTION_HEIGHT),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
-
-@Composable
-private fun DesignStrip(
+internal fun DesignStrip(
     selected: String,
     enabled: Boolean,
     dimmed: Boolean,
@@ -1261,7 +1155,7 @@ private fun DesignStrip(
                 state = state,
                 horizontalArrangement = Arrangement.spacedBy(DESIGN_TILE_SPACING),
                 contentPadding = PaddingValues(horizontal = DESIGN_STRIP_INSET),
-                modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(itemHeight).selectableGroup(),
+                modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(itemHeight).wheelScrollsRow(state).selectableGroup(),
             ) {
                 items(designs.size, key = { designs[it] }) { index -> tile(index, Modifier.size(itemWidth, itemHeight)) }
             }
@@ -1291,9 +1185,12 @@ private fun DesignTile(
     val shape = RoundedCornerShape(corner)
     val label = stringResource(designLabel(design))
     val labelStyle = if (selected) typography.labelLargeEmphasized else typography.labelLarge
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
     Column(
         modifier = modifier
-            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .selectable(selected, interactions, LocalIndication.current, enabled, Role.RadioButton, onClick)
+            .handCursor(enabled)
             .semantics { contentDescription = label },
     ) {
         Box(
@@ -1306,7 +1203,8 @@ private fun DesignTile(
                     alpha = dim
                 }
                 .clip(shape)
-                .border(BorderStroke(ring, if (selected) colors.primary else colors.outlineVariant), shape),
+                .border(BorderStroke(ring, if (selected) colors.primary else colors.outlineVariant), shape)
+                .focusRing(focused, shape, colors.secondary),
         ) {
             CardDesignThumbnail(design = design, modifier = Modifier.fillMaxSize())
             Box(
@@ -1345,12 +1243,11 @@ private fun DesignTile(
     }
 }
 
-internal enum class EditorStep { Design, Customise }
-
 internal enum class EditorMode { Content, Design }
 
 @Composable
 private fun DiscardDialog(onKeep: () -> Unit, onDiscard: () -> Unit) {
+    ReportOverlay()
     AlertDialog(
         onDismissRequest = onKeep,
         title = { Text(stringResource(MR.string.profile_card_discard_title)) },

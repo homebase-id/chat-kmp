@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
-import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import id.homebase.api.file.CONTENT_TYPE_MARKDOWN
 import id.homebase.core.util.FileKind
 import id.homebase.core.util.fileKindOf
 import id.homebase.core.util.formatFileSize

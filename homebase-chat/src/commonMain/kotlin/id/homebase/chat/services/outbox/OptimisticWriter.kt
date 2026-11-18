@@ -127,6 +127,7 @@ class OptimisticWriter(
                 originalAuthor = domain,
                 versionTag = null,
                 payloads = payloadDescriptors,
+                referencedFile = unecryptedMetadata.referencedFile,
             ),
             serverMetadata = ServerMetadata(
                 accessControlList = unecryptedMetadata.accessControlList ?: AccessControlList(
@@ -521,6 +522,7 @@ class OptimisticWriter(
         recipients: List<OdinId>?,
         hardDelete: Boolean = false,
         dependencyUniqueId: Uuid? = null,
+        fileSystemType: FileSystemType? = null,
     ): MutationOutcome = writeDelete(driveId, uniqueId) { original ->
         outboxSync.tryEnqueue(
             request = DeleteLocalFilesByFileIdRequest(
@@ -528,6 +530,7 @@ class OptimisticWriter(
                 fileIds = listOf(original.fileId),
                 recipients = recipients,
                 hardDelete = hardDelete,
+                fileSystemType = fileSystemType,
             ),
             dependencyUniqueId = dependencyUniqueId,
         )

@@ -115,7 +115,6 @@ fun rememberWaveformAmplitudes(
                     fileId = fileId,
                     payloadKey = payload.key,
                     previewThumbnail = thumbnail.toEmbeddedThumb(),
-                    requestedSize = requestedSize,
                     keyHeader = if (payloadIv != null) {
                         KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
                     } else {

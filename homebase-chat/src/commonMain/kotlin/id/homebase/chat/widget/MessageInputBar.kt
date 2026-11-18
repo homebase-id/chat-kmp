@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -30,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
@@ -136,6 +138,7 @@ import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.settings.rememberArrowUpEditsLastMessage
 import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.usesComposerPopovers
 import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
@@ -192,6 +195,7 @@ import id.homebase.resources.chat_markdown_nested_list
 import id.homebase.resources.chat_markdown_task_list
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
+import id.homebase.resources.next
 import id.homebase.resources.collapse
 import id.homebase.resources.expand
 import id.homebase.resources.slide_to_cancel
@@ -1243,9 +1247,10 @@ private fun EmojiToggleButton(
     popoverContent: (@Composable () -> Unit)?,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     if (showingEmojiSheet || popoverContent == null) {
-        IconButton(onClick = if (showingEmojiSheet) onKeyboardClick else onEmojiClick) {
+        IconButton(onClick = if (showingEmojiSheet) onKeyboardClick else onEmojiClick, modifier = modifier) {
             Crossfade(showingEmojiSheet, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { sheet ->
                 Icon(
                     imageVector = if (sheet) Icons.Default.Keyboard else Icons.Default.EmojiEmotions,
@@ -1261,7 +1266,7 @@ private fun EmojiToggleButton(
                 onEmojiClick()
                 popoverOpen = !popoverOpen
             },
-            modifier = Modifier.popoverAnchor(anchor),
+            modifier = modifier.popoverAnchor(anchor),
         ) {
             Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
             ComposerPopover(
@@ -1345,12 +1350,15 @@ fun MessageTextFieldForAttachment(
     // On mobile (Android/iOS) the caption editor hides it. Injectable so both branches
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = usesPointerUx(),
+    emojiPopover: Boolean = usesComposerPopovers(),
     onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
     onPasteImage: ((ByteArray) -> Unit)? = null,
     // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
     clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
     // Non-null puts the view-once toggle inside the caption field; null when the attachment can't be view once.
     viewOnceToggle: ViewOnceToggle? = null,
+    // Chat-list capture has no chat yet: Next moves on to the recipient picker, so no emoji and no Send.
+    nextInsteadOfSend: Boolean = false,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     val linkDialog = remember { LinkDialogState() }
@@ -1428,7 +1436,7 @@ fun MessageTextFieldForAttachment(
                             enterSendsMessage = enterSendsMessage,
                             onSend = {
                                 if (!hasSent) {
-                                    hasSent = true
+                                    hasSent = !nextInsteadOfSend
                                     onSendMessage()
                                 }
                             },
@@ -1440,25 +1448,40 @@ fun MessageTextFieldForAttachment(
                         Text(stringResource(MR.string.chat_new_message_placeholder))
                     },
                     trailingIcon = viewOnceToggle?.let { toggle -> { ViewOnceCaptionToggle(toggle) } },
-                    leadingIcon = {
-                        IconButton(
-                            onClick = {
-                                if (emojiPanel.isOpen) {
-                                    setEmojiPicker(false)
-                                } else {
-                                    keyboardController?.hide()
-                                    focusManager.clearFocus()
-                                    setEmojiPicker(true)
+                    leadingIcon = if (nextInsteadOfSend) null else {
+                        {
+                        EmojiToggleButton(
+                            showingEmojiSheet = false,
+                            contentDescription = stringResource(MR.string.chat_message_emoji_options),
+                            focusRequester = captionFocusRequester,
+                            popoverContent = if (emojiPopover) {
+                                {
+                                    EmojiSelection(
+                                        modifier = Modifier.fillMaxSize().padding(top = 8.dp, start = 16.dp, end = 16.dp)
+                                            .testTag(ATTACHMENT_EMOJI_PICKER_TAG),
+                                        messageInputMode = true,
+                                        searchFirst = true,
+                                        onBackSpace = { state.programmaticBackspace() },
+                                        onEmojiSelected = { state.addTextAfterSelection(it) },
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            onEmojiClick = {
+                                when {
+                                    emojiPopover -> Unit
+                                    emojiPanel.isOpen -> setEmojiPicker(false)
+                                    else -> {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                        setEmojiPicker(true)
+                                    }
                                 }
                             },
+                            onKeyboardClick = {},
                             modifier = Modifier.testTag(ATTACHMENT_EMOJI_BUTTON_TAG),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.EmojiEmotions,
-                                contentDescription = stringResource(
-                                    MR.string.chat_message_emoji_options
-                                )
-                            )
+                        )
                         }
                     },
                     shape = RoundedCornerShape(12.dp),
@@ -1492,14 +1515,15 @@ fun MessageTextFieldForAttachment(
                         enterSendsMessage = enterSendsMessage,
                     ) {
                         IconButton(
-                            onClick = { hasSent = true; onSendMessage() },
+                            onClick = { hasSent = !nextInsteadOfSend; onSendMessage() },
                             enabled = !hasSent,
                             colors = sendButtonColors,
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                imageVector = if (nextInsteadOfSend) Icons.AutoMirrored.Filled.ArrowForward
+                                else Icons.AutoMirrored.Filled.Send,
                                 contentDescription = stringResource(
-                                    MR.string.chat_send_message_button
+                                    if (nextInsteadOfSend) MR.string.next else MR.string.chat_send_message_button
                                 ),
                             )
                         }

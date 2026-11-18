@@ -243,6 +243,7 @@ class ConversationStream(
     // burst, and its single collector runs them one at a time. [enrichMutex] additionally
     // guards against overlap with the ColdLoad direct call in start().
     private val enrichMutex = Mutex()
+    private val unreadMentions = UnreadMentionIndex(dbm)
     private val unreadEnrichTrigger = CoalescingTrigger<String>(scope, UNREAD_ENRICH_DEBOUNCE_MS) {
         enrichAllConversationsWithUnreadCounts(it)
     }
@@ -487,8 +488,8 @@ class ConversationStream(
 
             // region Auto-unarchive: Signal-style unarchive on incoming message
             if (matchingConversation?.conversationState == ConversationState.Archived) {
-                // A status message (rename, join, leave) is not re-engagement.
-                if (!m.isStatusMessage && !m.isAuthoredBy(credentialsManager.getActiveDomain())) {
+                // A status message (rename, join, leave) or a card action reply is not re-engagement.
+                if (!m.leavesConversationRow && !m.isAuthoredBy(credentialsManager.getActiveDomain())) {
                     Logger.i("ConversationStream: unarchiving conversation ${m.conversationId} due to incoming message from ${m.originalAuthor}")
                     val unarchived = matchingConversation.copy(
                         conversationState = ConversationState.Active,
@@ -1287,6 +1288,11 @@ class ConversationStream(
         }
 
         val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
+        val mentionMap = if (_conversations.value.items.any { it.isGroup && unreadMap.containsKey(it.id) }) {
+            unreadMentions.refresh(c.getIdentityId(), c.domain.domainName)
+        } else {
+            emptyMap()
+        }
 
         var changed = 0
         val current = _conversations.value
@@ -1311,10 +1317,11 @@ class ConversationStream(
                         "dirty=${convo.dirty} trigger=$trigger"
                 }
             }
-            if (newCount != convo.unreadCount) {
+            val newMentions = if (convo.isGroup && newCount > 0) mentionMap[convo.id] ?: 0 else 0
+            if (newCount != convo.unreadCount || newMentions != convo.unreadMentionCount) {
                 changed++
-                Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount}")
-                convo.copy(unreadCount = newCount)
+                Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount} mentions=${newMentions}")
+                convo.copy(unreadCount = newCount, unreadMentionCount = newMentions)
             } else {
                 convo
             }
@@ -1364,7 +1371,10 @@ class ConversationStream(
             val advanced = current.advancedLastRead(candidate)
             // Layer the freshly-computed unread on top of the advance (lastRead
             // + dirty). `unreadCount` needs the DB so the model can't own it.
-            if (advanced === current) current else advanced.copy(unreadCount = newCount)
+            if (advanced === current) current else advanced.copy(
+                unreadCount = newCount,
+                unreadMentionCount = if (newCount == 0) 0 else current.unreadMentionCount,
+            )
         }
     }
 

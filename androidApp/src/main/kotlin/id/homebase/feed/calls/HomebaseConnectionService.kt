@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.telecom.CallAudioState
 import android.telecom.Connection
 import android.telecom.ConnectionRequest
 import android.telecom.ConnectionService
@@ -15,6 +16,7 @@ import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import co.touchlab.kermit.Logger
+import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallService
@@ -129,6 +131,7 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
         const val EXTRA_LABEL = "id.homebase.feed.CALL_LABEL"
         private const val TAG = "AndroidCall"
         private val connections = ConcurrentHashMap<String, Connection>()
+        private val routes = ConcurrentHashMap<String, AudioRoute>()
         val labels = ConcurrentHashMap<String, String>()
 
         fun handle(context: Context) = PhoneAccountHandle(ComponentName(context, HomebaseConnectionService::class.java), "homebase-calls")
@@ -177,10 +180,34 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
             putString(EXTRA_LABEL, label)
         }
 
-        fun setActive(callId: String) { connections[callId]?.setActive() }
+        fun setActive(callId: String) {
+            val connection = connections[callId] ?: return
+            connection.setActive()
+            routes[callId]?.let { connection.route(it) }
+        }
+
+        // A self-managed call's audio is routed by Telecom, which overrides AudioManager.setCommunicationDevice.
+        fun setRoute(callId: String, route: AudioRoute) {
+            routes[callId] = route
+            connections[callId]?.route(route)
+        }
+
+        @Suppress("DEPRECATION") // ponytail: setAudioRoute still works on API 34+; requestCallEndpointChange needs the endpoint list.
+        private fun Connection.route(route: AudioRoute) {
+            Logger.i(tag = TAG) { "telecom route $route was ${callAudioState?.route}" }
+            setAudioRoute(
+                when (route) {
+                    AudioRoute.Earpiece -> CallAudioState.ROUTE_EARPIECE
+                    AudioRoute.Speaker -> CallAudioState.ROUTE_SPEAKER
+                    AudioRoute.Bluetooth -> CallAudioState.ROUTE_BLUETOOTH
+                    AudioRoute.Wired -> CallAudioState.ROUTE_WIRED_HEADSET
+                },
+            )
+        }
 
         // Removing first makes the second of Telecom's callback and the call state's own end a no-op.
         fun end(callId: String, cause: Int) {
+            routes.remove(callId)
             connections.remove(callId)?.let {
                 Logger.i(tag = TAG) { "telecom end call=$callId cause=$cause" }
                 it.setDisconnected(DisconnectCause(cause))

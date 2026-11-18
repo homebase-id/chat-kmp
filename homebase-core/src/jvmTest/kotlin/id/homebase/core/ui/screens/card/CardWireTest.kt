@@ -114,17 +114,4 @@ class CardWireTest {
         assertFalse(repo.supportsCircleCards)
         assertTrue(wire.cardRepository().supportsCircleCards)
     }
-
-    @Test
-    fun resettingACircleCardSendsADeleteForItsAttributeOnly() = runTest {
-        val wire = CardWireHarness()
-        val repo = wire.cardRepository()
-        val saved = assertNotNull(repo.saveCircle(ProfileCard(kotlin.uuid.Uuid.NIL, kotlin.uuid.Uuid.NIL, friends, "poster", priority = 20)))
-        repo.savePublic("board")
-
-        repo.resetCircle(saved)
-
-        assertEquals(listOf(saved.id.toString()), wire.deletedIds.toList())
-        assertEquals(1, wire.storedIds.size)
-    }
 }

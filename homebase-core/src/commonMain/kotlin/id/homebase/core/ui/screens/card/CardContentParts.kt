@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Link
+import id.homebase.resources.profile_card_content_cant_go
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.MoreHoriz
@@ -102,6 +104,8 @@ import id.homebase.resources.profile_card_content_edit_title
 import id.homebase.resources.profile_card_content_delete
 import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_card_sheet_available_on
+import id.homebase.resources.profile_card_sheet_not_on_card
+import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.platform.testTag
 import id.homebase.resources.profile_card_content_more
 import id.homebase.core.ui.screens.profile.PROFILE_TYPE_FIELDS
@@ -347,22 +351,24 @@ internal fun ContentSheet(
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
         var shownType by remember { mutableStateOf(type) }
-        val data = remember(shownType) { mutableStateMapOf<String, String>().apply { editing?.let { putAll(it.data) } } }
+        val region = Locale.current.region
+        val original = remember(editing?.id) { editing?.asEdited(region) }
+        val data = remember(shownType) { mutableStateMapOf<String, String>().apply { original?.let { putAll(it.data) } } }
         var audience by remember(editing?.id) { mutableStateOf(editing?.audience ?: card.newItemAudience()) }
         val link = shownType == ProfileAttributeTypes.LINK
-        val linkUrl = data[ProfileAttributeTypes.KEY_LINK_TARGET].orEmpty().trim().let { if (it.isEmpty() || "://" in it) it else "https://$it" }
+        val linkUrl = normalizedLinkTarget(data[ProfileAttributeTypes.KEY_LINK_TARGET].orEmpty())
         val fields = PROFILE_TYPE_FIELDS[shownType].orEmpty()
         fun value(field: ProfileField) = fields.firstOrNull { it.first == field }?.let { data[it.second] }.orEmpty()
         val main = fields.firstOrNull()?.first
         val filled = if (link) linkUrl.isNotEmpty() && isWebUrl(linkUrl) else main != null && value(main).isNotBlank()
         // Outside the &&: a memoized ::value there only gets a group once filled, so the first character rebuilt the sheet.
         val valid = isAttributeValid(shownType, ::value)
-        val canSave = filled && valid && audience.isSavableWith(circles)
         val updates = if (link) {
             mapOf(ProfileAttributeTypes.KEY_LINK_TEXT to data[ProfileAttributeTypes.KEY_LINK_TEXT].orEmpty(), ProfileAttributeTypes.KEY_LINK_TARGET to linkUrl)
         } else {
             fields.associate { (_, key) -> key to data[key].orEmpty() }
         }
+        val canSave = filled && valid && audience.isSavableWith(circles) && (original == null || original.differsFrom(updates, audience))
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -407,14 +413,17 @@ internal fun ContentSheet(
                     }
                 }
             }
+            if (shownType !in CARD_RENDERED_TYPES) NotOnCardNote()
             if (editing == null) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     AudienceBadge(audience = audience, circles = circles)
-                    Text(
-                        text = stringResource(MR.string.profile_card_content_add_visible, audienceLabel(card)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (shownType in CARD_RENDERED_TYPES) {
+                        Text(
+                            text = stringResource(MR.string.profile_card_content_add_visible, audienceLabel(card)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             } else {
                 Text(
@@ -461,6 +470,32 @@ internal fun ContentSheet(
                     null
                 },
                 removeLabel = stringResource(MR.string.profile_card_content_delete),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NotOnCardNote() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(GROUP_OUTER_CORNER))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Block, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = stringResource(MR.string.profile_card_content_cant_go),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(MR.string.profile_card_sheet_not_on_card),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

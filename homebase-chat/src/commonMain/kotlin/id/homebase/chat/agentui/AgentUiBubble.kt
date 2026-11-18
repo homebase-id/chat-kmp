@@ -13,6 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -48,14 +53,19 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.formatMessageTimestamp
+import id.homebase.core.util.supportsTouchGestures
 import id.homebase.resources.MR
 import id.homebase.resources.chat_agent_ui_action_failed
 import id.homebase.resources.chat_agent_ui_action_other
 import id.homebase.resources.chat_agent_ui_action_you
+import id.homebase.resources.chat_agent_ui_choice_at
+import id.homebase.resources.chat_agent_ui_choices_more
+import id.homebase.resources.chat_agent_ui_open_card
 import id.homebase.resources.chat_agent_ui_unparseable
+import id.homebase.resources.chat_message_options
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -104,6 +114,11 @@ fun AgentUiBubble(
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     onImageClick: ((PayloadDescriptor) -> Unit)? = null,
+    onImageSecondaryPress: ((PayloadDescriptor) -> Unit)? = null,
+    shape: Shape = RoundedCornerShape(Dimens.AgentUi.cardCornerRadius),
+    authorName: String? = null,
+    authorColor: Color? = null,
+    footer: (@Composable () -> Unit)? = null,
 ) {
     val descriptor = content.descriptor
     if (descriptor == null) {
@@ -121,7 +136,6 @@ fun AgentUiBubble(
                 fileId = message.fileId,
                 descriptor = p,
                 keyHeader = KeyHeader(p.iv!!.bytes, aesKey),
-                requestedSize = ImageSize.THUMB_MEDIUM,
             )
         }
     }
@@ -165,11 +179,18 @@ fun AgentUiBubble(
 
     // Saved with the list item, so a sent action stays pending after the card scrolls away and back.
     var sentActions by rememberSaveable(message.id, ready?.rev) { mutableStateOf(emptyList<String>()) }
+    // Sends that succeeded: the control settles on a check instead of spinning until the agent edits the card.
+    var deliveredActions by rememberSaveable(message.id, ready?.rev) { mutableStateOf(emptyList<String>()) }
     var failed by rememberSaveable(message.id) { mutableStateOf(false) }
+
+    // Replies already in the conversation outlive this item's saved state, so a reopened chat still sends each action once per rev.
+    val conversation = LocalAgentUiConversation.current
+    val replied = remember(conversation, message.id, ready?.rev) { ready?.let { conversation.answeredByYou(message.id, it.rev) }.orEmpty() }
+    val answered = remember(replied, deliveredActions) { replied + deliveredActions }
 
     val onAction: (AgentUiActionRequest) -> Unit = { req ->
         val rev = ready?.rev
-        if (rev != null && req.actionId !in sentActions) {
+        if (rev != null && req.actionId !in sentActions && req.actionId !in answered) {
             sentActions = sentActions + req.actionId
             failed = false
             scope.launch {
@@ -198,7 +219,9 @@ fun AgentUiBubble(
                     Logger.w(e, tag = TAG) { "action send failed id=${message.id} action=${req.actionId}" }
                     false
                 }
-                if (!ok) {
+                if (ok) {
+                    deliveredActions = deliveredActions + req.actionId
+                } else {
                     sentActions = sentActions - req.actionId
                     req.rollback.forEach { (id, v) -> inputs[id] = v }
                     failed = true
@@ -207,17 +230,20 @@ fun AgentUiBubble(
         }
     }
 
-    AgentUiFrame(sentByYou, modifier, onLongClick.takeUnless { displayOnly }) {
+    AgentUiFrame(sentByYou, modifier, shape, authorName, authorColor, footer) {
         if (ready != null) {
             AgentUiTreeView(
                 tree = ready.tree,
                 inputs = inputs,
                 imageData = { images[it] },
                 enabled = !displayOnly && !sentByYou,
-                pendingActionIds = remember(sentActions) { sentActions.toSet() },
+                copyEnabled = !displayOnly,
+                pendingActionIds = remember(sentActions, answered) { sentActions.toSet() + answered },
+                answeredActionIds = answered,
                 onAction = onAction,
                 onImageClick = onImageClick?.let { open -> { key -> imagePayloads[key]?.let(open) } },
                 onLongClick = onLongClick.takeUnless { displayOnly },
+                onImageSecondaryPress = onImageSecondaryPress?.takeUnless { displayOnly }?.let { menu -> { key -> imagePayloads[key]?.let(menu) } },
             )
         } else if (load.value == TreeLoad.Loading) {
             Row(
@@ -231,6 +257,10 @@ fun AgentUiBubble(
         } else {
             Text(descriptor.fallback, style = MaterialTheme.typography.bodyMedium)
         }
+        val choices = remember(conversation, message.id, ready?.rev ?: descriptor.rev) {
+            conversation.choices(message.id, ready?.rev ?: descriptor.rev)
+        }
+        if (choices.shown.isNotEmpty()) AgentUiChoicesLine(choices)
         if (failed) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
@@ -244,14 +274,47 @@ fun AgentUiBubble(
     }
 }
 
+/** The card's answers above its footer, like votes on a poll: "You chose Keep · 10:42", one line per sender. */
+@Composable
+private fun AgentUiChoicesLine(choices: AgentUiChoices) {
+    val muted = LocalContentColor.current.copy(alpha = 0.7f)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (a in choices.shown) {
+            val chose = if (a.byYou) {
+                stringResource(MR.string.chat_agent_ui_action_you, a.label)
+            } else {
+                stringResource(MR.string.chat_agent_ui_action_other, a.name, a.label)
+            }
+            Text(
+                stringResource(MR.string.chat_agent_ui_choice_at, chose, formatMessageTimestamp(a.at)),
+                style = MaterialTheme.typography.labelMedium,
+                color = muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (choices.more > 0) {
+            Text(stringResource(MR.string.chat_agent_ui_choices_more, choices.more), style = MaterialTheme.typography.labelMedium, color = muted)
+        }
+    }
+}
+
 // A payload card holds this height while its tree loads; shorter than most cards, so it grows once and never shrinks.
 private val LoadingPlaceholderHeight = 160.dp
 
+/**
+ * The card's bubble. It takes no gesture of its own, like the dice and unknown bubbles, so long-press, double-tap
+ * to react and right-click reach the message wrapper around it, and nothing highlights the whole card.
+ * Controls inside keep their own clicks.
+ */
 @Composable
 fun AgentUiFrame(
     sentByYou: Boolean,
     modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
+    shape: Shape = RoundedCornerShape(Dimens.AgentUi.cardCornerRadius),
+    authorName: String? = null,
+    authorColor: Color? = null,
+    footer: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val container = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
@@ -260,19 +323,25 @@ fun AgentUiFrame(
         Column(
             modifier
                 .agentUiFrameWidth()
-                .clip(RoundedCornerShape(Dimens.AgentUi.cardCornerRadius))
+                .clip(shape)
                 .background(container)
-                .onLongPress(onLongClick)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            content = content,
-        )
+        ) {
+            if (authorName != null) {
+                Text(
+                    authorName,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = authorColor ?: onContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            content()
+            if (footer != null) Box(Modifier.align(Alignment.End)) { footer() }
+        }
     }
 }
-
-// Null off-stream (action-menu preview): any pointer handler there eats the tap the scrim needs to dismiss.
-private fun Modifier.onLongPress(onLongClick: (() -> Unit)?): Modifier =
-    if (onLongClick != null) combinedClickable(onClick = {}, onLongClick = onLongClick) else this
 
 /** Caps the card at a readable bubble width that grows on wide windows. */
 private fun Modifier.agentUiFrameWidth(): Modifier = layout { measurable, constraints ->
@@ -281,6 +350,10 @@ private fun Modifier.agentUiFrameWidth(): Modifier = layout { measurable, constr
     layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }
 
+/**
+ * A person's action reply whose card is not loaded, drawn as a quiet line rather than a bubble ("You chose Keep");
+ * tapping it jumps to the card. A reply whose card is loaded is folded onto the card instead.
+ */
 @Composable
 fun AgentUiActionBubble(
     descriptor: AgentUiActionDescriptor?,
@@ -288,24 +361,45 @@ fun AgentUiActionBubble(
     sentByYou: Boolean,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    onOpenCard: ((Uuid) -> Unit)? = null,
 ) {
     if (descriptor == null) {
         UnparseableTypedChip(Icons.Default.TouchApp, stringResource(MR.string.chat_agent_ui_unparseable), modifier)
         return
     }
-    val text = if (sentByYou) stringResource(MR.string.chat_agent_ui_action_you, descriptor.label)
-    else stringResource(MR.string.chat_agent_ui_action_other, authorName, descriptor.label)
-    val onContainer = MaterialTheme.colorScheme.onSecondaryContainer
+    val text = if (sentByYou) {
+        stringResource(MR.string.chat_agent_ui_action_you, descriptor.label)
+    } else {
+        stringResource(MR.string.chat_agent_ui_action_other, authorName, descriptor.label)
+    }
+    val values = remember(descriptor) { descriptor.shortValues() }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val open = onOpenCard
+    // The link takes the press, so it carries the touch menu too; right-click still reaches the message wrapper.
+    val longPress = onLongClick?.takeIf { supportsTouchGestures() }
     Row(
         modifier
             .clip(RoundedCornerShape(Dimens.AgentUi.actionCornerRadius))
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .onLongPress(onLongClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .then(
+                // Without a card to open it takes no gesture, so the message wrapper gets long-press and right-click.
+                if (open != null) {
+                    Modifier.combinedClickable(
+                        onClickLabel = stringResource(MR.string.chat_agent_ui_open_card),
+                        role = Role.Button,
+                        onLongClickLabel = longPress?.let { stringResource(MR.string.chat_message_options) },
+                        onLongClick = longPress,
+                        onClick = { open(descriptor.target) },
+                    )
+                } else Modifier,
+            )
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(18.dp), tint = onContainer)
-        Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = onContainer)
+        Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(14.dp), tint = muted)
+        Spacer(Modifier.width(6.dp))
+        Column {
+            Text(text, style = MaterialTheme.typography.labelMedium, color = muted)
+            values?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1) }
+        }
     }
 }

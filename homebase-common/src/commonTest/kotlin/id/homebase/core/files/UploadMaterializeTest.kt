@@ -1,8 +1,6 @@
 package id.homebase.core.files
 
 import id.homebase.api.file.FileOperationsProvider
-import io.ktor.client.request.forms.InputProvider
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -70,32 +68,16 @@ class UploadMaterializeTest {
     }
 
     @Test
+    fun aPickedNameIsMadeSafeBeforeItBecomesAPathOrTheSentName() {
+        assertEquals("hyperfile.sys", sandboxCopyName("../../whatever/hyperfile.sys", "application/octet-stream"))
+        assertEquals("Q3_ Budget_.xlsx", sandboxCopyName("Q3: Budget?.xlsx", null))
+        assertEquals("notes.txt", sandboxCopyName("..\\notes", "text/plain"))
+    }
+
+    @Test
     fun sandboxCopyNameKeepsAnExistingExtensionAndSurvivesAnUnmappedMime() {
         assertEquals("IMG_2026.jpeg", sandboxCopyName("IMG_2026.jpeg", "image/jpeg"))
         assertEquals("raw-shot", sandboxCopyName("raw-shot", "image/x-not-a-real-mime"))
         assertEquals("raw-shot", sandboxCopyName("raw-shot", null))
     }
-}
-
-private class InMemoryFileOps : FileOperationsProvider {
-    private val store = mutableMapOf<String, ByteArray>()
-    private var counter = 0
-
-    override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String {
-        val path = "/tmp/$prefix${counter++}$suffix"
-        store[path] = bytes
-        return path
-    }
-
-    override suspend fun readFileBytes(path: String): ByteArray =
-        store[path] ?: error("file not found: $path")
-
-    override fun getFileSize(path: String): Long = (store[path]?.size ?: 0).toLong()
-    override fun deleteTempFile(path: String): Boolean = store.remove(path) != null
-    override fun getCacheDirectory(): String = "/tmp"
-
-    override fun openFileInput(path: String): InputProvider = throw NotImplementedError()
-    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String =
-        throw NotImplementedError()
-    override suspend fun writeStream(path: String, data: Flow<ByteArray>) = throw NotImplementedError()
 }

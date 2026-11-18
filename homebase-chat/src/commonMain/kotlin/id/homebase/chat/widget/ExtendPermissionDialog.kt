@@ -11,6 +11,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.ReportOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.permissions_extend
@@ -45,6 +46,7 @@ fun ExtendPermissionDialog(
 
     when (val state = uiState) {
         is ExtendPermissionUiState.ShowDialog -> {
+            ReportOverlay()
             LaunchedEffect(state.appName) {
                 Logger.i(tag = "ExtendPermissionDialog") {
                     "rendering AlertDialog for ${state.appName}"

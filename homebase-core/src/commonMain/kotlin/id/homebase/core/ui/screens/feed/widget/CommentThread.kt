@@ -365,6 +365,7 @@ private fun CommentMedia(comment: PostCommentItem) {
         driveId = comment.driveId,
         previewThumbnail = comment.previewThumbnail,
         keyHeader = comment.keyHeader,
+        isEncrypted = comment.isEncrypted,
         modifier = Modifier
             .padding(top = 4.dp)
             .clip(RoundedCornerShape(12.dp)),

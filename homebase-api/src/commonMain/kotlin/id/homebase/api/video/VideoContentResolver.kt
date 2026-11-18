@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -29,33 +30,58 @@ sealed interface VideoContent {
     data class Mp4Bytes(val metadata: VideoMetadata, val bytes: ByteArray) : VideoContent
 }
 
-/** Resolves the full [VideoMetadata], fetching the descriptor payload if the stub is incomplete.
- *  Fetches go through the payload cache, so later calls (including [resolveVideoContent]) are warm. */
+/**
+ * [readPayloadText] reads another payload of the file with the video's key header: the current format's
+ * playlist or an older stub's overflow payload, both written with the video payload's IV.
+ */
+suspend fun videoMetadataFrom(
+    descriptorContent: String,
+    payloadKey: String,
+    contentType: String?,
+    readPayloadText: suspend (key: String) -> String?,
+): VideoMetadata? {
+    if (DescriptorContentV1.isCurrentFormat(descriptorContent)) {
+        val current = DescriptorContentV1.parseOrNull(descriptorContent) ?: run {
+            Logger.w(tag = "VideoIO") { "video descriptor in an unknown version or kind: ${descriptorContent.take(200)}" }
+            return null
+        }
+        val playlist = current.video?.playlistKey?.let { readPayloadText(it) ?: return null }
+        return current.toVideoMetadata(payloadKey, contentType, playlist)
+    }
+    val stub = try {
+        OdinSystemSerializer.deserialize<VideoMetadata>(descriptorContent)
+    } catch (e: Exception) {
+        Logger.w(tag = "VideoIO") { "video descriptor doesn't parse: ${descriptorContent.take(200)}, cause=${e.message}" }
+        return null
+    }
+    if (stub.isDescriptorContentComplete) return stub
+    val json = readPayloadText(stub.key) ?: return null
+    return try {
+        OdinSystemSerializer.deserialize<VideoMetadata>(json)
+    } catch (e: Exception) {
+        Logger.w(tag = "VideoIO") { "video metadata payload ${stub.key} doesn't parse: ${json.take(200)}, cause=${e.message}" }
+        null
+    }
+}
+
+/** Resolves the full [VideoMetadata]. Fetches go through the payload cache, so later calls (including [resolveVideoContent]) are warm. */
 suspend fun resolveVideoMetadata(
     data: VideoPlayerData,
     driveFileProvider: VideoPrefetchDriveAccess,
 ): VideoMetadata {
-    val stubMetadata = data.descriptorContent?.let {
-        OdinSystemSerializer.deserialize<VideoMetadata>(it)
-    } ?: error("Missing video metadata")
-
-    if (stubMetadata.isDescriptorContentComplete) return stubMetadata
-
+    val content = data.descriptorContent ?: error("Missing video metadata")
     val (metadata, elapsed) = measureTimedValue {
-        val json = driveFileProvider.getPayloadBytesDecrypted(
-            driveId = data.driveId,
-            fileId = data.fileId,
-            key = stubMetadata.key,
-            keyHeader = data.keyHeader,
-        )?.bytes?.decodeToString() ?: error("Failed to fetch video metadata")
-        try {
-            OdinSystemSerializer.deserialize<VideoMetadata>(json)
-        } catch (e: Exception) {
-            error("Failed to deserialize video metadata for ${data.fileId}/${data.payloadKey}: ${json.take(200)}, cause=${e.message}")
+        videoMetadataFrom(content, data.payloadKey, data.contentType) { key ->
+            driveFileProvider.getPayloadBytesDecrypted(
+                driveId = data.driveId,
+                fileId = data.fileId,
+                key = key,
+                keyHeader = data.keyHeader,
+            )?.bytes?.decodeToString()
         }
     }
-    Logger.d(tag = "VideoIO") { "metadata fetch: $elapsed" }
-    return metadata
+    Logger.d(tag = "VideoIO") { "metadata: $elapsed" }
+    return metadata ?: error("Failed to resolve video metadata for ${data.fileId}/${data.payloadKey}")
 }
 
 suspend fun resolveVideoContent(

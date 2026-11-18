@@ -161,6 +161,32 @@ class AttachmentToggleStickerTest {
 
         assertEquals(before, state.value, "no attachment overlay -> state unchanged")
     }
+
+    @Test
+    fun unAttach_lastAttachment_closesEditor() = runTest {
+        val image = fileImage()
+        val overlay = overlayWith(image)
+        val state = MutableStateFlow(MessageListUiState(fullScreenOverlay = overlay))
+        val handler = handlerWith(state)
+
+        handler.handleUnAttachFile(ConversationListUiAction.UnAttachFile(overlay.conversationId, image.attachmentId))
+
+        assertEquals(null, state.value.fullScreenOverlay, "removing the last attachment closes the editor")
+    }
+
+    @Test
+    fun unAttach_withRemainingAttachments_keepsEditorOpen() = runTest {
+        val a = fileImage()
+        val b = fileImage()
+        val overlay = overlayWith(a, b)
+        val state = MutableStateFlow(MessageListUiState(fullScreenOverlay = overlay))
+        val handler = handlerWith(state)
+
+        handler.handleUnAttachFile(ConversationListUiAction.UnAttachFile(overlay.conversationId, a.attachmentId))
+
+        val remaining = (state.value.fullScreenOverlay as FullScreenOverlay.AttachmentData).attachments
+        assertEquals(listOf(b.attachmentId), remaining.map { it.attachmentId })
+    }
 }
 
 /** Minimal no-op [FileOperationsProvider]; the toggle reducer never touches it. */

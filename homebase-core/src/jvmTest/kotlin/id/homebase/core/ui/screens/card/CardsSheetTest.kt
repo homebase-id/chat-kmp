@@ -152,43 +152,4 @@ class CardsSheetTest {
 
         assertEquals(listOf<ProfileAudience>(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID))), applied)
     }
-
-    @Test
-    fun theCardsButtonIsGoneWhenTheCardFeatureIsOff() {
-        fun phone() = ProfileAttribute(
-            id = Uuid.random(),
-            type = ProfileAttributeTypes.PHONE,
-            versionTag = Uuid.random(),
-            visibility = ProfileVisibility.OWNER,
-            data = JsonObject(mapOf(ProfileAttributeTypes.KEY_PHONE to JsonPrimitive("+14155550123"))),
-            acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.OWNER.wireValue),
-        )
-        fun ComposeUiTest.editor(showCardsButton: Boolean) = setContent {
-            MaterialTheme {
-                CardContentEditor(
-                    card = CardAudience.Public,
-                    items = cardContentItems(listOf(phone()), circles, CardAudience.Public),
-                    circles = circles,
-                    photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
-                    enabled = true,
-                    showCardsButton = showCardsButton,
-                    onAudience = { _, _ -> },
-                    onEdit = { _, _, _ -> },
-                    onDelete = {},
-                    onAdd = { _, _ -> },
-                    onChangePhoto = {},
-                    onRemovePhoto = {},
-                )
-            }
-        }
-        runComposeUiTest {
-            editor(showCardsButton = false)
-            onNodeWithTag("cards_button").assertDoesNotExist()
-        }
-        runComposeUiTest {
-            editor(showCardsButton = true)
-            onNodeWithTag("not_visible_toggle").performClick()
-            onNodeWithTag("cards_button").assertExists()
-        }
-    }
 }

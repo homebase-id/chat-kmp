@@ -50,6 +50,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -62,6 +63,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -111,7 +114,12 @@ import id.homebase.chat.services.sticker.StickerStream
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.agentui.AgentUiTreeLoader
+import id.homebase.chat.agentui.LocalAgentUiConversation
+import id.homebase.chat.agentui.agentUiConversation
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.widget.LocalSnackbarAboveInputHost
+import id.homebase.core.widget.keepSnackbarsAbove
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.LocalContactCardSnackbar
@@ -135,6 +143,7 @@ import id.homebase.chat.conversationlist.matching
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.PendingOutgoingMessage
+import id.homebase.chat.conversationlist.clusterPendingInto
 import id.homebase.chat.conversationlist.RecipientGroupModel
 import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
@@ -158,8 +167,7 @@ import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
-import id.homebase.core.util.usesPointerUx
-import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.usesComposerPopovers
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.keyboardPanelAnchoredList
@@ -203,6 +211,7 @@ import id.homebase.resources.chat_not_connected_view_request
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
 import id.homebase.resources.chat_previous_result
+import id.homebase.resources.chat_jump_to_mention
 import id.homebase.resources.chat_scroll_to_bottom
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_send_message_button
@@ -289,7 +298,7 @@ fun ConversationContent(
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
-    val composerPopovers = usesPointerUx() && isExpandedLayout()
+    val composerPopovers = usesComposerPopovers()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -305,7 +314,8 @@ fun ConversationContent(
     // too, via `MessageInputBar`'s onPayloadRenderersChange callback.
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
-    val snackbarHostState = remember { SnackbarHostState() }
+    val sharedSnackbarHost = LocalSnackbarAboveInputHost.current
+    val snackbarHostState = sharedSnackbarHost ?: remember { SnackbarHostState() }
     val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
 
     var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
@@ -344,6 +354,14 @@ fun ConversationContent(
                 ?: return@snapshotFlow false
             lastVisibleIndex < totalItems - 1
         }.collect { showScrollToBottom = it }
+    }
+
+    val pendingMention = uiState.nextMention?.messageId
+    LaunchedEffect(listState, pendingMention) {
+        if (pendingMention == null) return@LaunchedEffect
+        val key = pendingMention.toString()
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.any { it.key == key } }.first { it }
+        onUiAction(ConversationListUiAction.MentionSeen(pendingMention))
     }
 
     LaunchedEffect(listState) {
@@ -458,10 +476,8 @@ fun ConversationContent(
     DisposableEffect(conversation.conversation.id) {
         focusManager.clearFocus()
 
-        onDispose {
-            focusManager.clearFocus()
-            keyboardController?.hide()
-        }
+        // No clearFocus here: by dispose, focus may already belong to what replaced this, like the media viewer.
+        onDispose { keyboardController?.hide() }
     }
 
     // Build a lookup map of reply target ID -> MessageUiModel for reply image thumbnails.
@@ -477,6 +493,16 @@ fun ConversationContent(
             allMessages.filter { it.message.id in replyTargetIds }
                 .associate { it.message.id to it.message }
                 .toPersistentMap()
+        }
+    }
+
+    // Agent cards and the action replies that answer them, folded or not: each card marks and shows what was chosen.
+    val ownDomain = uiState.ownerSession?.odinId?.domainName
+    val agentUiLoader = koinInject<AgentUiTreeLoader>()
+    val agentUiConversation = remember(uiState.messages, uiState.agentUiReplies, ownDomain, agentUiLoader) {
+        val shown = uiState.messages.mapNotNull { (it as? MessageListContentModel.Message)?.message }
+        agentUiConversation(shown + uiState.agentUiReplies, agentUiLoader::cached) {
+            ownDomain != null && it.originalAuthor?.domainName == ownDomain
         }
     }
 
@@ -633,8 +659,7 @@ fun ConversationContent(
                 onUiAction(ConversationListUiAction.DismissStickerOptions)
             },
             onSaveToDevice = {
-                // Reuse the existing decrypt-to-cache + SaveFileToDevice path the fullscreen
-                // viewer's onSave uses — no new device-export code.
+                // The same save as the full-screen viewer's: saveReceived, then FileSaved or OfferRefusedSave.
                 onUiAction(
                     ConversationListUiAction.DownloadMedia(sheet.messageId, sheet.payloadKey)
                 )
@@ -962,7 +987,7 @@ fun ConversationContent(
                 // This matters when a video is still processing — any text or
                 // incoming messages with a later timestamp must render BELOW the
                 // video placeholder, not above it.
-                val mergedItems = remember(uiState.messages, pendingForConvo) {
+                val mergedItems = remember(uiState.messages, pendingForConvo, myOdinId) {
                     if (pendingForConvo.isEmpty()) {
                         uiState.messages.toList<Any>()
                     } else {
@@ -979,7 +1004,7 @@ fun ConversationContent(
                             result += item
                         }
                         result.addAll(pending)
-                        result.toList()
+                        clusterPendingInto(result, myOdinId)
                     }
                 }
 
@@ -1081,7 +1106,7 @@ fun ConversationContent(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) {
                     if (!uiState.isLoadingMessages) {
-                        CompositionLocalProvider(LocalExpandedMessages provides expandedMessages) {
+                        CompositionLocalProvider(LocalExpandedMessages provides expandedMessages, LocalAgentUiConversation provides agentUiConversation) {
                         LazyColumn(
                             modifier = Modifier.keyboardPanelAnchoredList(bottomPanel, listState)
                                 .fillMaxSize().dismissKeyboardOnTap(),
@@ -1350,36 +1375,45 @@ fun ConversationContent(
                             }
                         }
 
-                        ScrollToBottomButton(
-                            visible = showScrollToBottom,
-                            unreadCount = conversation.conversation.unreadCount,
+                        Column(
                             modifier = Modifier.align(Alignment.BottomEnd)
                                 .padding(end = 16.dp, bottom = 16.dp),
-                            onClick = {
-                                if (uiState.hasNewerMessages) {
-                                    // Deep in history: the bottom of the loaded
-                                    // window isn't the latest message, so a plain
-                                    // animateScrollToItem(last) would land mid-history.
-                                    // Reload the latest page instead — the VM marks
-                                    // the reload pending-scroll-to-latest and the
-                                    // resulting emission carries a triggerScroll
-                                    // bottom anchor (resolveScrollToLatestPosition)
-                                    // that ConversationMessagesPane scrolls to.
-                                    // (Auto-follow can't do this: it only fires on
-                                    // list growth while already at the bottom, but
-                                    // this reload shrinks the window from up in
-                                    // history.)
-                                    onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
-                                } else {
-                                    coroutineScope.launch { listState.animateScrollToNewestItem() }
-                                }
-                            },
-                        )
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            JumpToMentionButton(
+                                visible = showScrollToBottom && uiState.nextMention != null,
+                                count = uiState.nextMention?.pendingCount ?: 0,
+                                onClick = { onUiAction(ConversationListUiAction.JumpToNextMention) },
+                            )
+                            ScrollToBottomButton(
+                                visible = showScrollToBottom,
+                                unreadCount = conversation.conversation.unreadCount,
+                                onClick = {
+                                    if (uiState.hasNewerMessages) {
+                                        // Deep in history: the bottom of the loaded
+                                        // window isn't the latest message, so a plain
+                                        // animateScrollToItem(last) would land mid-history.
+                                        // Reload the latest page instead — the VM marks
+                                        // the reload pending-scroll-to-latest and the
+                                        // resulting emission carries a triggerScroll
+                                        // bottom anchor (resolveScrollToLatestPosition)
+                                        // that ConversationMessagesPane scrolls to.
+                                        // (Auto-follow can't do this: it only fires on
+                                        // list growth while already at the bottom, but
+                                        // this reload shrinks the window from up in
+                                        // history.)
+                                        onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
+                                    } else {
+                                        coroutineScope.launch { listState.animateScrollToNewestItem() }
+                                    }
+                                },
+                            )
+                        }
 
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
-                    SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+                    if (sharedSnackbarHost == null) SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
                 }
 
                 AnimatedVisibility(
@@ -1625,7 +1659,7 @@ fun ConversationContent(
                                 onUiAction(ConversationListUiAction.CancelEditMessage)
                             },
                             onAddAttachmentClick = { toggleAttachmentSheet() },
-                            modifier = Modifier.focusProperties { canFocus = inputFocusable },
+                            modifier = Modifier.focusProperties { canFocus = inputFocusable }.keepSnackbarsAbove(),
                             attachmentActions = popoverAttachmentActions,
                             onAttachmentPopoverDismissed = { focusRequester.requestFocus() },
                         ) {
@@ -2326,59 +2360,84 @@ private suspend fun LazyListState.animateScrollToItemUnlessPreempted(index: Int)
 }
 
 @Composable
-private fun ScrollToBottomButton(
+internal fun JumpToMentionButton(
     visible: Boolean,
-    unreadCount: Int,
-    modifier: Modifier = Modifier,
+    count: Int,
     onClick: () -> Unit,
 ) {
     androidx.compose.animation.AnimatedVisibility(
         visible = visible,
-        modifier = modifier,
         enter = fadeIn() + scaleIn(),
         exit = fadeOut() + scaleOut(),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            androidx.compose.animation.AnimatedVisibility(
-                visible = unreadCount > 0,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                val badgeScale = remember { Animatable(1f) }
-                var previousCount by remember { mutableIntStateOf(unreadCount) }
-                LaunchedEffect(unreadCount) {
-                    if (unreadCount > previousCount) {
-                        badgeScale.animateTo(
-                            targetValue = 1f,
-                            animationSpec = keyframes {
-                                durationMillis = 300
-                                1.25f at 100
-                                0.95f at 200
-                                1f at 300
-                            },
-                        )
-                    }
-                    previousCount = unreadCount
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(
-                        modifier = Modifier.graphicsLayer {
-                            scaleX = badgeScale.value
-                            scaleY = badgeScale.value
-                        },
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ) {
-                        Text(
-                            text = if (unreadCount > 999) "999+" else unreadCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
+            BadgedBox(badge = { CountBadge(count) }) {
+                SmallFloatingActionButton(
+                    onClick = onClick,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AlternateEmail,
+                        contentDescription = stringResource(MR.string.chat_jump_to_mention),
+                    )
                 }
             }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun CountBadge(count: Int) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = count > 0,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        val badgeScale = remember { Animatable(1f) }
+        var previousCount by remember { mutableIntStateOf(count) }
+        LaunchedEffect(count) {
+            if (count > previousCount) {
+                badgeScale.animateTo(
+                    targetValue = 1f,
+                    animationSpec = keyframes {
+                        durationMillis = 300
+                        1.25f at 100
+                        0.95f at 200
+                        1f at 300
+                    },
+                )
+            }
+            previousCount = count
+        }
+        Badge(
+            modifier = Modifier.graphicsLayer {
+                scaleX = badgeScale.value
+                scaleY = badgeScale.value
+            },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ) {
+            Text(text = if (count > 999) "999+" else count.toString())
+        }
+    }
+}
+
+@Composable
+internal fun ScrollToBottomButton(
+    visible: Boolean,
+    unreadCount: Int,
+    onClick: () -> Unit,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+    ) {
+        BadgedBox(
+            badge = { CountBadge(unreadCount) },
+        ) {
             SmallFloatingActionButton(
                 onClick = onClick,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

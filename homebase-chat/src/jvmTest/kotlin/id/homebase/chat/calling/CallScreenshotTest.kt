@@ -152,11 +152,7 @@ class CallScreenshotTest {
                 CallScreen(
                     ui = state,
                     peerName = "Samwise Gamgee",
-                    avatar = { size ->
-                        Box(Modifier.size(size).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape), contentAlignment = Alignment.Center) {
-                            Text("SG", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        }
-                    },
+                    avatar = testPeerAvatar,
                     actions = recorder.actions(),
                     chrome = remember { CallChromeState().also { if (chromeHeld) it.holds = 1 } },
                 )
@@ -319,7 +315,7 @@ class CallScreenshotTest {
                 mainClock.autoAdvance = false
                 setContent {
                     HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
-                        CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = {}, actions = Recorder().actions())
+                        CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = testPeerAvatar, actions = Recorder().actions())
                     }
                 }
                 mainClock.advanceTimeBy(900)
@@ -525,7 +521,7 @@ class CallScreenshotTest {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().clickable { under++ })
                     CallLayer(visible = state.visible, surface = CallSurface.Full, onPressed = { held = it }) {
-                        CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = {}, actions = recorder.actions())
+                        CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = testPeerAvatar, actions = recorder.actions())
                     }
                 }
             }
@@ -561,7 +557,7 @@ class CallScreenshotTest {
                     Box(Modifier.fillMaxSize()) {
                         Box(Modifier.fillMaxSize().clickable { under++ })
                         CallLayer(visible = state.visible, surface = CallSurface.Full) {
-                            CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = {}, actions = actions)
+                            CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = testPeerAvatar, actions = actions)
                         }
                     }
                 }
@@ -608,7 +604,7 @@ class CallScreenshotTest {
                         }
                     }
                     CallLayer(visible = true, surface = CallSurface.Tile) {
-                        FloatingCallTile(state, "Samwise Gamgee", avatar = {}, onExpand = { expanded++ }, onToggleMute = {}, onHangup = {})
+                        FloatingCallTile(state, "Samwise Gamgee", avatar = testPeerAvatar, onExpand = { expanded++ }, onToggleMute = {}, onHangup = {})
                     }
                 }
             }
@@ -630,7 +626,7 @@ class CallScreenshotTest {
         var expanded = 0
         setContent {
             HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
-                FloatingCallTile(state, "Samwise Gamgee", avatar = {}, onExpand = { expanded++ }, onToggleMute = {}, onHangup = {})
+                FloatingCallTile(state, "Samwise Gamgee", avatar = testPeerAvatar, onExpand = { expanded++ }, onToggleMute = {}, onHangup = {})
             }
         }
         onNode(hasTestTag(FloatingTileTag)).performTouchInput { swipe(Offset(20f, 60f), Offset(-200f, 500f), 400L) }

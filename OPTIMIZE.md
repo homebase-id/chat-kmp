@@ -90,6 +90,11 @@ HASHER_BENCH=1 ./gradlew :homebase-api:wasmJsBrowserTest --tests '*HasherThrough
   for a read slot, `sql` is SQLite, `mapper` is row mapping and JSON.
 - `SlowMessageFetch` when a conversation's fetch plus mapping takes over 200 ms.
 
+### Media on a phone
+
+Video compression, segmenting, hashing, reading a photo's or video's metadata and stripping it are measured in
+[`MEDIA_BENCHMARKS.md`](MEDIA_BENCHMARKS.md), with its own method, results and decisions.
+
 ### Image pipeline on an Android phone
 
 `ImagePipelinePerfBench` (androidDeviceTest) generates 12 MP and 48 MP JPEG and HEIC fixtures on the

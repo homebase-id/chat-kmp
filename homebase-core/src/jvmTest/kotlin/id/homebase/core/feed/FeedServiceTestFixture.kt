@@ -1,5 +1,6 @@
 package id.homebase.core.feed
 
+import id.homebase.upload.ContentHashes
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -9,6 +10,7 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.common.SecureByteArray as Sba
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
@@ -16,6 +18,8 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.outbox.OptimisticWriterPort
+import id.homebase.core.settings.UserPreferences
+import id.homebase.upload.EMPTY_BUNDLE
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.upload.PayloadCacheSeeder
@@ -29,8 +33,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
-import id.homebase.api.common.SecureByteArray as Sba
-import id.homebase.core.settings.UserPreferences
 
 // A real in-memory OdinDatabase, so a real OutboxSync persists durable rows we can read back.
 class FeedTestEnv(
@@ -87,12 +89,14 @@ class FeedTestEnv(
         )
     }
 
+    val payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
+
     val uploadService: UploadService =
         UploadService(
             encryptor = payloadBundleEncryptor,
             outboxSync = outboxSync,
             optimisticWriter = OptimisticWriterPort(optimisticWriter),
-            payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps),
+            payloadCacheSeeder = payloadCacheSeeder,
         )
 
     // A MockEngine that 500s: the comment tests only cold-load own posts, so the over-peer query
@@ -124,11 +128,15 @@ class FeedTestEnv(
 
 // Returns the bundle verbatim so payload keys survive into the upload request unchanged.
 private class PassthroughEncryptor : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discard(bundle: PayloadBundle) = Unit
+
     override suspend fun encryptBundle(
         uniqueId: kotlin.uuid.Uuid,
         bundle: PayloadBundle?,
         aesKey: Sba,
         scope: CoroutineScope,
+        hashes: ContentHashes?,
     ): PayloadBundle = bundle ?: PayloadBundle(
         payloads = emptyList(),
         thumbnails = emptyList(),

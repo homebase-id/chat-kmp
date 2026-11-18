@@ -7,6 +7,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.sticker.StickerStream
@@ -36,13 +37,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 private const val TAG = "PostDetailViewModel"
@@ -60,6 +61,7 @@ class PostDetailViewModel(
     private val contactInfo: ContactInfoGateway,
     private val reportingUrlProvider: ReportingUrlProvider,
     private val permissionService: FeedPermissionService,
+    private val driveSyncManager: DriveSyncManager,
 ) : ViewModel() {
 
     private val _selfOdinId = MutableStateFlow<OdinId?>(null)
@@ -83,11 +85,29 @@ class PostDetailViewModel(
     private val _events = MutableSharedFlow<PostDetailEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<PostDetailEvent> = _events.asSharedFlow()
 
-    // A null post BEFORE the first timeline emission is "still loading"; after it, "not found".
+    // A null post BEFORE the first timeline emission and the stored lookup is "still loading"; after both, "not found".
     private val _timelineEmitted = MutableStateFlow(false)
+
+    // A notification tap names the post by globalTransitId or fileId; it can sit past the loaded pages or not be synced yet.
+    private val _storedPost = MutableStateFlow<FeedPostItem?>(null)
+    private val _storedLookupDone = MutableStateFlow(false)
+
+    private fun findPost(feed: List<FeedPostItem>): FeedPostItem? =
+        feed.firstOrNull { it.id == postId || it.globalTransitId == postId || it.fileId == postId }
+            ?: _storedPost.value
+
+    private val _post: Flow<FeedPostItem?> =
+        combine(timelineService.timeline, _storedPost) { feed, _ -> findPost(feed) }
 
     init {
         timelineService.start()
+        viewModelScope.launch {
+            if (findPost(timelineService.timeline.value) == null) {
+                _storedPost.value = timelineService.findStoredPost(postId)
+                    ?: timelineService.syncUntilStored(postId, 15.seconds, driveSyncManager::syncDrive)
+            }
+            _storedLookupDone.value = true
+        }
         // Idempotent — hydrate contact/connection streams so author names resolve here too.
         contactService.start()
         // The sticker tray's StickerStream preload is dropped on session-restore launches (an
@@ -95,8 +115,7 @@ class PostDetailViewModel(
         stickerStream.start()
         // Reload whenever a sync batch bumps the header's reaction preview or replaces the file.
         viewModelScope.launch {
-            timelineService.timeline
-                .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
+            _post.filterNotNull()
                 .distinctUntilChanged { a, b ->
                     a.fileId == b.fileId && a.reactionPreview == b.reactionPreview
                 }
@@ -105,8 +124,7 @@ class PostDetailViewModel(
         // Keyed on fileId so it runs once per post: re-reading on every header bump would race the
         // outbox send and flick the heart back off before it lands.
         viewModelScope.launch {
-            timelineService.timeline
-                .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
+            _post.filterNotNull()
                 .distinctUntilChangedBy { it.fileId }
                 .collect { post ->
                     // Nobody reacted ⇒ neither did we; never pay for a roster read on a bare post.
@@ -124,8 +142,7 @@ class PostDetailViewModel(
                 }
         }
         viewModelScope.launch {
-            timelineService.timeline
-                .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
+            _post.filterNotNull()
                 .distinctUntilChangedBy {
                     listOf(it.driveId, it.channelId, it.authorOdinId, it.reactAccess)
                 }
@@ -157,8 +174,7 @@ class PostDetailViewModel(
 
     // Needs the resolved post, not just [postId]: routing a peer comment read wants author/channel/globalTransitId.
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val _comments: Flow<List<PostCommentItem>?> = timelineService.timeline
-        .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
+    private val _comments: Flow<List<PostCommentItem>?> = _post.filterNotNull()
         .distinctUntilChangedBy {
             listOf(it.id, it.senderOdinId, it.globalTransitId, it.channelId)
         }
@@ -166,14 +182,12 @@ class PostDetailViewModel(
         .onStart { emit(null) }
 
     val uiState: StateFlow<PostDetailUiState> = combine(
-        timelineService.timeline
-            .onEach { _timelineEmitted.value = true }
-            .map { feed -> feed.firstOrNull { it.id == postId } },
+        _post.onEach { _timelineEmitted.value = true },
         _comments,
         _replyingTo,
         _detailAux,
-        _timelineEmitted,
-    ) { postRaw, comments, replyingTo, aux, timelineEmitted ->
+        combine(_timelineEmitted, _storedLookupDone, Boolean::and),
+    ) { postRaw, comments, replyingTo, aux, lookedUp ->
         // Live tallies are trustworthy on OUR OWN post only — see [_liveReactionSummary]. A feed
         // reference's header preview is kept accurate by the author's distribution, so it wins elsewhere.
         val useLiveReactions = postRaw != null && postRaw.isAuthoredBy(aux.self)
@@ -187,7 +201,7 @@ class PostDetailViewModel(
             post = post,
             comments = comments.orEmpty(),
             isLoadingComments = comments == null,
-            isLoading = !timelineEmitted && post == null,
+            isLoading = !lookedUp && post == null,
             replyingTo = replyingTo,
             selfOdinId = aux.self,
             displayNames = aux.displayNames,
@@ -212,7 +226,7 @@ class PostDetailViewModel(
         viewModelScope.launch {
             try {
                 commentsService.postComment(
-                    postId = postId,
+                    postId = findPost(timelineService.timeline.value)?.id ?: postId,
                     body = body,
                     attachment = attachment,
                     replyToCommentId = replyTo,

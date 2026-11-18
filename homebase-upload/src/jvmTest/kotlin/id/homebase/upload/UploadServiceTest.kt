@@ -1,5 +1,8 @@
 package id.homebase.upload
 
+import kotlin.test.assertFalse
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -19,6 +22,8 @@ import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import id.homebase.api.serialization.OutboxSerializer
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
@@ -99,6 +104,7 @@ class UploadServiceTest {
             DriveFileProvider(httpClient, creds, DriveFileProviderCached(httpClient, creds, NoopFileOps())),
             NoopFileOps(),
         )
+        seeder.countRows = { db.outbox.count() }
         val writer = RecordingOptimisticWriter()
         val service = UploadService(
             encryptor = encryptor,
@@ -122,6 +128,47 @@ class UploadServiceTest {
 
     private fun bundleOf(vararg keys: String) =
         PayloadBundle(payloads = keys.map { payload(it) }, thumbnails = emptyList(), previewThumbs = emptyList())
+
+    // ---------- descriptor content: sealed by the upload provider (UPLOADS.md section 2) ----------
+
+    private suspend fun queuedAndKept(update: Boolean, appAsks: Boolean = false): Pair<String, String?> = coroutineScope {
+        val h = buildHarness(this)
+        val uid = Uuid.random()
+        val bundle = PayloadBundle(
+            payloads = listOf(PayloadFile(key = "chat_web0", filePath = "src/a", contentType = "application/pdf", descriptorContent = "secret-name.pdf")),
+            thumbnails = emptyList(),
+            previewThumbs = emptyList(),
+        )
+        val outcome = if (update) {
+            h.service.updateFile(
+                MediaUpdateSpec(driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), metadata = metadata(uid, Uuid.random()), bundle = bundle, sendNow = false),
+                scope = this,
+            )
+        } else {
+            h.service.upload(
+                MediaUploadSpec(driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), bundle = bundle, metadata = metadata(uid), seedCache = false, sendNow = false, sealDescriptorContent = appAsks),
+                scope = this,
+            )
+        }
+        val row = assertNotNull(h.dbm.outbox.selectByUniqueId(uid))
+        val kept = (outcome as? UploadOutcome.Enqueued)?.payloadDescriptors?.single()?.descriptorContent
+        coroutineContext.cancelChildren()
+        row.json.decodeToString() to kept
+    }
+
+    @Test
+    fun theOutboxKeepsDescriptorContentReadableForTheProviderToSeal() = runTest {
+        val (queued, kept) = queuedAndKept(update = false)
+        assertTrue("secret-name.pdf" in queued)
+        assertEquals("secret-name.pdf", kept, "the optimistic copy stays readable, like everything opened on arrival")
+        assertTrue("secret-name.pdf" in queuedAndKept(update = true).first)
+    }
+
+    @Test
+    fun anAppAheadOfTheSwitchAsksTheProviderToSeal() = runTest {
+        assertTrue("\"sealDescriptorContent\":true" in queuedAndKept(update = false, appAsks = true).first)
+        assertFalse("\"sealDescriptorContent\":true" in queuedAndKept(update = false).first)
+    }
 
     // ---------- upload (create) ----------
 
@@ -180,6 +227,26 @@ class UploadServiceTest {
         assertNull(enqueued.optimisticFileId, "no optimistic id when writeOptimistic = false")
         assertEquals(1L, countRows(h))
         assertTrue(h.writer.newFileIds.isEmpty())
+    }
+
+    @Test
+    fun prepare_buildsTheRequestQueueEnqueues_withNothingQueuedSeededOrWrittenBefore() = runTest {
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        val spec = MediaUploadSpec(
+            driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(),
+            bundle = bundleOf("p0", "p1"), metadata = metadata(uid),
+            existingFileIsSuccess = true, sealDescriptorContent = true, sendNow = false,
+        )
+
+        val prepared = h.service.prepare(spec, backgroundScope)
+
+        assertEquals(0L, countRows(h))
+        assertTrue(h.seeder.seededFileIds.isEmpty())
+        assertTrue(h.writer.newFileIds.isEmpty())
+        assertIs<UploadOutcome.Enqueued>(h.service.queue(prepared))
+        val queued = assertNotNull(h.dbm.outbox.selectByUniqueId(uid)).json.decodeToString()
+        assertEquals(queued, OutboxSerializer.serialize<UploadFileRequest>(prepared.request))
     }
 
     // ---------- updateFile (PR3.5) ----------
@@ -266,6 +333,42 @@ class UploadServiceTest {
     }
 
     @Test
+    fun upload_seedsBeforeTheRowExists_andUnseedsWhenTheEnqueueDoesNotTake() = runTest {
+        // Once queued, any drain may send and delete the files before a later seed read them; until the row exists
+        // nothing can. The seed is under a fresh fileId, so one no row took is only removed.
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        fun spec() = MediaUploadSpec(
+            driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(), bundle = bundleOf("p0"),
+            metadata = metadata(uid), seedCache = true, optimisticFileId = Uuid.random(),
+        )
+        val first = spec()
+        assertIs<UploadOutcome.Enqueued>(h.service.upload(first, backgroundScope))
+        assertEquals(listOf(0L), h.seeder.rowsAtSeed, "seeded before the row was queued")
+        assertEquals(emptyList(), h.seeder.unseededFileIds)
+
+        val again = spec()
+        assertIs<UploadOutcome.AlreadyQueued>(h.service.upload(again, backgroundScope))
+        assertEquals(listOf(again.optimisticFileId), h.seeder.unseededFileIds, "a seed no row took is removed")
+    }
+
+    @Test
+    fun updateFile_seedsAfterTheRowIsQueued_underTheFilesOwnId() = runTest {
+        // An update seeds under the file's real id: never before the row is durable, so a rejected update can't touch it.
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        h.service.updateFile(
+            MediaUpdateSpec(
+                driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(),
+                metadata = metadata(uid, versionTag = Uuid.random()),
+                bundle = bundleOf("note_body"), fileId = Uuid.random(), writeOptimistic = true, seedCache = true,
+            ),
+            scope = backgroundScope,
+        )
+        assertEquals(listOf(1L), h.seeder.rowsAtSeed)
+    }
+
+    @Test
     fun updateFile_newPayloadWithoutFileId_preservesExistingDescriptors_andDoesNotSeed() = runTest {
         // No fileId → an incremental/partial update (append a page, add-recipients): must NOT replace
         // the whole descriptor set with the partial one, and must not seed. Keeps the old contract.
@@ -337,6 +440,9 @@ class UploadServiceTest {
 
 /** Fake encryptor: counts calls, echoes the input as "pre-encrypted", or throws a swept source. */
 private class RecordingEncryptor(private val throwMissing: String? = null) : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discard(bundle: PayloadBundle) = Unit
+
     var callCount = 0
         private set
 
@@ -345,6 +451,7 @@ private class RecordingEncryptor(private val throwMissing: String? = null) : Pay
         bundle: PayloadBundle?,
         aesKey: SecureByteArray,
         scope: CoroutineScope,
+        hashes: ContentHashes?,
     ): PayloadBundle {
         callCount++
         throwMissing?.let { throw SourceUnavailableException(it) }
@@ -354,59 +461,6 @@ private class RecordingEncryptor(private val throwMissing: String? = null) : Pay
             previewThumbs = emptyList(),
         )
     }
-}
-
-/** Records the optimistic writes the pipeline performs. */
-private class RecordingOptimisticWriter : OptimisticLocalWriter {
-    val newFileIds = mutableListOf<Uuid>()
-    var updateCount = 0
-        private set
-
-    /** The descriptors passed to the LAST `writeUpdate` — null means "preserve existing payloads". */
-    var lastUpdateDescriptors: List<PayloadDescriptor>? = null
-        private set
-
-    override suspend fun writeNewFile(
-        driveId: Uuid,
-        keyHeader: KeyHeader,
-        unecryptedMetadata: UploadFileMetadata,
-        originalRecipientCount: Int,
-        fileSystemType: FileSystemType,
-        payloadDescriptors: List<PayloadDescriptor>?,
-        fileId: Uuid,
-    ): Uuid {
-        newFileIds += fileId
-        return fileId
-    }
-
-    override suspend fun writeUpdate(
-        driveId: Uuid,
-        keyHeader: KeyHeader,
-        unecryptedMetadata: UploadFileMetadata,
-        payloadDescriptors: List<PayloadDescriptor>?,
-    ) {
-        updateCount++
-        lastUpdateDescriptors = payloadDescriptors
-    }
-
-    override suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid): Boolean = true
-}
-
-/** Records the fileId of each seed instead of doing real byte IO (which the NoopFileOps forbids). */
-private class RecordingSeeder(
-    driveFileProvider: DriveFileProvider,
-    fileOperationsProvider: FileOperationsProvider,
-) : PayloadCacheSeeder(driveFileProvider, fileOperationsProvider) {
-    val seededFileIds = mutableListOf<Uuid>()
-
-    override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
-        seededFileIds += fileId
-    }
-}
-
-private object ThrowingUploader : OutboxUploader {
-    override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) =
-        error("OutboxUploader.upload must not run (setOnline(false))")
 }
 
 /**

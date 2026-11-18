@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.profile
 
 import id.homebase.api.client.drives.AccessControlList
+import id.homebase.api.client.drives.AclViewer
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
@@ -32,7 +33,7 @@ class ProfileVisibleAttributesTest {
         priority = priority,
     )
 
-    private fun List<ProfileAttribute>.statusFor(tier: ProfileVisibility) = visibleValues(tier)[ProfileField.STATUS]
+    private fun List<ProfileAttribute>.statusFor(tier: ProfileVisibility) = visibleValues(AclViewer(tier))[ProfileField.STATUS]
 
     @Test
     fun eachTierTakesTheMostRestrictiveRecordItCanRead() {
@@ -84,9 +85,9 @@ class ProfileVisibleAttributesTest {
             priority = priority,
         )
         val attributes = listOf(bio("public", "anonymous"), bio("vetted b", "connected", 5), bio("vetted a", "connected", 1), bio("owner", "owner"))
-        assertEquals("public", attributes.visibleBio(ANONYMOUS.aclFilter()))
-        assertEquals("vetted a", attributes.visibleBio(CONNECTED.aclFilter()))
-        assertNull(listOf(bio("owner", "owner")).visibleBio(CONNECTED.aclFilter()))
+        assertEquals("public", attributes.visibleBio(AclViewer(ANONYMOUS)))
+        assertEquals("vetted a", attributes.visibleBio(AclViewer(CONNECTED)))
+        assertNull(listOf(bio("owner", "owner")).visibleBio(AclViewer(CONNECTED)))
     }
 
     @Test
@@ -95,6 +96,6 @@ class ProfileVisibleAttributesTest {
         val attributes = listOf(ownerOnly, status("public", "anonymous"))
 
         assertEquals("public", LoadedProfileAttributes.from(attributes).byType[ProfileAttributeTypes.STATUS]?.string(ProfileAttributeTypes.KEY_STATUS))
-        assertEquals("public", attributes.visibleValues(CONNECTED)[ProfileField.STATUS])
+        assertEquals("public", attributes.visibleValues(AclViewer(CONNECTED))[ProfileField.STATUS])
     }
 }

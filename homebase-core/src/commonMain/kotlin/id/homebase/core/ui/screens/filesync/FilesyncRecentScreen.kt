@@ -27,6 +27,7 @@ import id.homebase.core.util.formatMomentDate
 import id.homebase.core.util.formatTime
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_deleted
 import id.homebase.resources.filesync_from_folder
 import id.homebase.resources.filesync_in_folder
 import id.homebase.resources.filesync_recent
@@ -38,6 +39,7 @@ import id.homebase.resources.filesync_recent_failed
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 /** What arrived lately next to what was deleted lately: a timeline of single files, by day. */
@@ -47,7 +49,7 @@ fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, places: FilesyncPla
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop = onOpenWebDrop, onSendToChat = onSendToChat) {
-        viewModel.onAction(FilesyncRecentAction.SaveHandedOff(it))
+        viewModel.onAction(FilesyncRecentAction.PreviewGone(it))
     }
     uiState.shareChooser?.let { nodes ->
         FilesyncShareSheet(
@@ -115,7 +117,9 @@ private fun RecentList(
     uiState: FilesyncRecentUiState,
     onAction: (FilesyncRecentAction) -> Unit,
 ) {
-    val timeOf = { node: FilesyncNode -> node.removedMs ?: node.addedMs }
+    // A removal at an unknown time sorts as the newest, so it goes with today.
+    val now = remember(files) { Clock.System.now().toEpochMilliseconds() }
+    val timeOf = { node: FilesyncNode -> if (node.removed) node.shownRemovedMs ?: now else node.addedMs }
     // Waiting out a double-click would hold up every tap on a phone.
     val mouse = isExpandedLayout()
     val days = remember(files) {
@@ -140,7 +144,8 @@ private fun RecentList(
                 if (deletedTab) {
                     FilesyncNodeRow(
                         node = node,
-                        details = stringResource(MR.string.filesync_from_folder, folder) + " · " + deletedAt(time),
+                        details = stringResource(MR.string.filesync_from_folder, folder) + " · " +
+                            if (node.shownRemovedMs == null) stringResource(MR.string.filesync_deleted) else deletedAt(time),
                         dimDeleted = false,
                         trailing = { RestoreButton { onAction(FilesyncRecentAction.Restore(node.nodeId)) } },
                     )

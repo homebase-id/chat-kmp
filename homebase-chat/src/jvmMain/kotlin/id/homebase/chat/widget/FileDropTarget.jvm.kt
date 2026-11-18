@@ -10,7 +10,7 @@ import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragData
 import androidx.compose.ui.draganddrop.dragData
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import io.github.vinceglb.filekit.PlatformFile
 import java.io.File
 import java.net.URI

@@ -7,9 +7,11 @@ import id.homebase.api.client.ServerException
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -32,6 +34,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
@@ -69,6 +73,7 @@ class PhotoBackupRun(
     private val isStorageFull: suspend (interactive: Boolean) -> Boolean,
 ) {
     private val mutex = Mutex()
+    private val videoPrepare = Mutex()
 
     private val _status = MutableStateFlow(BackupStatus())
     val status: StateFlow<BackupStatus> = _status.asStateFlow()
@@ -104,7 +109,8 @@ class PhotoBackupRun(
     }
 
     /** Keeps the counts live for whoever is watching, including results that land with no run going. At most one refresh a second: a run ticks per row. */
-    suspend fun followLedger() {
+    suspend fun followLedger(): Unit = coroutineScope {
+        launch { results.working.collect { work -> _status.update { it.copy(working = work.values.toList()) } } }
         ledger.changes.collect {
             if (_status.subscriptionCount.value > 0) refreshStatus()
             delay(STATUS_REFRESH_GAP)
@@ -130,6 +136,7 @@ class PhotoBackupRun(
         _status.update {
             it.copy(
                 pendingCount = counts.pending + counts.inOutbox,
+                queuedCount = (ledger.sendingCount() - counts.uploading).coerceAtLeast(0),
                 uploadingCount = counts.uploading,
                 backedUpCount = counts.done,
                 backedUpBytes = counts.doneBytes,
@@ -156,7 +163,7 @@ class PhotoBackupRun(
     }
 
     suspend fun retryFailures() {
-        ledger.requeueFailed()
+        ledger.requeueFailed(alsoCrashed = true)
         refreshStatus()
     }
 
@@ -328,11 +335,14 @@ class PhotoBackupRun(
         if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
         val before = ledger.counts()
 
-        val includeVideos = backupVideosAllowed(current, deviceState, interactive)
+        // A background run is often stopped within minutes, and a stopped transcode starts over: one video, and only first.
+        val photosDue = !interactive && ledger.hasPhotosDue()
+        val maxVideoBytes = largestVideoBytes(current, deviceState, interactive)?.takeUnless { photosDue }
+        val oneVideo = if (interactive) null else OneVideo()
         val initialBackupDone = ledger.isInitialBackupDone()
         val newestFirst = current.newestFirst || initialBackupDone
         val hashing = launch {
-            withTimeoutOrNull(request.budget.remaining) { hashStage(request, includeVideos, newestFirst) }
+            withTimeoutOrNull(request.budget.remaining) { hashStage(request, maxVideoBytes, oneVideo, newestFirst) }
         }
 
         if (!signedIn.await()) {
@@ -351,7 +361,7 @@ class PhotoBackupRun(
         refreshStatus()
 
         val finished = withTimeoutOrNull(request.budget.remaining) {
-            pipeline(request, includeVideos, newestFirst, hashing)
+            pipeline(request, maxVideoBytes, oneVideo, newestFirst, hashing)
             true
         } ?: false
         uploader.kick()
@@ -372,7 +382,8 @@ class PhotoBackupRun(
         Logger.i(tag = TAG) { "end trigger=${request.trigger} outcome=$outcome counts=$counts" }
         // A run that moved nothing would only loop; it waits for the usual triggers.
         val madeProgress = counts.done > before.done || counts.pending < before.pending
-        if (outcome == BackupRunOutcome.OutOfTime && counts.unsent > 0 && madeProgress) {
+        val videosLeft = largestVideoBytes(current, deviceState, interactive) != null && (photosDue || oneVideo?.leftOne == true)
+        if ((outcome == BackupRunOutcome.OutOfTime || videosLeft) && counts.unsent > 0 && madeProgress) {
             Logger.i(tag = TAG) { "continuing: ${counts.unsent} left" }
             scheduler.continueSoon(settings())
         }
@@ -395,14 +406,15 @@ class PhotoBackupRun(
 
     private suspend fun pipeline(
         request: BackupRunRequest,
-        includeVideos: Boolean,
+        maxVideoBytes: Long?,
+        oneVideo: OneVideo?,
         newestFirst: Boolean,
         hashing: Job,
     ) = coroutineScope {
         val toPrepare = Channel<Pair<DeviceBackupAsset, Uuid>>()
         launch {
             try {
-                dedupeStage(request, includeVideos, newestFirst, hashing, toPrepare)
+                dedupeStage(request, maxVideoBytes, oneVideo, newestFirst, hashing, toPrepare)
             } finally {
                 toPrepare.close()
             }
@@ -422,7 +434,7 @@ class PhotoBackupRun(
         hashing.join()
     }
 
-    private suspend fun hashStage(request: BackupRunRequest, includeVideos: Boolean, newestFirst: Boolean) {
+    private suspend fun hashStage(request: BackupRunRequest, maxVideoBytes: Long?, oneVideo: OneVideo?, newestFirst: Boolean) {
         val claimed = mutableSetOf<String>()
         var waitForExportRoom = true
         coroutineScope {
@@ -433,10 +445,11 @@ class PhotoBackupRun(
                 }
             }
             while (!request.budget.isExpired) {
-                val batch = ledger.dueExcept(BackupState.New, includeVideos, HASH_BATCH, newestFirst, claimed)
+                val batch = ledger.dueExcept(BackupState.New, maxVideoBytes, HASH_BATCH, newestFirst, claimed)
                 if (batch.isEmpty()) break
                 for (row in batch) {
                     claimed += row.deviceAssetId
+                    if (oneVideo?.takes(row) == false) continue
                     if (waitForExportRoom && row.mediaType != BackupMediaType.Video.code) {
                         waitForExportRoom = hasher.awaitExportRoom(NO_PROGRESS_LIMIT)
                     }
@@ -459,7 +472,8 @@ class PhotoBackupRun(
 
     private suspend fun dedupeStage(
         request: BackupRunRequest,
-        includeVideos: Boolean,
+        maxVideoBytes: Long?,
+        oneVideo: OneVideo?,
         newestFirst: Boolean,
         hashing: Job,
         toPrepare: Channel<Pair<DeviceBackupAsset, Uuid>>,
@@ -469,8 +483,8 @@ class PhotoBackupRun(
             // Read before the query: a hash landing just after it must not look like the last word.
             val hashingDone = hashing.isCompleted
             val seen = ledger.changes.value
-            val batch = ledger.dueExcept(BackupState.Hashed, includeVideos, DEDUPE_BATCH, newestFirst, checked)
-            if (batch.isEmpty()) {
+            val due = ledger.dueExcept(BackupState.Hashed, maxVideoBytes, DEDUPE_BATCH, newestFirst, checked)
+            if (due.isEmpty()) {
                 if (hashingDone) return
                 coroutineScope {
                     val waiter = launch { ledger.changes.first { it != seen } }
@@ -479,7 +493,9 @@ class PhotoBackupRun(
                 }
                 continue
             }
-            checked += batch.map { it.deviceAssetId }
+            checked += due.map { it.deviceAssetId }
+            val batch = due.filter { oneVideo?.takes(it) != false }
+            if (batch.isEmpty()) continue
             val ids = batch.associateWith { Uuid.parse(it.uniqueId!!) }
             val existing = try {
                 timed(BackupStage.ServerCheck) { dedupe.existing(ids.values.toList()) }
@@ -508,22 +524,66 @@ class PhotoBackupRun(
     }
 
     private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid) {
-        guarded(row) {
-            val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
-            // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
-            withContext(NonCancellable) {
-                when (handedOff) {
-                    HandOffResult.Queued -> {
-                        // Tracked first: a verdict landing between the two calls must find it to settle.
-                        results.onHandedOff(uniqueId)
-                        if (ledger.markQueued(row.deviceAssetId)) results.onSettledBeforeHandOff(uniqueId)
-                    }
-                    is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
-                    HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
+        val isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video
+        results.onPreparing(uniqueId, isVideo)
+        try {
+            guarded(row) {
+                if (isVideo) {
+                    // One at a time, so a process death points at the video being transcoded and no other.
+                    videoPrepare.withLock { crashGuarded(row, uniqueId) { handOff(row, uniqueId) } }
+                } else {
+                    handOff(row, uniqueId)
                 }
             }
-            if (handedOff == HandOffResult.Queued) uploader.kick()
+        } finally {
+            results.onPrepareEnded(uniqueId)
         }
+    }
+
+    private suspend fun crashGuarded(row: DeviceBackupAsset, uniqueId: Uuid, block: suspend () -> Unit) = coroutineScope {
+        val unfinished = ledger.unfinishedPrepares(uniqueId)
+        if (unfinished >= MAX_UNFINISHED_PREPARES) {
+            Logger.w(tag = TAG) { "asset ${row.deviceAssetId}: $unfinished prepares never ended; holding it for Retry" }
+            ledger.markCrashedPreparing(row.deviceAssetId)
+            return@coroutineScope
+        }
+        ledger.prepareStarting(uniqueId)
+        // Ended on cancel, not on return: a cancelled ffmpeg can take 30 s to stop, and the app being killed then is no crash.
+        val ended = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) {
+                    try {
+                        ledger.prepareEnded(uniqueId)
+                    } catch (e: Exception) {
+                        Logger.w(tag = TAG, throwable = e) { "couldn't clear the prepare count of ${row.deviceAssetId}" }
+                    }
+                }
+            }
+        }
+        try {
+            block()
+        } finally {
+            ended.cancel()
+        }
+    }
+
+    private suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid) {
+        val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
+        // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
+        withContext(NonCancellable) {
+            when (handedOff) {
+                HandOffResult.Queued -> {
+                    // Tracked first: a verdict landing between the two calls must find it to settle.
+                    results.onHandedOff(uniqueId)
+                    if (ledger.markQueued(row.deviceAssetId)) results.onSettledBeforeHandOff(uniqueId)
+                }
+                is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
+                HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
+            }
+        }
+        if (handedOff == HandOffResult.Queued) uploader.kick()
     }
 
     private suspend inline fun guarded(row: DeviceBackupAsset, block: () -> Unit) {
@@ -581,6 +641,7 @@ class PhotoBackupRun(
         private const val HASH_BATCH = 16
         private const val DEDUPE_BATCH = 20
         private const val PREPARE_PARALLELISM = 2
+        private const val MAX_UNFINISHED_PREPARES = 2
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
         private val STATUS_REFRESH_GAP: Duration = 1.seconds
@@ -594,3 +655,20 @@ class PhotoBackupRun(
 
 private fun Exception.isOutage(): Boolean =
     isTransientNetworkFailure() || (this is ServerException && (status >= 500 || status == 408 || status == 429))
+
+/** A background run's one video: the first stage to reach a video takes it, and the others wait for a later run. */
+@OptIn(ExperimentalAtomicApi::class)
+private class OneVideo {
+    private val taken = AtomicReference<String?>(null)
+
+    /** Turned one away, so a later run has a video to do. */
+    var leftOne = false
+        private set
+
+    fun takes(row: DeviceBackupAsset): Boolean {
+        if (row.mediaType != BackupMediaType.Video.code) return true
+        if (taken.compareAndSet(null, row.deviceAssetId) || taken.load() == row.deviceAssetId) return true
+        leftOne = true
+        return false
+    }
+}

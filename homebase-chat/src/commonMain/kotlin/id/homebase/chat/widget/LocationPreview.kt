@@ -55,7 +55,6 @@ import id.homebase.core.location.LIVE_SHARE_DURATION_OPTIONS
 import id.homebase.core.location.LIVE_SHARE_INDEFINITE
 import id.homebase.core.location.formatLiveShareRemaining
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -348,7 +347,6 @@ fun LocationPreviewCard(
                         fileId = fileId,
                         payloadKey = payloadKey,
                         previewThumbnail = previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
                         isEncrypted = true,
                         keyHeader = keyHeader,
                         loadFullPayload = true,
@@ -674,7 +672,6 @@ fun LocationListRow(
                         fileId = fileId,
                         payloadKey = payloadKey,
                         previewThumbnail = previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
                         isEncrypted = true,
                         keyHeader = keyHeader,
                         loadFullPayload = true,

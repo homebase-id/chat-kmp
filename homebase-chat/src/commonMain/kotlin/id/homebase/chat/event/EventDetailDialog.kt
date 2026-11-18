@@ -69,7 +69,6 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.image.ImageSize
 import id.homebase.core.util.initials
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
@@ -242,7 +241,6 @@ private fun EventDetailContent(
                     driveId = chatTargetDrive.alias,
                     previewThumbnail = coverPreviewThumbnail,
                     keyHeader = coverKeyHeader,
-                    imageSize = ImageSize.THUMB_LARGE,
                     preserveAspectRatio = true,
                     shape = RoundedCornerShape(16.dp),
                     // ponytail: static cover in the dialog — no nested full-screen

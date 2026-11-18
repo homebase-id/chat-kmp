@@ -46,7 +46,7 @@ class VideoPayloadProcessorStreamEncryptTest {
             var outputPath: String? = null
 
             try {
-                outputPath = processor.encryptVideoFile(inputPath, key)
+                outputPath = processor.encryptVideoFile(inputPath, key).first
 
                 // #842: the encrypted output an outbox row will reference must land in
                 // the durable staging dir, not cacheDir (which gets swept/OS-reclaimed).
@@ -80,7 +80,7 @@ class VideoPayloadProcessorStreamEncryptTest {
 
         var outputPath: String? = null
         try {
-            outputPath = processor.encryptVideoFile(inputPath, key)
+            outputPath = processor.encryptVideoFile(inputPath, key).first
             val cipherBytes = File(outputPath).readBytes()
             val decrypted = key.decrypt(cipherBytes)
             assertContentEquals(plaintext, decrypted)

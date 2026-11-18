@@ -110,6 +110,8 @@ data class PostCommentItem(
     val fileId: Uuid,
     val driveId: Uuid,
     val keyHeader: KeyHeader,
+    /** Whether the server stores the file encrypted: its payloads then need [keyHeader] and their own IVs. */
+    val isEncrypted: Boolean,
     val payloads: List<PayloadDescriptor>,
     val previewThumbnail: EmbeddedThumb?,
     val versionTag: Uuid?,
@@ -185,6 +187,7 @@ fun HomebaseFile.toCommentItem(topLevelPostId: Uuid): PostCommentItem? {
         fileId = fileId,
         driveId = driveId,
         keyHeader = keyHeader,
+        isEncrypted = serverFileIsEncrypted,
         payloads = fileMetadata.payloads.orEmpty(),
         previewThumbnail = appData.previewThumbnail,
         versionTag = fileMetadata.versionTag,

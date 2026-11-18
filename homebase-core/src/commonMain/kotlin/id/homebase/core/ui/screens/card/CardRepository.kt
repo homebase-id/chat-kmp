@@ -6,6 +6,7 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileWriteOptions
 import id.homebase.api.client.profile.ProfileWriteResponse
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
@@ -17,8 +18,7 @@ interface CardAttributeStore {
         visibility: ProfileVisibility,
         id: Uuid?,
         versionTag: Uuid?,
-        priority: Int,
-        circleIds: List<String> = emptyList(),
+        options: ProfileWriteOptions,
     ): ProfileWriteResponse
     suspend fun delete(id: Uuid, versionTag: Uuid): Boolean
 }
@@ -33,16 +33,14 @@ class ProfileRepositoryCardStore(private val repository: ProfileRepository) : Ca
         visibility: ProfileVisibility,
         id: Uuid?,
         versionTag: Uuid?,
-        priority: Int,
-        circleIds: List<String>,
+        options: ProfileWriteOptions,
     ) = repository.save(
         type = ProfileAttributeTypes.PROFILE_CARD,
         data = data,
         visibility = visibility,
         knownId = id,
         knownVersionTag = versionTag,
-        priority = priority,
-        circleIds = circleIds,
+        options = options,
     )
 }
 
@@ -59,17 +57,21 @@ class CardRepository(private val store: CardAttributeStore) {
     suspend fun cards(): List<ProfileCard> = store.load().profileCards()
 
     /** A null [overrides] keeps the stored ones. Returns false, without an error, when the server doesn't know the card type. */
-    suspend fun savePublic(design: String, overrides: CardOverrides? = null): Boolean {
-        if (typeUnsupported) return false
-        val existing = cards().publicCard()
+    suspend fun savePublic(design: String, overrides: CardOverrides? = null): Boolean = savePublicCard(design, overrides) != null
+
+    /** With [known] (the stored cards the caller holds) nothing is read first; a stale version tag is re-read by the write itself. */
+    suspend fun savePublicCard(design: String, overrides: CardOverrides? = null, known: List<ProfileCard>? = null): ProfileCard? {
+        if (typeUnsupported) return null
+        val existing = (known ?: cards()).publicCard()
         val card = existing?.withDesign(design, overrides) ?: ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, design, overrides ?: CardOverrides.EMPTY)
-        return saveOrUnsupported(
+        val written = saveOrUnsupported(
             data = card.toData(),
             visibility = ProfileVisibility.ANONYMOUS,
             id = existing?.id,
             versionTag = existing?.versionTag,
-            priority = PUBLIC_CARD_PRIORITY,
-        ) != null
+            options = ProfileWriteOptions(priority = PUBLIC_CARD_PRIORITY),
+        ) ?: return null
+        return card.copy(id = written.id, versionTag = written.versionTag)
     }
 
     suspend fun saveCircle(card: ProfileCard): ProfileCard? {
@@ -80,25 +82,9 @@ class CardRepository(private val store: CardAttributeStore) {
             visibility = ProfileVisibility.CONNECTED,
             id = card.id.takeIf { it != Uuid.NIL },
             versionTag = card.versionTag.takeIf { it != Uuid.NIL },
-            priority = card.priority,
-            circleIds = listOf(circle.id),
+            options = ProfileWriteOptions(card.priority, listOf(circle.id)),
         ) ?: return null
         return card.copy(id = written.id, versionTag = written.versionTag)
-    }
-
-    // Deleted: an unstored public card falls back to the site design, then the template, on the app and the web alike.
-    suspend fun resetPublic() {
-        cards().publicCard()?.let { store.delete(it.id, it.versionTag) }
-    }
-
-    // 404 counts as reset.
-    suspend fun resetCircle(card: ProfileCard) {
-        val circle = card.audience as? CardAudience.Circle ?: error("not a circle card")
-        val template = cardTemplateFor(circle)
-        when {
-            template != null -> saveCircle(card.withTemplate(template))
-            !card.isDefault -> store.delete(card.id, card.versionTag)
-        }
     }
 
     private suspend fun saveOrUnsupported(
@@ -106,11 +92,10 @@ class CardRepository(private val store: CardAttributeStore) {
         visibility: ProfileVisibility,
         id: Uuid?,
         versionTag: Uuid?,
-        priority: Int,
-        circleIds: List<String> = emptyList(),
+        options: ProfileWriteOptions,
     ): ProfileWriteResponse? =
         try {
-            store.save(data, visibility, id, versionTag, priority, circleIds)
+            store.save(data, visibility, id, versionTag, options)
         } catch (e: ClientException) {
             if (!e.isUnknownCardType()) throw e
             Logger.i(tag = "CardRepository") { "server has no profile_card type; keeping the home page design only" }

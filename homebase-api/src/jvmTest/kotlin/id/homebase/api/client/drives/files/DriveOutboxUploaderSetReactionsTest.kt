@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -98,6 +99,7 @@ class DriveOutboxUploaderSetReactionsTest {
             reactionProvider = DriveFileGroupReactionProvider(httpClient, credentialsManager),
             databaseManager = dbm,
             credentialsManager = credentialsManager,
+            peerUploadProvider = PeerDriveUploadProvider(httpClient, credentialsManager, fileOps),
         )
     }
 

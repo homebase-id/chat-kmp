@@ -24,16 +24,16 @@ internal class TieredVideoDecoder(
     private val fallback: VideoDecoder?,
 ) : VideoDecoder {
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
         val first = try {
-            primary.extractPosterFrame(videoPath)
+            primary.extractPosterFrame(videoPath, fullSize)
         } catch (ce: CancellationException) {
             throw ce
         } catch (_: Throwable) {
             null
         }
         if (first != null) return first
-        return fallback?.extractPosterFrame(videoPath)
+        return fallback?.extractPosterFrame(videoPath, fullSize)
     }
 
     override fun extractThumbnailStrip(

@@ -5,7 +5,6 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -33,7 +32,6 @@ internal fun contactCardPhotoData(
         descriptor = payload,
         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb() ?: previewThumbnail,
         // Left empty, the loader guesses a size the server never stored and takes a 404.
-        requestedSize = ImageSize.THUMB_SMALL,
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }

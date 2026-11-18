@@ -1,8 +1,6 @@
 package id.homebase.chat.services.convo
 
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.StatusMessage
 import kotlin.test.Test
@@ -282,9 +280,7 @@ class ConversationServiceOutboxOrderingTest {
             val rows = fixture.drainOutboxInDependencyOrder()
 
             listOf(result.conversationId, adminUniqueId).forEach { uid ->
-                val request = OdinSystemSerializer.deserialize<UploadFileRequest>(
-                    rows.single { it.uniqueId == uid }.json.decodeToString()
-                )
+                val request = rows.single { it.uniqueId == uid }.asUploadFileRequest()
                 assertEquals(
                     setOf(alice, bob),
                     request.transitOptions?.recipients?.map { it.domainName }?.toSet(),

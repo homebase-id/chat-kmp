@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.unit.Dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -419,6 +420,10 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.AgentUi -> {
+            val timestamp = formatMessageTimestamp(message.userDate)
+            // The agent edits a card by bumping its rev (0 on the first send).
+            val edited = message.isEdited || (content.descriptor?.rev ?: 0) > 0
+            val infoText = if (edited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
             AgentUiBubble(
                 content = content,
                 message = message,
@@ -427,6 +432,25 @@ fun MessageBubbleRaw(
                 modifier = modifier,
                 onLongClick = onLongClick,
                 onImageClick = onMediaClick.takeUnless { displayOnly },
+                onImageSecondaryPress = onMediaSecondaryPress,
+                shape = remember(sentByYou, clusterPosition) {
+                    messageBubbleShape(sentByYou, clusterPosition, big = Dimens.AgentUi.cardCornerRadius)
+                },
+                authorName = authorName,
+                authorColor = authorColor,
+                // Null when hidden, so a mid-cluster card keeps no empty footer row.
+                footer = if (!showMessageFooter) null else {
+                    {
+                        MessageTimestampFooter(
+                            infoText = infoText,
+                            contentColor = LocalContentColor.current,
+                            showDeliveryStatus = sentByYou && !message.isDeleted,
+                            isPendingSend = isPendingSend,
+                            deliveryStatus = message.messageAppData.deliveryStatus,
+                            pendingSince = message.userDate,
+                        )
+                    }
+                },
             )
             return
         }
@@ -437,6 +461,7 @@ fun MessageBubbleRaw(
                 sentByYou = sentByYou,
                 modifier = modifier,
                 onLongClick = onLongClick.takeUnless { displayOnly },
+                onOpenCard = onClickMessageId.takeUnless { displayOnly },
             )
             return
         }
@@ -1413,7 +1438,7 @@ private fun BoxScope.MediaTimestampOverlay(
 }
 
 @Composable
-private fun SelectableOnDesktop(enabled: Boolean, content: @Composable () -> Unit) {
+internal fun SelectableOnDesktop(enabled: Boolean, content: @Composable () -> Unit) {
     if (enabled && usesPointerUx()) SelectionContainer(content = content) else content()
 }
 
@@ -1449,8 +1474,11 @@ internal fun buildSearchHighlightedText(
     }
 }
 
-internal fun messageBubbleShape(sentByYou: Boolean, clusterPosition: MessageClusterPosition): RoundedCornerShape {
-    val big = Dimens.Message.cornerRadius
+internal fun messageBubbleShape(
+    sentByYou: Boolean,
+    clusterPosition: MessageClusterPosition,
+    big: Dp = Dimens.Message.cornerRadius,
+): RoundedCornerShape {
     val small = Dimens.Message.cornerCollapseRadius
     return if (sentByYou) {
         when (clusterPosition) {
