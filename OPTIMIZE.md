@@ -268,6 +268,36 @@ Kotlin Lanczos runs on bigger images with wider windows; Pillow and libvips pay 
 Thumbnail bytes are unchanged to the KB. Phones resize natively and weren't measured. Folding the
 horizontal pass's four channel loops into one gained about 10%, within noise, so it wasn't kept.
 
+### 2026-11-18, Lanczos for the last 2–4× (#2369) on a phone, Pixel 5 (Android 14)
+
+The same change measured where it matters, against main at b9a61a2f2 (halve while 2× too big) and a
+variant that never halves. Run back to back on one phone, battery 23–25 °C.
+
+**Quality.** Three real 12 MP Pixel 5 photos, upright, each also cropped to 16:9, through
+`createMediaImages` at Standard. Each output is compared with Pillow's Lanczos straight from the
+source (luma PSNR, mean of 3); only the sizes that changed are listed:
+
+| Output | Halve while 2× (main) | Halve while 4× | Never halve |
+|---|---|---|---|
+| 480×854 (from 1152×2048, 2.4×) | 33.57 dB | 34.95 dB | 34.95 dB |
+| 240×427 (from 480×854, 2×) | 33.23 dB | 35.16 dB | 35.16 dB |
+| 240×320 (from 480×640, 2×) | 33.14 dB | 35.20 dB | 35.20 dB |
+
+2048, 1080 and 640 outputs are identical under all three. A chart of 0.40 and 0.30 cycles/px
+detail, which should come out flat grey, keeps a pattern with main at 854×480 and 427×240 (standard
+deviation 4.5 and 3.6) and none with the change (0.5). "Never halve" is byte-identical to "halve
+while 4×" for every output: no step in these chains is 4× or more.
+
+**Cost.** `ImagePipelinePerfBench`, median of 3. Every case was within 1% across the three, except:
+
+| Case | Halve while 2× (main) | Halve while 4× | Never halve |
+|---|---|---|---|
+| 48 MP HEIC, Standard | 3166 ms, native +241 MB | 3298 ms, native +207 MB | 3315 ms, native +207 MB |
+
+Android decodes HEIC at full size, so 8000 → 2048 (3.9×) is now one Lanczos pass instead of a
+halving and a pass: 4% slower, and 34 MB lower at peak because the halved copy is gone. 12 MP JPEG
+and HEIC, and 48 MP JPEG, are unchanged at Standard and HD. iOS and web weren't measured.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,

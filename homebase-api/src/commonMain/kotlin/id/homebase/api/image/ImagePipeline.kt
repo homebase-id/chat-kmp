@@ -200,11 +200,13 @@ internal suspend fun renderFrom(
  * Returns [source] when it's already the right size. Intermediate bitmaps are closed; [source] is
  * left to the caller.
  */
+private const val HALVE_WHILE_AT_LEAST = 4
+
 internal suspend fun scaleDown(source: PipelineBitmap, width: Int, height: Int): PipelineBitmap {
     var current = source
     while (true) {
-        val nextWidth = if (current.width >= width * 4) (current.width + 1) / 2 else current.width
-        val nextHeight = if (current.height >= height * 4) (current.height + 1) / 2 else current.height
+        val nextWidth = if (current.width >= width * HALVE_WHILE_AT_LEAST) (current.width + 1) / 2 else current.width
+        val nextHeight = if (current.height >= height * HALVE_WHILE_AT_LEAST) (current.height + 1) / 2 else current.height
         if (nextWidth == current.width && nextHeight == current.height) break
         val exact = (nextWidth == current.width || current.width % 2 == 0) && (nextHeight == current.height || current.height % 2 == 0)
         current = current.replacedBy(source) {
