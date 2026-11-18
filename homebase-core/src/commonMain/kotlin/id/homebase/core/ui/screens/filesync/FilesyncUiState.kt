@@ -238,7 +238,7 @@ sealed interface FilesyncUiAction {
     data class ShareTo(val target: FilesyncShareTarget) : FilesyncUiAction
     data object DismissShare : FilesyncUiAction
     data object CancelTransfer : FilesyncUiAction
-    data class SaveHandedOff(val path: String) : FilesyncUiAction
+    data class PreviewGone(val path: String) : FilesyncUiAction
     data class FilesPicked(val files: List<PlatformFile>) : FilesyncUiAction
     data class CreateFolder(val name: String) : FilesyncUiAction
     data class RetryUpload(val id: Uuid) : FilesyncUiAction

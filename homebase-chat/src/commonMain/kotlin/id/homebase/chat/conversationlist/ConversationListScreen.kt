@@ -319,6 +319,7 @@ fun ConversationListScreen(
                 is ConversationListUiEvent.SaveFileToDevice -> fileSystemHandler.saveFile(
                     file = Path(event.filePath),
                     suggestedName = event.suggestedName,
+                    deleteAfter = event.deleteAfter,
                     onSuccess = { location ->
                         scope.launch {
                             val msg = TranslationUtil.getString(MR.string.file_saved_to, location)

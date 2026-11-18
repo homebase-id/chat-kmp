@@ -348,6 +348,7 @@ internal fun ProfileCardPager(
                         fileSystemHandler.saveFile(
                             file = Path(event.path),
                             suggestedName = event.fileName,
+                            deleteAfter = false,
                             onSuccess = { location ->
                                 launch {
                                     snackbarHostState.showSnackbar(

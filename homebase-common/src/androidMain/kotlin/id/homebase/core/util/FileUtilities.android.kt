@@ -12,6 +12,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.io.files.Path
 
 private const val TAG = "getUriHandler"
@@ -104,12 +105,24 @@ actual fun getUriHandler(): FileSystemHandler {
             override fun saveFile(
                 file: Path,
                 suggestedName: String,
+                deleteAfter: Boolean,
                 onSuccess: (String) -> Unit,
                 onError: (Throwable) -> Unit,
             ) = saveThroughAlbum(
-                albumSaver, fileOps, file, suggestedName, onSuccess, onError,
-                // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to.
-                onRefused = { refused, _ -> shareFile(refused, onError) },
+                albumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError,
+                // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to, so the share sheet offers the file.
+                onRefused = { source, name, _ ->
+                    val staged = try {
+                        fileOps.stageForShare(source, name, giveAway = deleteAfter)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = TAG) { "Failed to stage the file to share: ${e.message}" }
+                        onError(e)
+                        null
+                    }
+                    if (staged != null) shareFile(Path(staged), onError)
+                },
             )
 
             override fun shareText(text: String, onError: (Throwable) -> Unit) {

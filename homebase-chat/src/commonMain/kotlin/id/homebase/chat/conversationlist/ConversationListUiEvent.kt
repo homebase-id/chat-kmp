@@ -27,7 +27,8 @@ sealed interface ConversationListUiEvent {
     data class ShareText(val text: String) : ConversationListUiEvent
     data class ShareFile(val filePath: String) : ConversationListUiEvent
     data class OpenFile(val filePath: String) : ConversationListUiEvent
-    data class SaveFileToDevice(val filePath: String, val suggestedName: String) : ConversationListUiEvent
+    /** [deleteAfter]: [filePath] is a decrypted copy to delete once saved, not the person's own file. */
+    data class SaveFileToDevice(val filePath: String, val suggestedName: String, val deleteAfter: Boolean) : ConversationListUiEvent
     /** Already saved, at [location] (a folder name or a path). */
     data class FileSaved(val location: String) : ConversationListUiEvent
     data class OpenUrl(val url: String) : ConversationListUiEvent

@@ -30,9 +30,10 @@ actual fun getUriHandler(): FileSystemHandler {
         override fun saveFile(
             file: Path,
             suggestedName: String,
+            deleteAfter: Boolean,
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
-        ) = saveThroughAlbum(WebAlbumSaver, fileOps, file, suggestedName, onSuccess, onError)
+        ) = saveThroughAlbum(WebAlbumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
     }
 }
 

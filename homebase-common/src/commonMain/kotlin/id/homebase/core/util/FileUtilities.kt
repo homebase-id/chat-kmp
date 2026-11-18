@@ -6,6 +6,8 @@ import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.safeFileName
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 
@@ -42,14 +44,22 @@ interface FileSystemHandler {
     fun shareText(text: String, onError: (Throwable) -> Unit = {})
     fun openAppStore(onError: (Throwable) -> Unit = {})
 
-    /** Save a file to the user's device storage (Downloads/Photos/etc), under [suggestedName] made [safeFileName].
-     *  [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). */
+    /**
+     * Save [file] to the person's device storage (Downloads, Photos, ...) under [suggestedName] made [safeFileName].
+     * [onSuccess] gets a readable location ("Downloads", "Photos") and [onError] a failure; a cancel gets neither. On
+     * Android 9 without storage access the share sheet opens instead, with the file under its name in `share_outbound/`
+     * (swept when the app returns); [onSuccess] doesn't run, and [onError] does if the sheet can't be opened.
+     *
+     * [deleteAfter]: [file] is the caller's to give away, and the save deletes it once done, whatever the outcome (for
+     * the share sheet it's moved rather than copied). Otherwise [file] is never touched.
+     */
     fun saveFile(
         file: Path,
         suggestedName: String,
+        deleteAfter: Boolean,
         onSuccess: (String) -> Unit = {},
         onError: (Throwable) -> Unit = {},
-    ) = shareFile(file, onError)
+    )
 }
 
 // App-lifetime: a save the person started finishes even if they leave the screen.
@@ -57,36 +67,69 @@ private val saveScope = supervisedScope("saveFile")
 
 /**
  * [FileSystemHandler.saveFile] on every platform: [file] saved through [albumSaver] as a person's save, under
- * [suggestedName] made safe. [onRefused] gets the file when the album won't take it; by default that's an error saying
- * why.
+ * [suggestedName] made safe, and deleted after when [deleteAfter]. [onRefused] offers the file another way when the album
+ * won't take it, and must not leave anything reading [file] where it is; by default it reports an error.
  */
 internal fun saveThroughAlbum(
     albumSaver: AlbumSaver,
     fileOps: FileOperationsProvider,
     file: Path,
     suggestedName: String,
+    deleteAfter: Boolean,
     onSuccess: (String) -> Unit,
     onError: (Throwable) -> Unit,
-    onRefused: (Path, reason: String) -> Unit = { _, reason -> onError(AlbumAccessDeniedException(reason)) },
+    onRefused: suspend (file: String, name: String, reason: String) -> Unit =
+        { _, _, reason -> onError(AlbumAccessDeniedException(reason)) },
+    scope: CoroutineScope = saveScope,
 ) {
-    saveScope.launch {
-        // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
-        val saved = try {
-            albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = "saveFile") { "Failed to save file: ${e.message}" }
-            onError(e)
-            return@launch
-        }
-        when (saved) {
-            is AlbumSaveResult.Saved -> onSuccess(saved.location)
-            AlbumSaveResult.Cancelled -> Unit
-            AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
-            is AlbumSaveResult.Refused -> onRefused(file, saved.reason)
+    // ATOMIC: once launched, the body (and so the delete in its finally) runs even if the scope is cancelled first.
+    scope.launch(start = CoroutineStart.ATOMIC) {
+        try {
+            // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
+            val saved = try {
+                albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Error) {
+                // Reported, so the person hears the save failed, then rethrown: an Error isn't an ordinary failure.
+                onError(e)
+                throw e
+            } catch (e: Throwable) {
+                // Throwable, not Exception: a failed JS call on the web throws a JsException, which isn't one.
+                Logger.e(throwable = e, tag = "saveFile") { "Failed to save file: ${e.message}" }
+                onError(e)
+                return@launch
+            }
+            when (saved) {
+                is AlbumSaveResult.Saved -> onSuccess(saved.location)
+                AlbumSaveResult.Cancelled -> Unit
+                AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
+                is AlbumSaveResult.Refused -> onRefused(saved.file, saved.name, saved.reason)
+            }
+        } finally {
+            // Caught, so a failed delete can't hide what the save itself threw.
+            if (deleteAfter) {
+                runCatching { fileOps.deleteTempFile(file.sourcePath()) }
+                    .onFailure { Logger.e(throwable = it, tag = "saveFile") { "Deleting the saved file failed" } }
+            }
         }
     }
+}
+
+/**
+ * [source] as a file called [name] in `share_outbound/`, swept when the app returns, for an app that reads it later:
+ * moved there when [giveAway], copied otherwise (also when it can't be moved). A failed copy leaves nothing behind.
+ */
+internal suspend fun FileOperationsProvider.stageForShare(source: String, name: String, giveAway: Boolean): String {
+    val target = createNamedShareOutboundPath(name)
+    if (giveAway && moveFile(source, target)) return target
+    try {
+        writeStream(target, readFileAsFlow(source, COPY_CHUNK))
+    } catch (e: Throwable) {
+        deleteTempFile(target)
+        throw e
+    }
+    return target
 }
 
 // kotlinx.io's Path collapses `content://` to `content:/`; the file providers need it back.

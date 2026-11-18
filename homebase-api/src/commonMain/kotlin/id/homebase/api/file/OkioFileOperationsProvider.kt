@@ -13,6 +13,7 @@ import kotlinx.io.buffered
 import okio.FileHandle
 import okio.BufferedSource
 import okio.FileSystem
+import okio.IOException
 import okio.Source
 import okio.buffer
 import okio.use
@@ -160,6 +161,16 @@ open class OkioFileOperationsProvider(
         bytes: ByteArray,
         suffix: String,
     ): String = writeBytesIn(SHARE_OUTBOUND_DIR_NAME, bytes, "share_", suffix)
+
+    override suspend fun moveFile(from: String, to: String): Boolean = withContext(io) {
+        try {
+            to.toPath().parent?.let { fileSystem.createDirectories(it) }
+            fileSystem.atomicMove(from.toPath(), to.toPath())
+            true
+        } catch (e: IOException) {
+            false
+        }
+    }
 
     override suspend fun writeStream(
         path: String,
