@@ -36,6 +36,7 @@ import id.homebase.chat.viewonce.ViewOnceIntroSheet
 import id.homebase.chat.viewonce.ViewOnceToast
 import id.homebase.chat.viewonce.rememberViewOnceComposerState
 import id.homebase.core.util.toMessageMarkdown
+import id.homebase.core.widget.keepSnackbarsAbove
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
 import org.jetbrains.compose.resources.stringResource
@@ -135,7 +136,7 @@ internal fun AttachmentEditorHost(
         fadeInChrome = data.isChatListCapture,
         bottomBar = {
             MessageTextFieldForAttachment(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp).keepSnackbarsAbove(),
                 state = textFieldState,
                 onSendMessage = {
                     onSend(textFieldState.toMessageMarkdown(), viewOnce)

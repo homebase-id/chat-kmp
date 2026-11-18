@@ -23,7 +23,6 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
@@ -101,6 +100,7 @@ import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
 import id.homebase.core.widget.DialogTitle
+import id.homebase.core.widget.SnackbarAboveInput
 import id.homebase.resources.MR
 import id.homebase.resources.action_cannot_be_undone
 import id.homebase.resources.cancel
@@ -861,11 +861,10 @@ fun ConversationListUi(
     LaunchedEffect(scaffoldValue) { scaffoldState.animateTo(scaffoldValue) }
 
     val hasOverlay = messagesUiState.fullScreenOverlay != null
-    val composerUncovered = detail is ChatDetail.Open && !hasOverlay
     @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open && hasOverlay) {
         onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
     }
-    @Suppress("DEPRECATION") PredictiveBackHandler(composerUncovered && !isExpanded) { progress ->
+    @Suppress("DEPRECATION") PredictiveBackHandler(detail is ChatDetail.Open && !hasOverlay && !isExpanded) { progress ->
         val listValue = chatScaffoldValue(isExpanded = false, detail = ChatDetail.None)
         try {
             progress.collect { scaffoldState.seekTo(it.progress, listValue) }
@@ -877,9 +876,8 @@ fun ConversationListUi(
         }
     }
 
-    // While the composer is uncovered the chat shows these above it instead, where they don't cover the input.
-    Scaffold(snackbarHost = { if (!composerUncovered) SnackbarHost(snackbarHostState) }) {
-        Box(modifier = Modifier.fillMaxSize()) {
+    Scaffold {
+        SnackbarAboveInput(snackbarHostState) {
             ListDetailPaneScaffold(
                 modifier = Modifier.fillMaxSize().onGloballyPositioned {
                     scaffoldLeft = it.positionInRoot().x
@@ -951,7 +949,6 @@ fun ConversationListUi(
                                     onUiAction = if (closing) ({}) else onUiAction,
                                     hoistMediaViewer = isExpanded,
                                     vaultActive = uiState.vaultActive,
-                                    snackbarHostState = snackbarHostState,
                                 )
                             }
                         } else {

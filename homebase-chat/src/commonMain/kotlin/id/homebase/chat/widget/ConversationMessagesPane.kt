@@ -22,7 +22,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -90,7 +89,6 @@ fun ConversationMessagesPane(
      *  drops [ConversationContent] so the composer cannot hold focus behind one. */
     hoistMediaViewer: Boolean = false,
     vaultActive: Boolean = false,
-    snackbarHostState: SnackbarHostState,
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
 
@@ -326,8 +324,7 @@ fun ConversationMessagesPane(
                     onUiAction = onUiAction,
                     onCameraClick = { cameraLauncher.launch() },
                     animatedVisibilityScope = this@AnimatedContent,
-                    sharedTransitionScope = this@SharedTransitionLayout,
-                    snackbarHostState = snackbarHostState,
+                    sharedTransitionScope = this@SharedTransitionLayout
                 )
             } else {
                 when (data) {

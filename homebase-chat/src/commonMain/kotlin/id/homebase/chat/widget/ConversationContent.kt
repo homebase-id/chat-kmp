@@ -118,6 +118,7 @@ import id.homebase.chat.agentui.AgentUiTreeLoader
 import id.homebase.chat.agentui.LocalAgentUiConversation
 import id.homebase.chat.agentui.agentUiConversation
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.widget.keepSnackbarsAbove
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.LocalContactCardSnackbar
@@ -283,7 +284,6 @@ fun ConversationContent(
     onCameraClick: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
-    snackbarHostState: SnackbarHostState,
 ) {
     val savedStickers by koinInject<StickerStream>().stickers.collectAsStateWithLifecycle()
     val savedStickerSourceIds = remember(savedStickers) { savedStickers.mapNotNullTo(HashSet()) { it.sourceFileId } }
@@ -313,6 +313,7 @@ fun ConversationContent(
     // too, via `MessageInputBar`'s onPayloadRenderersChange callback.
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
     val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
 
     var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
@@ -1656,7 +1657,7 @@ fun ConversationContent(
                                 onUiAction(ConversationListUiAction.CancelEditMessage)
                             },
                             onAddAttachmentClick = { toggleAttachmentSheet() },
-                            modifier = Modifier.focusProperties { canFocus = inputFocusable },
+                            modifier = Modifier.focusProperties { canFocus = inputFocusable }.keepSnackbarsAbove(),
                             attachmentActions = popoverAttachmentActions,
                             onAttachmentPopoverDismissed = { focusRequester.requestFocus() },
                         ) {
