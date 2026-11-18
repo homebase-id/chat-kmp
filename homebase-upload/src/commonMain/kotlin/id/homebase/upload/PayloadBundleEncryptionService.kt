@@ -10,7 +10,10 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.files.PayloadHash
-import id.homebase.api.crypto.encryptFileStreaming
+import id.homebase.api.crypto.encryptStreaming
+import id.homebase.api.crypto.slicedFlow
+import id.homebase.api.media.MediaMetadataStripper
+import kotlinx.coroutines.flow.Flow
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
@@ -30,6 +33,7 @@ class PayloadBundleEncryptionService(
     private val videoProcessor: VideoPayloadProcessor,
     private val eventBus: EventBus,
 ) : PayloadBundleEncryptor {
+    private val stripper = MediaMetadataStripper(fileOps)
 
     override suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle {
         if (bundle == null) return EMPTY_BUNDLE
@@ -42,13 +46,10 @@ class PayloadBundleEncryptionService(
         try {
             // Always a copy: the outbox deletes a row's payload files once sent, and the source may be the person's own.
             val payloads = bundle.payloads.map { payload ->
-                val stripped = withMetadataStripped(payload, fileOps, staged = true)
-                val copy = if (stripped.filePath != payload.filePath) stripped else {
-                    val path = fileOps.createOutboxStagingPath("public_", ".bin")
-                    fileOps.writeStream(path, fileOps.readFileAsFlow(payload.filePath, STAGE_CHUNK))
-                    payload.copy(filePath = path)
-                }
-                copy.also { staged += it.filePath }
+                val path = fileOps.createOutboxStagingPath("public_", ".bin")
+                staged += path
+                fileOps.writeStream(path, plaintextOf(payload, STAGE_CHUNK))
+                payload.copy(filePath = path)
             }
             return bundle.copy(payloads = payloads)
         } catch (e: Throwable) {
@@ -139,11 +140,7 @@ class PayloadBundleEncryptionService(
                     newPayloads += result.payloads
                     newThumbnails += result.thumbnails
                 } else {
-                    val sourcePath = withMetadataStripped(payload, fileOps, staged = false).filePath
-                    val encrypted = encryptFile(sourcePath, keyHeader, payload.key, hashes)
-                    if (sourcePath != payload.filePath) {
-                        runCatching { fileOps.deleteTempFile(sourcePath) }
-                    }
+                    val encrypted = encryptFile(payload, keyHeader, hashes)
                     newPayloads += payload.copy(
                         filePath = encrypted.path,
                         iv = keyHeader.iv,
@@ -177,26 +174,33 @@ class PayloadBundleEncryptionService(
 
     private class Encrypted(val path: String, val hash: PayloadHash?)
 
-    private suspend fun encryptFile(inputFile: String, keyHeader: KeyHeader, payloadKey: String, hashes: ContentHashes?): Encrypted {
+    private suspend fun encryptFile(payload: PayloadFile, keyHeader: KeyHeader, hashes: ContentHashes?): Encrypted {
         // Defense-in-depth for the swept-mid-send race: the up-front probe in
         // encryptBundle already rejected a missing source, but it could be swept
         // between that probe and this read. A typed throw keeps the send fail-soft.
-        if (!fileOps.sourceExists(inputFile)) throw SourceUnavailableException(inputFile)
+        if (!fileOps.sourceExists(payload.filePath)) throw SourceUnavailableException(payload.filePath)
+        val plaintext = plaintextOf(payload)
 
         // The durable outbox staging dir, not upload-temp: this file rides an outbox row until
         // the send completes and must survive sweeps; the outbox reaps it on success or drop.
         val path = fileOps.createOutboxStagingPath(prefix = "enc", suffix = ".encrypted")
         if (hashes == null) {
-            fileOps.encryptFileStreaming(inputFile, path, keyHeader)
+            fileOps.encryptStreaming(plaintext, path, keyHeader)
             return Encrypted(path, null)
         }
-        val hash = fileOps.encryptWithPayloadHash(inputFile, path, keyHeader, hashes.algorithm)
-        val expected = hashes.expected[payloadKey]
+        val hash = fileOps.encryptWithPayloadHash(plaintext, path, keyHeader, hashes.algorithm)
+        val expected = hashes.expected[payload.key]
         if (expected != null && !expected.contentEquals(hash.plaintextContentHash(keyHeader))) {
             runCatching { fileOps.deleteTempFile(path) }
-            throw ContentChangedException(payloadKey)
+            throw ContentChangedException(payload.key)
         }
         return Encrypted(path, hash)
+    }
+
+    // A stripped image is sent from the bytes the strip read; anything else streams from its file. One read either way.
+    private suspend fun plaintextOf(payload: PayloadFile, chunkSize: Int = DEFAULT_CHUNK): Flow<ByteArray> {
+        val stripped = if (payload.stripMetadata) stripper.image(payload.filePath, payload.contentType) else null
+        return if (stripped != null) slicedFlow(stripped, chunkSize) else fileOps.readFileAsFlow(payload.filePath, chunkSize)
     }
 
     private suspend fun encryptBytes(
@@ -218,5 +222,6 @@ class PayloadBundleEncryptionService(
 
     private companion object {
         const val STAGE_CHUNK = 256 * 1024
+        const val DEFAULT_CHUNK = FileOperationsProvider.DEFAULT_HEADER_BYTES
     }
 }

@@ -3,8 +3,7 @@
 package id.homebase.core.ui.screens.contactbook
 
 import id.homebase.api.file.contentTypeFromBytes
-import id.homebase.upload.MetadataPolicy
-import id.homebase.upload.imageBytesFor
+import id.homebase.api.media.MediaMetadataStripper
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactBirthday
@@ -307,7 +306,7 @@ private suspend fun uploadContactPhoto(
 internal suspend fun contactPhotoToSend(bytes: ByteArray, platformType: String): Pair<ByteArray, String> {
     // Unlike the builder's rule, any non-image type is sniffed: the file is known to be a picture, and only an image type gets stripped.
     val contentType = platformType.takeIf { it.startsWith("image/") } ?: contentTypeFromBytes(bytes)
-    return imageBytesFor(MetadataPolicy.STRIP, bytes, contentType) to contentType
+    return MediaMetadataStripper.imageBytes(bytes, contentType) to contentType
 }
 
 // The V2 server merges per-leaf with Coalesce(incoming, existing): a blanked field is "leave

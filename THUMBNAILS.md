@@ -465,7 +465,7 @@ The scrubber handles JPEG, PNG, WebP and HEIC. Any other image format (GIF, BMP,
 **One API, one required parameter.** The same pipeline serves chat and Photos, so the caller says what happens to the final image's metadata. The parameter is something like `metadata = Keep` or `Strip`.
 
 - **Required, with no default.** Every caller has to choose. A default would either leak a sender's location in a new chat feature, or silently lose data in a new Photos feature.
-- **It covers both kinds of final image.** A re-encoded image gets the source's metadata copied in (`Keep`) or gets none (`Strip`). A source file kept as it is is uploaded untouched (`Keep`) or goes through the scrubber (`Strip`, `ImageMetadataScrubber`). Today chat's scrub runs separately at upload (`PayloadBundleEncryptionService.scrubImageMetadata`). The parameter makes the pipeline the one place that decides, and the upload step stays as a safety net for chat.
+- **It covers both kinds of final image.** A re-encoded image gets the source's metadata copied in (`Keep`) or gets none (`Strip`). A source file kept as it is is uploaded untouched (`Keep`) or goes through the scrubber (`Strip`, `ImageMetadataScrubber`). Today chat's scrub runs separately at upload (`MediaMetadataStripper`, from `PayloadBundleEncryptionService`). The parameter makes the pipeline the one place that decides, and the upload step stays as a safety net for chat.
 - **Thumbnails and the tiny always strip,** whatever the parameter says.
 - **Video takes the same parameter** (see [Video](#video)).
 

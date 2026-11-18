@@ -132,10 +132,11 @@ object UserUploadBuilder {
                 val isVideo = kind == DescriptorContentV1.Kind.VIDEO
                 // The user's file goes untouched with a copy to play, transcoded in the encryption step as any video.
                 val copyKey = HomebaseProtocol.playableCopyPayloadKey(index).takeIf { isVideo && options.originalVideo && !source.untouched }
-                if (copyKey != null) {
+                val original = 1.takeIf { isVideo && (source.untouched || copyKey != null) }
+                // Sent as it is, with nothing to strip its metadata: only a transcode does that.
+                if (original != null) {
                     require(options.currentFormat && options.metadata == MetadataPolicy.KEEP) { "an untouched original video is for an app that keeps metadata, in the current format" }
                 }
-                val original = 1.takeIf { isVideo && (source.untouched || copyKey != null) }
                 val payload = PayloadFile(
                     key = key,
                     filePath = source.path,

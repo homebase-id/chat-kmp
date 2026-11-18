@@ -23,8 +23,7 @@ import id.homebase.api.image.ThumbnailInstruction
 import id.homebase.api.image.createImageThumbnail
 import id.homebase.api.image.tinyThumbSize
 import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.upload.MetadataPolicy
-import id.homebase.upload.imageBytesFor
+import id.homebase.api.media.MediaMetadataStripper
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.ui.screens.card.CardAudience
@@ -401,7 +400,7 @@ internal class AvatarPhoto(val contentType: String, val content: ByteArray, val 
 internal suspend fun avatarPhoto(cropped: ByteArray): AvatarPhoto {
     suspend fun rendition(key: String, instruction: ThumbnailInstruction, tiny: Boolean = false) =
         createImageThumbnail(cropped, key, instruction, isTinyThumb = tiny).let {
-            it.copy(thumbnailBytes = imageBytesFor(MetadataPolicy.STRIP, it.thumbnailBytes, it.contentType))
+            it.copy(thumbnailBytes = MediaMetadataStripper.imageBytes(it.thumbnailBytes, it.contentType))
         }
     val fullSize = rendition("avatar_full", AVATAR_FULL_SIZE_INSTRUCTION)
     // The tiny is reported at the source's natural size, not its own ~20 px; see PreviewThumbnail.

@@ -45,13 +45,15 @@ class MediaMetadataReaderTest {
     fun androidsLocationIsReadFromAMoovAfterTheMediaByItsHeadersAlone() = runTest {
         val bytes = video(androidMoov("+37.7749-122.4194/"), mdatBytes = 10_000_000)
         var read = 0L
+        var reads = 0
         val okio = files(bytes)
         val counting = object : FileOperationsProvider by okio {
             override suspend fun readFileRange(path: String, offset: Long, length: Int) =
-                okio.readFileRange(path, offset, length).also { read += it.size }
+                okio.readFileRange(path, offset, length).also { read += it.size; reads++ }
         }
         assertEquals(MediaLocation(37.7749, -122.4194), MediaMetadataReader(counting).videoLocation("/v.mp4"))
-        assertTrue(read < 64 * 1024, "read $read bytes of ${bytes.size}")
+        assertEquals(2, reads, "the start of the file, then the moov: each read may open the file again")
+        assertTrue(read <= 512 * 1024, "read $read bytes of ${bytes.size}")
     }
 
     @Test

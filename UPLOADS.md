@@ -212,7 +212,7 @@ A name that collides with an existing file when saved becomes `name (1).ext`, `n
 enum class MetadataPolicy { KEEP, STRIP }
 ```
 
-The builder decides it per app and records it on each image payload (`PayloadFile.stripMetadata`). Each transport applies it with the same function, `withoutImageMetadata`, so public uploads are stripped exactly like encrypted ones (#2395), and each image is read for it once.
+The builder decides it per app and records it on each image payload (`PayloadFile.stripMetadata`). Every transport applies it through `MediaMetadataStripper` (homebase-api), the mirror of `MediaMetadataReader`, so public uploads are stripped exactly like encrypted ones (#2395). The strip reads the image once and hands back the bytes to send, stripped or not, and those bytes are encrypted or staged as they are: the file is read once and written once, as for a file that isn't stripped.
 
 | Payload | STRIP does | KEEP does |
 |---|---|---|
@@ -291,7 +291,7 @@ Filesync, WebDrop and the two photo APIs use the builder's rules but keep their 
 
 - **Names:** WebDrop cleans the names it sends with `safeFileName`; Filesync keeps its own rule (section 3.2); the photos have none.
 - **Content type:** WebDrop records the platform's type, else the extension's, in its encrypted manifest; its payloads stay `application/octet-stream`. A contact photo is an image whatever the platform says, so with no image type its bytes decide.
-- **Metadata:** contact, profile and card photos strip it through `imageBytesFor(MetadataPolicy.STRIP, …)`, the same scrubber as every other app. A profile photo is re-encoded too, but it is stripped on purpose, so a change of encoder can't bring the metadata back.
+- **Metadata:** contact, profile and card photos strip it through `MediaMetadataStripper.imageBytes`, the same scrubber as every other app. A profile photo is re-encoded too, but it is stripped on purpose, so a change of encoder can't bring the metadata back.
 - **Tiny:** profile photos carry one, as before. Filesync and WebDrop make none, and the contact image API has no field for one; all three wait for the encrypted tiny (section 7).
 
 ## 6. Reading old descriptors
