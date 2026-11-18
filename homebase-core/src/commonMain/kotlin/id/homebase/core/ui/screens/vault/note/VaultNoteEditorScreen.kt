@@ -29,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +56,8 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.chat.widget.RichTextEditorButtons
 import id.homebase.core.util.applyMarkDownContent
+import id.homebase.core.widget.SnackbarAboveInput
+import id.homebase.core.widget.keepSnackbarsAbove
 import id.homebase.resources.MR
 import id.homebase.resources.vault_delete_confirm_action
 import id.homebase.resources.vault_note_body_placeholder
@@ -162,7 +163,6 @@ fun VaultNoteEditorScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (uiState.isEditing) {
                 EditModeTopBar(
@@ -182,9 +182,9 @@ fun VaultNoteEditorScreen(
             }
         },
     ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
+        SnackbarAboveInput(
+            snackbarHostState,
+            Modifier
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
@@ -261,6 +261,7 @@ fun VaultNoteEditorScreen(
                     RichTextEditorButtons(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .keepSnackbarsAbove()
                             .background(MaterialTheme.colorScheme.surfaceContainer)
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                         state = richTextState,

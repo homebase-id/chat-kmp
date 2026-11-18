@@ -25,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,6 +59,8 @@ import id.homebase.core.ui.screens.feed.widget.FeedMediaFullScreenHost
 import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.core.widget.ReactionsBottomSheet
+import id.homebase.core.widget.SnackbarAboveInput
+import id.homebase.core.widget.keepSnackbarsAbove
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_comment_denied_anonymous
@@ -135,7 +136,6 @@ fun PostDetailScreen(
 
     FeedMediaFullScreenHost(overlay = overlay, onDismiss = { overlay = null }) { sharedScope, visibilityScope ->
         Scaffold(
-            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 var menuOpen by remember { mutableStateOf(false) }
                 TopAppBar(
@@ -219,123 +219,120 @@ fun PostDetailScreen(
                 )
             },
         ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .consumeWindowInsets(innerPadding),
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    when {
-                        uiState.isLoading -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.align(Alignment.Center),
-                            )
-                        }
-
-                        post == null -> {
-                            Text(
-                                text = stringResource(MR.string.feed_post_detail_not_found),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .padding(24.dp),
-                            )
-                        }
-
-                        isArticle -> ArticleWebContent(
-                            post = post,
-                            isSystemDark = isSystemInDarkTheme(),
-                            onClosed = onBack,
-                        )
-
-                        else -> {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(postScrollState),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                val authorOdinId = post.originalAuthor ?: post.senderOdinId
-                                val isPublicChannel = post.channelId.isBlank() ||
-                                    post.channelId == FeedProtocol.PublicChannelDriveAlias.toString()
-                                val channelName = post.channelId
-                                    .takeUnless { isPublicChannel }
-                                    ?.let { channels[it]?.name }
-                                PostCard(
-                                    post = post,
-                                    displayName = displayNameFor(authorOdinId),
-                                    channelName = channelName,
-                                    isPublic = isPublicChannel,
-                                    onPostClick = {},
-                                    onAuthorClick = viewModel::navigateToAuthor,
-                                    onMediaClick = { index ->
-                                        feedMediaOverlay(
-                                            post = post,
-                                            index = index,
-                                            title = displayNameFor(authorOdinId),
-                                        )?.let { overlay = it }
-                                    },
-                                    onToggleReaction = viewModel::togglePostReaction,
-                                    onOpenComments = {},
-                                    onShowReactors = viewModel::showReactors,
-                                    permission = uiState.canReact,
-                                    sharedTransitionScope = sharedScope,
-                                    animatedVisibilityScope = visibilityScope,
-                                    // Unvalidated wire data — OdinId() throws on a non-domain.
-                                    embeddedAuthorName = post.embeddedPost?.authorOdinId
-                                        ?.takeIf { OdinId.isValid(it) }
-                                        ?.let { displayNameFor(OdinId(it)) },
+            SnackbarAboveInput(snackbarHostState, Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        when {
+                            uiState.isLoading -> {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.align(Alignment.Center),
                                 )
+                            }
 
-                                HorizontalDivider()
-                                // Existing comments always render — reactAccess governs writing, not reading.
-                                CommentThread(
-                                    comments = uiState.comments,
-                                    displayNameFor = displayNameFor,
-                                    isMine = { it.isAuthoredBy(uiState.selfOdinId) },
-                                    onToggleCommentReaction = viewModel::toggleCommentReaction,
-                                    onReply = viewModel::startReply,
-                                    onEdit = { comment, newBody ->
-                                        viewModel.editComment(comment, newBody)
-                                    },
-                                    onDelete = viewModel::deleteComment,
-                                    permission = uiState.canReact,
-                                    onBlockAuthor = { author ->
-                                        uiState.selfOdinId?.let {
-                                            uriHandler.openUrl(it.buildBlockUrl(author))
-                                        }
-                                    },
+                            post == null -> {
+                                Text(
+                                    text = stringResource(MR.string.feed_post_detail_not_found),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .padding(24.dp),
                                 )
-                                commentDenial?.let { reason ->
-                                    Text(
-                                        text = stringResource(reason),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(24.dp),
+                            }
+
+                            isArticle -> ArticleWebContent(
+                                post = post,
+                                isSystemDark = isSystemInDarkTheme(),
+                                onClosed = onBack,
+                            )
+
+                            else -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(postScrollState),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    val authorOdinId = post.originalAuthor ?: post.senderOdinId
+                                    val isPublicChannel = post.channelId.isBlank() ||
+                                        post.channelId == FeedProtocol.PublicChannelDriveAlias.toString()
+                                    val channelName = post.channelId
+                                        .takeUnless { isPublicChannel }
+                                        ?.let { channels[it]?.name }
+                                    PostCard(
+                                        post = post,
+                                        displayName = displayNameFor(authorOdinId),
+                                        channelName = channelName,
+                                        isPublic = isPublicChannel,
+                                        onPostClick = {},
+                                        onAuthorClick = viewModel::navigateToAuthor,
+                                        onMediaClick = { index ->
+                                            feedMediaOverlay(
+                                                post = post,
+                                                index = index,
+                                                title = displayNameFor(authorOdinId),
+                                            )?.let { overlay = it }
+                                        },
+                                        onToggleReaction = viewModel::togglePostReaction,
+                                        onOpenComments = {},
+                                        onShowReactors = viewModel::showReactors,
+                                        permission = uiState.canReact,
+                                        sharedTransitionScope = sharedScope,
+                                        animatedVisibilityScope = visibilityScope,
+                                        // Unvalidated wire data — OdinId() throws on a non-domain.
+                                        embeddedAuthorName = post.embeddedPost?.authorOdinId
+                                            ?.takeIf { OdinId.isValid(it) }
+                                            ?.let { displayNameFor(OdinId(it)) },
                                     )
+
+                                    HorizontalDivider()
+                                    // Existing comments always render — reactAccess governs writing, not reading.
+                                    CommentThread(
+                                        comments = uiState.comments,
+                                        displayNameFor = displayNameFor,
+                                        isMine = { it.isAuthoredBy(uiState.selfOdinId) },
+                                        onToggleCommentReaction = viewModel::toggleCommentReaction,
+                                        onReply = viewModel::startReply,
+                                        onEdit = { comment, newBody ->
+                                            viewModel.editComment(comment, newBody)
+                                        },
+                                        onDelete = viewModel::deleteComment,
+                                        permission = uiState.canReact,
+                                        onBlockAuthor = { author ->
+                                            uiState.selfOdinId?.let {
+                                                uriHandler.openUrl(it.buildBlockUrl(author))
+                                            }
+                                        },
+                                    )
+                                    commentDenial?.let { reason ->
+                                        Text(
+                                            text = stringResource(reason),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(24.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                if (canComment) {
-                    Surface(
-                        tonalElevation = 2.dp,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        CommentComposer(
-                            onSend = { text, attachment ->
-                                viewModel.postComment(text, attachment)
-                            },
-                            replyingToName = uiState.replyingTo
-                                ?.let { displayNameFor(it.originalAuthor ?: it.senderOdinId) },
-                            onCancelReply = viewModel::cancelReply,
-                        )
+                    if (canComment) {
+                        Surface(
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.fillMaxWidth().keepSnackbarsAbove(),
+                        ) {
+                            CommentComposer(
+                                onSend = { text, attachment ->
+                                    viewModel.postComment(text, attachment)
+                                },
+                                replyingToName = uiState.replyingTo
+                                    ?.let { displayNameFor(it.originalAuthor ?: it.senderOdinId) },
+                                onCancelReply = viewModel::cancelReply,
+                            )
+                        }
                     }
                 }
             }
