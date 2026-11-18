@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import id.homebase.api.media.MediaLocation
 import android.content.ContentValues
 import android.graphics.BitmapFactory
 import android.media.MediaCodec
@@ -84,7 +85,7 @@ class Media3VideoCompressorTest {
             val info = probe(AndroidVideoCompressor.compress(uri.toString(), null, null, null, VideoQuality.STANDARD, keepMetadata = true))
 
             assertEquals(1280 to 720, info.displaySize)
-            val location = info.location?.let(VideoLocation::parse)
+            val location = info.location?.let(MediaLocation::parse)
             assertTrue(location != null && abs(location.latitude - 59.9139) < 1e-4 && abs(location.longitude - 10.7522) < 1e-4, "location ${info.location}")
             assertEquals(before, context.cacheDir.walk().filter { it.name.startsWith("resolved_") }.count(), "nothing was copied")
         } finally {
@@ -96,7 +97,7 @@ class Media3VideoCompressorTest {
     fun keepingMetadataKeepsTheLocation() = runBlocking {
         val out = compress("landscape_1080p_gps.mp4", VideoQuality.STANDARD, keepMetadata = true)
         val info = probe(out)
-        val location = info.location?.let(VideoLocation::parse)
+        val location = info.location?.let(MediaLocation::parse)
         assertTrue(location != null && abs(location.latitude - 59.9139) < 1e-4 && abs(location.longitude - 10.7522) < 1e-4, "location ${info.location}")
     }
 

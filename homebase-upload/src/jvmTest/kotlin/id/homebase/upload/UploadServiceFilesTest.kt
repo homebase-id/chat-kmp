@@ -118,24 +118,17 @@ class UploadServiceFilesTest {
     }
 
     @Test
-    fun aPayloadIsHashedAsItsEncryptedAndTheHeaderFinishedFromWhatWasRead() = runTest {
+    fun aPayloadThatStillMatchesItsHashIsSentWithIt() = runTest {
         val payload = plain(source("a.pdf"))
-        var read = ""
-        val spec = spec(Uuid.random(), bundleOf(payload)).let { spec ->
-            spec.copy(
-                contentHashes = ContentHashes(PayloadHashAlgorithm.Blake3, mapOf(payload.key to blake3(payload.filePath))) { _, chunk, offset, length ->
-                    read += chunk.decodeToString(offset, offset + length)
-                },
-                finishMetadata = { it.copy(appData = it.appData.copy(content = read)) },
-            )
-        }
+        val spec = spec(Uuid.random(), bundleOf(payload)).copy(
+            contentHashes = ContentHashes(PayloadHashAlgorithm.Blake3, mapOf(payload.key to blake3(payload.filePath))),
+        )
 
         val request = backgroundScope.service().prepare(spec, backgroundScope).request
 
         val sent = request.payloads.single()
         assertContentEquals(blake3(payload.filePath), sent.hash!!.plaintextContentHash(KeyHeader(sent.iv!!, spec.keyHeader.aesKey)))
-        val finished = spec.metadata.copy(appData = spec.metadata.appData.copy(content = "the file a.pdf")).encryptContent(spec.keyHeader)
-        assertEquals(finished.appData.content, request.metadata.appData.content)
+        assertEquals(spec.metadata.encryptContent(spec.keyHeader).appData.content, request.metadata.appData.content)
     }
 
     @Test

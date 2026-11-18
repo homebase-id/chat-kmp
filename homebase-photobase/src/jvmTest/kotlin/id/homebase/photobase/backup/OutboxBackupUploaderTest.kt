@@ -61,6 +61,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
@@ -366,7 +367,24 @@ class OutboxBackupUploaderTest {
         assertEquals(filmedAt, locationOf(copy), "and keeps where it was filmed")
         assertNotNull(request.payloads.single { it.key == PhotobaseProtocol.VideoPayloadKey }.hash, "the original is hashed as it's encrypted")
         assertEquals(PhotoContent(latitude = 37.7749, longitude = -122.4194), request.photoContent())
-        assertEquals(1, streamedReads[clip], "the hand-off reads the original once: its encryption checks the hash and finds the location")
+        assertEquals(1, streamedReads[clip], "the hand-off streams the original once, as it's encrypted and checked; its location comes from the moov alone")
+    }
+
+    @Test
+    fun aTranscodeOfAHashedCopyFindsItsLocationWithoutReadingTheCopyAgain() = runTest {
+        assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
+        val clip = geotaggedClip()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Video, File(clip).readBytes())
+        val uploader = backgroundScope.uploader(
+            listOf(ExportedPart(ExportedPartRole.Primary, clip, "video/quicktime", false)),
+            videoQuality = MediaQuality.STANDARD,
+            hashedCopy = true,
+        )
+
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+
+        assertEquals(PhotoContent(latitude = 37.7749, longitude = -122.4194), queuedRequest(uniqueId).second.photoContent())
+        assertNull(streamedReads[clip], "the copy is those very bytes, and the transcode reads it on its own")
     }
 
     @Test
@@ -529,20 +547,18 @@ class OutboxBackupUploaderTest {
         val motion = "motion".encodeToByteArray()
         val (row, uniqueId) = rowFor("a", BackupMediaType.LivePhoto, still, motion)
         val stagedBefore = stagedFiles()
-        val real = realEncryption()
+        val pairedVideo = file("m.mov", motion)
         // Stopped as the paired video is read, with the still already encrypted.
-        val stops = object : PayloadBundleEncryptor by real {
-            override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope, hashes: ContentHashes?) =
-                real.encryptBundle(uniqueId, bundle, aesKey, scope, ContentHashes(hashes!!.algorithm, hashes.expected) { key, _, _, _ ->
-                    if (key == PhotobaseProtocol.LivePhotoVideoPayloadKey) throw CancellationException("the backup was stopped")
-                })
+        val stoppedOnTheVideo = object : FileOperationsProvider by fileOps {
+            override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> =
+                if (path == pairedVideo) flow { throw CancellationException("the backup was stopped") } else fileOps.readFileAsFlow(path, chunkSize)
         }
         val uploader = backgroundScope.uploader(
             listOf(
                 ExportedPart(ExportedPartRole.Primary, file("s.heic", still), "image/heic", false),
-                ExportedPart(ExportedPartRole.PairedVideo, file("m.mov", motion), "video/quicktime", false),
+                ExportedPart(ExportedPartRole.PairedVideo, pairedVideo, "video/quicktime", false),
             ),
-            stops,
+            PayloadBundleEncryptionService(stoppedOnTheVideo, VideoPayloadProcessor(stoppedOnTheVideo), EventBus()),
         )
 
         assertFailsWith<CancellationException> { uploader.handOff(row, uniqueId) }

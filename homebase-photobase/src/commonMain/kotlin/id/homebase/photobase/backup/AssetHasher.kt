@@ -45,15 +45,9 @@ class AssetHasher(
 
     suspend fun forgetAll() = exports.forgetAll()
 
-    /**
-     * Whether [part] still holds the bytes hashed as [expected]; a hashed copy is those very files.
-     * [onChunk] sees every byte, so a hashed copy is read for it too.
-     */
-    suspend fun matches(exported: ExportedAsset, part: ExportedPart, expected: ByteArray, onChunk: ((ByteArray) -> Unit)? = null): Boolean {
-        if (exported.isHashedCopy && onChunk == null) return true
-        val digest = digest(part.path) { onChunk?.invoke(it) }
-        return exported.isHashedCopy || digest.contentEquals(expected)
-    }
+    /** Whether [part] still holds the bytes hashed as [expected]; a hashed copy is those very files. */
+    suspend fun matches(exported: ExportedAsset, part: ExportedPart, expected: ByteArray): Boolean =
+        exported.isHashedCopy || digest(part.path).contentEquals(expected)
 
     suspend fun digest(path: String, onChunk: (ByteArray) -> Unit = {}): ByteArray {
         val hasher = Blake3Hasher()

@@ -190,9 +190,7 @@ class PayloadBundleEncryptionService(
             fileOps.encryptFileStreaming(inputFile, path, keyHeader)
             return Encrypted(path, null)
         }
-        val hash = fileOps.encryptWithPayloadHash(inputFile, path, keyHeader, hashes.algorithm) { chunk, offset, length ->
-            hashes.onPlaintext(payloadKey, chunk, offset, length)
-        }
+        val hash = fileOps.encryptWithPayloadHash(inputFile, path, keyHeader, hashes.algorithm)
         val expected = hashes.expected[payloadKey]
         if (expected != null && !expected.contentEquals(hash.plaintextContentHash(keyHeader))) {
             runCatching { fileOps.deleteTempFile(path) }

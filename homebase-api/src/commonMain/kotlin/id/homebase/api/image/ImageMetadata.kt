@@ -2,6 +2,8 @@ package id.homebase.api.image
 
 import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.media.MediaLocation
+import id.homebase.api.media.MediaMetadataReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
@@ -32,7 +34,10 @@ data class ImageMetadata(
     val pixelHeight: Int? = null,
     val cameraMake: String? = null,
     val cameraModel: String? = null,
-)
+) {
+    val location: MediaLocation?
+        get() = if (latitude != null && longitude != null) MediaLocation(latitude, longitude, altitudeMeters) else null
+}
 
 /**
  * Read EXIF / image-file metadata from encoded image bytes (JPEG, HEIC, TIFF,
@@ -43,8 +48,8 @@ data class ImageMetadata(
  */
 expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
 
-/** [readImageMetadata] for the file at [path], reading only its header where the platform can. */
-suspend fun readImageMetadata(path: String, fileOps: FileOperationsProvider): ImageMetadata? =
+/** [readImageMetadata] for the file at [path], reading only its header where the platform can. Callers use [MediaMetadataReader]. */
+internal suspend fun readImageMetadata(path: String, fileOps: FileOperationsProvider): ImageMetadata? =
     withContext(Dispatchers.Default) {
         val file = openImageFile(path, fileOps) ?: return@withContext readImageMetadata(fileOps.readFileBytes(path))
         file.use { it.metadata() }

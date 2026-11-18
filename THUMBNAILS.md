@@ -554,7 +554,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 **Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata (`-map_metadata 0`), and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them (`-map_metadata -1`). The library never decides; each app does.
 
-A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source as it checks the file's hash (`VideoLocationReader`, common code: Apple's ISO 6709 key and the `©xyz` atom Android writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
+A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source's `moov` box, skipping the media (`MediaMetadataReader.videoLocation`, common code: Apple's ISO 6709 key and the `©xyz` atom Android writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
 
 ### Android: Media3, and why AAC audio is copied
 

@@ -1,5 +1,7 @@
 package id.homebase.api.video
 
+import id.homebase.api.media.MediaLocation
+import id.homebase.api.media.MediaMetadataReader
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -216,7 +218,7 @@ internal object Media3VideoCompressor {
         }
     }
 
-    private class Source(val width: Int, val height: Int, val videoBitrateBps: Int?, val copyableAudio: Boolean, val location: VideoLocation?)
+    private class Source(val width: Int, val height: Int, val videoBitrateBps: Int?, val copyableAudio: Boolean, val location: MediaLocation?)
 
     // Headers only: Transformer's export is the one pass over the media.
     private suspend fun probeSource(path: String, uri: Uri, keepMetadata: Boolean): Source {
@@ -241,20 +243,9 @@ internal object Media3VideoCompressor {
                     it.int(MediaFormat.KEY_AAC_PROFILE) == MediaCodecInfo.CodecProfileLevel.AACObjectLC &&
                     (it.int(MediaFormat.KEY_CHANNEL_COUNT) ?: 0) in 1..2
             },
-            location = if (keepMetadata) moovLocation(path) else null,
+            location = if (keepMetadata) MediaMetadataReader(fileOps).videoLocation(path) else null,
         )
     }
 
     private fun MediaFormat.int(key: String): Int? = if (containsKey(key)) getInteger(key) else null
-
-
-    // Seeks past the media, so only the box headers and the moov are read.
-    private suspend fun moovLocation(path: String): VideoLocation? = try {
-        readMoov(fileOps, path)?.let(::locationInMoov)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Logger.w(tag = TAG, throwable = e) { "Couldn't read the video's location" }
-        null
-    }
 }

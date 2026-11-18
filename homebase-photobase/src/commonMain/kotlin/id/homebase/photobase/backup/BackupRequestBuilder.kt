@@ -9,7 +9,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.ImageMetadata
+import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DeviceBackupAsset
@@ -33,6 +33,8 @@ class BackupRequestBuilder(
     private val settings: () -> BackupSettings = { BackupSettings() },
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) {
+    private val metadataReader = MediaMetadataReader(fileOps)
+
     /** The current format ahead of the switch: only this app has ever read the Photos drive. Metadata is always kept. */
     fun options(): UploadOptions = settings().let { s ->
         UploadOptions(
@@ -59,7 +61,6 @@ class BackupRequestBuilder(
         require(exported.parts.size == digests.size) { "${exported.parts.size} parts against ${digests.size} digests" }
         val reencoded = mutableListOf<String>()
         try {
-            var exif: ImageMetadata? = null
             val bundle = timed(BackupStage.Thumbnails) {
                 UserUploadBuilder.build(
                     exported.parts.map { part ->
@@ -72,7 +73,6 @@ class BackupRequestBuilder(
                     // A Live Photo's video is sent as it is; it never gets a copy.
                     options().copy(originalVideo = false),
                     fileOps,
-                    onImageMetadata = { _, metadata -> exif = metadata },
                 ) { keyFor(exported.parts[it].role) }
             }
             val expected = mutableMapOf<String, ByteArray>()
@@ -85,11 +85,12 @@ class BackupRequestBuilder(
                     if (!hasher.matches(exported, part, digests[index])) return HandOffResult.ChangedUnderUs
                 }
             }
+            val exif = exported.parts.firstOrNull { it.role == ExportedPartRole.Primary }?.let { metadataReader.image(it.path) }
             val metadata = photoMetadata(
                 uniqueId,
                 if (mediaType == BackupMediaType.LivePhoto) PhotobaseProtocol.LivePhotoDataType else PhotobaseProtocol.ImageDataType,
                 captureTimeMs(exif, row.createdAt),
-                PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
+                PhotoContent.at(exif?.location),
                 bundle.previewThumbs.firstOrNull(),
             )
             return send(photoSpec(photosDriveId, uniqueId, bundle, metadata, ContentHashes(PayloadHashAlgorithm.Blake3, expected)))
@@ -113,7 +114,6 @@ internal fun photoSpec(
     bundle: PayloadBundle,
     metadata: UploadFileMetadata,
     hashes: ContentHashes,
-    finishMetadata: ((UploadFileMetadata) -> UploadFileMetadata)? = null,
 ) = MediaUploadSpec(
     driveId = driveId,
     uniqueId = uniqueId,
@@ -127,7 +127,6 @@ internal fun photoSpec(
     existingFileIsSuccess = true,
     sealDescriptorContent = true,
     contentHashes = hashes,
-    finishMetadata = finishMetadata,
 )
 
 internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent, tiny: EmbeddedThumb? = null) = UploadFileMetadata(

@@ -11,6 +11,7 @@ How fast we resize images, compress and segment video, and hash, per device, so 
   - `RemuxHlsToMp4DeviceTest#benchmark` with `-e remuxBench true`: saving a received video.
   - The comparisons against ffmpeg on Android (`benchmarkAgainstFfmpeg`, `benchmarkSegmenting`, `benchmarkSegmentingAsIs`, the ffmpeg legs of `benchmarkEndToEnd`, `GifShrinkBenchmark` and the remux) were removed with ffmpeg-kit; their numbers below stand, and the tests are in git history before ffmpeg left Android.
   - BLAKE3 speed: `id.homebase.api.crypto.Blake3NativeDeviceTest#throughput` with `-e hashBench true`.
+  - A video's location: `id.homebase.api.media.MediaMetadataReaderBenchmark#videoLocation` with `-e locationBench true`.
 - **Inputs:** the tests read every `.mp4`/`.mov` in the test app's `files/bench/` folder. On Android 14 and later, only the app itself can see that folder, so copy a file in with `adb push <file> /data/local/tmp/`, then `adb shell run-as id.homebase.api.test sh -c 'mkdir -p files/bench && cp /data/local/tmp/<file> files/bench/'`. Delete it afterwards: `adb shell run-as id.homebase.api.test rm -rf files/bench`. Uninstalling the test package also removes it.
 - **Fair runs:**
   - The phone must be cool: throttling moved one compress from 20 s to 45 s. The tests pause between runs, alternate which backend goes first, and log `thermal=` (0 means none).
@@ -108,6 +109,17 @@ On the Pixel 5, what's left is TS writing (about 0.3 s) and parsing the moov (0.
 |---|---|---|---|---|
 | Pixel 5 | Synthetic 1080p, 83 s (210 MB) | 563–1151 ms (182–373 MB/s) | **159–188 ms** (1117–1320 MB/s) | 2026-11-16 |
 | Pixel 8 | Synthetic 1080p, 83 s (210 MB) | 626–769 ms (273–335 MB/s) | **295–318 ms** (660–711 MB/s) | 2026-11-16 |
+
+## Reading a video's location
+
+`id.homebase.api.media.MediaMetadataReaderBenchmark` with `-e locationBench true`: `MediaMetadataReader.videoLocation` on each video in the test app's `files/bench/`, from the file and from the media library (`content://`, as Photos reads on Android). It reads the top-level box headers and the `moov`, never the media. The inputs keep the `moov` after the media, as cameras write it: an 83 s 1080p MP4 with Android's `©xyz` location, and a 1 GB `.mov` with Apple's ISO 6709 key.
+
+| Device | Input | From a file | From the media library | Measured |
+|---|---|---|---|---|
+| Pixel 5 | 210 MB MP4, Android location | 16–17 ms | 65–71 ms | 2026-11-18 |
+| Pixel 5 | 1 GB `.mov`, Apple location | 14–16 ms | 62–69 ms | 2026-11-18 |
+
+The media library costs more because each range read opens the file again through the media process, about five times per video.
 
 ## Audio
 
@@ -251,6 +263,10 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
   - **Considered:** gif.kt (com.shakster:gifkt, MIT, Kotlin Multiplatform) encodes with a palette per frame and doesn't scale or lower the frame rate, so the shrinker would still need its own code for both, plus about 4,500 lines to maintain.
   - **Reopen** if the no-scaling step shows up as slow in practice: LZW is then the place to look.
 - **Read files in full chunks** (2026-11-16). Okio's `read` returns at most one 8 KB segment, so `readFileAsFlow` asked for 256 KB and emitted 8 KB, copied and handed across threads each time. Filling each chunk made reading 27 MB 10× faster on a Pixel 5, for every upload and hash that reads a file.
+- **Photos reads a video's location on its own, not in the encrypt pass** (2026-11-18).
+  - **Why:** reading it from the encrypt pass needed two hooks on the shared upload spec that only Photos used, and a hashed copy was read in full just for a transcode's location. One shared `MediaMetadataReader` now reads every photo's EXIF and every video's location.
+  - **Cost on a Pixel 5:** the encrypt pass had spent 3–5 ms (210 MB) and 14–19 ms (1 GB) feeding the old reader. The separate read costs about the same from a file, and 50–60 ms more per video from the media library. Against an encrypt pass of 2.2–3.5 s (210 MB) and 12–13 s (1 GB), that's inside run-to-run noise.
+  - **Reopen** if the media library's 60 ms matters: opening the file once for the whole walk instead of once per range read should bring it near the file figure.
 - **Our own segmenter rather than ffmpeg's** (2026-11-16). It's faster with the hashes included, it reads the file once, and it never re-encodes portrait video. It must keep the same cuts and decoded frames as ffmpeg's; `HlsSegmenterTest.theSegmentsAndDecodedFramesMatchFfmpegsOwnHls` checks that.
 
 ## History

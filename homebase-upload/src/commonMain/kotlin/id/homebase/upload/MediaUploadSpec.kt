@@ -57,6 +57,4 @@ data class MediaUploadSpec(
     val sealDescriptorContent: Boolean = false,
     /** Encrypted uploads only. */
     val contentHashes: ContentHashes? = null,
-    /** Completes [metadata] once the payloads are read, for a header that needs what [ContentHashes.onPlaintext] saw. */
-    val finishMetadata: ((UploadFileMetadata) -> UploadFileMetadata)? = null,
 )
