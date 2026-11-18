@@ -174,7 +174,7 @@ private fun SharedMediaViewer(
         .collectAsStateWithLifecycle(false)
     val vaultFileSaver = org.koin.compose.koinInject<VaultFileSaver>()
 
-    val ext = remember(item) { extensionForContentType(item.payload.playableContentType) }
+    val ext = remember(item) { extensionForContentType(item.payload.contentType) }
 
     FullScreenMediaViewer(
         data = FullScreenOverlay.ViewMessageData(
@@ -192,10 +192,7 @@ private fun SharedMediaViewer(
             scope.launch {
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
-                    // Stream-decrypt straight into share_outbound (#845) —
-                    // bounded RAM for any payload size; the old byte path
-                    // buffered the whole payload (~2×) in memory.
-                    val path = actionService.streamPayloadToShareOutbound(
+                    val path = actionService.exportToShareOutbound(
                         item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
                     )
                     if (path != null) {
@@ -230,7 +227,7 @@ private fun SharedMediaViewer(
                     val iv = item.payload.iv?.bytes
                     val contentType = item.payload.playableContentType
                     val path = if (iv != null && contentType != null) {
-                        actionService.streamPayloadToUploadTemp(
+                        actionService.exportToUploadTemp(
                             item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey), "vault_", ".$ext"
                         )
                     } else null

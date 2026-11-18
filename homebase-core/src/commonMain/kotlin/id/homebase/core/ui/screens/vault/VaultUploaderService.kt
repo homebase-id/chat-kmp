@@ -2,7 +2,7 @@
 
 package id.homebase.core.ui.screens.vault
 
-import id.homebase.api.video.isHlsVideo
+import id.homebase.api.video.playableFileName
 import id.homebase.api.video.playableContentType
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
@@ -292,7 +292,8 @@ class VaultUploaderService(
         }
     }
 
-    suspend fun downloadPayload(file: VaultEntry, payloadKey: String): String? {
+    /** [payloadKey] exported as a file for the person, with that file's name and type: an HLS video's an MP4. */
+    suspend fun downloadPayload(file: VaultEntry, payloadKey: String): VaultDownload? {
         return try {
             val payloadDescriptor = file.payloadDescriptors.find { it.key == payloadKey }
             val iv = payloadDescriptor?.iv
@@ -310,14 +311,14 @@ class VaultUploaderService(
             val extension = extensionForMimeType(ct.substringBefore(';').trim().lowercase())
                 ?: file.fileName.substringAfterLast('.', "").takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
                 ?: ct.substringAfter("/", "bin")
-            // Stream-decrypt into a disposable upload-temp file (#845) — bounded RAM
-            // for any payload size; the old byte path buffered the whole payload
-            // (~2×) in memory. Same dir + sweep lifecycle as writeBytesToTempFile.
             val destination = ExportDestination.UploadTemp("share_", ".$extension")
-            if (payloadDescriptor != null) {
+            val path = if (payloadDescriptor != null) {
                 payloadDownloadService.exportPlayable(file.driveId, file.fileId, payloadDescriptor, keyHeader, destination)
             } else {
                 payloadDownloadService.exportToTemp(file.driveId, file.fileId, payloadKey, keyHeader, destination)
+            }
+            path?.let {
+                VaultDownload(it, payloadDescriptor?.playableFileName(file.fileName) ?: file.fileName, payloadDescriptor?.playableContentType ?: file.contentType)
             }
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to download payload $payloadKey from ${file.fileId}" }
@@ -347,10 +348,4 @@ class VaultUploaderService(
     )
 }
 
-/** The type of the file [VaultUploaderService.downloadPayload] gives for [payloadKey]: an MP4 for an HLS video. */
-internal fun VaultEntry.playableContentType(payloadKey: String): String =
-    payloadDescriptors.find { it.key == payloadKey }?.playableContentType ?: contentType
-
-/** [name] as the file [VaultUploaderService.downloadPayload] gives for [payloadKey]: an HLS video's ends in `.mp4`. */
-internal fun VaultEntry.playableFileName(payloadKey: String, name: String = fileName): String =
-    if (payloadDescriptors.find { it.key == payloadKey }?.isHlsVideo == true) "${name.substringBeforeLast('.')}.mp4" else name
+class VaultDownload(val path: String, val name: String, val contentType: String)

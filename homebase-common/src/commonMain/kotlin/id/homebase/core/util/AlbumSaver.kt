@@ -6,9 +6,9 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
-import id.homebase.api.util.safeFileName
-import id.homebase.api.video.downloadHlsAsMp4
-import id.homebase.api.video.isHlsVideo
+import id.homebase.api.video.playableContentType
+import id.homebase.api.video.playableFileName
+import id.homebase.api.video.writePlayable
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -139,8 +139,8 @@ private suspend fun AlbumSaver.targetOrRefusal(name: String, asked: Boolean): Al
 private const val COPY_CHUNK = 256 * 1024
 
 /**
- * A received payload saved through [saveWritten], named [name]; an HLS video is remuxed into an `.mp4` on the way
- * ([downloadHlsAsMp4]). The one save path for media people receive, in chat, Moments and auto-save.
+ * A received payload saved through [saveWritten], named [name], as a file people can open ([writePlayable]): an HLS
+ * video becomes an `.mp4`. The one save path for media people receive.
  */
 suspend fun AlbumSaver.saveReceived(
     driveFileProvider: DriveFileProvider,
@@ -149,19 +149,11 @@ suspend fun AlbumSaver.saveReceived(
     fileId: Uuid,
     payload: PayloadDescriptor,
     keyHeader: KeyHeader,
-    name: String = if (payload.isHlsVideo) {
-        safeFileName(payload.filename()?.substringBeforeLast('.'), "video", "mp4")
-    } else {
-        saveFileName(payload.filename(), payload.key, payload.contentType)
-    },
+    name: String = saveFileName(payload.playableFileName(payload.filename()), payload.key, payload.playableContentType),
     asked: Boolean = true,
 ): AlbumSaveResult {
     val scratch = "${fileOps.scratchDir(AppCacheDirs.DOWNLOADS)}/${Uuid.random().toString().take(8)}_$name"
     return saveWritten(name, scratch, fileOps, asked) { path ->
-        if (payload.isHlsVideo) {
-            driveFileProvider.downloadHlsAsMp4(driveId, fileId, payload.key, keyHeader, fileOps, path)
-        } else {
-            driveFileProvider.streamPayloadDecryptedToPath(driveId, fileId, payload.key, keyHeader, path, fileOps)
-        }
+        driveFileProvider.writePlayable(driveId, fileId, payload, keyHeader, fileOps, path)
     }
 }

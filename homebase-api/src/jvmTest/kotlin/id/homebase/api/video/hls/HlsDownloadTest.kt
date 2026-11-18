@@ -11,6 +11,7 @@ import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.video.downloadHlsAsMp4
 import id.homebase.api.video.isHlsVideo
 import id.homebase.api.video.playableContentType
+import id.homebase.api.video.playableFileName
 import id.homebase.api.video.VideoMetadata
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.ExportDestination
@@ -81,6 +82,8 @@ class HlsDownloadTest {
             val payload = PayloadDescriptor(key = "chat_web0", contentType = "video/mp2t", descriptorContent = descriptor)
             assertTrue(payload.isHlsVideo, descriptor)
             assertEquals("video/mp4", payload.playableContentType)
+            assertEquals("clip.mp4", payload.playableFileName("clip.mov"))
+            assertEquals("video.mp4", payload.playableFileName(null))
 
             val service = PayloadDownloadService(server(File(segmented.segmentsPath).readBytes()), fileOps)
             val exported = assertNotNull(service.exportPlayable(DRIVE, FILE, payload, keyHeader, ExportDestination.ShareOutbound(".ts")))
@@ -90,10 +93,11 @@ class HlsDownloadTest {
     }
 
     @Test
-    fun aVideoThatIsntHlsIsSentAsItIs() {
+    fun aVideoThatIsntHlsKeepsItsTypeAndName() {
         val payload = PayloadDescriptor(key = "chat_web0", contentType = "video/mp4", descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""")
         assertFalse(payload.isHlsVideo)
         assertEquals("video/mp4", payload.playableContentType)
+        assertEquals("clip.mov", payload.playableFileName("clip.mov"))
         assertFalse(PayloadDescriptor(key = "chat_web0", contentType = "image/jpeg").isHlsVideo)
     }
 

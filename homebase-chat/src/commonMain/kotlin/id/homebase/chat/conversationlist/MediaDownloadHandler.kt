@@ -99,14 +99,8 @@ internal class MediaDownloadHandler(
                 val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
                     )).bytes
-                val extension = extensionForContentType(payload.playableContentType)
-                // Cleartext copy of an end-to-end-encrypted Homebase payload —
-                // STREAM-decrypted straight into the share_outbound subdir (#845:
-                // bounded RAM for any payload size, LRU untouched; the old
-                // getPayloadBytes path buffered ~2× the payload in RAM). The
-                // subdir keeps the sweep story: reaped as a single unit on
-                // cold start + foreground, bounding its on-disk lifetime.
-                val tempPath = chatMessageActionService.streamPayloadToShareOutbound(
+                val extension = extensionForContentType(payload.contentType)
+                val tempPath = chatMessageActionService.exportToShareOutbound(
                     message.fileId,
                     payload,
                     KeyHeader(payloadIv, message.keyHeader.aesKey),
@@ -145,8 +139,8 @@ internal class MediaDownloadHandler(
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
                 val contentType = payload.playableContentType ?: return@launch
                 val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
-                val extension = extensionForContentType(contentType)
-                val tempPath = chatMessageActionService.streamPayloadToUploadTemp(
+                val extension = extensionForContentType(payload.contentType)
+                val tempPath = chatMessageActionService.exportToUploadTemp(
                     message.fileId,
                     payload,
                     KeyHeader(payloadIv, message.keyHeader.aesKey),
@@ -229,7 +223,7 @@ internal class MediaDownloadHandler(
                         KeyHeader(payloadIv, message.keyHeader.aesKey),
                     )
                 }
-                report(saved, MR.string.chat_error_download_file)
+                report(saved, if (payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
             } catch (e: FileTooLargeForMemoryException) {
                 sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
             } catch (e: Exception) {

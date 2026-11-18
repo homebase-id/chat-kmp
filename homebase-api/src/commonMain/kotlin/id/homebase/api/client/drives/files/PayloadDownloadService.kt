@@ -9,7 +9,7 @@ import id.homebase.api.crypto.hashedBy
 import id.homebase.api.crypto.newHasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.downloadHlsAsMp4
+import id.homebase.api.video.writePlayable
 import id.homebase.api.video.isHlsVideo
 import id.homebase.api.video.playableContentType
 import kotlinx.coroutines.flow.Flow
@@ -30,12 +30,12 @@ sealed interface ExportDestination {
     data class ShareOutbound(val suffix: String) : ExportDestination
     data class UploadTemp(val prefix: String, val suffix: String) : ExportDestination
     data class Scratch(val prefix: String, val suffix: String) : ExportDestination
+}
 
-    fun withSuffix(suffix: String): ExportDestination = when (this) {
-        is ShareOutbound -> copy(suffix = suffix)
-        is UploadTemp -> copy(suffix = suffix)
-        is Scratch -> copy(suffix = suffix)
-    }
+private fun ExportDestination.withSuffix(suffix: String): ExportDestination = when (this) {
+    is ExportDestination.ShareOutbound -> copy(suffix = suffix)
+    is ExportDestination.UploadTemp -> copy(suffix = suffix)
+    is ExportDestination.Scratch -> copy(suffix = suffix)
 }
 
 /**
@@ -105,9 +105,8 @@ class PayloadDownloadService(
     }
 
     /**
-     * [payload] exported as a file people can open, for sharing or handing to another app: an HLS video remuxed into
-     * an `.mp4` ([downloadHlsAsMp4], whatever [destination]'s suffix), anything else as [exportToTemp]. Null when the
-     * payload isn't there or a video can't be remuxed. Its type is [playableContentType].
+     * [payload] exported as a file people can open, for handing to another app ([writePlayable]); an HLS video's ends
+     * in `.mp4` whatever [destination]'s suffix, and its type is [playableContentType]. Null when it can't be.
      */
     suspend fun exportPlayable(
         driveId: Uuid,
@@ -115,12 +114,8 @@ class PayloadDownloadService(
         payload: PayloadDescriptor,
         keyHeader: KeyHeader,
         destination: ExportDestination,
-    ): String? = if (payload.isHlsVideo) {
-        exportWith(destination.withSuffix(".mp4")) { path ->
-            driveFileProvider.downloadHlsAsMp4(driveId, fileId, payload.key, keyHeader, fileOperationsProvider, path)
-        }
-    } else {
-        exportToTemp(driveId, fileId, payload.key, keyHeader, destination)
+    ): String? = exportWith(if (payload.isHlsVideo) destination.withSuffix(".mp4") else destination) { path ->
+        driveFileProvider.writePlayable(driveId, fileId, payload, keyHeader, fileOperationsProvider, path)
     }
 
     /** [exportToTemp] that checks the plaintext against [hash] as it streams; [keyHeader] is the payload's key. */

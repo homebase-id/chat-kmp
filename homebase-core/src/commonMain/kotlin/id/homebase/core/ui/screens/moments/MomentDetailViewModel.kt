@@ -8,7 +8,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
@@ -663,17 +662,8 @@ class MomentDetailViewModel(
     }
 
     /**
-     * Decrypt the selected payload to a cleartext file and surface it (with the
-     * moment's caption) so the screen can hand it to the platform share sheet.
-     *
-     * Images / progressive video stream into the share_outbound sweep dir, so
-     * the cold-start + foreground sweepers reap the cleartext copy. A segmented
-     * HLS video is first remuxed to a playable MP4 (a raw .ts segment shared
-     * as-is won't open in the target app) — the same path `saveMedia` takes;
-     * that MP4 lands in the cache dir and is reaped by the cache sweeper.
-     *
-     * [isSharingMedia] gates the overflow-menu spinner over the decrypt/remux,
-     * which is the slow part (videos especially) before the sheet opens.
+     * The selected payload as a file for the share sheet, with the moment's caption ([PayloadDownloadService.exportPlayable]:
+     * an HLS video becomes an MP4). [isSharingMedia] gates the spinner over the export, the slow part.
      */
     @OptIn(ExperimentalEncodingApi::class)
     private fun shareMedia(payloadKey: String) {
@@ -750,8 +740,6 @@ class MomentDetailViewModel(
             }
         }
     }
-
-    /** The segmented video's metadata with its playlist; null for anything else, which saves by plain decrypt. */
 
     /**
      * Flip the expansion state and, on the first open against an authored
