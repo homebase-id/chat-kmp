@@ -5,7 +5,7 @@ import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
 import id.homebase.chat.services.ChatMessageStream
-import id.homebase.chat.services.ChatMessagesData
+import id.homebase.chat.services.awaitMessage
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.testChatMessageStream
@@ -13,11 +13,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -72,16 +69,8 @@ class ViewOnceStreamWindowTest {
             }
         }
 
-    /** The window once [settled] holds; the message is null when the window lost it. */
     private suspend fun Scenario.windowOnce(settled: (MessageUiModel?) -> Boolean): MessageUiModel? =
-        withContext(Dispatchers.Default) {
-            withTimeout(5_000) {
-                val data = stream.observeMessages(conversationId).first { data ->
-                    data is ChatMessagesData.Messages && settled(data.window.messages.firstOrNull { it.id == messageId })
-                }
-                (data as ChatMessagesData.Messages).window.messages.firstOrNull { it.id == messageId }
-            }
-        }
+        stream.awaitMessage(conversationId, messageId, settled)
 
     private suspend fun Scenario.assertSpentOpened(message: MessageUiModel?) {
         val spent = assertNotNull(message, "the recipient's view-once bubble left the conversation window")

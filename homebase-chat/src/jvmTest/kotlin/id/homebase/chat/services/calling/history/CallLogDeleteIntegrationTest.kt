@@ -12,12 +12,16 @@ import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.calling.history.CallLogDeleter
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.awaitMessage
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.testChatMessageStream
 import id.homebase.core.calling.CallsPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -98,39 +102,43 @@ class CallLogDeleteIntegrationTest {
             runCurrent()
             assertEquals(listOf(id), history.entries.value.map { it.messageId })
 
-            val stream = testChatMessageStream(
-                dbm = f.dbm,
-                credentialsManager = f.credentialsManager,
-                eventBus = f.eventBus,
-                optimisticWriter = OptimisticWriter(f.credentialsManager, f.dbm, f.eventBus, f.outboxSync),
-                scope = backgroundScope,
-                // On the test scheduler, so advanceUntilIdle also waits for the window to apply the delete.
-                mapDispatcher = StandardTestDispatcher(testScheduler),
-            )
-            stream.loadConversation(convo)
-            advanceUntilIdle()
-            assertTrue(stream.isMessageInWindow(convo, id), "the call event is a message in its chat before the delete")
+            // Its own job, joined before the database closes: the stream reads it after each batch.
+            val streamJob = Job()
+            try {
+                val stream = testChatMessageStream(
+                    dbm = f.dbm,
+                    credentialsManager = f.credentialsManager,
+                    eventBus = f.eventBus,
+                    optimisticWriter = OptimisticWriter(f.credentialsManager, f.dbm, f.eventBus, f.outboxSync),
+                    scope = CoroutineScope(Dispatchers.Default + streamJob),
+                )
+                stream.loadConversation(convo)
+                advanceUntilIdle()
+                assertTrue(stream.isMessageInWindow(convo, id), "the call event is a message in its chat before the delete")
 
-            CallLogDeleter { messageId, everyone -> actions.deleteMessage(messageId, everyone) }.delete(id, deleteForEveryone = false)
-            advanceUntilIdle()
+                CallLogDeleter { messageId, everyone -> actions.deleteMessage(messageId, everyone) }.delete(id, deleteForEveryone = false)
+                advanceUntilIdle()
 
-            assertTrue(history.entries.first { it.isEmpty() }.isEmpty())
-            val identityId = f.credentialsManager.requireActiveCredentials().getIdentityId()
-            assertTrue(
-                f.dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, f.chatDriveId, id)?.isSoftDeleted() == true,
-                "DriveMainIndex row is soft-deleted",
-            )
-            val inChat = stream.messageInWindow(convo, id)
-            assertTrue(
-                inChat == null || inChat.isDeleted,
-                "the chat window drops the message or keeps only a deleted tombstone; window has " +
-                    "id=${inChat?.id} fileId=${inChat?.fileId} deleted=${inChat?.isDeleted} modified=${inChat?.modified}; events=$events",
-            )
-            val deletes = f.drainOutbox().filter { it.uploadType == DriveOutboxUploader.DeleteFile }
-            val payload = OdinSystemSerializer.deserialize<id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest>(
-                deletes.single().json.decodeToString(),
-            )
-            assertNull(payload.recipients, "for-me delete carries no recipients")
+                assertTrue(history.entries.first { it.isEmpty() }.isEmpty())
+                val identityId = f.credentialsManager.requireActiveCredentials().getIdentityId()
+                assertTrue(
+                    f.dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, f.chatDriveId, id)?.isSoftDeleted() == true,
+                    "DriveMainIndex row is soft-deleted",
+                )
+                val inChat = stream.awaitMessage(convo, id) { it == null || it.isDeleted }
+                assertTrue(
+                    inChat == null || inChat.isDeleted,
+                    "the chat window drops the message or keeps only a deleted tombstone; window has " +
+                        "id=${inChat?.id} fileId=${inChat?.fileId} deleted=${inChat?.isDeleted} modified=${inChat?.modified}; events=$events",
+                )
+                val deletes = f.drainOutbox().filter { it.uploadType == DriveOutboxUploader.DeleteFile }
+                val payload = OdinSystemSerializer.deserialize<id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest>(
+                    deletes.single().json.decodeToString(),
+                )
+                assertNull(payload.recipients, "for-me delete carries no recipients")
+            } finally {
+                streamJob.cancelAndJoin()
+            }
         }
     }
 }
