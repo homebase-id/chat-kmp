@@ -100,9 +100,9 @@ class ProfileCardOptionDefaultsTest {
     private val presetChips = mapOf(
         CardDesign.BOARD to setOf("Ocean", "Medium", "Circle", "Boxed", "Bar", "Alternates", "Montserrat"),
         CardDesign.DOSSIER to setOf("Onyx", "Medium", "Square", "Rows", "Handles", "Archivo Black", "Space Mono"),
-        CardDesign.COLLAGE to setOf("Linen", "Medium", "Square", "Wordmarks", "Caveat", "Montserrat"),
+        CardDesign.COLLAGE to setOf("Linen", "Medium", "Square", "Boxed", "Wordmarks", "Caveat", "Montserrat"),
         CardDesign.POSTER to setOf("Espresso", "Plain", "Icons", "Newsreader"),
-        CardDesign.LINKS to setOf("Frost", "Medium", "Circle", "Icons", "Montserrat"),
+        CardDesign.LINKS to setOf("Frost", "Medium", "Circle", "Boxed", "Icons", "Montserrat"),
     )
 
     @Test

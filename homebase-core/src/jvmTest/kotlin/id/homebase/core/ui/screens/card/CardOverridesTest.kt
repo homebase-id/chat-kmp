@@ -175,7 +175,7 @@ class CardOverridesTest {
 
         val collage = everything.prunedFor(CardDesign.COLLAGE)
         assertEquals(CardPalette(accent = "#ABCDEF"), collage.palette)
-        assertEquals(listOf(CardBlock("links"), CardBlock("chat"), CardBlock("moments"), CardBlock("posts")), collage.blocks)
+        assertEquals(listOf(CardBlock("links"), CardBlock("chat"), CardBlock("moments"), CardBlock("posts", "row")), collage.blocks)
         assertEquals(listOf(CardPortrait(shape = "square"), CardPortrait()), collage.portraits)
 
         val dossier = everything.prunedFor(CardDesign.DOSSIER)
