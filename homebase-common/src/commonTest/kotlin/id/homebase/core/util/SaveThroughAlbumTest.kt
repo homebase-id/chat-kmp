@@ -12,7 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Whatever happens to a save, the caller hears once, last, that its file is no longer needed, unless it was handed on. */
+/** Whatever happens to a save, the caller hears once, last, that its file is no longer needed. */
 class SaveThroughAlbumTest {
     private class Run(val calls: List<String>, val thrown: List<Throwable>)
 
@@ -25,12 +25,13 @@ class SaveThroughAlbumTest {
         onSuccess: () -> Unit = {},
         onError: () -> Unit = {},
         onFileReleased: () -> Unit = {},
-        onRefused: ((Path, String) -> Boolean)? = null,
+        onRefused: (suspend (String, String, String) -> Unit)? = null,
     ): Run {
         val calls = mutableListOf<String>()
         val thrown = mutableListOf<Throwable>()
         val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, e -> thrown += e })
-        val refused = onRefused?.let { handOn -> { file: Path, reason: String -> calls += "refused"; handOn(file, reason) } }
+        val refused: (suspend (String, String, String) -> Unit)? =
+            onRefused?.let { handOn -> { file, name, reason -> calls += "refused"; handOn(file, name, reason) } }
         val success = { _: String -> calls += "success"; onSuccess() }
         val error = { _: Throwable -> calls += "error"; onError() }
         val released = { calls += "released"; onFileReleased() }
@@ -72,13 +73,18 @@ class SaveThroughAlbumTest {
     }
 
     @Test
-    fun aFileHandedOnIsntReleased() = runTest {
-        assertEquals(listOf("refused"), save(refusing, onRefused = { _, _ -> true }).calls)
+    fun aRefusalHandedOnGetsTheSafeNameAndIsStillReleased() = runTest {
+        var handed: Pair<String, String>? = null
+        val run = save(refusing, onRefused = { file, name, _ -> handed = file to name })
+        assertEquals(listOf("refused", "released"), run.calls)
+        assertEquals("/tmp/key.txt" to "key.txt", handed)
     }
 
     @Test
-    fun aHandOffThatFailsReleases() = runTest {
-        assertEquals(listOf("refused", "released"), save(refusing, onRefused = { _, _ -> false }).calls)
+    fun aRefusalHandlerThatThrowsStillReleases() = runTest {
+        val run = save(refusing, onRefused = { _, _, _ -> error("no share sheet") })
+        assertEquals(listOf("refused", "released"), run.calls)
+        assertEquals("no share sheet", run.thrown.single().message)
     }
 
     @Test

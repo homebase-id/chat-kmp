@@ -45,9 +45,8 @@ interface FileSystemHandler {
 
     /**
      * Save a file to the user's device storage (Downloads/Photos/etc), under [suggestedName] made [safeFileName].
-     * [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). [onFileReleased] runs once
-     * [file] is no longer needed, after any outcome, cancelled included, so the caller can delete it. It doesn't run when
-     * the file went to the share sheet instead, which reads it later, so it isn't a completion signal.
+     * [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). [onFileReleased] runs last, once,
+     * after every outcome, cancelled included: [file] is no longer needed, so the caller can delete it.
      */
     fun saveFile(
         file: Path,
@@ -63,9 +62,8 @@ private val saveScope = supervisedScope("saveFile")
 
 /**
  * [FileSystemHandler.saveFile] on every platform: [file] saved through [albumSaver] as a person's save, under
- * [suggestedName] made safe. [onRefused] gets the file when the album won't take it, and says whether it handed the file
- * on to something that reads it later; by default it reports an error and doesn't. [onFileReleased] runs last, once,
- * unless the file was handed on.
+ * [suggestedName] made safe. [onRefused] gets the file and its safe name when the album won't take it; by default it
+ * reports an error. Anything it hands on must not need [file] afterwards: [onFileReleased] runs last, once, always.
  */
 internal fun saveThroughAlbum(
     albumSaver: AlbumSaver,
@@ -75,15 +73,16 @@ internal fun saveThroughAlbum(
     onSuccess: (String) -> Unit,
     onError: (Throwable) -> Unit,
     onFileReleased: () -> Unit,
-    onRefused: (Path, reason: String) -> Boolean = { _, reason -> onError(AlbumAccessDeniedException(reason)); false },
+    onRefused: suspend (file: String, name: String, reason: String) -> Unit = { _, _, reason -> onError(AlbumAccessDeniedException(reason)) },
     scope: CoroutineScope = saveScope,
 ) {
     scope.launch {
-        var handedOn = false
+        val source = file.sourcePath()
+        val name = safeFileName(suggestedName)
         try {
             // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
             val saved = try {
-                albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)
+                albumSaver.saveFile(source, name, asked = true, fileOps)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -95,16 +94,14 @@ internal fun saveThroughAlbum(
                 is AlbumSaveResult.Saved -> onSuccess(saved.location)
                 AlbumSaveResult.Cancelled -> Unit
                 AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
-                is AlbumSaveResult.Refused -> handedOn = onRefused(file, saved.reason)
+                is AlbumSaveResult.Refused -> onRefused(source, name, saved.reason)
             }
         } finally {
             // Caught here, so a failed cleanup can't hide what the save itself threw.
-            if (!handedOn) {
-                try {
-                    onFileReleased()
-                } catch (e: Throwable) {
-                    Logger.e(throwable = e, tag = "saveFile") { "Releasing the saved file failed: ${e.message}" }
-                }
+            try {
+                onFileReleased()
+            } catch (e: Throwable) {
+                Logger.e(throwable = e, tag = "saveFile") { "Releasing the saved file failed: ${e.message}" }
             }
         }
     }

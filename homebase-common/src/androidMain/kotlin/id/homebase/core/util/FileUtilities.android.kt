@@ -11,7 +11,9 @@ import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.detectContentTypeFromExtensionOrHint
+import id.homebase.api.util.splitExtension
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.io.files.Path
 
 private const val TAG = "getUriHandler"
@@ -109,11 +111,19 @@ actual fun getUriHandler(): FileSystemHandler {
                 onFileReleased: () -> Unit,
             ) = saveThroughAlbum(
                 albumSaver, fileOps, file, suggestedName, onSuccess, onError, onFileReleased,
-                // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to.
-                onRefused = { refused, _ ->
-                    var shared = true
-                    shareFile(refused) { shared = false; onError(it) }
-                    shared
+                // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to. The share target reads the file
+                // later, so it gets a copy in share_outbound, swept when the app returns, and the caller's is released.
+                onRefused = { source, name, _ ->
+                    try {
+                        val copy = fileOps.createShareOutboundPath(splitExtension(name).second)
+                        fileOps.writeStream(copy, fileOps.readFileAsFlow(source, SHARE_COPY_CHUNK))
+                        shareFile(Path(copy), onError)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = TAG) { "Failed to copy the file to share: ${e.message}" }
+                        onError(e)
+                    }
                 },
             )
 
@@ -138,3 +148,5 @@ actual fun getUriHandler(): FileSystemHandler {
         }
     }
 }
+
+private const val SHARE_COPY_CHUNK = 256 * 1024
