@@ -6,6 +6,10 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.UpdateLocale
+import id.homebase.api.client.drives.upload.UpdateManifest
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import co.touchlab.kermit.Logger
@@ -1817,10 +1821,33 @@ class OutboxSyncTest {
         sync.tryEnqueue(upload(id, file.toString(), hls.toString()), sendNow = false)
 
         assertEquals(CancelOutcome.CancelledCreate, sync.cancelPending(replaceDrive, id))
-        advanceUntilIdle()
-        runCurrent()
 
-        assertFalse(fs.exists(file), "a cancelled send's file goes with it")
+        assertFalse(fs.exists(file), "a cancelled send's file goes with it before cancelPending returns")
         assertFalse(fs.exists(hls.parent!!), "and so does its hls_ folder")
+    }
+
+    @Test
+    fun aCancelledEditsFileIsDeletedAndItsContentUriLeftAlone() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val file = fs.file("/cache/outbox-temp/edit.enc")
+        val edit = UpdateFileByUniqueIdRequest(
+            driveId = replaceDrive,
+            uniqueId = id,
+            keyHeader = null,
+            instructions = FileUpdateInstructionSet(ByteArray(16), UpdateLocale.Local, emptyList(), UpdateManifest()),
+            metadata = upload(id).metadata,
+            payloads = listOf(
+                PayloadFile(key = "p0", filePath = file.toString(), contentType = "image/jpeg"),
+                PayloadFile(key = "p1", filePath = "content://media/external/1", contentType = "image/jpeg"),
+            ),
+        )
+        sync.tryEnqueue(edit, sendNow = false)
+
+        assertEquals(CancelOutcome.Cancelled, sync.cancelPending(replaceDrive, id))
+
+        assertEquals(null, db.outbox.selectByDriveAndUnique(replaceDrive, id), "the row is gone")
+        assertFalse(fs.exists(file), "a cancelled edit's file goes with it")
     }
 }
