@@ -320,6 +320,8 @@ class VaultUploaderService(
             path?.let {
                 VaultDownload(it, payloadDescriptor?.playableFileName(file.fileName) ?: file.fileName, payloadDescriptor?.playableContentType ?: file.contentType)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to download payload $payloadKey from ${file.fileId}" }
             null

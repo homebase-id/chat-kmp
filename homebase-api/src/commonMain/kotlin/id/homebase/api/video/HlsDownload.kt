@@ -5,6 +5,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.file.CONTENT_TYPE_MP4
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.splitExtension
@@ -38,7 +39,7 @@ val PayloadDescriptor.isHlsVideo: Boolean
 
 /** The type of the file a person gets for this payload: an MP4 for an HLS video. */
 val PayloadDescriptor.playableContentType: String?
-    get() = if (isHlsVideo) "video/mp4" else contentType
+    get() = if (isHlsVideo) CONTENT_TYPE_MP4 else contentType
 
 /** [name] for the file a person gets for this payload: an HLS video's is an `.mp4`. */
 fun PayloadDescriptor.playableFileName(name: String?): String? =

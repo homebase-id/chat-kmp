@@ -209,6 +209,10 @@ private fun SharedMediaViewer(
                                 }
                             },
                         )
+                    } else {
+                        snackbarHostState.showSnackbar(
+                            TranslationUtil.getString(MR.string.file_share_failed, TranslationUtil.getString(MR.string.error_unknown)),
+                        )
                     }
                 } catch (e: Exception) {
                     snackbarHostState.showSnackbar(

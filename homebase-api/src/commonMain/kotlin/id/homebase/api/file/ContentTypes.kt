@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 // The one place a file's content type is decided (UPLOADS.md section 3.1): from its bytes, the platform's type, or its name.
 
 const val CONTENT_TYPE_MARKDOWN = "text/markdown"
+const val CONTENT_TYPE_MP4 = "video/mp4"
 const val OCTET_STREAM = "application/octet-stream"
 
 fun isUntyped(contentType: String?): Boolean = contentType.isNullOrBlank() || contentType == OCTET_STREAM
