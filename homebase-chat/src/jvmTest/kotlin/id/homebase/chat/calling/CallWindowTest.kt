@@ -61,6 +61,7 @@ import id.homebase.chat.services.calling.FakeCallEngine
 import id.homebase.chat.services.calling.FakeCallScript
 import id.homebase.chat.services.calling.FakeVideo
 import id.homebase.chat.services.calling.LoopbackSignaling
+import id.homebase.chat.services.calling.SilentRingbackTone
 import id.homebase.core.ui.theme.HomebaseTheme
 import java.io.File
 import javax.imageio.ImageIO
@@ -161,6 +162,7 @@ class CallWindowTest {
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
             iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
+            ringback = SilentRingbackTone,
         )
         val peer = CallController(
             selfOdinId = sam,

@@ -145,6 +145,7 @@ class CallRingCoordinatorTest {
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
             iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
+            ringback = SilentRingbackTone,
         )
         val coordinator = CallRingCoordinator(service, service.transitions, sink, { null }, scope.backgroundScope)
             .also { it.start(); CallPushRouter.handler = it }

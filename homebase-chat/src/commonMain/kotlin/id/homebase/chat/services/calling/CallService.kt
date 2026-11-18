@@ -40,7 +40,7 @@ class CallService(
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val onCallActiveChanged: (Boolean) -> Unit = {},
-    private val ringback: RingbackTone = platformRingbackTone(),
+    private val ringback: RingbackTone,
 ) : CallSession, CallPushTarget {
     val available: Boolean get() = engineFactory != null
 
