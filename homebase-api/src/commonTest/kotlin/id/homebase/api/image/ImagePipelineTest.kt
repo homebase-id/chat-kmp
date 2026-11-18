@@ -14,8 +14,11 @@ class ImagePipelineTest {
     private class FakeBitmap(override val width: Int, override val height: Int, val log: Log) : PipelineBitmap {
         init { log.open++ }
 
-        override fun scaledTo(width: Int, height: Int): PipelineBitmap {
+        override fun scaledTo(width: Int, height: Int): PipelineBitmap = step(width, height, lanczos = false)
+
+        private fun step(width: Int, height: Int, lanczos: Boolean): PipelineBitmap {
             log.scales += (this.width to this.height) to (width to height)
+            log.lanczos += lanczos
             if (log.failScalesAfter?.let { log.scales.size > it } == true) throw IllegalStateException("out of memory")
             return FakeBitmap(width, height, log)
         }
@@ -30,7 +33,7 @@ class ImagePipelineTest {
 
         override val isSrgb = true
 
-        override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = scaledTo(width, height)
+        override suspend fun resampledTo(width: Int, height: Int): PipelineBitmap = step(width, height, lanczos = true)
 
         override fun inSrgb(): PipelineBitmap = this
 
@@ -43,6 +46,7 @@ class ImagePipelineTest {
         var open = 0
         var failScalesAfter: Int? = null
         val scales = mutableListOf<Pair<Pair<Int, Int>, Pair<Int, Int>>>()
+        val lanczos = mutableListOf<Boolean>()
         val encodedQualities = mutableListOf<Int>()
         var jpegFactor = 1
     }
@@ -121,9 +125,22 @@ class ImagePipelineTest {
         renderFrom(FakeSource(4000, 3000, log)) { listOf(output(300, 225)) }
 
         assertEquals(
-            listOf(2000 to 1500, 1000 to 750, 500 to 375, 300 to 225),
+            listOf(2000 to 1500, 1000 to 750, 300 to 225),
             log.scales.map { it.second },
         )
+        assertEquals(listOf(false, false, true), log.lanczos)
+    }
+
+    @Test
+    fun aWholeHalvingStillEndsOnLanczos() = runTest {
+        for ((from, steps) in listOf(854 to listOf(true), 1708 to listOf(false, true))) {
+            val log = Log()
+
+            renderFrom(FakeSource(from, from * 9 / 16, log)) { listOf(output(427, 240)) }
+
+            assertEquals(steps, log.lanczos, "$from -> 427")
+            assertEquals(427 to 240, log.scales.last().second)
+        }
     }
 
     @Test

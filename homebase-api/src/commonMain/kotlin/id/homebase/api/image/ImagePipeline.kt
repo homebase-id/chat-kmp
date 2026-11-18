@@ -195,16 +195,18 @@ internal suspend fun renderFrom(
 }
 
 /**
- * Halves each axis while it's at least 2x too big, because an exact 2x step averages every source
- * pixel cheaply, then finishes with Lanczos, the only filter here that doesn't alias under 2x.
+ * Halves each axis while it's at least 4x too big, then Lanczos makes the last 2-4x: a 2x2 average
+ * lets detail just above its new limit through, so it must never be the last step.
  * Returns [source] when it's already the right size. Intermediate bitmaps are closed; [source] is
  * left to the caller.
  */
+private const val HALVE_WHILE_AT_LEAST = 4
+
 internal suspend fun scaleDown(source: PipelineBitmap, width: Int, height: Int): PipelineBitmap {
     var current = source
     while (true) {
-        val nextWidth = if (current.width >= width * 2) (current.width + 1) / 2 else current.width
-        val nextHeight = if (current.height >= height * 2) (current.height + 1) / 2 else current.height
+        val nextWidth = if (current.width >= width * HALVE_WHILE_AT_LEAST) (current.width + 1) / 2 else current.width
+        val nextHeight = if (current.height >= height * HALVE_WHILE_AT_LEAST) (current.height + 1) / 2 else current.height
         if (nextWidth == current.width && nextHeight == current.height) break
         val exact = (nextWidth == current.width || current.width % 2 == 0) && (nextHeight == current.height || current.height % 2 == 0)
         current = current.replacedBy(source) {
