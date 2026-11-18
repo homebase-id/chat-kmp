@@ -10,10 +10,8 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.AndroidFileOperationsProvider
-import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import java.io.File
-import kotlinx.coroutines.CancellationException
 import kotlinx.io.files.Path
 
 private const val TAG = "getUriHandler"
@@ -134,24 +132,5 @@ actual fun getUriHandler(): FileSystemHandler {
                 TODO("Not yet implemented")
             }
         }
-    }
-}
-
-// API 28 without WRITE_EXTERNAL_STORAGE has no album to write to, so the share sheet offers the file.
-internal class ShareSheetFallback(
-    private val fileOps: FileOperationsProvider,
-    private val share: (Path, onError: (Throwable) -> Unit) -> Unit,
-) : RefusedSaveFallback {
-    override suspend fun offer(file: String, name: String, reason: String, giveAway: Boolean, onError: (Throwable) -> Unit) {
-        val staged = try {
-            fileOps.stageForShare(file, name, giveAway)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Failed to stage the file to share: ${e.message}" }
-            onError(e)
-            null
-        }
-        if (staged != null) share(Path(staged), onError)
     }
 }

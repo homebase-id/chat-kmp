@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
@@ -10,7 +11,7 @@ import kotlinx.io.files.Path
 private const val TAG = "getUriHandler"
 
 @Composable
-actual fun getUriHandler(): FileSystemHandler = JvmFileSystemHandler()
+actual fun getUriHandler(): FileSystemHandler = remember { JvmFileSystemHandler() }
 
 internal class JvmFileSystemHandler(
     albumSaver: AlbumSaver = JvmAlbumSaver(),

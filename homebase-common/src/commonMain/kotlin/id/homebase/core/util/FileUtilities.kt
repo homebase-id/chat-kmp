@@ -6,9 +6,12 @@ import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.safeFileName
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.io.files.Path
 
 /**
@@ -66,38 +69,59 @@ interface FileSystemHandler {
      * would only refuse it again: on Android 9 the share sheet, as for [saveFile]; elsewhere [onError] with the refusal.
      * [refused]'s file is the caller's to give away and is deleted once done.
      */
-    fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit = {})
+    fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit)
 }
 
 // App-lifetime: a save the person started finishes even if they leave the screen.
 private val saveScope = supervisedScope("saveFile")
 
 /**
- * What a save the album refused turns into, the one platform part of [FileSaver]: on Android 9 the share sheet
- * ([stageForShare]); elsewhere nothing can take the file ([ReportRefusal]). [giveAway]: [file] is the caller's to give
- * away. Nothing may read [file] where it is afterwards, since the caller may delete it.
+ * What a save the album refused turns into, the one platform part of [FileSaver]. [giveAway]: the refused file is the
+ * caller's to give away. Nothing may read it where it is afterwards, since the caller may delete it.
  */
-fun interface RefusedSaveFallback {
-    suspend fun offer(file: String, name: String, reason: String, giveAway: Boolean, onError: (Throwable) -> Unit)
+internal fun interface RefusedSaveFallback {
+    suspend fun offer(refused: AlbumSaveResult.Refused, giveAway: Boolean, onError: (Throwable) -> Unit)
 }
 
-/** Reports the refusal through `onError`. */
-object ReportRefusal : RefusedSaveFallback {
-    override suspend fun offer(file: String, name: String, reason: String, giveAway: Boolean, onError: (Throwable) -> Unit) =
-        onError(AlbumAccessDeniedException(reason))
+/** Where an album never refuses a save the person asked for (desktop, web). */
+internal object ReportRefusal : RefusedSaveFallback {
+    override suspend fun offer(refused: AlbumSaveResult.Refused, giveAway: Boolean, onError: (Throwable) -> Unit) =
+        onError(AlbumAccessDeniedException(refused.reason))
+}
+
+/**
+ * Where an album refuses (Android 9 without storage access, iOS with Photos denied), the share sheet offers the file
+ * instead, staged under its name in `share_outbound/` ([stageForShare]) and presented on [main].
+ */
+internal class ShareSheetFallback(
+    private val fileOps: FileOperationsProvider,
+    private val main: CoroutineDispatcher = Dispatchers.Main,
+    private val share: (Path, onError: (Throwable) -> Unit) -> Unit,
+) : RefusedSaveFallback {
+    override suspend fun offer(refused: AlbumSaveResult.Refused, giveAway: Boolean, onError: (Throwable) -> Unit) {
+        val staged = try {
+            fileOps.stageForShare(refused.file, refused.name, giveAway)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = "saveFile") { "Failed to stage the file to share: ${e.message}" }
+            onError(e)
+            return
+        }
+        withContext(main) { share(Path(staged), onError) }
+    }
 }
 
 /**
  * A person's save, the same on every platform: each [FileSystemHandler]'s [FileSystemHandler.saveFile] and
  * [FileSystemHandler.offerRefused] delegate here, and only [albumSaver] and [fallback] are the platform's.
  */
-class FileSaver(
+internal class FileSaver(
     private val albumSaver: AlbumSaver,
     private val fileOps: FileOperationsProvider,
     private val fallback: RefusedSaveFallback = ReportRefusal,
     private val scope: CoroutineScope = saveScope,
 ) {
-    /** [FileSystemHandler.saveFile]. */
     fun save(file: Path, suggestedName: String, deleteAfter: Boolean, onSuccess: (String) -> Unit, onError: (Throwable) -> Unit) {
         // ATOMIC: once launched, the body (and so the delete in its finally) runs even if the scope is cancelled first.
         scope.launch(start = CoroutineStart.ATOMIC) {
@@ -121,7 +145,7 @@ class FileSaver(
                     is AlbumSaveResult.Saved -> onSuccess(saved.location)
                     AlbumSaveResult.Cancelled -> Unit
                     AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
-                    is AlbumSaveResult.Refused -> fallback.offer(saved.file, saved.name, saved.reason, deleteAfter, onError)
+                    is AlbumSaveResult.Refused -> offer(saved, giveAway = deleteAfter, onError)
                 }
             } finally {
                 if (deleteAfter) fileOps.deleteQuietly(file.sourcePath())
@@ -129,14 +153,25 @@ class FileSaver(
         }
     }
 
-    /** [FileSystemHandler.offerRefused]. */
     fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) {
         scope.launch(start = CoroutineStart.ATOMIC) {
             try {
-                fallback.offer(refused.file, refused.name, refused.reason, giveAway = true, onError)
+                offer(refused, giveAway = true, onError)
             } finally {
                 fileOps.deleteQuietly(refused.file)
             }
+        }
+    }
+
+    // A fallback that fails still tells the person, rather than leaving them with nothing.
+    private suspend fun offer(refused: AlbumSaveResult.Refused, giveAway: Boolean, onError: (Throwable) -> Unit) {
+        try {
+            fallback.offer(refused, giveAway, onError)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = "saveFile") { "Offering a refused save failed: ${e.message}" }
+            onError(e)
         }
     }
 }
@@ -159,7 +194,10 @@ internal suspend fun FileOperationsProvider.stageForShare(source: String, name: 
 
 // Logged, not thrown, so a failed delete can't hide what the save itself threw.
 fun FileOperationsProvider.deleteQuietly(path: String) {
-    runCatching { deleteTempFile(path) }.onFailure { Logger.e(throwable = it, tag = "saveFile") { "Deleting the saved file failed" } }
+    val deleted = runCatching { deleteTempFile(path) }
+        .onFailure { Logger.e(throwable = it, tag = "saveFile") { "Deleting $path failed" } }
+        .getOrDefault(true)
+    if (!deleted) Logger.w(tag = "saveFile") { "Deleting $path failed" }
 }
 
 // kotlinx.io's Path collapses `content://` to `content:/`; the file providers need it back.

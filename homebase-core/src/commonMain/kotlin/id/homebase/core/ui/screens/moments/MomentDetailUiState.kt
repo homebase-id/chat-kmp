@@ -405,7 +405,6 @@ sealed interface MomentDetailUiEvent {
     ) : MomentDetailUiEvent
     data class ShareFailed(val message: String?) : MomentDetailUiEvent
 
-    /** The album refused the save. */
     data class MediaSaveRefused(val refused: AlbumSaveResult.Refused) : MomentDetailUiEvent
     data class MediaSaveFailed(val message: String?) : MomentDetailUiEvent
 

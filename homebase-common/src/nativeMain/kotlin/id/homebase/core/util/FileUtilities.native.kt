@@ -21,8 +21,9 @@ private var shownInteractionController: UIDocumentInteractionController? = null
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
     val fileOps = remember { IOSFileOperationsProvider() }
-    val saver = remember { FileSaver(IosAlbumSaver, fileOps) }
     return object : FileSystemHandler {
+        private val saver = FileSaver(IosAlbumSaver, fileOps, ShareSheetFallback(fileOps) { path, onError -> shareFile(path, onError) })
+
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
             val nsUrl = NSURL.URLWithString(url) ?: return
             UIApplication.sharedApplication.openURL(nsUrl, emptyMap<Any?, String>()) { success ->
