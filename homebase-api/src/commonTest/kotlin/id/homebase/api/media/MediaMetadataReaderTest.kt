@@ -114,10 +114,12 @@ class MediaMetadataReaderTest {
 
     @Test
     fun aFileThatCantBeReadHasNoMetadataRatherThanAnError() = runTest {
+        // Null, or empty where the platform's reader answers with no fields (iOS's ImageIO).
+        fun assertNone(metadata: ImageMetadata?) = assertTrue(metadata == null || metadata == ImageMetadata(), "no metadata, got $metadata")
         val reader = MediaMetadataReader(files(ByteArray(0)))
         assertNull(reader.videoLocation("/missing.mp4"))
-        assertNull(reader.image("/missing.jpg"))
-        assertNull(MediaMetadataReader(files(ByteArray(64) { it.toByte() })).image("/v.mp4"))
+        assertNone(reader.image("/missing.jpg"))
+        assertNone(MediaMetadataReader(files(ByteArray(64) { it.toByte() })).image("/v.mp4"))
     }
 
     @Test
