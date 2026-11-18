@@ -78,7 +78,7 @@ suspend fun Flow<CallState>.driveRingback(tone: RingbackTone, fallbackMs: Long =
                 tone.start()
             }
     } finally {
-        // Cancelled mid-ring (sign-out, teardown, a test ending) the state never moves on, so nothing else stops it.
+        // A cancelled collector never sees the state move on.
         tone.stop()
     }
 }
