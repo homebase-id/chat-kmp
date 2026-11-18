@@ -8,6 +8,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import androidx.annotation.RequiresApi
 import kotlin.concurrent.Volatile
 
 internal val BluetoothDeviceTypes = setOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET)
@@ -25,6 +26,7 @@ actual class CallAudioRouter actual constructor() {
     private var started = false
     @Volatile private var current = AudioRoute.Earpiece
     private var stopFollowingDevices: (() -> Unit)? = null
+    private var stopFollowingMode: (() -> Unit)? = null
 
     actual fun start(video: Boolean, onRouteChanged: (AudioRoute) -> Unit): AudioRoute {
         if (started) return current
@@ -44,6 +46,7 @@ actual class CallAudioRouter actual constructor() {
         var known = availableAudioRoutes()
         val route = preferredRoute(known, previous = emptyList(), current = null, video = video)!!
         setRoute(route)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) followMode()
         stopFollowingDevices = onAudioDevicesChanged {
             val routes = availableAudioRoutes()
             val next = preferredRoute(routes, previous = known, current = current, video = video)
@@ -54,6 +57,24 @@ actual class CallAudioRouter actual constructor() {
             }
         }
         return route
+    }
+
+    // Answering while the ringtone still holds MODE_RINGTONE drops the device set then (Pixel, API 37), so set it again in communication mode.
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun followMode() {
+        val executor = ActivityProvider.requireApplicationContext().mainExecutor
+        val modeListener = AudioManager.OnModeChangedListener { mode ->
+            if (started && mode == AudioManager.MODE_IN_COMMUNICATION) setRoute(current)
+        }
+        val deviceListener = AudioManager.OnCommunicationDeviceChangedListener {
+            Logger.i(TAG) { "communication device now ${it?.type} wanted $current" }
+        }
+        audio.addOnModeChangedListener(executor, modeListener)
+        audio.addOnCommunicationDeviceChangedListener(executor, deviceListener)
+        stopFollowingMode = {
+            audio.removeOnModeChangedListener(modeListener)
+            audio.removeOnCommunicationDeviceChangedListener(deviceListener)
+        }
     }
 
     actual fun setRoute(route: AudioRoute) {
@@ -90,6 +111,8 @@ actual class CallAudioRouter actual constructor() {
         started = false
         stopFollowingDevices?.invoke()
         stopFollowingDevices = null
+        stopFollowingMode?.invoke()
+        stopFollowingMode = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.clearCommunicationDevice()
         @Suppress("DEPRECATION")
         audio.isSpeakerphoneOn = false
