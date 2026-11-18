@@ -73,12 +73,11 @@ class UploadService(
         val encrypted = spec.metadata.isEncrypted
         val fullBundle = sealOrStage(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, encrypted, scope, spec.contentHashes)
         try {
-            val finished = spec.finishMetadata?.let { spec.copy(metadata = it(spec.metadata)) } ?: spec
             val sent = if (spec.omitThumbnails) fullBundle.withoutThumbnails() else fullBundle
             val request = UploadFileRequest(
                 driveId = spec.driveId,
                 keyHeader = spec.keyHeader,
-                metadata = if (encrypted) finished.metadata.encryptContent(spec.keyHeader) else finished.metadata,
+                metadata = if (encrypted) spec.metadata.encryptContent(spec.keyHeader) else spec.metadata,
                 transitOptions = spec.transit,
                 payloads = sent.payloads,
                 thumbnails = sent.thumbnails,
@@ -86,7 +85,7 @@ class UploadService(
                 fileSystemType = spec.requestFileSystemType,
                 sealDescriptorContent = spec.sealDescriptorContent,
             )
-            return PreparedUpload(finished, request, sent, encryptor)
+            return PreparedUpload(spec, request, sent, encryptor)
         } catch (e: Throwable) {
             encryptor.discard(fullBundle)
             throw e

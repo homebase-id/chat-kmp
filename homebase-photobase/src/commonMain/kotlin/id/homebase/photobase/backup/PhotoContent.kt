@@ -1,6 +1,7 @@
 package id.homebase.photobase.backup
 
 import id.homebase.api.image.ImageMetadata
+import id.homebase.api.media.MediaLocation
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.serialization.Serializable
@@ -15,6 +16,8 @@ data class PhotoContent(
 ) {
     companion object {
         const val CURRENT_VERSION = 1
+
+        fun at(location: MediaLocation?) = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
     }
 }
 

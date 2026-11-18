@@ -9,7 +9,6 @@ import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.util.codePointCount
@@ -77,14 +76,11 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer? = null,
-        /** Given each image's EXIF, read in the decode that makes its thumbnails; passing it is what asks for the read. */
-        onImageMetadata: ((payloadKey: String, metadata: ImageMetadata) -> Unit)? = null,
         payloadKey: (index: Int) -> String,
     ): PayloadBundle {
         val built = sources.mapIndexed { index, source ->
-            buildOne(source, index, payloadKey(index), options, fileOps, pdfPageRenderer, readImageMetadata = onImageMetadata != null)
+            buildOne(source, index, payloadKey(index), options, fileOps, pdfPageRenderer)
         }
-        if (onImageMetadata != null) built.forEach { b -> b.thumbs?.metadata?.let { onImageMetadata(b.payload.key, it) } }
         return PayloadBundle(
             payloads = built.flatMap { listOfNotNull(it.payload.copy(previewThumbnail = it.thumbs?.preview), it.playableCopy) },
             thumbnails = built.flatMap { it.thumbs?.thumbnails.orEmpty() },
@@ -99,7 +95,6 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer?,
-        readImageMetadata: Boolean,
     ): Built {
         val knownImage = source.sticker || source.libraryKind == LibraryKind.IMAGE
         require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || knownImage)) {
@@ -114,7 +109,7 @@ object UserUploadBuilder {
 
         return when {
             // A sticker or a library photo is an image whatever type it arrives with.
-            contentType.startsWith("image/") || knownImage -> image(source, contentType, key, name, options, fileOps, readImageMetadata)
+            contentType.startsWith("image/") || knownImage -> image(source, contentType, key, name, options, fileOps)
             contentType.startsWith("audio/") -> Built(
                 PayloadFile(
                     key = key,
@@ -137,10 +132,11 @@ object UserUploadBuilder {
                 val isVideo = kind == DescriptorContentV1.Kind.VIDEO
                 // The user's file goes untouched with a copy to play, transcoded in the encryption step as any video.
                 val copyKey = HomebaseProtocol.playableCopyPayloadKey(index).takeIf { isVideo && options.originalVideo && !source.untouched }
-                if (copyKey != null) {
+                val original = 1.takeIf { isVideo && (source.untouched || copyKey != null) }
+                // Sent as it is, with nothing to strip its metadata: only a transcode does that.
+                if (original != null) {
                     require(options.currentFormat && options.metadata == MetadataPolicy.KEEP) { "an untouched original video is for an app that keeps metadata, in the current format" }
                 }
-                val original = 1.takeIf { isVideo && (source.untouched || copyKey != null) }
                 val payload = PayloadFile(
                     key = key,
                     filePath = source.path,
@@ -175,9 +171,8 @@ object UserUploadBuilder {
         name: String?,
         options: UploadOptions,
         fileOps: FileOperationsProvider,
-        readImageMetadata: Boolean,
     ): Built {
-        val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker, readMetadata = readImageMetadata)
+        val thumbs = UploadImages.generate(source.path, key, fileOps, options.quality, forceSticker = source.sticker)
         val finalPath = UploadImages.finalImagePath(thumbs, fileOps, keepMetadataFrom = source.path.takeIf { options.metadata == MetadataPolicy.KEEP })
         // A library image skipped the read up front: the decode names its type, and only a failed decode needs the header.
         val untypedLibraryImage = source.libraryKind == LibraryKind.IMAGE && isUntyped(declaredType)

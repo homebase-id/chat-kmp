@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.readImageMetadata
+import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
@@ -233,7 +233,7 @@ class MomentComposeViewModel(
                             // state flip and avoids leaking false positives if
                             // the user races the EXIF read.
                             val md = a.metadata
-                            val hasGps = md?.latitude != null && md.longitude != null
+                            val hasGps = md?.location != null
                             if (hasGps) a.copy(includeLocation = !a.includeLocation) else a
                         } else a
                     }
@@ -333,12 +333,7 @@ class MomentComposeViewModel(
 
     private fun extractImageMetadata(attachmentId: Uuid, imagePath: String) {
         viewModelScope.launch {
-            val metadata = runCatching {
-                readImageMetadata(imagePath, fileOperationsProvider)
-            }.getOrElse { e ->
-                Logger.w(throwable = e, tag = TAG) { "EXIF read failed for $attachmentId" }
-                null
-            }
+            val metadata = MediaMetadataReader(fileOperationsProvider).image(imagePath)
             // Guard: user might have removed the attachment mid-read.
             if (_uiState.value.attachments.none { it.attachmentId == attachmentId }) return@launch
             onAction(MomentComposeUiAction.ImageMetadataResolved(attachmentId, metadata))

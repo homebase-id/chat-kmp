@@ -1,7 +1,8 @@
 package id.homebase.photobase.backup
 
 import id.homebase.upload.UploadOptions
-import id.homebase.api.video.VideoLocationReader
+import id.homebase.api.media.MediaMetadataReader
+import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.video.VideoCompressionFailedException
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import co.touchlab.kermit.Logger
@@ -39,6 +40,7 @@ class OutboxBackupUploader(
 ) : BackupUploader {
 
     private val videoProcessing = Mutex()
+    private val metadataReader = MediaMetadataReader(fileOps)
 
     override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
         val mediaType = BackupMediaType.ofCode(row.mediaType)
@@ -85,8 +87,8 @@ class OutboxBackupUploader(
         exported: ExportedAsset,
     ): HandOffResult = requests.build(row, uniqueId, mediaType, exported) { send(it) }
 
-    // The source is checked against its hash as it's read for its location, which an HLS stream has no place
-    // for: by a read of its own for a transcode, and by the encrypt pass for an untouched original.
+    // The source is checked against its hash by a read of its own for a transcode, and by the encrypt pass for an
+    // untouched original. Its location goes in the header, as an HLS stream has no place for it.
     private suspend fun handOffVideo(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
@@ -95,24 +97,23 @@ class OutboxBackupUploader(
     ): HandOffResult {
         val part = exported.parts.single()
         val options = requests.options()
-        val reader = VideoLocationReader()
-        if (!options.originalVideo && !hasher.matches(exported, part, expectedDigest) { reader.feed(it) }) return HandOffResult.ChangedUnderUs
+        if (!options.originalVideo && !hasher.matches(exported, part, expectedDigest)) return HandOffResult.ChangedUnderUs
+        val metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, PhotoContent.at(metadataReader.videoLocation(part.path)))
         return try {
-            upload(row, uniqueId, exported, expectedDigest, reader, options, untouched = false)
+            upload(uniqueId, exported, expectedDigest, metadata, options, untouched = false)
         } catch (e: VideoCompressionFailedException) {
             if (!options.originalVideo) throw e
             // A backup that isn't the original isn't a backup: keep the file even when no copy can be made to play.
             Logger.w(tag = TAG, throwable = e) { "no playable copy for $uniqueId; backing up the original alone" }
-            upload(row, uniqueId, exported, expectedDigest, VideoLocationReader(), options.copy(originalVideo = false), untouched = true)
+            upload(uniqueId, exported, expectedDigest, metadata, options.copy(originalVideo = false), untouched = true)
         }
     }
 
     private suspend fun upload(
-        row: DeviceBackupAsset,
         uniqueId: Uuid,
         exported: ExportedAsset,
         expectedDigest: ByteArray,
-        reader: VideoLocationReader,
+        metadata: UploadFileMetadata,
         options: UploadOptions,
         untouched: Boolean,
     ): HandOffResult {
@@ -123,14 +124,7 @@ class OutboxBackupUploader(
             fileOps,
         ) { PhotobaseProtocol.VideoPayloadKey }
         val expected = if (untouched || options.originalVideo) mapOf(PhotobaseProtocol.VideoPayloadKey to expectedDigest) else emptyMap()
-        val hashes = ContentHashes(PayloadHashAlgorithm.Blake3, expected) { key, chunk, offset, length ->
-            if (key == PhotobaseProtocol.VideoPayloadKey) reader.feed(chunk, offset, length)
-        }
-        fun metadata() = reader.location.let { location ->
-            val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
-            photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content)
-        }
-        return send(photoSpec(photosDriveId, uniqueId, bundle, metadata(), hashes, finishMetadata = { metadata() }))
+        return send(photoSpec(photosDriveId, uniqueId, bundle, metadata, ContentHashes(PayloadHashAlgorithm.Blake3, expected)))
     }
 
     private fun handedOff(outcome: UploadOutcome): HandOffResult = when (outcome) {

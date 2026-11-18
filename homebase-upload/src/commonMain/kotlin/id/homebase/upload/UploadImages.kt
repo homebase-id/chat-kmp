@@ -4,18 +4,15 @@ import id.homebase.api.image.withSourceMetadata
 import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.file.extensionForContentType
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.RenderedImage
 import id.homebase.api.image.createMediaImages
 import id.homebase.api.image.createThumbnails
-import id.homebase.api.image.readImageMetadata
 import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -34,8 +31,6 @@ data class ThumbnailResult(
     /** What a Standard or HD send should carry instead of the file, made from the same decode. */
     val finalImage: RenderedImage? = null,
     val displayedSize: ImageSize? = null,
-    /** Read only when asked for. */
-    val metadata: ImageMetadata? = null,
 )
 
 object UploadImages {
@@ -53,17 +48,14 @@ object UploadImages {
         fileOperationsProvider: FileOperationsProvider,
         mediaQuality: MediaQuality = MediaQuality.ORIGINAL,
         forceSticker: Boolean = false,
-        readMetadata: Boolean = false,
     ): ThumbnailResult {
         val media = try {
-            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker, readMetadata = readMetadata, hdr = true)
+            createMediaImages(filePath, fileOperationsProvider, payloadKey, mediaQuality, allowFinalImage = !forceSticker, hdr = true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "No thumbnails for $payloadKey; sending the file as it is" }
-            // A format the decoder can't draw can still have EXIF the reader understands.
-            val metadata = if (readMetadata) metadataOrNull(filePath, fileOperationsProvider) else null
-            return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceFormat = null, sourceByteCount = null, metadata = metadata)
+            return ThumbnailResult(preview = null, thumbnails = emptyList(), sourceFormat = null, sourceByteCount = null)
         }
         return ThumbnailResult(
             preview = media.tiny,
@@ -72,17 +64,7 @@ object UploadImages {
             sourceByteCount = media.sourceByteCount,
             finalImage = media.finalImage,
             displayedSize = media.displayedSize,
-            metadata = media.metadata,
         )
-    }
-
-    private suspend fun metadataOrNull(path: String, fileOps: FileOperationsProvider): ImageMetadata? = try {
-        readImageMetadata(path, fileOps)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Logger.w(tag = TAG, throwable = e) { "No readable EXIF" }
-        null
     }
 
     /**
@@ -156,57 +138,4 @@ private suspend fun withMetadataOf(source: String, image: RenderedImage, fileOps
 } catch (e: Exception) {
     Logger.w(tag = TAG, throwable = e) { "Couldn't copy $source's metadata into its final image; it goes without" }
     null
-}
-
-/**
- * [payload] with its image's EXIF/XMP removed when its app strips. [staged]: the copy goes to outbox staging,
- * for a public upload the outbox sends from this path later; otherwise to upload-temp, which every start clears,
- * for the encryption step, which deletes it once encrypted.
- */
-suspend fun withMetadataStripped(payload: PayloadFile, fileOps: FileOperationsProvider, staged: Boolean): PayloadFile {
-    if (!payload.stripMetadata) return payload
-    val stripped = imageWithoutMetadata(payload.filePath, payload.contentType, fileOps) ?: return payload
-    val path = if (staged) {
-        fileOps.writeBytesToOutboxTempFile(stripped, "scrubbed_", ".img")
-    } else {
-        fileOps.writeBytesToTempFile(stripped, "scrubbed_", ".img")
-    }
-    return payload.copy(filePath = path)
-}
-
-/** The in-memory twin of [withMetadataStripped]. */
-suspend fun imageBytesFor(policy: MetadataPolicy, bytes: ByteArray, contentType: String): ByteArray =
-    if (policy == MetadataPolicy.STRIP && contentType.startsWith("image/")) bytesWithoutMetadata(bytes, contentType) ?: bytes else bytes
-
-/**
- * The image at [path] with its EXIF/XMP removed, or null when there was nothing to strip. The pixel data
- * stays bit-identical, unlike a re-encode.
- *
- * Fail-soft: a file that can't be read, isn't a format the scrubber handles, or can't be parsed goes out
- * as it is rather than failing the send. That costs a leak, not a crash, so it is logged loudly.
- */
-private suspend fun imageWithoutMetadata(path: String, contentType: String, fileOps: FileOperationsProvider): ByteArray? {
-    if (!contentType.startsWith("image/")) return null
-    val original = try {
-        fileOps.readFileBytes(path)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (t: Throwable) {
-        Logger.w(throwable = t, tag = TAG) { "metadata scrub skipped — could not read $path" }
-        return null
-    }
-    return bytesWithoutMetadata(original, contentType)
-}
-
-private suspend fun bytesWithoutMetadata(original: ByteArray, contentType: String): ByteArray? {
-    val why = when (val outcome = withContext(Dispatchers.Default) { ImageMetadataScrubber.scrubWithOutcome(original) }) {
-        is ImageMetadataScrubber.Outcome.Scrubbed -> return outcome.bytes
-        ImageMetadataScrubber.Outcome.NothingToStrip -> return null
-        ImageMetadataScrubber.Outcome.UnsupportedFormat -> "isn't a format the scrubber handles"
-        ImageMetadataScrubber.Outcome.Unparseable -> "couldn't be parsed"
-    }
-    Logger.w(tag = TAG) {
-        "metadata scrub skipped — $contentType (sniffed ${contentTypeFromBytes(original)}) $why; any EXIF/XMP goes out intact"
-    }
-    return null
 }

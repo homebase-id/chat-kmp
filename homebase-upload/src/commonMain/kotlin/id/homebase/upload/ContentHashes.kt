@@ -11,8 +11,6 @@ import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 class ContentHashes(
     val algorithm: PayloadHashAlgorithm,
     val expected: Map<String, ByteArray> = emptyMap(),
-    /** Sees each hashed payload's plaintext as it's read, for a caller that needs something else from it. */
-    val onPlaintext: (payloadKey: String, chunk: ByteArray, offset: Int, length: Int) -> Unit = { _, _, _, _ -> },
 )
 
 class ContentChangedException(val payloadKey: String) : Exception("payload $payloadKey no longer matches its hash")

@@ -123,6 +123,21 @@ abstract class FileOperationsContractTest {
     }
 
     @Test
+    fun aFileOpenedForRangesReadsEachAsReadFileRangeWould() = runTest {
+        val p = provider()
+        val path = path("opened.bin")
+        val data = ByteArray(300_000) { (it % 251).toByte() }
+        p.writeStream(path, flowOf(data))
+        p.openRanges(path).use { ranges ->
+            assertContentEquals(data.copyOfRange(299_990, 300_000), ranges.read(299_990, 100), "fewer at the end")
+            assertContentEquals(data.copyOfRange(0, 16), ranges.read(0, 16), "any order")
+            assertContentEquals(data.copyOfRange(123_456, 123_556), ranges.read(123_456, 100))
+            assertContentEquals(ByteArray(0), ranges.read(400_000, 100))
+            assertEquals(300_000L, ranges.size())
+        }
+    }
+
+    @Test
     fun sizeAndExistenceForWrittenEmptyAndMissingFiles() = runTest {
         val p = provider()
         val written = path("sized.bin")

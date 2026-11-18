@@ -58,7 +58,7 @@ fun MomentImageInfoChip(
 
     val dateLabel = metadata.capturedAt?.let { formatMonthYear(it) }
     val cameraLabel = formatCamera(metadata.cameraMake, metadata.cameraModel)
-    val hasGps = metadata.latitude != null && metadata.longitude != null
+    val hasGps = metadata.location != null
     if (dateLabel == null && cameraLabel == null && !hasGps) return
 
     val photoInfoCd = stringResource(MR.string.cd_moment_photo_info_chip)

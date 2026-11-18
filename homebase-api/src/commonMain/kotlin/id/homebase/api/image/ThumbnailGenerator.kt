@@ -5,6 +5,7 @@ import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.FileRanges
 import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +21,6 @@ class MediaImages(
     val finalImage: RenderedImage?,
     val sourceFormat: String? = null,
     val sourceByteCount: Long? = null,
-    val metadata: ImageMetadata? = null,
 )
 
 private fun isSvg(bytes: ByteArray): Boolean {
@@ -43,12 +43,11 @@ suspend fun createMediaImages(
     payloadKey: String,
     setting: MediaQuality = MediaQuality.ORIGINAL,
     allowFinalImage: Boolean = true,
-    readMetadata: Boolean = false,
     hdr: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
     if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
     openImageSource(imageBytes).use {
-        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, readMetadata, hdr) { range ->
+        mediaImagesFrom(it, imageBytes, imageBytes.size.toLong(), payloadKey, setting, allowFinalImage, hdr) { range ->
             val size = imageBytes.size.toLong()
             imageBytes.copyOfRange(range.first.coerceIn(0, size).toInt(), (range.last + 1).coerceIn(0, size).toInt())
         }
@@ -62,18 +61,23 @@ suspend fun createMediaImages(
     payloadKey: String,
     setting: MediaQuality = MediaQuality.ORIGINAL,
     allowFinalImage: Boolean = true,
-    readMetadata: Boolean = false,
     hdr: Boolean = false,
 ): MediaImages = withContext(Dispatchers.Default) {
-    suspend fun fromBytes() = createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, readMetadata, hdr)
+    suspend fun fromBytes() = createMediaImages(fileOps.readFileBytes(path), payloadKey, setting, allowFinalImage, hdr)
     // Opened first: where it can't be, the header read would cost a whole read of its own (a Photos-library asset).
     val file = openImageFile(path, fileOps) ?: return@withContext fromBytes()
     file.use {
         val header = fileOps.readFileHeaderBytes(path)
         if (isSvg(header) || !ImageFormatDetector.answersIsAnimated(header)) return@withContext fromBytes()
         val byteCount = fileOps.getFileSize(path).takeIf { it > 0 }
-        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, readMetadata, hdr) { range ->
-            fileOps.readFileRange(path, range.first, (range.last - range.first + 1).toInt())
+        // Opened only for a gain map; most photos have none.
+        var ranges: FileRanges? = null
+        try {
+            mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, hdr) { range ->
+                (ranges ?: fileOps.openRanges(path).also { opened -> ranges = opened }).read(range.first, (range.last - range.first + 1).toInt())
+            }
+        } finally {
+            ranges?.close()
         }
     }
 }
@@ -86,7 +90,6 @@ private suspend fun mediaImagesFrom(
     payloadKey: String,
     setting: MediaQuality,
     allowFinalImage: Boolean,
-    readMetadata: Boolean,
     hdr: Boolean,
     readRange: suspend (LongRange) -> ByteArray,
 ): MediaImages {
@@ -103,8 +106,7 @@ private suspend fun mediaImagesFrom(
     // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
     val natural = media.displayedSize
     val tiny = if (gif) media.tiny?.copy(pixelWidth = natural.pixelWidth, pixelHeight = natural.pixelHeight) else media.tiny
-    val metadata = if (readMetadata) source.metadata() else null
-    return MediaImages(natural, tiny, media.thumbnails, media.finalImage, format, byteCount, metadata)
+    return MediaImages(natural, tiny, media.thumbnails, media.finalImage, format, byteCount)
 }
 
 // Vector data is resolution-independent, so a 16x16 favicon still gets its full set of thumbnails:

@@ -10,6 +10,7 @@ import id.homebase.api.coroutines.ioDispatcher as defaultIoDispatcher
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
 import kotlinx.io.buffered
+import okio.FileHandle
 import okio.BufferedSource
 import okio.FileSystem
 import okio.Source
@@ -52,16 +53,27 @@ open class OkioFileOperationsProvider(
     }
 
     override suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray = withContext(io) {
-        fileSystem.openReadOnly(path.toPath()).use { handle ->
-            val out = ByteArray(length)
-            var filled = 0
-            while (filled < length) {
-                val n = handle.read(offset + filled, out, filled, length - filled)
-                if (n <= 0) break
-                filled += n
-            }
-            out.copyOf(filled)
+        fileSystem.openReadOnly(path.toPath()).use { it.readUpTo(offset, length) }
+    }
+
+    override suspend fun openRanges(path: String): FileRanges {
+        val handle = withContext(io) { fileSystem.openReadOnly(path.toPath()) }
+        return object : FileRanges {
+            override suspend fun read(offset: Long, length: Int) = withContext(io) { handle.readUpTo(offset, length) }
+            override suspend fun size() = withContext(io) { handle.size() }
+            override fun close() = handle.close()
         }
+    }
+
+    private fun FileHandle.readUpTo(offset: Long, length: Int): ByteArray {
+        val out = ByteArray(length)
+        var filled = 0
+        while (filled < length) {
+            val n = read(offset + filled, out, filled, length - filled)
+            if (n <= 0) break
+            filled += n
+        }
+        return out.copyOf(filled)
     }
 
     override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray = withContext(io) {

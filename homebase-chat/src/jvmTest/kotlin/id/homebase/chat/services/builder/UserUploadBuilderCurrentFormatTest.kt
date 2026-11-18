@@ -25,6 +25,7 @@ import org.jetbrains.skia.ImageInfo
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -106,9 +107,11 @@ class UserUploadBuilderCurrentFormatTest {
 
     @Test
     fun aLibraryFileIsWhatTheLibrarySaysWhateverItsType() = runTest {
-        val clip = build(UploadSource(file("clip", ByteArray(8)), "application/octet-stream", libraryKind = LibraryKind.VIDEO, untouched = true))
+        val untouched = UploadSource(file("clip", ByteArray(8)), "application/octet-stream", libraryKind = LibraryKind.VIDEO, untouched = true)
+        val clip = build(untouched, metadata = MetadataPolicy.KEEP)
         assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, original = 1), clip.written())
         assertTrue(clip.payloads.single().skipVideoProcessing, "an untouched video is sent as it is")
+        assertFailsWith<IllegalArgumentException>("nothing would strip its metadata") { build(untouched, metadata = MetadataPolicy.STRIP) }
 
         val raw = build(UploadSource(file("raw", ByteArray(8)), "", libraryKind = LibraryKind.IMAGE))
         assertEquals(DescriptorContentV1.Kind.IMAGE, raw.written().kind, "a picture the decoder can't draw is still a picture")

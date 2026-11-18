@@ -7,6 +7,9 @@ import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 
 private const val PAYLOAD_HASH_LENGTH = 32
 private val CONTENT_HASH_IV_MASK = ByteArray(16) { 0xAA.toByte() }
@@ -52,11 +55,11 @@ suspend fun PayloadHash.plaintextContentHash(payloadKey: KeyHeader?): ByteArray?
 }
 
 /**
- * Encrypts [inputPath] into [outputPath] in one streaming pass and deletes a partial output on
+ * Encrypts [plaintext] into [outputPath] in one streaming pass and deletes a partial output on
  * failure. The hashers, when given, see the plaintext going in and the ciphertext coming out.
  */
-suspend fun FileOperationsProvider.encryptFileStreaming(
-    inputPath: String,
+suspend fun FileOperationsProvider.encryptStreaming(
+    plaintext: Flow<ByteArray>,
     outputPath: String,
     keyHeader: KeyHeader,
     plaintextHasher: IncrementalHasher? = null,
@@ -66,7 +69,7 @@ suspend fun FileOperationsProvider.encryptFileStreaming(
         writeStream(
             path = outputPath,
             data = AesCbc.streamEncryptWithCbc(
-                dataStream = readFileAsFlow(inputPath).hashedBy(plaintextHasher),
+                dataStream = plaintext.hashedBy(plaintextHasher),
                 key = keyHeader.aesKey,
                 iv = keyHeader.iv,
             ).hashedBy(ciphertextHasher),
@@ -88,33 +91,40 @@ suspend fun FileOperationsProvider.encryptWithPayloadHash(
     outputPath: String,
     aesKey: SecureByteArray,
     algorithm: PayloadHashAlgorithm,
-    onPlaintext: (chunk: ByteArray, offset: Int, length: Int) -> Unit = { _, _, _ -> },
 ): HashedPayload {
     val payloadKey = KeyHeader(ByteArrayUtil.getRndByteArray(16), aesKey)
     var plaintextBytes = 0L
-    val hash = encryptWithPayloadHash(inputPath, outputPath, payloadKey, algorithm) { chunk, offset, length ->
-        plaintextBytes += length
-        onPlaintext(chunk, offset, length)
-    }
+    val hash = encryptWithPayloadHash(readFileAsFlow(inputPath).onEach { plaintextBytes += it.size }, outputPath, payloadKey, algorithm)
     return HashedPayload(hash, payloadKey.iv, plaintextBytes)
 }
 
-/** [encryptFileStreaming] under [payloadKey]'s IV, with the payload hash taken in the same pass. */
+/** [encryptWithPayloadHash] of the file at [inputPath]. */
 suspend fun FileOperationsProvider.encryptWithPayloadHash(
     inputPath: String,
     outputPath: String,
     payloadKey: KeyHeader,
     algorithm: PayloadHashAlgorithm,
-    onPlaintext: (chunk: ByteArray, offset: Int, length: Int) -> Unit = { _, _, _ -> },
+): PayloadHash = encryptWithPayloadHash(readFileAsFlow(inputPath), outputPath, payloadKey, algorithm)
+
+/** [encryptStreaming] under [payloadKey]'s IV, with the payload hash taken in the same pass. */
+suspend fun FileOperationsProvider.encryptWithPayloadHash(
+    plaintext: Flow<ByteArray>,
+    outputPath: String,
+    payloadKey: KeyHeader,
+    algorithm: PayloadHashAlgorithm,
 ): PayloadHash {
     val contentHasher = algorithm.newHasher()
     val storedHasher = algorithm.newHasher()
-    val countingContentHasher = object : IncrementalHasher by contentHasher {
-        override fun update(input: ByteArray, offset: Int, length: Int) {
-            onPlaintext(input, offset, length)
-            contentHasher.update(input, offset, length)
-        }
-    }
-    encryptFileStreaming(inputPath, outputPath, payloadKey, countingContentHasher, storedHasher)
+    encryptStreaming(plaintext, outputPath, payloadKey, contentHasher, storedHasher)
     return encryptedPayloadHash(algorithm, storedHasher.digest(), contentHasher.digest(), payloadKey)
+}
+
+/** [bytes] as a flow of [chunkSize] slices, so a stream step never holds another copy of all of them at once. */
+fun slicedFlow(bytes: ByteArray, chunkSize: Int): Flow<ByteArray> = flow {
+    var at = 0
+    while (at < bytes.size) {
+        val end = minOf(at + chunkSize, bytes.size)
+        emit(bytes.copyOfRange(at, end))
+        at = end
+    }
 }
