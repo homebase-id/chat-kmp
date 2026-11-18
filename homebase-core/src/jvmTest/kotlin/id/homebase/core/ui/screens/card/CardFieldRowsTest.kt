@@ -161,7 +161,7 @@ class CardFieldRowsTest {
         row("field_front", "Second breakfast").assertExists()
         row("field_back", "Elevenses").assertExists()
         row("field_back", "hidden").assertExists()
-        row("field_off", "Phone").assert(hasText("Can't go on a card", substring = true))
+        row("field_off", "Phone").assertExists()
         row("field_off", "private").assertExists()
         assertEquals(1, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
         assertEquals(2, onAllNodesWithTag("field_back").fetchSemanticsNodes().size)
@@ -309,14 +309,28 @@ class CardFieldRowsTest {
         val audiences = mutableListOf<Pair<Uuid, ProfileAudience>>()
         editor(null, shown, audiences = audiences, attributes = listOf(bio, ownerOnly, privatePhone))
 
-        assertEquals(1, onAllNodesWithTag("field_add", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(2, onAllNodesWithTag("field_add", useUnmergedTree = true).fetchSemanticsNodes().size)
         onNode(hasTestTag("field_add") and hasContentDescription("Add Link to this card")).performClick()
         waitForIdle()
 
         row("field_front", "private").assertExists()
-        row("field_off", "Phone").assert(hasText("Can't go on a card", substring = true))
+        row("field_off", "Phone").assertExists()
         assertEquals(listOf<Pair<Uuid, ProfileAudience>>(ownerOnly.id to ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID))), audiences)
         assertEquals(listOf(ownerOnly.id to true), shown)
+    }
+
+    @Test
+    fun thePlusOnAFieldTheCardCantDrawSharesItAndPutsItOnTheBack() = runComposeUiTest {
+        val privatePhone = phone.ownerOnly()
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        val audiences = mutableListOf<Pair<Uuid, ProfileAudience>>()
+        editor(null, shown, audiences = audiences, attributes = listOf(bio, ownerOnly, privatePhone))
+
+        onNode(hasTestTag("field_add") and hasContentDescription("Add Phone to this card")).performClick()
+        waitForIdle()
+
+        assertEquals(listOf<Pair<Uuid, ProfileAudience>>(privatePhone.id to ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID))), audiences)
+        assertEquals(listOf(privatePhone.id to false), shown)
     }
 
     @Test
@@ -341,23 +355,17 @@ class CardFieldRowsTest {
     }
 
     @Test
-    fun anOwnerOnlyFieldSaysOnlyYouAndACircleOnlyFieldNamesTheCircle() = runComposeUiTest {
-        editor(null, attributes = listOf(bio, ownerOnly, officeOnly), circles = circles + office)
-
-        row("field_off", "private").assert(hasText("Only you", substring = true))
-        row("field_off", "office").assert(hasText("Only Office peeps", substring = true))
-    }
-
-    @Test
-    fun aFieldTheCardCantDrawIsNotOnCardWithItsReason() = runComposeUiTest {
+    fun aSharedFieldTheCardCantDrawHasAPlusThatMovesItToTheBack() = runComposeUiTest {
         val shown = mutableListOf<Pair<Uuid, Boolean>>()
-        editor(null, shown)
+        val audiences = mutableListOf<Pair<Uuid, ProfileAudience>>()
+        editor(null, shown, audiences = audiences)
 
         assertEquals(0, onAllNodesWithTag("field_to_front", useUnmergedTree = true).fetchSemanticsNodes().size)
-        row("field_off", "Phone").assert(hasText("Can't go on a card", substring = true)).assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)).performClick()
+        onNode(hasTestTag("field_add") and hasContentDescription("Add Phone to this card")).performClick()
         waitForIdle()
 
-        assertEquals(emptyList(), shown)
+        assertEquals(listOf(phone.id to false), shown)
+        assertEquals(emptyList(), audiences)
     }
 
     @Test
