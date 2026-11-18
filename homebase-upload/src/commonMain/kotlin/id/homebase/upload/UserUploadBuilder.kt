@@ -157,7 +157,7 @@ object UserUploadBuilder {
                     inputBlobUrl = source.inputBlobUrl,
                     videoQuality = options.videoQuality,
                     stripMetadata = options.metadata == MetadataPolicy.STRIP,
-                    skipVideoProcessing = copyKey != null,
+                    skipVideoProcessing = original != null,
                 )
                 Built(
                     payload,

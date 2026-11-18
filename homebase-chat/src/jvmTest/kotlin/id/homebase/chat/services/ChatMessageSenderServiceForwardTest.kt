@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import id.homebase.upload.ContentHashes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.drives.FileState
@@ -206,6 +207,7 @@ class ChatMessageSenderServiceForwardTest {
             bundle: PayloadBundle?,
             aesKey: SecureByteArray,
             scope: CoroutineScope,
+            hashes: ContentHashes?,
         ): PayloadBundle {
             seen += bundle?.payloads.orEmpty().associate { it.key to File(it.filePath).readBytes() }
             return PayloadBundle(payloads = emptyList(), thumbnails = emptyList(), previewThumbs = emptyList())

@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.upload.ContentHashes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -372,15 +373,16 @@ class OutboxBackupUploaderTest {
     fun anOriginalVideoThatChangedBeforeItsEncryptedIsNotUploaded() = runTest {
         // A hashed copy skips the up-front check, so only the check as it's encrypted can catch this.
         val (row, uniqueId) = rowFor("a", BackupMediaType.Video, "what was hashed".encodeToByteArray())
+        val stagedBefore = stagedFiles()
         val uploader = backgroundScope.uploader(
             listOf(ExportedPart(ExportedPartRole.Primary, file("v.mov", "what is there now".encodeToByteArray()), "video/quicktime", false)),
-            PreviewingEncryptor(),
             videoQuality = MediaQuality.ORIGINAL,
             hashedCopy = true,
         )
 
         assertEquals(HandOffResult.ChangedUnderUs, uploader.handOff(row, uniqueId))
         assertNull(db.outbox.selectByDriveAndUnique(PhotobaseProtocol.DriveAlias, uniqueId))
+        assertEquals(stagedBefore, stagedFiles())
     }
 
     @Test
@@ -523,17 +525,25 @@ class OutboxBackupUploaderTest {
 
     @Test
     fun aHandOffStoppedPartWayLeavesNoEncryptedCopy() = runTest {
-        val bytes = jpeg(640, 480)
-        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
+        val still = "still".encodeToByteArray()
+        val motion = "motion".encodeToByteArray()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.LivePhoto, still, motion)
         val stagedBefore = stagedFiles()
         val real = realEncryption()
+        // Stopped as the paired video is read, with the still already encrypted.
         val stops = object : PayloadBundleEncryptor by real {
-            override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle {
-                real.encryptBundle(uniqueId, bundle, aesKey, scope)
-                throw CancellationException("the backup was stopped")
-            }
+            override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope, hashes: ContentHashes?) =
+                real.encryptBundle(uniqueId, bundle, aesKey, scope, ContentHashes(hashes!!.algorithm, hashes.expected) { key, _, _, _ ->
+                    if (key == PhotobaseProtocol.LivePhotoVideoPayloadKey) throw CancellationException("the backup was stopped")
+                })
         }
-        val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("p.jpg", bytes), "image/jpeg", false)), stops)
+        val uploader = backgroundScope.uploader(
+            listOf(
+                ExportedPart(ExportedPartRole.Primary, file("s.heic", still), "image/heic", false),
+                ExportedPart(ExportedPartRole.PairedVideo, file("m.mov", motion), "video/quicktime", false),
+            ),
+            stops,
+        )
 
         assertFailsWith<CancellationException> { uploader.handOff(row, uniqueId) }
 
@@ -546,7 +556,7 @@ class OutboxBackupUploaderTest {
         val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
         val stagedBefore = stagedFiles()
         val gone = object : PayloadBundleEncryptor by realEncryption() {
-            override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle =
+            override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope, hashes: ContentHashes?): PayloadBundle =
                 throw SourceUnavailableException(bundle!!.payloads.first().filePath)
         }
         val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("p.jpg", bytes), "image/jpeg", false)), gone)
@@ -579,7 +589,7 @@ private class PreviewingEncryptor : PayloadBundleEncryptor {
 
     var calls = 0
 
-    override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle {
+    override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope, hashes: ContentHashes?): PayloadBundle {
         calls++
         // On the payload and nowhere else, which is where the real video processing puts it.
         val preview = id.homebase.api.client.drives.upload.EmbeddedThumb(1, 1, "image/webp", id.homebase.api.serialization.Base64Bytes(byteArrayOf(9, 9)))

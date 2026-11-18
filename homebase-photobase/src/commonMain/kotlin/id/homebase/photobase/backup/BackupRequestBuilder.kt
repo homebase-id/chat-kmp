@@ -3,14 +3,11 @@ package id.homebase.photobase.backup
 import id.homebase.api.video.toVideoQuality
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
-import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.crypto.encryptWithPayloadHash
-import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.MediaQuality
@@ -19,6 +16,7 @@ import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.video.VideoQuality
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.upload.ContentHashes
 import id.homebase.upload.LibraryKind
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.MetadataPolicy
@@ -28,7 +26,7 @@ import id.homebase.upload.UploadSource
 import id.homebase.upload.UserUploadBuilder
 import kotlin.uuid.Uuid
 
-/** One photo as an upload: its bytes, at the photo setting's quality, encrypted to staged files, however it's then sent. */
+/** One photo as an upload: its bytes at the photo setting's quality, however it's then sent. */
 class BackupRequestBuilder(
     private val fileOps: FileOperationsProvider,
     private val hasher: AssetHasher,
@@ -46,14 +44,20 @@ class BackupRequestBuilder(
         )
     }
 
-    /** Null when the bytes no longer match the hash; nothing is left behind then. On success the caller owns the staged files. */
-    suspend fun build(row: DeviceBackupAsset, uniqueId: Uuid, mediaType: BackupMediaType, exported: ExportedAsset): MediaUploadSpec? {
+    /**
+     * [send] gets the photo's upload, with each part the builder left as it is checked against its hash as it's
+     * encrypted. [HandOffResult.ChangedUnderUs], without calling [send], when a re-encoded part's source no longer matches.
+     */
+    suspend fun build(
+        row: DeviceBackupAsset,
+        uniqueId: Uuid,
+        mediaType: BackupMediaType,
+        exported: ExportedAsset,
+        send: suspend (MediaUploadSpec) -> HandOffResult,
+    ): HandOffResult {
         val digests = digestsOf(row)
         require(exported.parts.size == digests.size) { "${exported.parts.size} parts against ${digests.size} digests" }
-        val keyHeader = KeyHeader.newRandom16()
-        val payloads = mutableListOf<PayloadFile>()
         val reencoded = mutableListOf<String>()
-        var complete = false
         try {
             var exif: ImageMetadata? = null
             val bundle = timed(BackupStage.Thumbnails) {
@@ -65,30 +69,21 @@ class BackupRequestBuilder(
                             UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE)
                         }
                     },
-                    // A Live Photo's video is its own file, encrypted here; it never gets a copy.
+                    // A Live Photo's video is sent as it is; it never gets a copy.
                     options().copy(originalVideo = false),
                     fileOps,
                     onImageMetadata = { _, metadata -> exif = metadata },
                 ) { keyFor(exported.parts[it].role) }
             }
+            val expected = mutableMapOf<String, ByteArray>()
             for ((index, built) in bundle.payloads.withIndex()) {
                 val part = exported.parts[index]
-                // A part sent as it is is vouched for by its encrypted hash below; a re-encode by its source's hash.
-                val untouched = built.filePath == part.path
-                if (!untouched) {
+                if (built.filePath == part.path) {
+                    expected[built.key] = digests[index]
+                } else {
                     reencoded += built.filePath
-                    if (!hasher.matches(exported, part, digests[index])) return null
+                    if (!hasher.matches(exported, part, digests[index])) return HandOffResult.ChangedUnderUs
                 }
-                val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
-                payloads += built.copy(filePath = encryptedPath, isPreEncrypted = true)
-                val hashed = timed(BackupStage.Encrypt) {
-                    fileOps.encryptWithPayloadHash(built.filePath, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
-                }
-                if (untouched) {
-                    val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
-                    if (digest == null || !digest.contentEquals(digests[index])) return null
-                }
-                payloads[index] = payloads[index].copy(iv = hashed.iv, hash = hashed.hash)
             }
             val metadata = photoMetadata(
                 uniqueId,
@@ -97,11 +92,9 @@ class BackupRequestBuilder(
                 PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
                 bundle.previewThumbs.firstOrNull(),
             )
-            complete = true
-            return photoSpec(photosDriveId, uniqueId, keyHeader, bundle.copy(payloads = payloads.toList()), metadata)
+            return send(photoSpec(photosDriveId, uniqueId, bundle, metadata, ContentHashes(PayloadHashAlgorithm.Blake3, expected)))
         } finally {
             reencoded.forEach { runCatching { fileOps.deleteTempFile(it) } }
-            if (!complete) payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
         }
     }
 
@@ -113,11 +106,18 @@ class BackupRequestBuilder(
 internal fun digestsOf(row: DeviceBackupAsset): List<ByteArray> =
     row.contentHash.orEmpty().split(HashedAsset.CONTENT_HASH_SEPARATOR).map { it.hexToByteArray() }
 
-/** Bulk, and never shown from a local row: the Photos app shows the library itself. */
-internal fun photoSpec(driveId: Uuid, uniqueId: Uuid, keyHeader: KeyHeader, bundle: PayloadBundle, metadata: UploadFileMetadata) = MediaUploadSpec(
+/** Bulk, and never shown from a local row: the Photos app shows the library itself. Every payload carries its hash. */
+internal fun photoSpec(
+    driveId: Uuid,
+    uniqueId: Uuid,
+    bundle: PayloadBundle,
+    metadata: UploadFileMetadata,
+    hashes: ContentHashes,
+    finishMetadata: ((UploadFileMetadata) -> UploadFileMetadata)? = null,
+) = MediaUploadSpec(
     driveId = driveId,
     uniqueId = uniqueId,
-    keyHeader = keyHeader,
+    keyHeader = KeyHeader.newRandom16(),
     bundle = bundle,
     metadata = metadata,
     priority = OUTBOX_BULK_PRIORITY,
@@ -126,6 +126,8 @@ internal fun photoSpec(driveId: Uuid, uniqueId: Uuid, keyHeader: KeyHeader, bund
     seedCache = false,
     existingFileIsSuccess = true,
     sealDescriptorContent = true,
+    contentHashes = hashes,
+    finishMetadata = finishMetadata,
 )
 
 internal fun photoMetadata(uniqueId: Uuid, dataType: Int, userDateMs: Long, content: PhotoContent, tiny: EmbeddedThumb? = null) = UploadFileMetadata(

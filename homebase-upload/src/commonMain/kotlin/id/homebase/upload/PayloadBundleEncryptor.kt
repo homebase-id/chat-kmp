@@ -9,7 +9,9 @@ interface PayloadBundleEncryptor {
         uniqueId: Uuid,
         bundle: PayloadBundle?,
         aesKey: SecureByteArray,
-        scope: CoroutineScope
+        scope: CoroutineScope,
+        /** Null for none; see [ContentHashes]. */
+        hashes: ContentHashes? = null,
     ): PayloadBundle
 
     /**

@@ -1,18 +1,17 @@
 package id.homebase.photobase.backup
 
 import id.homebase.upload.UploadOptions
-import id.homebase.upload.PayloadBundle
 import id.homebase.api.video.VideoLocationReader
 import id.homebase.api.video.VideoCompressionFailedException
-import id.homebase.api.crypto.plaintextContentHash
-import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.api.file.SourceUnavailableException
+import id.homebase.upload.ContentChangedException
+import id.homebase.upload.ContentHashes
 import id.homebase.upload.LibraryKind
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.PreparedUpload
@@ -64,18 +63,27 @@ class OutboxBackupUploader(
         repeat(BULK_STREAMS) { outboxSync.send(force = true) }
     }
 
-    /** What [handOff] would queue, for a transport of the platform's own. */
-    suspend fun prepare(spec: MediaUploadSpec): PreparedUpload = uploadService.prepare(spec, scope)
+    /** What [handOff] would queue, for a transport of the platform's own; null when a file changed since it was hashed. */
+    suspend fun prepare(spec: MediaUploadSpec): PreparedUpload? = try {
+        timed(BackupStage.Encrypt) { uploadService.prepare(spec, scope) }
+    } catch (_: ContentChangedException) {
+        null
+    } catch (e: SourceUnavailableException) {
+        // Retried: the next attempt exports again, and the export says if the asset is gone.
+        throw BackupEnqueueFailedException("a file to send is gone: ${e.path}", e)
+    }
+
+    private suspend fun send(spec: MediaUploadSpec): HandOffResult {
+        val prepared = prepare(spec) ?: return HandOffResult.ChangedUnderUs
+        return handedOff(timed(BackupStage.Enqueue) { uploadService.queue(prepared) })
+    }
 
     private suspend fun handOffOriginal(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
         mediaType: BackupMediaType,
         exported: ExportedAsset,
-    ): HandOffResult {
-        val spec = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
-        return handedOff(timed(BackupStage.Enqueue) { uploadService.upload(spec, scope) })
-    }
+    ): HandOffResult = requests.build(row, uniqueId, mediaType, exported) { send(it) }
 
     // The source is checked against its hash as it's read for its location, which an HLS stream has no place
     // for: by a read of its own for a transcode, and by the encrypt pass for an untouched original.
@@ -109,46 +117,27 @@ class OutboxBackupUploader(
         untouched: Boolean,
     ): HandOffResult {
         val part = exported.parts.single()
-        val keyHeader = KeyHeader.newRandom16()
-        val built = UserUploadBuilder.build(
+        val bundle = UserUploadBuilder.build(
             listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.VIDEO, untouched = untouched)),
             options,
             fileOps,
         ) { PhotobaseProtocol.VideoPayloadKey }
-        val bundle = if (untouched || options.originalVideo) {
-            built.withOriginalEncrypted(part.path, keyHeader, expectedDigest, reader) ?: return HandOffResult.ChangedUnderUs
-        } else {
-            built
+        val expected = if (untouched || options.originalVideo) mapOf(PhotobaseProtocol.VideoPayloadKey to expectedDigest) else emptyMap()
+        val hashes = ContentHashes(PayloadHashAlgorithm.Blake3, expected) { key, chunk, offset, length ->
+            if (key == PhotobaseProtocol.VideoPayloadKey) reader.feed(chunk, offset, length)
         }
-        val location = reader.location
-        val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
-        val spec = photoSpec(photosDriveId, uniqueId, keyHeader, bundle, photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content))
-        return handedOff(uploadService.upload(spec, scope))
+        fun metadata() = reader.location.let { location ->
+            val content = PhotoContent(latitude = location?.latitude, longitude = location?.longitude, altitude = location?.altitude)
+            photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, content)
+        }
+        return send(photoSpec(photosDriveId, uniqueId, bundle, metadata(), hashes, finishMetadata = { metadata() }))
     }
 
     private fun handedOff(outcome: UploadOutcome): HandOffResult = when (outcome) {
         is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
-        // A file staged for this attempt; the next one exports again, and the export says if the asset is gone.
         is UploadOutcome.SourceMissing -> throw BackupEnqueueFailedException("a staged file is gone: ${outcome.missingPaths.joinToString()}")
         UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
         is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
-    }
-
-    // The untouched original, encrypted here so its hash is checked on the same read; null when it changed.
-    private suspend fun PayloadBundle.withOriginalEncrypted(path: String, keyHeader: KeyHeader, expectedDigest: ByteArray, reader: VideoLocationReader): PayloadBundle? {
-        val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
-        val hashed = fileOps.encryptWithPayloadHash(path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3) { chunk, offset, length ->
-            reader.feed(chunk, offset, length)
-        }
-        val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
-        if (digest == null || !digest.contentEquals(expectedDigest)) {
-            runCatching { fileOps.deleteTempFile(encryptedPath) }
-            return null
-        }
-        return copy(payloads = payloads.map {
-            if (it.key != PhotobaseProtocol.VideoPayloadKey) it
-            else it.copy(filePath = encryptedPath, iv = hashed.iv, hash = hashed.hash, isPreEncrypted = true)
-        })
     }
 
     private companion object {

@@ -1,5 +1,6 @@
 package id.homebase.core.moments
 
+import id.homebase.upload.ContentHashes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
@@ -51,7 +52,8 @@ class MomentsHeicOriginalScrubTest {
                     bundle: PayloadBundle?,
                     aesKey: SecureByteArray,
                     scope: CoroutineScope,
-                ) = realEncryptor.encryptBundle(uniqueId, bundle, aesKey, scope).also { sent.complete(it to aesKey) }
+                    hashes: ContentHashes?,
+                ) = realEncryptor.encryptBundle(uniqueId, bundle, aesKey, scope, hashes).also { sent.complete(it to aesKey) }
             },
         )
         env.login()
