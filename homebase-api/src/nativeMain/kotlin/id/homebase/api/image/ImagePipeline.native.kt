@@ -128,7 +128,6 @@ private class ImageIoSource(
 }
 
 // Drawing into a context of the matching colour space keeps P3 pixels P3 for Skia to carry on.
-// The context draws straight into the bitmap's native pixels, so there's no heap copy.
 private fun CGImageRef.toSkiaImage(): Image {
     val width = CGImageGetWidth(this).toInt()
     val height = CGImageGetHeight(this).toInt()
