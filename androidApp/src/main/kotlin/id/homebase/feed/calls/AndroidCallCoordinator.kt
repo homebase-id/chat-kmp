@@ -10,6 +10,10 @@ import id.homebase.chat.services.calling.CallRingSink
 import id.homebase.chat.services.calling.CallService
 import id.homebase.core.notifications.CallPushRouter
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onEach
 
 /** Android glue: ring pushes to notification + Telecom, and a foreground service while a call is live. */
 class AndroidCallCoordinator(
@@ -30,6 +34,11 @@ class AndroidCallCoordinator(
         )
         CallPushRouter.handler = coordinator
         coordinator.start()
+        callService.state
+            .mapNotNull { state -> state.callId?.takeIf { state.isActive }?.let { it to state.media.route } }
+            .distinctUntilChanged()
+            .onEach { (callId, route) -> HomebaseConnectionService.setRoute(callId, route) }
+            .launchIn(scope)
     }
 }
 
