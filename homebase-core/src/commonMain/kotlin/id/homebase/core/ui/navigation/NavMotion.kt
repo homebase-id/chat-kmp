@@ -54,8 +54,7 @@ internal fun NavDestination.routeMotion(wide: Boolean): RouteMotion = when {
     isTopLevelRoute() -> RouteMotion.Tab
     // Its sidebar is a shared element that stays put on a wide window; only the content fades.
     wide && isSidebarPlace() -> RouteMotion.Fade
-    hasRoute(Route.ProfileCard::class) ||
-            hasRoute(Route.VaultNoteEditor::class) ||
+    hasRoute(Route.VaultNoteEditor::class) ||
             hasRoute(Route.Crop::class) ||
             hasRoute(Route.Draw::class) -> RouteMotion.Modal
     // Splash and login are not a step in the hierarchy; the card editor redraws the card it opens from.

@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.vault.model
 
+import id.homebase.api.video.playableContentType
+
 /**
  * Names for a Vault entry's pages when they leave as one WebDrop: a single payload keeps the
  * entry's name (`Passport.jpg`), a bundle numbers its pages 1-based in page order
@@ -7,7 +9,7 @@ package id.homebase.core.ui.screens.vault.model
  * and as download filenames, so they must look like files, not like `vlt_pg_00`.
  */
 internal fun VaultEntry.webDropFileNames(): List<String> =
-    webDropFileNamesFor(fileName, payloadDescriptors.map { it.contentType ?: contentType })
+    webDropFileNamesFor(fileName, payloadDescriptors.map { it.playableContentType ?: contentType })
 
 /**
  * Extension rule byte-identical to [VaultUploaderService.downloadPayload]'s temp-file suffix

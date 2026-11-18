@@ -95,7 +95,6 @@ class ContactCardPhotoTest {
         val built = assertNotNull(data(listOf(withThumbs)))
 
         assertEquals(listOf(ImageSize(300, 300), ImageSize(600, 600)), built.availableThumbSizes)
-        assertEquals(ImageSize.THUMB_SMALL, built.requestedSize)
     }
 
     private fun assertContentEqualsHex(expected: ByteArray, actual: ByteArray?) {

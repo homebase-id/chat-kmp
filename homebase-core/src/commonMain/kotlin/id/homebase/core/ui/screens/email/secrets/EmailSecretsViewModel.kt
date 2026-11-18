@@ -15,7 +15,6 @@ import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.io.files.Path
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -108,10 +107,6 @@ class EmailSecretsViewModel(
      *
      * A file rather than the clipboard because that is what mail apps import - and on phones
      * the clipboard is not an option at all.
-     *
-     * The temp is deleted as soon as the platform has taken it. It lives in the cache dir,
-     * which the CacheSweeper reaps anyway, but a private key sitting around waiting for a
-     * sweep is not a risk worth accepting for the sake of two lines.
      */
     private fun savePrivateKey(key: EmailKeyRef) {
         viewModelScope.launch {
@@ -132,16 +127,6 @@ class EmailSecretsViewModel(
                 _events.tryEmit(EmailSecretsUiEvent.KeySaveFailed)
             }
         }
-    }
-
-    /**
-     * Drop the temp once the platform has taken it - or failed to.
-     *
-     * It lives in the cache dir, which the CacheSweeper reaps anyway, but a private key sitting
-     * on disk waiting for a sweep is not a risk worth accepting to save two lines.
-     */
-    fun discardKeyFile(path: String) {
-        fileOps.deleteTempFile(path)
     }
 
     /**

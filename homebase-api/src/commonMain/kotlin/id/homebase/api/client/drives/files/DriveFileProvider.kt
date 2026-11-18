@@ -268,22 +268,24 @@ public class DriveFileProvider(
     }
 
     /**
-     * Seed the encrypted payload disk cache with locally-produced bytes — the
-     * exact AES-CBC ciphertext the server would return for this payload. Used
+     * Seed the payload disk cache with locally-produced bytes — exactly what the
+     * server would return for this payload: its AES-CBC ciphertext, or the plain
+     * bytes of a plaintext upload ([encrypted] false). Used
      * at optimistic send time so a message whose upload later fails permanently
      * still has retrievable media: [getPayloadBytesEncrypted] checks this cache
      * before the network. Counterpart write API to [getPayloadBytesEncrypted].
      */
-    suspend fun cachePayloadBytesEncrypted(
+    suspend fun cachePayloadBytes(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
         bytes: ByteArray,
         contentType: String,
-    ) = driveCache.cachePayloadBytesEncrypted(driveId, fileId, key, bytes, contentType)
+        encrypted: Boolean = true,
+    ) = driveCache.cachePayloadBytes(driveId, fileId, key, bytes, contentType, encrypted)
 
-    /** Thumbnail counterpart to [cachePayloadBytesEncrypted]; pairs with [getThumbBytesEncrypted]. */
-    suspend fun cacheThumbBytesEncrypted(
+    /** Thumbnail counterpart to [cachePayloadBytes]; pairs with [getThumbBytesEncrypted]. */
+    suspend fun cacheThumbBytes(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,
@@ -292,7 +294,11 @@ public class DriveFileProvider(
         bytes: ByteArray,
         contentType: String,
         lastModified: Long? = null,
-    ) = driveCache.cacheThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, bytes, contentType, lastModified)
+        encrypted: Boolean = true,
+    ) = driveCache.cacheThumbBytes(driveId, fileId, payloadKey, width, height, bytes, contentType, lastModified, encrypted)
+
+    fun removeSeededFile(driveId: Uuid, fileId: Uuid, payloads: List<PayloadDescriptor>) =
+        driveCache.removeSeededFile(driveId, fileId, payloads)
 
     /**
      * Move a file's seeded cache entries (payloads + thumbnails) from the

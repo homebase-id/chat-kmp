@@ -1,5 +1,6 @@
 package id.homebase.core.moments
 
+import id.homebase.upload.ContentHashes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
@@ -10,16 +11,15 @@ import id.homebase.api.image.MediaQuality
 import id.homebase.api.video.VideoPayloadProcessor
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.clipboard.platformFileFromPath
+import id.homebase.core.contains
 import id.homebase.core.feed.FeedTestEnv
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.ui.screens.moments.toAttachmentInput
 import id.homebase.core.ui.screens.moments.toMediaInfo
+import id.homebase.upload.EMPTY_BUNDLE
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.PayloadBundleEncryptionService
 import id.homebase.upload.PayloadBundleEncryptor
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -29,6 +29,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.test.runTest
 
 class MomentsHeicOriginalScrubTest {
 
@@ -41,12 +44,16 @@ class MomentsHeicOriginalScrubTest {
             this,
             fileOps = fileOps,
             payloadBundleEncryptor = object : PayloadBundleEncryptor {
+                override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+                override suspend fun discard(bundle: PayloadBundle) = Unit
+
                 override suspend fun encryptBundle(
                     uniqueId: Uuid,
                     bundle: PayloadBundle?,
                     aesKey: SecureByteArray,
                     scope: CoroutineScope,
-                ) = realEncryptor.encryptBundle(uniqueId, bundle, aesKey, scope).also { sent.complete(it to aesKey) }
+                    hashes: ContentHashes?,
+                ) = realEncryptor.encryptBundle(uniqueId, bundle, aesKey, scope, hashes).also { sent.complete(it to aesKey) }
             },
         )
         env.login()
@@ -103,7 +110,4 @@ class MomentsHeicOriginalScrubTest {
 
     // homebase-api's HeicFixtures puts the Exif item at 572..824; that object isn't visible from here.
     private fun ByteArray.exifItem() = copyOfRange(572, 824)
-
-    private fun ByteArray.contains(needle: ByteArray): Boolean =
-        (0..size - needle.size).any { at -> needle.indices.all { this[at + it] == needle[it] } }
 }

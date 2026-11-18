@@ -1,5 +1,6 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.upload.UserUploadBuilder
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.link.LinkPreview
@@ -49,12 +50,6 @@ object LinkPreviewPayloadBuilder {
         // triangle when the load fails.
         val actualHasImage = tinyThumb != null
 
-        // 1. Build descriptorContent (stripped JSON, no image base64, ≤1024 bytes)
-        var descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = null)
-        if (descriptorContent.encodeToByteArray().size > ChatProtocol.MaxDescriptorContentLength) {
-            descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = 100)
-        }
-
         val mimeType = if (actualHasImage && imageUrl != null) {
             imageUrl.substringAfter("data:").substringBefore(";")
         } else {
@@ -76,7 +71,11 @@ object LinkPreviewPayloadBuilder {
                     key = ChatProtocol.PAYLOAD_KEY_LINKS,
                     filePath = tempPath,
                     contentType = mimeType,
-                    descriptorContent = descriptorContent,
+                    descriptorContent = UserUploadBuilder.appDescriptor(
+                        buildDescriptorJson(linkPreview, actualHasImage),
+                        buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = 100),
+                        buildDescriptorJson(linkPreview, actualHasImage, maxTextLen = 0),
+                    ),
                     previewThumbnail = tinyThumb
                 )
             ), thumbnails = emptyList(), previewThumbs = listOfNotNull(tinyThumb)
@@ -84,23 +83,15 @@ object LinkPreviewPayloadBuilder {
     }
 
     private fun buildDescriptorJson(
-        linkPreview: LinkPreview, hasImage: Boolean, maxTextLen: Int?
+        linkPreview: LinkPreview, hasImage: Boolean, maxTextLen: Int = Int.MAX_VALUE
     ): String {
         val descriptor = LinkPreviewDescriptor(
             url = linkPreview.url,
             hasImage = hasImage,
             imageWidth = if (hasImage) linkPreview.imageWidth else null,
             imageHeight = if (hasImage) linkPreview.imageHeight else null,
-            description = if (maxTextLen != null) {
-                linkPreview.description.truncateToCodePoints(maxTextLen)
-            } else {
-                linkPreview.description
-            },
-            title = if (maxTextLen != null) {
-                linkPreview.title.truncateToCodePoints(maxTextLen)
-            } else {
-                linkPreview.title
-            }
+            description = linkPreview.description.truncateToCodePoints(maxTextLen),
+            title = linkPreview.title.truncateToCodePoints(maxTextLen),
         )
         return OdinSystemSerializer.serialize(listOf(descriptor))
     }

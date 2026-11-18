@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import id.homebase.api.util.safeFileName
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
 import id.homebase.resources.contact_share_prompt_add
@@ -96,7 +97,7 @@ import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.ui.screens.contactbook.saveNewContact
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.feed.MainActivity
 import id.homebase.feed.R
 import io.github.vinceglb.filekit.PlatformFile
@@ -907,7 +908,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         val shareId = Uuid.random()
         val names = try {
             attachments.mapIndexed { index, attachment ->
-                val originalName = (attachment.displayName ?: attachment.filePath).substringAfterLast('/')
+                val originalName = safeFileName(attachment.displayName ?: attachment.filePath)
                 val name = "$shareId/$index/$originalName"
                 val target = java.io.File(shareContentProcessor.resolveFilePath(name))
                 target.parentFile?.mkdirs()

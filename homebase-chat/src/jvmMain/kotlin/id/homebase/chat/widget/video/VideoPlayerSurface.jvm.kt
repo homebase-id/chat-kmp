@@ -154,7 +154,7 @@ actual fun VideoPlayerSurface(
 
                 val videoData = VideoPlayerData(
                     data.fileId, data.driveId, data.payloadKey, data.keyHeader,
-                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId,
+                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, contentType = data.payload.contentType,
                 )
                 val videoAccess =
                     videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)

@@ -3,12 +3,15 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.PayloadHash
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.files.WholePercentProgressGate
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.crypto.encryptFileStreaming
+import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFile
@@ -38,20 +41,18 @@ class VideoPayloadProcessor(
         trimEndMs: Long? = null,
         videoQuality: VideoQuality = VideoQuality.STANDARD,
         inputBlobUrl: String? = null,
+        playlistPayloadKey: String,
     ): VideoProcessResult {
         // Without it iOS suspends ffmpeg mid-encode as soon as the user leaves the app.
         val assertion =
             beginBackgroundExecutionAssertion("video-bundle", continuedProcessingTitle = "Preparing video")
         val reportingProgress: (VideoPayloadProgressPhase) -> Unit = { phase ->
-            assertion.reportProgress(overallFraction(phase))
+            assertion.reportProgress(videoOverallFraction(phase.phase, phase.progress))
             onProgress?.invoke(phase)
         }
         return try {
-            // Resolve content URIs (Android copies the gallery pick into cacheDir as
-            // resolved_*; other platforms no-op) and reap that copy when we're done,
-            // so it can't linger at full video size. withResolvedFile is the shared
-            // resolve-then-delete scope — see FileOperationsProvider.withResolvedFile.
-            fileOperationsProvider.withResolvedFile(payload.filePath) { resolvedPath ->
+            // A resolved copy is reaped when we're done, so it can't linger at full video size.
+            fileOperationsProvider.withResolvedFile(payload.filePath, resolve = !compressor.readsInPlace(payload.filePath)) { resolvedPath ->
                 processResolved(
                     payload =
                         if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath)
@@ -63,21 +64,13 @@ class VideoPayloadProcessor(
                     trimEndMs = trimEndMs,
                     videoQuality = videoQuality,
                     inputBlobUrl = inputBlobUrl,
+                    playlistPayloadKey = playlistPayloadKey,
                 )
             }
         } finally {
             assertion.end()
         }
     }
-
-    private fun overallFraction(phase: VideoPayloadProgressPhase): Float =
-        when (phase.phase) {
-            VideoProcessingPhase.THUMBNAIL -> 0f
-            VideoProcessingPhase.COMPRESSING -> 0.9f * phase.progress
-            VideoProcessingPhase.SEGMENTING -> 0.9f + 0.1f * phase.progress
-            VideoProcessingPhase.ENCRYPTING -> 0.9f
-            VideoProcessingPhase.COMPLETE -> 1f
-        }
 
     private suspend fun processResolved(
         payload: PayloadFile,
@@ -90,11 +83,11 @@ class VideoPayloadProcessor(
         // Web only: a blob: URL for the original, read by ffmpeg/decoder in JS (poster + compress)
         // so the bytes never enter Kotlin. Read-only here; revoked by writeFileFromUrl.
         inputBlobUrl: String?,
+        playlistPayloadKey: String,
     ): VideoProcessResult {
         // The okio path stays the source of truth for size, the compress-skip fallback, and the
         // non-HLS encrypt of an uncompressed clip; inputBlobUrl only short-circuits the INPUT reads.
-        // Only a real blob: handle may bypass the resolved path — a raw content:// or PHAsset id
-        // here is unreadable by native ffmpeg.
+        // Only a real blob: handle replaces the path: a content:// or PHAsset id there would skip the resolve.
         val ffmpegInputPath = inputBlobUrl?.takeIf { it.isBlobUrl() } ?: payload.filePath
         val inputSize = fileOperationsProvider.getFileSize(payload.filePath)
         Logger.i(tag = "VideoProcessing") {
@@ -118,7 +111,7 @@ class VideoPayloadProcessor(
         // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
         // native-first decode per platform), so no temp-file round-trip to read+delete.
         val (posterBytes, posterElapsed) =
-            measureTimedValue { VideoThumbnailService.extractPosterFrame(ffmpegInputPath) }
+            measureTimedValue { VideoThumbnailService.extractPosterFrame(ffmpegInputPath, fullSize = true) }
         Logger.i(tag = "VideoProcessing") {
             "poster done in ${posterElapsed.inWholeMilliseconds}ms (bytes=${posterBytes?.size})"
         }
@@ -158,6 +151,7 @@ class VideoPayloadProcessor(
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
                     quality = videoQuality,
+                    keepMetadata = !payload.stripMetadata,
                     onProgress = {
                         if (compressGate.admit(it * 100f) != null) {
                             onProgress?.invoke(
@@ -185,6 +179,7 @@ class VideoPayloadProcessor(
                 keyHeader = keyHeader,
                 onProgress = onProgress,
                 descriptorContentPayloadKey = descriptorContentPayloadKey,
+                playlistPayloadKey = playlistPayloadKey,
                 compressedPath = compressedPath,
                 compressElapsed = compressElapsed,
                 inputSize = inputSize,
@@ -206,6 +201,7 @@ class VideoPayloadProcessor(
         keyHeader: KeyHeader,
         onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
         descriptorContentPayloadKey: String,
+        playlistPayloadKey: String,
         compressedPath: String,
         compressElapsed: Duration,
         inputSize: Long,
@@ -232,7 +228,7 @@ class VideoPayloadProcessor(
 
         /* ---------- PHASE 4: SEGMENT (HLS ONLY) ---------- */
 
-        val (playlistPath, videoPath, isSegmented) =
+        val (playlistPath, videoPath, segmentedHash) =
             if (useHls) {
                 // Same whole-percent throttle as compression (see compressGate). No priming —
                 // there is no separate SEGMENTING phase-start emit, so the first tick should land.
@@ -292,15 +288,16 @@ class VideoPayloadProcessor(
                 Triple(
                     (stagedHlsDir / segmented.playlistPath.toPath().name).toString(),
                     (stagedHlsDir / segmented.segmentsPath.toPath().name).toString(),
-                    true,
+                    segmented.hash,
                 )
             } else {
-                Triple(null, compressedPath, false)
+                Triple(null, compressedPath, null)
             }
+        val isSegmented = playlistPath != null
 
         /* ---------- PHASE 4.5: ENCRYPT NON-HLS VIDEO ---------- */
 
-        val finalVideoPath =
+        val (finalVideoPath, videoHash) =
             if (!isSegmented) {
                 onProgress?.invoke(
                     VideoPayloadProgressPhase(
@@ -314,9 +311,8 @@ class VideoPayloadProcessor(
                     inputPath = videoPath,
                     keyHeader = keyHeader
                 )
-
             } else {
-                videoPath
+                videoPath to segmentedHash
             }
 
 
@@ -361,54 +357,56 @@ class VideoPayloadProcessor(
                 videoBitrateBps = videoBitrateBps,
             )
 
-        val metadataJson = OdinSystemSerializer.serialize(metadata)
-        val shouldEmbed =
-            metadataJson.length < HomebaseProtocol.MaxPayloadDescriptorBytes
-
         /* ---------- PHASE 6: PAYLOADS ---------- */
 
-        val videoPayload =
-            PayloadFile(
-                key = payload.key,
-                filePath = finalVideoPath,
-                contentType = if (isSegmented) "video/mp2t" else "video/mp4",
-                descriptorContent =
-                    if (shouldEmbed) metadataJson
-                    else OdinSystemSerializer.serialize(
-                        metadata.copy(
-                            isDescriptorContentComplete = false,
-                            hlsPlaylist = null,  // too large — full playlist goes in separate payload
-                            key = descriptorContentPayloadKey  // tells player where to fetch full metadata
-                        )
-                    ),
-                isPreEncrypted = true,
-                previewThumbnail = tinyThumb,
-                iv = keyHeader.iv
-            )
+        fun videoPayload(descriptorContent: String) = PayloadFile(
+            key = payload.key,
+            filePath = finalVideoPath,
+            contentType = if (isSegmented) "video/mp2t" else "video/mp4",
+            descriptorContent = descriptorContent,
+            isPreEncrypted = true,
+            previewThumbnail = tinyThumb,
+            iv = keyHeader.iv,
+            hash = videoHash,
+        )
 
-        val payloads =
-            if (shouldEmbed) {
-                listOf(videoPayload)
+        // Referenced by the outbox row, so staged durably, not in the upload-temp that every startup sweeps.
+        // The video's IV, like its thumbnails, so a player reads it with the key header it already holds.
+        suspend fun sidePayload(key: String, text: String, contentType: String, suffix: String) = PayloadFile(
+            key = key,
+            filePath = fileOperationsProvider.writeBytesToOutboxTempFile(keyHeader.encryptDataAes(text.toByteArray()), "payload", suffix),
+            contentType = contentType,
+            isPreEncrypted = true,
+            iv = keyHeader.iv
+        )
+
+        val current = payload.descriptorContent?.let(DescriptorContentV1::parseOrNull)
+        val payloads = if (current != null) {
+            val untouched = compressedPath == payload.filePath && !isSegmented
+            val descriptor = current.withVideo(metadata, untouched, playlistContent?.let { playlistPayloadKey })
+            listOfNotNull(
+                videoPayload(descriptor.encode()),
+                playlistContent?.let { sidePayload(playlistPayloadKey, it, HLS_PLAYLIST_CONTENT_TYPE, ".m3u8") },
+            )
+        } else {
+            val metadataJson = OdinSystemSerializer.serialize(metadata)
+            if (metadataJson.length < HomebaseProtocol.MaxPayloadDescriptorBytes) {
+                listOf(videoPayload(metadataJson))
             } else {
                 listOf(
-                    videoPayload,
-                    PayloadFile(
-                        key = descriptorContentPayloadKey,
-                        filePath =
-                            // Encrypted, ready-to-transmit and referenced by the outbox row —
-                            // belongs in the durable staging bucket, NOT the disposable
-                            // upload-temp/ that gets swept every startup (#842).
-                            fileOperationsProvider.writeBytesToOutboxTempFile(
-                                keyHeader.encryptDataAes(metadataJson.toByteArray()),
-                                "payload",
-                                ".metadata"
-                            ),
-                        contentType = "application/json",
-                        isPreEncrypted = true,
-                        iv = keyHeader.iv
-                    )
+                    videoPayload(
+                        OdinSystemSerializer.serialize(
+                            metadata.copy(
+                                isDescriptorContentComplete = false,
+                                hlsPlaylist = null,  // too large — full playlist goes in separate payload
+                                key = descriptorContentPayloadKey  // tells player where to fetch full metadata
+                            )
+                        )
+                    ),
+                    sidePayload(descriptorContentPayloadKey, metadataJson, "application/json", ".metadata"),
                 )
             }
+        }
 
         /* ---------- RESULT ---------- */
 
@@ -431,17 +429,17 @@ class VideoPayloadProcessor(
         )
     }
 
+    /** The encrypted file and its payload hash, taken in the same pass. */
     internal suspend fun encryptVideoFile(
         inputPath: String,
         keyHeader: KeyHeader
-    ): String {
+    ): Pair<String, PayloadHash> {
         // Encrypted output goes straight into the durable outbox staging dir (#842) —
         // writing it to cacheDir root left it untracked, so the startup sweep / OS
         // cache reclaim deleted it out from under a pending outbox row (ENOENT retries).
         val outputPath =
             fileOperationsProvider.createOutboxStagingPath("video-encrypted-", ".bin")
-        fileOperationsProvider.encryptFileStreaming(inputPath, outputPath, keyHeader)
-        return outputPath
+        return outputPath to fileOperationsProvider.encryptWithPayloadHash(inputPath, outputPath, keyHeader, PayloadHashAlgorithm.Blake3)
     }
 
     private suspend fun detectVideoCodec(filePath: String): String {

@@ -1,26 +1,20 @@
 package id.homebase.core.ui.screens.media
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Flip
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.api.image.MediaQuality
-import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
@@ -36,7 +30,7 @@ import id.homebase.resources.settings_media_camera_header
 import id.homebase.resources.settings_media_mirror_front
 import id.homebase.resources.settings_media_mirror_front_description
 import id.homebase.core.settings.description
-import id.homebase.core.settings.label
+import id.homebase.core.settings.MediaQualityOptions
 import id.homebase.resources.settings_media_quality_footer
 import id.homebase.resources.settings_media_quality_header
 import org.jetbrains.compose.resources.stringResource
@@ -70,22 +64,11 @@ fun MediaSettingsUi(
             title = stringResource(MR.string.settings_media_quality_header),
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
         )
-        Column(modifier = Modifier.selectableGroup()) {
-            MediaQuality.entries.forEach { quality ->
-                SettingsOptionRow(
-                    modifier = Modifier.testTag(quality.code),
-                    label = stringResource(quality.label),
-                    supportingText = stringResource(quality.description),
-                    selected = quality == uiState.mediaQuality,
-                    onClick = { onAction(MediaSettingsUiAction.SetMediaQuality(quality)) },
-                )
-            }
-        }
-        Text(
-            text = stringResource(MR.string.settings_media_quality_footer),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        MediaQualityOptions(
+            selected = uiState.mediaQuality,
+            description = { it.description },
+            note = MR.string.settings_media_quality_footer,
+            onSelect = { onAction(MediaSettingsUiAction.SetMediaQuality(it)) },
         )
 
         SettingsSectionHeader(

@@ -1,6 +1,7 @@
 package id.homebase.chat.services.builder
 
 import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.client.location.LocationPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.request.forms.InputProvider
@@ -58,6 +59,38 @@ class LinkPreviewPayloadBuilderTest {
             "Payload bytes must not be empty — encryption pipeline rejects empty data"
         )
         assertTrue(bundle.previewThumbs.isEmpty(), "No image → no thumbnail")
+    }
+
+    // With the switch off, a preview writes what it always wrote: whole when it fits, else its text cut short.
+    @Test
+    fun aLinkPreviewTooLongToFitHasItsTextCutToAHundred() = runTest {
+        val long = "é".repeat(600)
+        val preview = LinkPreview(title = long, url = "https://example.com", description = long, imageUrl = null, imageHeight = null, imageWidth = null)
+
+        val written = LinkPreviewPayloadBuilder.build(preview, RecordingFileOperationsProvider()).payloads.single().descriptorContent
+
+        val cut = "é".repeat(100)
+        val expected = OdinSystemSerializer.serialize(listOf(LinkPreviewDescriptor(url = "https://example.com", hasImage = false, imageWidth = null, imageHeight = null, description = cut, title = cut)))
+        assertEquals(expected, written)
+    }
+
+    @Test
+    fun aLocationPreviewTooLongToFitHasItsAddressCutToTwoHundred() = runTest {
+        val preview = LocationPreview(lat = 55.7, lon = 12.6, address = "ø".repeat(900), imageUrl = null, imageWidth = null, imageHeight = null)
+
+        val written = LocationPreviewPayloadBuilder.build(preview, RecordingFileOperationsProvider()).payloads.single().descriptorContent
+
+        val expected = OdinSystemSerializer.serialize(listOf(LocationPreviewDescriptor(lat = 55.7, lon = 12.6, address = "ø".repeat(200), hasImage = false, imageWidth = null, imageHeight = null)))
+        assertEquals(expected, written)
+    }
+
+    @Test
+    fun aLocationPreviewThatFitsIsWrittenWhole() = runTest {
+        val preview = LocationPreview(lat = 55.7, lon = 12.6, address = "Rådhuspladsen 1", imageUrl = null, imageWidth = null, imageHeight = null)
+
+        val written = LocationPreviewPayloadBuilder.build(preview, RecordingFileOperationsProvider()).payloads.single().descriptorContent
+
+        assertEquals(OdinSystemSerializer.serialize(listOf(LocationPreviewDescriptor(lat = 55.7, lon = 12.6, address = "Rådhuspladsen 1", hasImage = false, imageWidth = null, imageHeight = null))), written)
     }
 
     @Test

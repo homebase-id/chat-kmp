@@ -83,6 +83,15 @@ class BackupPolicyTest {
     }
 
     @Test
+    fun onlyTheAppOpenTakesVideosOfAnySize() {
+        val on = BackupSettings(enabled = true)
+        val charging = online.copy(isCharging = true)
+        assertEquals(MAX_BACKGROUND_VIDEO_BYTES, largestVideoBytes(on, charging, interactive = false))
+        assertEquals(Long.MAX_VALUE, largestVideoBytes(on, online, interactive = true))
+        assertNull(largestVideoBytes(on, online, interactive = false))
+    }
+
+    @Test
     fun captureTimePrefersExifWithItsOffset() {
         val wallClock = LocalDateTime(2026, 1, 2, 3, 4, 5)
         val withOffset = ImageMetadata(capturedAt = wallClock, captureUtcOffset = UtcOffset(hours = 2))

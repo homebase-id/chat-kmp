@@ -392,15 +392,11 @@ fun AppNavHost(
     val railAvatarState by koinInject<OwnerAvatarStatus>().state.collectAsStateWithLifecycle()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
-    // bar must keep tracking that screen or they vanish (and reflow it) the moment a pane opens.
+    // A settings pane or the card sheet floats over the screen beneath it, which stays drawn. The rail and
+    // bottom bar must keep tracking that screen or they vanish (and reflow it) the moment one opens.
     val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
-    val chromeEntry = if (isDesktopOrWeb()) {
-        backStack.lastOrNull {
-            it.destination !is FloatingWindow && it.destination !is NavGraph
-        }
-    } else {
-        navBackStackEntry
+    val chromeEntry = backStack.lastOrNull {
+        it.destination !is FloatingWindow && it.destination !is NavGraph
     }
     val chromeDestination = chromeEntry?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
@@ -867,6 +863,14 @@ fun AppNavHost(
                     // activated, so no extra gate here - and if it ever fires without
                     // activation, the WebDrop screen itself shows onboarding.
                     openWebDrop()
+                }
+
+                is NotificationNavigationEvent.OpenFeedPost -> {
+                    Logger.i(tag = "AppNavHost") { "OpenFeedPost received: ${event.postId}" }
+                    navController.awaitChatList()
+                    // Feed first, so Back from the post lands on the timeline.
+                    navController.openApp(Route.Feed, tabRoutes)
+                    navController.navigate(Route.PostDetail(event.postId))
                 }
 
                 is NotificationNavigationEvent.OpenApp -> {
@@ -1893,6 +1897,7 @@ fun AppNavHost(
 
                             composable<Route.ProfileCardEditor> { entry ->
                                 if (isAuthenticated) {
+                                    val route = entry.toRoute<Route.ProfileCardEditor>()
                                     ProfileCardEditorScreen(
                                         viewModel = koinViewModel(
                                             viewModelStoreOwner = rememberCardHostOwner(navController, entry),
@@ -1903,7 +1908,7 @@ fun AppNavHost(
                                             navController.navigate(Route.Crop(requestId.toString(), lockedAspect = "square"))
                                         },
                                         cardsEnabled = profileCardEnabled,
-                                        openDesign = entry.toRoute<Route.ProfileCardEditor>().design,
+                                        openDesign = route.design,
                                     )
                                 }
                             }
@@ -2619,13 +2624,14 @@ private fun rememberSettingsOwner(navController: NavHostController, entry: NavBa
         navController.currentBackStack.value.lastOrNull { it.destination.hasRoute(Route.Settings::class) } ?: entry
     }
 
-// The card host lives with the Settings entry, so it is warm before the card opens and survives it.
+// The card host lives with the Settings entry, so it is warm before the card opens; otherwise with the screen the card
+// opened from, so the card and its editor share one view model.
 @Composable
 private fun rememberCardHostOwner(navController: NavHostController, entry: NavBackStackEntry): ViewModelStoreOwner =
     remember(entry) {
         val backStack = navController.currentBackStack.value
         backStack.lastOrNull { it.destination.hasRoute(Route.Settings::class) }
-            ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileCard::class) }
+            ?: backStack.lastOrNull { it != entry && !it.destination.isCardRoute() }
             ?: entry
     }
 

@@ -2,37 +2,37 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.api.video.playableFileName
+import id.homebase.api.video.playableContentType
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.PayloadDownloadService
-import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFiles
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.sync.database.enqueued
+import id.homebase.api.video.VideoQuality
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.upload.MetadataPolicy
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.UploadOptions
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
-import id.homebase.upload.thumbnailDescriptorsFor
-import id.homebase.chat.services.builder.MessageThumbnailGenerator
+import id.homebase.upload.UploadSource
+import id.homebase.upload.UserUploadBuilder
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
-import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
-import id.homebase.core.util.extensionForMimeType
+import id.homebase.api.file.CONTENT_TYPE_MARKDOWN
+import id.homebase.api.file.extensionForMimeType
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.image.ImageUtils
-import id.homebase.api.image.createTinyPreview
-import id.homebase.core.pdf.PDF_CARD_RENDER_WIDTH
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.cancellation.CancellationException
@@ -41,7 +41,6 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private const val TAG = "VaultUploaderService"
-private fun vaultPayloadKey(index: Int): String = "vlt_pg_${index.toString().padStart(2, '0')}"
 
 class VaultUploaderService(
     private val uploadService: UploadService,
@@ -94,7 +93,7 @@ class VaultUploaderService(
             val keyHeader = KeyHeader.newRandom16()
 
             var pdfPageCount: Int? = null
-            val bundle = buildMultiPayloadBundle(files, { pdfPageCount = it }, notePreview)
+            val bundle = vaultBundle(files, { VaultEntry.pageKey(it) }, notePreview) { pdfPageCount = it }
 
             val content = OdinSystemSerializer.serialize(
                 VaultFileContent(name = entryName, label = label, notes = notes, pdfPageCount = pdfPageCount)
@@ -151,42 +150,7 @@ class VaultUploaderService(
         scope: CoroutineScope,
     ): Boolean {
         return try {
-            val existingMaxIndex =
-                file.payloadDescriptors.mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
-                    .maxOrNull() ?: -1
-            val startIndex = existingMaxIndex + 1
-
-            val allPayloads = mutableListOf<PayloadFile>()
-            val allThumbnails = mutableListOf<ThumbnailFile>()
-
-            newFiles.forEachIndexed { i, (filePath, contentType) ->
-                val key = vaultPayloadKey(startIndex + i)
-                var previewThumbnail: EmbeddedThumb? = null
-                var thumbnails = emptyList<ThumbnailFile>()
-
-                if (contentType.startsWith("image/")) {
-                    try {
-                        val result = MessageThumbnailGenerator.generate(
-                            filePath, key, fileOperationsProvider,
-                        )
-                        previewThumbnail = result.preview
-                        thumbnails = result.thumbnails
-                    } catch (e: Exception) {
-                        Logger.w(e, TAG) { "Thumbnail generation failed for append payload $key" }
-                    }
-                }
-
-                allPayloads += PayloadFile(
-                    key = key,
-                    filePath = filePath,
-                    contentType = contentType,
-                    previewThumbnail = previewThumbnail,
-                )
-                allThumbnails += thumbnails
-            }
-
-            // Plaintext bundle — UploadService.updateFile (via enqueueFileContentUpdate) encrypts
-            // (fail-soft), builds the manifest, and writes the optimistic update.
+            val start = file.nextPageIndex()
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -197,7 +161,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                bundle = PayloadBundle(allPayloads, allThumbnails, emptyList()),
+                bundle = vaultBundle(newFiles, { VaultEntry.pageKey(start + it) }),
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
@@ -207,9 +171,7 @@ class VaultUploaderService(
 
     /**
      * Replaces the image payload at [payloadKey] in place with [newFilePath]
-     * (the edited bytes). Same encryption/thumbnail/outbox path as
-     * [appendResolvedPages] — only the key is reused so the page is updated
-     * rather than appended.
+     * (the edited bytes).
      */
     suspend fun replacePagePayload(
         file: VaultEntry,
@@ -236,27 +198,6 @@ class VaultUploaderService(
         scope: CoroutineScope,
     ): Boolean {
         return try {
-            var previewThumbnail: EmbeddedThumb? = null
-            var thumbnails = emptyList<ThumbnailFile>()
-            if (contentType.startsWith("image/")) {
-                try {
-                    val result = MessageThumbnailGenerator.generate(
-                        newFilePath, payloadKey, fileOperationsProvider,
-                    )
-                    previewThumbnail = result.preview
-                    thumbnails = result.thumbnails
-                } catch (e: Exception) {
-                    Logger.w(e, TAG) { "Thumbnail generation failed for replace payload $payloadKey" }
-                }
-            }
-
-            val payload = PayloadFile(
-                key = payloadKey,
-                filePath = newFilePath,
-                contentType = contentType,
-                previewThumbnail = previewThumbnail,
-            )
-
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -267,7 +208,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                bundle = PayloadBundle(listOf(payload), thumbnails, emptyList()),
+                bundle = vaultBundle(listOf(newFilePath to contentType), { payloadKey }),
             )
         } catch (e: CancellationException) {
             throw e
@@ -321,13 +262,6 @@ class VaultUploaderService(
             val existingKey = file.payloadDescriptors.firstOrNull()?.key
                 ?: VaultEntry.DEFAULT_PAYLOAD_KEY
 
-            val payload = PayloadFile(
-                key = existingKey,
-                filePath = tempPath,
-                contentType = CONTENT_TYPE_MARKDOWN,
-                descriptorContent = notePreview,
-            )
-
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -338,7 +272,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                bundle = PayloadBundle(listOf(payload), emptyList(), emptyList()),
+                bundle = vaultBundle(listOf(tempPath to CONTENT_TYPE_MARKDOWN), { existingKey }, notePreview),
                 // A note edit is a full-state single-payload overwrite: write the new body through +
                 // seed it (so a read-back before send is correct) and coalesce rapid re-saves so the
                 // newest body wins instead of being dropped as AlreadyQueued (issue #927).
@@ -358,7 +292,8 @@ class VaultUploaderService(
         }
     }
 
-    suspend fun downloadPayload(file: VaultEntry, payloadKey: String): String? {
+    /** [payloadKey] exported as a file for the person, with that file's name and type: an HLS video's an MP4. */
+    suspend fun downloadPayload(file: VaultEntry, payloadKey: String): VaultDownload? {
         return try {
             val payloadDescriptor = file.payloadDescriptors.find { it.key == payloadKey }
             val iv = payloadDescriptor?.iv
@@ -376,86 +311,43 @@ class VaultUploaderService(
             val extension = extensionForMimeType(ct.substringBefore(';').trim().lowercase())
                 ?: file.fileName.substringAfterLast('.', "").takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
                 ?: ct.substringAfter("/", "bin")
-            // Stream-decrypt into a disposable upload-temp file (#845) — bounded RAM
-            // for any payload size; the old byte path buffered the whole payload
-            // (~2×) in memory. Same dir + sweep lifecycle as writeBytesToTempFile.
-            payloadDownloadService.exportToTemp(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                key = payloadKey,
-                keyHeader = keyHeader,
-                destination = ExportDestination.UploadTemp("share_", ".$extension"),
-            )
+            val destination = ExportDestination.UploadTemp("share_", ".$extension")
+            val path = if (payloadDescriptor != null) {
+                payloadDownloadService.exportPlayable(file.driveId, file.fileId, payloadDescriptor, keyHeader, destination)
+            } else {
+                payloadDownloadService.exportToTemp(file.driveId, file.fileId, payloadKey, keyHeader, destination)
+            }
+            path?.let {
+                VaultDownload(it, payloadDescriptor?.playableFileName(file.fileName) ?: file.fileName, payloadDescriptor?.playableContentType ?: file.contentType)
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to download payload $payloadKey from ${file.fileId}" }
             null
         }
     }
 
-    private suspend fun buildMultiPayloadBundle(
+    // Vault keeps a photo's metadata and its file as it is: it's the user's own encrypted storage (UPLOADS.md section 5).
+    // [onPdfPageCount] counts the entry's first file only, when it is a PDF.
+    private suspend fun vaultBundle(
         files: List<Pair<String, String>>,
-        onPdfPageCount: ((Int) -> Unit)? = null,
+        keyFor: (Int) -> String,
         notePreview: String? = null,
-    ): PayloadBundle {
-        val allPayloads = mutableListOf<PayloadFile>()
-        val allThumbnails = mutableListOf<ThumbnailFile>()
-        val allPreviews = mutableListOf<EmbeddedThumb>()
-
-        files.forEachIndexed { index, (filePath, contentType) ->
-            val key = vaultPayloadKey(index)
-            var previewThumbnail: EmbeddedThumb? = null
-            var thumbnails = emptyList<ThumbnailFile>()
-
-            if (contentType.startsWith("image/")) {
-                try {
-                    val result = MessageThumbnailGenerator.generate(
-                        filePath, key, fileOperationsProvider,
-                    )
-                    previewThumbnail = result.preview
-                    thumbnails = result.thumbnails
-                } catch (e: Exception) {
-                    Logger.w(e, TAG) { "Thumbnail generation failed for payload $key" }
-                }
-            } else if (contentType == "application/pdf") {
-                try {
-                    val pdfResult = generatePdfThumbnailFromFile(filePath, PDF_CARD_RENDER_WIDTH)
-                    val thumbBytes = pdfResult?.thumbnailBytes
-                    if (thumbBytes != null) {
-                        previewThumbnail = createTinyPreview(thumbBytes)
-                        // Larger thumbnail for crisp card display
-                        val naturalSize = ImageUtils.getNaturalSize(thumbBytes)
-                        thumbnails = listOf(
-                            ThumbnailFile(
-                                pixelWidth = naturalSize.pixelWidth,
-                                pixelHeight = naturalSize.pixelHeight,
-                                thumbnailBytes = thumbBytes,
-                                key = key,
-                                contentType = "image/jpeg",
-                                quality = 80,
-                            ),
-                        )
-                    }
-                    if (pdfResult != null && index == 0) onPdfPageCount?.invoke(pdfResult.pageCount)
-                } catch (e: Exception) {
-                    Logger.w(e, TAG) { "PDF thumbnail generation failed for payload $key" }
-                }
-            }
-
-            allPayloads += PayloadFile(
-                key = key,
-                filePath = filePath,
-                contentType = contentType,
-                previewThumbnail = previewThumbnail,
-                descriptorContent = if (contentType == CONTENT_TYPE_MARKDOWN) notePreview else null,
-            )
-            allThumbnails += thumbnails
-            if (previewThumbnail != null) allPreviews += previewThumbnail
-        }
-
-        return PayloadBundle(
-            payloads = allPayloads,
-            thumbnails = allThumbnails,
-            previewThumbs = allPreviews,
-        )
-    }
+        onPdfPageCount: ((Int) -> Unit)? = null,
+    ): PayloadBundle = UserUploadBuilder.build(
+        sources = files.map { (path, type) ->
+            UploadSource(path, type, appContent = notePreview?.takeIf { type == CONTENT_TYPE_MARKDOWN })
+        },
+        options = UploadOptions(quality = MediaQuality.ORIGINAL, metadata = MetadataPolicy.KEEP, videoQuality = VideoQuality.HIGH),
+        fileOps = fileOperationsProvider,
+        pdfPageRenderer = { path, width ->
+            generatePdfThumbnailFromFile(path, width)
+                ?.also { if (path == files.first().first) onPdfPageCount?.invoke(it.pageCount) }
+                ?.thumbnailBytes
+        },
+        payloadKey = keyFor,
+    )
 }
+
+class VaultDownload(val path: String, val name: String, val contentType: String)

@@ -1,5 +1,6 @@
 package id.homebase.api.image
 
+import id.homebase.api.media.MediaMetadataReader
 import android.content.ContentValues
 import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -53,14 +54,15 @@ class ImageFileAndroidTest {
             val path = uri.toString()
             assertNotNull(openImageFile(path, fileOps), "a content URI should open directly").use { assertEquals(ImageSize(1200, 1600), it.displayedSize) }
 
-            val fromBytes = createMediaImages(bytes, "k", MediaQuality.STANDARD, readMetadata = true)
-            val fromUri = createMediaImages(path, fileOps, "k", MediaQuality.STANDARD, readMetadata = true)
+            val fromBytes = createMediaImages(bytes, "k", MediaQuality.STANDARD)
+            val fromUri = createMediaImages(path, fileOps, "k", MediaQuality.STANDARD)
 
             assertEquals(fromBytes.displayedSize, fromUri.displayedSize)
             fromBytes.thumbnails.zip(fromUri.thumbnails).forEach { (a, b) -> assertContentEquals(a.thumbnailBytes, b.thumbnailBytes) }
             assertContentEquals(assertNotNull(fromBytes.finalImage).bytes, assertNotNull(fromUri.finalImage).bytes)
-            assertEquals(fromBytes.metadata, fromUri.metadata)
-            assertEquals(6, readImageMetadata(path, fileOps)?.orientation)
+            val read = MediaMetadataReader(fileOps).image(path)
+            assertEquals(readImageMetadata(bytes), read)
+            assertEquals(6, read?.orientation)
             assertEquals(bytes.size.toLong(), fromUri.sourceByteCount)
         } finally {
             resolver.delete(uri, null, null)

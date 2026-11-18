@@ -367,7 +367,6 @@ fun LinkPreviewCard(
                         fileId = fileId,
                         payloadKey = payloadKey,
                         previewThumbnail = previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
                         isEncrypted = true,
                         keyHeader = keyHeader,
                         loadFullPayload = true,

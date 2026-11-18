@@ -103,6 +103,7 @@ internal sealed interface CardCommand {
     data object ExportPng : CardCommand
     data object ProbeEdges : CardCommand
     data object RequestPaint : CardCommand
+    data object ScrollToTop : CardCommand
     data class HostStyle(val bottomPx: Int) : CardCommand
 }
 
@@ -147,14 +148,16 @@ internal fun CardCommand.script(): String = when (this) {
     CardCommand.ExportPng -> "window.homebaseCard.exportPng()"
     CardCommand.ProbeEdges -> PROBE_EDGES_SCRIPT
     CardCommand.RequestPaint -> REQUEST_PAINT_SCRIPT
+    CardCommand.ScrollToTop -> "window.scrollTo(0,0)"
     is CardCommand.HostStyle -> hostStyleScript(bottomPx)
 }
 
 // The host's chrome floats over the page: no scrollbar beside it, and room to scroll the page's end above the toolbar.
+// The room is padding inside the card (border-box), so it carries the card's ground and a card that fits never scrolls.
 private fun hostStyleScript(bottomPx: Int) =
     "(function(){var s=document.getElementById('hb-chrome')||document.head.appendChild(document.createElement('style'));" +
         "s.id='hb-chrome';s.textContent='html,body{scrollbar-width:none}::-webkit-scrollbar{display:none}" +
-        "body::after{content:\"\";display:block;height:${bottomPx}px}'})()"
+        "main>*{padding-bottom:${bottomPx}px}'})()"
 
 // Marks an element whose background the host painted (a frame's backdrop), which is not the page's colour.
 internal const val HOST_BACKDROP_ATTR = "data-hb-backdrop"

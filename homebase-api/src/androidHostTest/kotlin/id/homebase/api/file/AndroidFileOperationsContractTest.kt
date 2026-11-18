@@ -1,11 +1,13 @@
 package id.homebase.api.file
 
 import androidx.test.core.app.ApplicationProvider
+import java.nio.file.Files
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.nio.file.Files
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class AndroidFileOperationsContractTest : FileOperationsContractTest() {
     private val dir = Files.createTempDirectory("contract-").toFile()
 

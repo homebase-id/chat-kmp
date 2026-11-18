@@ -65,6 +65,7 @@ class FilesyncEditorTest {
             testFilesyncRepository(http, credentials),
             DriveUploadProvider(http, credentials, fileOps),
             DriveFileHttpProvider(http, credentials),
+            FilesyncUploader(DriveUploadProvider(http, credentials, fileOps), fileOps),
         )
     }
 

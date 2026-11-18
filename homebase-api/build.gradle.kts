@@ -205,6 +205,7 @@ kotlin {
     // lands — at that point every excluded class should start passing on wasm.
     val wasmJsDbBackedTestClasses = listOf(
         "id.homebase.api.client.diagnostics.ServerIpStoreTest",
+        "id.homebase.api.sync.database.ChatMentionIndexWrapperTest",
         "id.homebase.api.sync.database.ChatReadCountWrapperTest",
         "id.homebase.api.sync.database.CursorSyncTest",
         "id.homebase.api.sync.database.DriveMainIndexCreateOrderTest",
@@ -324,6 +325,10 @@ kotlin {
         // If any of them ever genuinely needs device-side coverage, copy it directly into
         // androidDeviceTest rather than trying to wire the inheritance.
         getByName("androidHostTest").dependsOn(jvmAndNativeTest)
+        // The JVM test code that both JVMs (desktop's and Android host tests') share, so neither keeps a copy.
+        val jvmHostTest = create("jvmHostTest") { dependsOn(jvmAndNativeTest) }
+        jvmTest.get().dependsOn(jvmHostTest)
+        getByName("androidHostTest").dependsOn(jvmHostTest)
         // DatabaseConnectionContractTest runs on the real driver of every target with a file
         // database; a shared directory, since androidDeviceTest can't depend on a common test set.
         listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/dbContractTest/kotlin") }
@@ -331,8 +336,12 @@ kotlin {
         // Image sources from a path, on the real decoders; a phone must never read the file whole.
         listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/imageFileContractTest/kotlin") }
         getByName("androidDeviceTest").kotlin.srcDir("src/imageFileContractTest/kotlin")
+        // The official hash vectors, also on a phone: Android's BLAKE3 is native there.
+        commonTest.get().kotlin.srcDir("src/hasherContractTest/kotlin")
+        getByName("androidDeviceTest").kotlin.srcDir("src/hasherContractTest/kotlin")
         androidMain.dependencies {
             implementation(project(":homebase-imageresize"))
+            implementation(project(":homebase-blake3"))
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)
@@ -341,10 +350,10 @@ kotlin {
             implementation(libs.androidx.media3.exoplayer)
             implementation(libs.androidx.media3.exoplayer.hls)
             implementation(libs.androidx.media3.ui)
+            implementation(libs.androidx.media3.transformer)
+            implementation(libs.androidx.media3.effect)
             implementation(libs.sqldelight.android.driver)
             implementation(libs.android.database.sqlcipher)
-            implementation(libs.ffmpeg.kit)
-            implementation(libs.smart.exception.java)
             implementation(libs.androidsvg)
         }
         nativeMain.dependencies {
@@ -424,6 +433,7 @@ kotlin {
             implementation(libs.androidx.test.core)
             implementation(libs.androidx.junit)
             implementation(libs.androidx.heifwriter)
+            implementation(libs.coil3)
         }
     }
 

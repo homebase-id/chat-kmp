@@ -34,7 +34,7 @@ class CardDesignMatrixGoldenTest {
     private val overrides = CardOverrides(
         palette = CardPalette(ground = "#112233", ink = "#F0F0F0", muted = "#99AABB", accent = "#ABCDEF", surface = "#223344", surfaceInk = "#FFFFFF"),
         type = CardTypeface(display = "caveat", text = "newsreader", label = "space-mono", displayCase = "upper"),
-        portraits = listOf(CardPortrait("photo", "rounded", ring = 2.0, shadow = "soft", tilt = 5.0, tape = true, mono = true)),
+        portraits = listOf(CardPortrait("photo", "rounded", ring = 2.0, shadow = "soft", tilt = 5.0, tape = true, mono = true, size = "large")),
         blocks = listOf(CardBlock("posts", "row"), CardBlock("links", "button"), CardBlock("chat", "boxed")),
         socials = "handles",
     )
@@ -76,7 +76,7 @@ class CardDesignMatrixGoldenTest {
             photo("friends-key", ProfileVisibility.CONNECTED, listOf(friendsCircle))
 
     private fun payload(audience: CardAudience, design: String, overrides: CardOverrides): JsonElement {
-        val key = attributes.visiblePhoto(audience.aclFilter())?.data?.get(ProfileAttributeTypes.KEY_PROFILE_IMAGE)
+        val key = attributes.visiblePhoto(audience.viewer())?.data?.get(ProfileAttributeTypes.KEY_PROFILE_IMAGE)
         return OdinSystemSerializer.json.parseToJsonElement(
             buildCardPayload(
                 odinId = "frodo.dotyou.cloud",
@@ -137,6 +137,7 @@ class CardDesignMatrixGoldenTest {
             })
             put("fonts", buildJsonArray { CardDesignSpecs.FONTS.forEach { add(JsonPrimitive(it)) } })
             put("portraitShapes", buildJsonArray { CardDesignSpecs.PORTRAIT_SHAPES.forEach { add(JsonPrimitive(it)) } })
+            put("portraitSizes", buildJsonArray { CardDesignSpecs.PORTRAIT_SIZES.forEach { add(JsonPrimitive(it)) } })
             put("socialsStyles", buildJsonArray { CardDesignSpecs.SOCIALS_STYLES.forEach { add(JsonPrimitive(it)) } })
             put("blockKinds", buildJsonArray { CardDesignSpecs.BLOCK_KINDS.forEach { add(JsonPrimitive(it)) } })
             put("audienceTemplates", buildJsonObject {

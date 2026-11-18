@@ -26,6 +26,18 @@ class ProfileCardStylesTest {
     }
 
     @Test
+    fun aCardSavedWithTheOldCloudPaletteStillOpensAsFrostOrCustom() {
+        val styles = cardStylesFor(CardDesign.LINKS)
+        val cloud = CardOverrides(palette = CardPalette(ground = "#F1F3F6", ink = "#1B1F24", muted = "#5C6673", surface = "#FFFFFF", surfaceInk = "#1B1F24"))
+        assertEquals(DEFAULT_STYLE_ID, styles.single { it.matches(cloud) }.id)
+        assertNull(customStyle(styles, cloud, CardDesign.LINKS))
+
+        val withAccent = cloud.with(CardOption.ACCENT, "#2E6FB5")
+        assertTrue(styles.none { it.matches(withAccent) })
+        assertEquals(CUSTOM_STYLE_ID, customStyle(styles, withAccent, CardDesign.LINKS)?.id)
+    }
+
+    @Test
     fun defaultComesFirstThenOneStylePerSchemeInOrder() {
         for (design in CardDesign.all) {
             val schemes = CardDesignSpecs.of(design)!!.schemes.map { it.id }
@@ -146,7 +158,7 @@ class ProfileCardStylesTest {
     fun anUntouchedFamilyCardSelectsWine() = assertSelects("wine", cardTemplateFor(CardAudience.Circle(FAMILY_CIRCLE_ID, ""))!!)
 
     @Test
-    fun anUntouchedWorkCardSelectsCloud() = assertSelects("cloud", cardTemplateFor(CardAudience.Circle(WORK_CIRCLE_ID, ""))!!)
+    fun anUntouchedWorkCardSelectsTheDesignsOwnStyle() = assertSelects(DEFAULT_STYLE_ID, cardTemplateFor(CardAudience.Circle(WORK_CIRCLE_ID, ""))!!)
 
     @Test
     fun anUntouchedPublicCardSelectsMint() = assertSelects("mint", cardTemplateFor(CardAudience.Public)!!)
@@ -158,7 +170,7 @@ class ProfileCardStylesTest {
         for (audience in audiences) {
             val template = cardTemplateFor(audience)!!
             val stored = CardOverrides.fromJson(template.overrides.toJson()).prunedFor(template.design)
-            assertSelects(CardDesignSpecs.schemeByGround(template.overrides.palette!!.ground)!!.id, template.copy(overrides = stored))
+            assertSelects(CardDesignSpecs.schemeByGround(template.overrides.palette?.ground)?.id ?: DEFAULT_STYLE_ID, template.copy(overrides = stored))
         }
     }
 
@@ -170,8 +182,8 @@ class ProfileCardStylesTest {
         }
         for (audience in listOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID, WORK_CIRCLE_ID).map { CardAudience.Circle(it, "") } + CardAudience.Public) {
             val template = cardTemplateFor(audience)!!
-            val ground = template.overrides.palette!!.ground
-            assertEquals(CardDesignSpecs.schemeByGround(ground)!!.accents, CardDesignSpecs.accentsFor(template.design, ground), audience.toString())
+            val ground = template.overrides.palette?.ground
+            assertEquals(CardDesignSpecs.schemeByGround(ground)?.accents ?: CardDesignSpecs.accentsFor(template.design, null), CardDesignSpecs.accentsFor(template.design, ground), audience.toString())
         }
     }
 

@@ -39,7 +39,7 @@ internal fun CardOverrides.withStyle(style: ResolvedCardStyle, design: String): 
 // A scheme with no accent picked is still that preset: audience templates and cards saved from them carry none.
 internal fun ResolvedCardStyle.matches(overrides: CardOverrides): Boolean {
     val accent = overrides.valueOf(CardOption.ACCENT)
-    if (isDefault) return overrides.valueOf(CardOption.COLOURS) == null && accent == null
+    if (isDefault) return accent == null && overrides.valueOf(CardOption.COLOURS).let { it == null || it.equals(ground, ignoreCase = true) }
     return overrides.valueOf(CardOption.COLOURS).equals(ground, ignoreCase = true) &&
         (accent == null || accent.equals(this.accent, ignoreCase = true))
 }

@@ -44,6 +44,13 @@ object TestDatabaseFactory {
         identityIdAdapter = UuidAdapter, notificationIdAdapter = UuidAdapter
     )
 
+    private val chatMentionIndexAdapter = ChatMentionIndex.Adapter(
+        identityIdAdapter = UuidAdapter,
+        driveIdAdapter = UuidAdapter,
+        uniqueIdAdapter = UuidAdapter,
+        groupIdAdapter = UuidAdapter
+    )
+
     private val chatReadCountAdapter = ChatReadCount.Adapter(groupIdAdapter = UuidAdapter)
 
     private val connectionCacheAdapter = ConnectionCache.Adapter(identityIdAdapter = UuidAdapter)
@@ -63,6 +70,7 @@ object TestDatabaseFactory {
         return OdinDatabase.Companion(
             sqlDriver,
             appNotificationsAdapter,
+            chatMentionIndexAdapter,
             chatReadCountAdapter,
             connectionCacheAdapter,
             driveLocalTagIndexAdapter,

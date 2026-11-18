@@ -63,6 +63,7 @@ class AttachmentToolbarVisibilityTest {
                         state = rememberRichTextState(),
                         onSendMessage = {},
                         showFormattingToolbar = false,
+                        emojiPopover = false,
                     )
                 }
             }
@@ -89,6 +90,7 @@ class AttachmentToolbarVisibilityTest {
                         state = rememberRichTextState(),
                         onSendMessage = {},
                         showFormattingToolbar = false,
+                        emojiPopover = false,
                         onEmojiPickerVisibilityChanged = { reportedVisible = it },
                     )
                 }

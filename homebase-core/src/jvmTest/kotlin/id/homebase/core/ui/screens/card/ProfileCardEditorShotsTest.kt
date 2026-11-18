@@ -92,7 +92,6 @@ class ProfileCardEditorShotsTest {
     private data class Shot(
         val name: String,
         val state: ProfileCardUiState,
-        val step: EditorStep = EditorStep.Design,
         val mode: EditorMode = EditorMode.Design,
         val photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
         val preview: Preview = Preview.Ready,
@@ -144,42 +143,42 @@ class ProfileCardEditorShotsTest {
         Shot("01-design-public", base),
         Shot("02-design-unsaved", base.copy(previewDesign = CardDesign.POSTER)),
         Shot("03-design-saving", base.copy(previewDesign = CardDesign.COLLAGE, isSavingDesign = true)),
-        Shot("03b-customise-saving", edited.copy(isSavingDesign = true), EditorStep.Customise),
-        Shot("04-customise-accent", edited, EditorStep.Customise),
-        Shot("04b-customise-unedited", base, EditorStep.Customise),
-        Shot("05-customise-heading-font", edited, EditorStep.Customise, act = tool("Heading font")),
-        Shot("06-customise-portrait", edited, EditorStep.Customise, act = tool("Portrait shape")),
-        Shot("07-customise-socials", edited, EditorStep.Customise, act = tool("Social links style")),
-        Shot("08-customise-order", edited, EditorStep.Customise, act = tool("Section order")),
-        Shot("09-customise-poster", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise),
-        Shot("10-customise-empty", base.copy(previewDesign = "zine"), EditorStep.Customise),
+        Shot("03b-customise-saving", edited.copy(isSavingDesign = true)),
+        Shot("04-customise-accent", edited),
+        Shot("04b-customise-unedited", base),
+        Shot("05-customise-heading-font", edited, act = tool("Heading font")),
+        Shot("06-customise-portrait", edited, act = tool("Photo size")),
+        Shot("07-customise-socials", edited, act = tool("Social links style")),
+        Shot("08-customise-order", edited, act = tool("Section order")),
+        Shot("09-customise-poster", base.copy(previewDesign = CardDesign.POSTER)),
+        Shot("10-customise-empty", base.copy(previewDesign = "zine")),
         Shot("11-circle-card", base.copy(cards = listOf(public, card(friends)), selectedAudience = friends)),
-        Shot("12-circle-long-name", base.copy(cards = listOf(public, card(longCircle)), selectedAudience = longCircle), EditorStep.Customise),
+        Shot("12-circle-long-name", base.copy(cards = listOf(public, card(longCircle)), selectedAudience = longCircle)),
         Shot("13-preview-loading", base.copy(isCardReady = false), preview = Preview.Loading),
         Shot("14-preview-load-failed", base.copy(loadFailed = true), preview = Preview.LoadFailed),
         Shot("15-preview-card-failed", base.copy(cardFailed = true), preview = Preview.CardFailed),
         Shot("16-font-scale-design", base.copy(previewDesign = CardDesign.POSTER), fontScale = 1.6f),
-        Shot("17-font-scale-customise", edited, EditorStep.Customise, fontScale = 1.6f),
-        Shot("17b-font-scale-fonts", edited, EditorStep.Customise, fontScale = 1.6f, act = tool("Heading font")),
-        Shot("17c-font-scale-order", edited, EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
-        Shot("18-rtl-customise", edited, EditorStep.Customise, rtl = true, act = tool("Portrait shape")),
+        Shot("17-font-scale-customise", edited, fontScale = 1.6f),
+        Shot("17b-font-scale-fonts", edited, fontScale = 1.6f, act = tool("Heading font")),
+        Shot("17c-font-scale-order", edited, fontScale = 1.6f, act = tool("Section order")),
+        Shot("18-rtl-customise", edited, rtl = true, act = tool("Photo size")),
         Shot("18b-rtl-design", base, rtl = true),
         Shot("19-wide-design", base, widthDp = 900, heightDp = 820),
-        Shot("19b-wide-customise", edited, EditorStep.Customise, widthDp = 900, heightDp = 820, act = tool("Section order")),
-        Shot("20-small-phone-customise", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
+        Shot("19b-wide-customise", edited, widthDp = 900, heightDp = 820, act = tool("Section order")),
+        Shot("20-small-phone-customise", edited, widthDp = 360, heightDp = 640, act = tool("Section order")),
         Shot("21-small-phone-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = 360, heightDp = 640),
-        Shot("22-small-phone-fonts", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Body font")),
+        Shot("22-small-phone-fonts", edited, widthDp = 360, heightDp = 640, act = tool("Body font")),
         Shot("30-redmi-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("32-redmi-design-unsaved", base.copy(previewDesign = CardDesign.COLLAGE), widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("33-redmi-colours", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("35-redmi-accent", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Accent colour")),
-        Shot("36-redmi-heading-font", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Heading font")),
-        Shot("37-redmi-portrait", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Portrait shape")),
-        Shot("38-redmi-socials", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Social links style")),
-        Shot("39-redmi-order", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Section order")),
-        Shot("40-redmi-collage-colours", collageSchemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("41-redmi-dossier-colours", dossierSchemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("42-redmi-poster-colours", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("33-redmi-colours", schemed, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("35-redmi-accent", schemed, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Accent colour")),
+        Shot("36-redmi-heading-font", schemed, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Heading font")),
+        Shot("37-redmi-portrait", schemed, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Photo size")),
+        Shot("38-redmi-socials", schemed, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Social links style")),
+        Shot("39-redmi-order", schemed, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Section order")),
+        Shot("40-redmi-collage-colours", collageSchemed, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("41-redmi-dossier-colours", dossierSchemed, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("42-redmi-poster-colours", base.copy(previewDesign = CardDesign.POSTER), widthDp = REDMI_W, heightDp = REDMI_H),
     )
 
     private class ViewerShot(
@@ -230,25 +229,25 @@ class ProfileCardEditorShotsTest {
     private val fixedEditorShots = listOf(
         Shot("k6-e01-circle-design", fixedFriends),
         Shot("k6-e02-read-only-design", fixedReadOnly.copy(previewDesign = CardDesign.POSTER)),
-        Shot("k6-e03-read-only-customise", fixedReadOnly, EditorStep.Customise),
+        Shot("k6-e03-read-only-customise", fixedReadOnly),
         Shot("k6-e04-read-only-font-scale", fixedReadOnly, fontScale = 1.6f),
         Shot("k6-e05-read-only-small", fixedReadOnly, widthDp = 360, heightDp = 640),
         Shot("k6-e06-font-scale-design", fixedFriends, fontScale = 1.6f),
         Shot("k6-e07-small-design", fixedFriends, widthDp = 360, heightDp = 640),
-        Shot("k6-e08-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise),
-        Shot("k6-e09-customise-heading", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, act = tool("Heading font")),
-        Shot("k6-e10-customise-empty", base.copy(previewDesign = "zine"), EditorStep.Customise),
+        Shot("k6-e08-customise", edited.copy(cards = fixedSet, selectedAudience = friends)),
+        Shot("k6-e09-customise-heading", edited.copy(cards = fixedSet, selectedAudience = friends), act = tool("Heading font")),
+        Shot("k6-e10-customise-empty", base.copy(previewDesign = "zine")),
         Shot("k6-e11-long-circle", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle)),
         Shot("k6-e12-public-unsaved", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1), previewDesign = CardDesign.POSTER)),
         Shot("k6-e13-loading", fixedFriends.copy(isCardReady = false), preview = Preview.Loading),
         Shot("k6-e14-load-failed", fixedFriends.copy(loadFailed = true), preview = Preview.LoadFailed),
         Shot("k6-e15-small-font-scale", fixedFriends, fontScale = 1.3f, widthDp = 360, heightDp = 640),
-        Shot("k6-e16-small-font-scale-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640),
-        Shot("k6-e17-customise-order", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, act = tool("Section order")),
-        Shot("k6-e18-small-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = 360, heightDp = 640),
+        Shot("k6-e16-small-font-scale-customise", edited.copy(cards = fixedSet, selectedAudience = friends), fontScale = 1.3f, widthDp = 360, heightDp = 640),
+        Shot("k6-e17-customise-order", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), act = tool("Section order")),
+        Shot("k6-e18-small-customise", edited.copy(cards = fixedSet, selectedAudience = friends), widthDp = 360, heightDp = 640),
         Shot("k6-e19-rtl-read-only", fixedReadOnly, rtl = true),
-        Shot("k6-e20-rtl-customise", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, rtl = true, act = tool("Section order")),
-        Shot("k6-e21-font-scale-order", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
+        Shot("k6-e20-rtl-customise", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), rtl = true, act = tool("Section order")),
+        Shot("k6-e21-font-scale-order", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), fontScale = 1.6f, act = tool("Section order")),
         Shot("k6-e22-virtual-family", fixedFriends.copy(selectedAudience = family)),
     )
 
@@ -397,10 +396,7 @@ class ProfileCardEditorShotsTest {
             }
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
-        editor("k15-public-hidden-open", k15Public, h = TALL, act = {
-            onNodeWithTag("not_visible").onChildren().onFirst().performSemanticsAction(SemanticsActions.OnClick)
-            mainClock.advanceTimeBy(SETTLE_MS)
-        }),
+        editor("k15-public-not-on-card", k15Public, h = TALL),
         editor("k15-add-sheet", k15Friends, act = {
             onNodeWithTag("content_add").performSemanticsAction(SemanticsActions.OnClick)
             mainClock.advanceTimeBy(SETTLE_MS)
@@ -418,7 +414,7 @@ class ProfileCardEditorShotsTest {
     }
 
     private fun polishCustomise(name: String, state: ProfileCardUiState, act: ComposeUiTest.() -> Unit = {}) =
-        Shot(name, state, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = act)
+        Shot(name, state, widthDp = REDMI_W, heightDp = REDMI_H, act = act)
 
     // Each card wears its real template plus an accent, and the circles have emoji, as a filled account would.
     private fun filledCard(audience: CardAudience) = cardTemplateFor(audience)!!.let {
@@ -444,7 +440,6 @@ class ProfileCardEditorShotsTest {
         Shot(
             "p03-content-style",
             polishBase.copy(previewDesign = CardDesign.BOARD),
-            EditorStep.Customise,
             widthDp = REDMI_W,
             heightDp = REDMI_H,
             act = tool("Content style"),
@@ -452,10 +447,10 @@ class ProfileCardEditorShotsTest {
         polishCustomise("p24-styles-board", schemed),
         polishCustomise("p25-styles-poster", base.copy(previewDesign = CardDesign.POSTER)),
         polishCustomise("p26-styles-applied", base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().withStyle(cardStylesFor(CardDesign.BOARD)[3], CardDesign.BOARD))),
-        Shot("p27-styles-font-scale", base.copy(previewDesign = CardDesign.BOARD), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, fontScale = 1.6f),
-        Shot("p28-styles-wide", schemed, EditorStep.Customise, widthDp = 900, heightDp = 820),
-        Shot("p29-styles-small-order", base.copy(previewDesign = CardDesign.BOARD), EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
-        Shot("p30-styles-wide-applied", base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().withStyle(cardStylesFor(CardDesign.BOARD)[2], CardDesign.BOARD)), EditorStep.Customise, widthDp = 1200, heightDp = 820),
+        Shot("p27-styles-font-scale", base.copy(previewDesign = CardDesign.BOARD), widthDp = REDMI_W, heightDp = REDMI_H, fontScale = 1.6f),
+        Shot("p28-styles-wide", schemed, widthDp = 900, heightDp = 820),
+        Shot("p29-styles-small-order", base.copy(previewDesign = CardDesign.BOARD), widthDp = 360, heightDp = 640, act = tool("Section order")),
+        Shot("p30-styles-wide-applied", base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().withStyle(cardStylesFor(CardDesign.BOARD)[2], CardDesign.BOARD)), widthDp = 1200, heightDp = 820),
         polishCustomise("p09-accent-dark-scheme", schemed, tool("Accent colour")),
         polishCustomise("p10-accent-light-scheme", collageSchemed, tool("Accent colour")),
         polishCustomise("p11-accent-default-scheme", base, tool("Accent colour")),
@@ -474,7 +469,7 @@ class ProfileCardEditorShotsTest {
         ),
     ) + CardDesign.all.flatMap { design ->
         listOf(1f, 1.6f).map { scale ->
-            Shot("p33-styles-$design-360-x$scale", base.copy(previewDesign = design), EditorStep.Customise, widthDp = 360, heightDp = 720, fontScale = scale)
+            Shot("p33-styles-$design-360-x$scale", base.copy(previewDesign = design), widthDp = 360, heightDp = 720, fontScale = scale)
         }
     } + listOf(
         polishCustomise("p14-colours-saved-off-design", base.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45"))),
@@ -487,30 +482,41 @@ class ProfileCardEditorShotsTest {
         }
     }
 
+
+    private val photoTool = tool("Photo size")
+    private val links = base.copy(previewDesign = CardDesign.LINKS)
+    private fun photoShot(name: String, state: ProfileCardUiState, widthDp: Int = REDMI_W, fontScale: Float = 1f, rtl: Boolean = false) =
+        Shot(name, state, widthDp = widthDp, heightDp = REDMI_H, fontScale = fontScale, rtl = rtl, act = photoTool)
+
+    private val k18Shots = listOf(
+        photoShot("k18-01-photo-board-default", base),
+        photoShot(
+            "k18-02-photo-board-large-rounded",
+            base.copy(previewOverrides = CardOverrides().with(CardOption.PORTRAIT_SIZE, "large").with(CardOption.PORTRAIT_SHAPE, "rounded")),
+        ),
+        photoShot("k18-03-photo-collage-small", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = CardOverrides().with(CardOption.PORTRAIT_SIZE, "small"))),
+        photoShot("k18-04-photo-dossier", base.copy(previewDesign = CardDesign.DOSSIER)),
+        photoShot("k18-05-photo-links", links),
+        photoShot("k18-06-photo-font-scale", base, fontScale = 1.6f),
+        photoShot("k18-07-photo-rtl", base, rtl = true),
+        photoShot("k18-08-photo-narrow", base, widthDp = 360),
+        photoShot("k18-09-photo-saving", base.copy(isSavingDesign = true)),
+        photoShot("k18-10-photo-long-circle", base.copy(cards = listOf(public, card(longCircle)), selectedAudience = longCircle)),
+        photoShot("k18-11-photo-wide", base, widthDp = 900),
+        Shot("k18-12-links-palette", links, widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot(
+            "k18-13-links-palette-old-cloud",
+            links.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#F1F3F6")),
+            widthDp = REDMI_W,
+            heightDp = REDMI_H,
+        ),
+        Shot("k18-14-poster-no-photo", base.copy(previewDesign = CardDesign.POSTER), widthDp = REDMI_W, heightDp = REDMI_H),
+    )
+
     @Test
-    fun polishedIntroRendersTheNewCircleTile() {
+    fun k18PhotoSizeRendersEveryState() {
         for (dark in listOf(false, true)) {
-            runDesktopComposeUiTest(width = (REDMI_W * SCALE).toInt(), height = (REDMI_H * SCALE).toInt()) {
-                mainClock.autoAdvance = false
-                setContent {
-                    themed(dark) {
-                        CardIntro(
-                            uiState = polishBase,
-                            tiles = emptyMap(),
-                            host = null,
-                            revision = 0,
-                            onOpen = {},
-                            onClose = {},
-                            onRetry = {},
-                            onCapture = {},
-                            onTilePainted = {},
-                            onNewCircle = {},
-                        )
-                    }
-                }
-                mainClock.advanceTimeBy(SETTLE_MS)
-                save("p04-intro-new-circle", dark)
-            }
+            for (shot in k18Shots) render(shot, dark)
         }
     }
 
@@ -545,28 +551,7 @@ class ProfileCardEditorShotsTest {
         }
     }
 
-    @Test
-    fun fixedCircleCardsRenderEveryState() {
-        for (dark in listOf(false, true)) {
-            for (shot in fixedViewerShots) renderViewer(shot, dark)
-            for (shot in fixedEditorShots) render(shot, dark)
-            renderPopup("k6-d01-reset-public", dark) { ResetCardDialog(audience = CardAudience.Public, onReset = {}, onDismiss = {}) }
-            renderPopup("k6-d02-reset-circle", dark) { ResetCardDialog(audience = friends, onReset = {}, onDismiss = {}) }
-            renderPopup("k6-d03-reset-long", dark) { ResetCardDialog(audience = longCircle, onReset = {}, onDismiss = {}) }
-            renderPopup("k6-d04-read-only", dark) { ReadOnlyCardDialog(onDismiss = {}) }
-        }
-    }
 
-    @Test
-    fun viewerChromeRendersEveryState() {
-        for (dark in listOf(false, true)) {
-            for (shot in viewerShots) renderViewer(shot, dark)
-            renderPopup("v06-reset-dialog", dark) { ResetCardDialog(audience = work, onReset = {}, onDismiss = {}) }
-            renderPopup("v03-share-public-confirm", dark) {
-                SharePublicCardDialog(circleLabel = "Acquaintances", saveInsteadOfShare = false, onConfirm = {}, onDismiss = {})
-            }
-        }
-    }
 
     @Composable
     private fun themed(dark: Boolean, fontScale: Float = 1f, rtl: Boolean = false, content: @Composable () -> Unit) {
@@ -589,27 +574,7 @@ class ProfileCardEditorShotsTest {
             themed(dark, shot.fontScale, shot.rtl) {
                 var state by remember { mutableStateOf(shot.state) }
                 Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(state.design)))) {
-                    SheetTopChrome(
-                        uiState = state,
-                        onClose = {},
-                        bandDrag = Modifier,
-                        handleDrag = Modifier,
-                        modifier = Modifier.align(Alignment.TopCenter),
-                    )
-                    CardBottomChrome(
-                        audience = state.selectedAudience,
-                        isExporting = state.isExporting,
-                        canShare = true,
-                        saveInsteadOfShare = false,
-                        readOnly = state.isCircleReadOnly,
-                        showsReset = state.showsReset,
-                        canReset = state.canReset,
-                        onShare = {},
-                        onEdit = {},
-                        onChangeDesign = {},
-                        onReset = {},
-                        extraActions = {},
-                    )
+                    AudienceTitle(state, Modifier.align(Alignment.TopCenter))
                 }
             }
         }
@@ -650,41 +615,35 @@ class ProfileCardEditorShotsTest {
     }
 
     @Test
-    fun saveIsACheckInTheTopBarOnEveryStep() {
-        for ((step, expected) in listOf(EditorStep.Design to 1, EditorStep.Customise to 1)) {
-            var saved = 0
-            runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
-                setContent {
-                    CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
-                        HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
-                            CardExpressiveTheme {
-                                ProfileCardEditorContent(
-                                    uiState = edited.copy(previewDesign = CardDesign.POSTER),
-                                    step = step,
-                                    onStep = {},
-                                    onBack = {},
-                                    onSelect = {},
-                                    onOption = { _, _ -> },
-                                    onBlockOrder = {},
-                                    onSave = { saved++ },
-                                    snackbarHostState = remember { SnackbarHostState() },
-                                ) { Box(Modifier.fillMaxSize()) }
-                            }
+    fun saveIsACheckInTheTopBar() {
+        var saved = 0
+        runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
+            setContent {
+                CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+                    HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                        CardExpressiveTheme {
+                            ProfileCardEditorContent(
+                                uiState = edited.copy(previewDesign = CardDesign.POSTER),
+                                onBack = {},
+                                onSelect = {},
+                                onOption = { _, _ -> },
+                                onBlockOrder = {},
+                                onSave = { saved++ },
+                                snackbarHostState = remember { SnackbarHostState() },
+                            ) { Box(Modifier.fillMaxSize()) }
                         }
                     }
                 }
-                waitForIdle()
-                onAllNodesWithContentDescription("Save").assertCountEquals(expected)
-                onAllNodesWithText("Save").assertCountEquals(0)
-                if (expected == 1) {
-                    onNodeWithContentDescription("Save").performClick()
-                    assertEquals(1, saved)
-                }
             }
+            waitForIdle()
+            onAllNodesWithContentDescription("Save").assertCountEquals(1)
+            onAllNodesWithText("Save").assertCountEquals(0)
+            onNodeWithContentDescription("Save").performClick()
+            assertEquals(1, saved)
         }
     }
 
-    private fun customiseStep(state: ProfileCardUiState, step: EditorStep, mode: EditorMode, onStyle: (ResolvedCardStyle) -> Unit = {}, check: ComposeUiTest.() -> Unit) {
+    private fun editorPanel(state: ProfileCardUiState, mode: EditorMode, onStyle: (ResolvedCardStyle) -> Unit = {}, check: ComposeUiTest.() -> Unit) {
         runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
             setContent {
                 CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
@@ -693,8 +652,6 @@ class ProfileCardEditorShotsTest {
                             ProfileCardEditorContent(
                                 uiState = state,
                                 mode = mode,
-                                step = step,
-                                onStep = {},
                                 onBack = {},
                                 onSelect = {},
                                 onOption = { _, _ -> },
@@ -713,13 +670,36 @@ class ProfileCardEditorShotsTest {
     }
 
     @Test
-    fun theCustomiseStepListsOnlyTheStylesTheOpenDesignSupportsAndAppliesOneOnTap() {
+    fun thePaletteToolListsOnlyTheStylesTheOpenDesignSupportsAndAppliesOneOnTap() {
         val applied = mutableListOf<ResolvedCardStyle>()
-        customiseStep(base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, EditorMode.Design, onStyle = { applied += it }) {
-            for (name in listOf("Default", "Midnight", "Wine", "Pine", "Cobalt", "Rust", "Slate", "Plum")) onNodeWithText(name).assertExists()
+        editorPanel(base.copy(previewDesign = CardDesign.POSTER), EditorMode.Design, onStyle = { applied += it }) {
+            onNodeWithContentDescription("Ready-made styles").performClick()
+            waitForIdle()
+            for (name in listOf("Espresso", "Midnight", "Wine", "Pine", "Cobalt", "Rust", "Slate", "Plum")) onNodeWithText(name).assertExists()
             for (name in listOf("Forest", "Sage", "Paper", "Purple")) onAllNodesWithText(name).assertCountEquals(0)
             onNodeWithText("Wine").performClick()
             assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "wine" }), applied)
+        }
+    }
+
+    @Test
+    fun thePaletteToolLeadsWithOnePaletteTabAndNoDefaultChips() {
+        editorPanel(base.copy(previewDesign = CardDesign.BOARD), EditorMode.Design) {
+            onNodeWithContentDescription("Ready-made styles").performClick()
+            waitForIdle()
+            onAllNodesWithContentDescription("Choose a design").assertCountEquals(1)
+            onAllNodesWithContentDescription("Colours").assertCountEquals(0)
+            onNodeWithText("Ocean").assertExists()
+            onAllNodesWithText("Default").assertCountEquals(0)
+        }
+    }
+
+    @Test
+    fun thePaletteToolNoLongerOffersTheDesignNameButton() {
+        editorPanel(base.copy(previewDesign = CardDesign.BOARD), EditorMode.Design) {
+            onNodeWithContentDescription("Ready-made styles").performClick()
+            waitForIdle()
+            onAllNodesWithText("Board").assertCountEquals(0)
         }
     }
 
@@ -753,7 +733,6 @@ class ProfileCardEditorShotsTest {
 
     @Composable
     private fun EditorShot(shot: Shot, dark: Boolean = false) {
-        var step by remember { mutableStateOf(shot.step) }
         var uiState by remember { mutableStateOf(shot.state) }
         ProfileCardEditorContent(
             uiState = uiState,
@@ -761,9 +740,7 @@ class ProfileCardEditorShotsTest {
             photo = shot.photo,
             showCard = shot.showCard,
             onNewCircle = {}.takeIf { shot.newCircle },
-            step = step,
-            onStep = { step = it },
-            onBack = { step = EditorStep.Design },
+            onBack = {},
             onSelect = {},
             onOption = { _, _ -> },
             onBlockOrder = {},
@@ -847,59 +824,8 @@ class ProfileCardEditorShotsTest {
     // The card pages' slot on desktop: the settings pane's detail column at a 1440x900 and 1024x768 window, and a narrow window.
     private val desktopSlots = listOf("w1440" to (736 to 744), "w1024" to (698 to 635), "w600" to (600 to 800))
 
-    @Test
-    fun desktopSlotsRender() {
-        for (dark in listOf(false, true)) {
-            for ((slot, size) in desktopSlots) {
-                val (w, h) = size
-                for (shot in listOf(
-                    Shot("d-$slot-design", fixedFriends, widthDp = w, heightDp = h),
-                    Shot("d-$slot-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = w, heightDp = h),
-                    editor("d-$slot-content", polishBase, w = w, h = h, newCircle = true),
-                    editor("d-$slot-content-photo", polishBase, w = w, h = h, photo = CardPhotoUi(null, true, true, false)),
-                    editor("d-$slot-content-design", editorBase, w = w, h = h, act = {
-                        onNodeWithContentDescription("Design").performClick()
-                        mainClock.advanceTimeBy(SETTLE_MS)
-                    }),
-                    editor("d-$slot-content-add", k15Friends, w = w, h = h, act = {
-                        onNodeWithTag("content_add").performSemanticsAction(SemanticsActions.OnClick)
-                        mainClock.advanceTimeBy(SETTLE_MS)
-                    }),
-                )) render(shot, dark)
-                runDesktopComposeUiTest(width = (w * SCALE).toInt(), height = (h * SCALE).toInt()) {
-                    mainClock.autoAdvance = false
-                    setContent {
-                        themed(dark) {
-                            CardIntro(polishBase, emptyMap(), null, 0, {}, {}, {}, {}, {}, onNewCircle = {})
-                        }
-                    }
-                    mainClock.advanceTimeBy(SETTLE_MS)
-                    save("d-$slot-intro", dark)
-                }
-                renderViewer(ViewerShot("d-$slot-viewer", fixedFriends, widthDp = w, heightDp = h), dark)
-                renderPopup("d-$slot-reset-dialog", dark, w, h) { ResetCardDialog(audience = friends, onReset = {}, onDismiss = {}) }
-                renderPopup("d-$slot-create-circle", dark, w, h, backdrop = { EditorShot(editor("b", polishBase, w = w, h = h, newCircle = true)) }) {
-                    CreateCircleSheet(CreateCircleUiState(open = true), {}, {}, {}, {}, {}, {})
-                }
-            }
-        }
-    }
 
     // CARD_EXPORT_DIR holds real exportPng() PNGs, one per design: tile-sized from a narrow page, or the 390x844 compact card.
-    @Test
-    fun introTilesShowTheExportedCard() {
-        val exports = System.getenv("CARD_EXPORT_DIR")?.let(::File)?.listFiles { f -> f.extension == "png" }.orEmpty().sorted()
-        for (file in exports) {
-            val still = ImageIO.read(file).toComposeImageBitmap()
-            val tiles = polishBase.cards.associate { audienceKey(it.audience) to still }
-            runDesktopComposeUiTest(width = (736 * SCALE).toInt(), height = (744 * SCALE).toInt()) {
-                mainClock.autoAdvance = false
-                setContent { themed(false) { CardIntro(polishBase, tiles, null, 0, {}, {}, {}, {}, {}, onNewCircle = {}) } }
-                mainClock.advanceTimeBy(SETTLE_MS)
-                save("intro-export-${file.nameWithoutExtension}", false)
-            }
-        }
-    }
 
     private companion object {
         const val SCALE = 2f

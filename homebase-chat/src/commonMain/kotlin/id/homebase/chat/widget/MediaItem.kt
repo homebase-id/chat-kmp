@@ -1,12 +1,12 @@
 package id.homebase.chat.widget
 
+import id.homebase.chat.services.builder.locationPreviews
+import id.homebase.chat.services.builder.linkPreviews
 import id.homebase.chat.widget.preview.FilePreviewKind
 import id.homebase.chat.widget.preview.chatChipPreviewKind
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -40,28 +40,27 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
-import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.localImageOnly
+import id.homebase.chat.services.imageStandIn
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
 import id.homebase.common.widget.VideoInfoOverlay
-import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.mediaGestures
+import id.homebase.core.image.LocalFileImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
@@ -77,6 +76,7 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+import id.homebase.core.image.mediaSharedKey
 
 /**
  * Composable that renders a single media item based on the payload's content type.
@@ -92,7 +92,6 @@ import kotlin.uuid.Uuid
  * @param driveId The drive ID where the file is stored
  * @param previewThumbnail Optional embedded preview thumbnail for instant display
  * @param modifier Modifier for the container
- * @param imageSize Desired image size for loading
  * @param preserveAspectRatio If true, use ContentScale.Fit to maintain aspect ratio; if false, use
  * Crop
  * @param onClick Callback when media is tapped
@@ -107,7 +106,6 @@ fun MediaItem(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     modifier: Modifier = Modifier,
     keyHeader: KeyHeader,
-    imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
     isSticker: Boolean = false,
     onClick: (() -> Unit)? = null,
@@ -165,15 +163,7 @@ fun MediaItem(
         payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
             // Render link preview
             val linkDescriptors = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
-                    try {
-                        OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
-                            content
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.linkPreviews()
             }
 
             val payloadIv = payload.iv?.bytes
@@ -205,15 +195,7 @@ fun MediaItem(
             // NEW messages carry the descriptor in the header (locationHeaderDescriptor); OLD ones
             // parse it from the payload's descriptorContent. Header wins when present.
             val payloadDescriptor = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
-                    try {
-                        OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
-                            content
-                        ).firstOrNull()
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.locationPreviews()?.firstOrNull()
             }
             val descriptor = locationHeaderDescriptor ?: payloadDescriptor
 
@@ -244,37 +226,14 @@ fun MediaItem(
         }
 
         payload.isImage() -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
-            if (imageLocalContext != null) {
-                var imageModifier = if (onClick != null || onLongPress != null) {
-                    finalModifier.pointerInput(onClick, onLongPress) {
-                        detectTapGestures(
-                            onTap = { onClick?.invoke() },
-                            onLongPress = { offset -> onLongPress?.invoke(offset) },
-                        )
-                    }
-                } else {
-                    finalModifier
-                }
-                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                    with(sharedTransitionScope) {
-                        imageModifier = imageModifier.sharedBounds(
-                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            boundsTransform = { _, _ ->
-                                tween(
-                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                                    easing = FastOutSlowInEasing,
-                                )
-                            },
-                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                        )
-                    }
-                }
-                AsyncImage(
-                    model = imageLocalContext.localFilePath,
+            val localOnly = localContext.localImageOnly(isEncrypted = true, ivPresent = payload.iv != null)
+            if (localOnly != null) {
+                LocalFileImage(
+                    localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = imageModifier,
+                    modifier = finalModifier.mediaGestures(
+                        onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope, animatedVisibilityScope,
+                    ),
                     contentScale = imageContentScale,
                 )
             } else {
@@ -283,7 +242,7 @@ fun MediaItem(
                 // Remember the image data to avoid creating a new instance on every recomposition,
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize, contentType) {
+                    remember(driveId, fileId, payload.key, payload.lastModified, contentType, payload.iv != null) {
                         val payloadIv = payload.iv?.bytes ?: return@remember null
                         HomebaseImageData.from(
                             driveId = driveId,
@@ -291,15 +250,14 @@ fun MediaItem(
                             descriptor = payload,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
-                            requestedSize = imageSize,
                             keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
-                        ).copy(finalImageSize = payload.recordedImageSize())
+                        )
                     }
 
                 if (imageData != null) {
                     HomebaseImage(
                         imageData = imageData,
-                        stepUpToPayload = true,
+                        standIn = localContext.imageStandIn,
                         modifier = finalModifier,
                         contentScale = imageContentScale,
                         contentDescription = stringResource(MR.string.chat_message_image_attachment),
@@ -338,6 +296,7 @@ fun MediaItem(
                         payloadKey = payload.key,
                         keyHeader = perPayloadKeyHeader,
                         descriptorContent = payload.descriptorContent,
+                        contentType = payload.contentType,
                     )
                 }
                 val videoDescriptor = remember(payload.descriptorContent) {
@@ -364,7 +323,6 @@ fun MediaItem(
                         descriptor = payload,
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
                         // Video payloads never carry server thumbnails; request the measured size.
                         availableThumbSizes = emptyList(),
                         keyHeader = perPayloadKeyHeader,
@@ -386,17 +344,8 @@ fun MediaItem(
                             videoLocalContext.thumbnailBytes.toImageBitmap()
                         }
                         if (uploadBitmap != null) {
-                            val thumbBaseModifier = Modifier.fillMaxSize()
-                            val thumbModifier = if (onClick != null || onLongPress != null) {
-                                thumbBaseModifier.pointerInput(onClick, onLongPress) {
-                                    detectTapGestures(
-                                        onTap = { onClick?.invoke() },
-                                        onLongPress = { offset -> onLongPress?.invoke(offset) },
-                                    )
-                                }
-                            } else {
-                                thumbBaseModifier
-                            }
+                            val thumbModifier = Modifier.fillMaxSize()
+                                .mediaGestures(onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope = null, animatedVisibilityScope = null)
                             Image(
                                 bitmap = uploadBitmap,
                                 contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
@@ -557,7 +506,6 @@ fun MediaItem(
                         fileId = fileId,
                         descriptor = payload,
                         previewThumbnail = previewThumb,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
                         keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey),
                     )
                 }

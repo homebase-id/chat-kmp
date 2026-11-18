@@ -16,7 +16,7 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.ui.navigation.Route
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -66,11 +66,11 @@ data class SubscriptionVerificationDetail(
 
 /**
  * Builds the browser-redirect navigation event for a tapped notification from a
- * web-app companion (community, owner, mail, feed). These open the *logged-in*
+ * web-app companion (community, owner, mail). These open the *logged-in*
  * identity's own web app — never the message sender's domain: the companion web
  * clients are served from and authenticated against our own identity, and the
  * author's host has no session for us. Faithful to the RN app, which built these
- * from getIdentity(), and to the in-app Feed WebView (https://{ownDomain}/apps/feed).
+ * from getIdentity().
  *
  * @param ownDomain the active (logged-in) identity's domain, or null when logged
  *   out / credentials not yet ready — in which case there is nothing to open.
@@ -96,19 +96,27 @@ internal fun buildCompanionAppUrlEvent(
         MAIL_APP_ID ->
             NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/mail/inbox/$typeId")
 
-        FEED_APP_ID ->
-            if (tagId.isNotBlank()) {
-                NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/feed/post/$tagId")
-            } else {
-                NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/feed")
-            }
-
         else -> null
     }
 }
 
 /** Apps whose notifications open the logged-in identity's own web app in the browser. */
-internal val COMPANION_APP_IDS = setOf(COMMUNITY_APP_ID, OWNER_APP_ID, MAIL_APP_ID, FEED_APP_ID)
+internal val COMPANION_APP_IDS = setOf(COMMUNITY_APP_ID, OWNER_APP_ID, MAIL_APP_ID)
+
+/**
+ * A feed tap opens in-app. [tagId] is the post's globalTransitId (new post, comment) or our own
+ * post's fileId (reaction); PostDetail resolves either. The web feed app has no route for a bare
+ * id, so the WebView feed opens at its root, as the web's own notification click does.
+ */
+internal fun buildFeedTapEvent(tagId: String, useNativeFeed: Boolean): NotificationNavigationEvent {
+    // The server sends Guid.Empty when a feed file carries no globalTransitId.
+    val postId = Uuid.parseOrNull(tagId)?.takeIf { it != Uuid.NIL }
+    return if (useNativeFeed && postId != null) {
+        NotificationNavigationEvent.OpenFeedPost(postId.toString())
+    } else {
+        NotificationNavigationEvent.OpenApp(Route.Feed)
+    }
+}
 
 /**
  * Routes a tapped owner-app connection-request notification to the in-app contact detail for the
@@ -709,8 +717,11 @@ class NotificationService(
                     emitNavigationEvent(connectionRequestTap)
                 }
 
+                appId == FEED_APP_ID ->
+                    emitNavigationEvent(buildFeedTapEvent(tagId, userPreferences.useNativeFeed))
+
                 appId in COMPANION_APP_IDS -> {
-                    // Community, owner, mail and feed open the *logged-in* identity's
+                    // Community, owner and mail open the *logged-in* identity's
                     // own web app in the browser (see buildCompanionAppUrlEvent) —
                     // never the sender's host. Resolve the domain by AWAITING auth
                     // restoration so a tap from a KILLED app isn't dropped while

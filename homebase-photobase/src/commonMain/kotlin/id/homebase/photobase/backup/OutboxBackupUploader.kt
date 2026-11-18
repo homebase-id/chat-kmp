@@ -1,19 +1,25 @@
 package id.homebase.photobase.backup
 
-import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.upload.UploadOptions
+import id.homebase.api.media.MediaMetadataReader
+import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.video.VideoCompressionFailedException
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DeviceBackupAsset
-import id.homebase.api.sync.database.EnqueueResult
-import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.api.file.SourceUnavailableException
+import id.homebase.upload.ContentChangedException
+import id.homebase.upload.ContentHashes
+import id.homebase.upload.LibraryKind
 import id.homebase.upload.MediaUploadSpec
-import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PreparedUpload
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
+import id.homebase.upload.UploadSource
+import id.homebase.upload.UserUploadBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -34,6 +40,7 @@ class OutboxBackupUploader(
 ) : BackupUploader {
 
     private val videoProcessing = Mutex()
+    private val metadataReader = MediaMetadataReader(fileOps)
 
     override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
         val mediaType = BackupMediaType.ofCode(row.mediaType)
@@ -58,28 +65,30 @@ class OutboxBackupUploader(
         repeat(BULK_STREAMS) { outboxSync.send(force = true) }
     }
 
+    /** What [handOff] would queue, for a transport of the platform's own; null when a file changed since it was hashed. */
+    suspend fun prepare(spec: MediaUploadSpec): PreparedUpload? = try {
+        timed(BackupStage.Encrypt) { uploadService.prepare(spec, scope) }
+    } catch (_: ContentChangedException) {
+        null
+    } catch (e: SourceUnavailableException) {
+        // Retried: the next attempt exports again, and the export says if the asset is gone.
+        throw BackupEnqueueFailedException("a file to send is gone: ${e.path}", e)
+    }
+
+    private suspend fun send(spec: MediaUploadSpec): HandOffResult {
+        val prepared = prepare(spec) ?: return HandOffResult.ChangedUnderUs
+        return handedOff(timed(BackupStage.Enqueue) { uploadService.queue(prepared) })
+    }
+
     private suspend fun handOffOriginal(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
         mediaType: BackupMediaType,
         exported: ExportedAsset,
-    ): HandOffResult {
-        val request = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
-        var queued = false
-        try {
-            when (val enqueue = timed(BackupStage.Enqueue) { outboxSync.tryEnqueue(request, priority = OUTBOX_BULK_PRIORITY, sendNow = false) }) {
-                EnqueueResult.Enqueued -> queued = true
-                EnqueueResult.AlreadyQueued -> Unit
-                EnqueueResult.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
-                is EnqueueResult.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${enqueue.cause.message}", enqueue.cause)
-            }
-            return HandOffResult.Queued
-        } finally {
-            if (!queued) request.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
-        }
-    }
+    ): HandOffResult = requests.build(row, uniqueId, mediaType, exported) { send(it) }
 
-    // HLS re-encodes, so the server's hash can't vouch for the original: check the bytes about to be encoded instead.
+    // The source is checked against its hash by a read of its own for a transcode, and by the encrypt pass for an
+    // untouched original. Its location goes in the header, as an HLS stream has no place for it.
     private suspend fun handOffVideo(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
@@ -87,41 +96,46 @@ class OutboxBackupUploader(
         expectedDigest: ByteArray,
     ): HandOffResult {
         val part = exported.parts.single()
-        if (!exported.isHashedCopy && !hasher.digest(part.path).contentEquals(expectedDigest)) return HandOffResult.ChangedUnderUs
-        fun videoMetadata(tiny: EmbeddedThumb?) = photoMetadata(
-            uniqueId,
-            PhotobaseProtocol.VideoDataType,
-            row.createdAt,
-            // Inside the encrypted content, because omitPlaintextPreviews keeps it out of the plaintext field.
-            PhotoContent(name = exported.fileName.truncateToCodePoints(MAX_PHOTO_NAME_CODE_POINTS)).withTiny(tiny),
-        )
-        val spec = MediaUploadSpec(
-            driveId = photosDriveId,
-            uniqueId = uniqueId,
-            keyHeader = KeyHeader.newRandom16(),
-            bundle = PayloadBundle(
-                payloads = listOf(PayloadFile(key = PhotobaseProtocol.VideoPayloadKey, filePath = part.path, contentType = part.contentType)),
-                thumbnails = emptyList(),
-                previewThumbs = emptyList(),
-            ),
-            metadata = videoMetadata(null),
-            metadataFromBundle = { bundle -> videoMetadata(bundle.payloads.firstNotNullOfOrNull { it.previewThumbnail }) },
-            priority = OUTBOX_BULK_PRIORITY,
-            sendNow = false,
-            writeOptimistic = false,
-            seedCache = false,
-            omitPlaintextPreviews = true,
-            existingFileIsSuccess = true,
-        )
-        return when (val outcome = uploadService.upload(spec, scope)) {
-            is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
-            is UploadOutcome.SourceMissing -> throw AssetPermanentlyUnavailableException("source gone: ${outcome.missingPaths.joinToString()}")
-            UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
-            is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
+        val options = requests.options()
+        if (!options.originalVideo && !hasher.matches(exported, part, expectedDigest)) return HandOffResult.ChangedUnderUs
+        val metadata = photoMetadata(uniqueId, PhotobaseProtocol.VideoDataType, row.createdAt, PhotoContent.at(metadataReader.videoLocation(part.path)))
+        return try {
+            upload(uniqueId, exported, expectedDigest, metadata, options, untouched = false)
+        } catch (e: VideoCompressionFailedException) {
+            if (!options.originalVideo) throw e
+            // A backup that isn't the original isn't a backup: keep the file even when no copy can be made to play.
+            Logger.w(tag = TAG, throwable = e) { "no playable copy for $uniqueId; backing up the original alone" }
+            upload(uniqueId, exported, expectedDigest, metadata, options.copy(originalVideo = false), untouched = true)
         }
+    }
+
+    private suspend fun upload(
+        uniqueId: Uuid,
+        exported: ExportedAsset,
+        expectedDigest: ByteArray,
+        metadata: UploadFileMetadata,
+        options: UploadOptions,
+        untouched: Boolean,
+    ): HandOffResult {
+        val part = exported.parts.single()
+        val bundle = UserUploadBuilder.build(
+            listOf(UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.VIDEO, untouched = untouched)),
+            options,
+            fileOps,
+        ) { PhotobaseProtocol.VideoPayloadKey }
+        val expected = if (untouched || options.originalVideo) mapOf(PhotobaseProtocol.VideoPayloadKey to expectedDigest) else emptyMap()
+        return send(photoSpec(photosDriveId, uniqueId, bundle, metadata, ContentHashes(PayloadHashAlgorithm.Blake3, expected)))
+    }
+
+    private fun handedOff(outcome: UploadOutcome): HandOffResult = when (outcome) {
+        is UploadOutcome.Enqueued, is UploadOutcome.AlreadyQueued -> HandOffResult.Queued
+        is UploadOutcome.SourceMissing -> throw BackupEnqueueFailedException("a staged file is gone: ${outcome.missingPaths.joinToString()}")
+        UploadOutcome.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")
+        is UploadOutcome.Failed -> throw BackupEnqueueFailedException("enqueue failed: ${outcome.cause.message}", outcome.cause)
     }
 
     private companion object {
         const val BULK_STREAMS = 2
+        const val TAG = "PhotoBackup"
     }
 }

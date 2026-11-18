@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,9 @@ data class BackupSettings(
     val onlyNewFromMs: Long? = null,
     /** The order of the first backup of a library. After that, new photos always go first. */
     val newestFirst: Boolean = true,
+    val photoQuality: MediaQuality = MediaQuality.ORIGINAL,
+    /** At Original, the video as recorded plus a 1080p copy to play (UPLOADS.md section 3.6). */
+    val videoQuality: MediaQuality = MediaQuality.HD,
 ) {
     companion object {
         val DEFAULT_PUSH_INTERVAL: Duration = 1.hours

@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.video.playableContentType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -18,42 +19,45 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.extensionForContentType
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.services.ChatMessageActionService
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.util.AlbumSaveResult
+import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.formatMediumDate
-import id.homebase.core.vault.VaultFileSaver
-import id.homebase.resources.vault_chat_image_name
-import id.homebase.resources.vault_save_failed
-import id.homebase.resources.vault_saved
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.saveReceived
+import id.homebase.core.util.showSaveFailed
+import id.homebase.core.util.showSavedTo
+import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_copy_image
 import id.homebase.resources.chat_image_copied
 import id.homebase.resources.error_unknown
-import id.homebase.resources.file_save_failed
-import id.homebase.resources.file_saved_to
 import id.homebase.resources.file_share_failed
+import id.homebase.resources.vault_chat_image_name
+import id.homebase.resources.vault_save_failed
+import id.homebase.resources.vault_saved
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.uuid.Uuid
 
 /**
  * Full-screen viewer for a shared-media item, laid over [content]. Reuses the chat
@@ -170,9 +174,7 @@ private fun SharedMediaViewer(
         .collectAsStateWithLifecycle(false)
     val vaultFileSaver = org.koin.compose.koinInject<VaultFileSaver>()
 
-    val ext = remember(item) {
-        item.payload.contentType?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "bin"
-    }
+    val ext = remember(item) { extensionForContentType(item.payload.contentType) }
 
     FullScreenMediaViewer(
         data = FullScreenOverlay.ViewMessageData(
@@ -190,11 +192,8 @@ private fun SharedMediaViewer(
             scope.launch {
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
-                    // Stream-decrypt straight into share_outbound (#845) —
-                    // bounded RAM for any payload size; the old byte path
-                    // buffered the whole payload (~2×) in memory.
-                    val path = actionService.streamPayloadToShareOutbound(
-                        item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
+                    val path = actionService.exportToShareOutbound(
+                        item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
                     )
                     if (path != null) {
                         fileSystemHandler.shareFile(
@@ -209,6 +208,10 @@ private fun SharedMediaViewer(
                                     )
                                 }
                             },
+                        )
+                    } else {
+                        snackbarHostState.showSnackbar(
+                            TranslationUtil.getString(MR.string.file_share_failed, TranslationUtil.getString(MR.string.error_unknown)),
                         )
                     }
                 } catch (e: Exception) {
@@ -226,10 +229,10 @@ private fun SharedMediaViewer(
             scope.launch {
                 val saved = try {
                     val iv = item.payload.iv?.bytes
-                    val contentType = item.payload.contentType
+                    val contentType = item.payload.playableContentType
                     val path = if (iv != null && contentType != null) {
-                        actionService.streamPayloadToUploadTemp(
-                            item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), "vault_", ".$ext"
+                        actionService.exportToUploadTemp(
+                            item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey), "vault_", ".$ext"
                         )
                     } else null
                     path != null && vaultFileSaver.save(
@@ -277,54 +280,25 @@ fun rememberSharedMediaSaver(
     val scope: CoroutineScope = rememberCoroutineScope()
     val driveFileProvider = org.koin.compose.koinInject<DriveFileProvider>()
     val fileOps = org.koin.compose.koinInject<FileOperationsProvider>()
+    val albumSaver = org.koin.compose.koinInject<AlbumSaver>()
     val fileSystemHandler = getUriHandler()
     return remember(driveId) {
         { item ->
             scope.launch {
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
-                    val ext = item.payload.contentType?.substringAfterLast('/')
-                        ?.takeIf { it.isNotBlank() } ?: "bin"
-                    val name = item.payload.filename() ?: "${item.payload.key}.$ext"
-                    val outPath = "${AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.EXPORT)}/$name"
-                    val ok = driveFileProvider.streamPayloadDecryptedToPath(
-                        driveId = driveId,
-                        fileId = item.fileId,
-                        key = item.payload.key,
-                        keyHeader = KeyHeader(iv, item.keyHeader.aesKey),
-                        outputPath = outPath,
-                        fileOps = fileOps,
+                    val saved = albumSaver.saveReceived(
+                        driveFileProvider, fileOps, driveId, item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey),
                     )
-                    if (ok) {
-                        fileSystemHandler.saveFile(
-                            file = Path(outPath),
-                            suggestedName = name,
-                            onSuccess = { loc ->
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        TranslationUtil.getString(MR.string.file_saved_to, loc)
-                                    )
-                                }
-                            },
-                            onError = { e ->
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        TranslationUtil.getString(
-                                            MR.string.file_save_failed,
-                                            e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                                        )
-                                    )
-                                }
-                            },
-                        )
+                    when (saved) {
+                        is AlbumSaveResult.Saved -> snackbarHostState.showSavedTo(saved.location)
+                        is AlbumSaveResult.Refused ->
+                            fileSystemHandler.offerRefused(saved, onError = { e -> scope.launch { snackbarHostState.showSaveFailed(e.message) } })
+                        AlbumSaveResult.Cancelled -> Unit
+                        AlbumSaveResult.WriteFailed -> snackbarHostState.showSaveFailed(null)
                     }
                 } catch (e: Exception) {
-                    snackbarHostState.showSnackbar(
-                        TranslationUtil.getString(
-                            MR.string.file_save_failed,
-                            e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                        )
-                    )
+                    snackbarHostState.showSaveFailed(e.message)
                 }
             }
         }

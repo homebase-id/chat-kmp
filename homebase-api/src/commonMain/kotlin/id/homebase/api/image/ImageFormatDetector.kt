@@ -1,5 +1,6 @@
 package id.homebase.api.lib.image
 
+import id.homebase.api.file.OCTET_STREAM
 import co.touchlab.kermit.Logger
 
 /**
@@ -10,11 +11,9 @@ object ImageFormatDetector {
     val TYPES_EVERY_CLIENT_CAN_DECODE: Set<String> = setOf("image/jpeg", "image/png", "image/webp")
 
 
-    /**
-     * Detects the image format based on magic bytes
-     */
-    fun detectFormat(bytes: ByteArray): String {
-        if (bytes.size < 4) return "application/octet-stream"
+    /** An image's type from its signature; callers outside this module go through contentTypeFromBytes. */
+    internal fun detectFormat(bytes: ByteArray): String {
+        if (bytes.size < 4) return OCTET_STREAM
 
         return when {
             // JPEG: FF D8 FF
@@ -35,42 +34,39 @@ object ImageFormatDetector {
             // PNG: 89 50 4E 47
             bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
             bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> "image/png"
-            // GIF: 47 49 46
-            bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() -> "image/gif"
-            // WebP: 52 49 46 46 (RIFF)
-            bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
-            bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() -> "image/webp"
-            // BMP: 42 4D
-            bytes[0] == 0x42.toByte() && bytes[1] == 0x4D.toByte() -> "image/bmp"
-            // HEIC/HEIF: ISOBMFF container with ftyp box
+            bytes.size >= 6 && bytes.decodeToString(0, 6).let { it == "GIF87a" || it == "GIF89a" } -> "image/gif"
+            // WebP: "RIFF" then "WEBP" at 8; WAV and AVI are RIFF too.
+            bytes.size >= 12 && bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
+            bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&
+            bytes.decodeToString(8, 12) == "WEBP" -> "image/webp"
+            isBmp(bytes) -> "image/bmp"
+            // AVIF is a HEIF too, often with the generic mif1 brand: its own brands tell them apart.
+            isAvif(bytes) -> "image/avif"
             isHeic(bytes) -> "image/heic"
-            else -> "application/octet-stream"
+            else -> OCTET_STREAM
         }
     }
 
-    /**
-     * Detects if bytes represent a HEIC/HEIF image (ISOBMFF container with ftyp box).
-     * Checks for 'ftyp' at offset 4 and known HEIC brand identifiers at offset 8.
-     */
-    fun isHeic(bytes: ByteArray): Boolean {
-        if (bytes.size < 12) return false
+    /** A HEIF container by its major brand: HEIC, and the generic mif1/msf1 an AVIF can carry too. */
+    fun isHeic(bytes: ByteArray): Boolean = ftypBrands(bytes)?.first() in HEIC_BRANDS
 
-        // Check for 'ftyp' at offset 4
-        val ftyp = bytes[4] == 0x66.toByte() && // f
-                   bytes[5] == 0x74.toByte() && // t
-                   bytes[6] == 0x79.toByte() && // y
-                   bytes[7] == 0x70.toByte()    // p
-        if (!ftyp) return false
+    // "BM" alone is common in text and other files: a real BMP also has zeroed reserved bytes and a known DIB header size.
+    private fun isBmp(b: ByteArray): Boolean =
+        b.size >= 18 && b[0] == 0x42.toByte() && b[1] == 0x4D.toByte() &&
+            (6..9).all { b[it] == 0.toByte() } && u32le(b, 14) in BMP_DIB_HEADER_SIZES
 
-        // Check brand at offset 8 (4 chars)
-        val brand = try {
-            bytes.sliceArray(8..11).decodeToString()
-        } catch (_: Exception) {
-            return false
-        }
+    private fun isAvif(b: ByteArray): Boolean = ftypBrands(b)?.any { it in AVIF_BRANDS } == true
 
-        return brand in listOf("heic", "heix", "hevc", "hevx", "mif1", "msf1")
+    // The major brand and the compatible brands of an ISOBMFF file's ftyp box; null when it has none.
+    private fun ftypBrands(b: ByteArray): List<String>? {
+        if (b.size < 12 || b.decodeToString(4, 8) != "ftyp") return null
+        val end = u32be(b, 0).coerceAtMost(b.size)
+        return listOf(b.decodeToString(8, 12)) + (16 until end - 3 step 4).map { b.decodeToString(it, it + 4) }
     }
+
+    private val BMP_DIB_HEADER_SIZES = setOf(12, 40, 52, 56, 64, 108, 124)
+    private val AVIF_BRANDS = setOf("avif", "avis")
+    private val HEIC_BRANDS = setOf("heic", "heix", "hevc", "hevx", "mif1", "msf1")
 
     // A single-frame GIF counts as still.
     fun isAnimated(bytes: ByteArray): Boolean =
@@ -131,10 +127,10 @@ object ImageFormatDetector {
         return false
     }
 
-    private fun gifColorTableSize(packed: Byte): Int =
+    internal fun gifColorTableSize(packed: Byte): Int =
         if ((packed.toInt() and 0x80) != 0) 3 * (1 shl ((packed.toInt() and 0x07) + 1)) else 0
 
-    private fun skipGifSubBlocks(b: ByteArray, start: Int): Int {
+    internal fun skipGifSubBlocks(b: ByteArray, start: Int): Int {
         var i = start
         while (i < b.size) {
             val length = b[i].toInt() and 0xFF
@@ -143,6 +139,9 @@ object ImageFormatDetector {
         }
         return i
     }
+
+    /** Browsers and ffmpeg both play a delay under 2 cs at 10 cs. */
+    internal fun playedDelayCs(delayCs: Int) = if (delayCs < 2) 10 else delayCs
 
     internal class GifInfo(val width: Int, val height: Int, val frameCount: Int, val durationCs: Int)
 
@@ -157,8 +156,7 @@ object ImageFormatDetector {
             when (b[i].toInt() and 0xFF) {
                 0x2C -> {
                     frames++
-                    // Browsers and ffmpeg both play a delay under 2 cs at 10 cs.
-                    durationCs += if (delayCs < 2) 10 else delayCs
+                    durationCs += playedDelayCs(delayCs)
                     delayCs = 0
                     if (i + 10 > b.size) break
                     i = skipGifSubBlocks(b, i + 10 + gifColorTableSize(b[i + 9]) + 1)
@@ -173,9 +171,10 @@ object ImageFormatDetector {
         return if (frames > 0) GifInfo(u16le(b, 6), u16le(b, 8), frames, durationCs) else null
     }
 
-    private fun u16le(b: ByteArray, at: Int): Int = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
+    internal fun u16le(b: ByteArray, at: Int): Int = (b[at].toInt() and 0xFF) or ((b[at + 1].toInt() and 0xFF) shl 8)
 
     private fun u32be(b: ByteArray, at: Int): Int = (0..3).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }
+    private fun u32le(b: ByteArray, at: Int): Int = (3 downTo 0).fold(0) { sum, i -> (sum shl 8) or (b[at + i].toInt() and 0xFF) }
 
     private const val VP8X_ANIMATION_FLAG = 0x02
 

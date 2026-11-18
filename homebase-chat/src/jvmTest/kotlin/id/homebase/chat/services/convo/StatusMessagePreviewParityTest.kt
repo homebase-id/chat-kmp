@@ -7,7 +7,9 @@ import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.agentui.AgentUiActionDescriptor
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -84,6 +86,7 @@ class StatusMessagePreviewParityTest {
         userDateMs: Long,
         content: String,
         isStatusMessage: Boolean = false,
+        messageContent: MessageContent? = null,
     ) = MessageUiModel(
         id = Uuid.random(),
         globalTransitId = null,
@@ -108,6 +111,7 @@ class StatusMessagePreviewParityTest {
         payloads = null,
         keyHeader = KeyHeader.empty(),
         hasMore = false,
+        messageContent = messageContent,
     )
 
     private val realMessage =
@@ -230,7 +234,28 @@ class StatusMessagePreviewParityTest {
     }
 
     /**
-     * Guard rail on the gate's scope: only `dataType = 202` is excluded. A
+     * A card action reply (`dataType = 220`) shows on its card, like a poll vote: a peer's press after the
+     * real message leaves the preview, the sort key and the unread count alone, as the cold path's
+     * `dataType NOT IN (202, 220)` does.
+     */
+    @Test
+    fun cardActionReply_leavesPreviewSortKeyAndUnreadAlone() {
+        val afterReal = assertNotNull(bump(listOf(basicRow()), realMessage, realMessageMs))
+        val press = message(
+            author = alice,
+            userDateMs = statusMessageMs,
+            content = "Keep",
+            messageContent = MessageContent.AgentUiAction(
+                AgentUiActionDescriptor(target = Uuid.random(), rev = 0, actionId = "keep", label = "Keep"),
+            ),
+        )
+        assertNull(bump(afterReal, press, statusMessageMs), "a card action reply must not change the conversation row")
+        assertEquals("see you tomorrow", afterReal.single().lastMessage)
+        assertEquals(1, afterReal.single().unreadCount)
+    }
+
+    /**
+     * Guard rail on the gate's scope: only status messages and card action replies are excluded. A
      * normal message still drives the preview and the sort key on the live
      * path, which is what `selectAllConversationPlusLastMessage` returns on the
      * cold path.

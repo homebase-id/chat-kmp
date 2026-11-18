@@ -138,6 +138,7 @@ import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_restore_failed
 import id.homebase.resources.filesync_restore_try_again
 import id.homebase.resources.filesync_restored
+import id.homebase.resources.filesync_restored_into_recovered
 import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_role_folder_returns
@@ -212,7 +213,7 @@ internal fun FilesyncEventsEffect(
     onSendToChat: (path: String, name: String) -> Unit = { _, _ -> },
     onUndoRemove: (Set<Uuid>) -> Unit = {},
     onOpenSignIn: (String) -> Unit = {},
-    onHandedOff: (String) -> Unit,
+    onPreviewGone: (String) -> Unit,
 ) {
     val fileSystemHandler = getUriHandler()
     val scope = rememberCoroutineScope()
@@ -223,7 +224,7 @@ internal fun FilesyncEventsEffect(
         scope.launch { snackbarHostState.showSnackbar(getString(message, people.joinToString { it.domainName })) }
     }
     var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
-    preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onHandedOff) }
+    preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onPreviewGone) }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
@@ -236,11 +237,8 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.SaveFile -> fileSystemHandler.saveFile(
                     Path(event.path),
                     event.name,
-                    onSuccess = { onHandedOff(event.path) },
-                    onError = {
-                        onHandedOff(event.path)
-                        show(MR.string.filesync_save_failed)
-                    },
+                    deleteAfter = true,
+                    onError = { show(MR.string.filesync_save_failed) },
                 )
                 is FilesyncUiEvent.ShareFile -> fileSystemHandler.shareFile(
                     Path(event.path),
@@ -255,6 +253,7 @@ internal fun FilesyncEventsEffect(
                     when (event.notice) {
                         FilesyncNotice.Restored -> MR.string.filesync_restored
                         FilesyncNotice.RestoredToRecovered -> MR.string.filesync_restored_to_recovered
+                        FilesyncNotice.RestoredIntoRecovered -> MR.string.filesync_restored_into_recovered
                         FilesyncNotice.DeletedForever -> MR.string.filesync_deleted_forever
                         FilesyncNotice.ChangedElsewhere -> MR.string.filesync_changed_elsewhere
                         FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again
@@ -485,8 +484,9 @@ private fun NameBadge(text: String) {
 /** A file's size and date, nothing for a folder; a deleted node says when it was deleted instead. */
 @Composable
 internal fun nodeDetails(node: FilesyncNode): String {
-    val removedMs = node.removedMs
-    if (removedMs != null) return deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(removedMs)))
+    if (node.removed) {
+        return node.shownRemovedMs?.let { deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(it))) } ?: stringResource(MR.string.filesync_deleted)
+    }
     if (node.isFolder) return ""
     return listOfNotNull(
         node.sizeBytes?.let { formatBytes(it) },

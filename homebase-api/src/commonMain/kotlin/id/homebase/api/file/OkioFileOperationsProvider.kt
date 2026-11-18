@@ -10,8 +10,10 @@ import id.homebase.api.coroutines.ioDispatcher as defaultIoDispatcher
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
 import kotlinx.io.buffered
+import okio.FileHandle
 import okio.BufferedSource
 import okio.FileSystem
+import okio.IOException
 import okio.Source
 import okio.buffer
 import okio.use
@@ -51,6 +53,30 @@ open class OkioFileOperationsProvider(
         openSource(path).buffer().use { it.readByteArray() }
     }
 
+    override suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray = withContext(io) {
+        fileSystem.openReadOnly(path.toPath()).use { it.readUpTo(offset, length) }
+    }
+
+    override suspend fun openRanges(path: String): FileRanges {
+        val handle = withContext(io) { fileSystem.openReadOnly(path.toPath()) }
+        return object : FileRanges {
+            override suspend fun read(offset: Long, length: Int) = withContext(io) { handle.readUpTo(offset, length) }
+            override suspend fun size() = withContext(io) { handle.size() }
+            override fun close() = handle.close()
+        }
+    }
+
+    private fun FileHandle.readUpTo(offset: Long, length: Int): ByteArray {
+        val out = ByteArray(length)
+        var filled = 0
+        while (filled < length) {
+            val n = read(offset + filled, out, filled, length - filled)
+            if (n <= 0) break
+            filled += n
+        }
+        return out.copyOf(filled)
+    }
+
     override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray = withContext(io) {
         openSource(path).buffer().use { source ->
             source.request(maxBytes.toLong())
@@ -62,11 +88,17 @@ open class OkioFileOperationsProvider(
     // ONE chunk, defeating streamed encryption's bounded-memory point.
     override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> = flow {
         openSource(path).buffer().use { source ->
-            val buf = ByteArray(chunkSize)
+            // Okio's read returns at most one 8 KB segment: fill the chunk, or each emit carries 8 KB.
             while (true) {
-                val read = source.read(buf, 0, chunkSize)
-                if (read == -1) break
-                if (read > 0) emit(buf.copyOf(read))
+                val buf = ByteArray(chunkSize)
+                var filled = 0
+                while (filled < chunkSize) {
+                    val read = source.read(buf, filled, chunkSize - filled)
+                    if (read == -1) break
+                    filled += read
+                }
+                if (filled > 0) emit(if (filled == chunkSize) buf else buf.copyOf(filled))
+                if (filled < chunkSize) break
             }
         }
     }.flowOn(io)
@@ -130,6 +162,16 @@ open class OkioFileOperationsProvider(
         suffix: String,
     ): String = writeBytesIn(SHARE_OUTBOUND_DIR_NAME, bytes, "share_", suffix)
 
+    override suspend fun moveFile(from: String, to: String): Boolean = withContext(io) {
+        try {
+            to.toPath().parent?.let { fileSystem.createDirectories(it) }
+            fileSystem.atomicMove(from.toPath(), to.toPath())
+            true
+        } catch (e: IOException) {
+            false
+        }
+    }
+
     override suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>
@@ -139,6 +181,13 @@ open class OkioFileOperationsProvider(
         // okio's write{} block is non-suspend, so stream into a buffered sink instead.
         fileSystem.sink(p).buffer().use { sink ->
             data.collect { chunk -> sink.write(chunk) }
+        }
+    }
+
+    override suspend fun overwrite(path: String, offset: Long, bytes: ByteArray) = withContext(io) {
+        fileSystem.openReadWrite(path.toPath(), mustCreate = false, mustExist = true).use { handle ->
+            require(offset >= 0 && offset + bytes.size <= handle.size()) { "overwrite past the end of $path" }
+            handle.write(offset, bytes, 0, bytes.size)
         }
     }
 

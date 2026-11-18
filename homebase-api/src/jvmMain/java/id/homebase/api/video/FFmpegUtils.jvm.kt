@@ -137,6 +137,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String = withContext(Dispatchers.IO) {
         if (!FFmpegBinaryManager.isAvailable()) {
             throw VideoCompressionFailedException(inputPath, "no bundled ffmpeg for this platform")
@@ -169,6 +170,7 @@ actual object FFmpegUtils {
             inputPath = inputPath,
             outputPath = outputPath,
             quality = quality,
+            keepMetadata = keepMetadata,
             trimStartMs = effectiveTrimStart,
             trimEndMs = effectiveTrimEnd,
             probedWidthPx = probe.widthPx,
@@ -254,36 +256,6 @@ actual object FFmpegUtils {
         val frac = ms % 1000
         return "$whole.${frac.toString().padStart(3, '0')}"
     }
-
-
-    actual suspend fun segmentVideo(
-        inputPath: String,
-        onProgress: ((Float) -> Unit)?
-    ): Pair<String, String>? =
-        withContext(Dispatchers.IO) {
-            if (!FFmpegBinaryManager.isAvailable()) {
-                Logger.w(tag = LOG_TAG) { "FFmpeg binaries not available for this platform" }
-                return@withContext null
-            }
-
-            val outputDir = File(
-                hlsScratchDirPath,
-                "${AppCacheDirs.HLS_DIR_PREFIX}${UUID.randomUUID()}"
-            ).apply { mkdirs() }
-
-            try {
-                segmentInternal(
-                    inputPath = inputPath,
-                    outputDir = outputDir,
-                    onProgress = onProgress
-                )
-            } catch (e: Throwable) {
-                // segmentInternal throws on FFmpeg failure — delete the leftover
-                // hls_<uuid>/ dir before the exception propagates (see #5).
-                deleteFailedFfmpegOutput(outputDir.absolutePath)
-                throw e
-            }
-        }
 
     actual suspend fun segmentAndEncryptVideo(
         inputPath: String,
@@ -423,14 +395,6 @@ actual object FFmpegUtils {
         return playlistPath to segmentPath
     }
 
-
-    actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-        withContext(Dispatchers.IO) {
-            val cacheFile = File(scratchDirPath, "input_$fileName")
-            cacheFile.writeBytes(data)
-            cacheFile.absolutePath
-        }
-
     internal suspend fun runProcess(command: List<String>, timeoutMs: Long? = null): Int {
         Logger.d(tag = LOG_TAG) { "Running: ${command.joinToString(" ")}" }
         val result = runCapturing(command, timeoutMs, onLine = null)
@@ -518,43 +482,6 @@ actual object FFmpegUtils {
         return ProcessResult(exitCode, output.toString())
     }
 
-    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-        withContext(Dispatchers.IO) {
-            if (!FFmpegBinaryManager.isAvailable()) {
-                Logger.e(tag = LOG_TAG) { "Remux HLS->MP4 skipped: no bundled ffmpeg for this platform" }
-                return@withContext false
-            }
-            val command = listOf(
-                FFmpegBinaryManager.ffmpegPath(),
-                "-y",
-                "-allowed_extensions", "ALL",
-                "-i", playlistPath,
-                "-c", "copy",
-                "-bsf:a", "aac_adtstoasc",
-                "-movflags", "+faststart",
-                outputPath,
-            )
-            val logFile = File(scratchDirPath, "remux_${UUID.randomUUID()}.log")
-            try {
-                val process = FFmpegBinaryManager.processBuilder(command)
-                    .redirectErrorStream(true)
-                    .redirectOutput(logFile)
-                    .start()
-                val exitCode = process.waitForOrDestroy()
-                val ok = exitCode == 0 && File(outputPath).length() > 0L
-                if (!ok) {
-                    Logger.e(tag = LOG_TAG) {
-                        "Remux HLS->MP4 failed, exit=$exitCode, output tail:\n" +
-                            logFile.readLines().takeLast(20).joinToString("\n")
-                    }
-                    deleteFailedFfmpegOutput(outputPath)
-                }
-                ok
-            } finally {
-                logFile.delete()
-            }
-        }
-
     private const val LOG_TAG = "FFmpegUtils"
     private const val PROBE_TIMEOUT_MS = 30 * 1000L
 
@@ -566,26 +493,6 @@ actual object FFmpegUtils {
             if (isAlive) destroyForcibly()
         }
 
-    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
-        withContext(Dispatchers.IO) {
-            if (!FFmpegBinaryManager.isAvailable()) return@withContext null
-            val id = UUID.randomUUID()
-            val inFile = File(scratchDirPath, "transcode_in_$id.$extension")
-            val outFile = File(scratchDirPath, "transcode_out_$id.$extension")
-            try {
-                inFile.writeBytes(input)
-                val command = listOf(FFmpegBinaryManager.ffmpegPath(), "-y", "-i", inFile.absolutePath) +
-                    outputArgs + outFile.absolutePath
-                val process = FFmpegBinaryManager.processBuilder(command)
-                    .redirectErrorStream(true)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .start()
-                if (process.waitForOrDestroy() == 0) outFile.readBytes() else null
-            } finally {
-                inFile.delete()
-                outFile.delete()
-            }
-        }
 }
 
 data class ProcessResult(

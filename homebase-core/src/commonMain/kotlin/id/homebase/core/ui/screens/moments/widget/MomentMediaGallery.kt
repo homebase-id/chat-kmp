@@ -22,7 +22,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
-import id.homebase.core.image.ImageSize
 import kotlin.uuid.Uuid
 
 // Sizing is aspect-ratio driven so the gallery fills the parent's width, unlike the chat version which clamps
@@ -35,6 +34,7 @@ fun MomentMediaGallery(
     driveId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
     keyHeader: KeyHeader,
+    isEncrypted: Boolean,
     modifier: Modifier = Modifier,
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
@@ -71,6 +71,7 @@ fun MomentMediaGallery(
                 fileId = fileId,
                 driveId = driveId,
                 keyHeader = keyHeader,
+                isEncrypted = isEncrypted,
                 previewThumbnail = previewThumbnail
                     ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
                 onMediaClick = onMediaClick,
@@ -93,6 +94,7 @@ fun MomentMediaGallery(
                 driveId = driveId,
                 previewThumbnail = previewThumbnail,
                 keyHeader = keyHeader,
+                isEncrypted = isEncrypted,
                 messageId = messageId,
                 downloadingFiles = downloadingFiles,
                 isUploading = isUploading,
@@ -120,6 +122,7 @@ private fun SingleImageLayout(
     fileId: Uuid,
     driveId: Uuid,
     keyHeader: KeyHeader,
+    isEncrypted: Boolean,
     previewThumbnail: EmbeddedThumb?,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
@@ -177,9 +180,9 @@ private fun SingleImageLayout(
             fileId = fileId,
             driveId = driveId,
             keyHeader = keyHeader,
+            isEncrypted = isEncrypted,
             previewThumbnail = previewThumbnail,
             modifier = cellModifier,
-            imageSize = ImageSize.THUMB_LARGE,
             // fitBounds routes MomentMediaItem to ContentScale.Fit and makes it honour [cellModifier] instead of
             // re-imposing the image's intrinsic aspect ratio.
             preserveAspectRatio = fitToContent,

@@ -3,7 +3,7 @@
 reads 1, writes 5, transactions 1
 
 1x read              DriveLocalTagIndexWrapper.selectJsonHeadersByLocalTagInGroup < ChatMessageStream.getPinnedMessages < ChatMessageStream.refreshPinnedFor SELECT m.jsonHeader FROM DriveLocalTagIndex t JOIN DriveMainIndex m ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId WHERE t.ide
-1x write             OutboxWrapper.insert < OutboxSync.tryEnqueue < UploadService.upload INSERT INTO Outbox(driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType,json,files) VALUES (?,?,
+1x write             OutboxWrapper.insert < OutboxSync.tryEnqueue < UploadService.queue INSERT INTO Outbox(driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType,json,files) VALUES (?,?,
 1x write in tx       HomebaseFileProcessor.rewriteTags < HomebaseFileProcessor.performBaseUpsert < HomebaseFileProcessor.baseUpsertEntryZapZap DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ? AND fileId = ?
 1x write in tx       HomebaseFileProcessor.rewriteTags < HomebaseFileProcessor.performBaseUpsert < HomebaseFileProcessor.baseUpsertEntryZapZap DELETE FROM DriveTagIndex WHERE identityId = ? AND driveId = ? AND fileId = ?
 1x write in tx       HomebaseFileProcessor.rewriteTags < HomebaseFileProcessor.performBaseUpsert < HomebaseFileProcessor.baseUpsertEntryZapZap INSERT INTO DriveLocalTagIndex(identityId, driveId, fileId, tagId) VALUES (?, ?, ?, ?)

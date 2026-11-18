@@ -192,8 +192,8 @@ class DriveOutboxUploaderRekeyTest {
     fun `successful create moves seeded entries to the server fileId using the receipts`() = runTest {
         val payloadBytes = ByteArray(64) { it.toByte() }
         val thumbBytes = ByteArray(32) { (it * 3).toByte() }
-        driveCache.cachePayloadBytesEncrypted(driveId, optimisticFileId, payloadKey, payloadBytes, "image/jpeg")
-        driveCache.cacheThumbBytesEncrypted(driveId, optimisticFileId, payloadKey, 100, 100, thumbBytes, "image/webp")
+        driveCache.cachePayloadBytes(driveId, optimisticFileId, payloadKey, payloadBytes, "image/jpeg")
+        driveCache.cacheThumbBytes(driveId, optimisticFileId, payloadKey, 100, 100, thumbBytes, "image/webp")
         insertOptimisticRow()
         uploadResponse = resultWithReceipts()
 
@@ -212,8 +212,8 @@ class DriveOutboxUploaderRekeyTest {
     fun `receipts-less response still moves the payload but not the thumb`() = runTest {
         // Old server: no receipts → the thumb's target key (server lastModified)
         // can't be computed, so only the payload entry moves.
-        driveCache.cachePayloadBytesEncrypted(driveId, optimisticFileId, payloadKey, ByteArray(16) { 1 }, "image/jpeg")
-        driveCache.cacheThumbBytesEncrypted(driveId, optimisticFileId, payloadKey, 100, 100, ByteArray(8), "image/webp")
+        driveCache.cachePayloadBytes(driveId, optimisticFileId, payloadKey, ByteArray(16) { 1 }, "image/jpeg")
+        driveCache.cacheThumbBytes(driveId, optimisticFileId, payloadKey, 100, 100, ByteArray(8), "image/webp")
         insertOptimisticRow()
         uploadResponse = resultWithReceipts().copy(payloads = emptyList())
 

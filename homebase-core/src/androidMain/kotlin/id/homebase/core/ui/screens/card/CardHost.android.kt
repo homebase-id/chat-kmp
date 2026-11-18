@@ -85,7 +85,13 @@ internal class AndroidCardHost(context: Context, pageUrl: String) : CardHostBase
         val height = view.height / COVER_DOWNSCALE
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         // Draws the WebView alone, so the chrome floating over it stays out of the cover.
-        view.draw(Canvas(bitmap).apply { scale(1f / COVER_DOWNSCALE, 1f / COVER_DOWNSCALE) })
+        // draw() skips the parent's scroll translation, so a scrolled page would land scrollY down with a blank band above it.
+        view.draw(
+            Canvas(bitmap).apply {
+                scale(1f / COVER_DOWNSCALE, 1f / COVER_DOWNSCALE)
+                translate(-view.scrollX.toFloat(), -view.scrollY.toFloat())
+            },
+        )
         return bitmap.asImageBitmap()
     }
 

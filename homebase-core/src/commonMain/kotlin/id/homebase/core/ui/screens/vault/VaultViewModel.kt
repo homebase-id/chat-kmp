@@ -34,7 +34,7 @@ import id.homebase.core.ui.screens.vault.model.webDropFileNames
 import id.homebase.core.ui.screens.vault.model.webDropGuardKey
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
@@ -504,7 +504,7 @@ class VaultViewModel(
 
         val placeholderDescriptors = fileContentTypes.mapIndexed { index, contentType ->
             PayloadDescriptor(
-                key = "vlt_pg_${index.toString().padStart(2, '0')}",
+                key = VaultEntry.pageKey(index),
                 contentType = contentType,
             )
         }
@@ -607,10 +607,10 @@ class VaultViewModel(
         if (file.isPending) return
         viewModelScope.launch {
             val firstKey = file.payloadDescriptors.firstOrNull()?.key ?: return@launch
-            val tempPath = vaultUploaderService.downloadPayload(file, firstKey)
-            if (tempPath != null) {
+            val download = vaultUploaderService.downloadPayload(file, firstKey)
+            if (download != null) {
                 _events.tryEmit(
-                    VaultUiEvent.ShareFileReady(tempPath, file.fileName, file.contentType),
+                    VaultUiEvent.ShareFileReady(download.path, download.name, download.contentType),
                 )
             } else {
                 _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadFailed))
@@ -647,12 +647,9 @@ class VaultViewModel(
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {
         val contentTypes = action.newFiles.map { it.contentType() }
 
-        val existingMax = action.file.payloadDescriptors
-            .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
-            .maxOrNull() ?: -1
+        val start = action.file.nextPageIndex()
         val placeholders = contentTypes.mapIndexed { i, contentType ->
-            val key = "vlt_pg_${(existingMax + 1 + i).toString().padStart(2, '0')}"
-            PayloadDescriptor(key = key, contentType = contentType)
+            PayloadDescriptor(key = VaultEntry.pageKey(start + i), contentType = contentType)
         }
 
         action.newFiles.forEachIndexed { i, file -> previewPicked(action.file.uniqueId, placeholders[i].key, file) }
@@ -780,7 +777,7 @@ class VaultViewModel(
         launchEditor(
             tool = action.tool,
             readSource = {
-                val path = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                val path = vaultUploaderService.downloadPayload(action.file, action.payloadKey)?.path
                     ?: throw IllegalStateException("Failed to download page payload")
                 fileOperationsProvider.readFileBytes(path)
             },
@@ -925,12 +922,10 @@ class VaultViewModel(
         _preparingShareKeys.update { it + action.payloadKey }
         viewModelScope.launch {
             try {
-                val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
-                if (tempPath != null) {
-                    val descriptor = action.file.payloadDescriptors.find { it.key == action.payloadKey }
-                    val contentType = descriptor?.contentType ?: action.file.contentType
+                val download = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                if (download != null) {
                     _events.tryEmit(
-                        VaultUiEvent.ShareFileReady(tempPath, action.file.fileName, contentType),
+                        VaultUiEvent.ShareFileReady(download.path, download.name, download.contentType),
                     )
                 } else {
                     _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
@@ -968,17 +963,17 @@ class VaultViewModel(
             val staged = mutableListOf<PickedDropFile>()
             try {
                 file.payloadDescriptors.forEachIndexed { index, descriptor ->
-                    val tempPath = vaultUploaderService.downloadPayload(file, descriptor.key)
-                    if (tempPath == null) {
+                    val download = vaultUploaderService.downloadPayload(file, descriptor.key)
+                    if (download == null) {
                         // No partial drop: reap what was already materialized and abort loudly.
                         staged.forEach { fileOperationsProvider.deleteTempFile(it.path) }
                         _events.tryEmit(VaultUiEvent.Error(VaultError.WebDropPrepareFailed))
                         return@launch
                     }
                     staged += PickedDropFile(
-                        path = tempPath,
+                        path = download.path,
                         name = names[index],
-                        contentType = descriptor.contentType ?: file.contentType,
+                        contentType = download.contentType,
                         size = 0,
                     )
                 }
@@ -997,10 +992,10 @@ class VaultViewModel(
         _preparingShareKeys.update { it + action.payloadKey }
         viewModelScope.launch {
             try {
-                val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
-                if (tempPath != null) {
+                val download = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                if (download != null) {
                     _events.tryEmit(
-                        VaultUiEvent.SaveFileReady(tempPath, action.file.fileName),
+                        VaultUiEvent.SaveFileReady(download.path, download.name),
                     )
                 } else {
                     _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))

@@ -3,10 +3,12 @@ package id.homebase.core.ui.screens.card
 /** The value [option] currently holds; null means the design's preset applies. */
 fun CardOverrides.valueOf(option: CardOption): String? = when (option) {
     CardOption.COLOURS -> palette?.ground
+    CardOption.BACKGROUND -> background
     CardOption.ACCENT -> palette?.accent
     CardOption.DISPLAY_FONT -> type?.display
     CardOption.TEXT_FONT -> type?.text
     CardOption.PORTRAIT_SHAPE -> portraits?.firstOrNull()?.shape
+    CardOption.PORTRAIT_SIZE -> portraits?.firstOrNull()?.size
     CardOption.SOCIALS_STYLE -> socials
     CardOption.BLOCK_ORDER -> null
     CardOption.BLOCK_STYLE -> blocks?.map { it.presentation }?.distinct()?.singleOrNull()
@@ -35,13 +37,21 @@ fun CardOverrides.with(
         }
         copy(palette = (scheme?.applyTo(palette)?.copy(accent = accent) ?: CardPalette(accent = accent)).takeUnless { it == CardPalette() })
     }
+    CardOption.BACKGROUND -> copy(background = CardBackgrounds.known(value))
     CardOption.ACCENT -> copy(palette = (palette ?: CardPalette()).copy(accent = value).takeUnless { it == CardPalette() })
     CardOption.DISPLAY_FONT -> copy(type = (type ?: CardTypeface()).copy(display = value).takeUnless { it == CardTypeface() })
     CardOption.TEXT_FONT -> copy(type = (type ?: CardTypeface()).copy(text = value).takeUnless { it == CardTypeface() })
-    CardOption.PORTRAIT_SHAPE -> copy(portraits = value?.let { listOf(CardPortrait(shape = it)) })
+    CardOption.PORTRAIT_SHAPE -> withPortrait { it.copy(shape = value) }
+    CardOption.PORTRAIT_SIZE -> withPortrait { it.copy(size = value?.takeUnless { v -> v == CardDesignSpecs.DEFAULT_PORTRAIT_SIZE }) }
     CardOption.SOCIALS_STYLE -> copy(socials = value)
     CardOption.BLOCK_ORDER -> this
     CardOption.BLOCK_STYLE -> withBlockStyle(value, presetOrder)
+}
+
+private fun CardOverrides.withPortrait(edit: (CardPortrait) -> CardPortrait): CardOverrides {
+    val all = portraits.orEmpty()
+    val edited = listOf(edit(all.firstOrNull() ?: CardPortrait())) + all.drop(1)
+    return copy(portraits = edited.takeUnless { list -> list.all { it == CardPortrait() } })
 }
 
 fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides {

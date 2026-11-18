@@ -64,6 +64,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.MediaPager
+import id.homebase.core.media.pagerArrowKeys
 import id.homebase.core.media.MediaPendingOverlay
 import id.homebase.core.media.MediaRail
 import id.homebase.core.media.MediaRailItem
@@ -84,6 +85,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 import id.homebase.chat.services.collectContext
+import id.homebase.core.image.mediaSharedKey
 
 internal fun imageOnlyAction(contentType: String?, action: (() -> Unit)?): (() -> Unit)? =
     action.takeIf { contentType?.startsWith("image/") == true }
@@ -149,6 +151,7 @@ fun FullScreenMediaViewer(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
             .focusRequester(focusRequester)
+            .pagerArrowKeys(pagerState)
             .onKeyEvent { event ->
                 val copy = copyAction?.takeIf { event.isCopyChord() } ?: return@onKeyEvent false
                 copy()
@@ -169,8 +172,6 @@ fun FullScreenMediaViewer(
                 payload.iv?.bytes
             }
 
-            // Prefer a locally-available original (an image sent this session)
-            // over a remote fetch + decrypt — same as VaultZoomableImage.
             val localContext by localAttachmentStore.collectContext(data.messageId, payload.key)
 
             when (
@@ -191,12 +192,13 @@ fun FullScreenMediaViewer(
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
+                        showsHdr = isSettled,
                     )
                 }
 
                 is MediaPageSource.Remote -> {
-                    val source = remember(data.driveId, data.fileId, payload.key, resolved.iv) {
+                    val source = remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn) {
                         val imageData = HomebaseImageData.from(
                             driveId = data.driveId,
                             fileId = data.fileId,
@@ -209,7 +211,7 @@ fun FullScreenMediaViewer(
                             remoteOdinId = data.remoteOdinId,
                             globalTransitId = data.globalTransitId,
                         )
-                        SubSamplingImageSource.Remote(imageData)
+                        SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
                     }
                     ZoomableSubSamplingImage(
                         source = source,
@@ -217,7 +219,8 @@ fun FullScreenMediaViewer(
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = "image-${data.fileId}-${payload.key}",
+                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
+                        showsHdr = isSettled,
                     )
                 }
 

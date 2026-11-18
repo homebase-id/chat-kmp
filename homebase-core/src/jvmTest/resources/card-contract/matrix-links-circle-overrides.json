@@ -55,7 +55,8 @@
                 "shadow": "soft",
                 "tilt": 5,
                 "tape": true,
-                "mono": true
+                "mono": true,
+                "size": "large"
             }
         ],
         "blocks": [

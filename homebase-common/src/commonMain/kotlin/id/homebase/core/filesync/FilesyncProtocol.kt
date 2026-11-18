@@ -27,6 +27,10 @@ object FilesyncProtocol {
 
     /** The top folder computers move a node into once its own folder is gone for good; told apart by id, never by name. */
     val RecoveredFilesNodeId: Uuid = Uuid.parse("fa4646cb-2df0-4f18-a3c6-1fc2b2f6ac4b")
+    const val RecoveredFilesName = "Recovered files"
+
+    /** The top folder holding one folder per computer's Desktop; told apart by id, never by name. */
+    val DesktopsNodeId: Uuid = Uuid.parse("475d49e0-c0b4-4cbc-8090-2f2cb1e9dc69")
 
     const val PayloadKey = "sync_data"
 

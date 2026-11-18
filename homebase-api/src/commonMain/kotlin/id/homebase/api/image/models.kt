@@ -2,6 +2,9 @@ package id.homebase.api.image
 
 data class ImageSize(val pixelWidth: Int, val pixelHeight: Int)
 
+val ImageSize.aspectRatio: Float?
+    get() = if (pixelWidth > 0 && pixelHeight > 0) pixelWidth.toFloat() / pixelHeight else null
+
 data class ImageResult(
     val bytes: ByteArray,
     val naturalSize: ImageSize, // original image size
@@ -35,7 +38,7 @@ data class ThumbnailInstruction(
     val type: ImageFormat = ImageFormat.WEBP
 )
 
-enum class ImageFormat {
-    WEBP, JPEG, PNG, BMP, GIF
+enum class ImageFormat(val contentType: String) {
+    WEBP("image/webp"), JPEG("image/jpeg"), PNG("image/png"), BMP("image/bmp"), GIF("image/gif")
 }
 
