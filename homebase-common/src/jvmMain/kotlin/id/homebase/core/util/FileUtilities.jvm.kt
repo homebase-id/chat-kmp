@@ -13,9 +13,11 @@ private const val TAG = "getUriHandler"
 actual fun getUriHandler(): FileSystemHandler = JvmFileSystemHandler()
 
 internal class JvmFileSystemHandler(
-    private val albumSaver: AlbumSaver = JvmAlbumSaver(),
-    private val fileOps: FileOperationsProvider = JvmFileOperationsProvider(),
+    albumSaver: AlbumSaver = JvmAlbumSaver(),
+    fileOps: FileOperationsProvider = JvmFileOperationsProvider(),
 ) : FileSystemHandler {
+    private val saver = FileSaver(albumSaver, fileOps)
+
     override fun openUrl(url: String, onError: (Throwable) -> Unit) {
         try {
             BrowserUtils.openSystemBrowser(url, enableClipboardFallback = false)
@@ -87,10 +89,10 @@ internal class JvmFileSystemHandler(
         deleteAfter: Boolean,
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
-    ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
+    ) = saver.save(file, suggestedName, deleteAfter, onSuccess, onError)
 
     override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
-        offerRefusedThrough(fileOps, refused, refusalError(onError))
+        saver.offerRefused(refused, onError)
 
     override fun shareText(text: String, onError: (Throwable) -> Unit) {
         try {

@@ -21,6 +21,7 @@ private var shownInteractionController: UIDocumentInteractionController? = null
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
     val fileOps = remember { IOSFileOperationsProvider() }
+    val saver = remember { FileSaver(IosAlbumSaver, fileOps) }
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
             val nsUrl = NSURL.URLWithString(url) ?: return
@@ -110,10 +111,10 @@ actual fun getUriHandler(): FileSystemHandler {
             deleteAfter: Boolean,
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
-        ) = saveThroughAlbum(IosAlbumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
+        ) = saver.save(file, suggestedName, deleteAfter, onSuccess, onError)
 
         override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
-            offerRefusedThrough(fileOps, refused, refusalError(onError))
+            saver.offerRefused(refused, onError)
 
         override fun shareText(text: String, onError: (Throwable) -> Unit) {
             try {
