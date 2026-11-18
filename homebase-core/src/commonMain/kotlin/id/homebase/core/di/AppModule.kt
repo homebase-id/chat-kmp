@@ -80,6 +80,7 @@ import id.homebase.chat.services.calling.history.CallHistoryService
 import id.homebase.core.calling.CallsPreferences
 import id.homebase.chat.services.calling.CallIceServerSource
 import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.platformRingbackTone
 import id.homebase.chat.services.calling.platformCallEngineFactory
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
@@ -496,6 +497,7 @@ val appModule = module {
                 get<AuthConnectionCoordinator>().run { if (active) holdWebSocket(CALL_WS_HOLD) else releaseWebSocket(CALL_WS_HOLD) }
             },
             recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
+            ringback = platformRingbackTone(),
         )
     }
     single { CallsPreferences(get()) }

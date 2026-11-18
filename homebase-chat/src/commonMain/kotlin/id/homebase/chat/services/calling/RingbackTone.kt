@@ -63,17 +63,22 @@ const val RINGBACK_FALLBACK_MS = 4_000L
 
 /**
  * Plays [tone] once the callee's device reports ringing, or [fallbackMs] after dialing if it never
- * does, and stops it on any other state: connecting, declined, ended, failed.
+ * does, and stops it on any other state (connecting, declined, ended, failed) and when cancelled.
  */
 suspend fun Flow<CallState>.driveRingback(tone: RingbackTone, fallbackMs: Long = RINGBACK_FALLBACK_MS) {
-    map { if (it.phase == CallPhase.Outgoing) it.peerRinging else null }
-        .distinctUntilChanged()
-        .collectLatest { dialingRinging ->
-            if (dialingRinging == null) {
-                tone.stop()
-                return@collectLatest
+    try {
+        map { if (it.phase == CallPhase.Outgoing) it.peerRinging else null }
+            .distinctUntilChanged()
+            .collectLatest { dialingRinging ->
+                if (dialingRinging == null) {
+                    tone.stop()
+                    return@collectLatest
+                }
+                if (!dialingRinging) delay(fallbackMs)
+                tone.start()
             }
-            if (!dialingRinging) delay(fallbackMs)
-            tone.start()
-        }
+    } finally {
+        // A cancelled collector never sees the state move on.
+        tone.stop()
+    }
 }

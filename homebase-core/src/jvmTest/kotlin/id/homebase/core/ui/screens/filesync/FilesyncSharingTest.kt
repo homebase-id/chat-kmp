@@ -41,6 +41,8 @@ import io.ktor.http.headersOf
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.youauth.DrivePermissionSet
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.encoding.Base64
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -125,7 +127,8 @@ class FilesyncSharingTest {
         return OdinSystemSerializer.serialize(file).removeSuffix("}") + ""","shares":$shares}"""
     }
 
-    private val calls = mutableListOf<Call>()
+    // FilesyncSharing sends requests in parallel, so the mock engine records and counts from several threads at once.
+    private val calls = CopyOnWriteArrayList<Call>()
     private var samReady = true
     private var notReady = emptySet<String>()
     private var samGrantsWrite = true
@@ -133,10 +136,10 @@ class FilesyncSharingTest {
     private var frodoReviewedUs = true
     private var downPeers = emptySet<String>()
     private var collaborative = false
-    private var markerConflicts = 0
+    private val markerConflicts = AtomicInteger()
     private val markerFileIds = mutableSetOf<Uuid>()
     private var filesyncRefused = false
-    private var storedShareKey: String? = null
+    @Volatile private var storedShareKey: String? = null
     private val merry = OdinId("merry.test")
     private val groupCircle = Uuid.random()
     private var unsealed = listOf("sam.test")
@@ -182,7 +185,7 @@ class FilesyncSharingTest {
             path.endsWith("/files") -> """{"fileId":"${Uuid.random()}","driveId":"${SystemDriveConstants.transientTempDrive.alias}","newVersionTag":"${Uuid.random()}"}"""
             // Only a marker's in-place update is expected; any other PATCH falls through to "unexpected".
             request.method == HttpMethod.Patch && path.substringAfterLast('/').let { id -> markerFileIds.any { it.toString() == id } } ->
-                if (markerConflicts-- > 0) return@MockEngine respond("""{"title":"changed","errorCode":"versionTagMismatch"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
+                if (markerConflicts.getAndDecrement() > 0) return@MockEngine respond("""{"title":"changed","errorCode":"versionTagMismatch"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
                 else """{"fileId":"${path.substringAfterLast('/')}","driveId":"${FilesyncProtocol.DriveAlias}","newVersionTag":"${Uuid.random()}"}"""
             path.endsWith("/drives/${FilesyncProtocol.DriveAlias}/files/soft-delete-batch") ->
                 """{"results":[{"fileId":"${decrypted(call, appSecret).jsonObject["files"]!!.jsonArray.single().jsonObject["fileId"]!!.jsonPrimitive.content}"}]}"""
@@ -607,7 +610,7 @@ class FilesyncSharingTest {
         val fresh = Uuid.random()
         sharedPages += """{"searchResults":[${marker("sam.test", frodo, versionTag = Uuid.random(), key = key)}],"hasMoreRows":false}"""
         sharedPages += """{"searchResults":[${marker("sam.test", frodo, versionTag = fresh, key = key)}],"hasMoreRows":false}"""
-        markerConflicts = 1
+        markerConflicts.set(1)
 
         sharing.setSync(sam, true)
 
@@ -619,7 +622,7 @@ class FilesyncSharingTest {
     @Test
     fun aMarkerThatKeepsChangingElsewhereGivesUpAfterAFewTries() = runTest {
         repeat(3) { sharedPages += """{"searchResults":[${marker("sam.test", frodo, versionTag = Uuid.random())}],"hasMoreRows":false}""" }
-        markerConflicts = 3
+        markerConflicts.set(3)
 
         assertFailsWith<IllegalStateException> { sharing.setSync(sam, true) }
         assertEquals(3, calls.count { it.request.method == HttpMethod.Patch })

@@ -61,6 +61,7 @@ import id.homebase.chat.services.calling.FakeCallEngine
 import id.homebase.chat.services.calling.FakeCallScript
 import id.homebase.chat.services.calling.FakeVideo
 import id.homebase.chat.services.calling.LoopbackSignaling
+import id.homebase.chat.services.calling.RingbackTone
 import id.homebase.core.ui.theme.HomebaseTheme
 import java.io.File
 import javax.imageio.ImageIO
@@ -147,7 +148,14 @@ class CallWindowTest {
 
     private val frodo = "frodo.baggins.demo.rocks"
 
+    private class RecordingTone : RingbackTone {
+        val events = mutableListOf<String>()
+        override fun start() { events += "start" }
+        override fun stop() { events += "stop" }
+    }
+
     private class ServiceRig(scope: TestScope, private val frodo: String, sam: String) {
+        val ringback = RecordingTone()
         val net = LoopbackSignaling(now = { scope.testScheduler.currentTime })
         val bus = EventBus()
         val credentials = CredentialsManager()
@@ -161,6 +169,7 @@ class CallWindowTest {
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
             iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
+            ringback = ringback,
         )
         val peer = CallController(
             selfOdinId = sam,
@@ -254,9 +263,11 @@ class CallWindowTest {
             settle()
             rig.service.startCall(sam, video = false)
             settle()
+            assertEquals("start", rig.ringback.events.lastOrNull(), "dialing out plays the ringback")
             rig.model.requestClose()
             settle()
             assertTrue(rig.model.uiState.value.phase is CallPhase.Ended)
+            assertEquals("stop", rig.ringback.events.last(), "hanging up stops it")
             rig.model.requestClose()
             settle()
             assertFalse(rig.model.windowVisible.value, "closing the ended window dismisses it")
