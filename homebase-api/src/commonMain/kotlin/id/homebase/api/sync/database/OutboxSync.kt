@@ -8,6 +8,7 @@ import id.homebase.api.client.storage.StorageQuota
 import id.homebase.api.client.storageFullOrNull
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
@@ -17,6 +18,7 @@ import id.homebase.api.client.notifications.SchedulePushNotificationRequest
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
+import id.homebase.api.client.drives.upload.hlsScratchDir
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.cleanupHlsScratch
 import id.homebase.api.file.AppCacheDirs
@@ -35,6 +37,8 @@ import id.homebase.api.platform.beginBackgroundExecutionAssertion
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.OutboxSerializer
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -142,6 +146,7 @@ class OutboxSync(
     private val beginBackgroundAssertion: () -> BackgroundExecutionAssertion =
         { beginBackgroundExecutionAssertion("outbox-drain") },
     private val storageQuota: StorageQuota? = null,
+    private val fileSystem: FileSystem = systemFileSystem,
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: supervisedScope("outbox-sync", ioDispatcher)
@@ -329,9 +334,9 @@ class OutboxSync(
                         "OutboxSync: network unreachable (${e.message}) — uniqueId=${outboxRecord.uniqueId} " +
                             "checked back in uncharged (attempt count stays ${outboxRecord.checkOutCount}); aborting drain pass"
                     )
-                    databaseManager.outbox.checkInUncharged(
-                        outboxRecord.checkOutStamp!!,
-                        UnixTimeUtc.now().addSeconds(BASE_DELAY_SECONDS).milliseconds
+                    checkedInOrGone(
+                        outboxRecord,
+                        databaseManager.outbox.checkInUncharged(outboxRecord.checkOutStamp!!, UnixTimeUtc.now().addSeconds(BASE_DELAY_SECONDS).milliseconds),
                     )
                     recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
                     emitFor(outboxRecord,
@@ -354,9 +359,9 @@ class OutboxSync(
                         "OutboxSync: storage full — uniqueId=${outboxRecord.uniqueId} " +
                             "uploadType=${outboxRecord.uploadTypeLabel()} checked back in uncharged, retry in $waitSeconds s"
                     )
-                    databaseManager.outbox.checkInUncharged(
-                        outboxRecord.checkOutStamp!!,
-                        UnixTimeUtc.now().addSeconds(waitSeconds).milliseconds
+                    checkedInOrGone(
+                        outboxRecord,
+                        databaseManager.outbox.checkInUncharged(outboxRecord.checkOutStamp!!, UnixTimeUtc.now().addSeconds(waitSeconds).milliseconds),
                     )
                     recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message, storageFull = true)
                     // Messages chained on it for ordering go on without it: a held photo must not hold back the
@@ -379,9 +384,9 @@ class OutboxSync(
                         "OutboxSync: no key for drive ${outboxRecord.driveId} yet — uniqueId=${outboxRecord.uniqueId} " +
                             "checked back in uncharged, retry in $NO_DRIVE_KEY_RETRY_SECONDS s"
                     )
-                    databaseManager.outbox.checkInUncharged(
-                        outboxRecord.checkOutStamp!!,
-                        UnixTimeUtc.now().addSeconds(NO_DRIVE_KEY_RETRY_SECONDS).milliseconds
+                    checkedInOrGone(
+                        outboxRecord,
+                        databaseManager.outbox.checkInUncharged(outboxRecord.checkOutStamp!!, UnixTimeUtc.now().addSeconds(NO_DRIVE_KEY_RETRY_SECONDS).milliseconds),
                     )
                     recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
                     emitFor(outboxRecord,BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
@@ -406,18 +411,7 @@ class OutboxSync(
                     databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
                     clearLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId)
 
-                    // Drop branch: the upload exhausted retries or hit a permanent
-                    // error, so nothing else will clean up the request's payload
-                    // temps. Reach into the serialized request, pull out the
-                    // payloads, and reap both the per-file temps (resolved_*.mp4
-                    // etc.) AND any hls_<uuid>/ parent dir. Wrapped in
-                    // runCatching — cleanup failure must never affect drop
-                    // semantics.
-                    runCatching {
-                        cleanupPayloadsForDroppedRow(outboxRecord)
-                    }.onFailure {
-                        Logger.w("OutboxSync: payload cleanup failed for dropped uniqueId=${outboxRecord.uniqueId}", it)
-                    }
+                    deleteEndedRowFiles(outboxRecord)
 
                     emitFor(outboxRecord,
                         BackendEvent.OutboxEvent.OutboxItemDropped(
@@ -442,9 +436,9 @@ class OutboxSync(
                 // `.seconds` here (the pre-fix bug) made every backoff deadline
                 // a ~1970s-era value, so failed rows were immediately
                 // re-eligible and the 30s→4h backoff was never enforced.
-                databaseManager.outbox.checkInFailed(
-                    outboxRecord.checkOutStamp!!,
-                    UnixTimeUtc.now().addSeconds(n).milliseconds
+                checkedInOrGone(
+                    outboxRecord,
+                    databaseManager.outbox.checkInFailed(outboxRecord.checkOutStamp!!, UnixTimeUtc.now().addSeconds(n).milliseconds),
                 )
                 // Remember why this attempt failed so Message Info can show the
                 // reason instead of a bare "still sending" spinner.
@@ -1073,7 +1067,8 @@ class OutboxSync(
 
     /** Like tryEnqueue but replaces any existing pending item with the same (driveId, uniqueId).
      *  Use when the new request supersedes a stale pending one, e.g. a conversation file update
-     *  that was queued while offline and is now outdated. */
+     *  that was queued while offline and is now outdated. The replaced row's payload files are deleted,
+     *  except those the new request lists under the same path. */
     public suspend fun replaceEnqueue(
         driveId: Uuid,
         uniqueId: Uuid,
@@ -1101,8 +1096,16 @@ class OutboxSync(
                     "inFlight=${existing.checkOutStamp != null} with ${uploadTypeName(uploadType)}"
             )
         }
-        databaseManager.outbox.deleteBy(driveId, uniqueId)
-        return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
+        // Not cancellable between the delete and the insert, or the pending row is lost.
+        return withContext(NonCancellable) {
+            // Only an idle row is deleted here with its files; one a worker checked out (perhaps since the read
+            // above) is removed without them, and its upload deletes them when it ends.
+            val replaced = databaseManager.outbox.deleteIdle(driveId, uniqueId)
+            if (replaced == null && existing != null) databaseManager.outbox.deleteBy(driveId, uniqueId)
+            val result = tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
+            if (replaced != null) scope.launch { deleteEndedRowFiles(replaced) }
+            result
+        }
     }
 
     public suspend fun tryEnqueue(
@@ -1156,45 +1159,48 @@ class OutboxSync(
     }
 
     /**
-     * Decode the dropped row's serialized request just enough to find the
-     * payload list, then reap both the per-file temps (resolved_*.mp4 etc.)
-     * AND any `hls_<uuid>/` parent dir. Only `UploadNewFile` and `UpdateFile`
-     * carry payloads — the other upload types return null/empty and the
-     * helpers silently no-op.
-     *
-     * The success path (DriveUploadProvider.cleanupPayloadTempFiles) does the
-     * same per-file delete after a successful upload. This mirror is what
-     * keeps a permanently-failed upload (20 retries / terminal error) from
-     * leaking its picker-resolved input file. The leak was the largest single
-     * contributor to the cacheDir backlog seen on a real device.
+     * A row that ended (sent, dropped, replaced, or checked in after it was replaced) no longer needs its payload files.
+     * They're deleted with their `hls_<uuid>/` directories, except a file the row now queued under the same key lists, or
+     * anything in an `hls_<uuid>/` directory that row uses: an edit coalesced into a pending send reuses its media.
+     * Never fails the caller: a failure is logged.
      */
-    private fun cleanupPayloadsForDroppedRow(outboxRecord: Outbox) {
-        // Lenient: the row is being dropped and cleanup should still find a stale row's temp files.
-        val json = outboxRecord.json.decodeToString()
-        val payloads = when (outboxRecord.uploadType) {
-            DriveOutboxUploader.UploadNewFile, DriveOutboxUploader.UploadNewFileOverPeer ->
-                OdinSystemSerializer.deserialize<UploadFileRequest>(json).payloads
-            DriveOutboxUploader.UpdateFile ->
-                OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(json).payloads
-            else -> null
-        } ?: return
-
-        // Per-file delete. Skip content:// SAF URIs (Android share-in / picker
-        // sometimes leaves payload.filePath as a content URI we don't own and
-        // must not touch).
-        for (p in payloads) {
-            val path = p.filePath
-            if (path.startsWith("content://") || path.startsWith("content:")) continue
-            runCatching {
-                val okio = path.toPath()
-                if (systemFileSystem.exists(okio)) systemFileSystem.delete(okio)
-            }.onFailure {
-                Logger.w("OutboxSync: drop-cleanup file delete failed for $path", it)
+    private suspend fun deleteEndedRowFiles(row: Outbox) {
+        runCatching {
+            val payloads = payloadsOf(row.uploadType, row.json.decodeToString())
+            if (payloads.isNullOrEmpty()) return
+            val current = databaseManager.outbox.selectByDriveAndUnique(row.driveId, row.uniqueId)
+            val kept = current?.let { payloadsOf(it.uploadType, it.json.decodeToString()) }.orEmpty()
+            val keptFiles = kept.mapTo(HashSet()) { it.filePath }
+            val keptHlsDirs = kept.mapNotNullTo(HashSet()) { hlsScratchDir(it.filePath) }
+            val gone = payloads.filter { it.filePath !in keptFiles && hlsScratchDir(it.filePath) !in keptHlsDirs }
+            for (p in gone) {
+                val path = p.filePath
+                if (path.startsWith("content:")) continue // Android share-in and picker URIs aren't ours to touch
+                runCatching {
+                    val okio = path.toPath()
+                    if (fileSystem.exists(okio)) fileSystem.delete(okio)
+                }.onFailure {
+                    Logger.w("OutboxSync: payload file delete failed for $path", it)
+                }
             }
+            cleanupHlsScratch(gone, fileSystem)
+        }.onFailure {
+            Logger.w("OutboxSync: payload cleanup failed for uniqueId=${row.uniqueId}", it)
         }
+    }
 
-        // Plus the parent hls_<uuid>/ dir if any.
-        cleanupHlsScratch(payloads)
+    /** A check-in that matched no row means the row was replaced or cancelled while it uploaded: nobody else ends it. */
+    private suspend fun checkedInOrGone(row: Outbox, rowsCheckedIn: Long) {
+        if (rowsCheckedIn == 0L) deleteEndedRowFiles(row)
+    }
+
+    private fun payloadsOf(uploadType: Long, json: String): List<PayloadFile>? = when (uploadType) {
+        // Lenient on purpose: cleanup must still read a stale row's request.
+        DriveOutboxUploader.UploadNewFile, DriveOutboxUploader.UploadNewFileOverPeer ->
+            OdinSystemSerializer.deserialize<UploadFileRequest>(json).payloads
+        DriveOutboxUploader.UpdateFile ->
+            OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(json).payloads
+        else -> null
     }
 
     /**
@@ -1222,7 +1228,6 @@ class OutboxSync(
     suspend fun reapIdleOutboxTemps(
         outboxTempDir: String,
         maxAgeMs: Long = 24 * 60 * 60 * 1000L,
-        fileSystem: FileSystem = systemFileSystem,
         nowMs: Long = UnixTimeUtc.now().milliseconds,
     ) {
         if (databaseManager.outbox.count() > 0L) return

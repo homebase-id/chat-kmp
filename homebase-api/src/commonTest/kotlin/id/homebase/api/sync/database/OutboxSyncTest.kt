@@ -1,6 +1,11 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
+import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.client.drives.upload.UploadAppFileMetaData
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.SecureByteArray
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import co.touchlab.kermit.Logger
@@ -23,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -164,10 +170,10 @@ class OutboxSyncTest {
 
     @Test
     fun reapIdleOutboxTemps_deletesOldOrphansOnlyWhenIdle() = runOutboxTest { db ->
-        val sync = OutboxSync(
-            databaseManager = db, uploader = TestUploader(), eventBus = EventBus(), scope = backgroundScope
-        )
         val fs = FakeFileSystem()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = TestUploader(), eventBus = EventBus(), scope = backgroundScope, fileSystem = fs,
+        )
         val dir = "/cache/outbox-temp".toPath()
         fs.createDirectories(dir)
         fun write(name: String): Long {
@@ -178,12 +184,12 @@ class OutboxSyncTest {
 
         // Idle + OLDER than maxAge → reaped (a real crash-orphan).
         val m1 = write("enc_old.encrypted")
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m1 + 5_000)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = m1 + 5_000)
         assertFalse(fs.exists(dir / "enc_old.encrypted"), "idle + old orphan must be reaped")
 
         // Idle + YOUNGER than maxAge → kept (the create-race guard: a just-written temp is safe).
         val m2 = write("enc_new.encrypted")
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m2 + 500)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = m2 + 500)
         assertTrue(fs.exists(dir / "enc_new.encrypted"), "a just-written temp must never be reaped")
 
         // Staged HLS payloads are whole hls_<uuid>/ DIRECTORIES (#842): idle + old → reaped
@@ -193,7 +199,7 @@ class OutboxSyncTest {
         fs.write(hlsDir / "index.ts") { writeUtf8("segments") }
         fs.write(hlsDir / "index.m3u8") { writeUtf8("playlist") }
         val hlsMtime = fs.metadata(hlsDir).lastModifiedAtMillis!!
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = hlsMtime + 5_000)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = hlsMtime + 5_000)
         assertFalse(fs.exists(hlsDir), "idle + old orphan hls_ dir must be reaped recursively")
 
         // A directory that is NOT hls_-shaped is unexpected here → never touched.
@@ -201,7 +207,7 @@ class OutboxSyncTest {
         fs.createDirectories(strangeDir)
         fs.write(strangeDir / "file.bin") { writeUtf8("x") }
         val strangeMtime = fs.metadata(strangeDir).lastModifiedAtMillis!!
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = strangeMtime + 5_000)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = strangeMtime + 5_000)
         assertTrue(fs.exists(strangeDir / "file.bin"), "non-hls directories must never be reaped")
 
         // NON-EMPTY outbox + old file → kept (a pending/offline row might reference it).
@@ -210,7 +216,7 @@ class OutboxSyncTest {
         val hlsPending = dir / "hls_pending"
         fs.createDirectories(hlsPending)
         fs.write(hlsPending / "index.ts") { writeUtf8("segments") }
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m3 + 5_000)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = m3 + 5_000)
         assertTrue(fs.exists(dir / "enc_pending.encrypted"), "must not reap while the outbox is non-empty")
         assertTrue(fs.exists(hlsPending / "index.ts"), "must not reap hls dirs while the outbox is non-empty")
     }
@@ -1663,5 +1669,150 @@ class OutboxSyncTest {
         db.outbox.setNextRunTime(driveId, lowPriority, 30_000L)
 
         assertEquals(30_000L, db.outbox.nextScheduled()!!.milliseconds)
+    }
+
+    private val replaceDrive = Uuid.random()
+
+    private fun upload(uniqueId: Uuid, vararg paths: String) = UploadFileRequest(
+        driveId = replaceDrive,
+        keyHeader = KeyHeader(ByteArray(16), SecureByteArray(ByteArray(16))),
+        metadata = UploadFileMetadata(
+            allowDistribution = false,
+            isEncrypted = true,
+            appData = UploadAppFileMetaData(uniqueId = uniqueId, fileType = 7878, content = "{}"),
+        ),
+        payloads = paths.mapIndexed { i, path -> PayloadFile(key = "p$i", filePath = path, contentType = "image/jpeg") },
+    )
+
+    private fun FakeFileSystem.file(path: String) = path.toPath().also { p ->
+        p.parent?.let { createDirectories(it) }
+        write(p) { writeUtf8("x") }
+    }
+
+    @Test
+    fun aReplacedRowsFilesAndHlsFolderAreDeleted() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val old = fs.file("/cache/outbox-temp/old.enc")
+        val oldHls = fs.file("/cache/outbox-temp/hls_old/index.ts")
+        val fresh = fs.file("/cache/outbox-temp/new.enc")
+        sync.tryEnqueue(upload(id, old.toString(), oldHls.toString()), sendNow = false)
+
+        sync.replaceEnqueue(upload(id, fresh.toString()), sendNow = false)
+        advanceUntilIdle()
+        runCurrent() // the outbox works on backgroundScope, which advanceUntilIdle doesn't wait for
+
+        assertFalse(fs.exists(old), "the replaced row's file goes with it")
+        assertFalse(fs.exists(oldHls.parent!!), "and so does its hls_ folder")
+        assertTrue(fs.exists(fresh), "the new request's file stays")
+    }
+
+    @Test
+    fun filesTheNewRequestReusesAreKept() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val shared = fs.file("/cache/outbox-temp/shared.enc")
+        val hls = fs.file("/cache/outbox-temp/hls_shared/index.ts")
+        val dropped = fs.file("/cache/outbox-temp/dropped.enc")
+        sync.tryEnqueue(upload(id, shared.toString(), hls.toString(), dropped.toString()), sendNow = false)
+
+        sync.replaceEnqueue(upload(id, shared.toString(), "/cache/outbox-temp/hls_shared/other.ts"), sendNow = false)
+        advanceUntilIdle()
+        runCurrent()
+
+        assertTrue(fs.exists(shared), "a file both requests use stays")
+        assertTrue(fs.exists(hls), "an hls_ folder the new request also uses stays")
+        assertFalse(fs.exists(dropped), "a file only the old request used goes")
+    }
+
+    @Test
+    fun replacingARowMidUploadLeavesItsFilesToTheUpload() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val inFlight = fs.file("/cache/outbox-temp/in-flight.enc")
+        sync.tryEnqueue(upload(id, inFlight.toString()), sendNow = false)
+        assertNotNull(db.outbox.checkout(), "the row is now mid-upload")
+
+        sync.replaceEnqueue(upload(id, fs.file("/cache/outbox-temp/new.enc").toString()), sendNow = false)
+        advanceUntilIdle()
+        runCurrent()
+
+        assertTrue(fs.exists(inFlight), "an upload in progress still reads its file")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /** Holds the first upload until [release], then fails it with what it's given; later uploads succeed. */
+    private class GatedUploader : OutboxUploader {
+        val started = CompletableDeferred<Unit>()
+        private val outcome = CompletableDeferred<Throwable>()
+        private val calls = atomic(0)
+        fun release(failure: Throwable) = outcome.complete(failure)
+        override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
+            if (calls.incrementAndGet() > 1) return
+            started.complete(Unit)
+            throw outcome.await()
+        }
+    }
+
+    private suspend fun TestScope.replaceMidUpload(
+        db: DatabaseManager,
+        failure: Throwable,
+    ): Triple<FakeFileSystem, List<okio.Path>, okio.Path> {
+        val fs = FakeFileSystem()
+        val uploader = GatedUploader()
+        val sync = OutboxSync(db, uploader, EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val shared = fs.file("/cache/outbox-temp/media.enc")
+        val ownHls = fs.file("/cache/outbox-temp/hls_own/index.ts")
+        val own = fs.file("/cache/outbox-temp/overflow.enc")
+        sync.tryEnqueue(upload(id, shared.toString(), own.toString(), ownHls.toString(), "content://media/1"), sendNow = false)
+        sync.setOnline(true)
+        sync.send()
+        uploader.started.await()
+
+        sync.replaceEnqueue(upload(id, shared.toString(), fs.file("/cache/outbox-temp/overflow2.enc").toString()), sendNow = false)
+        uploader.release(failure)
+        advanceUntilIdle()
+        runCurrent()
+        return Triple(fs, listOf(own, ownHls.parent!!), shared)
+    }
+
+    @Test
+    fun aRowReplacedMidUploadThenDroppedKeepsTheMediaItsReplacementReuses() = runOutboxTest { db ->
+        val (fs, own, shared) = replaceMidUpload(db, NotFoundException())
+        assertTrue(fs.exists(shared), "the replacement still sends the media both requests list")
+        own.forEach { assertFalse(fs.exists(it), "$it only the dropped row used goes") }
+    }
+
+    @Test
+    fun aRowReplacedMidUploadThatFailsAndIsGoneDeletesItsOwnFiles() = runOutboxTest { db ->
+        val (fs, own, shared) = replaceMidUpload(db, Exception("server hiccup"))
+        assertTrue(fs.exists(shared), "the replacement still sends the media both requests list")
+        own.forEach { assertFalse(fs.exists(it), "$it is deleted by the attempt that found its row gone") }
+    }
+
+    @Test
+    fun aDroppedRowsFilesAreDeleted() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val uploader = TestUploader().apply { failureException = NotFoundException() }
+        val eventBus = EventBus()
+        val sync = OutboxSync(db, uploader, eventBus, backgroundScope, fileSystem = fs)
+        sync.setOnline(true)
+        val dropped = async { eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first() }
+        testScheduler.runCurrent()
+        val file = fs.file("/cache/outbox-temp/dropped.enc")
+        val hls = fs.file("/cache/outbox-temp/hls_dropped/index.ts")
+        sync.tryEnqueue(upload(Uuid.random(), file.toString(), hls.toString()), sendNow = false)
+        sync.send()
+        advanceUntilIdle()
+        runCurrent()
+        dropped.await()
+
+        assertEquals(0L, db.outbox.count(), "a permanent failure drops the row")
+        assertFalse(fs.exists(file))
+        assertFalse(fs.exists(hls.parent!!))
     }
 }
