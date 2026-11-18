@@ -8,6 +8,7 @@ import id.homebase.api.client.storage.StorageQuota
 import id.homebase.api.client.storageFullOrNull
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
@@ -17,6 +18,7 @@ import id.homebase.api.client.notifications.SchedulePushNotificationRequest
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
+import id.homebase.api.client.drives.upload.hlsScratchDir
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.cleanupHlsScratch
 import id.homebase.api.file.AppCacheDirs
@@ -142,6 +144,7 @@ class OutboxSync(
     private val beginBackgroundAssertion: () -> BackgroundExecutionAssertion =
         { beginBackgroundExecutionAssertion("outbox-drain") },
     private val storageQuota: StorageQuota? = null,
+    private val fileSystem: FileSystem = systemFileSystem,
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: supervisedScope("outbox-sync", ioDispatcher)
@@ -1101,8 +1104,20 @@ class OutboxSync(
                     "inFlight=${existing.checkOutStamp != null} with ${uploadTypeName(uploadType)}"
             )
         }
-        databaseManager.outbox.deleteBy(driveId, uniqueId)
-        return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
+        // Atomic: a worker may check the row out after the read above, and an upload in progress keeps its files.
+        val removedIdle = databaseManager.outbox.deleteByIfNotCheckedOut(driveId, uniqueId) > 0
+        if (!removedIdle) databaseManager.outbox.deleteBy(driveId, uniqueId)
+        val result = tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
+        // The replaced row's files go with it, except any the new request reuses (an edit coalesced into a pending
+        // send). A row mid-upload keeps them: the upload deletes them when it's done.
+        if (removedIdle && existing != null) {
+            runCatching {
+                deletePayloadFiles(payloadsOf(existing.uploadType, existing.json.decodeToString()), keep = payloadsOf(uploadType, json))
+            }.onFailure {
+                Logger.w("OutboxSync: payload cleanup failed for replaced uniqueId=$uniqueId", it)
+            }
+        }
+        return result
     }
 
     public suspend fun tryEnqueue(
@@ -1170,31 +1185,39 @@ class OutboxSync(
      */
     private fun cleanupPayloadsForDroppedRow(outboxRecord: Outbox) {
         // Lenient: the row is being dropped and cleanup should still find a stale row's temp files.
-        val json = outboxRecord.json.decodeToString()
-        val payloads = when (outboxRecord.uploadType) {
-            DriveOutboxUploader.UploadNewFile, DriveOutboxUploader.UploadNewFileOverPeer ->
-                OdinSystemSerializer.deserialize<UploadFileRequest>(json).payloads
-            DriveOutboxUploader.UpdateFile ->
-                OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(json).payloads
-            else -> null
-        } ?: return
+        deletePayloadFiles(payloadsOf(outboxRecord.uploadType, outboxRecord.json.decodeToString()))
+    }
 
-        // Per-file delete. Skip content:// SAF URIs (Android share-in / picker
-        // sometimes leaves payload.filePath as a content URI we don't own and
-        // must not touch).
-        for (p in payloads) {
+    /** The payload files a queued upload points at; null for a kind of row that carries none. */
+    private fun payloadsOf(uploadType: Long, json: String): List<PayloadFile>? = when (uploadType) {
+        DriveOutboxUploader.UploadNewFile, DriveOutboxUploader.UploadNewFileOverPeer ->
+            OdinSystemSerializer.deserialize<UploadFileRequest>(json).payloads
+        DriveOutboxUploader.UpdateFile ->
+            OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(json).payloads
+        else -> null
+    }
+
+    /**
+     * Deletes [payloads]' files and their `hls_<uuid>/` directories, except a file [keep] also uses or anything in an
+     * `hls_<uuid>/` directory it also uses.
+     * Skips content:// URIs (Android share-in and picker), which aren't ours to touch.
+     */
+    private fun deletePayloadFiles(payloads: List<PayloadFile>?, keep: List<PayloadFile>? = null) {
+        if (payloads.isNullOrEmpty()) return
+        val keptFiles = keep.orEmpty().mapTo(HashSet()) { it.filePath }
+        val keptHlsDirs = keep.orEmpty().mapNotNullTo(HashSet()) { hlsScratchDir(it.filePath) }
+        val gone = payloads.filter { it.filePath !in keptFiles && hlsScratchDir(it.filePath) !in keptHlsDirs }
+        for (p in gone) {
             val path = p.filePath
-            if (path.startsWith("content://") || path.startsWith("content:")) continue
+            if (path.startsWith("content:")) continue
             runCatching {
                 val okio = path.toPath()
-                if (systemFileSystem.exists(okio)) systemFileSystem.delete(okio)
+                if (fileSystem.exists(okio)) fileSystem.delete(okio)
             }.onFailure {
-                Logger.w("OutboxSync: drop-cleanup file delete failed for $path", it)
+                Logger.w("OutboxSync: payload file delete failed for $path", it)
             }
         }
-
-        // Plus the parent hls_<uuid>/ dir if any.
-        cleanupHlsScratch(payloads)
+        cleanupHlsScratch(gone, fileSystem)
     }
 
     /**

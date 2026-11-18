@@ -6,6 +6,7 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import okio.FileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 
 /**
@@ -42,8 +43,7 @@ fun cleanupHlsScratch(
     if (payloads.isNullOrEmpty()) return
     val seen = HashSet<String>()
     for (p in payloads) {
-        val parent = runCatching { p.filePath.toPath().parent }.getOrNull() ?: continue
-        if (!parent.name.startsWith(AppCacheDirs.HLS_DIR_PREFIX)) continue
+        val parent = hlsScratchDir(p.filePath) ?: continue
         val parentBase = parent.parent?.toString() ?: continue
         val key = "$parentBase|${parent.name}"
         if (!seen.add(key)) continue
@@ -54,5 +54,9 @@ fun cleanupHlsScratch(
         }
     }
 }
+
+/** The `hls_<uuid>/` directory [filePath] sits in, or null when it isn't in one. */
+fun hlsScratchDir(filePath: String): Path? =
+    runCatching { filePath.toPath().parent }.getOrNull()?.takeIf { it.name.startsWith(AppCacheDirs.HLS_DIR_PREFIX) }
 
 private const val TAG = "HlsScratchCleanup"

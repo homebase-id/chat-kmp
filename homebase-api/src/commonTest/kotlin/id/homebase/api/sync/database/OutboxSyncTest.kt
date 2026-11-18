@@ -1,6 +1,11 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
+import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.client.drives.upload.UploadAppFileMetaData
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.SecureByteArray
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import co.touchlab.kermit.Logger
@@ -1663,5 +1668,72 @@ class OutboxSyncTest {
         db.outbox.setNextRunTime(driveId, lowPriority, 30_000L)
 
         assertEquals(30_000L, db.outbox.nextScheduled()!!.milliseconds)
+    }
+
+    private fun upload(uniqueId: Uuid, vararg paths: String) = UploadFileRequest(
+        driveId = replaceDrive,
+        keyHeader = KeyHeader(ByteArray(16), SecureByteArray(ByteArray(16))),
+        metadata = UploadFileMetadata(
+            allowDistribution = false,
+            isEncrypted = true,
+            appData = UploadAppFileMetaData(uniqueId = uniqueId, fileType = 7878, content = "{}"),
+        ),
+        payloads = paths.mapIndexed { i, path -> PayloadFile(key = "p$i", filePath = path, contentType = "image/jpeg") },
+    )
+
+    private val replaceDrive = Uuid.random()
+
+    private fun FakeFileSystem.file(path: String) = path.toPath().also { p ->
+        p.parent?.let { createDirectories(it) }
+        write(p) { writeUtf8("x") }
+    }
+
+    @Test
+    fun aReplacedRowsFilesAndHlsFolderAreDeleted() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val old = fs.file("/cache/outbox-temp/old.enc")
+        val oldHls = fs.file("/cache/outbox-temp/hls_old/index.ts")
+        val fresh = fs.file("/cache/outbox-temp/new.enc")
+        sync.tryEnqueue(upload(id, old.toString(), oldHls.toString()), sendNow = false)
+
+        sync.replaceEnqueue(upload(id, fresh.toString()), sendNow = false)
+
+        assertFalse(fs.exists(old), "the replaced row's file goes with it")
+        assertFalse(fs.exists(oldHls.parent!!), "and so does its hls_ folder")
+        assertTrue(fs.exists(fresh), "the new request's file stays")
+    }
+
+    @Test
+    fun filesTheNewRequestReusesAreKept() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val shared = fs.file("/cache/outbox-temp/shared.enc")
+        val hls = fs.file("/cache/outbox-temp/hls_shared/index.ts")
+        val dropped = fs.file("/cache/outbox-temp/dropped.enc")
+        sync.tryEnqueue(upload(id, shared.toString(), hls.toString(), dropped.toString()), sendNow = false)
+
+        sync.replaceEnqueue(upload(id, shared.toString(), "/cache/outbox-temp/hls_shared/other.ts"), sendNow = false)
+
+        assertTrue(fs.exists(shared), "a file both requests use stays")
+        assertTrue(fs.exists(hls), "an hls_ folder the new request also uses stays")
+        assertFalse(fs.exists(dropped), "a file only the old request used goes")
+    }
+
+    @Test
+    fun aRowMidUploadKeepsItsFilesForTheUploadToDelete() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val inFlight = fs.file("/cache/outbox-temp/in-flight.enc")
+        sync.tryEnqueue(upload(id, inFlight.toString()), sendNow = false)
+        assertNotNull(db.outbox.checkout(), "the row is now mid-upload")
+
+        sync.replaceEnqueue(upload(id, fs.file("/cache/outbox-temp/new.enc").toString()), sendNow = false)
+
+        assertTrue(fs.exists(inFlight), "an upload in progress still reads its file")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 }
