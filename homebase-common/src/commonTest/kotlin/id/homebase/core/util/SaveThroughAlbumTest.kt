@@ -4,107 +4,141 @@ import id.homebase.core.files.InMemoryFileOps
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.files.Path
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Whatever happens to a save, the caller hears once, last, that its file is no longer needed. */
+/** A save the caller gives its file to deletes it once done, whatever the outcome; any other leaves it alone. */
 class SaveThroughAlbumTest {
-    private class Run(val calls: List<String>, val thrown: List<Throwable>)
+    private class Run(val calls: List<String>, val thrown: List<Throwable>, val fileLeft: Boolean)
+
+    private class JsLikeFailure(message: String) : Throwable(message)
 
     private fun saver(target: suspend () -> AlbumTarget) = object : AlbumSaver {
         override suspend fun target(name: String, asked: Boolean) = target()
     }
 
-    private suspend fun save(
+    private suspend fun TestScope.save(
         saver: AlbumSaver,
+        deleteAfter: Boolean = true,
         onSuccess: () -> Unit = {},
         onError: () -> Unit = {},
-        onFileReleased: () -> Unit = {},
-        onRefused: (suspend (String, String, String) -> Unit)? = null,
+        onRefused: (suspend (String, String, String, Boolean) -> Boolean)? = null,
+        cancelBeforeItRuns: Boolean = false,
     ): Run {
+        val fileOps = InMemoryFileOps()
+        val file = fileOps.writeBytesToTempFile("secret".encodeToByteArray(), "key", ".txt")
         val calls = mutableListOf<String>()
         val thrown = mutableListOf<Throwable>()
-        val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, e -> thrown += e })
-        val refused: (suspend (String, String, String) -> Unit)? =
-            onRefused?.let { handOn -> { file, name, reason -> calls += "refused"; handOn(file, name, reason) } }
+        val dispatcher = if (cancelBeforeItRuns) StandardTestDispatcher(testScheduler) else EmptyCoroutineContext
+        val scope = CoroutineScope(SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, e -> thrown += e })
         val success = { _: String -> calls += "success"; onSuccess() }
         val error = { _: Throwable -> calls += "error"; onError() }
-        val released = { calls += "released"; onFileReleased() }
-        if (refused == null) {
-            saveThroughAlbum(saver, InMemoryFileOps(), Path("/tmp/key.txt"), "key.txt", success, error, released, scope = scope)
+        if (onRefused == null) {
+            saveThroughAlbum(saver, fileOps, Path(file), "key.txt", deleteAfter, success, error, scope = scope)
         } else {
-            saveThroughAlbum(saver, InMemoryFileOps(), Path("/tmp/key.txt"), "key.txt", success, error, released, refused, scope)
+            val refused: suspend (String, String, String, Boolean) -> Boolean =
+                { f, name, reason, mayGiveAway -> calls += "refused"; onRefused(f, name, reason, mayGiveAway) }
+            saveThroughAlbum(saver, fileOps, Path(file), "key.txt", deleteAfter, success, error, refused, scope)
         }
-        scope.coroutineContext.job.children.toList().joinAll()
-        return Run(calls, thrown)
+        val launched = scope.coroutineContext.job.children.toList()
+        if (cancelBeforeItRuns) scope.cancel()
+        launched.joinAll()
+        return Run(calls, thrown, fileOps.exists(file))
     }
 
     private val saved = saver { AlbumTarget.FinishedFile { "Downloads" } }
     private val refusing = saver { AlbumTarget.FinishedFile { throw AlbumAccessDeniedException("no storage access") } }
 
     @Test
-    fun aSaveReleasesAfterItsSuccess() = runTest {
-        assertEquals(listOf("success", "released"), save(saved).calls)
+    fun aSavedFileIsDeletedAfterTheSuccess() = runTest {
+        val run = save(saved)
+        assertEquals(listOf("success"), run.calls)
+        assertFalse(run.fileLeft)
     }
 
     @Test
-    fun aCancelledSaveStillReleases() = runTest {
-        assertEquals(listOf("released"), save(saver { AlbumTarget.Cancelled }).calls)
+    fun aFileTheCallerKeepsIsNeverDeleted() = runTest {
+        assertTrue(save(saved, deleteAfter = false).fileLeft)
+        assertTrue(save(saver { AlbumTarget.Cancelled }, deleteAfter = false).fileLeft)
+        assertTrue(save(saver { error("disk full") }, deleteAfter = false).fileLeft)
     }
 
     @Test
-    fun aFailedSaveReleasesAfterItsError() = runTest {
-        assertEquals(listOf("error", "released"), save(saver { error("disk full") }).calls)
+    fun aCancelledSaveStillDeletes() = runTest {
+        val run = save(saver { AlbumTarget.Cancelled })
+        assertEquals(emptyList(), run.calls)
+        assertFalse(run.fileLeft)
     }
 
     @Test
-    fun aThrowableThatIsntAnExceptionIsStillAnErrorThatReleases() = runTest {
-        assertEquals(listOf("error", "released"), save(saver { throw NotImplementedError("a JS failure") }).calls)
+    fun aFailedSaveReportsAndDeletes() = runTest {
+        val run = save(saver { error("disk full") })
+        assertEquals(listOf("error"), run.calls)
+        assertFalse(run.fileLeft)
     }
 
     @Test
-    fun aRefusalReportsAnErrorAndReleasesByDefault() = runTest {
-        assertEquals(listOf("error", "released"), save(refusing).calls)
+    fun aFailureThatIsntAnExceptionIsStillReportedAndDeletes() = runTest {
+        val run = save(saver { throw JsLikeFailure("a JS failure") })
+        assertEquals(listOf("error"), run.calls)
+        assertFalse(run.fileLeft)
     }
 
     @Test
-    fun aRefusalHandedOnGetsTheSafeNameAndIsStillReleased() = runTest {
-        var handed: Pair<String, String>? = null
-        val run = save(refusing, onRefused = { file, name, _ -> handed = file to name })
-        assertEquals(listOf("refused", "released"), run.calls)
-        assertEquals("/tmp/key.txt" to "key.txt", handed)
+    fun anErrorIsntTakenForAFailedSaveButStillDeletes() = runTest {
+        val run = save(saver { throw NotImplementedError("a bug") })
+        assertEquals(emptyList(), run.calls)
+        assertTrue(run.thrown.single() is NotImplementedError)
+        assertFalse(run.fileLeft)
     }
 
     @Test
-    fun aRefusalHandlerThatThrowsStillReleases() = runTest {
-        val run = save(refusing, onRefused = { _, _, _ -> error("no share sheet") })
-        assertEquals(listOf("refused", "released"), run.calls)
-        assertEquals("no share sheet", run.thrown.single().message)
+    fun aRefusalReportsAnErrorAndDeletesByDefault() = runTest {
+        val run = save(refusing)
+        assertEquals(listOf("error"), run.calls)
+        assertFalse(run.fileLeft)
     }
 
     @Test
-    fun aCallbackThatThrowsStillReleases() = runTest {
+    fun aRefusalHandlerIsToldWhetherItMayGiveTheFileAway() = runTest {
+        var mayGiveAway: Boolean? = null
+        save(refusing, onRefused = { _, name, _, give -> assertEquals("key.txt", name); mayGiveAway = give; false })
+        assertEquals(true, mayGiveAway)
+        save(refusing, deleteAfter = false, onRefused = { _, _, _, give -> mayGiveAway = give; false })
+        assertEquals(false, mayGiveAway)
+    }
+
+    @Test
+    fun aFileARefusalHandlerStillReadsIsKept() = runTest {
+        val run = save(refusing, onRefused = { _, _, _, _ -> true })
+        assertEquals(listOf("refused"), run.calls)
+        assertTrue(run.fileLeft)
+    }
+
+    @Test
+    fun aFileARefusalHandlerGaveAwayIsDeleted() = runTest {
+        assertFalse(save(refusing, onRefused = { _, _, _, _ -> false }).fileLeft)
+    }
+
+    @Test
+    fun aCallbackThatThrowsStillDeletes() = runTest {
         val run = save(saved, onSuccess = { error("the screen is gone") })
-        assertEquals(listOf("success", "released"), run.calls)
         assertEquals("the screen is gone", run.thrown.single().message)
+        assertFalse(run.fileLeft)
     }
 
     @Test
-    fun aReleaseThatThrowsDoesntHideTheCallbacksFailure() = runTest {
-        val run = save(saver { error("disk full") }, onError = { error("the screen is gone") }, onFileReleased = { error("delete failed") })
-        assertEquals(listOf("error", "released"), run.calls)
-        assertEquals("the screen is gone", run.thrown.single().message)
-    }
-
-    @Test
-    fun aReleaseThatThrowsIsLoggedNotRaised() = runTest {
-        val run = save(saved, onFileReleased = { error("delete failed") })
-        assertEquals(listOf("success", "released"), run.calls)
-        assertTrue(run.thrown.isEmpty())
+    fun aSaveCancelledBeforeItRunsStillDeletes() = runTest {
+        assertFalse(save(saved, cancelBeforeItRuns = true).fileLeft)
     }
 }

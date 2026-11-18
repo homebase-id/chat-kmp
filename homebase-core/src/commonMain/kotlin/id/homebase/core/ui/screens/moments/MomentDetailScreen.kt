@@ -547,6 +547,7 @@ fun MomentDetailPane(
                     fileSystemHandler.saveFile(
                         file = Path(event.filePath),
                         suggestedName = event.suggestedName,
+                        deleteAfter = true,
                         onSuccess = { location ->
                             scope.launch {
                                 snackbarHostState.showSnackbar(

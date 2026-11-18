@@ -35,6 +35,7 @@ internal fun EmailKeyFileSaveEffect(
                 is EmailSecretsUiEvent.SaveKeyFile -> fileSystemHandler.saveFile(
                     file = Path(event.path),
                     suggestedName = event.suggestedName,
+                    deleteAfter = true,
                     onSuccess = { location ->
                         scope.launch {
                             snackbarHostState.showSnackbar(
@@ -49,7 +50,6 @@ internal fun EmailKeyFileSaveEffect(
                             )
                         }
                     },
-                    onFileReleased = { viewModel.discardKeyFile(event.path) },
                 )
 
                 EmailSecretsUiEvent.KeySaveFailed -> snackbarHostState.showSnackbar(

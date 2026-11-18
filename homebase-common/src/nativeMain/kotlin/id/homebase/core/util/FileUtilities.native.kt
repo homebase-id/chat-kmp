@@ -107,10 +107,10 @@ actual fun getUriHandler(): FileSystemHandler {
         override fun saveFile(
             file: Path,
             suggestedName: String,
+            deleteAfter: Boolean,
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
-            onFileReleased: () -> Unit,
-        ) = saveThroughAlbum(IosAlbumSaver, fileOps, file, suggestedName, onSuccess, onError, onFileReleased)
+        ) = saveThroughAlbum(IosAlbumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
 
         override fun shareText(text: String, onError: (Throwable) -> Unit) {
             try {

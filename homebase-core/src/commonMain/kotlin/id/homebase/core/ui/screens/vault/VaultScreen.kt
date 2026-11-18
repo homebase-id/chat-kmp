@@ -202,6 +202,7 @@ fun VaultScreen(
                     fileSystemHandler.saveFile(
                         file = Path(event.filePath),
                         suggestedName = event.fileName,
+                        deleteAfter = true,
                     )
                 }
                 is VaultUiEvent.Error -> {

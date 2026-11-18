@@ -294,7 +294,19 @@ fun rememberSharedMediaSaver(
                         is AlbumSaveResult.Saved ->
                             snackbarHostState.showSnackbar(TranslationUtil.getString(MR.string.file_saved_to, saved.location))
                         // The album won't take it (Android 9 without storage access): the screen's save flow offers it instead.
-                        is AlbumSaveResult.Refused -> fileSystemHandler.saveFile(Path(saved.file), saved.name)
+                        is AlbumSaveResult.Refused -> fileSystemHandler.saveFile(
+                            Path(saved.file), saved.name, deleteAfter = true,
+                            onError = { e ->
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        TranslationUtil.getString(
+                                            MR.string.file_save_failed,
+                                            e.message ?: TranslationUtil.getString(MR.string.error_unknown),
+                                        )
+                                    )
+                                }
+                            },
+                        )
                         AlbumSaveResult.Cancelled -> Unit
                         AlbumSaveResult.WriteFailed -> snackbarHostState.showSnackbar(
                             TranslationUtil.getString(MR.string.file_save_failed, TranslationUtil.getString(MR.string.error_unknown)),

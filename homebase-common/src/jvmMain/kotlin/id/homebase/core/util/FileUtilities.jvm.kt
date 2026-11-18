@@ -78,16 +78,16 @@ internal class JvmFileSystemHandler(
     }
 
     override fun shareFile(file: Path, onError: (Throwable) -> Unit) {
-        saveFile(file, suggestedName = java.io.File(file.toString()).name, onError = onError)
+        saveFile(file, suggestedName = java.io.File(file.toString()).name, deleteAfter = false, onError = onError)
     }
 
     override fun saveFile(
         file: Path,
         suggestedName: String,
+        deleteAfter: Boolean,
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
-        onFileReleased: () -> Unit,
-    ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, onSuccess, onError, onFileReleased)
+    ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
 
     override fun shareText(text: String, onError: (Throwable) -> Unit) {
         try {

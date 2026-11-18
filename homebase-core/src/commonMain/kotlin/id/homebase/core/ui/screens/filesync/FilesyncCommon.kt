@@ -237,8 +237,8 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.SaveFile -> fileSystemHandler.saveFile(
                     Path(event.path),
                     event.name,
+                    deleteAfter = true,
                     onError = { show(MR.string.filesync_save_failed) },
-                    onFileReleased = { onHandedOff(event.path) },
                 )
                 is FilesyncUiEvent.ShareFile -> fileSystemHandler.shareFile(
                     Path(event.path),
