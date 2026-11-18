@@ -10,53 +10,29 @@ import okio.Path
 import okio.Path.Companion.toPath
 
 /**
- * For each payload whose `filePath` sits inside an `hls_<uuid>/` directory,
- * recursive-delete that directory via [safeDeleteRecursively]. Best-effort,
- * never throws.
+ * For each payload whose `filePath` sits inside an `hls_<uuid>/` directory, recursive-delete that directory via
+ * [safeDeleteRecursively], once each. Best-effort, never throws. A per-file delete leaves the parent dir, its
+ * `index.m3u8` and any `.ts.tmp` leftovers behind; non-HLS payloads are skipped.
  *
- * Called from:
- *  - the upload SUCCESS path (`DriveUploadProvider.cleanupPayloadTempFiles`),
- *    where the per-file deletion of `index.ts` would otherwise leave the
- *    parent dir + sibling `index.m3u8` (and any `.ts.tmp` FFmpeg leftovers)
- *    behind;
- *  - the Outbox PERMANENT-FAILURE / drop path (`OutboxSync.outboxSend`), so a
- *    message that exhausted retries or hit a terminal error doesn't leak its
- *    HLS scratch dir.
- *
- * Non-HLS payloads (image / audio / non-HLS MP4) have a `filePath` whose parent
- * is *not* `hls_*`; they are silently skipped, leaving the existing per-file
- * cleanup path responsible for them.
- *
- * Multiple payloads may share the same `hls_<uuid>/` parent. The first call
- * removes the dir; subsequent calls fall through `safeDeleteRecursively`'s
- * "missing target → quiet false" path. A small in-call dedup avoids logging
- * the same path more than once per invocation.
- *
- * Public (not internal) because `PayloadBundleEncryptionService` in the
- * homebase-upload module also calls it from its fail-soft catch — a bundle
- * that dies mid-encryption must not leave a staged `hls_<uuid>/` dir behind.
+ * Public for homebase-upload's `PayloadBundleEncryptionService`, whose bundle can die mid-encryption.
  */
 fun cleanupHlsScratch(
     payloads: List<PayloadFile>?,
     fileSystem: FileSystem = systemFileSystem,
 ) {
     if (payloads.isNullOrEmpty()) return
-    val seen = HashSet<String>()
-    for (p in payloads) {
-        val parent = hlsScratchDir(p.filePath) ?: continue
-        val parentBase = parent.parent?.toString() ?: continue
-        val key = "$parentBase|${parent.name}"
-        if (!seen.add(key)) continue
+    for (dir in payloads.mapNotNullTo(LinkedHashSet()) { hlsScratchDir(it.filePath) }) {
+        val base = dir.parent ?: continue
         runCatching {
-            safeDeleteRecursively(parentBase, parent.name, fileSystem)
+            safeDeleteRecursively(base.toString(), dir.name, fileSystem)
         }.onFailure {
-            Logger.w(tag = TAG, throwable = it) { "hls scratch cleanup failed for ${parent}" }
+            Logger.w(tag = TAG, throwable = it) { "hls scratch cleanup failed for $dir" }
         }
     }
 }
 
 /** The `hls_<uuid>/` directory [filePath] sits in, or null when it isn't in one. */
-fun hlsScratchDir(filePath: String): Path? =
+internal fun hlsScratchDir(filePath: String): Path? =
     runCatching { filePath.toPath().parent }.getOrNull()?.takeIf { it.name.startsWith(AppCacheDirs.HLS_DIR_PREFIX) }
 
 private const val TAG = "HlsScratchCleanup"

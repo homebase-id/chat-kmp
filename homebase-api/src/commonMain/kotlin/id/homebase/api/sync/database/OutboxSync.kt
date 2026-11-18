@@ -409,18 +409,8 @@ class OutboxSync(
                     databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
                     clearLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId)
 
-                    // Drop branch: the upload exhausted retries or hit a permanent
-                    // error, so nothing else will clean up the request's payload
-                    // temps. Reach into the serialized request, pull out the
-                    // payloads, and reap both the per-file temps (resolved_*.mp4
-                    // etc.) AND any hls_<uuid>/ parent dir. Wrapped in
-                    // runCatching — cleanup failure must never affect drop
-                    // semantics.
-                    runCatching {
-                        cleanupPayloadsForDroppedRow(outboxRecord)
-                    }.onFailure {
-                        Logger.w("OutboxSync: payload cleanup failed for dropped uniqueId=${outboxRecord.uniqueId}", it)
-                    }
+                    // Nothing else will delete a dropped row's staged files.
+                    deleteRowPayloadFiles(outboxRecord)
 
                     emitFor(outboxRecord,
                         BackendEvent.OutboxEvent.OutboxItemDropped(
@@ -1110,13 +1100,7 @@ class OutboxSync(
         val result = tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
         // The replaced row's files go with it, except any the new request reuses (an edit coalesced into a pending
         // send). A row mid-upload keeps them: the upload deletes them when it's done.
-        if (removedIdle && existing != null) {
-            runCatching {
-                deletePayloadFiles(payloadsOf(existing.uploadType, existing.json.decodeToString()), keep = payloadsOf(uploadType, json))
-            }.onFailure {
-                Logger.w("OutboxSync: payload cleanup failed for replaced uniqueId=$uniqueId", it)
-            }
-        }
+        if (removedIdle && existing != null) deleteRowPayloadFiles(existing) { payloadsOf(uploadType, json) }
         return result
     }
 
@@ -1171,53 +1155,41 @@ class OutboxSync(
     }
 
     /**
-     * Decode the dropped row's serialized request just enough to find the
-     * payload list, then reap both the per-file temps (resolved_*.mp4 etc.)
-     * AND any `hls_<uuid>/` parent dir. Only `UploadNewFile` and `UpdateFile`
-     * carry payloads — the other upload types return null/empty and the
-     * helpers silently no-op.
-     *
-     * The success path (DriveUploadProvider.cleanupPayloadTempFiles) does the
-     * same per-file delete after a successful upload. This mirror is what
-     * keeps a permanently-failed upload (20 retries / terminal error) from
-     * leaking its picker-resolved input file. The leak was the largest single
-     * contributor to the cacheDir backlog seen on a real device.
+     * Deletes [row]'s payload files and their `hls_<uuid>/` directories, except a file the request [keep] returns also
+     * lists, or anything in an `hls_<uuid>/` directory it also uses. Never fails the caller: a failure is logged.
      */
-    private fun cleanupPayloadsForDroppedRow(outboxRecord: Outbox) {
-        // Lenient: the row is being dropped and cleanup should still find a stale row's temp files.
-        deletePayloadFiles(payloadsOf(outboxRecord.uploadType, outboxRecord.json.decodeToString()))
+    private fun deleteRowPayloadFiles(row: Outbox, keep: () -> List<PayloadFile>? = { null }) {
+        runCatching {
+            val payloads = payloadsOf(row.uploadType, row.json.decodeToString())
+            if (payloads.isNullOrEmpty()) return
+            val kept = keep().orEmpty()
+            val keptFiles = kept.mapTo(HashSet()) { it.filePath }
+            val keptHlsDirs = kept.mapNotNullTo(HashSet()) { hlsScratchDir(it.filePath) }
+            val gone = payloads.filter { it.filePath !in keptFiles && hlsScratchDir(it.filePath) !in keptHlsDirs }
+            for (p in gone) {
+                val path = p.filePath
+                if (path.startsWith("content:")) continue // Android share-in and picker URIs aren't ours to touch
+                runCatching {
+                    val okio = path.toPath()
+                    if (fileSystem.exists(okio)) fileSystem.delete(okio)
+                }.onFailure {
+                    Logger.w("OutboxSync: payload file delete failed for $path", it)
+                }
+            }
+            cleanupHlsScratch(gone, fileSystem)
+        }.onFailure {
+            Logger.w("OutboxSync: payload cleanup failed for uniqueId=${row.uniqueId}", it)
+        }
     }
 
     /** The payload files a queued upload points at; null for a kind of row that carries none. */
     private fun payloadsOf(uploadType: Long, json: String): List<PayloadFile>? = when (uploadType) {
+        // Lenient on purpose: cleanup must still read a stale row's request.
         DriveOutboxUploader.UploadNewFile, DriveOutboxUploader.UploadNewFileOverPeer ->
             OdinSystemSerializer.deserialize<UploadFileRequest>(json).payloads
         DriveOutboxUploader.UpdateFile ->
             OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(json).payloads
         else -> null
-    }
-
-    /**
-     * Deletes [payloads]' files and their `hls_<uuid>/` directories, except a file [keep] also uses or anything in an
-     * `hls_<uuid>/` directory it also uses.
-     * Skips content:// URIs (Android share-in and picker), which aren't ours to touch.
-     */
-    private fun deletePayloadFiles(payloads: List<PayloadFile>?, keep: List<PayloadFile>? = null) {
-        if (payloads.isNullOrEmpty()) return
-        val keptFiles = keep.orEmpty().mapTo(HashSet()) { it.filePath }
-        val keptHlsDirs = keep.orEmpty().mapNotNullTo(HashSet()) { hlsScratchDir(it.filePath) }
-        val gone = payloads.filter { it.filePath !in keptFiles && hlsScratchDir(it.filePath) !in keptHlsDirs }
-        for (p in gone) {
-            val path = p.filePath
-            if (path.startsWith("content:")) continue
-            runCatching {
-                val okio = path.toPath()
-                if (fileSystem.exists(okio)) fileSystem.delete(okio)
-            }.onFailure {
-                Logger.w("OutboxSync: payload file delete failed for $path", it)
-            }
-        }
-        cleanupHlsScratch(gone, fileSystem)
     }
 
     /**
@@ -1245,7 +1217,6 @@ class OutboxSync(
     suspend fun reapIdleOutboxTemps(
         outboxTempDir: String,
         maxAgeMs: Long = 24 * 60 * 60 * 1000L,
-        fileSystem: FileSystem = systemFileSystem,
         nowMs: Long = UnixTimeUtc.now().milliseconds,
     ) {
         if (databaseManager.outbox.count() > 0L) return

@@ -169,10 +169,10 @@ class OutboxSyncTest {
 
     @Test
     fun reapIdleOutboxTemps_deletesOldOrphansOnlyWhenIdle() = runOutboxTest { db ->
-        val sync = OutboxSync(
-            databaseManager = db, uploader = TestUploader(), eventBus = EventBus(), scope = backgroundScope
-        )
         val fs = FakeFileSystem()
+        val sync = OutboxSync(
+            databaseManager = db, uploader = TestUploader(), eventBus = EventBus(), scope = backgroundScope, fileSystem = fs,
+        )
         val dir = "/cache/outbox-temp".toPath()
         fs.createDirectories(dir)
         fun write(name: String): Long {
@@ -183,12 +183,12 @@ class OutboxSyncTest {
 
         // Idle + OLDER than maxAge → reaped (a real crash-orphan).
         val m1 = write("enc_old.encrypted")
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m1 + 5_000)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = m1 + 5_000)
         assertFalse(fs.exists(dir / "enc_old.encrypted"), "idle + old orphan must be reaped")
 
         // Idle + YOUNGER than maxAge → kept (the create-race guard: a just-written temp is safe).
         val m2 = write("enc_new.encrypted")
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m2 + 500)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = m2 + 500)
         assertTrue(fs.exists(dir / "enc_new.encrypted"), "a just-written temp must never be reaped")
 
         // Staged HLS payloads are whole hls_<uuid>/ DIRECTORIES (#842): idle + old → reaped
@@ -198,7 +198,7 @@ class OutboxSyncTest {
         fs.write(hlsDir / "index.ts") { writeUtf8("segments") }
         fs.write(hlsDir / "index.m3u8") { writeUtf8("playlist") }
         val hlsMtime = fs.metadata(hlsDir).lastModifiedAtMillis!!
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = hlsMtime + 5_000)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = hlsMtime + 5_000)
         assertFalse(fs.exists(hlsDir), "idle + old orphan hls_ dir must be reaped recursively")
 
         // A directory that is NOT hls_-shaped is unexpected here → never touched.
@@ -206,7 +206,7 @@ class OutboxSyncTest {
         fs.createDirectories(strangeDir)
         fs.write(strangeDir / "file.bin") { writeUtf8("x") }
         val strangeMtime = fs.metadata(strangeDir).lastModifiedAtMillis!!
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = strangeMtime + 5_000)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = strangeMtime + 5_000)
         assertTrue(fs.exists(strangeDir / "file.bin"), "non-hls directories must never be reaped")
 
         // NON-EMPTY outbox + old file → kept (a pending/offline row might reference it).
@@ -215,7 +215,7 @@ class OutboxSyncTest {
         val hlsPending = dir / "hls_pending"
         fs.createDirectories(hlsPending)
         fs.write(hlsPending / "index.ts") { writeUtf8("segments") }
-        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m3 + 5_000)
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, nowMs = m3 + 5_000)
         assertTrue(fs.exists(dir / "enc_pending.encrypted"), "must not reap while the outbox is non-empty")
         assertTrue(fs.exists(hlsPending / "index.ts"), "must not reap hls dirs while the outbox is non-empty")
     }
@@ -1670,6 +1670,8 @@ class OutboxSyncTest {
         assertEquals(30_000L, db.outbox.nextScheduled()!!.milliseconds)
     }
 
+    private val replaceDrive = Uuid.random()
+
     private fun upload(uniqueId: Uuid, vararg paths: String) = UploadFileRequest(
         driveId = replaceDrive,
         keyHeader = KeyHeader(ByteArray(16), SecureByteArray(ByteArray(16))),
@@ -1680,8 +1682,6 @@ class OutboxSyncTest {
         ),
         payloads = paths.mapIndexed { i, path -> PayloadFile(key = "p$i", filePath = path, contentType = "image/jpeg") },
     )
-
-    private val replaceDrive = Uuid.random()
 
     private fun FakeFileSystem.file(path: String) = path.toPath().also { p ->
         p.parent?.let { createDirectories(it) }

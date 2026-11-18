@@ -16,7 +16,7 @@ import kotlin.random.Random
  *
  * Lifecycle (the ONLY ways a staged file dies):
  *  - send success — `DriveUploadProvider.cleanupPayloadTempFiles`;
- *  - permanent drop — `OutboxSync.cleanupPayloadsForDroppedRow`;
+ *  - permanent drop, or replaced by a newer request — `OutboxSync.deleteRowPayloadFiles`;
  *  - logout — [wipeOutboxStaging] (paired with the outbox table wipe);
  *  - idle orphan reap — `OutboxSync.reapIdleOutboxTemps` (outbox empty + >24h).
  *
