@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -1699,6 +1700,8 @@ class OutboxSyncTest {
         sync.tryEnqueue(upload(id, old.toString(), oldHls.toString()), sendNow = false)
 
         sync.replaceEnqueue(upload(id, fresh.toString()), sendNow = false)
+        advanceUntilIdle()
+        runCurrent() // the outbox works on backgroundScope, which advanceUntilIdle doesn't wait for
 
         assertFalse(fs.exists(old), "the replaced row's file goes with it")
         assertFalse(fs.exists(oldHls.parent!!), "and so does its hls_ folder")
@@ -1716,6 +1719,8 @@ class OutboxSyncTest {
         sync.tryEnqueue(upload(id, shared.toString(), hls.toString(), dropped.toString()), sendNow = false)
 
         sync.replaceEnqueue(upload(id, shared.toString(), "/cache/outbox-temp/hls_shared/other.ts"), sendNow = false)
+        advanceUntilIdle()
+        runCurrent()
 
         assertTrue(fs.exists(shared), "a file both requests use stays")
         assertTrue(fs.exists(hls), "an hls_ folder the new request also uses stays")
@@ -1723,7 +1728,7 @@ class OutboxSyncTest {
     }
 
     @Test
-    fun aRowMidUploadKeepsItsFilesForTheUploadToDelete() = runOutboxTest { db ->
+    fun replacingARowMidUploadLeavesItsFilesToTheUpload() = runOutboxTest { db ->
         val fs = FakeFileSystem()
         val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
         val id = Uuid.random()
@@ -1732,8 +1737,82 @@ class OutboxSyncTest {
         assertNotNull(db.outbox.checkout(), "the row is now mid-upload")
 
         sync.replaceEnqueue(upload(id, fs.file("/cache/outbox-temp/new.enc").toString()), sendNow = false)
+        advanceUntilIdle()
+        runCurrent()
 
         assertTrue(fs.exists(inFlight), "an upload in progress still reads its file")
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /** Holds the first upload until [release], then fails it with what it's given; later uploads succeed. */
+    private class GatedUploader : OutboxUploader {
+        val started = CompletableDeferred<Unit>()
+        private val outcome = CompletableDeferred<Throwable>()
+        private val calls = atomic(0)
+        fun release(failure: Throwable) = outcome.complete(failure)
+        override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
+            if (calls.incrementAndGet() > 1) return
+            started.complete(Unit)
+            throw outcome.await()
+        }
+    }
+
+    private suspend fun TestScope.replaceMidUpload(
+        db: DatabaseManager,
+        failure: Throwable,
+    ): Triple<FakeFileSystem, List<okio.Path>, okio.Path> {
+        val fs = FakeFileSystem()
+        val uploader = GatedUploader()
+        val sync = OutboxSync(db, uploader, EventBus(), backgroundScope, fileSystem = fs)
+        val id = Uuid.random()
+        val shared = fs.file("/cache/outbox-temp/media.enc")
+        val ownHls = fs.file("/cache/outbox-temp/hls_own/index.ts")
+        val own = fs.file("/cache/outbox-temp/overflow.enc")
+        sync.tryEnqueue(upload(id, shared.toString(), own.toString(), ownHls.toString(), "content://media/1"), sendNow = false)
+        sync.setOnline(true)
+        sync.send()
+        uploader.started.await()
+
+        sync.replaceEnqueue(upload(id, shared.toString(), fs.file("/cache/outbox-temp/overflow2.enc").toString()), sendNow = false)
+        uploader.release(failure)
+        advanceUntilIdle()
+        runCurrent()
+        return Triple(fs, listOf(own, ownHls.parent!!), shared)
+    }
+
+    @Test
+    fun aRowReplacedMidUploadThenDroppedKeepsTheMediaItsReplacementReuses() = runOutboxTest { db ->
+        val (fs, own, shared) = replaceMidUpload(db, NotFoundException())
+        assertTrue(fs.exists(shared), "the replacement still sends the media both requests list")
+        own.forEach { assertFalse(fs.exists(it), "$it only the dropped row used goes") }
+    }
+
+    @Test
+    fun aRowReplacedMidUploadThatFailsAndIsGoneDeletesItsOwnFiles() = runOutboxTest { db ->
+        val (fs, own, shared) = replaceMidUpload(db, Exception("server hiccup"))
+        assertTrue(fs.exists(shared), "the replacement still sends the media both requests list")
+        own.forEach { assertFalse(fs.exists(it), "$it is deleted by the attempt that found its row gone") }
+    }
+
+    @Test
+    fun aDroppedRowsFilesAreDeleted() = runOutboxTest { db ->
+        val fs = FakeFileSystem()
+        val uploader = TestUploader().apply { failureException = NotFoundException() }
+        val eventBus = EventBus()
+        val sync = OutboxSync(db, uploader, eventBus, backgroundScope, fileSystem = fs)
+        sync.setOnline(true)
+        val dropped = async { eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first() }
+        testScheduler.runCurrent()
+        val file = fs.file("/cache/outbox-temp/dropped.enc")
+        val hls = fs.file("/cache/outbox-temp/hls_dropped/index.ts")
+        sync.tryEnqueue(upload(Uuid.random(), file.toString(), hls.toString()), sendNow = false)
+        sync.send()
+        advanceUntilIdle()
+        runCurrent()
+        dropped.await()
+
+        assertEquals(0L, db.outbox.count(), "a permanent failure drops the row")
+        assertFalse(fs.exists(file))
+        assertFalse(fs.exists(hls.parent!!))
     }
 }

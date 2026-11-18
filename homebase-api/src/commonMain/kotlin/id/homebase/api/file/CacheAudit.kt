@@ -56,7 +56,7 @@ object CacheAudit {
      *   (a long time when offline). Durable: the CacheSweeper KEEPs it on the startup / "Clear
      *   caches" sweep so an in-flight upload's payload is never deleted mid-flight, and only wipes
      *   it on full logout. It's reaped along the outbox's own lifecycle — on success
-     *   (cleanupPayloadTempFiles), and on drop after ~48h or replace (deleteRowPayloadFiles).
+     *   (cleanupPayloadTempFiles), and on drop after ~48h or replace (deleteEndedRowFiles).
      *
      * Both are counted in the Storage screen total.
      */

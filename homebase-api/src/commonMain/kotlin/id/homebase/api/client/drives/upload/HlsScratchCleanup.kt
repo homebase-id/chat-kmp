@@ -31,7 +31,6 @@ fun cleanupHlsScratch(
     }
 }
 
-/** The `hls_<uuid>/` directory [filePath] sits in, or null when it isn't in one. */
 internal fun hlsScratchDir(filePath: String): Path? =
     runCatching { filePath.toPath().parent }.getOrNull()?.takeIf { it.name.startsWith(AppCacheDirs.HLS_DIR_PREFIX) }
 

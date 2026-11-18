@@ -185,6 +185,13 @@ class OutboxWrapper(
         }
     }
 
+    /** Deletes the row for (driveId, uniqueId) if no worker holds it, and returns it. One write, so no checkout lands between. */
+    suspend fun deleteIdle(driveId: Uuid, uniqueId: Uuid): Outbox? = databaseManager.withWriteValue {
+        delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
+            ?.takeIf { it.checkOutStamp == null }
+            ?.also { delegate.deleteByRowId(it.rowId) }
+    }
+
     suspend fun deleteAll(): Long {
         return databaseManager.withWriteValue { delegate.deleteAll().value }
     }
