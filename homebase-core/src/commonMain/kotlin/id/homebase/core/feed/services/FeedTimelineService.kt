@@ -19,7 +19,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
 import kotlin.uuid.Uuid
 
 // Aggregates the FeedDrive (where followed identities' posts land) and the user's own public-channel drive,
@@ -247,6 +253,24 @@ class FeedTimelineService(
         }
         return null
     }
+
+    // A push can be tapped before its post has synced: kick the source drives and look again as each round lands.
+    suspend fun syncUntilStored(id: Uuid, timeout: Duration, syncDrive: (Uuid) -> Unit): FeedPostItem? =
+        withTimeoutOrNull(timeout) {
+            eventBus.events
+                .onSubscription {
+                    for (drive in sourceDrives) {
+                        runCatching { syncDrive(drive) }
+                            .onFailure { Logger.w(tag = TAG) { "sync kick for $drive failed: ${it.message}" } }
+                    }
+                }
+                .filter {
+                    (it is BackendEvent.DriveEvent.Stopped && it.driveId in sourceDrives) ||
+                        (it is BackendEvent.DataEvent.BatchReceived && it.driveId in sourceDrives)
+                }
+                .mapNotNull { findStoredPost(id) }
+                .first()
+        }
 
     // A followed identity's post lands on the feed drive as a reference with NO uniqueId, only a globalTransitId.
     // Keying on uniqueId alone dropped every one, so live pushes for followed posts never applied incrementally.

@@ -24,6 +24,7 @@ import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -34,6 +35,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 // Runs against the REAL in-memory index so the QueryBatch cursors are the real ones — the paging behaviour
@@ -153,14 +155,7 @@ class FeedTimelineSyncAndErrorTest {
     fun findStoredPostResolvesNotificationIdsPastTheLoadedPages() = feedTest { env, service ->
         env.seedBothDrives()
         val gtid = Uuid.random()
-        val followed = postFile(gtid, feedDrive, "old followed", createdMs = 1).let {
-            it.copy(
-                fileMetadata = it.fileMetadata.copy(
-                    globalTransitId = gtid,
-                    appData = it.fileMetadata.appData.copy(uniqueId = null),
-                ),
-            )
-        }
+        val followed = feedReference(gtid, "old followed", createdMs = 1)
         val ownId = Uuid.random()
         val own = postFile(ownId, channelDrive, "old own", createdMs = 2)
         env.seed(feedDrive, followed)
@@ -174,6 +169,35 @@ class FeedTimelineSyncAndErrorTest {
         assertEquals(ownId, service.findStoredPost(own.fileId)?.id)
         assertEquals(ownId, service.findStoredPost(ownId)?.id)
         assertNull(service.findStoredPost(Uuid.random()))
+    }
+
+    // The push is tapped before the feed drive has synced the post: the kicked sync lands it, then the lookup hits.
+    @Test
+    fun syncUntilStoredKicksTheSourceDrivesAndFindsThePostOnceItLands() = feedTest { env, service ->
+        val gtid = Uuid.random()
+        assertNull(service.findStoredPost(gtid))
+        val kicked = mutableListOf<Uuid>()
+
+        val found = service.syncUntilStored(gtid, 10.seconds) { drive ->
+            kicked += drive
+            if (drive == feedDrive) {
+                backgroundScope.launch {
+                    env.seed(feedDrive, feedReference(gtid, "just synced", createdMs = 9_000_000))
+                    env.eventBus.emit(stopped(feedDrive, totalCount = 1))
+                }
+            }
+        }
+
+        assertEquals("just synced", found?.caption)
+        assertEquals(setOf(feedDrive, channelDrive), kicked.toSet())
+    }
+
+    @Test
+    fun syncUntilStoredGivesUpWhenThePostNeverLands() = feedTest { env, service ->
+        val found = service.syncUntilStored(Uuid.random(), 10.seconds) { drive ->
+            backgroundScope.launch { env.eventBus.emit(stopped(drive, totalCount = 0)) }
+        }
+        assertNull(found)
     }
 
     @Test
@@ -228,6 +252,17 @@ class FeedTimelineSyncAndErrorTest {
         val record = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
             .convertFileHeaderToDriveMainIndexRecord(identityId, driveId, file)
         MainIndexMetaHelpers.upsertDriveMainIndex(databaseManager, record)
+    }
+
+    // A followed identity's post lands on the feed drive with a globalTransitId and no uniqueId.
+    private fun feedReference(gtid: Uuid, caption: String, createdMs: Long): HomebaseFile {
+        val base = postFile(gtid, feedDrive, caption, createdMs)
+        return base.copy(
+            fileMetadata = base.fileMetadata.copy(
+                globalTransitId = gtid,
+                appData = base.fileMetadata.appData.copy(uniqueId = null),
+            ),
+        )
     }
 
     private fun postFile(

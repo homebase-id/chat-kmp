@@ -1465,6 +1465,7 @@ val appModule = module {
             contactInfo = get(),
             reportingUrlProvider = get(),
             permissionService = get(),
+            driveSyncManager = get(),
         )
     }
     viewModel { params ->

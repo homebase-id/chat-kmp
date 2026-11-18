@@ -7,6 +7,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.sticker.StickerStream
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 private const val TAG = "PostDetailViewModel"
@@ -59,6 +61,7 @@ class PostDetailViewModel(
     private val contactInfo: ContactInfoGateway,
     private val reportingUrlProvider: ReportingUrlProvider,
     private val permissionService: FeedPermissionService,
+    private val driveSyncManager: DriveSyncManager,
 ) : ViewModel() {
 
     private val _selfOdinId = MutableStateFlow<OdinId?>(null)
@@ -85,7 +88,7 @@ class PostDetailViewModel(
     // A null post BEFORE the first timeline emission and the stored lookup is "still loading"; after both, "not found".
     private val _timelineEmitted = MutableStateFlow(false)
 
-    // A notification tap names the post by globalTransitId or fileId, and it can sit past the loaded pages.
+    // A notification tap names the post by globalTransitId or fileId; it can sit past the loaded pages or not be synced yet.
     private val _storedPost = MutableStateFlow<FeedPostItem?>(null)
     private val _storedLookupDone = MutableStateFlow(false)
 
@@ -101,6 +104,7 @@ class PostDetailViewModel(
         viewModelScope.launch {
             if (findPost(timelineService.timeline.value) == null) {
                 _storedPost.value = timelineService.findStoredPost(postId)
+                    ?: timelineService.syncUntilStored(postId, 15.seconds, driveSyncManager::syncDrive)
             }
             _storedLookupDone.value = true
         }
