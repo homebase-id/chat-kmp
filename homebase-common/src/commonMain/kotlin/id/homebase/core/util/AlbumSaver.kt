@@ -136,7 +136,7 @@ private suspend fun AlbumSaver.targetOrRefusal(name: String, asked: Boolean): Al
     AlbumTarget.FinishedFile { throw e }
 }
 
-private const val COPY_CHUNK = 256 * 1024
+internal const val COPY_CHUNK = 256 * 1024
 
 /**
  * A received payload saved through [saveWritten], named [name], as a file people can open ([writePlayable]): an HLS

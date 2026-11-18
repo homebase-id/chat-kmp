@@ -268,7 +268,7 @@ internal class MediaDownloadHandler(
         is AlbumSaveResult.Saved -> sendEvent(FileSaved(saved.location))
         AlbumSaveResult.Cancelled -> Unit
         AlbumSaveResult.WriteFailed -> sendEvent(ShowErrorMessage(failed))
-        is AlbumSaveResult.Refused -> sendEvent(SaveFileToDevice(saved.file, saved.name))
+        is AlbumSaveResult.Refused -> sendEvent(SaveFileToDevice(saved.file, saved.name, deleteAfter = true))
     }
 
     private fun closePreviewOf(fileId: Uuid, payloadKey: String) {
@@ -358,7 +358,7 @@ internal class MediaDownloadHandler(
             is AttachmentPendingFile.Gallery -> f.image.file.toString() to f.image.fileName
             is AttachmentPendingFile.Audio -> f.audioFile.toString() to f.audioFile.name
         }
-        sendEvent(SaveFileToDevice(filePath, fileName))
+        sendEvent(SaveFileToDevice(filePath, fileName, deleteAfter = false))
     }
 
     fun handleViewOnceViewerClosed(action: ConversationListUiAction.ViewOnceViewerClosed) {

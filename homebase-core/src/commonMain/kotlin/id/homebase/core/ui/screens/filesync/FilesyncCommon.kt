@@ -213,7 +213,7 @@ internal fun FilesyncEventsEffect(
     onSendToChat: (path: String, name: String) -> Unit = { _, _ -> },
     onUndoRemove: (Set<Uuid>) -> Unit = {},
     onOpenSignIn: (String) -> Unit = {},
-    onHandedOff: (String) -> Unit,
+    onPreviewGone: (String) -> Unit,
 ) {
     val fileSystemHandler = getUriHandler()
     val scope = rememberCoroutineScope()
@@ -224,7 +224,7 @@ internal fun FilesyncEventsEffect(
         scope.launch { snackbarHostState.showSnackbar(getString(message, people.joinToString { it.domainName })) }
     }
     var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
-    preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onHandedOff) }
+    preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onPreviewGone) }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
@@ -237,11 +237,8 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.SaveFile -> fileSystemHandler.saveFile(
                     Path(event.path),
                     event.name,
-                    onSuccess = { onHandedOff(event.path) },
-                    onError = {
-                        onHandedOff(event.path)
-                        show(MR.string.filesync_save_failed)
-                    },
+                    deleteAfter = true,
+                    onError = { show(MR.string.filesync_save_failed) },
                 )
                 is FilesyncUiEvent.ShareFile -> fileSystemHandler.shareFile(
                     Path(event.path),
@@ -487,7 +484,9 @@ private fun NameBadge(text: String) {
 /** A file's size and date, nothing for a folder; a deleted node says when it was deleted instead. */
 @Composable
 internal fun nodeDetails(node: FilesyncNode): String {
-    if (node.removed) return node.shownRemovedMs?.let { deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(it))) } ?: stringResource(MR.string.filesync_deleted)
+    if (node.removed) {
+        return node.shownRemovedMs?.let { deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(it))) } ?: stringResource(MR.string.filesync_deleted)
+    }
     if (node.isFolder) return ""
     return listOfNotNull(
         node.sizeBytes?.let { formatBytes(it) },

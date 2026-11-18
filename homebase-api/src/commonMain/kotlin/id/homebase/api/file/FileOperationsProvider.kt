@@ -1,5 +1,6 @@
 package id.homebase.api.file
 
+import id.homebase.api.util.safeFileName
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -161,6 +162,12 @@ interface FileOperationsProvider {
             "share_",
             suffix,
         )
+
+    /** A path for [name] made safe, in a folder of its own in `share_outbound/`, so whatever it's handed to sees the name. */
+    suspend fun createNamedShareOutboundPath(name: String): String = "${createShareOutboundPath("")}/${safeFileName(name)}"
+
+    /** Moves the file at [from] to [to] without copying, creating [to]'s folder; false when it can't (another volume, a `content://`). */
+    suspend fun moveFile(from: String, to: String): Boolean = false
 
     /**
      * Reserve a unique writable path inside `<cacheDir>/hb-scratch/upload-temp/` (creating the

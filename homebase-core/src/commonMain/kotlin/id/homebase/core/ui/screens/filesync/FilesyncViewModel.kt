@@ -259,7 +259,7 @@ class FilesyncViewModel(
                 FilesyncBulkAction.Restore -> onAction(FilesyncUiAction.Restore(_uiState.value.selectedRemovedIds))
             }
 
-            is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
+            is FilesyncUiAction.PreviewGone -> repository.discard(action.path)
 
             is FilesyncUiAction.ShowDiscussion -> showDiscussion(action.nodeId)
 

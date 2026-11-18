@@ -94,7 +94,7 @@ class FilesyncRepository(
             nodeParams(null, FileState.Deleted),
             QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE, ordering = QueryBatchSortOrder.OldestFirst, sorting = QueryBatchSortField.AnyChangeDate),
         ) { page ->
-            // The feed's order: versionUpdated <= updated, so this is exact and a row without versionUpdated can't stop the walk.
+            // The feed's order; versionUpdated <= updated, so never early.
             val old = page.searchResults.takeWhile { it.fileMetadata.updated.milliseconds < beforeMs }
             old.mapNotNullTo(found) { it.fileVersionTag() }
             old.size == page.searchResults.size
@@ -238,11 +238,14 @@ class FilesyncRepository(
     /**
      * What [write] makes, as a file called [name] in a folder of its own, so whatever it's handed to sees the real name:
      * one to open or share goes to share_outbound, swept like every other copy handed to another app; any other goes
-     * to upload-temp and is [discard]ed once it has been handed on.
+     * to upload-temp, deleted by a save it's handed to or [discard]ed when a preview lets it go, else swept.
      */
     suspend fun writeToCache(name: String, toShareOutbound: Boolean, write: suspend (out: suspend (ByteArray) -> Unit) -> Unit): String {
-        val folder = if (toShareOutbound) fileOperationsProvider.createShareOutboundPath("") else fileOperationsProvider.createUploadTempPath("fs_", "")
-        val path = "$folder/${safeFileName(name)}"
+        val path = if (toShareOutbound) {
+            fileOperationsProvider.createNamedShareOutboundPath(name)
+        } else {
+            "${fileOperationsProvider.createUploadTempPath("fs_", "")}/${safeFileName(name)}"
+        }
         try {
             // Its own producer, so the bytes reach the disk as they come.
             fileOperationsProvider.writeDownload(path, channelFlow { write { send(it) } })

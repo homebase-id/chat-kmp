@@ -67,7 +67,7 @@ class FilesyncTrashTest {
     }
 
     @Test
-    fun aRemovalAtAnUnknownTimeIsNeverOldEnoughToPurgeAndALiveNodeAtOneKeepsItsFolder() {
+    fun aRemovalAtAnUnknownTimeIsNeverOldEnoughToPurgeAndALiveNodeAtOneIsntTakenAlong() {
         val unknown = removed("unknown.jpg", FilesyncProtocol.RootNodeId, folder = false, at = null)
         val unknownInPhotos = removed("u.jpg", photosId, folder = false, at = null)
         val liveUnknown = live("d.jpg", photosId, folder = false, written = null)
@@ -75,6 +75,18 @@ class FilesyncTrashTest {
         assertEquals(photosId, trash.itemOf[unknownInPhotos.nodeId])
         assertNull(trash.itemOf[liveUnknown.nodeId])
         assertEquals(setOf(old.nodeId, notes.nodeId), trash.removedBefore(Long.MAX_VALUE - 1))
+    }
+
+    @Test
+    fun aFolderRemovedAtAnUnknownTimeIsTheNewest() {
+        val folderId = Uuid.random()
+        val folder = removed("Unknown", FilesyncProtocol.RootNodeId, folder = true, at = null, id = folderId)
+        val before = removed("before.jpg", folderId, folder = false, at = 400)
+        val live = live("live.jpg", folderId, folder = false, written = 400)
+        val trash = trash(nodes.plus(folder, before, live))
+        assertEquals(before.nodeId, trash.itemOf[before.nodeId])
+        assertEquals(folderId, trash.itemOf[live.nodeId])
+        assertEquals(setOf(old.nodeId, notes.nodeId, before.nodeId), trash.removedBefore(Long.MAX_VALUE - 1) - setOf(photosId, a.nodeId))
     }
 
     @Test
