@@ -9,6 +9,7 @@ import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 
 private const val PAYLOAD_HASH_LENGTH = 32
 private val CONTENT_HASH_IV_MASK = ByteArray(16) { 0xAA.toByte() }
@@ -53,15 +54,6 @@ suspend fun PayloadHash.plaintextContentHash(payloadKey: KeyHeader?): ByteArray?
     return plain.takeIf { it.size == PAYLOAD_HASH_LENGTH }
 }
 
-/** [encryptStreaming] of the file at [inputPath]. */
-suspend fun FileOperationsProvider.encryptFileStreaming(
-    inputPath: String,
-    outputPath: String,
-    keyHeader: KeyHeader,
-    plaintextHasher: IncrementalHasher? = null,
-    ciphertextHasher: IncrementalHasher? = null,
-) = encryptStreaming(readFileAsFlow(inputPath), outputPath, keyHeader, plaintextHasher, ciphertextHasher)
-
 /**
  * Encrypts [plaintext] into [outputPath] in one streaming pass and deletes a partial output on
  * failure. The hashers, when given, see the plaintext going in and the ciphertext coming out.
@@ -102,18 +94,17 @@ suspend fun FileOperationsProvider.encryptWithPayloadHash(
 ): HashedPayload {
     val payloadKey = KeyHeader(ByteArrayUtil.getRndByteArray(16), aesKey)
     var plaintextBytes = 0L
-    val hash = encryptWithPayloadHash(inputPath, outputPath, payloadKey, algorithm) { _, _, length -> plaintextBytes += length }
+    val hash = encryptWithPayloadHash(readFileAsFlow(inputPath).onEach { plaintextBytes += it.size }, outputPath, payloadKey, algorithm)
     return HashedPayload(hash, payloadKey.iv, plaintextBytes)
 }
 
-/** [encryptFileStreaming] under [payloadKey]'s IV, with the payload hash taken in the same pass. */
+/** [encryptWithPayloadHash] of the file at [inputPath]. */
 suspend fun FileOperationsProvider.encryptWithPayloadHash(
     inputPath: String,
     outputPath: String,
     payloadKey: KeyHeader,
     algorithm: PayloadHashAlgorithm,
-    onPlaintext: (chunk: ByteArray, offset: Int, length: Int) -> Unit = { _, _, _ -> },
-): PayloadHash = encryptWithPayloadHash(readFileAsFlow(inputPath), outputPath, payloadKey, algorithm, onPlaintext)
+): PayloadHash = encryptWithPayloadHash(readFileAsFlow(inputPath), outputPath, payloadKey, algorithm)
 
 /** [encryptStreaming] under [payloadKey]'s IV, with the payload hash taken in the same pass. */
 suspend fun FileOperationsProvider.encryptWithPayloadHash(
@@ -121,22 +112,15 @@ suspend fun FileOperationsProvider.encryptWithPayloadHash(
     outputPath: String,
     payloadKey: KeyHeader,
     algorithm: PayloadHashAlgorithm,
-    onPlaintext: (chunk: ByteArray, offset: Int, length: Int) -> Unit = { _, _, _ -> },
 ): PayloadHash {
     val contentHasher = algorithm.newHasher()
     val storedHasher = algorithm.newHasher()
-    val countingContentHasher = object : IncrementalHasher by contentHasher {
-        override fun update(input: ByteArray, offset: Int, length: Int) {
-            onPlaintext(input, offset, length)
-            contentHasher.update(input, offset, length)
-        }
-    }
-    encryptStreaming(plaintext, outputPath, payloadKey, countingContentHasher, storedHasher)
+    encryptStreaming(plaintext, outputPath, payloadKey, contentHasher, storedHasher)
     return encryptedPayloadHash(algorithm, storedHasher.digest(), contentHasher.digest(), payloadKey)
 }
 
 /** [bytes] as a flow of [chunkSize] slices, so a stream step never holds another copy of all of them at once. */
-fun slicedFlow(bytes: ByteArray, chunkSize: Int = 256 * 1024): Flow<ByteArray> = flow {
+fun slicedFlow(bytes: ByteArray, chunkSize: Int): Flow<ByteArray> = flow {
     var at = 0
     while (at < bytes.size) {
         val end = minOf(at + chunkSize, bytes.size)

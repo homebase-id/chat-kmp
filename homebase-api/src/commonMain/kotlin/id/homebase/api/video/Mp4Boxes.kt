@@ -30,9 +30,8 @@ internal fun mp4Boxes(b: ByteArray, from: Int, until: Int): List<Mp4Box> {
 internal const val MAX_MOOV_BYTES = 64L * 1024 * 1024
 
 // Walks the top-level boxes by their headers alone, so a moov after the media costs no pass over it. Reads to
-// the end of the file rather than trusting its reported size, which a content:// provider may give as 0. Reads a
-// window at a time, as each read may open the file again (a round trip to Android's media process): a camera's
-// file, moov last, takes two.
+// the end of the file rather than trusting its reported size, which a content:// provider may give as 0. Reads in
+// windows because each range read may reopen the file, which is slow for a content:// URI.
 internal suspend fun readMoov(fileOps: FileOperationsProvider, path: String): ByteArray? {
     val size = fileOps.getFileSize(path).takeIf { it > 0 } ?: Long.MAX_VALUE
     var window = ByteArray(0)
@@ -57,8 +56,7 @@ internal suspend fun readMoov(fileOps: FileOperationsProvider, path: String): By
         if (fourCc(window, i + 4) == "moov") {
             if (boxSize > MAX_MOOV_BYTES) return null
             val end = i + boxSize.toInt()
-            val moov = if (end <= window.size) window.copyOfRange(i, end) else fileOps.readFileRange(path, at, boxSize.toInt())
-            return moov.copyOfRange(headerSize, boxSize.toInt())
+            return if (end <= window.size) window.copyOfRange(i + headerSize, end) else fileOps.readFileRange(path, at + headerSize, (boxSize - headerSize).toInt())
         }
         at += boxSize
     }

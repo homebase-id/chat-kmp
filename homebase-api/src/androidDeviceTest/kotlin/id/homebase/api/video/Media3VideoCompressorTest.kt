@@ -14,7 +14,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
-import id.homebase.api.crypto.encryptFileStreaming
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.client.KeyHeader

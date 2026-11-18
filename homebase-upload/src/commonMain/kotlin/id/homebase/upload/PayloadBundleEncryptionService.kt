@@ -198,7 +198,7 @@ class PayloadBundleEncryptionService(
     }
 
     // A stripped image is sent from the bytes the strip read; anything else streams from its file. One read either way.
-    private suspend fun plaintextOf(payload: PayloadFile, chunkSize: Int = DEFAULT_CHUNK): Flow<ByteArray> {
+    private suspend fun plaintextOf(payload: PayloadFile, chunkSize: Int = FileOperationsProvider.DEFAULT_HEADER_BYTES): Flow<ByteArray> {
         val stripped = if (payload.stripMetadata) stripper.image(payload.filePath, payload.contentType) else null
         return if (stripped != null) slicedFlow(stripped, chunkSize) else fileOps.readFileAsFlow(payload.filePath, chunkSize)
     }
@@ -222,6 +222,5 @@ class PayloadBundleEncryptionService(
 
     private companion object {
         const val STAGE_CHUNK = 256 * 1024
-        const val DEFAULT_CHUNK = FileOperationsProvider.DEFAULT_HEADER_BYTES
     }
 }

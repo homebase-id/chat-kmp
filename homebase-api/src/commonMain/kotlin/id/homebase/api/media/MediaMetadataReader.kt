@@ -8,6 +8,8 @@ import id.homebase.api.video.locationInMoov
 import id.homebase.api.video.readMoov
 import kotlinx.coroutines.CancellationException
 
+private const val TAG = "MediaMetadata"
+
 /**
  * What a photo or video file says about itself, read the same way on every platform: an image's EXIF, and the
  * location a camera recorded in an MP4 or QuickTime video (Apple's ISO 6709 key, or the `©xyz` atom Android
@@ -19,20 +21,17 @@ import kotlinx.coroutines.CancellationException
  */
 class MediaMetadataReader(private val fileOps: FileOperationsProvider) {
 
-    suspend fun image(path: String): ImageMetadata? = softly("image metadata") { readImageMetadata(path, fileOps) }
+    suspend fun image(path: String): ImageMetadata? = softly("image metadata of $path") { readImageMetadata(path, fileOps) }
 
-    suspend fun videoLocation(path: String): MediaLocation? = softly("video location") { readMoov(fileOps, path)?.let(::locationInMoov) }
+    suspend fun videoLocation(path: String): MediaLocation? = softly("video location of $path") { readMoov(fileOps, path)?.let(::locationInMoov) }
+}
 
-    private inline fun <T> softly(what: String, read: () -> T?): T? = try {
-        read()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Logger.w(tag = TAG, throwable = e) { "No readable $what" }
-        null
-    }
-
-    private companion object {
-        const val TAG = "MediaMetadataReader"
-    }
+/** [read], or null, logged, when it throws anything but cancellation: metadata is never worth failing a send. */
+internal inline fun <T> softly(what: String, read: () -> T?): T? = try {
+    read()
+} catch (e: CancellationException) {
+    throw e
+} catch (t: Throwable) {
+    Logger.w(tag = TAG, throwable = t) { "No readable $what" }
+    null
 }

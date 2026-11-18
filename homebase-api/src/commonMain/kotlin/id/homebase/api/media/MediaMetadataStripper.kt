@@ -4,40 +4,26 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.image.ImageMetadataScrubber
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private const val TAG = "MediaMetadata"
+
 /**
- * The other half of [MediaMetadataReader]: takes out what a photo says about who took it, where and with what,
- * the same way on every platform. EXIF, XMP and IPTC go without a re-encode, so the picture stays bit-identical;
- * the orientation, colour profile and HDR gain map stay. JPEG, PNG, WebP and HEIF are handled.
- *
- * A video has nothing to strip in place: an app that strips has every video transcoded with its metadata dropped
- * (`VideoCompressor.compress`, `keepMetadata = false`), and a video sent untouched is only for an app that keeps it.
- *
- * The file is read once and its bytes to send come back, stripped or not, so the caller sends them without
- * reading the file again. Fail-soft: a format this doesn't handle or can't parse goes out as it is, logged.
+ * The other half of [MediaMetadataReader]: takes a photo's EXIF, XMP and IPTC out without a re-encode, the same way
+ * on every platform, keeping its orientation, colour profile and HDR gain map. JPEG, PNG, WebP and HEIF are handled;
+ * anything else, or a file that can't be parsed, goes out as it is, logged. A video is stripped by its transcode.
  */
 class MediaMetadataStripper(private val fileOps: FileOperationsProvider) {
 
-    /** The image at [path] as it should be sent; null when it isn't an image or can't be read. */
+    /** The image at [path] as it should be sent, read once; null when it isn't an image or can't be read. */
     suspend fun image(path: String, contentType: String): ByteArray? {
         if (!contentType.startsWith("image/")) return null
-        val original = try {
-            fileOps.readFileBytes(path)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (t: Throwable) {
-            Logger.w(throwable = t, tag = TAG) { "metadata scrub skipped — could not read $path" }
-            return null
-        }
+        val original = softly("image at $path, so its metadata isn't stripped") { fileOps.readFileBytes(path) } ?: return null
         return imageBytes(original, contentType)
     }
 
     companion object {
-        private const val TAG = "MediaMetadataStripper"
-
         /** [bytes] without their metadata when they're an image that has some, else [bytes] themselves. */
         suspend fun imageBytes(bytes: ByteArray, contentType: String): ByteArray {
             if (!contentType.startsWith("image/")) return bytes
