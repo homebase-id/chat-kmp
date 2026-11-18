@@ -276,6 +276,11 @@ tasks.named("jvmJar") {
     finalizedBy(platformJarTasks)
 }
 
+// Without this the CI log shows a bare AssertionError, not its message.
+tasks.withType<Test>().configureEach {
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+}
+
 // commonTest's Compose UI tests are Skiko-backed and don't run on the mocked Android host classpath,
 // so the Android host run is limited to the Android-only tests until those move to jvmTest/.
 tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
