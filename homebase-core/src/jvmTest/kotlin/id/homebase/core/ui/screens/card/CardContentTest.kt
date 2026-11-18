@@ -170,7 +170,7 @@ class CardContentTest {
         assertEquals(1, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.EMAIL })
 
         val stored = wire.profileRepository().loadAttributes()
-        fun emailOn(card: CardAudience) = stored.visibleValues(card.aclFilter())[ProfileField.EMAIL]
+        fun emailOn(card: CardAudience) = stored.visibleValues(card.viewer())[ProfileField.EMAIL]
         assertEquals("frodo@shire.me", emailOn(work))
         assertEquals("", emailOn(friends))
         assertEquals("", emailOn(family))
@@ -440,7 +440,7 @@ class CardContentTest {
 
         val card = wire.putBodies.map { it.jsonObject }.single { it.str("type") == ProfileAttributeTypes.PROFILE_CARD }
         assertEquals(CardDesign.LINKS, card.str("data", "design"))
-        assertEquals("#F1F3F6", card.str("data", "overrides", "palette", "ground"))
+        assertNull(card.str("data", "overrides", "palette", "ground"))
         assertEquals(listOf(WORK_CIRCLE_ID), card["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertFalse(rig.vm.uiState.value.selectedCard!!.isDefault)
 
@@ -532,6 +532,75 @@ class CardContentTest {
         assertEquals("+4520000000", put.str("data", ProfileAttributeTypes.KEY_PHONE))
         assertEquals(listOf(FRIENDS_CIRCLE_ID), rig.circleIds())
         assertEquals(1, wire.storedBodies.count { it.str("type") == ProfileAttributeTypes.PHONE })
+    }
+
+    private val sheetItems: List<Pair<String, JsonObject>> = listOf(
+        ProfileAttributeTypes.PHONE to data(ProfileAttributeTypes.KEY_PHONE, phone),
+        ProfileAttributeTypes.EMAIL to data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"),
+        ProfileAttributeTypes.STATUS to data(ProfileAttributeTypes.KEY_STATUS, "Second breakfast"),
+        ProfileAttributeTypes.BIO_SUMMARY to data(ProfileAttributeTypes.KEY_SHORT_BIO, "Ring bearer"),
+        ProfileAttributeTypes.DISCORD to data(ProfileAttributeTypes.KEY_DISCORD, "maniac_fighter"),
+        ProfileAttributeTypes.TWITTER to data(ProfileAttributeTypes.KEY_TWITTER, "frodo"),
+        ProfileAttributeTypes.LINK to JsonObject(
+            mapOf(
+                ProfileAttributeTypes.KEY_LINK_TEXT to JsonPrimitive("Shire"),
+                ProfileAttributeTypes.KEY_LINK_TARGET to JsonPrimitive("shire.me"),
+            ),
+        ),
+    )
+
+    @Test
+    fun everyItemOffersNoSaveUntouchedAndAnAudienceOnlyChangeIsWritten() = runTest(dispatcher) {
+        for ((type, stored) in sheetItems) {
+            val wire = CardWireHarness()
+            val id = wire.seed(type, "connected", stored, listOf(FRIENDS_CIRCLE_ID))
+            val rig = rig(wire)
+            rig.open(friends)
+            val item = rig.vm.uiState.value.contentItems.single { it.id == id }.asEdited(null)
+
+            assertFalse(item.differsFrom(item.data, item.audience), "$type untouched")
+            val widened = ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID))
+            assertTrue(item.differsFrom(item.data, widened), "$type audience")
+
+            rig.write { rig.vm.onContentEdited(id, item.data, widened) }
+
+            assertEquals(1, wire.puts, type)
+            assertEquals(setOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID), rig.circleIds()?.toSet(), type)
+            rig.open(family)
+            assertTrue(rig.vm.uiState.value.contentItems.single { it.id == id }.shown, "$type shown on the card it was added to")
+        }
+    }
+
+    @Test
+    fun aPhoneStoredWithSpacesSavesAnAudienceOnlyChangeAsE164() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val id = wire.seed(ProfileAttributeTypes.PHONE, "connected", data(ProfileAttributeTypes.KEY_PHONE, "+91 965 436 7034"), listOf(FRIENDS_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(friends)
+        val raw = rig.item(ProfileAttributeTypes.PHONE)
+        val item = raw.asEdited(null)
+        assertEquals("+919654367034", item.data[ProfileAttributeTypes.KEY_PHONE])
+        assertFalse(item.differsFrom(item.data, item.audience))
+        val widened = ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID))
+
+        rig.write { rig.vm.onContentEdited(id, item.data, widened) }
+
+        assertEquals("+919654367034", wire.putBodies.single().jsonObject.str("data", ProfileAttributeTypes.KEY_PHONE))
+        assertEquals(setOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID), rig.circleIds()?.toSet())
+    }
+
+    @Test
+    fun anEditWithNothingChangedWritesNothing() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val id = wire.seed(ProfileAttributeTypes.DISCORD, "connected", data(ProfileAttributeTypes.KEY_DISCORD, "maniac_fighter"), listOf(FRIENDS_CIRCLE_ID))
+        val rig = rig(wire)
+        rig.open(friends)
+        val item = rig.item(ProfileAttributeTypes.DISCORD)
+
+        rig.vm.onContentEdited(id, item.data, item.audience)
+        settle { true }
+
+        assertEquals(0, wire.puts)
     }
 
     @Test

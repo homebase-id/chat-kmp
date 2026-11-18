@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.HomebaseProtocol
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.Base64Encoder
@@ -41,14 +42,22 @@ data class DescriptorContentV1(
         @SerialName("sd") SD(MediaQuality.STANDARD),
         @SerialName("hd") HD(MediaQuality.HD),
         @SerialName("org") ORG(MediaQuality.ORIGINAL),
+        ;
+
+        companion object {
+            fun of(quality: MediaQuality): Quality = entries.first { it.mediaQuality == quality }
+        }
     }
 
     @Serializable
     data class Video(
-        @SerialName("d") val durationMs: Long,
-        @SerialName("c") val codec: String,
+        // Absent on an untouched original, which nothing probes; its playable copy has them.
+        @SerialName("d") val durationMs: Long? = null,
+        @SerialName("c") val codec: String? = null,
         @SerialName("seg") val segmented: Int? = null,
         @SerialName("p") val playlistKey: String? = null,
+        /** The playable copy of an untouched original (UPLOADS.md section 3.6). */
+        @SerialName("pc") val playableCopyKey: String? = null,
         @SerialName("sz") val plainBytes: Long? = null,
         @SerialName("bd") val bitDepth: Int? = null,
         @SerialName("hdr") val hdr: Int? = null,
@@ -57,6 +66,22 @@ data class DescriptorContentV1(
 
     fun encode(): String = OdinSystemSerializer.serialize(this)
 
+    fun withVideo(metadata: VideoMetadata, original: Boolean, playlistKey: String?): DescriptorContentV1 = copy(
+        original = if (original) 1 else 0,
+        pixelWidth = metadata.widthPx.takeIf { it > 0 },
+        pixelHeight = metadata.heightPx.takeIf { it > 0 },
+        video = Video(
+            durationMs = metadata.duration.toLong(),
+            codec = metadata.codec,
+            segmented = if (metadata.isSegmented) 1 else null,
+            playlistKey = playlistKey,
+            plainBytes = metadata.fileSize,
+            bitDepth = metadata.bitDepth.takeIf { it > 0 },
+            hdr = if (metadata.isHdr) 1 else null,
+            bitrateBps = metadata.videoBitrateBps.takeIf { it > 0 },
+        ),
+    )
+
     fun toVideoMetadata(payloadKey: String, contentType: String?, playlist: String?): VideoMetadata? {
         val video = video ?: return null
         val segmented = video.segmented == 1
@@ -64,9 +89,9 @@ data class DescriptorContentV1(
             mimeType = if (segmented) HLS_PLAYLIST_CONTENT_TYPE else contentType ?: "video/mp4",
             isSegmented = segmented,
             fileSize = video.plainBytes ?: 0L,
-            duration = video.durationMs.toFloat(),
+            duration = (video.durationMs ?: 0L).toFloat(),
             key = payloadKey,
-            codec = video.codec,
+            codec = video.codec.orEmpty(),
             hlsPlaylist = playlist,
             widthPx = pixelWidth ?: 0,
             heightPx = pixelHeight ?: 0,
@@ -78,6 +103,9 @@ data class DescriptorContentV1(
 
     companion object {
         const val VERSION = 1
+
+        /** Whether uploads write this format. It flips once, together with the feed in odin-js (UPLOADS.md section 7). */
+        const val WRITE = false
 
         // No older form is a JSON object with "v" and "k" keys.
         fun isCurrentFormat(content: String): Boolean =
@@ -94,19 +122,42 @@ data class DescriptorContentV1(
 /** The descriptor content of an encrypted HomebaseFile: `{"e": base64(0x01 ‖ zkLock)}` (UPLOADS.md section 2). */
 object DescriptorContentSeal {
     private const val FORMAT: Byte = 1
+    private const val FORMAT_BYTES = 1
     private val strict = Json
 
     @Serializable
     private class Sealed(val e: String)
 
+    fun sealedLength(plaintextBytes: Int): Int = WRAPPER.length + 4 * ((plaintextBytes + FORMAT_BYTES + ZkLock.OVERHEAD + 2) / 3)
+
+    /** Whether [content] fits the server's limit, as it is or once [sealed]. */
+    fun fits(content: String, sealed: Boolean): Boolean {
+        val bytes = content.encodeToByteArray().size
+        return (if (sealed) sealedLength(bytes) else bytes) <= HomebaseProtocol.MaxPayloadDescriptorBytes
+    }
+
+    private const val WRAPPER = """{"e":""}"""
+
     suspend fun seal(plaintext: String, key: SecureByteArray): String =
         strict.encodeToString(Sealed.serializer(), Sealed(Base64Encoder.encode(byteArrayOf(FORMAT) + ZkLock.lock(plaintext.encodeToByteArray(), key.unsafeBytes))))
 
+    // The whole sealed form, not just its start: a name may begin with {"e": too.
+    internal fun isSealed(content: String): Boolean = sealedBytes(content)?.firstOrNull() == FORMAT
+
+    private fun sealedBytes(content: String): ByteArray? =
+        if (!content.startsWith("{\"e\":")) null
+        else runCatching { Base64Encoder.decode(strict.decodeFromString(Sealed.serializer(), content).e) }.getOrNull()
+
+    /** Whether an upload seals its descriptor content: an encrypted file, with the switch on or when its app asks ahead of it. */
+    internal fun appliesTo(isEncrypted: Boolean, asked: Boolean): Boolean = isEncrypted && (DescriptorContentV1.WRITE || asked)
+
+    /** [content] sealed; as it is when there is nothing to seal or it already is. */
+    internal suspend fun sealIfPlain(content: String?, key: SecureByteArray): String? =
+        if (content.isNullOrBlank() || isSealed(content)) content else seal(content, key)
+
     /** [content] itself when it isn't sealed; its plaintext when it is; null when it doesn't open. */
     suspend fun open(content: String, key: SecureByteArray): String? {
-        if (!content.startsWith("{\"e\":")) return content
-        val sealed = runCatching { Base64Encoder.decode(strict.decodeFromString(Sealed.serializer(), content).e) }.getOrNull()
-            ?: return content
+        val sealed = sealedBytes(content) ?: return content
         if (sealed.firstOrNull() != FORMAT) return null
         return try {
             ZkLock.open(sealed.copyOfRange(1, sealed.size), key.unsafeBytes).decodeToString()
@@ -116,3 +167,6 @@ object DescriptorContentSeal {
         }
     }
 }
+
+internal suspend fun PayloadFile.withSealedDescriptor(aesKey: SecureByteArray): PayloadFile =
+    copy(descriptorContent = DescriptorContentSeal.sealIfPlain(descriptorContent, aesKey))

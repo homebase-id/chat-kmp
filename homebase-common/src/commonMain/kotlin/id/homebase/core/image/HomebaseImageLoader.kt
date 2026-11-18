@@ -11,7 +11,7 @@ import id.homebase.api.client.withRetry
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.clipboard.platformFileFromPath
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid

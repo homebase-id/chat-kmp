@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.chat.agentui.LocalAgentUiConversation
 import id.homebase.api.serialization.Base64Bytes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -228,6 +229,8 @@ fun SentMessageBubble(
     SideEffect { handback.active = popupTransition.shownMode == MessagePopupMode.All }
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
+    // Copy on a card copies its text, not the one-line summary in message.content.
+    val agentUiConversation = LocalAgentUiConversation.current
     val isHovered by interactionSource.collectIsHoveredAsState()
     // Captures the bubble's measured width so the reaction pill can be capped to
     // it instead of widening the bubble for narrow messages (e.g. "."). Initial
@@ -332,7 +335,7 @@ fun SentMessageBubble(
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
-                            onCopyText(message.content)
+                            onCopyText(agentUiConversation.copyText(message) ?: message.content)
                         },
                         onCopyImage = onCopyImage?.let { copy ->
                             message.copyImageTarget(menuImageKey)?.let { key ->
@@ -388,11 +391,7 @@ fun SentMessageBubble(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = {},
-                                onLongClick = {
-                                    if (onMessageInfo != null) {
-                                        openPopup(MessagePopupMode.All)
-                                    }
-                                },
+                                onLongClick = { longPressPopup() },
                                 // Only reaches the padding around the bubble and the typed kinds
                                 // that paint their own surface; MessageBubbleRaw owns the rest.
                                 onDoubleClick = openReactionBar,
@@ -584,6 +583,8 @@ fun ReceivedMessageBubble(
     var showBlockConfirm by remember { mutableStateOf(false) }
     var showReportConfirm by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
+    // Copy on a card copies its text, not the one-line summary in message.content.
+    val agentUiConversation = LocalAgentUiConversation.current
     val isHovered by interactionSource.collectIsHoveredAsState()
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
     val filteredPayloads = message.payloads?.filter {
@@ -648,11 +649,7 @@ fun ReceivedMessageBubble(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
-                        onLongClick = {
-                            if (onMessageInfo != null) {
-                                openPopup(MessagePopupMode.All)
-                            }
-                        },
+                        onLongClick = { longPressPopup() },
                         // See SentMessageBubble — MessageBubbleRaw owns the bubble surface.
                         onDoubleClick = openReactionBar,
                     )
@@ -823,7 +820,7 @@ fun ReceivedMessageBubble(
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None
-                            onCopyText(message.content)
+                            onCopyText(agentUiConversation.copyText(message) ?: message.content)
                         },
                         onCopyImage = onCopyImage?.let { copy ->
                             message.copyImageTarget(menuImageKey)?.let { key ->

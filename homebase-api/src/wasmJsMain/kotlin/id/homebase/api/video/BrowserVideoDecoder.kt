@@ -29,7 +29,7 @@ import okio.Path.Companion.toPath
  */
 internal class BrowserVideoDecoder : VideoDecoder {
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
         val handle = VideoUrlHandle.resolve(videoPath) ?: return null
         return try {
             val out = extractPosterFrameJs(handle.url).await<JsString>().toString()

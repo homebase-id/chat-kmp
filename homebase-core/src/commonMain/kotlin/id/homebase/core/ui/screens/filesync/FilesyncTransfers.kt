@@ -8,7 +8,7 @@ import id.homebase.api.client.drives.files.wholePercentFractions
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.util.StreamedSave
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.openBrowserSave
 import id.homebase.api.util.splitExtension

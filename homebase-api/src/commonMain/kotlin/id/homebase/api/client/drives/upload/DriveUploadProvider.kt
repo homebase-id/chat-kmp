@@ -1,5 +1,7 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.client.drives.files.withSealedDescriptor
+import id.homebase.api.client.drives.files.DescriptorContentSeal
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.coroutineScope
@@ -80,6 +82,8 @@ data class UploadFileRequest(
     val existingFileIsSuccess: Boolean = false,
     val shares: List<ShareRequest>? = null,
     val globalTransitId: Uuid? = null,
+    /** Seal descriptor content though the switch is off: the app writes the current format already (Photos). */
+    val sealDescriptorContent: Boolean = false,
 )
 
 @Serializable
@@ -101,7 +105,10 @@ data class UpdateFileByUniqueIdRequest(
     val instructions: FileUpdateInstructionSet,
     val metadata: UploadFileMetadata,
     val payloads: List<PayloadFile>? = null,
-    val thumbnails: List<ThumbnailFile>? = null,    val fileSystemType: FileSystemType? = null,
+    val thumbnails: List<ThumbnailFile>? = null,
+    val fileSystemType: FileSystemType? = null,
+    /** As [UploadFileRequest.sealDescriptorContent]. */
+    val sealDescriptorContent: Boolean = false,
 )
 
 
@@ -206,7 +213,7 @@ class DriveUploadProvider(
             UploadInstructionSet(
                 transferIv = transferIv,
                 manifest = UploadManifest.build(
-                    request.payloads,
+                    request.sealedPayloads(),
                     request.thumbnails,
                     generatePayloadIv = request.metadata.isEncrypted
                 ),
@@ -286,7 +293,7 @@ class DriveUploadProvider(
 
         val data =
             buildUpdateFormData(
-                instructionSet = request.instructions,
+                instructionSet = request.instructions.sealedIf(request.sealsDescriptors, request.keyHeader),
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
                 thumbnails = request.thumbnails,
@@ -339,7 +346,7 @@ class DriveUploadProvider(
 
         val data =
             buildUpdateFormData(
-                instructionSet = request.instructions,
+                instructionSet = request.instructions.sealedIf(request.sealsDescriptors, request.keyHeader),
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
                 thumbnails = request.thumbnails,
@@ -374,6 +381,8 @@ class DriveUploadProvider(
         onProgress: UploadProgress? = null,
     ): UpdateFileResult {
         preflightStagedPayloads(payloads, "updateFileOverPeerByGlobalTransitId gtid=$globalTransitId")
+        // Only the encrypted key header is at hand here, so descriptor content couldn't be sealed: refuse it rather than leak it.
+        require(payloads.all { it.descriptorContent == null }) { "a peer update carries no descriptor content" }
         val sharedSecret = requireCreds().secret.unsafeBytes
         val transferIv = ByteArrayUtil.getRndByteArray(16)
         val descriptor = buildSharedSecretEncryptedUpdateDescriptor(encryptedKeyHeader, metadata, sharedSecret, transferIv)
@@ -620,3 +629,15 @@ class DriveUploadProvider(
         cleanupHlsScratch(payloads)
     }
 }
+
+// Sealed here, where every upload's manifest is built for the server with the file's key at hand, so a request
+// enqueued by any caller is covered; the outbox keeps the readable form. The size check reads the same rule.
+internal val UploadFileRequest.sealsDescriptors get() = DescriptorContentSeal.appliesTo(metadata.isEncrypted, sealDescriptorContent)
+internal val UpdateFileByUniqueIdRequest.sealsDescriptors get() = keyHeader != null && DescriptorContentSeal.appliesTo(metadata.isEncrypted, sealDescriptorContent)
+private val UpdateFileByFileIdRequest.sealsDescriptors get() = keyHeader != null && DescriptorContentSeal.appliesTo(metadata.isEncrypted, asked = false)
+
+internal suspend fun UploadFileRequest.sealedPayloads(): List<PayloadFile> =
+    if (sealsDescriptors) payloads.map { it.withSealedDescriptor(keyHeader.aesKey) } else payloads
+
+private suspend fun FileUpdateInstructionSet.sealedIf(seals: Boolean, keyHeader: KeyHeader?): FileUpdateInstructionSet =
+    if (seals && keyHeader != null) copy(manifest = manifest.withSealedDescriptors(keyHeader.aesKey)) else this

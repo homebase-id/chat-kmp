@@ -1,7 +1,7 @@
 package id.homebase.chat.services.image
 
+import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.image.ImageUtils
-import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.test.runTest
 import java.awt.Color
 import java.awt.image.BufferedImage
@@ -35,7 +35,7 @@ class StickerImageProcessorTest {
         assertEquals(StickerImageProcessor.STICKER_MAX_DIM, size.pixelWidth)
         assertEquals(
             "image/png",
-            ImageFormatDetector.detectFormat(out),
+            contentTypeFromBytes(out),
             "must stay PNG — a lossy WebP re-encode would blur the cut-out's alpha edge",
         )
         assertTrue(
@@ -88,7 +88,7 @@ class StickerImageProcessorTest {
         )
         assertEquals(
             "image/png",
-            ImageFormatDetector.detectFormat(out),
+            contentTypeFromBytes(out),
             "must stay PNG — a lossy WebP re-encode would blur the cut-out's alpha edge",
         )
         assertTrue(

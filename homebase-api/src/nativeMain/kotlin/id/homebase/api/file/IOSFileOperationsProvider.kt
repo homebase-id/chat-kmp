@@ -49,6 +49,34 @@ internal fun accessSecurityScope(path: String): () -> Unit {
 
 class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, "") {
 
+    override suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray {
+        val closeScope = accessSecurityScope(path)
+        try {
+            return super.readFileRange(path, offset, length)
+        } finally {
+            closeScope()
+        }
+    }
+
+    override suspend fun openRanges(path: String): FileRanges {
+        val closeScope = accessSecurityScope(path)
+        val ranges = try {
+            super.openRanges(path)
+        } catch (t: Throwable) {
+            closeScope()
+            throw t
+        }
+        return object : FileRanges by ranges {
+            override fun close() {
+                try {
+                    ranges.close()
+                } finally {
+                    closeScope()
+                }
+            }
+        }
+    }
+
     override fun openSource(path: String): Source {
         val closeScope = accessSecurityScope(path)
         val source = try {

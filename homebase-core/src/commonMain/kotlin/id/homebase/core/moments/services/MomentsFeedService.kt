@@ -285,6 +285,8 @@ data class MomentFeedItem(
     val fileId: Uuid,
     val driveId: Uuid,
     val keyHeader: KeyHeader,
+    /** Whether the server stores the file encrypted: its payloads then need [keyHeader] and their own IVs. */
+    val isEncrypted: Boolean,
     val payloads: List<PayloadDescriptor>,
     val description: String,
     val userDateMs: Long,
@@ -398,6 +400,7 @@ internal fun HomebaseFile.toFeedItem(): MomentFeedItem? {
         fileId = fileId,
         driveId = driveId,
         keyHeader = keyHeader,
+        isEncrypted = serverFileIsEncrypted,
         payloads = fileMetadata.payloads.orEmpty().withoutInternalDescriptors(),
         description = content?.description.orEmpty(),
         userDateMs = sqlUserDateMs(),

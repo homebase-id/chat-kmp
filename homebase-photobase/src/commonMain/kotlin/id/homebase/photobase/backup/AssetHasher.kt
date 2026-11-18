@@ -29,7 +29,7 @@ class AssetHasher(
         try {
             val hashed = timed(BackupStage.Hash) {
                 var size = 0L
-                HashedAsset(exported.parts.map { part -> digest(part.path) { size += it } }, size)
+                HashedAsset(exported.parts.map { part -> digest(part.path) { size += it.size } }, size)
             }
             exports.keep(assetId, mediaType, exported)
             return hashed
@@ -45,11 +45,15 @@ class AssetHasher(
 
     suspend fun forgetAll() = exports.forgetAll()
 
-    suspend fun digest(path: String, onBytes: (Int) -> Unit = {}): ByteArray {
+    /** Whether [part] still holds the bytes hashed as [expected]; a hashed copy is those very files. */
+    suspend fun matches(exported: ExportedAsset, part: ExportedPart, expected: ByteArray): Boolean =
+        exported.isHashedCopy || digest(part.path).contentEquals(expected)
+
+    suspend fun digest(path: String, onChunk: (ByteArray) -> Unit = {}): ByteArray {
         val hasher = Blake3Hasher()
         fileOps.readFileAsFlow(path).onEach {
             hasher.update(it)
-            onBytes(it.size)
+            onChunk(it)
         }.collect()
         return hasher.digest()
     }

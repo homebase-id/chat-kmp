@@ -42,7 +42,7 @@ sealed interface FilesyncRecentAction {
     data object DismissShare : FilesyncRecentAction
     data class Save(val node: FilesyncNode) : FilesyncRecentAction
     data object CancelTransfer : FilesyncRecentAction
-    data class SaveHandedOff(val path: String) : FilesyncRecentAction
+    data class PreviewGone(val path: String) : FilesyncRecentAction
     data class Restore(val nodeId: Uuid) : FilesyncRecentAction
 }
 
@@ -85,7 +85,7 @@ class FilesyncRecentViewModel(
             FilesyncRecentAction.DismissShare -> _uiState.update { it.copy(shareChooser = null) }
             is FilesyncRecentAction.Save -> transfers.send(listOf(action.node), action.node.name, FilesyncShareTarget.Download)
             FilesyncRecentAction.CancelTransfer -> transfers.cancel()
-            is FilesyncRecentAction.SaveHandedOff -> repository.discard(action.path)
+            is FilesyncRecentAction.PreviewGone -> repository.discard(action.path)
             is FilesyncRecentAction.Restore -> viewModelScope.launch {
                 reportWrite(FilesyncUiEvent.Notice(FilesyncNotice.Restored), FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }
             }

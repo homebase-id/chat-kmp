@@ -34,15 +34,52 @@ class AndroidFileOperationsProvider(
         if (isContentUri(path)) {
             flow {
                 openContentStream(path).use {
-                    val buf = ByteArray(chunkSize)
+                    // A read returns what one round trip to the provider brought; fill the chunk, as Okio's reader does.
                     while (true) {
-                        val n = it.read(buf, 0, buf.size)
-                        if (n <= 0) break
-                        emit(buf.copyOf(n))
+                        val buf = ByteArray(chunkSize)
+                        var filled = 0
+                        while (filled < chunkSize) {
+                            val n = it.read(buf, filled, chunkSize - filled)
+                            if (n < 0) break
+                            filled += n
+                        }
+                        if (filled > 0) emit(if (filled == chunkSize) buf else buf.copyOf(filled))
+                        if (filled < chunkSize) break
                     }
                 }
             }.flowOn(Dispatchers.IO)
         } else super.readFileAsFlow(path, chunkSize)
+
+    override suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray =
+        if (isContentUri(path)) openRanges(path).use { it.read(offset, length) } else super.readFileRange(path, offset, length)
+
+    override suspend fun openRanges(path: String): FileRanges {
+        if (!isContentUri(path)) return super.openRanges(path)
+        val (descriptor, channel) = withContext(Dispatchers.IO) {
+            val descriptor = context.contentResolver.openFileDescriptor(path.toUri(), "r")
+                ?: throw IllegalArgumentException("Unable to open content URI: $path")
+            descriptor to java.io.FileInputStream(descriptor.fileDescriptor).channel
+        }
+        return object : FileRanges {
+            override suspend fun read(offset: Long, length: Int): ByteArray = withContext(Dispatchers.IO) {
+                val buffer = java.nio.ByteBuffer.allocate(length)
+                var position = offset
+                while (buffer.hasRemaining()) {
+                    val n = channel.read(buffer, position)
+                    if (n <= 0) break
+                    position += n
+                }
+                buffer.array().copyOf(buffer.position())
+            }
+
+            override suspend fun size() = withContext(Dispatchers.IO) { channel.size() }
+
+            override fun close() {
+                channel.close()
+                descriptor.close()
+            }
+        }
+    }
 
     override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray =
         if (isContentUri(path)) {
@@ -98,7 +135,7 @@ class AndroidFileOperationsProvider(
                 ?.let { ".$it" } ?: ""
             val tmp = File.createTempFile("resolved_", ext, File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, AppCacheDirs.PICKER_COPIES)))
             context.contentResolver.openInputStream(uri)?.use { input ->
-                tmp.outputStream().use { input.copyTo(it) }
+                tmp.outputStream().use { input.copyInLargeChunks(it) }
             } ?: throw IllegalArgumentException("Unable to open content URI: $path")
             tmp.absolutePath
         }
@@ -110,6 +147,22 @@ class AndroidFileOperationsProvider(
             context.contentResolver.openOutputStream(path.toUri())?.use { out ->
                 data.collect { chunk -> out.write(chunk) }
             } ?: throw IllegalArgumentException("Unable to open content URI for write: $path")
+        }
+    }
+
+    override suspend fun overwrite(path: String, offset: Long, bytes: ByteArray) {
+        if (!isContentUri(path)) return super.overwrite(path, offset, bytes)
+        withContext(Dispatchers.IO) {
+            val descriptor = context.contentResolver.openFileDescriptor(path.toUri(), "rw")
+                ?: throw IllegalArgumentException("Unable to open content URI for write: $path")
+            descriptor.use { fd ->
+                java.io.FileOutputStream(fd.fileDescriptor).channel.use { channel ->
+                    require(offset >= 0 && offset + bytes.size <= channel.size()) { "overwrite past the end of $path" }
+                    val buffer = java.nio.ByteBuffer.wrap(bytes)
+                    var at = offset
+                    while (buffer.hasRemaining()) at += channel.write(buffer, at)
+                }
+            }
         }
     }
 }

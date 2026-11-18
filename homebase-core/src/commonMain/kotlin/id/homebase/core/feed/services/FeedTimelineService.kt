@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.config.feedLabeledDrive
@@ -18,7 +19,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
 import kotlin.uuid.Uuid
 
 // Aggregates the FeedDrive (where followed identities' posts land) and the user's own public-channel drive,
@@ -230,6 +237,40 @@ class FeedTimelineService(
     }
 
     suspend fun refresh() = coldLoad()
+
+    // A notification names its post by globalTransitId or fileId, and the post can sit past the loaded pages.
+    suspend fun findStoredPost(id: Uuid): FeedPostItem? {
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
+        val index = databaseManager.driveMainIndex
+        for (drive in sourceDrives) {
+            val row = index.selectByIdentityAndDriveAndUnique(identityId, drive, id)
+                ?: index.selectByIdentityAndDriveAndGlobal(identityId, drive, id)
+                ?: index.selectByIdentityAndDriveAndFile(identityId, drive, id)
+                ?: continue
+            val file = OdinSystemSerializer.deserialize<HomebaseFile>(row.jsonHeader)
+            if (file.isSoftDeleted() || file.fileMetadata.appData.fileType != FeedProtocol.PostFileType) continue
+            return file.toFeedPostItem()
+        }
+        return null
+    }
+
+    // A push can be tapped before its post has synced: kick the source drives and look again as each round lands.
+    suspend fun syncUntilStored(id: Uuid, timeout: Duration, syncDrive: (Uuid) -> Unit): FeedPostItem? =
+        withTimeoutOrNull(timeout) {
+            eventBus.events
+                .onSubscription {
+                    for (drive in sourceDrives) {
+                        runCatching { syncDrive(drive) }
+                            .onFailure { Logger.w(tag = TAG) { "sync kick for $drive failed: ${it.message}" } }
+                    }
+                }
+                .filter {
+                    (it is BackendEvent.DriveEvent.Stopped && it.driveId in sourceDrives) ||
+                        (it is BackendEvent.DataEvent.BatchReceived && it.driveId in sourceDrives)
+                }
+                .mapNotNull { findStoredPost(id) }
+                .first()
+        }
 
     // A followed identity's post lands on the feed drive as a reference with NO uniqueId, only a globalTransitId.
     // Keying on uniqueId alone dropped every one, so live pushes for followed posts never applied incrementally.

@@ -251,7 +251,7 @@ private class FakeDecoder(
     /** Snapshot of the skipMask the runner handed to this decoder on its last invocation. */
     var lastSkipMask: BooleanArray? = null
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
         posterCalls++
         posterThrows?.let { throw it }
         return posterBytes

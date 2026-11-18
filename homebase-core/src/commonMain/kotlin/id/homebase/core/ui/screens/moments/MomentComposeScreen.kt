@@ -51,7 +51,7 @@ import id.homebase.core.camera.CameraModes
 import id.homebase.core.ui.screens.moments.widget.MomentDateChip
 import id.homebase.core.ui.screens.moments.widget.MomentDescriptionField
 import id.homebase.core.ui.screens.moments.widget.MomentImageInfoChip
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown

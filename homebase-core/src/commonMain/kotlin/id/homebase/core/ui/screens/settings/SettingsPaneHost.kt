@@ -101,11 +101,15 @@ internal fun SettingsPaneHost(
     var cardExpanded by remember { mutableStateOf(false) }
     LaunchedEffect(viewerOpen) { if (!viewerOpen) cardExpanded = false }
     val paneFullWindow = LocalPaneFullWindow.current
-    val editorOpen = profilePage == ProfilePage.CardEditor || profilePage == ProfilePage.Avatar
-    val fullWindow = paneFullWindow != null && (editorOpen || (viewerOpen && cardExpanded))
-    DisposableEffect(paneFullWindow, fullWindow) {
-        paneFullWindow?.value = fullWindow
-        onDispose { paneFullWindow?.value = false }
+    DisposableEffect(paneFullWindow) {
+        paneFullWindow?.value = {
+            when (profilePage) {
+                ProfilePage.CardEditor, ProfilePage.Avatar -> true
+                ProfilePage.Card -> cardExpanded
+                null -> false
+            }
+        }
+        onDispose { paneFullWindow?.value = { false } }
     }
 
     val cardOpen = profilePage != null

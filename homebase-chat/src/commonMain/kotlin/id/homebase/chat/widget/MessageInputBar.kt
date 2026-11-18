@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -137,6 +138,7 @@ import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.settings.rememberArrowUpEditsLastMessage
 import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.usesComposerPopovers
 import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
@@ -1245,9 +1247,10 @@ private fun EmojiToggleButton(
     popoverContent: (@Composable () -> Unit)?,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     if (showingEmojiSheet || popoverContent == null) {
-        IconButton(onClick = if (showingEmojiSheet) onKeyboardClick else onEmojiClick) {
+        IconButton(onClick = if (showingEmojiSheet) onKeyboardClick else onEmojiClick, modifier = modifier) {
             Crossfade(showingEmojiSheet, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { sheet ->
                 Icon(
                     imageVector = if (sheet) Icons.Default.Keyboard else Icons.Default.EmojiEmotions,
@@ -1263,7 +1266,7 @@ private fun EmojiToggleButton(
                 onEmojiClick()
                 popoverOpen = !popoverOpen
             },
-            modifier = Modifier.popoverAnchor(anchor),
+            modifier = modifier.popoverAnchor(anchor),
         ) {
             Icon(imageVector = Icons.Default.EmojiEmotions, contentDescription = contentDescription)
             ComposerPopover(
@@ -1347,6 +1350,7 @@ fun MessageTextFieldForAttachment(
     // On mobile (Android/iOS) the caption editor hides it. Injectable so both branches
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = usesPointerUx(),
+    emojiPopover: Boolean = usesComposerPopovers(),
     onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
     onPasteImage: ((ByteArray) -> Unit)? = null,
     // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
@@ -1446,25 +1450,38 @@ fun MessageTextFieldForAttachment(
                     trailingIcon = viewOnceToggle?.let { toggle -> { ViewOnceCaptionToggle(toggle) } },
                     leadingIcon = if (nextInsteadOfSend) null else {
                         {
-                        IconButton(
-                            onClick = {
-                                if (emojiPanel.isOpen) {
-                                    setEmojiPicker(false)
-                                } else {
-                                    keyboardController?.hide()
-                                    focusManager.clearFocus()
-                                    setEmojiPicker(true)
+                        EmojiToggleButton(
+                            showingEmojiSheet = false,
+                            contentDescription = stringResource(MR.string.chat_message_emoji_options),
+                            focusRequester = captionFocusRequester,
+                            popoverContent = if (emojiPopover) {
+                                {
+                                    EmojiSelection(
+                                        modifier = Modifier.fillMaxSize().padding(top = 8.dp, start = 16.dp, end = 16.dp)
+                                            .testTag(ATTACHMENT_EMOJI_PICKER_TAG),
+                                        messageInputMode = true,
+                                        searchFirst = true,
+                                        onBackSpace = { state.programmaticBackspace() },
+                                        onEmojiSelected = { state.addTextAfterSelection(it) },
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            onEmojiClick = {
+                                when {
+                                    emojiPopover -> Unit
+                                    emojiPanel.isOpen -> setEmojiPicker(false)
+                                    else -> {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                        setEmojiPicker(true)
+                                    }
                                 }
                             },
+                            onKeyboardClick = {},
                             modifier = Modifier.testTag(ATTACHMENT_EMOJI_BUTTON_TAG),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.EmojiEmotions,
-                                contentDescription = stringResource(
-                                    MR.string.chat_message_emoji_options
-                                )
-                            )
-                        }
+                        )
                         }
                     },
                     shape = RoundedCornerShape(12.dp),

@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.api.file.extensionForContentType
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.splitExtension
 

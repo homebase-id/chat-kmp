@@ -35,9 +35,6 @@ plugins {
 
 dependencyResolutionManagement {
     repositories {
-        maven {
-            url = uri("gradle/local-repo")
-        }
         google {
             mavenContent {
                 includeGroupAndSubgroups("androidx")
@@ -56,6 +53,7 @@ include(":homebase-auth")
 include(":homebase-chat")
 include(":homebase-api")
 include(":homebase-imageresize")
+include(":homebase-blake3")
 include(":homebase-upload")
 include(":homebase-photobase")
 include(":homebase-notifshared")

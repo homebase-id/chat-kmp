@@ -66,7 +66,7 @@ import id.homebase.api.client.diagnostics.ResolutionSource
 import id.homebase.core.camera.CameraModes
 import id.homebase.core.camera.rememberInAppCameraManager
 import id.homebase.core.clipboard.rememberCopyToClipboard
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.size

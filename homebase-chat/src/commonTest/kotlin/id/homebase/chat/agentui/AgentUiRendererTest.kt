@@ -5,6 +5,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.Clipboard
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.NativeClipboard
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsEnabled
@@ -28,19 +33,34 @@ class AgentUiRendererTest {
         tree: AgentUiTree,
         enabled: Boolean = true,
         pending: Set<String> = emptySet(),
+        answered: Set<String> = emptySet(),
+        clipboard: Clipboard? = null,
         onAction: (AgentUiActionRequest) -> Unit = {},
     ) = setContent {
         MaterialTheme {
             val inputs = remember { AgentUiInputState(tree.inputs) }
-            AgentUiTreeView(
-                tree = tree,
-                inputs = inputs,
-                imageData = { null },
-                enabled = enabled,
-                pendingActionIds = pending,
-                onAction = onAction,
-            )
+            val view = @androidx.compose.runtime.Composable {
+                AgentUiTreeView(
+                    tree = tree,
+                    inputs = inputs,
+                    imageData = { null },
+                    enabled = enabled,
+                    pendingActionIds = pending,
+                    onAction = onAction,
+                    answeredActionIds = answered,
+                )
+            }
+            if (clipboard == null) view() else CompositionLocalProvider(LocalClipboard provides clipboard) { view() }
         }
+    }
+
+    private class FakeClipboard : Clipboard {
+        val entries = mutableListOf<ClipEntry?>()
+        override suspend fun getClipEntry(): ClipEntry? = entries.lastOrNull()
+        override suspend fun setClipEntry(clipEntry: ClipEntry?) {
+            entries += clipEntry
+        }
+        override val nativeClipboard: NativeClipboard get() = error("no native clipboard in tests")
     }
 
     @Test fun reference_card_shows_caption_chips_and_buttons() = runComposeUiTest {
@@ -233,5 +253,44 @@ class AgentUiRendererTest {
         onNodeWithText("Post").assertIsEnabled()
         onNodeWithText("LinkedIn").performClick()
         onNodeWithText("Post").assertIsNotEnabled()
+    }
+
+    @Test fun copy_button_copies_on_the_device_and_never_sends_an_action() = runComposeUiTest {
+        val t = valid(tree("""{"id":"root","type":"button","label":"Copy code","style":"tonal","copy":"ABC-123"}"""))
+        val clipboard = FakeClipboard()
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(t, clipboard = clipboard, onAction = { seen += it })
+        onNodeWithText("Copy code").assertIsEnabled().performClick()
+        waitForIdle()
+        assertEquals(1, clipboard.entries.size)
+        onNodeWithTag(CopiedIconTag, useUnmergedTree = true).assertExists()
+        onNodeWithText("Copied").assertExists()
+        assertEquals(emptyList(), seen)
+        mainClock.advanceTimeBy(2500)
+        onNodeWithText("Copy code").assertExists()
+    }
+
+    @Test fun copy_button_is_inert_on_a_display_only_card() = runComposeUiTest {
+        val t = valid(tree("""{"id":"root","type":"button","label":"Copy code","copy":"ABC-123"}"""))
+        val clipboard = FakeClipboard()
+        show(t, enabled = false, clipboard = clipboard)
+        onNodeWithText("Copy code").assertIsNotEnabled().performClick()
+        assertEquals(0, clipboard.entries.size)
+    }
+
+    // A sent action settles on a check instead of spinning until the agent edits the card.
+    @Test fun an_answered_action_shows_a_check_stays_disabled_and_sends_nothing() = runComposeUiTest {
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(AgentUiFixtures.decodeDraftPostCard(), pending = setOf("approve"), answered = setOf("approve"), onAction = { seen += it })
+        onNodeWithText("Approve").assertIsNotEnabled().performClick()
+        onNodeWithTag(ChosenIconTag, useUnmergedTree = true).assertExists()
+        onNodeWithText("Edit").assertIsEnabled()
+        assertEquals(emptyList(), seen)
+    }
+
+    @Test fun an_in_flight_action_shows_no_check() = runComposeUiTest {
+        show(AgentUiFixtures.decodeDraftPostCard(), pending = setOf("approve"))
+        onNodeWithText("Approve").assertIsNotEnabled()
+        onNodeWithTag(ChosenIconTag, useUnmergedTree = true).assertDoesNotExist()
     }
 }

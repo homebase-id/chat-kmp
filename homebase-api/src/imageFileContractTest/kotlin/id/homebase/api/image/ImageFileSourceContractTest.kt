@@ -1,5 +1,6 @@
 package id.homebase.api.image
 
+import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.OkioFileOperationsProvider
 import kotlinx.coroutines.flow.Flow
@@ -47,8 +48,8 @@ class ImageFileSourceContractTest {
     fun aPathMakesTheSameImagesAsItsBytes() = runTest {
         val (bytes, path) = rotatedJpeg()
 
-        val fromBytes = createMediaImages(bytes, "k", MediaQuality.STANDARD, readMetadata = true)
-        val fromPath = createMediaImages(path, ops, "k", MediaQuality.STANDARD, readMetadata = true)
+        val fromBytes = createMediaImages(bytes, "k", MediaQuality.STANDARD)
+        val fromPath = createMediaImages(path, ops, "k", MediaQuality.STANDARD)
 
         assertEquals(ImageSize(1200, 1600), fromPath.displayedSize)
         assertEquals(fromBytes.displayedSize, fromPath.displayedSize)
@@ -58,8 +59,9 @@ class ImageFileSourceContractTest {
         assertEquals(fromBytes.tiny, fromPath.tiny)
         assertEquals("image/jpeg", fromPath.sourceFormat)
         assertEquals(bytes.size.toLong(), fromPath.sourceByteCount)
-        assertEquals(fromBytes.metadata, fromPath.metadata)
-        assertEquals(6, fromPath.metadata?.orientation)
+        val read = MediaMetadataReader(ops).image(path)
+        assertEquals(readImageMetadata(bytes), read)
+        assertEquals(6, read?.orientation)
     }
 
     @Test
@@ -67,11 +69,11 @@ class ImageFileSourceContractTest {
         val (_, path) = rotatedJpeg()
         val expectedReads = if (opensDirectly(path)) 0 else 1
 
-        createMediaImages(path, ops, "k", MediaQuality.STANDARD, readMetadata = true)
-        assertEquals(expectedReads, ops.wholeReads, "thumbnails and EXIF")
+        createMediaImages(path, ops, "k", MediaQuality.STANDARD)
+        assertEquals(expectedReads, ops.wholeReads, "thumbnails")
 
         ops.wholeReads = 0
-        assertEquals(6, readImageMetadata(path, ops)?.orientation)
+        assertEquals(6, MediaMetadataReader(ops).image(path)?.orientation)
         assertEquals(expectedReads, ops.wholeReads, "EXIF alone")
     }
 

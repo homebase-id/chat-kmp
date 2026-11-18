@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.card
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.AclViewer
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
@@ -94,7 +95,7 @@ private suspend fun pagePosts(odinId: String, channelId: Uuid, channel: CardChan
     return kept
 }
 
-private fun HomebaseFile.isPublic() = serverMetadata.accessControlList.isVisibleTo(ProfileVisibility.ANONYMOUS)
+private fun HomebaseFile.isPublic() = serverMetadata.accessControlList.isVisibleTo(AclViewer(ProfileVisibility.ANONYMOUS))
 
 internal fun cardPost(odinId: String, channel: CardChannel, file: HomebaseFile): CardPostEntry? {
     if (file.isSoftDeleted() || !file.isPublic()) return null

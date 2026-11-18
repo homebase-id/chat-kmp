@@ -574,6 +574,8 @@
     <string name="chat_message_search_result_count">%1$d of %2$d</string>
     <string name="chat_message_search_no_results">No results</string>
     <string name="chat_scroll_to_bottom">Scroll to bottom</string>
+    <string name="chat_jump_to_mention">Jump to unread mention</string>
+    <string name="chat_unread_mention">You were mentioned</string>
     <string name="chat_previous_result">Previous result</string>
     <string name="chat_next_result">Next result</string>
     <string name="chat_no_gallery_items">No items</string>
@@ -997,6 +999,10 @@
     <string name="chat_agent_ui_action_failed">Couldn't send that action. Try again.</string>
     <string name="chat_agent_ui_action_you">You chose %1$s</string>
     <string name="chat_agent_ui_action_other">%1$s chose %2$s</string>
+    <string name="chat_agent_ui_choices_more">+%1$d more</string>
+    <string name="chat_agent_ui_choice_at">%1$s · %2$s</string>
+    <string name="chat_agent_ui_chosen">Chosen</string>
+    <string name="chat_agent_ui_open_card">Open card</string>
     <string name="chat_agent_ui_open_image">View image</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
@@ -2547,9 +2553,6 @@
     <string name="profile_card_content_front_empty">Use the up arrow on a shared field to show it on the card</string>
     <string name="profile_card_content_back">Back of card</string>
     <string name="profile_card_content_back_desc">Shared with this card, not on its face</string>
-    <string name="profile_card_content_unavailable_only_me">Only you</string>
-    <string name="profile_card_content_unavailable_only">Only %1$s</string>
-    <string name="profile_card_content_unavailable_names_more">%1$s and %2$d more</string>
     <string name="profile_card_content_unavailable_count">Not shared (%1$d)</string>
     <string name="profile_card_content_unavailable_desc">People with this card can't see these</string>
     <string name="profile_card_field_to_back">Move %1$s to the back of card</string>
@@ -2557,6 +2560,7 @@
     <string name="profile_card_field_remove">Stop sharing %1$s with this card</string>
     <string name="profile_card_field_add_title">Add %1$s to this card</string>
     <string name="profile_card_sheet_available_on">Available on:</string>
+    <string name="profile_card_sheet_not_on_card">Who can see it only applies to your profile.</string>
     <string name="profile_card_content_not_on_card_desc_public">Still public on your profile.</string>
     <string name="profile_card_content_sees_public">Anyone with your link sees this card</string>
     <string name="profile_card_content_sees_circle">Only this circle sees this card</string>
@@ -2589,6 +2593,9 @@
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>
+    <string name="profile_card_new">New card</string>
+    <string name="profile_card_intro_open">Open %1$s card</string>
+    <string name="profile_card_edit_design">Edit design</string>
     <string name="profile_card_audience_description">Card for %1$s</string>
     <string name="profile_card_circle_unsupported">Your Homebase server can't keep a separate card for each circle yet, so circle cards can't be changed.</string>
     <string name="profile_card_read_only">Read-only</string>
@@ -2601,6 +2608,7 @@
     <string name="profile_card_tool_heading">Heading</string>
     <string name="profile_card_tool_body">Body</string>
     <string name="profile_card_tool_portrait">Portrait</string>
+    <string name="profile_card_tool_photo">Photo</string>
     <string name="profile_card_tool_socials">Socials</string>
     <string name="profile_card_tool_order">Order</string>
     <string name="profile_card_content_name_required">Always on the Public card</string>
@@ -2621,10 +2629,6 @@
     <string name="profile_card_save_public_message">Your %1$s card is only shown to people in %1$s when they visit your home page. Saving gives you your public card.</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
-    <string name="profile_card_step_customise">Customise</string>
-    <string name="profile_card_step_count">Step %1$d of %2$d</string>
-    <string name="profile_card_step_design_title">Choose a design</string>
-    <string name="profile_card_option_default">Default</string>
     <string name="profile_card_option_accent">Accent colour</string>
     <string name="profile_card_option_background">Background pattern</string>
     <string name="profile_card_tool_background">Background</string>
@@ -2641,9 +2645,9 @@
     <string name="profile_card_background_contours">Contours</string>
     <string name="profile_card_background_halftone">Halftone</string>
     <string name="profile_card_background_sparkles">Sparkles</string>
+    <string name="profile_card_background_speckle">Speckle</string>
     <string name="profile_card_background_none">No pattern</string>
     <string name="profile_card_option_colours">Colours</string>
-    <string name="profile_card_option_colours_swatch">%1$s colours</string>
     <string name="profile_card_colours_midnight">Midnight</string>
     <string name="profile_card_colours_wine">Wine</string>
     <string name="profile_card_colours_pine">Pine</string>
@@ -2670,7 +2674,6 @@
     <string name="profile_card_colours_paper">Paper</string>
     <string name="profile_card_colours_blueprint">Blueprint</string>
     <string name="profile_card_colours_sand">Sand</string>
-    <string name="profile_card_colours_cloud">Cloud</string>
     <string name="profile_card_colours_slate">Slate</string>
     <string name="profile_card_colours_mint">Mint</string>
     <string name="profile_card_colours_peach">Peach</string>
@@ -2679,16 +2682,26 @@
     <string name="profile_card_colours_lemon">Lemon</string>
     <string name="profile_card_colours_purple">Purple</string>
     <string name="profile_card_colours_blue">Blue</string>
-    <string name="profile_card_change_design_to">Change design. Current design: %1$s</string>
     <string name="profile_card_option_accent_swatch">Accent %1$s</string>
     <string name="profile_card_option_display_font">Heading font</string>
     <string name="profile_card_option_text_font">Body font</string>
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
+    <string name="profile_card_option_portrait_size">Photo size</string>
+    <string name="profile_card_size_small">Small</string>
+    <string name="profile_card_size_medium">Medium</string>
+    <string name="profile_card_size_large">Large</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_block_style">Content style</string>
     <string name="profile_card_tool_style">Style</string>
-    <string name="profile_card_tool_presets">Presets</string>
+    <string name="profile_card_tool_design">Design</string>
+    <string name="profile_card_tool_palette">Palette</string>
+    <string name="profile_card_style_ocean">Ocean</string>
+    <string name="profile_card_style_espresso">Espresso</string>
+    <string name="profile_card_style_linen">Linen</string>
+    <string name="profile_card_style_onyx">Onyx</string>
+    <string name="profile_card_style_frost">Frost</string>
+    <string name="profile_card_option_design">Choose a design</string>
     <string name="profile_card_option_presets">Ready-made styles</string>
     <string name="profile_card_presentation_bare">Plain</string>
     <string name="profile_card_presentation_boxed">Boxed</string>
@@ -2721,11 +2734,21 @@
     <string name="profile_card_discard_keep">Keep editing</string>
     <string name="profile_card_nfc">Share card by tapping phones</string>
     <string name="profile_card_nfc_title">Hold your phone near another phone</string>
-    <string name="profile_card_nfc_body">Touch the backs of the phones together while Homebase is open. Your card opens on theirs.</string>
+    <string name="profile_card_nfc_body">Touch the backs of two phones together. Your card opens on theirs.</string>
     <string name="profile_card_nfc_off">NFC is turned off. Turn it on to share your card by tapping phones.</string>
     <string name="profile_card_nfc_open_settings">Open NFC settings</string>
-    <string name="profile_card_nfc_switch">Share my card by tap while Homebase is open</string>
-    <string name="profile_card_nfc_switch_desc">Another phone can open your card by touching yours</string>
+    <string name="profile_card_nfc_switch">Always share by tap while Homebase is open</string>
+    <string name="profile_card_nfc_switch_desc">Other phones can open your card whenever Homebase is open, not only while the tap panel is open</string>
+    <string name="profile_card_nfc_iphone_title">iPhones can't share by tapping</string>
+    <string name="profile_card_nfc_iphone_body">Apple doesn't let apps share by tapping phones together.</string>
+    <string name="profile_card_nfc_live">Sharing while this is open</string>
+    <string name="profile_card_nfc_android_only">Works with Android phones only</string>
+    <string name="profile_card_nfc_iphone_to_iphone">iPhone to iPhone</string>
+    <string name="profile_card_nfc_iphone_to_android">iPhone to Android</string>
+    <string name="profile_card_nfc_android_to_android">Android to Android</string>
+    <string name="profile_card_nfc_works">Works</string>
+    <string name="profile_card_nfc_not_possible">Not possible</string>
+    <string name="profile_card_nfc_instead">Show your QR code or send your card link instead.</string>
     <string name="profile_card_nfc_shared">Card shared</string>
 
     <!-- Avatar editor -->
@@ -3110,6 +3133,7 @@
     <string name="filesync_day_time">%1$s, %2$s</string>
     <string name="filesync_executable">runs</string>
     <string name="filesync_not_on_computers">not on computers</string>
+    <string name="filesync_folder_not_on_computers">Not on your computers: they leave out anything named .hbsync, with all that's in it. Files here are only in the Homebase cloud.</string>
     <string name="filesync_open">Open</string>
     <string name="filesync_open_in_app">Open in another app</string>
     <string name="filesync_preview">Preview</string>
@@ -3237,6 +3261,7 @@
     <string name="filesync_restore">Restore</string>
     <string name="filesync_restore_confirm">Restore %1$s?</string>
     <string name="filesync_restored">Restored</string>
+    <string name="filesync_restored_into_recovered">Restored. Folders that were inside each other are back in Recovered files.</string>
     <string name="filesync_restored_to_recovered">Restored. Items whose folder was deleted for good will appear in Recovered files once one of your computers syncs.</string>
     <string name="filesync_restore_failed">Couldn't restore it.</string>
     <string name="filesync_reactions">Reactions</string>
@@ -3388,6 +3413,15 @@
     <string name="photobase_refresh_status">Refresh backup status</string>
     <string name="photobase_refresh_status_desc">Checks your drive for every photo and video, and backs up any that are missing.</string>
     <string name="photobase_backup_albums">Albums</string>
+    <string name="photobase_backup_photo_quality">Photo quality</string>
+    <string name="photobase_backup_video_quality">Video quality</string>
+    <string name="photobase_backup_photo_standard_desc">Up to 2048 pixels. Uses the least space.</string>
+    <string name="photobase_backup_photo_hd_desc">Up to 4096 pixels. Stays sharp when zoomed.</string>
+    <string name="photobase_backup_photo_original_desc">The exact photo, as your phone has it.</string>
+    <string name="photobase_backup_video_standard_desc">720p. Uses the least space.</string>
+    <string name="photobase_backup_video_hd_desc">1080p.</string>
+    <string name="photobase_backup_video_original_desc">The video exactly as recorded, plus a 1080p copy to play. Uses the most space.</string>
+    <string name="photobase_backup_quality_note">Applies to new backups. What is already backed up stays as it is.</string>
     <string name="photobase_backup_albums_default">Camera</string>
     <string name="photobase_backup_wifi_only">Wi-Fi only</string>
     <string name="photobase_backup_videos_cellular">Videos on cellular</string>
@@ -3434,6 +3468,11 @@
     <string name="photobase_status_size_backed_up">Size backed up</string>
     <string name="photobase_status_size_left">Left to back up</string>
     <string name="photobase_status_uploading">Uploading now</string>
+    <string name="photobase_status_preparing_photo">Preparing a photo</string>
+    <string name="photobase_status_preparing_video">Preparing a video</string>
+    <string name="photobase_status_uploading_photo">Uploading a photo</string>
+    <string name="photobase_status_uploading_video">Uploading a video</string>
+    <string name="photobase_status_percent">%1$d%</string>
     <string name="photobase_status_failures">Keep failing</string>
     <string name="photobase_status_retry">Retry</string>
     <string name="photobase_label">Photos</string>

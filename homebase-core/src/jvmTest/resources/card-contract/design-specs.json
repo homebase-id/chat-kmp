@@ -12,15 +12,16 @@
                 "ACCENT",
                 "BACKGROUND",
                 "BLOCK_ORDER",
+                "BLOCK_STYLE",
                 "COLOURS",
                 "DISPLAY_FONT",
                 "PORTRAIT_SHAPE",
+                "PORTRAIT_SIZE",
                 "SOCIALS_STYLE",
                 "TEXT_FONT"
             ],
             "portraitSlots": 1,
             "schemes": [
-                "cloud",
                 "slate",
                 "mint",
                 "peach",
@@ -62,6 +63,7 @@
                 "COLOURS",
                 "DISPLAY_FONT",
                 "PORTRAIT_SHAPE",
+                "PORTRAIT_SIZE",
                 "SOCIALS_STYLE",
                 "TEXT_FONT"
             ],
@@ -82,9 +84,11 @@
                 "ACCENT",
                 "BACKGROUND",
                 "BLOCK_ORDER",
+                "BLOCK_STYLE",
                 "COLOURS",
                 "DISPLAY_FONT",
                 "PORTRAIT_SHAPE",
+                "PORTRAIT_SIZE",
                 "SOCIALS_STYLE",
                 "TEXT_FONT"
             ],
@@ -111,6 +115,7 @@
                 "COLOURS",
                 "DISPLAY_FONT",
                 "PORTRAIT_SHAPE",
+                "PORTRAIT_SIZE",
                 "SOCIALS_STYLE",
                 "TEXT_FONT"
             ],
@@ -141,6 +146,11 @@
         "square",
         "rounded",
         "ellipse"
+    ],
+    "portraitSizes": [
+        "small",
+        "medium",
+        "large"
     ],
     "socialsStyles": [
         "glyphs",
@@ -194,21 +204,12 @@
             },
             "0f9263536b9fc61ada745644735bfd8f": {
                 "design": "links",
-                "overrides": {
-                    "palette": {
-                        "ground": "#F1F3F6",
-                        "ink": "#1B1F24",
-                        "muted": "#5C6673",
-                        "surface": "#FFFFFF",
-                        "surfaceInk": "#1B1F24"
-                    }
-                }
+                "overrides": {}
             }
         }
     },
     "schemeGrounds": {
         "links": [
-            "#F1F3F6",
             "#1B1F24",
             "#DDF0E6",
             "#FBE3D6",
@@ -264,12 +265,6 @@
     },
     "schemeAccents": {
         "links": {
-            "cloud": [
-                "#2E6FB5",
-                "#5A4FB5",
-                "#1F7A70",
-                "#C23B2A"
-            ],
             "slate": [
                 "#4FD1C5",
                 "#7FD4E8",

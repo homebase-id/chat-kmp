@@ -80,7 +80,7 @@ import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.widget.GuardedComposerSheet
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.cancel

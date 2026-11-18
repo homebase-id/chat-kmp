@@ -18,7 +18,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.toVaultEntry
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

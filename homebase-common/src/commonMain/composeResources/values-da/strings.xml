@@ -549,6 +549,8 @@
     <string name="chat_message_search_result_count">%1$d af %2$d</string>
     <string name="chat_message_search_no_results">Ingen resultater</string>
     <string name="chat_scroll_to_bottom">Gå til bunden</string>
+    <string name="chat_jump_to_mention">Gå til ulæst omtale</string>
+    <string name="chat_unread_mention">Du er blevet nævnt</string>
     <string name="chat_previous_result">Forrige resultat</string>
     <string name="chat_next_result">Næste resultat</string>
     <string name="chat_no_gallery_items">Ingen elementer</string>
@@ -945,6 +947,10 @@
     <string name="chat_agent_ui_action_failed">Handlingen kunne ikke sendes. Prøv igen.</string>
     <string name="chat_agent_ui_action_you">Du valgte %1$s</string>
     <string name="chat_agent_ui_action_other">%1$s valgte %2$s</string>
+    <string name="chat_agent_ui_choices_more">+%1$d flere</string>
+    <string name="chat_agent_ui_choice_at">%1$s · %2$s</string>
+    <string name="chat_agent_ui_chosen">Valgt</string>
+    <string name="chat_agent_ui_open_card">Åbn kort</string>
     <string name="chat_agent_ui_open_image">Vis billede</string>
 
     <!-- Poll detail dialog -->
@@ -1909,11 +1915,21 @@
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>
     <string name="profile_card_nfc_title">Hold din telefon tæt på en anden telefon</string>
-    <string name="profile_card_nfc_body">Rør telefonernes bagsider mod hinanden, mens Homebase er åben. Dit kort åbnes på deres.</string>
+    <string name="profile_card_nfc_body">Rør bagsiden af to telefoner mod hinanden. Dit kort åbnes på deres.</string>
     <string name="profile_card_nfc_off">NFC er slået fra. Slå det til for at dele dit kort ved at holde telefonerne sammen.</string>
     <string name="profile_card_nfc_open_settings">Åbn NFC-indstillinger</string>
-    <string name="profile_card_nfc_switch">Del mit kort ved berøring, mens Homebase er åben</string>
-    <string name="profile_card_nfc_switch_desc">En anden telefon kan åbne dit kort ved at røre din</string>
+    <string name="profile_card_nfc_switch">Del altid ved berøring, mens Homebase er åben</string>
+    <string name="profile_card_nfc_switch_desc">Andre telefoner kan åbne dit kort, når Homebase er åben, ikke kun mens panelet til deling ved berøring er åbent</string>
+    <string name="profile_card_nfc_iphone_title">iPhones kan ikke dele ved berøring</string>
+    <string name="profile_card_nfc_iphone_body">Apple lader ikke apps dele ved at holde telefonerne sammen.</string>
+    <string name="profile_card_nfc_live">Deler, mens dette er åbent</string>
+    <string name="profile_card_nfc_android_only">Virker kun med Android-telefoner</string>
+    <string name="profile_card_nfc_iphone_to_iphone">iPhone til iPhone</string>
+    <string name="profile_card_nfc_iphone_to_android">iPhone til Android</string>
+    <string name="profile_card_nfc_android_to_android">Android til Android</string>
+    <string name="profile_card_nfc_works">Virker</string>
+    <string name="profile_card_nfc_not_possible">Ikke muligt</string>
+    <string name="profile_card_nfc_instead">Vis din QR-kode eller send dit kortlink i stedet.</string>
     <string name="profile_card_nfc_shared">Kort delt</string>
 
     <!-- Avatar editor -->
@@ -2335,7 +2351,7 @@
     <string name="keystore_reset_confirm">Nulstil</string>
     <string name="profile_card_option_block_style">Indholdsstil</string>
     <string name="profile_card_tool_style">Stil</string>
-    <string name="profile_card_tool_presets">Forslag</string>
+    <string name="profile_card_tool_photo">Foto</string>
     <string name="profile_card_option_presets">Færdige stilarter</string>
     <string name="profile_card_presentation_bare">Almindelig</string>
     <string name="profile_card_presentation_boxed">Boks</string>
@@ -2377,7 +2393,10 @@
     <string name="openedfile_open_failed">Filen kunne ikke åbnes.</string>
     <string name="openedfile_save_failed">Filen kunne ikke gemmes. Tjek din forbindelse, og prøv igen.</string>
     <string name="profile_card_style_custom">Tilpasset</string>
-    <string name="profile_card_option_default">Standard</string>
+    <string name="profile_card_option_portrait_size">Fotostørrelse</string>
+    <string name="profile_card_size_small">Lille</string>
+    <string name="profile_card_size_medium">Mellem</string>
+    <string name="profile_card_size_large">Stor</string>
     <string name="profile_card_colours_midnight">Midnat</string>
     <string name="profile_card_colours_wine">Vin</string>
     <string name="profile_card_colours_pine">Fyr</string>
@@ -2404,7 +2423,6 @@
     <string name="profile_card_colours_paper">Papir</string>
     <string name="profile_card_colours_blueprint">Blåtryk</string>
     <string name="profile_card_colours_sand">Sand</string>
-    <string name="profile_card_colours_cloud">Sky</string>
     <string name="profile_card_colours_slate">Skifer</string>
     <string name="profile_card_colours_mint">Mynte</string>
     <string name="profile_card_colours_peach">Fersken</string>

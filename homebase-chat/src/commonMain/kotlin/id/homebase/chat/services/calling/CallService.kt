@@ -40,6 +40,7 @@ class CallService(
     private val scope: CoroutineScope,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val onCallActiveChanged: (Boolean) -> Unit = {},
+    private val ringback: RingbackTone = platformRingbackTone(),
 ) : CallSession, CallPushTarget {
     val available: Boolean get() = engineFactory != null
 
@@ -69,6 +70,7 @@ class CallService(
         if (engineFactory != null) {
             scope.launch { recordCallEvents(transitions, recordEvent) }
             scope.launch { transitions.callActiveChanges().collect(onCallActiveChanged) }
+            scope.launch { state.driveRingback(ringback) }
             scope.launch {
                 for (push in pushes) {
                     val target = controller.filterNotNull().first()

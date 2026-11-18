@@ -24,7 +24,7 @@ class FilesyncArchiveTest {
     private val folders = mutableMapOf<Uuid, MutableList<Pair<FilesyncNode, FilesyncHandle>>>()
 
     private fun folder(name: String, parent: Uuid = Uuid.random(), removed: Boolean = false) =
-        FilesyncNode(Uuid.random(), parent, isFolder = true, name = name, modifiedMs = null, sizeBytes = null, removed = removed, updatedMs = 1_709_634_031_000)
+        FilesyncNode(Uuid.random(), parent, isFolder = true, name = name, modifiedMs = null, sizeBytes = null, removed = removed, versionMs = 1_709_634_031_000)
 
     private fun file(name: String, bytes: ByteArray, parent: Uuid = Uuid.random(), removed: Boolean = false, executable: Boolean = false): Pair<FilesyncNode, FilesyncHandle> {
         val node = FilesyncNode(Uuid.random(), parent, isFolder = false, name = name, modifiedMs = 1_709_634_031_000, sizeBytes = bytes.size.toLong(), removed = removed, executable = executable)

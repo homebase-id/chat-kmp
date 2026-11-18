@@ -1,6 +1,6 @@
 # Thumbnails and media images
 
-How chat-kmp turns a photo into the images people see. Read this before changing anything that creates, sizes, scales, encodes or picks an image, or strips its metadata.
+How chat-kmp turns a photo into the images people see. Read this before changing anything that creates, sizes, scales, encodes or picks an image, or strips its metadata. Code that contradicts it is a bug or a design change: stop and ask before writing it (see `CLAUDE.md`, "User uploads").
 
 > **Status (2026-11-14).** This is the agreed design, and `main` runs it: the table, the 10% band and the 1.5 rule (`MediaImagePlan.kt`), the decode-once pipeline, and native resampling on both phones. Everything not built yet is listed in [To do, and what isn't settled](#to-do-and-what-isnt-settled) at the end.
 >
@@ -28,17 +28,18 @@ How chat-kmp turns a photo into the images people see. Read this before changing
 12. [Byte limits](#byte-limits)
 13. [Making the pixels](#making-the-pixels)
 14. [Colour](#colour)
-15. [Metadata](#metadata)
-16. [Formats](#formats)
-17. [Where each caller lands](#where-each-caller-lands)
-18. [Showing the images](#showing-the-images)
-19. [Wire format and older clients](#wire-format-and-older-clients)
-20. [Video](#video)
-21. [How others do it](#how-others-do-it)
-22. [Testing](#testing)
-23. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
-24. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
-25. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
+15. [HDR](#hdr)
+16. [Metadata](#metadata)
+17. [Formats](#formats)
+18. [Where each caller lands](#where-each-caller-lands)
+19. [Showing the images](#showing-the-images)
+20. [Wire format and older clients](#wire-format-and-older-clients)
+21. [Video](#video)
+22. [How others do it](#how-others-do-it)
+23. [Testing](#testing)
+24. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
+25. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
+26. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
 
 ## The goal
 
@@ -82,6 +83,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 - **Only three byte limits:** the tiny's 768 bytes, 1 MiB per thumbnail (the server's), and none on the final image. Over 1 MiB, a thumbnail shrinks at the same quality.
 - **Pixels:** decode once, scale from largest to smallest, halve while the image is at least 2× too big, then a Lanczos-class resampler for the last step.
 - **Colour:** keep wide-gamut colour, and put no colour profile on sRGB images or the tiny.
+- **HDR:** videos keep it at Original only, because only the untouched file can be HDR and still play everywhere. Photos keep it wherever the file is kept as it is; a re-encoded photo is WebP, which has no gain map. See [HDR](#hdr).
 - **Metadata:** the calling app decides whether a final image or video keeps its location and other metadata, through a required keep-or-strip parameter. The library never decides. Thumbnails never carry metadata.
 - **Display:** every view shows the smallest image that covers the area it's drawn in, allowing 10% of stretch (40% for grid tiles), and never loads an untouched file in place of a thumbnail. See [Showing the images](#showing-the-images).
 - **Wire codes:** Standard records nothing, HD records `"hd"`, and Original records `"high"`.
@@ -92,7 +94,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 |---|---|---|---|
 | **Standard** (default) | Looks good, quick to send, screenshots readable | 2048 px, WebP q60 | 720p |
 | **HD** | Stays sharp when zoomed | 4096 px, WebP q80 | 1080p |
-| **Original** | The exact file | The file, untouched | The file, untouched (see [Video](#video)) |
+| **Original** | The exact file | The file, untouched | 1080p, as HD; in Photos only, the file untouched plus a 1080p copy for playback (see [Video](#video)) |
 
 **Names.** Every screen uses exactly these names: chat, Moments, the share sheet, settings, badges and Photos. They're **Standard**, **HD** and **Original**, in every language, all from one place (`MediaQualityLabels.kt`). Descriptions quote this table's numbers, for example "Photos up to 2048 pixels". Change the table, and its names and descriptions change with it.
 
@@ -117,7 +119,7 @@ Words used in this document:
 | Word | Meaning |
 |---|---|
 | **Source** | The file the user picked, at its displayed size after EXIF rotation. |
-| **Tiny** | The 20 px WebP embedded in the file's metadata (`previewThumbnail`), shown blurred while the real image loads. |
+| **Tiny** | The 20 px WebP embedded in the file's metadata (`previewThumbnail`), shown blurred while the real image loads. It is stored plain in every app, on encrypted files too, so the server can see it; encrypting it is a later change (`UPLOADS.md` section 7). |
 | **Thumbnail** | A smaller image stored next to the payload, so clients don't download the whole photo. |
 | **Final image, or "the photo"** | The payload: what the recipient saves or zooms into. |
 | **Row** | One line of the table. |
@@ -421,6 +423,40 @@ Every platform has one interface, `ImageSource` plus `PipelineBitmap`, whose KDo
 - **sRGB images carry no profile.** An image with no profile is read as sRGB everywhere, and Skia's sRGB profile alone is 456 bytes.
 - **The tiny never carries a profile.** In #2231's draft, the profile made up 456 of a 594-byte tiny, and the picture was 92 bytes.
 
+## HDR
+
+There's no HDR setting (decided 2026-11-16). Original already promises the exact file, so an HDR photo or video stays HDR there, as its resolution and metadata do. Most people can't judge an HDR choice, and Google Photos and iCloud keep originals without one.
+
+**Video: HDR at Original only; Standard and HD are SDR.** HDR video is always 10-bit (HDR10, HLG, Dolby Vision), and 10-bit HEVC fails or shows wrong colours on many Android phones and some browsers, so the copy everyone plays has to be SDR.
+
+- **HDR is tone-mapped to SDR,** never just relabelled, which makes it look washed out.
+  - **Android (Media3):** tone-maps properly.
+  - **ffmpeg, so iOS, desktop and web for now:** only relabels. That's why an iPhone video sent from the iPhone app looks washed out; compressing natively on iOS fixes it.
+- **Chat and Moments videos are always SDR,** because they always transcode, Original included.
+- **Others do the same:** Immich keeps the original and transcodes HDR to an SDR H.264 copy to play. Ente's streams are 720p H.264.
+- **Test:** `Media3VideoCompressorTest.anHdrVideoComesOutAsSdrH264`.
+
+**Photos: HDR wherever the file is kept as it is.** An HDR photo (Android's Ultra HDR, iPhone HDR) is an ordinary SDR image plus a gain map, so it shows correctly everywhere, and an HDR screen brightens it. It has none of video's playback problem.
+
+- **Kept as it is:** Photos at Original, and any app at Standard or HD when the source already fits (see [Rules for edge cases](#rules-for-edge-cases)). The gain map stays.
+- **Kept, metadata stripped** (chat and Moments): the scrubber keeps the gain map.
+  - **Ultra HDR JPEG:** its gain map is declared in the main image's XMP, so the scrubber rebuilds that XMP with only the gain-map fields and drops the rest of it. A directory listing anything but the main image and the gain map, such as a motion photo's video, is left out too; decoders then find the gain map through the MPF index, whose offsets the scrubber moves when segments before the gain map change size.
+  - **ISO 21496-1 gain maps** sit in APP2, which was always kept.
+  - **Not scrubbed:** everything after the main image passes unchanged. That includes the gain-map image's own segments and a motion photo's embedded video with its metadata.
+  - **iPhone HDR HEIC probably loses its HDR:** the scrubber blanks the gain-map image's XMP too, and drops the EXIF MakerNote that holds its headroom. To check on an iPhone.
+- **Re-encoded:** at HD and Original, the image people look at keeps HDR as an **Ultra HDR JPEG**, on every platform: the final image at HD, or at Original, where viewers never step up to the file, the largest thumbnail. **Standard stays SDR WebP** (decided 2026-11-16): Standard is for small and fast, and an HDR copy is 1.5–2× the bytes (MEDIA_BENCHMARKS.md, "HDR photos"). Its gain map is scaled with it. Every smaller thumbnail and the tiny stay WebP, which has no gain map; they keep the SDR image, so they look right but not HDR-bright.
+  - **One shared container (`UltraHdr`, common Kotlin):** it finds the source's gain map through its MPF index and reads its metadata from the ISO 21496-1 block or the `hdrgm` XMP; then it joins the re-encoded SDR JPEG and the re-encoded gain-map JPEG, writing both: v1 XMP for Android 14, ISO for Android 15+, iOS 18+ and browsers. Layouts follow Google's libultrahdr. Each platform only decodes, scales and encodes two plain images. Android's own `Bitmap.gainmap` encoder isn't used: the decoder's gain map is dropped, so the JPEG has only the SDR picture.
+  - **The gain map is read only when it's needed** (HD or Original, an Ultra HDR JPEG source whose primary image declares a gain map, so a camera's MPF preview isn't mistaken for one): its byte range, the file's tail, read on its own. It's tagged with the source's EXIF orientation, so a sideways photo's gain map turns upright with it.
+  - **Its values are data, never colour-converted:** Android decodes it with ImageDecoder, every other platform with Skia (`openGainmapSource`), not ImageIO, which would draw a grey gain map into sRGB.
+  - **A gain map that can't be read or rendered never costs the photo anything:** it goes as SDR, with a log line.
+  - **Sources for now:** Ultra HDR JPEGs (Android cameras, and anything written in that format). An iPhone's HEIC keeps Apple's gain map in a form only ImageIO reads; that's the next step. A HEIC or AVIF with a gain map that Android's decoder could read (Android 15+) also goes as SDR until then: Android's own `Bitmap.gainmap` encoder, which would have kept it, was replaced by the shared path.
+  - **Only a photo sent as media** (`createMediaImages(hdr = true)`): stickers, contact photos, video posters and PDF pages stay SDR.
+  - **HDR never costs pixels:** a thumbnail whose HDR JPEG would go over its byte limit at full size is the SDR WebP instead, not a smaller HDR one.
+  - `ImageOutput.keepsHdr` marks that image, and `HdrGainmap` is the source's gain map for the run. An app that keeps metadata gets the source's EXIF in an APP1 segment after any JFIF, and the MPF index's primary-image size grows with it (`ImageMetadataScrubber.withExif`).
+- **Shown in HDR** by the full-screen viewers (chat, Vault, Moments detail) on Android 14 and later, for the page in view: when the decoded image carries a gain map, `ZoomableSubSamplingImage(showsHdr = true)` holds the window in HDR mode (`COLOR_MODE_HDR`) until the page leaves. Feed cards stay SDR. Coil's screen-sized decode and the zoom tiles both keep the gain map. It needs a screen with an HDR/SDR ratio: a Pixel 8 has one, a Pixel 5 doesn't. iOS, desktop and web draw through Skia, which shows the SDR base.
+- **The sender sees what was sent:** the viewers show the payload, as everyone else gets it, not the gallery original; the local file stands in only while an encrypted send has no IV yet, or while the sent copy can't be loaded (`SubSamplingImageSource.Remote.standIn`).
+- **Tests:** `GainmapDeviceTest`, `HdrDisplayDeviceTest` and `UltraHdrDeviceTest` (Android 14 and later: Android's decoder reads what the shared writer joins, and the shared reader reads what Android writes), `UltraHdrPipelineTest` (Skia: desktop, web, iOS), `UltraHdrTest`, `ImagePipelineTest`, `JpegMetadataTest`, `ImageMetadataScrubberTest` and `MediaPageSourceTest` (every platform).
+
 ## Metadata
 
 **The calling app decides, never the library.** Whether a final image or video keeps its location, capture time, camera data and other metadata depends on what the app is for: an owner's own library keeps everything, while sending to someone else usually strips it. This library is used by many apps, so it offers the choice and makes none of its own. Each app records its choice and the reasons with the app itself (for example Photos in #2386, chat in #1297).
@@ -432,13 +468,13 @@ The scrubber handles JPEG, PNG, WebP and HEIC. Any other image format (GIF, BMP,
 **One API, one required parameter.** The same pipeline serves chat and Photos, so the caller says what happens to the final image's metadata. The parameter is something like `metadata = Keep` or `Strip`.
 
 - **Required, with no default.** Every caller has to choose. A default would either leak a sender's location in a new chat feature, or silently lose data in a new Photos feature.
-- **It covers both kinds of final image.** A re-encoded image gets the source's metadata copied in (`Keep`) or gets none (`Strip`). A source file kept as it is is uploaded untouched (`Keep`) or goes through the scrubber (`Strip`, `ImageMetadataScrubber`). Today chat's scrub runs separately at upload (`PayloadBundleEncryptionService.scrubImageMetadata`). The parameter makes the pipeline the one place that decides, and the upload step stays as a safety net for chat.
+- **It covers both kinds of final image.** A re-encoded image gets the source's metadata copied in (`Keep`) or gets none (`Strip`). A source file kept as it is is uploaded untouched (`Keep`) or goes through the scrubber (`Strip`, `ImageMetadataScrubber`). Today chat's scrub runs separately at upload (`MediaMetadataStripper`, from `PayloadBundleEncryptionService`). The parameter makes the pipeline the one place that decides, and the upload step stays as a safety net for chat.
 - **Thumbnails and the tiny always strip,** whatever the parameter says.
 - **Video takes the same parameter** (see [Video](#video)).
 
 When `Keep` applies to a re-encoded image, the pipeline has to copy the metadata itself, because neither Android's nor Skia's encoders carry it over:
 
-- copy the source's EXIF, XMP and GPS across;
+- copy the source's EXIF (GPS included) across, but not its XMP: on phones it describes the source file's structure (a Motion Photo's video, an Ultra HDR gain map, the orientation), which the re-encode makes false;
 - set Orientation to 1, because the pixels are already upright;
 - update the pixel-size tags;
 - never copy the camera's embedded EXIF thumbnail.
@@ -455,13 +491,15 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 | Caller | Rows |
 |---|---|
-| Photobase backup | Original's rows; the file is uploaded untouched |
+| Photobase backup | Its photo setting (default Original) and its video setting (default HD), each Standard, HD or Original |
 | Chat photos, Moments, share sheet, view-once | The sender's setting |
 | Group avatars and other incidental images through `MessageAttachmentBuilder` | Standard |
 | Stickers | The sender's setting for thumbnails; the file stays the final image, and no quality is recorded |
-| PDF previews, audio, Vault, contacts, video posters, saved stickers | Original's rows, as thumbnails only |
+| PDF previews, audio, Vault, contacts, video posters, saved stickers | Original's rows, as thumbnails only (Vault videos are HD) |
 | Link and location previews | Tiny only, made with `createTinyPreview` |
 | Profile avatars | Their own sizes and budgets, plus the shared tiny rule |
+
+**Photos' two settings** (decided 2026-11-14): photos and videos each Standard, HD or Original, defaulting to Original for photos and HD for videos. At Standard or HD the uploaded bytes aren't the library's file, so Photos checks a re-encoded photo's source against its hash and refuses the upload when it changed, and dedupe keeps keying on the source's hash: changing the setting never re-uploads what is already backed up. Under `Keep`, a re-encoded photo carries the source's EXIF but not its XMP (section [Metadata](#metadata)).
 
 ## Showing the images
 
@@ -514,9 +552,27 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 |---|---|
 | Standard | 720p transcode |
 | HD | 1080p transcode |
-| Original | Untouched |
+| Original | 1080p transcode, as HD, in every app but Photos. In Photos, the file untouched plus a 1080p copy that the apps play |
 
-**Metadata is the caller's choice, as for images.** The video path takes the same required keep-or-strip parameter, with no default. With `Keep`, a re-encode copies the source's location, capture time and other metadata, and Original uploads the file untouched. With `Strip`, a re-encode drops them (`-map_metadata -1`), and Original is remuxed without re-encoding to remove them. The library never decides; each app does.
+**Original video is only for Photos** (decided by the team, 2026-11-14). An untouched video may not play on every client (an iPhone's HEVC, often 10-bit HDR) and has to download whole before it plays, so a sent video is always a transcode. A backup that isn't the original isn't a backup, so Photos at Original keeps the user's file and adds a copy to play; download, save and restore get the original (UPLOADS.md section 3.6). Vault videos are HD, with no setting.
+
+**Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata (`-map_metadata 0`), and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them (`-map_metadata -1`). The library never decides; each app does.
+
+A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source's `moov` box, skipping the media (`MediaMetadataReader.videoLocation`, common code: Apple's ISO 6709 key and the `©xyz` atom Android writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
+
+### Android: Media3, and why AAC audio is copied
+
+Numbers per device: MEDIA_BENCHMARKS.md.
+
+Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS, desktop and web use ffmpeg; Android has none, so a Media3 failure fails the send. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend. Both take the sizes and bitrates from `VideoQualityTargets.kt`. Media3 differs from ffmpeg in a few ways:
+
+- **Bitrate.** A hardware encoder spends the whole bitrate it's given, where libx264 spends less on simple content. So Media3 asks for less when the source is smaller than the target, in proportion to its area, and never more than the source's own bitrate. Android also enforces a minimum quality: on hard content it raises the bitrate itself. A 3 s 1440p60 animation came out 20–40% over target, with libx264 about 16% under. Real camera footage lands on target with both.
+- **Portrait.** Media3 writes portrait frames rather than a rotation flag, because MPEG-TS has no rotation.
+- **HLS.** Our own segmenter (`HlsSegmenter`, common code) cuts the compressed MP4 into the same encrypted HLS as ffmpeg's `single_file` output: one `index.ts` of byte ranges about 6 s long, each encrypted on its own under the payload IV. It reads the file once and takes the payload hash (BLAKE3, odin-core `docs/payload-hashes.md`) in the same pass. A video under 5 MB gets its hash from its single encryption pass. A rotated input, or anything that isn't H.264 and AAC, is left to ffmpeg.
+- **Location.** A kept location loses its altitude: Media3's `Mp4LocationData` holds latitude and longitude only.
+- **Audio.** Plain AAC-LC audio with up to two channels is copied rather than re-encoded. HE-AAC, xHE-AAC, surround and every other codec are re-encoded to AAC-LC at the quality's bitrate. Why:
+
+Android's AAC codecs are software and much slower than the hardware video path, so re-encoding the audio set the pace of every export. A copied track keeps the source's bitrate, about 2% of a file. **MEDIA_BENCHMARKS.md** has the measurements per device, this decision and when to reopen it, and how to re-measure.
 
 ## How others do it
 
@@ -628,7 +684,7 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 ### Not built yet
 
-- **Every upload records its final image's size and whether it's the user's original** (#911). Reading the [UPLOADS.md](UPLOADS.md) format is done; writing it isn't. A view steps up only to a final image whose size is recorded, so today only chat and Moments photos do: both go through `MessageAttachmentBuilder`. Photos, Vault and stickers stop at their largest thumbnail until the shared upload factory writes the new format, `original` included, for every app.
+- **Every upload records its final image's size and whether it's the user's original** (#911). Chat, Moments, the feed, Vault and saved stickers build through the shared builder and record it. Photos stops at its largest thumbnail until it moves onto the builder too.
 - **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
 
 | What | Issue |
@@ -637,7 +693,6 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 | iOS: hand pixels from ImageIO over without extra copies | #2236 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
-| Original video untouched, with chat's copy stripped by a remux | #2235 |
 | Time, memory and battery measured on a real iPhone and Android phone | #2221, #2236 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |
 | RAW: verify on real phones which formats decode (ProRAW and DNG on iOS; DNG on Android) | – |
@@ -645,13 +700,12 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 ### Not settled
 
 - **Whether vImage beats `stb_image_resize2` on iOS.** vImage ships now because it's a system library; swap only if the phone measurements say so.
-- **Does Photos offer HD?** Today it backs up only the untouched file, and an HD backup would need `BackupRequestBuilder.kt` changed, because it requires the uploaded bytes to match the device file's hash.
 - **Final qualities.** q60 and q70 are pending the real-photo test, especially on faces.
 - **Judgement calls to check on real photos:** the 10% band, the q60 floor and the shrink estimate follow common practice. Adjust them if real photos say otherwise.
 - **RAW+JPEG pairs on iOS.** Back up the RAW too, as part of the same photo? Today it's skipped. Android backs up both as separate photos; should they be linked?
 - **GIFs in Photos' grid.** Give GIFs still thumbnails from the first frame, so the grid doesn't download whole GIFs, while bubbles keep playing the file? Older clients would ignore the thumbnails and still play the file, so it's safe.
 - **Animated WebP in bubbles.** It shows still today. Animating it needs a descriptor flag, because its type is the same `image/webp` as a still image.
-- **Should Vault keep metadata?** It's the user's own encrypted storage, like Photos, but today it strips through the shared upload scrub.
+- **A source no bigger than the smallest thumbnail** (a 320×240 photo, a small sticker or screenshot). Every row clamps to the source, so the plan keeps one 320×240 thumbnail and, at Standard and HD, a 320×240 final image, which is usually dropped for the source because re-encoding saves less than a quarter. The payload and its thumbnail are then the same picture at the same size: one extra encode, and a few tens of KB stored and sent twice. Dropping the thumbnail needs the display rule changed with it: views never load an untouched file in place of a thumbnail, so with no thumbnail they would stop at the tiny. Options: make no thumbnail when the payload is no larger than the smallest row, and let views load such a payload directly; or keep the duplicate. `ThumbnailLadderTest` pins whichever we pick.
 - **Linear-light resampling.** Not used; see [How to resize well](#how-to-resize-well). Revisit only if a real-photo test shows a visible gain.
 
 ## Appendix: the 1.5 rule on real cameras

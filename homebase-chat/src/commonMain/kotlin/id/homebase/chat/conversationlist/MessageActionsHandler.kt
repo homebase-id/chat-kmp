@@ -52,8 +52,8 @@ import id.homebase.core.share.allTargetConversationIds
 import id.homebase.core.share.hasSendableContent
 import id.homebase.core.share.resolveMessageBody
 import id.homebase.core.util.applyMarkDownContent
-import id.homebase.core.util.contentType
-import id.homebase.core.util.resolveContentType
+import id.homebase.api.file.contentType
+import id.homebase.api.file.resolveContentType
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR

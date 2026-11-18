@@ -60,7 +60,7 @@ internal class FilesyncArchive(
         }
         for (entry in entries) {
             val node = entry.node
-            val modified = node.modifiedMs ?: node.updatedMs
+            val modified = node.modifiedMs ?: node.versionMs ?: node.addedMs
             val payload = entry.payload
             when {
                 node.isFolder -> zip.addFolder(entry.path, modified)

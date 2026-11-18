@@ -239,15 +239,15 @@ internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
         FullScreenOverlay.VideoPlayerData(
             fileId = fileId,
             driveId = driveId,
-            payloadKey = payload.key,
+            payloadKey = shown.key,
             // The player decrypts with exactly this header, and each payload has its own IV.
-            keyHeader = payload.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
-            payload = payload,
+            keyHeader = shown.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
+            payload = shown,
         )
     } else {
         FullScreenOverlay.ViewMessageData(
             messageId = fileId,
-            title = name.orEmpty(),
+            title = payload.filename().orEmpty(),
             userDate = Instant.fromEpochMilliseconds(capturedAtMs),
             content = "",
             fileId = fileId,

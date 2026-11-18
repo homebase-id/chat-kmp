@@ -11,7 +11,7 @@ import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.model.VaultEntry
-import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import id.homebase.api.file.CONTENT_TYPE_MARKDOWN
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -95,7 +95,7 @@ class VaultNoteEditorViewModel(
                 val payloadKey = entry.payloadDescriptors.firstOrNull()?.key
                     ?: VaultEntry.DEFAULT_PAYLOAD_KEY
                 val tempPath = withContext(Dispatchers.Default) {
-                    vaultUploaderService.downloadPayload(entry, payloadKey)
+                    vaultUploaderService.downloadPayload(entry, payloadKey)?.path
                 }
                 if (tempPath == null) {
                     _events.tryEmit(VaultNoteEditorEvent.LoadFailed)

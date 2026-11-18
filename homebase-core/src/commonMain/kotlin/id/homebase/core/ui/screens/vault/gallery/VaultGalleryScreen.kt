@@ -232,6 +232,7 @@ fun VaultGalleryScreen(
                             onToggleUI = onTapImage,
                             sharedTransitionScope = sharedTransitionScope.takeIf { isHero },
                             animatedVisibilityScope = animatedVisibilityScope.takeIf { isHero },
+                            showsHdr = pagerState.settledPage == page,
                         )
                     } else if (previewKind != null) {
                         // Composed only on the settled page: a video fetches and decrypts its whole file.
@@ -246,7 +247,7 @@ fun VaultGalleryScreen(
                                     name = file.fileName,
                                     kind = previewKind,
                                     load = {
-                                        withContext(Dispatchers.Default) { uploaderService.downloadPayload(file, descriptor.key) }
+                                        withContext(Dispatchers.Default) { uploaderService.downloadPayload(file, descriptor.key)?.path }
                                     },
                                     discard = { path -> runCatching { fileOperationsProvider.deleteTempFile(path) } },
                                     onTap = onTapImage,

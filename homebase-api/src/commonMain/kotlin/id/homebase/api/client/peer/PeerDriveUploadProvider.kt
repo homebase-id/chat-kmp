@@ -1,5 +1,6 @@
 package id.homebase.api.client.peer
 
+import id.homebase.api.client.drives.upload.sealedPayloads
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.KeyHeader
@@ -75,7 +76,7 @@ class PeerDriveUploadProvider(
         val instructions = TransitInstructionSet(
             transferIv = transferIv,
             manifest = UploadManifest.build(
-                request.payloads,
+                request.sealedPayloads(),
                 request.thumbnails,
                 generatePayloadIv = request.metadata.isEncrypted,
             ),

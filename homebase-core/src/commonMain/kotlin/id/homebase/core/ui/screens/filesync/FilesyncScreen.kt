@@ -107,6 +107,7 @@ import id.homebase.resources.filesync_desktop_title
 import id.homebase.resources.filesync_dismiss
 import id.homebase.resources.filesync_files
 import id.homebase.resources.filesync_folder_deleted
+import id.homebase.resources.filesync_folder_not_on_computers
 import id.homebase.resources.filesync_folder_empty
 import id.homebase.resources.filesync_folders
 import id.homebase.resources.filesync_make_private
@@ -175,6 +176,7 @@ internal class FilesyncBrowserScope(
 ) {
     val onAction get() = actions.onAction
     val currentRemoved get() = uiState.path.last().removedMs != null
+    val currentNotOnComputers get() = uiState.path.any { it.notOnComputers }
 }
 
 // Whatever lands in a deleted folder is out of sight on every device.
@@ -197,7 +199,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         onSendToChat,
         onUndoRemove = { viewModel.onAction(FilesyncUiAction.Restore(it)) },
         onOpenSignIn = signIn::open,
-    ) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
+    ) { viewModel.onAction(FilesyncUiAction.PreviewGone(it)) }
 
     // Where Up goes: in a share view, NavigateUp alone would move the path hidden under it.
     val up = filesyncUp(uiState.path, uiState.sharing)
@@ -423,6 +425,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
             )
             FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
             if (scope.currentRemoved) DeletedFolderBanner(scope)
+            if (scope.currentNotOnComputers) NotOnComputersBanner()
             uiState.transfer?.takeIf { it.isZip }?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelTransfer) }) }
             PullToRefreshBox(
                 isRefreshing = uiState.isLoading && uiState.nodes.isNotEmpty(),
@@ -527,6 +530,14 @@ internal fun DeletedFolderBanner(scope: FilesyncBrowserScope) {
                 Text(stringResource(MR.string.filesync_restore))
             }
         },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    )
+}
+
+@Composable
+internal fun NotOnComputersBanner() {
+    ListItem(
+        headlineContent = { Text(stringResource(MR.string.filesync_folder_not_on_computers)) },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     )
 }

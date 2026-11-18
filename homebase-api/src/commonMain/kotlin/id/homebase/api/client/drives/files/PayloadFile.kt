@@ -36,6 +36,8 @@ data class PayloadFile(
     val hash: PayloadHash? = null,
     /** Video-only: the bytes are already a finished upload payload; encrypt as-is, never transcode. */
     val skipVideoProcessing: Boolean = false,
+    /** False when the app keeps the picture's or video's metadata. */
+    val stripMetadata: Boolean = true,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

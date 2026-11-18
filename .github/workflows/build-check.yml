@@ -43,8 +43,9 @@ jobs:
         # Unqualified `jvmTest` fans out to every subproject's jvmTest, so newly
         # added modules are covered automatically (no per-module allow-list to drift).
         # `testDebugUnitTest` runs the androidApp module's unit tests (jvmTest
-        # doesn't reach those — androidApp has no jvm target).
-        run: ./gradlew jvmTest testDebugUnitTest
+        # doesn't reach those — androidApp has no jvm target). `testAndroidHostTest` runs
+        # the library modules' Android host tests (Robolectric), which neither reaches.
+        run: ./gradlew jvmTest testDebugUnitTest testAndroidHostTest
         env:
           JDK_21: ${{ env.JAVA_HOME }}
           CI: true

@@ -4,6 +4,7 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileWriteOptions
 import id.homebase.api.util.compareStringUuId
 import id.homebase.core.ui.screens.card.CardCircle
 import kotlinx.serialization.json.JsonObject
@@ -65,8 +66,7 @@ internal suspend fun ProfileRepository.saveWithAudience(
         visibility = audience.visibility,
         knownId = existing?.id,
         knownVersionTag = existing?.versionTag,
-        priority = existing?.priority,
-        circleIds = audience.circleIds,
+        options = ProfileWriteOptions(existing?.priority, audience.circleIds),
     )
     return (existing ?: ProfileAttribute(id = response.id, type = type, versionTag = response.versionTag, visibility = audience.visibility, data = data))
         .copy(
@@ -86,8 +86,7 @@ internal suspend fun ProfileRepository.restoreAcl(current: ProfileAttribute, pre
         visibility = previous.visibility,
         knownId = current.id,
         knownVersionTag = current.versionTag,
-        priority = previous.priority,
-        circleIds = previous.acl.circleIdList.orEmpty(),
+        options = ProfileWriteOptions(previous.priority, previous.acl.circleIdList.orEmpty()),
     )
     return current.copy(versionTag = response.versionTag, visibility = previous.visibility, acl = previous.acl)
 }

@@ -163,13 +163,8 @@ import id.homebase.resources.profile_card_content_front_empty
 import id.homebase.resources.profile_card_content_back
 import id.homebase.resources.profile_card_content_back_desc
 import id.homebase.resources.profile_card_content_off_desc
-import id.homebase.resources.profile_card_content_cant_go
 import id.homebase.resources.profile_card_content_unavailable_count
 import id.homebase.resources.profile_card_content_unavailable_desc
-import id.homebase.resources.profile_card_content_unavailable_names_more
-import id.homebase.resources.profile_card_content_unavailable_only
-import id.homebase.resources.profile_card_content_unavailable_only_me
-import id.homebase.resources.profile_edit_audience_other_circle
 import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_empty
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
@@ -230,11 +225,10 @@ internal fun CardContentEditor(
     // Every card splits into front, back and not on card; with cards off this is the profile editor, so it keeps every field.
     val cardMode = showCardsButton
     val onCard = items.filter { it.onCard }
-    val back = if (cardMode) items.filter { it.shown && it.renderable && it.hidden } else emptyList()
-    val off = if (cardMode) items.filter { !it.shown || !it.renderable } else emptyList()
+    val back = if (cardMode) items.filter { it.shown && it.hidden } else emptyList()
+    val off = if (cardMode) items.filter { !it.shown || (!it.renderable && !it.hidden) } else emptyList()
     val frontSlot = onCard.any { !it.required }
     val backSlot = back.isNotEmpty()
-    val offSlot = off.any { it.renderable && !it.shown }
     val notOnCard = if (cardMode) emptyList() else items.filter { it.shown && it.renderable && it.hidden }
     val unrenderable = if (cardMode) emptyList() else items.filter { it.shown && !it.renderable }
     val couldAdd = if (cardMode) emptyList() else items.filterNot { it.shown }
@@ -410,7 +404,6 @@ internal fun CardContentEditor(
             addAction()
             Spacer(Modifier.height(SECTION_GAP))
             SectionLabel(stringResource(MR.string.profile_card_content_not_on_card), stringResource(MR.string.profile_card_content_off_desc))
-            val cantGo = stringResource(MR.string.profile_card_content_cant_go)
             Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
                 off.forEachIndexed { index, item ->
                     key(item.id) {
@@ -422,10 +415,8 @@ internal fun CardContentEditor(
                             tag = "field_off",
                             onOpen = { editingId = item.id },
                             // One tap never publishes a private field: on the Public card the plus opens its sheet to choose.
-                            onAdd = { if (card is CardAudience.Public) editingId = item.id else place(item, true) }.takeIf { item.renderable && !item.shown },
-                            supporting = if (item.renderable) unavailableReason(item.audience, circles) else cantGo,
+                            onAdd = { if (card is CardAudience.Public && !item.shown) editingId = item.id else place(item, item.renderable) },
                             muted = true,
-                            removeSlot = offSlot,
                         )
                     }
                 }
@@ -825,21 +816,6 @@ private fun EditorRow(
         CardsSheet(item = item, circles = circles, onApply = onApply, onDismiss = { choosing = false })
     }
 }
-
-// Names the circles that can still see the field, so the owner knows what to change to bring it to this card.
-@Composable
-private fun unavailableReason(audience: ProfileAudience, circles: List<CardCircle>): String {
-    val other = stringResource(MR.string.profile_edit_audience_other_circle)
-    val circleAudience = audience as? ProfileAudience.Circles
-    val names = circleAudience?.let { circles.filter { c -> c.id in it.ids }.map { c -> c.name } + it.otherIds.map { other } }.orEmpty()
-    val listed = when {
-        names.size > UNAVAILABLE_NAMES -> stringResource(MR.string.profile_card_content_unavailable_names_more, names.first(), names.size - 1)
-        else -> names.joinToString(", ")
-    }
-    return if (names.isEmpty()) stringResource(MR.string.profile_card_content_unavailable_only_me) else stringResource(MR.string.profile_card_content_unavailable_only, listed)
-}
-
-private const val UNAVAILABLE_NAMES = 2
 
 // Rows in a section share one leading slot so values line up; a section with no remove buttons has none.
 @Composable

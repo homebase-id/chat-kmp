@@ -52,6 +52,10 @@ import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -66,7 +70,9 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -76,12 +82,21 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.widget.ChatMarkdown
+import id.homebase.chat.widget.SelectableOnDesktop
+import id.homebase.core.util.onSecondaryPress
+import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
+import id.homebase.resources.chat_agent_ui_chosen
 import id.homebase.resources.chat_agent_ui_open_image
 import id.homebase.resources.chat_image_unavailable
+import id.homebase.resources.copied
 import id.homebase.resources.error
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 /** [rollback] restores the inputs this action changed locally if the send fails. */
@@ -94,14 +109,19 @@ data class AgentUiActionRequest(
 
 private val ListItemWidth = 260.dp
 
+private const val CopiedMillis = 2000L
+
 private class Env(
     val tree: AgentUiTree,
     val inputs: AgentUiInputState,
     val imageData: (String) -> HomebaseImageData?,
     val onImageClick: ((payloadKey: String) -> Unit)?,
     val onLongClick: (() -> Unit)?,
+    val onImageSecondaryPress: ((payloadKey: String) -> Unit)?,
     val enabled: Boolean,
+    val copyEnabled: Boolean,
     val pending: Set<String>,
+    val answered: Set<String>,
     val onAction: (AgentUiActionRequest) -> Unit,
 ) {
     fun usable(action: AgentUiNodeAction?): Boolean = enabled && action?.id !in pending
@@ -123,18 +143,27 @@ fun AgentUiTreeView(
     modifier: Modifier = Modifier,
     onImageClick: ((payloadKey: String) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    /** Actions already sent at this rev: their buttons show a check and stay disabled. */
+    answeredActionIds: Set<String> = emptySet(),
+    /** Right-click on an image: the message menu for that image, as on a photo bubble. */
+    onImageSecondaryPress: ((payloadKey: String) -> Unit)? = null,
+    /** Copy buttons act on the device only, so they also work where actions cannot be sent (your own card). */
+    copyEnabled: Boolean = enabled,
 ) {
     val currentImageData by rememberUpdatedState(imageData)
     val currentOnAction by rememberUpdatedState(onAction)
     val currentOnImageClick by rememberUpdatedState(onImageClick)
     val currentOnLongClick by rememberUpdatedState(onLongClick)
+    val currentOnImageSecondaryPress by rememberUpdatedState(onImageSecondaryPress)
+    val imageMenu = onImageSecondaryPress != null
     val imagesOpen = onImageClick != null
     val longPress = onLongClick != null
     // Remembered so an unchanged card skips recomposing its nodes when the bubble around it recomposes.
-    val env = remember(tree, inputs, enabled, pendingActionIds, imagesOpen, longPress) {
+    val env = remember(tree, inputs, enabled, copyEnabled, pendingActionIds, answeredActionIds, imagesOpen, longPress, imageMenu) {
         val openImage: ((String) -> Unit)? = if (imagesOpen) { key -> currentOnImageClick?.invoke(key) } else null
         val menu: (() -> Unit)? = if (longPress) { { currentOnLongClick?.invoke() } } else null
-        Env(tree, inputs, { currentImageData(it) }, openImage, menu, enabled, pendingActionIds) { currentOnAction(it) }
+        val imageSecondary: ((String) -> Unit)? = if (imageMenu) { key -> currentOnImageSecondaryPress?.invoke(key) } else null
+        Env(tree, inputs, { currentImageData(it) }, openImage, menu, imageSecondary, enabled, copyEnabled, pendingActionIds, answeredActionIds) { currentOnAction(it) }
     }
     val root = tree.root
     Box(modifier) {
@@ -177,17 +206,20 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
             itemVerticalAlignment = Alignment.CenterVertically,
         ) { Children(node.children, env) }
         is AgentUiNode.Card -> CardView(node, env, modifier)
-        is AgentUiNode.Text -> ChatMarkdown(
-            content = node.markdown,
-            modifier = modifier,
-            color = toneColor(node.tone),
-            style = when (node.style) {
-                TextStyleKind.Title -> MaterialTheme.typography.titleMedium
-                TextStyleKind.Body -> MaterialTheme.typography.bodyMedium
-                TextStyleKind.Label -> MaterialTheme.typography.labelLarge
-                TextStyleKind.Caption -> MaterialTheme.typography.bodySmall
-            },
-        )
+        // Selectable on a pointer device like a text bubble's body; not in a preview, where nothing may take the press.
+        is AgentUiNode.Text -> SelectableOnDesktop(enabled = env.onLongClick != null) {
+            ChatMarkdown(
+                content = node.markdown,
+                modifier = modifier,
+                color = toneColor(node.tone),
+                style = when (node.style) {
+                    TextStyleKind.Title -> MaterialTheme.typography.titleMedium
+                    TextStyleKind.Body -> MaterialTheme.typography.bodyMedium
+                    TextStyleKind.Label -> MaterialTheme.typography.labelLarge
+                    TextStyleKind.Caption -> MaterialTheme.typography.bodySmall
+                },
+            )
+        }
         is AgentUiNode.Image -> ImageView(node, env, modifier)
         is AgentUiNode.Chip -> AgentChip(node.label, node.selected, modifier)
         is AgentUiNode.Divider -> HorizontalDivider(modifier, color = MaterialTheme.colorScheme.outlineVariant)
@@ -199,7 +231,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
                 items(node.children, key = { it.id }) { child -> Box(Modifier.width(ListItemWidth)) { NodeView(child, env) } }
             }
         }
-        is AgentUiNode.Table -> TableView(node, modifier)
+        is AgentUiNode.Table -> SelectableOnDesktop(enabled = env.onLongClick != null) { TableView(node, modifier) }
         is AgentUiNode.Progress -> Column(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             node.label?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (node.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -308,6 +340,8 @@ private fun AgentChip(
 }
 
 internal const val ErrorIconTag = "agentui-error-icon"
+internal const val ChosenIconTag = "agentui-chosen-icon"
+internal const val CopiedIconTag = "agentui-copied-icon"
 
 private val ChipHeight = 32.dp
 
@@ -327,14 +361,16 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
         AltBox(node.alt, frame)
     } else {
         val open = env.onImageClick
+        val menu = env.onImageSecondaryPress
+        val clickable = if (open == null) frame else frame.combinedClickable(
+            onClickLabel = stringResource(MR.string.chat_agent_ui_open_image),
+            role = Role.Image,
+            // The image takes the press, so it also carries the card's long-press menu.
+            onLongClick = env.onLongClick,
+        ) { open(node.payloadKey) }
         HomebaseImage(
             imageData = data,
-            modifier = if (open == null) frame else frame.combinedClickable(
-                onClickLabel = stringResource(MR.string.chat_agent_ui_open_image),
-                role = Role.Image,
-                // The image takes the press, so it also carries the card's long-press menu.
-                onLongClick = env.onLongClick,
-            ) { open(node.payloadKey) },
+            modifier = if (menu == null) clickable else clickable.onSecondaryPress { menu(node.payloadKey) },
             contentDescription = node.alt,
             contentScale = ContentScale.Crop,
             error = { AltBox(node.alt, Modifier, stringResource(MR.string.chat_image_unavailable)) },
@@ -399,20 +435,54 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
 
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
-    val busy = node.action?.id in env.pending
-    val enabled = node.action != null && env.usable(node.action) && env.tree.selectionCountsOk(node.action) { env.inputs[it] }
-    val onClick = { node.action?.let { env.fire(it, node.id, node.label) }; Unit }
+    val copyText = node.copy
+    val chosen = copyText == null && node.action?.id in env.answered
+    val busy = copyText == null && !chosen && node.action?.id in env.pending
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    var copied by remember(copyText) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(CopiedMillis)
+            copied = false
+        }
+    }
+    // A copy button acts on the device only: it never sends an action, so it stays usable after a send.
+    val enabled = if (copyText != null) env.copyEnabled
+    else node.action != null && env.usable(node.action) && env.tree.selectionCountsOk(node.action) { env.inputs[it] }
+    val onClick = {
+        if (copyText != null) {
+            scope.launch {
+                try {
+                    clipboard.setClipEntry(clipEntryOf(copyText))
+                    copied = true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(e, tag = "AgentUi") { "copy failed node=${node.id}" }
+                }
+            }
+        } else {
+            node.action?.let { env.fire(it, node.id, node.label) }
+        }
+        Unit
+    }
     val shapes = ButtonDefaults.shapes()
-    val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight)
+    val chosenLabel = stringResource(MR.string.chat_agent_ui_chosen)
+    val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight).then(if (chosen) Modifier.semantics { stateDescription = chosenLabel } else Modifier)
     val label: @Composable () -> Unit = {
         if (busy) {
             LoadingIndicator(Modifier.size(ButtonDefaults.IconSize + 6.dp), color = LocalContentColor.current)
             Spacer(Modifier.width(ButtonDefaults.IconSpacing))
         }
-        Text(node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (copied || chosen) {
+            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize).testTag(if (copied) CopiedIconTag else ChosenIconTag))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+        }
+        Text(if (copied) stringResource(MR.string.copied) else node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
     // A sent action stays disabled, but keeps its colours so it reads as in progress, not unavailable.
-    fun ButtonColors.busyAware() = if (busy) copy(disabledContainerColor = containerColor, disabledContentColor = contentColor) else this
+    fun ButtonColors.busyAware() = if (busy || chosen) copy(disabledContainerColor = containerColor, disabledContentColor = contentColor) else this
     when (node.style) {
         ButtonStyle.Filled -> Button(onClick, shapes, m, enabled, ButtonDefaults.buttonColors().busyAware()) { label() }
         ButtonStyle.Tonal -> FilledTonalButton(onClick, shapes, m, enabled, ButtonDefaults.filledTonalButtonColors().busyAware()) { label() }
@@ -424,7 +494,7 @@ private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
             m,
             enabled,
             ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error).busyAware(),
-            border = BorderStroke(1.dp, if (enabled || busy) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant),
+            border = BorderStroke(1.dp, if (enabled || busy || chosen) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant),
         ) { label() }
     }
 }

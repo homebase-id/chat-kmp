@@ -84,13 +84,18 @@ class FFmpegPipelineCoverageJvmTest {
                 "trimmed duration ≈3000ms, got ${trimmedDuration}ms",
             )
 
-            // 6. Unencrypted HLS segmentation produces a real m3u8 playlist
-            //    with no key declaration.
-            val seg = FFmpegUtils.segmentVideo(fixture, onProgress = null)
-            assertNotNull(seg, "segmentVideo must succeed")
-            val (playlistPath, segmentPath) = seg
-            cleanup += playlistPath
-            cleanup += segmentPath
+            // 6. ffmpeg's own unencrypted single-file HLS, as the app wrote it before the shared segmenter
+            //    (the arguments of FFmpegUtils' segmenter, without the key).
+            val hlsDir = File.createTempFile("hls_", "").also { it.delete(); it.mkdirs() }
+            cleanup += hlsDir.absolutePath
+            val playlistPath = File(hlsDir, "index.m3u8").absolutePath
+            val segmentPath = File(hlsDir, "index.ts").absolutePath
+            val segmenting = ProcessBuilder(
+                FFmpegBinaryManager.ffmpegPath(), "-y", "-i", fixture, "-codec:v", "copy", "-codec:a", "copy",
+                "-hls_time", "6", "-hls_list_size", "0", "-hls_flags", "single_file", playlistPath,
+            ).redirectErrorStream(true).start()
+            val segmentingLog = segmenting.inputStream.bufferedReader().readText()
+            assertEquals(0, segmenting.waitFor(), "ffmpeg must segment:\n$segmentingLog")
             val playlist = File(playlistPath).readText()
             assertTrue(
                 playlist.startsWith("#EXTM3U"),
@@ -102,12 +107,12 @@ class FFmpegPipelineCoverageJvmTest {
             )
             assertTrue(File(segmentPath).length() > 0L, "segment .ts must have bytes")
 
-            // 7. Round-trip remuxHlsToMp4 → duration matches input ±500ms.
+            // 7. ffmpeg's own TS (as older messages carry) back to MP4 with the shared remux: duration matches ±500ms.
             val remuxedFile = File.createTempFile("remuxed_", ".mp4").also { it.delete() }
             val remuxedPath = remuxedFile.absolutePath
             cleanup += remuxedPath
-            val remuxResult = FFmpegUtils.remuxHlsToMp4(playlistPath, remuxedPath)
-            assertTrue(remuxResult, "remuxHlsToMp4 must succeed on the segmented fixture")
+            val fileOps = id.homebase.api.file.OkioFileOperationsProvider(okio.FileSystem.SYSTEM, remuxedFile.parent)
+            assertTrue(VideoCompressionService.remuxTsToMp4(fileOps, segmentPath, remuxedPath), "ffmpeg's TS must remux")
             val remuxDuration = FFmpegUtils.getDurationMs(remuxedPath)
             assertTrue(
                 abs(remuxDuration - inputDuration) <= 500L,

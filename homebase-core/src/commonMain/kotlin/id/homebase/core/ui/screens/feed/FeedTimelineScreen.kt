@@ -438,7 +438,7 @@ internal fun FeedTimelineList(
                     onRepost = null,
                     onOpenComments = { onOpenComments(post.id) },
                     onShowReactors = { if (isArticle) onPostClick(post.id) else onShowReactors(post) },
-                    onPostClick = { onOpenComments(post.id) },
+                    onPostClick = { if (isArticle) onPostClick(post.id) else onOpenComments(post.id) },
                     onMediaClick = { index ->
                         if (isArticle) onPostClick(post.id)
                         else onOpenMedia(post, index, displayName)

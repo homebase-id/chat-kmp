@@ -127,7 +127,6 @@ import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentCommentItem
@@ -142,6 +141,8 @@ import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
 import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
 import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
+import id.homebase.core.util.showSaveFailed
+import id.homebase.core.util.showSavedTo
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
@@ -161,10 +162,7 @@ import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.delivered_to
-import id.homebase.resources.error_unknown
 import id.homebase.resources.failed
-import id.homebase.resources.file_save_failed
-import id.homebase.resources.file_saved_to
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_detail_add_comment_hint
 import id.homebase.resources.moments_detail_comment_cancel
@@ -539,38 +537,12 @@ fun MomentDetailPane(
                 is MomentDetailUiEvent.MomentDeleted -> onNavigateBack?.invoke()
                 is MomentDetailUiEvent.ShareFileReady ->
                     fileSystemHandler.shareFile(Path(event.filePath), event.caption)
-                // "Save current": the VM has finished decrypting (+ remuxing)
-                // the visible payload to a cache file; hand it to the platform
-                // save-to-device flow and confirm with a snackbar. Reuses the
-                // same strings + handler chat's media download uses.
-                is MomentDetailUiEvent.MediaSaveReady ->
-                    fileSystemHandler.saveFile(
-                        file = Path(event.filePath),
-                        suggestedName = event.suggestedName,
-                        onSuccess = { location ->
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    TranslationUtil.getString(MR.string.file_saved_to, location),
-                                )
-                            }
-                        },
-                        onError = { error ->
-                            scope.launch {
-                                val detail = error.message
-                                    ?: TranslationUtil.getString(MR.string.error_unknown)
-                                snackbarHostState.showSnackbar(
-                                    TranslationUtil.getString(MR.string.file_save_failed, detail),
-                                )
-                            }
-                        },
-                    )
-                is MomentDetailUiEvent.MediaSaveFailed -> scope.launch {
-                    val detail = event.message
-                        ?: TranslationUtil.getString(MR.string.error_unknown)
-                    snackbarHostState.showSnackbar(
-                        TranslationUtil.getString(MR.string.file_save_failed, detail),
-                    )
-                }
+                is MomentDetailUiEvent.MediaSaveRefused -> fileSystemHandler.offerRefused(
+                    event.refused,
+                    onError = { error -> scope.launch { snackbarHostState.showSaveFailed(error.message) } },
+                )
+                is MomentDetailUiEvent.MediaSaved -> scope.launch { snackbarHostState.showSavedTo(event.location) }
+                is MomentDetailUiEvent.MediaSaveFailed -> scope.launch { snackbarHostState.showSaveFailed(event.message) }
                 else -> Unit
             }
         }
@@ -1769,8 +1741,10 @@ private fun MomentDetailContent(
                             driveId = moment.driveId,
                             previewThumbnail = moment.previewThumbnail,
                             keyHeader = moment.keyHeader,
+                            isEncrypted = moment.isEncrypted,
                             modifier = Modifier.fillMaxSize(),
                             stepUpToPayload = isActivePage && pagerState.settledPage == page,
+                            showsHdr = isActivePage && pagerState.settledPage == page,
                             // Fit (not crop) — the whole post is visible,
                             // including landscape media in a portrait viewport
                             // (and vice versa). Letterbox bars take the Box's

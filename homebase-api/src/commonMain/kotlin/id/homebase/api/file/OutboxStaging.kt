@@ -8,7 +8,7 @@ import kotlin.random.Random
 
 /**
  * Shared logic for the DURABLE outbox staging directory (#842) — the one place
- * encrypted, ready-to-transmit upload payloads live while their outbox row is
+ * ready-to-transmit upload payloads (encrypted, or a public upload's plaintext) live while their outbox row is
  * pending. Unlike the cache directory, the staging dir is never reclaimed by
  * the OS under storage pressure and is invisible to [CacheSweeper] (it sits
  * outside `getCacheDirectory()`), so a payload survives restarts, "Clear
@@ -16,7 +16,7 @@ import kotlin.random.Random
  *
  * Lifecycle (the ONLY ways a staged file dies):
  *  - send success — `DriveUploadProvider.cleanupPayloadTempFiles`;
- *  - permanent drop — `OutboxSync.cleanupPayloadsForDroppedRow`;
+ *  - permanent drop, replaced by a newer request, or cancelled — `OutboxSync.deleteEndedRowFiles`;
  *  - logout — [wipeOutboxStaging] (paired with the outbox table wipe);
  *  - idle orphan reap — `OutboxSync.reapIdleOutboxTemps` (outbox empty + >24h).
  *

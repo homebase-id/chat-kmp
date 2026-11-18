@@ -1,9 +1,11 @@
 package id.homebase.core.util
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.util.freeFileName
 import id.homebase.api.util.safeFileName
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.addressOf
@@ -12,6 +14,7 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.files.Path
 import platform.Foundation.NSData
 import platform.Foundation.NSDocumentDirectory
@@ -37,15 +40,22 @@ private const val TAG = "IosAlbumSaver"
 
 object IosAlbumSaver : AlbumSaver {
 
+    // Photos imports a finished file, and asks its own permission, so asked or not is the same here.
+    override suspend fun target(name: String, asked: Boolean): AlbumTarget = AlbumTarget.FinishedFile { file ->
+        suspendCancellableCoroutine { continuation ->
+            import(Path(file), name, { continuation.resume(it) }, { continuation.resumeWithException(it) })
+        }
+    }
+
     @OptIn(ExperimentalForeignApi::class)
-    override fun save(
+    private fun import(
         file: Path,
         suggestedName: String,
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
     ) {
         val fileUrl = NSURL.fileURLWithPath(file.toString())
-        val safeName = safeFileName(suggestedName)
+        val safeName = suggestedName
         val extension = safeName.substringAfterLast('.', "").lowercase()
         val isImage =
             extension in setOf("jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "bmp", "tiff")
@@ -173,7 +183,7 @@ object IosAlbumSaver : AlbumSaver {
     @OptIn(ExperimentalForeignApi::class)
     private fun jpegForUnsupportedPhotoFormat(fileUrl: NSURL): NSData? {
         val data = NSData.dataWithContentsOfURL(fileUrl) ?: return null
-        val format = ImageFormatDetector.detectFormat(data.headerBytes(16))
+        val format = contentTypeFromBytes(data.headerBytes(16))
         val importsDirectly = format in setOf(
             "image/jpeg", "image/png", "image/gif", "image/heic", "image/heif",
         )

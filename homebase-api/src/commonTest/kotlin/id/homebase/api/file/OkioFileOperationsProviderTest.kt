@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -23,6 +24,19 @@ import kotlin.test.assertTrue
 class OkioFileOperationsProviderTest {
 
     private fun provider() = OkioFileOperationsProvider(FakeFileSystem(), "/tmp/homebase")
+
+    @Test
+    fun moveFileMovesIntoAFolderItMakesAndSaysWhenItCant() = runTest {
+        val ops = provider()
+        val bytes = byteArrayOf(1, 2, 3)
+        val source = ops.writeBytesToTempFile(bytes, "key_", ".asc")
+        val target = "/tmp/homebase/share_outbound/share_x/my key.asc"
+
+        assertTrue(ops.moveFile(source, target), "a move within one file system works")
+        assertContentEquals(bytes, ops.readFileBytes(target))
+        assertEquals(0L, ops.getFileSize(source), "the source is gone after a move")
+        assertFalse(ops.moveFile(source, "/tmp/homebase/elsewhere.asc"), "a missing source can't move")
+    }
 
     @Test
     fun writeTempRoundTripsThroughReadSizeHeaderOpenAndDelete() = runTest {

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -77,16 +78,17 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.ui.theme.Dimens
-import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.onSecondaryPress
 import id.homebase.core.util.supportsTouchGestures
 import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_archived
+import id.homebase.resources.chat_unread_mention
 import id.homebase.resources.chat_connection_invitation_received
 import id.homebase.resources.chat_connection_invitation_sent
 import id.homebase.resources.chat_connection_invited
@@ -189,6 +191,7 @@ fun ConversationItem(
                     onClick = onClick,
                     onLongClick = { showMenu = true }
                 )
+                .onSecondaryPress { showMenu = true }
                 .semantics {
                     selected = isSelected
                     // A screen reader can't perform the swipe.
@@ -351,7 +354,10 @@ fun ConversationItem(
                         modifier = Modifier.weight(1f)
                     )
 
-                    UnreadBadge(enrichedData.conversation.unreadCount)
+                    UnreadBadge(
+                        count = enrichedData.conversation.unreadCount,
+                        mentioned = enrichedData.conversation.unreadMentionCount > 0,
+                    )
                     if (enrichedData.conversation.unreadCount == 0 && draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                         Spacer(modifier = Modifier.width(Dimens.Spacing.label))
                         DeliveryStatus(
@@ -450,37 +456,54 @@ fun ConversationItem(
 }
 
 @Composable
-private fun UnreadBadge(count: Int) {
+private fun UnreadBadge(count: Int, mentioned: Boolean) {
     val transition = updateTransition(count)
     val spatial = MaterialTheme.motionScheme.fastSpatialSpec<IntOffset>()
     val effects = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
     transition.AnimatedVisibility(
-        visible = { it > 0 },
+        visible = { it > 0 || mentioned },
         enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(effects),
         exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(effects),
     ) {
         Row {
             Spacer(modifier = Modifier.width(Dimens.Spacing.item))
             Badge(
-                containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                // While the badge leaves, keep the last count instead of showing 0.
-                AnimatedContent(
-                    targetState = if (transition.targetState > 0) transition.targetState else transition.currentState,
-                    transitionSpec = {
-                        val up = if (targetState > initialState) 1 else -1
-                        (slideInVertically(spatial) { up * it } + fadeIn(effects)) togetherWith
-                            (slideOutVertically(spatial) { -up * it } + fadeOut(effects))
-                    },
-                ) { shown ->
-                    val countText = shown.toString()
-                    Text(
-                        modifier = Modifier.padding(4.dp),
-                        text = countText,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
+                AnimatedVisibility(
+                    visible = mentioned,
+                    enter = expandHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(effects),
+                    exit = shrinkHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(effects),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AlternateEmail,
+                        contentDescription = stringResource(MR.string.chat_unread_mention),
+                        modifier = Modifier.padding(vertical = 4.dp).size(16.dp),
                     )
+                }
+                // A lone unread that is the mention reads as just "@".
+                AnimatedVisibility(
+                    visible = !(mentioned && count <= 1),
+                    enter = expandHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(effects),
+                    exit = shrinkHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(effects),
+                ) {
+                    // While the badge leaves, keep the last count instead of showing 0.
+                    AnimatedContent(
+                        targetState = if (transition.targetState > 0) transition.targetState else transition.currentState,
+                        transitionSpec = {
+                            val up = if (targetState > initialState) 1 else -1
+                            (slideInVertically(spatial) { up * it } + fadeIn(effects)) togetherWith
+                                (slideOutVertically(spatial) { -up * it } + fadeOut(effects))
+                        },
+                    ) { shown ->
+                        Text(
+                            modifier = Modifier.padding(4.dp),
+                            text = shown.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

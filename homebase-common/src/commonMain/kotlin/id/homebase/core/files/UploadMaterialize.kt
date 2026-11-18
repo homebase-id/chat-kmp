@@ -5,7 +5,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.splitExtension
-import id.homebase.core.util.extensionForMimeType
+import id.homebase.api.file.extensionForMimeType
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
