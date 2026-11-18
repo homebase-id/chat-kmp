@@ -4,6 +4,7 @@ package id.homebase.core.ui.screens.card
 
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
+import id.homebase.core.util.showSavedTo
 import id.homebase.resources.profile_card_intro_title
 import id.homebase.resources.profile_card_edit_design
 import androidx.compose.ui.semantics.heading
@@ -167,7 +168,6 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
-import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
@@ -184,7 +184,6 @@ import id.homebase.resources.circle_delete_body_members
 import id.homebase.resources.circle_delete_failed
 import id.homebase.resources.circle_delete_title
 import id.homebase.resources.profile_card_circle_unsupported
-import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
 import id.homebase.resources.profile_card_audience_description
 import id.homebase.resources.profile_card_audience_public
@@ -349,13 +348,7 @@ internal fun ProfileCardPager(
                             file = Path(event.path),
                             suggestedName = event.fileName,
                             deleteAfter = false,
-                            onSuccess = { location ->
-                                launch {
-                                    snackbarHostState.showSnackbar(
-                                        TranslationUtil.getString(MR.string.file_saved_to, location),
-                                    )
-                                }
-                            },
+                            onSuccess = { location -> launch { snackbarHostState.showSavedTo(location) } },
                             onError = onError,
                         )
                     } else {

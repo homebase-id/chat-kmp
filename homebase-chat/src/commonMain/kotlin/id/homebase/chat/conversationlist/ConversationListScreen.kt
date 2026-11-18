@@ -93,6 +93,8 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.api.common.OdinId
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.horizontalResizeCursor
+import id.homebase.core.util.showSaveFailed
+import id.homebase.core.util.showSavedTo
 import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.DialogButtons
@@ -143,8 +145,6 @@ import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_hint
 import id.homebase.resources.discard
 import id.homebase.resources.error_unknown
-import id.homebase.resources.file_save_failed
-import id.homebase.resources.file_saved_to
 import id.homebase.resources.file_share_failed
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -239,6 +239,7 @@ fun ConversationListScreen(
     }
 
     LaunchedEffect(Unit) {
+        val saveFailed: (Throwable) -> Unit = { error -> scope.launch { snackbarHostState.showSaveFailed(error.message) } }
         viewModel.uiEvents.collect { event ->
             when (event) {
                 is ConversationListUiEvent.NavigateBack -> onNavigateBack()
@@ -319,29 +320,14 @@ fun ConversationListScreen(
                 is ConversationListUiEvent.SaveFileToDevice -> fileSystemHandler.saveFile(
                     file = Path(event.filePath),
                     suggestedName = event.suggestedName,
-                    deleteAfter = event.deleteAfter,
-                    onSuccess = { location ->
-                        scope.launch {
-                            val msg = TranslationUtil.getString(MR.string.file_saved_to, location)
-                            snackbarHostState.showSnackbar(msg)
-                        }
-                    },
-                    onError = { error ->
-                        scope.launch {
-                            val fallback = error.message
-                                ?: TranslationUtil.getString(MR.string.error_unknown)
-                            val msg = TranslationUtil.getString(
-                                MR.string.file_save_failed,
-                                fallback,
-                            )
-                            snackbarHostState.showSnackbar(msg)
-                        }
-                    },
+                    deleteAfter = false,
+                    onSuccess = { location -> scope.launch { snackbarHostState.showSavedTo(location) } },
+                    onError = saveFailed,
                 )
 
-                is ConversationListUiEvent.FileSaved -> scope.launch {
-                    snackbarHostState.showSnackbar(TranslationUtil.getString(MR.string.file_saved_to, event.location))
-                }
+                is ConversationListUiEvent.OfferRefusedSave -> fileSystemHandler.offerRefused(event.refused, onError = saveFailed)
+
+                is ConversationListUiEvent.FileSaved -> scope.launch { snackbarHostState.showSavedTo(event.location) }
 
                 is ConversationListUiEvent.OpenUrl -> fileSystemHandler.openUrl(event.url)
 

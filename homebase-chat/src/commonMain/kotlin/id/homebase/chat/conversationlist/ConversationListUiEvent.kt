@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.core.util.AlbumSaveResult
 import kotlin.uuid.Uuid
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.ContactCardDescriptor
@@ -27,8 +28,9 @@ sealed interface ConversationListUiEvent {
     data class ShareText(val text: String) : ConversationListUiEvent
     data class ShareFile(val filePath: String) : ConversationListUiEvent
     data class OpenFile(val filePath: String) : ConversationListUiEvent
-    /** [deleteAfter]: [filePath] is a decrypted copy to delete once saved, not the person's own file. */
-    data class SaveFileToDevice(val filePath: String, val suggestedName: String, val deleteAfter: Boolean) : ConversationListUiEvent
+    /** The person's own file, which the save leaves alone. */
+    data class SaveFileToDevice(val filePath: String, val suggestedName: String) : ConversationListUiEvent
+    data class OfferRefusedSave(val refused: AlbumSaveResult.Refused) : ConversationListUiEvent
     /** Already saved, at [location] (a folder name or a path). */
     data class FileSaved(val location: String) : ConversationListUiEvent
     data class OpenUrl(val url: String) : ConversationListUiEvent
