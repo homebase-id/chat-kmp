@@ -263,12 +263,12 @@ internal class MediaDownloadHandler(
         }
     }
 
-    // Refused: the album won't take it (Android 9 without storage access), so the screen's save flow offers it instead.
+    // Refused: the album won't take it (Android 9 without storage access), so the screen offers it another way.
     private fun report(saved: AlbumSaveResult, failed: StringResource) = when (saved) {
         is AlbumSaveResult.Saved -> sendEvent(FileSaved(saved.location))
         AlbumSaveResult.Cancelled -> Unit
         AlbumSaveResult.WriteFailed -> sendEvent(ShowErrorMessage(failed))
-        is AlbumSaveResult.Refused -> sendEvent(SaveFileToDevice(saved.file, saved.name, deleteAfter = true))
+        is AlbumSaveResult.Refused -> sendEvent(ConversationListUiEvent.OfferRefusedSave(saved))
     }
 
     private fun closePreviewOf(fileId: Uuid, payloadKey: String) {
@@ -358,7 +358,7 @@ internal class MediaDownloadHandler(
             is AttachmentPendingFile.Gallery -> f.image.file.toString() to f.image.fileName
             is AttachmentPendingFile.Audio -> f.audioFile.toString() to f.audioFile.name
         }
-        sendEvent(SaveFileToDevice(filePath, fileName, deleteAfter = false))
+        sendEvent(SaveFileToDevice(filePath, fileName))
     }
 
     fun handleViewOnceViewerClosed(action: ConversationListUiAction.ViewOnceViewerClosed) {

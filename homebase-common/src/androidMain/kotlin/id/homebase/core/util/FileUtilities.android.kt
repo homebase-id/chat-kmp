@@ -110,20 +110,25 @@ actual fun getUriHandler(): FileSystemHandler {
                 onError: (Throwable) -> Unit,
             ) = saveThroughAlbum(
                 albumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError,
-                // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to, so the share sheet offers the file.
-                onRefused = { source, name, _ ->
-                    val staged = try {
-                        fileOps.stageForShare(source, name, giveAway = deleteAfter)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = TAG) { "Failed to stage the file to share: ${e.message}" }
-                        onError(e)
-                        null
-                    }
-                    if (staged != null) shareFile(Path(staged), onError)
-                },
+                onRefused = { source, name, _ -> shareRefused(source, name, giveAway = deleteAfter, onError) },
             )
+
+            override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
+                offerRefusedThrough(fileOps, refused, { source, name, _ -> shareRefused(source, name, giveAway = true, onError) })
+
+            // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to, so the share sheet offers the file.
+            private suspend fun shareRefused(source: String, name: String, giveAway: Boolean, onError: (Throwable) -> Unit) {
+                val staged = try {
+                    fileOps.stageForShare(source, name, giveAway)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.e(throwable = e, tag = TAG) { "Failed to stage the file to share: ${e.message}" }
+                    onError(e)
+                    null
+                }
+                if (staged != null) shareFile(Path(staged), onError)
+            }
 
             override fun shareText(text: String, onError: (Throwable) -> Unit) {
                 try {

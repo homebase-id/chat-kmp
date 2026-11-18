@@ -729,8 +729,7 @@ class MomentDetailViewModel(
                     AlbumSaveResult.WriteFailed -> _events.tryEmit(
                         MomentDetailUiEvent.MediaSaveFailed(if (payload.isHlsVideo) "Could not convert video" else "Could not download file"),
                     )
-                    // The album won't take it (Android 9 without storage access): the screen's save flow offers it instead.
-                    is AlbumSaveResult.Refused -> _events.tryEmit(MomentDetailUiEvent.MediaSaveReady(saved.file, saved.name))
+                    is AlbumSaveResult.Refused -> _events.tryEmit(MomentDetailUiEvent.MediaSaveRefused(saved))
                 }
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "saveMedia failed: ${t.message}" }

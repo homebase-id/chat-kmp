@@ -60,6 +60,13 @@ interface FileSystemHandler {
         onSuccess: (String) -> Unit = {},
         onError: (Throwable) -> Unit = {},
     )
+
+    /**
+     * A save the album refused ([AlbumSaveResult.Refused]) offered another way without asking the album again, which
+     * would only refuse it again: on Android 9 the share sheet, as for [saveFile]; elsewhere [onError] with the refusal.
+     * [refused]'s file is the caller's to give away and is deleted once done.
+     */
+    fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit = {})
 }
 
 // App-lifetime: a save the person started finishes even if they leave the screen.
@@ -78,8 +85,7 @@ internal fun saveThroughAlbum(
     deleteAfter: Boolean,
     onSuccess: (String) -> Unit,
     onError: (Throwable) -> Unit,
-    onRefused: suspend (file: String, name: String, reason: String) -> Unit =
-        { _, _, reason -> onError(AlbumAccessDeniedException(reason)) },
+    onRefused: suspend (file: String, name: String, reason: String) -> Unit = refusalError(onError),
     scope: CoroutineScope = saveScope,
 ) {
     // ATOMIC: once launched, the body (and so the delete in its finally) runs even if the scope is cancelled first.
@@ -107,13 +113,34 @@ internal fun saveThroughAlbum(
                 is AlbumSaveResult.Refused -> onRefused(saved.file, saved.name, saved.reason)
             }
         } finally {
-            // Caught, so a failed delete can't hide what the save itself threw.
-            if (deleteAfter) {
-                runCatching { fileOps.deleteTempFile(file.sourcePath()) }
-                    .onFailure { Logger.e(throwable = it, tag = "saveFile") { "Deleting the saved file failed" } }
-            }
+            if (deleteAfter) fileOps.deleteQuietly(file.sourcePath())
         }
     }
+}
+
+/** [FileSystemHandler.offerRefused] on every platform: [onRefused] offers the refused file, which is then deleted. */
+internal fun offerRefusedThrough(
+    fileOps: FileOperationsProvider,
+    refused: AlbumSaveResult.Refused,
+    onRefused: suspend (file: String, name: String, reason: String) -> Unit,
+    scope: CoroutineScope = saveScope,
+) {
+    scope.launch(start = CoroutineStart.ATOMIC) {
+        try {
+            onRefused(refused.file, refused.name, refused.reason)
+        } finally {
+            fileOps.deleteQuietly(refused.file)
+        }
+    }
+}
+
+/** A refusal reported through [onError], where nothing else can take the file. */
+internal fun refusalError(onError: (Throwable) -> Unit): suspend (String, String, String) -> Unit =
+    { _, _, reason -> onError(AlbumAccessDeniedException(reason)) }
+
+// Logged, not thrown, so a failed delete can't hide what the save itself threw.
+private fun FileOperationsProvider.deleteQuietly(path: String) {
+    runCatching { deleteTempFile(path) }.onFailure { Logger.e(throwable = it, tag = "saveFile") { "Deleting the saved file failed" } }
 }
 
 /**

@@ -7,6 +7,7 @@ import id.homebase.core.moments.services.MomentCommentItem
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
+import id.homebase.core.util.AlbumSaveResult
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.StringResource
 
@@ -347,9 +348,8 @@ sealed interface MomentDetailUiAction {
 
     /**
      * Overflow-menu "Save current" tapped. Decrypts the given carousel payload
-     * (the one currently on screen) and emits [MomentDetailUiEvent.MediaSaveReady]
-     * so the screen can hand it to the platform save-to-device flow. HLS video
-     * is remuxed to a playable MP4 first.
+     * (the one currently on screen) and saves it to the album, an HLS video as
+     * an MP4; [MomentDetailUiEvent.MediaSaveRefused] when the album won't take it.
      */
     data class SaveMedia(val payloadKey: String) : MomentDetailUiAction
 
@@ -405,11 +405,8 @@ sealed interface MomentDetailUiEvent {
     ) : MomentDetailUiEvent
     data class ShareFailed(val message: String?) : MomentDetailUiEvent
 
-    /** The album refused the save (Android 9 without storage access): the screen offers [filePath] through `FileSystemHandler.saveFile`. */
-    data class MediaSaveReady(
-        val filePath: String,
-        val suggestedName: String,
-    ) : MomentDetailUiEvent
+    /** The album refused the save (Android 9 without storage access): the screen offers it another way. */
+    data class MediaSaveRefused(val refused: AlbumSaveResult.Refused) : MomentDetailUiEvent
     data class MediaSaveFailed(val message: String?) : MomentDetailUiEvent
 
     /** Already saved, at [location] (a folder name or a path). */

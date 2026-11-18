@@ -112,6 +112,9 @@ actual fun getUriHandler(): FileSystemHandler {
             onError: (Throwable) -> Unit,
         ) = saveThroughAlbum(IosAlbumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
 
+        override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
+            offerRefusedThrough(fileOps, refused, refusalError(onError))
+
         override fun shareText(text: String, onError: (Throwable) -> Unit) {
             try {
                 val activityVC = UIActivityViewController(

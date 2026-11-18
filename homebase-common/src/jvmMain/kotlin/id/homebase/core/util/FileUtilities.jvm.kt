@@ -89,6 +89,9 @@ internal class JvmFileSystemHandler(
         onError: (Throwable) -> Unit,
     ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
 
+    override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
+        offerRefusedThrough(fileOps, refused, refusalError(onError))
+
     override fun shareText(text: String, onError: (Throwable) -> Unit) {
         try {
             java.awt.Toolkit.getDefaultToolkit().systemClipboard

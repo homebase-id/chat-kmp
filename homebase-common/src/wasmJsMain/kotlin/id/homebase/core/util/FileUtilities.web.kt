@@ -34,6 +34,9 @@ actual fun getUriHandler(): FileSystemHandler {
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
         ) = saveThroughAlbum(WebAlbumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
+
+        override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
+            offerRefusedThrough(fileOps, refused, refusalError(onError))
     }
 }
 

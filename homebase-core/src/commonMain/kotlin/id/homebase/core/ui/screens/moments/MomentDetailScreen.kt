@@ -539,32 +539,15 @@ fun MomentDetailPane(
                 is MomentDetailUiEvent.MomentDeleted -> onNavigateBack?.invoke()
                 is MomentDetailUiEvent.ShareFileReady ->
                     fileSystemHandler.shareFile(Path(event.filePath), event.caption)
-                // "Save current": the VM has finished decrypting (+ remuxing)
-                // the visible payload to a cache file; hand it to the platform
-                // save-to-device flow and confirm with a snackbar. Reuses the
-                // same strings + handler chat's media download uses.
-                is MomentDetailUiEvent.MediaSaveReady ->
-                    fileSystemHandler.saveFile(
-                        file = Path(event.filePath),
-                        suggestedName = event.suggestedName,
-                        deleteAfter = true,
-                        onSuccess = { location ->
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    TranslationUtil.getString(MR.string.file_saved_to, location),
-                                )
-                            }
-                        },
-                        onError = { error ->
-                            scope.launch {
-                                val detail = error.message
-                                    ?: TranslationUtil.getString(MR.string.error_unknown)
-                                snackbarHostState.showSnackbar(
-                                    TranslationUtil.getString(MR.string.file_save_failed, detail),
-                                )
-                            }
-                        },
-                    )
+                is MomentDetailUiEvent.MediaSaveRefused -> fileSystemHandler.offerRefused(
+                    event.refused,
+                    onError = { error ->
+                        scope.launch {
+                            val detail = error.message ?: TranslationUtil.getString(MR.string.error_unknown)
+                            snackbarHostState.showSnackbar(TranslationUtil.getString(MR.string.file_save_failed, detail))
+                        }
+                    },
+                )
                 is MomentDetailUiEvent.MediaSaved -> scope.launch {
                     snackbarHostState.showSnackbar(TranslationUtil.getString(MR.string.file_saved_to, event.location))
                 }
