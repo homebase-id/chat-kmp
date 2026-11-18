@@ -37,6 +37,16 @@ interface FileOperationsProvider {
     suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray =
         readFileBytes(path).let { it.copyOfRange(minOf(offset, it.size.toLong()).toInt(), minOf(offset + length, it.size.toLong()).toInt()) }
 
+    /**
+     * [path] opened once for several [FileRanges.read]s, each with [readFileRange]'s contract, until it's closed.
+     * A read then costs no open of its own, which for an Android `content://` URI is a round trip to another
+     * process. Throws as [readFileRange] would for a file that can't be opened. Providers that can seek override it.
+     */
+    suspend fun openRanges(path: String): FileRanges = object : FileRanges {
+        override suspend fun read(offset: Long, length: Int) = readFileRange(path, offset, length)
+        override suspend fun size() = getFileSize(path)
+    }
+
     /** Returns true for a missing path or a directory (neither is deleted); never throws. */
     fun deleteTempFile(path: String): Boolean
     fun getCacheDirectory(): String
@@ -248,4 +258,14 @@ suspend fun <T> FileOperationsProvider.withResolvedFiles(
             if (resolved[i] != paths[i]) deleteTempFile(resolved[i])
         }
     }
+}
+
+/** A file held open by [FileOperationsProvider.openRanges]. */
+interface FileRanges : AutoCloseable {
+    suspend fun read(offset: Long, length: Int): ByteArray
+
+    /** As [FileOperationsProvider.getFileSize], with no lookup of its own; 0 where it isn't known. */
+    suspend fun size(): Long
+
+    override fun close() {}
 }

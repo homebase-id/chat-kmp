@@ -85,12 +85,12 @@ class BackupRequestBuilder(
                     if (!hasher.matches(exported, part, digests[index])) return HandOffResult.ChangedUnderUs
                 }
             }
-            val exif = exported.parts.firstOrNull { it.role == ExportedPartRole.Primary }?.let { metadataReader.image(it.path) }
+            val exif = timed(BackupStage.Thumbnails) { exported.parts.firstOrNull { it.role == ExportedPartRole.Primary }?.let { metadataReader.image(it.path) } }
             val metadata = photoMetadata(
                 uniqueId,
                 if (mediaType == BackupMediaType.LivePhoto) PhotobaseProtocol.LivePhotoDataType else PhotobaseProtocol.ImageDataType,
                 captureTimeMs(exif, row.createdAt),
-                PhotoContent.at(exif?.location),
+                PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
                 bundle.previewThumbs.firstOrNull(),
             )
             return send(photoSpec(photosDriveId, uniqueId, bundle, metadata, ContentHashes(PayloadHashAlgorithm.Blake3, expected)))

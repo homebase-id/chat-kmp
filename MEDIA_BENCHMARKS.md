@@ -115,15 +115,15 @@ On the Pixel 5, what's left is TS writing (about 0.3 s) and parsing the moov (0.
 
 `id.homebase.api.media.MediaMetadataReaderBenchmark` with `-e locationBench true`, on photos and videos from the Pixel 5's own camera in the test app's `files/bench/`, each read from the file and from the media library (`content://`, as Photos reads on Android). Four rounds each.
 
-- `videoLocation`: `MediaMetadataReader.videoLocation` reads the box headers and the `moov`, never the media. A camera writes the `moov` last; each range read may open the file again, a round trip to the media process, so it reads a 256 KB window at a time: two reads for a camera's video.
+- `videoLocation`: `MediaMetadataReader.videoLocation` reads the box headers and the `moov`, never the media. A camera writes the `moov` last. The file is opened once (`FileOperationsProvider.openRanges`, which also gives its size) and read in 256 KB windows: two positioned reads for a camera's video.
 - `photoExif`: `MediaMetadataReader.image` opens the photo and reads its EXIF, against reading it from an image already open (as the thumbnail decode did for Photos before the reader).
 
 | Device | Input | From a file | From the media library | Measured |
 |---|---|---|---|---|
-| Pixel 5 | camera video, 10 MB, location | 10–21 ms | 30–37 ms | 2026-11-18 |
-| Pixel 5 | camera video, 304 MB, location | 9–12 ms | 25–32 ms | 2026-11-18 |
-| Pixel 5 | camera photos, 3.8–7.8 MB (one a Motion Photo): reader | 16–25 ms | 22–28 ms | 2026-11-18 |
-| Pixel 5 | the same photos: EXIF of an image already open | 4–15 ms | 11–23 ms | 2026-11-18 |
+| Pixel 5 | camera video, 10 MB, location | 9–19 ms | 17–20 ms | 2026-11-18 |
+| Pixel 5 | camera video, 304 MB, location | 8–10 ms | 16–18 ms | 2026-11-18 |
+| Pixel 5 | camera photos, 3.8–7.8 MB (one a Motion Photo): reader | 12–22 ms | 22–29 ms | 2026-11-18 |
+| Pixel 5 | the same photos: EXIF of an image already open | 3–17 ms | 13–26 ms | 2026-11-18 |
 
 ## Audio
 
@@ -269,9 +269,9 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
 - **Read files in full chunks** (2026-11-16). Okio's `read` returns at most one 8 KB segment, so `readFileAsFlow` asked for 256 KB and emitted 8 KB, copied and handed across threads each time. Filling each chunk made reading 27 MB 10× faster on a Pixel 5, for every upload and hash that reads a file.
 - **Photos reads a photo's EXIF and a video's location through one shared reader, not in other passes** (2026-11-18).
   - **Why:** the EXIF came out of the thumbnail decode and the video's location out of the encrypt pass, through hooks on the shared upload code that only Photos used, and a hashed copy was read in full just for a transcode's location. One `MediaMetadataReader` now reads every photo's EXIF and every video's location, and `MediaMetadataStripper` strips every photo.
-  - **Cost on a Pixel 5, camera files:** a video's location costs 25–37 ms from the media library and 9–21 ms from a file, against 1–6 ms of feeding the old reader during encryption; the encrypt pass itself is 0.2–0.4 s for 10 MB and about 4 s for 304 MB. A photo's EXIF costs 2–5 ms more than reading it from the open image.
-  - **Done to get there:** `readMoov` reads 256 KB windows, so a camera's video takes two range reads instead of four; that halved the media library's 50–88 ms.
-  - **Reopen** if the media library's 30 ms matters: one open for the whole walk (a range-reading handle on `FileOperationsProvider`) would bring it near the file figure.
+  - **Cost on a Pixel 5, camera files:** a video's location costs 16–20 ms from the media library and 8–19 ms from a file, against 1–6 ms of feeding the old reader during encryption; the encrypt pass itself is 0.2–0.4 s for 10 MB and about 4 s for 304 MB. A photo's EXIF costs 0–14 ms more per photo than reading it from the image the thumbnails had open, depending on the photo.
+  - **Done to get there:** the first version opened the file for each box header and cost 50–88 ms from the media library. `FileOperationsProvider.openRanges` now opens a file once for positioned reads and gives its size, and `readMoov` reads 256 KB windows: one open and two reads for a camera's video. HDR gain-map reads use the same handle.
+  - **Reopen** if 16–20 ms per video matters at library scale: what's left is the one open through the media process.
 - **Our own segmenter rather than ffmpeg's** (2026-11-16). It's faster with the hashes included, it reads the file once, and it never re-encodes portrait video. It must keep the same cuts and decoded frames as ffmpeg's; `HlsSegmenterTest.theSegmentsAndDecodedFramesMatchFfmpegsOwnHls` checks that.
 
 ## History

@@ -7,8 +7,6 @@ import id.homebase.api.image.ImageMetadataScrubber
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private const val TAG = "MediaMetadata"
-
 /**
  * The other half of [MediaMetadataReader]: takes a photo's EXIF, XMP and IPTC out without a re-encode, the same way
  * on every platform, keeping its orientation, colour profile and HDR gain map. JPEG, PNG, WebP and HEIF are handled;

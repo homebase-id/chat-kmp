@@ -5,6 +5,7 @@ import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.FileRanges
 import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -69,8 +70,14 @@ suspend fun createMediaImages(
         val header = fileOps.readFileHeaderBytes(path)
         if (isSvg(header) || !ImageFormatDetector.answersIsAnimated(header)) return@withContext fromBytes()
         val byteCount = fileOps.getFileSize(path).takeIf { it > 0 }
-        mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, hdr) { range ->
-            fileOps.readFileRange(path, range.first, (range.last - range.first + 1).toInt())
+        // Opened only for a gain map; most photos have none.
+        var ranges: FileRanges? = null
+        try {
+            mediaImagesFrom(it, header, byteCount, payloadKey, setting, allowFinalImage, hdr) { range ->
+                (ranges ?: fileOps.openRanges(path).also { opened -> ranges = opened }).read(range.first, (range.last - range.first + 1).toInt())
+            }
+        } finally {
+            ranges?.close()
         }
     }
 }

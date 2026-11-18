@@ -51,26 +51,35 @@ class AndroidFileOperationsProvider(
         } else super.readFileAsFlow(path, chunkSize)
 
     override suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray =
-        if (isContentUri(path)) {
-            withContext(Dispatchers.IO) {
-                val descriptor = context.contentResolver.openFileDescriptor(path.toUri(), "r")
-                    ?: throw IllegalArgumentException("Unable to open content URI: $path")
-                descriptor.use { fd ->
-                    java.io.FileInputStream(fd.fileDescriptor).channel.use { channel ->
-                        val buffer = java.nio.ByteBuffer.allocate(length)
-                        var position = offset
-                        while (buffer.hasRemaining()) {
-                            val n = channel.read(buffer, position)
-                            if (n <= 0) break
-                            position += n
-                        }
-                        buffer.array().copyOf(buffer.position())
-                    }
-                }
-            }
-        } else {
-            super.readFileRange(path, offset, length)
+        if (isContentUri(path)) openRanges(path).use { it.read(offset, length) } else super.readFileRange(path, offset, length)
+
+    override suspend fun openRanges(path: String): FileRanges {
+        if (!isContentUri(path)) return super.openRanges(path)
+        val (descriptor, channel) = withContext(Dispatchers.IO) {
+            val descriptor = context.contentResolver.openFileDescriptor(path.toUri(), "r")
+                ?: throw IllegalArgumentException("Unable to open content URI: $path")
+            descriptor to java.io.FileInputStream(descriptor.fileDescriptor).channel
         }
+        return object : FileRanges {
+            override suspend fun read(offset: Long, length: Int): ByteArray = withContext(Dispatchers.IO) {
+                val buffer = java.nio.ByteBuffer.allocate(length)
+                var position = offset
+                while (buffer.hasRemaining()) {
+                    val n = channel.read(buffer, position)
+                    if (n <= 0) break
+                    position += n
+                }
+                buffer.array().copyOf(buffer.position())
+            }
+
+            override suspend fun size() = withContext(Dispatchers.IO) { channel.size() }
+
+            override fun close() {
+                channel.close()
+                descriptor.close()
+            }
+        }
+    }
 
     override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray =
         if (isContentUri(path)) {

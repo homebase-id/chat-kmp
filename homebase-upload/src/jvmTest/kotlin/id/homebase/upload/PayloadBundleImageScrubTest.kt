@@ -227,12 +227,14 @@ class PayloadBundleImageScrubTest {
     }
 
     @Test
-    fun encryptBundle_leavesNoScrubbedTempBehind() = runTest {
+    fun encryptBundle_leavesNothingBehindButWhatItSends() = runTest {
         val provider = JvmFileOperationsProvider()
         val svc = service(provider)
         val key = KeyHeader.newRandom16()
         val src = provider.writeBytesToTempFile(geotaggedJpeg(), "scrub_src_", ".jpg")
-        val started = System.currentTimeMillis() - 1_000
+        fun files() = listOf(provider.getCacheDirectory(), provider.getOutboxStagingDirectory())
+            .flatMap { File(it).walkTopDown().filter(File::isFile).map(File::getPath).toList() }.toSet()
+        val before = files()
         var staged: String? = null
         try {
             staged = svc.encryptBundle(
@@ -242,10 +244,7 @@ class PayloadBundleImageScrubTest {
                 this,
             ).payloads.single().filePath
 
-            // Wherever a copy could land: upload-temp under the cache, or outbox staging.
-            val leftovers = listOf(provider.getCacheDirectory(), provider.getOutboxStagingDirectory())
-                .flatMap { File(it).walkTopDown().filter { f -> f.isFile && f.name.startsWith("scrubbed_") && f.lastModified() >= started }.toList() }
-            assertTrue(leftovers.isEmpty(), "scrubbed temp must be reaped, found: $leftovers")
+            assertEquals(setOf(File(staged).path), files() - before, "no stripped copy or other temp is left")
         } finally {
             provider.deleteTempFile(src)
             staged?.let { provider.deleteTempFile(it) }

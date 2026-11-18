@@ -41,8 +41,9 @@ class PayloadBundleEncryptFileStreamTest {
     private fun bundle(vararg payloads: PayloadFile) =
         PayloadBundle(payloads = payloads.toList(), thumbnails = emptyList(), previewThumbs = emptyList())
 
-    private fun imagePayload(key: String, path: String) =
-        PayloadFile(key = key, filePath = path, contentType = "image/jpeg")
+    // A stripped image is encrypted from the bytes its strip read; a kept one streams from its file.
+    private fun imagePayload(key: String, path: String, stripped: Boolean = false) =
+        PayloadFile(key = key, filePath = path, contentType = "image/jpeg", stripMetadata = stripped)
 
     @Test
     fun encryptBundle_streamedCiphertextMatchesBulk_atVariousSizes() = runTest {
@@ -63,7 +64,7 @@ class PayloadBundleEncryptFileStreamTest {
         val svc = service(provider)
         val keySource = KeyHeader.newRandom16()
 
-        for (size in sizes) {
+        for (size in sizes) for (stripped in listOf(false, true)) {
             val plaintext = ByteArray(size).also { Random.nextBytes(it) }
             val src = provider.writeBytesToTempFile(plaintext, "stream_src_", ".bin")
             var staged: String? = null
@@ -71,7 +72,7 @@ class PayloadBundleEncryptFileStreamTest {
             try {
                 val result = svc.encryptBundle(
                     Uuid.random(),
-                    bundle(imagePayload("p0", src)),
+                    bundle(imagePayload("p0", src, stripped)),
                     keySource.aesKey,
                     this,
                 )
@@ -91,7 +92,7 @@ class PayloadBundleEncryptFileStreamTest {
                 assertContentEquals(
                     bulkCipher,
                     File(staged).readBytes(),
-                    "Ciphertext mismatch at size=$size — streamed encryptFile is incompatible with bulk",
+                    "Ciphertext mismatch at size=$size, stripped=$stripped — streamed encryptFile is incompatible with bulk",
                 )
             } finally {
                 provider.deleteTempFile(src)

@@ -217,7 +217,7 @@ The builder decides it per app and records it on each image payload (`PayloadFil
 | Payload | STRIP does | KEEP does |
 |---|---|---|
 | JPEG, PNG, WebP, HEIF | remove EXIF, XMP and IPTC without re-encoding (today's scrubber) | nothing |
-| AVIF, TIFF | re-encode to WebP at the setting's quality | nothing |
+| AVIF, TIFF and other formats the scrubber doesn't handle, or a file it can't parse | nothing: sent as it is, with a warning in the log | nothing |
 | GIF | nothing (GIF has no standard location field) | nothing |
 | Final image (Standard, HD) | already has none | copy the source's metadata into it |
 | Video | `-map_metadata -1` (transcode or remux) | keep the container's metadata |
@@ -350,7 +350,7 @@ Old files are never rewritten.
 | **D** | One switch, at once, for every kind including plain files. Unencrypted files' descriptors stay plain. |
 | **E** | Descriptor content uses short JSON keys (section 1); the server's own keys stay as they are. |
 | **F** | An HLS playlist is always its own payload (`pls_`), so descriptor content always fits. |
-| **G** | Stripping an AVIF or TIFF re-encodes it to WebP; GIFs aren't stripped. |
+| **G** | An image the scrubber doesn't handle (AVIF, TIFF) goes out as it is, with a warning in the log: re-encoding it would need a decoder for those formats on every platform, and phones rarely send them (2026-11-18; the earlier plan to re-encode them to WebP was never built). GIFs aren't stripped. |
 | **H** | The odin-js half is done by the web side, not in this change: the feed is updated in the same release; Community is standalone and unaffected. |
 
 ## 10. Today, for reference

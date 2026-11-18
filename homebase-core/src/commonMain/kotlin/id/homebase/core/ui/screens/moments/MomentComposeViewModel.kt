@@ -233,7 +233,7 @@ class MomentComposeViewModel(
                             // state flip and avoids leaking false positives if
                             // the user races the EXIF read.
                             val md = a.metadata
-                            val hasGps = md?.latitude != null && md.longitude != null
+                            val hasGps = md?.location != null
                             if (hasGps) a.copy(includeLocation = !a.includeLocation) else a
                         } else a
                     }

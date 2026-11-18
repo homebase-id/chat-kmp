@@ -1,6 +1,7 @@
 package id.homebase.api.media
 
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.FileRanges
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.image.ImageMetadata
 import kotlin.test.Test
@@ -46,23 +47,58 @@ class MediaMetadataReaderTest {
         val bytes = video(androidMoov("+37.7749-122.4194/"), mdatBytes = 10_000_000)
         var read = 0L
         var reads = 0
+        var opens = 0
         val okio = files(bytes)
         val counting = object : FileOperationsProvider by okio {
-            override suspend fun readFileRange(path: String, offset: Long, length: Int) =
-                okio.readFileRange(path, offset, length).also { read += it.size; reads++ }
+            override suspend fun readFileRange(path: String, offset: Long, length: Int) = error("each range read would open the file again")
+            override suspend fun openRanges(path: String): FileRanges {
+                opens++
+                val ranges = okio.openRanges(path)
+                return object : FileRanges by ranges {
+                    override suspend fun read(offset: Long, length: Int) = ranges.read(offset, length).also { read += it.size; reads++ }
+                }
+            }
         }
         assertEquals(MediaLocation(37.7749, -122.4194), MediaMetadataReader(counting).videoLocation("/v.mp4"))
-        assertEquals(2, reads, "the start of the file, then the moov: each read may open the file again")
+        assertEquals(1, opens, "the file is opened once")
+        assertEquals(2, reads, "the start of the file, then the moov")
         assertTrue(read <= 512 * 1024, "read $read bytes of ${bytes.size}")
     }
 
     @Test
     fun aMoovIsFoundWhenTheFileSizeIsntKnown() = runTest {
         val okio = files(video(androidMoov("+37.7749-122.4194/")))
+        // A content:// provider may report a size of 0.
         val unsized = object : FileOperationsProvider by okio {
             override fun getFileSize(path: String) = 0L
+            override suspend fun openRanges(path: String): FileRanges {
+                val ranges = okio.openRanges(path)
+                return object : FileRanges by ranges {
+                    override suspend fun size() = 0L
+                }
+            }
         }
         assertEquals(MediaLocation(37.7749, -122.4194), MediaMetadataReader(unsized).videoLocation("/v.mp4"))
+    }
+
+    @Test
+    fun aBoxHeaderAcrossTheReadWindowsEndIsReadWhole() = runTest {
+        // ftyp (16) and mdat's header (8) first, so the moov's header starts 8 bytes before the first 256 KB ends.
+        val bytes = video(androidMoov("+37.7749-122.4194/"), mdatBytes = 256 * 1024 - 8 - 24)
+        assertEquals(MediaLocation(37.7749, -122.4194), location(bytes))
+    }
+
+    @Test
+    fun aMoovLargerThanTheReadWindowIsReadWhole() = runTest {
+        val text = "+37.7749-122.4194/".encodeToByteArray()
+        val moov = box("moov", box("udta", box("©xyz", be16(text.size), be16(0x15C7), text)), box("free", ByteArray(300_000)))
+        assertEquals(MediaLocation(37.7749, -122.4194), location(video(moov)))
+    }
+
+    @Test
+    fun aFileCutOffInsideItsMoovHasNoLocation() = runTest {
+        val whole = video(androidMoov("+37.7749-122.4194/"))
+        assertNull(location(whole.copyOfRange(0, whole.size - 4)))
     }
 
     @Test

@@ -8,7 +8,7 @@ import id.homebase.api.video.locationInMoov
 import id.homebase.api.video.readMoov
 import kotlinx.coroutines.CancellationException
 
-private const val TAG = "MediaMetadata"
+internal const val TAG = "MediaMetadata"
 
 /**
  * What a photo or video file says about itself, read the same way on every platform: an image's EXIF, and the
@@ -16,7 +16,8 @@ private const val TAG = "MediaMetadata"
  * writes). Only the parts that hold it are read: an image's header where the platform allows, a video's box
  * headers and its `moov`, never the media.
  *
- * Null when the file has none, can't be read or isn't a format this knows; nothing but cancellation is thrown.
+ * Null, or empty, when the file has none, can't be read or isn't a format this knows; only cancellation and errors
+ * such as running out of memory are thrown.
  * The web has no EXIF reader, so an image there reads as null.
  */
 class MediaMetadataReader(private val fileOps: FileOperationsProvider) {
@@ -26,12 +27,15 @@ class MediaMetadataReader(private val fileOps: FileOperationsProvider) {
     suspend fun videoLocation(path: String): MediaLocation? = softly("video location of $path") { readMoov(fileOps, path)?.let(::locationInMoov) }
 }
 
-/** [read], or null, logged, when it throws anything but cancellation: metadata is never worth failing a send. */
+/**
+ * [read], or null, logged, when it throws an exception: an unreadable file has no metadata. An error such as running
+ * out of memory isn't caught, so a photo that should be stripped can't go out unstripped because it was too big to read.
+ */
 internal inline fun <T> softly(what: String, read: () -> T?): T? = try {
     read()
 } catch (e: CancellationException) {
     throw e
-} catch (t: Throwable) {
-    Logger.w(tag = TAG, throwable = t) { "No readable $what" }
+} catch (e: Exception) {
+    Logger.w(tag = TAG, throwable = e) { "No readable $what" }
     null
 }
