@@ -106,8 +106,9 @@ actual fun getUriHandler(): FileSystemHandler {
                 suggestedName: String,
                 onSuccess: (String) -> Unit,
                 onError: (Throwable) -> Unit,
+                onSettled: () -> Unit,
             ) = saveThroughAlbum(
-                albumSaver, fileOps, file, suggestedName, onSuccess, onError,
+                albumSaver, fileOps, file, suggestedName, onSuccess, onError, onSettled,
                 // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to.
                 onRefused = { refused, _ -> shareFile(refused, onError) },
             )

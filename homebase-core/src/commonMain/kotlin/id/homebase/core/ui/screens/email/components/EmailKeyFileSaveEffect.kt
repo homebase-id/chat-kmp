@@ -36,7 +36,6 @@ internal fun EmailKeyFileSaveEffect(
                     file = Path(event.path),
                     suggestedName = event.suggestedName,
                     onSuccess = { location ->
-                        viewModel.discardKeyFile(event.path)
                         scope.launch {
                             snackbarHostState.showSnackbar(
                                 TranslationUtil.getString(MR.string.email_secrets_key_saved, location)
@@ -44,13 +43,13 @@ internal fun EmailKeyFileSaveEffect(
                         }
                     },
                     onError = {
-                        viewModel.discardKeyFile(event.path)
                         scope.launch {
                             snackbarHostState.showSnackbar(
                                 TranslationUtil.getString(MR.string.email_secrets_key_save_failed)
                             )
                         }
                     },
+                    onSettled = { viewModel.discardKeyFile(event.path) },
                 )
 
                 EmailSecretsUiEvent.KeySaveFailed -> snackbarHostState.showSnackbar(

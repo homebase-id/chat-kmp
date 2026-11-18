@@ -42,13 +42,18 @@ interface FileSystemHandler {
     fun shareText(text: String, onError: (Throwable) -> Unit = {})
     fun openAppStore(onError: (Throwable) -> Unit = {})
 
-    /** Save a file to the user's device storage (Downloads/Photos/etc), under [suggestedName] made [safeFileName].
-     *  [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). */
+    /**
+     * Save a file to the user's device storage (Downloads/Photos/etc), under [suggestedName] made [safeFileName].
+     * [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). [onSettled] runs once [file] is
+     * no longer needed, whatever the outcome, cancelled included, so the caller can delete it; not when it was handed to
+     * the share sheet instead, which reads it later.
+     */
     fun saveFile(
         file: Path,
         suggestedName: String,
         onSuccess: (String) -> Unit = {},
         onError: (Throwable) -> Unit = {},
+        onSettled: () -> Unit = {},
     ) = shareFile(file, onError)
 }
 
@@ -58,7 +63,7 @@ private val saveScope = supervisedScope("saveFile")
 /**
  * [FileSystemHandler.saveFile] on every platform: [file] saved through [albumSaver] as a person's save, under
  * [suggestedName] made safe. [onRefused] gets the file when the album won't take it; by default that's an error saying
- * why.
+ * why. [onSettled] runs after every outcome but [onRefused], which settles it itself.
  */
 internal fun saveThroughAlbum(
     albumSaver: AlbumSaver,
@@ -67,24 +72,41 @@ internal fun saveThroughAlbum(
     suggestedName: String,
     onSuccess: (String) -> Unit,
     onError: (Throwable) -> Unit,
-    onRefused: (Path, reason: String) -> Unit = { _, reason -> onError(AlbumAccessDeniedException(reason)) },
+    onSettled: () -> Unit,
+    onRefused: (Path, reason: String) -> Unit = { _, reason ->
+        try {
+            onError(AlbumAccessDeniedException(reason))
+        } finally {
+            onSettled()
+        }
+    },
 ) {
     saveScope.launch {
         // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
         val saved = try {
             albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)
         } catch (e: CancellationException) {
+            onSettled()
             throw e
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = "saveFile") { "Failed to save file: ${e.message}" }
-            onError(e)
+            try {
+                onError(e)
+            } finally {
+                onSettled()
+            }
             return@launch
         }
-        when (saved) {
-            is AlbumSaveResult.Saved -> onSuccess(saved.location)
-            AlbumSaveResult.Cancelled -> Unit
-            AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
-            is AlbumSaveResult.Refused -> onRefused(file, saved.reason)
+        if (saved is AlbumSaveResult.Refused) return@launch onRefused(file, saved.reason)
+        try {
+            when (saved) {
+                is AlbumSaveResult.Saved -> onSuccess(saved.location)
+                AlbumSaveResult.Cancelled -> Unit
+                AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
+                is AlbumSaveResult.Refused -> Unit
+            }
+        } finally {
+            onSettled()
         }
     }
 }
