@@ -1,8 +1,9 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.video.isHlsVideo
+import id.homebase.api.video.playableContentType
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.coroutines.ioDispatcher
@@ -10,8 +11,6 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.FileTooLargeForMemoryException
 import id.homebase.api.file.extensionForContentType
-import id.homebase.api.video.VideoMetadata
-import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.agentui.agentUiImagePayloads
 import id.homebase.chat.conversationlist.ConversationListUiEvent.FileSaved
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
@@ -101,15 +100,9 @@ internal class MediaDownloadHandler(
                         "encrypted payload requires key header"
                     )).bytes
                 val extension = extensionForContentType(payload.contentType)
-                // Cleartext copy of an end-to-end-encrypted Homebase payload —
-                // STREAM-decrypted straight into the share_outbound subdir (#845:
-                // bounded RAM for any payload size, LRU untouched; the old
-                // getPayloadBytes path buffered ~2× the payload in RAM). The
-                // subdir keeps the sweep story: reaped as a single unit on
-                // cold start + foreground, bounding its on-disk lifetime.
-                val tempPath = chatMessageActionService.streamPayloadToShareOutbound(
+                val tempPath = chatMessageActionService.exportToShareOutbound(
                     message.fileId,
-                    action.payloadKey,
+                    payload,
                     KeyHeader(payloadIv, message.keyHeader.aesKey),
                     ".$extension",
                 )
@@ -144,12 +137,12 @@ internal class MediaDownloadHandler(
                     messagesUiState.value.messageById(action.messageId) ?: return@launch
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val contentType = payload.contentType ?: return@launch
+                val contentType = payload.playableContentType ?: return@launch
                 val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
-                val extension = extensionForContentType(contentType)
-                val tempPath = chatMessageActionService.streamPayloadToUploadTemp(
+                val extension = extensionForContentType(payload.contentType)
+                val tempPath = chatMessageActionService.exportToUploadTemp(
                     message.fileId,
-                    action.payloadKey,
+                    payload,
                     KeyHeader(payloadIv, message.keyHeader.aesKey),
                     "vault_",
                     ".$extension",
@@ -226,11 +219,11 @@ internal class MediaDownloadHandler(
 
                 val saved = withContext(ioDispatcher) {
                     albumSaver.saveReceived(
-                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, message.fileId, action.payloadKey,
-                        KeyHeader(payloadIv, message.keyHeader.aesKey), payload.filename(), payload.contentType, hls = false,
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, message.fileId, payload,
+                        KeyHeader(payloadIv, message.keyHeader.aesKey),
                     )
                 }
-                report(saved, MR.string.chat_error_download_file)
+                report(saved, if (payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
             } catch (e: FileTooLargeForMemoryException) {
                 sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
             } catch (e: Exception) {
@@ -254,19 +247,12 @@ internal class MediaDownloadHandler(
 
         scope.launch {
             try {
-                val hlsMetadata = resolveHlsVideoMetadata(
-                    payload = action.payload,
-                    fileId = action.fileId,
-                    keyHeader = action.keyHeader,
-                )
-
                 val saved = withContext(ioDispatcher) {
                     albumSaver.saveReceived(
-                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payloadKey,
-                        action.keyHeader, action.payload.filename(), action.payload.contentType, hls = hlsMetadata != null,
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader,
                     )
                 }
-                report(saved, if (hlsMetadata != null) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
+                report(saved, if (action.payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
             } catch (e: FileTooLargeForMemoryException) {
                 sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
             } catch (e: Exception) {
@@ -590,23 +576,6 @@ internal class MediaDownloadHandler(
         (messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData)?.attachments
             ?.forEach { if (it is AttachmentPendingFile.FileVideo) it.playablePath?.let(::revokePlayableUrl) }
         messagesUiState.update { it.copy(fullScreenOverlay = null) }
-    }
-
-    private suspend fun resolveHlsVideoMetadata(
-        payload: PayloadDescriptor,
-        fileId: Uuid,
-        keyHeader: KeyHeader,
-    ): VideoMetadata? {
-        if ((payload.descriptorInfo() as? DescriptorContent.VideoFile)?.isSegmented != true) return null
-        val full = videoMetadataFrom(payload.descriptorContent ?: return null, payload.key, payload.contentType) { key ->
-            driveFileProvider.getPayloadBytesDecrypted(
-                driveId = chatTargetDrive.alias,
-                fileId = fileId,
-                key = key,
-                keyHeader = keyHeader,
-            )?.bytes?.decodeToString()
-        } ?: return null
-        return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
     }
 }
 

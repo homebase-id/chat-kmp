@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.api.video.playableFileName
+import id.homebase.api.video.playableContentType
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -290,7 +292,8 @@ class VaultUploaderService(
         }
     }
 
-    suspend fun downloadPayload(file: VaultEntry, payloadKey: String): String? {
+    /** [payloadKey] exported as a file for the person, with that file's name and type: an HLS video's an MP4. */
+    suspend fun downloadPayload(file: VaultEntry, payloadKey: String): VaultDownload? {
         return try {
             val payloadDescriptor = file.payloadDescriptors.find { it.key == payloadKey }
             val iv = payloadDescriptor?.iv
@@ -308,16 +311,17 @@ class VaultUploaderService(
             val extension = extensionForMimeType(ct.substringBefore(';').trim().lowercase())
                 ?: file.fileName.substringAfterLast('.', "").takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
                 ?: ct.substringAfter("/", "bin")
-            // Stream-decrypt into a disposable upload-temp file (#845) — bounded RAM
-            // for any payload size; the old byte path buffered the whole payload
-            // (~2×) in memory. Same dir + sweep lifecycle as writeBytesToTempFile.
-            payloadDownloadService.exportToTemp(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                key = payloadKey,
-                keyHeader = keyHeader,
-                destination = ExportDestination.UploadTemp("share_", ".$extension"),
-            )
+            val destination = ExportDestination.UploadTemp("share_", ".$extension")
+            val path = if (payloadDescriptor != null) {
+                payloadDownloadService.exportPlayable(file.driveId, file.fileId, payloadDescriptor, keyHeader, destination)
+            } else {
+                payloadDownloadService.exportToTemp(file.driveId, file.fileId, payloadKey, keyHeader, destination)
+            }
+            path?.let {
+                VaultDownload(it, payloadDescriptor?.playableFileName(file.fileName) ?: file.fileName, payloadDescriptor?.playableContentType ?: file.contentType)
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to download payload $payloadKey from ${file.fileId}" }
             null
@@ -345,3 +349,5 @@ class VaultUploaderService(
         payloadKey = keyFor,
     )
 }
+
+class VaultDownload(val path: String, val name: String, val contentType: String)

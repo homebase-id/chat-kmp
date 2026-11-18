@@ -247,7 +247,7 @@ fun VaultGalleryScreen(
                                     name = file.fileName,
                                     kind = previewKind,
                                     load = {
-                                        withContext(Dispatchers.Default) { uploaderService.downloadPayload(file, descriptor.key) }
+                                        withContext(Dispatchers.Default) { uploaderService.downloadPayload(file, descriptor.key)?.path }
                                     },
                                     discard = { path -> runCatching { fileOperationsProvider.deleteTempFile(path) } },
                                     onTap = onTapImage,
