@@ -68,8 +68,8 @@ private val saveScope = supervisedScope("saveFile")
 /**
  * [FileSystemHandler.saveFile] on every platform: [file] saved through [albumSaver] as a person's save, under
  * [suggestedName] made safe, and deleted after when [deleteAfter]. [onRefused] offers the file another way when the album
- * won't take it, told whether it may give the file away, and returns true when what it offered still reads [file] where
- * it is, so it must stay; by default it reports an error.
+ * won't take it, and returns true when what it offered still reads [file] where it is, so it must stay; by default it
+ * reports an error.
  */
 internal fun saveThroughAlbum(
     albumSaver: AlbumSaver,
@@ -79,8 +79,8 @@ internal fun saveThroughAlbum(
     deleteAfter: Boolean,
     onSuccess: (String) -> Unit,
     onError: (Throwable) -> Unit,
-    onRefused: suspend (file: String, name: String, reason: String, mayGiveAway: Boolean) -> Boolean =
-        { _, _, reason, _ -> onError(AlbumAccessDeniedException(reason)); false },
+    onRefused: suspend (file: String, name: String, reason: String) -> Boolean =
+        { _, _, reason -> onError(AlbumAccessDeniedException(reason)); false },
     scope: CoroutineScope = saveScope,
 ) {
     // ATOMIC: once launched, the body (and so the delete in its finally) runs even if the scope is cancelled first.
@@ -104,7 +104,7 @@ internal fun saveThroughAlbum(
                 is AlbumSaveResult.Saved -> onSuccess(saved.location)
                 AlbumSaveResult.Cancelled -> Unit
                 AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
-                is AlbumSaveResult.Refused -> if (onRefused(saved.file, saved.name, saved.reason, deleteAfter)) keep = true
+                is AlbumSaveResult.Refused -> if (onRefused(saved.file, saved.name, saved.reason)) keep = true
             }
         } finally {
             if (!keep) fileOps.deleteTempFile(file.sourcePath())

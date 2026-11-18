@@ -19,7 +19,7 @@ import kotlinx.io.files.Path
  *
  * The platform save cannot live in the ViewModel: FileSystemHandler comes from getUriHandler(), a
  * Composable accessor that is not in DI. The ViewModel writes the file and hands over the path;
- * this gives it to the OS and tells the ViewModel to drop the temp either way.
+ * this gives it to the OS, which deletes it once it's done with it.
  */
 @Composable
 internal fun EmailKeyFileSaveEffect(

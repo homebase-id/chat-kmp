@@ -32,7 +32,7 @@ class SaveThroughAlbumTest {
         deleteAfter: Boolean = true,
         onSuccess: () -> Unit = {},
         onError: () -> Unit = {},
-        onRefused: (suspend (String, String, String, Boolean) -> Boolean)? = null,
+        onRefused: (suspend (String, String, String) -> Boolean)? = null,
         cancelBeforeItRuns: Boolean = false,
     ): Run {
         val fileOps = InMemoryFileOps()
@@ -46,14 +46,14 @@ class SaveThroughAlbumTest {
         if (onRefused == null) {
             saveThroughAlbum(saver, fileOps, Path(file), "key.txt", deleteAfter, success, error, scope = scope)
         } else {
-            val refused: suspend (String, String, String, Boolean) -> Boolean =
-                { f, name, reason, mayGiveAway -> calls += "refused"; onRefused(f, name, reason, mayGiveAway) }
+            val refused: suspend (String, String, String) -> Boolean =
+                { f, name, reason -> calls += "refused"; onRefused(f, name, reason) }
             saveThroughAlbum(saver, fileOps, Path(file), "key.txt", deleteAfter, success, error, refused, scope)
         }
         val launched = scope.coroutineContext.job.children.toList()
         if (cancelBeforeItRuns) scope.cancel()
         launched.joinAll()
-        return Run(calls, thrown, fileOps.exists(file))
+        return Run(calls, thrown, fileOps.sourceExists(file))
     }
 
     private val saved = saver { AlbumTarget.FinishedFile { "Downloads" } }
@@ -110,24 +110,15 @@ class SaveThroughAlbumTest {
     }
 
     @Test
-    fun aRefusalHandlerIsToldWhetherItMayGiveTheFileAway() = runTest {
-        var mayGiveAway: Boolean? = null
-        save(refusing, onRefused = { _, name, _, give -> assertEquals("key.txt", name); mayGiveAway = give; false })
-        assertEquals(true, mayGiveAway)
-        save(refusing, deleteAfter = false, onRefused = { _, _, _, give -> mayGiveAway = give; false })
-        assertEquals(false, mayGiveAway)
-    }
-
-    @Test
     fun aFileARefusalHandlerStillReadsIsKept() = runTest {
-        val run = save(refusing, onRefused = { _, _, _, _ -> true })
+        val run = save(refusing, onRefused = { _, name, _ -> assertEquals("key.txt", name); true })
         assertEquals(listOf("refused"), run.calls)
         assertTrue(run.fileLeft)
     }
 
     @Test
     fun aFileARefusalHandlerGaveAwayIsDeleted() = runTest {
-        assertFalse(save(refusing, onRefused = { _, _, _, _ -> false }).fileLeft)
+        assertFalse(save(refusing, onRefused = { _, _, _ -> false }).fileLeft)
     }
 
     @Test

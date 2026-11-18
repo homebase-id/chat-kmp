@@ -6,7 +6,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 /** Desktop's real saveFile: the Save dialog's outcome, then the caller's file deleted when it gave it away. */
 class JvmFileSystemHandlerSaveTest {
@@ -22,8 +22,8 @@ class JvmFileSystemHandlerSaveTest {
 
     private fun awaitGone(file: File) {
         val deadline = System.nanoTime() + 5_000_000_000
-        while (file.exists() && System.nanoTime() < deadline) Thread.onSpinWait()
-        assertTrue(!file.exists(), "${file.name} deleted")
+        while (file.exists() && System.nanoTime() < deadline) Thread.sleep(5)
+        assertFalse(file.exists(), "${file.name} deleted")
     }
 
     @Test

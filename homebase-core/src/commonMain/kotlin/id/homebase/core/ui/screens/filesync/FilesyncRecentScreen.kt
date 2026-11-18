@@ -47,7 +47,7 @@ fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, places: FilesyncPla
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop = onOpenWebDrop, onSendToChat = onSendToChat) {
-        viewModel.onAction(FilesyncRecentAction.SaveHandedOff(it))
+        viewModel.onAction(FilesyncRecentAction.PreviewGone(it))
     }
     uiState.shareChooser?.let { nodes ->
         FilesyncShareSheet(

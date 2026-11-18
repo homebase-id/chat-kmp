@@ -282,6 +282,9 @@ fun rememberSharedMediaSaver(
     val fileOps = org.koin.compose.koinInject<FileOperationsProvider>()
     val albumSaver = org.koin.compose.koinInject<AlbumSaver>()
     val fileSystemHandler = getUriHandler()
+    suspend fun saveFailed(detail: String?) = snackbarHostState.showSnackbar(
+        TranslationUtil.getString(MR.string.file_save_failed, detail ?: TranslationUtil.getString(MR.string.error_unknown)),
+    )
     return remember(driveId) {
         { item ->
             scope.launch {
@@ -296,29 +299,13 @@ fun rememberSharedMediaSaver(
                         // The album won't take it (Android 9 without storage access): the screen's save flow offers it instead.
                         is AlbumSaveResult.Refused -> fileSystemHandler.saveFile(
                             Path(saved.file), saved.name, deleteAfter = true,
-                            onError = { e ->
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        TranslationUtil.getString(
-                                            MR.string.file_save_failed,
-                                            e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                                        )
-                                    )
-                                }
-                            },
+                            onError = { e -> scope.launch { saveFailed(e.message) } },
                         )
                         AlbumSaveResult.Cancelled -> Unit
-                        AlbumSaveResult.WriteFailed -> snackbarHostState.showSnackbar(
-                            TranslationUtil.getString(MR.string.file_save_failed, TranslationUtil.getString(MR.string.error_unknown)),
-                        )
+                        AlbumSaveResult.WriteFailed -> saveFailed(null)
                     }
                 } catch (e: Exception) {
-                    snackbarHostState.showSnackbar(
-                        TranslationUtil.getString(
-                            MR.string.file_save_failed,
-                            e.message ?: TranslationUtil.getString(MR.string.error_unknown),
-                        )
-                    )
+                    saveFailed(e.message)
                 }
             }
         }

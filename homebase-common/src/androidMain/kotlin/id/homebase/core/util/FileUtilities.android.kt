@@ -114,8 +114,8 @@ actual fun getUriHandler(): FileSystemHandler {
                 albumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError,
                 // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to, so the share sheet offers the file,
                 // which the receiving app reads later.
-                onRefused = { source, name, _, mayGiveAway ->
-                    val moved = if (mayGiveAway) moveToShareOutbound(fileOps, source, name) else null
+                onRefused = { source, name, _ ->
+                    val moved = if (deleteAfter) moveToShareOutbound(fileOps, source, name) else null
                     shareFile(Path(moved ?: source), onError)
                     moved == null
                 },
@@ -146,7 +146,7 @@ actual fun getUriHandler(): FileSystemHandler {
 /** [source] moved, under [name], into its own folder in `share_outbound/`, swept when the app returns; null if it can't be. */
 private suspend fun moveToShareOutbound(fileOps: FileOperationsProvider, source: String, name: String): String? =
     withContext(Dispatchers.IO) {
-        val target = File(fileOps.createShareOutboundPath(""), name)
+        val target = File(fileOps.createNamedShareOutboundPath(name))
         if (target.parentFile?.mkdirs() == true && File(source).renameTo(target)) {
             target.path
         } else {

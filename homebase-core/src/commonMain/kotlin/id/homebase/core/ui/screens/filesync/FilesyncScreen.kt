@@ -199,7 +199,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         onSendToChat,
         onUndoRemove = { viewModel.onAction(FilesyncUiAction.Restore(it)) },
         onOpenSignIn = signIn::open,
-    ) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
+    ) { viewModel.onAction(FilesyncUiAction.PreviewGone(it)) }
 
     // Where Up goes: in a share view, NavigateUp alone would move the path hidden under it.
     val up = filesyncUp(uiState.path, uiState.sharing)

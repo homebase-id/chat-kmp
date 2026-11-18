@@ -1,5 +1,6 @@
 package id.homebase.api.file
 
+import id.homebase.api.util.safeFileName
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -155,6 +156,9 @@ interface FileOperationsProvider {
      * sequestration/sweep lifecycle: `share_outbound/` is reaped as a unit on cold
      * start and app foreground.
      */
+    /** A path for [name] made safe, in a folder of its own in `share_outbound/`, so whatever it's handed to sees the name. */
+    suspend fun createNamedShareOutboundPath(name: String): String = "${createShareOutboundPath("")}/${safeFileName(name)}"
+
     suspend fun createShareOutboundPath(suffix: String): String =
         createStagingPathIn(
             AppCacheDirs.scratchPath(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME),

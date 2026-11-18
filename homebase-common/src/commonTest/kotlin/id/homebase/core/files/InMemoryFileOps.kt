@@ -5,8 +5,6 @@ import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 
 internal class InMemoryFileOps : FileOperationsProvider {
-    fun exists(path: String): Boolean = path in store
-
     private val store = mutableMapOf<String, ByteArray>()
     private var counter = 0
 

@@ -15,7 +15,6 @@ import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.io.files.Path
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -108,9 +107,6 @@ class EmailSecretsViewModel(
      *
      * A file rather than the clipboard because that is what mail apps import - and on phones
      * the clipboard is not an option at all.
-     *
-     * The save deletes the temp once it's over, whatever the outcome (`deleteAfter`). On Android 9 without storage access
-     * it goes to the share sheet from `share_outbound/`, swept when the app returns.
      */
     private fun savePrivateKey(key: EmailKeyRef) {
         viewModelScope.launch {

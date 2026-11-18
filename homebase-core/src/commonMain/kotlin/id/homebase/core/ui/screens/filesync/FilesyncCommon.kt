@@ -213,7 +213,7 @@ internal fun FilesyncEventsEffect(
     onSendToChat: (path: String, name: String) -> Unit = { _, _ -> },
     onUndoRemove: (Set<Uuid>) -> Unit = {},
     onOpenSignIn: (String) -> Unit = {},
-    onHandedOff: (String) -> Unit,
+    onPreviewGone: (String) -> Unit,
 ) {
     val fileSystemHandler = getUriHandler()
     val scope = rememberCoroutineScope()
@@ -224,7 +224,7 @@ internal fun FilesyncEventsEffect(
         scope.launch { snackbarHostState.showSnackbar(getString(message, people.joinToString { it.domainName })) }
     }
     var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
-    preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onHandedOff) }
+    preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onPreviewGone) }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
