@@ -10,11 +10,9 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.AndroidFileOperationsProvider
-import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import java.io.File
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.io.files.Path
 
 private const val TAG = "getUriHandler"
@@ -112,12 +110,18 @@ actual fun getUriHandler(): FileSystemHandler {
                 onError: (Throwable) -> Unit,
             ) = saveThroughAlbum(
                 albumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError,
-                // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to, so the share sheet offers the file,
-                // which the receiving app reads later.
+                // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to, so the share sheet offers the file.
                 onRefused = { source, name, _ ->
-                    val moved = if (deleteAfter) moveToShareOutbound(fileOps, source, name) else null
-                    shareFile(Path(moved ?: source), onError)
-                    moved == null
+                    val staged = try {
+                        fileOps.stageForShare(source, name, giveAway = deleteAfter)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = TAG) { "Failed to stage the file to share: ${e.message}" }
+                        onError(e)
+                        null
+                    }
+                    if (staged != null) shareFile(Path(staged), onError)
                 },
             )
 
@@ -142,15 +146,3 @@ actual fun getUriHandler(): FileSystemHandler {
         }
     }
 }
-
-/** [source] moved, under [name], into its own folder in `share_outbound/`, swept when the app returns; null if it can't be. */
-private suspend fun moveToShareOutbound(fileOps: FileOperationsProvider, source: String, name: String): String? =
-    withContext(Dispatchers.IO) {
-        val target = File(fileOps.createNamedShareOutboundPath(name))
-        if (target.parentFile?.mkdirs() == true && File(source).renameTo(target)) {
-            target.path
-        } else {
-            Logger.w(tag = TAG) { "Couldn't move the file to share into share_outbound; sharing it where it is" }
-            null
-        }
-    }

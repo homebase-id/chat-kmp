@@ -47,11 +47,11 @@ interface FileSystemHandler {
     /**
      * Save [file] to the person's device storage (Downloads, Photos, ...) under [suggestedName] made [safeFileName].
      * [onSuccess] gets a readable location ("Downloads", "Photos") and [onError] a failure; a cancel gets neither. On
-     * Android 9 without storage access the share sheet opens instead, and neither runs.
+     * Android 9 without storage access the share sheet opens instead, with the file under its name in `share_outbound/`
+     * (swept when the app returns); [onSuccess] doesn't run, and [onError] does if the sheet can't be opened.
      *
-     * [deleteAfter]: [file] is the caller's to give away, and the save deletes it once done, whatever the outcome; for
-     * that Android 9 share it moves under its name into `share_outbound/`, swept when the app returns. Otherwise [file]
-     * is never touched.
+     * [deleteAfter]: [file] is the caller's to give away, and the save deletes it once done, whatever the outcome (for
+     * the share sheet it's moved rather than copied). Otherwise [file] is never touched.
      */
     fun saveFile(
         file: Path,
@@ -68,8 +68,7 @@ private val saveScope = supervisedScope("saveFile")
 /**
  * [FileSystemHandler.saveFile] on every platform: [file] saved through [albumSaver] as a person's save, under
  * [suggestedName] made safe, and deleted after when [deleteAfter]. [onRefused] offers the file another way when the album
- * won't take it, and returns true when what it offered still reads [file] where it is, so it must stay; by default it
- * reports an error.
+ * won't take it, and must not leave anything reading [file] where it is; by default it reports an error.
  */
 internal fun saveThroughAlbum(
     albumSaver: AlbumSaver,
@@ -79,13 +78,12 @@ internal fun saveThroughAlbum(
     deleteAfter: Boolean,
     onSuccess: (String) -> Unit,
     onError: (Throwable) -> Unit,
-    onRefused: suspend (file: String, name: String, reason: String) -> Boolean =
-        { _, _, reason -> onError(AlbumAccessDeniedException(reason)); false },
+    onRefused: suspend (file: String, name: String, reason: String) -> Unit =
+        { _, _, reason -> onError(AlbumAccessDeniedException(reason)) },
     scope: CoroutineScope = saveScope,
 ) {
     // ATOMIC: once launched, the body (and so the delete in its finally) runs even if the scope is cancelled first.
     scope.launch(start = CoroutineStart.ATOMIC) {
-        var keep = !deleteAfter
         try {
             // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
             val saved = try {
@@ -93,6 +91,8 @@ internal fun saveThroughAlbum(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Error) {
+                // Reported, so the person hears the save failed, then rethrown: an Error isn't an ordinary failure.
+                onError(e)
                 throw e
             } catch (e: Throwable) {
                 // Throwable, not Exception: a failed JS call on the web throws a JsException, which isn't one.
@@ -104,12 +104,32 @@ internal fun saveThroughAlbum(
                 is AlbumSaveResult.Saved -> onSuccess(saved.location)
                 AlbumSaveResult.Cancelled -> Unit
                 AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
-                is AlbumSaveResult.Refused -> if (onRefused(saved.file, saved.name, saved.reason)) keep = true
+                is AlbumSaveResult.Refused -> onRefused(saved.file, saved.name, saved.reason)
             }
         } finally {
-            if (!keep) fileOps.deleteTempFile(file.sourcePath())
+            // Caught, so a failed delete can't hide what the save itself threw.
+            if (deleteAfter) {
+                runCatching { fileOps.deleteTempFile(file.sourcePath()) }
+                    .onFailure { Logger.e(throwable = it, tag = "saveFile") { "Deleting the saved file failed" } }
+            }
         }
     }
+}
+
+/**
+ * [source] as a file called [name] in `share_outbound/`, swept when the app returns, for an app that reads it later:
+ * moved there when [giveAway], copied otherwise (also when it can't be moved). A failed copy leaves nothing behind.
+ */
+internal suspend fun FileOperationsProvider.stageForShare(source: String, name: String, giveAway: Boolean): String {
+    val target = createNamedShareOutboundPath(name)
+    if (giveAway && moveFile(source, target)) return target
+    try {
+        writeStream(target, readFileAsFlow(source, COPY_CHUNK))
+    } catch (e: Throwable) {
+        deleteTempFile(target)
+        throw e
+    }
+    return target
 }
 
 // kotlinx.io's Path collapses `content://` to `content:/`; the file providers need it back.

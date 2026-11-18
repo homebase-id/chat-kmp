@@ -238,7 +238,7 @@ class FilesyncRepository(
     /**
      * What [write] makes, as a file called [name] in a folder of its own, so whatever it's handed to sees the real name:
      * one to open or share goes to share_outbound, swept like every other copy handed to another app; any other goes
-     * to upload-temp, deleted by the save it's handed to.
+     * to upload-temp, deleted by a save it's handed to or [discard]ed when a preview lets it go, else swept.
      */
     suspend fun writeToCache(name: String, toShareOutbound: Boolean, write: suspend (out: suspend (ByteArray) -> Unit) -> Unit): String {
         val path = if (toShareOutbound) {

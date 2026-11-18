@@ -156,15 +156,18 @@ interface FileOperationsProvider {
      * sequestration/sweep lifecycle: `share_outbound/` is reaped as a unit on cold
      * start and app foreground.
      */
-    /** A path for [name] made safe, in a folder of its own in `share_outbound/`, so whatever it's handed to sees the name. */
-    suspend fun createNamedShareOutboundPath(name: String): String = "${createShareOutboundPath("")}/${safeFileName(name)}"
-
     suspend fun createShareOutboundPath(suffix: String): String =
         createStagingPathIn(
             AppCacheDirs.scratchPath(getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME),
             "share_",
             suffix,
         )
+
+    /** A path for [name] made safe, in a folder of its own in `share_outbound/`, so whatever it's handed to sees the name. */
+    suspend fun createNamedShareOutboundPath(name: String): String = "${createShareOutboundPath("")}/${safeFileName(name)}"
+
+    /** Moves the file at [from] to [to] without copying, creating [to]'s folder; false when it can't (another volume, a `content://`). */
+    suspend fun moveFile(from: String, to: String): Boolean = false
 
     /**
      * Reserve a unique writable path inside `<cacheDir>/hb-scratch/upload-temp/` (creating the
