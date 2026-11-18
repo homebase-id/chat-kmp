@@ -72,8 +72,6 @@ class ProfileCardScreenFlowTest {
                     ProfileCardEditorContent(
                         uiState = editorState,
                         mode = mode,
-                        step = EditorStep.Design,
-                        onStep = {},
                         onBack = { mode = EditorMode.Content },
                         onSelect = viewModel::onDesignSelected,
                         onOption = viewModel::onOptionSelected,
@@ -85,7 +83,7 @@ class ProfileCardScreenFlowTest {
             }
             waitUntil(timeoutMillis = 10_000) { viewModel.uiState.value.cards.any { it.audience == friends } }
             viewModel.onCardOpened(friends)
-            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Choose a design").fetchSemanticsNodes().isNotEmpty() }
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithContentDescription("Choose a design").fetchSemanticsNodes().isNotEmpty() }
 
             onNodeWithContentDescription("Poster").performClick()
             waitForIdle()

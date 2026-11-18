@@ -35,8 +35,6 @@ class CardEditorDesignEntryTest {
                     ProfileCardEditorContent(
                         uiState = state,
                         mode = EditorMode.Content,
-                        step = EditorStep.Design,
-                        onStep = {},
                         onBack = {},
                         onSelect = {},
                         onOption = { _, _ -> },

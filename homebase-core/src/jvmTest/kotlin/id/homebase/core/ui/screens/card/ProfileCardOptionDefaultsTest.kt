@@ -55,8 +55,6 @@ class ProfileCardOptionDefaultsTest {
                             ProfileCardEditorContent(
                                 uiState = state(design),
                                 mode = EditorMode.Design,
-                                step = EditorStep.Customise,
-                                onStep = {},
                                 onBack = {},
                                 onSelect = {},
                                 onOption = onOption,
@@ -72,6 +70,8 @@ class ProfileCardOptionDefaultsTest {
             check()
         }
 
+    private val DESIGN_TAB = "Choose a design"
+
     private val isOn = SemanticsMatcher("is on") { it.config.getOrNull(SemanticsProperties.ToggleableState) == ToggleableState.On }
     private val isSelectedPreset = SemanticsMatcher("is the selected preset") {
         it.config.getOrNull(SemanticsProperties.Selected) == true && it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton &&
@@ -83,7 +83,7 @@ class ProfileCardOptionDefaultsTest {
 
     // The tool names, read once on the first tab; later tabs show swatches that look alike.
     private fun ComposeUiTest.tabNames(): List<String> =
-        onAllNodes(isTab).fetchSemanticsNodes().map { it.config.getOrNull(SemanticsProperties.ContentDescription)!!.joinToString() }
+        onAllNodes(isTab).fetchSemanticsNodes().map { it.config.getOrNull(SemanticsProperties.ContentDescription)!!.joinToString() }.filter { it != DESIGN_TAB }
 
     private fun ComposeUiTest.pickTab(name: String) {
         onNodeWithContentDescription(name).performClick()
@@ -182,6 +182,7 @@ class ProfileCardOptionDefaultsTest {
     @Test
     fun designTabsRunPalettePortraitBackgroundStyleAndNoneIsCalledPresets() {
         panel(CardDesign.BOARD) {
+            assertEquals(DESIGN_TAB, onAllNodes(isTab).fetchSemanticsNodes().first().config.getOrNull(SemanticsProperties.ContentDescription)!!.joinToString())
             val tabs = tabNames()
             assertEquals(listOf("Ready-made styles", "Photo size", "Background pattern", "Content style"), tabs.take(4))
             assertTrue(tabs.none { it.contains("Presets", ignoreCase = true) })

@@ -76,6 +76,7 @@ import id.homebase.resources.profile_card_tool_portrait
 import id.homebase.resources.profile_card_tool_socials
 import id.homebase.resources.profile_card_tool_order
 import androidx.compose.material.icons.outlined.Colorize
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.ViewAgenda
 import id.homebase.resources.profile_card_option_colours
@@ -176,7 +177,9 @@ import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
 import id.homebase.resources.profile_card_option_block_style
 import id.homebase.resources.profile_card_tool_style
+import id.homebase.resources.profile_card_tool_design
 import id.homebase.resources.profile_card_tool_palette
+import id.homebase.resources.profile_card_option_design
 import id.homebase.resources.profile_card_option_presets
 import id.homebase.resources.profile_card_presentation_bare
 import id.homebase.resources.profile_card_presentation_boxed
@@ -225,7 +228,7 @@ private val TOOL_PADDING = 10.dp
 private val TOOL_LABEL_GAP = 4.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
-// Seven tools plus the picked label only fit 393dp at this inset.
+// Eight tools plus the picked label only fit 393dp at this inset.
 private val TOOLBAR_SIDE_INSET = 0.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private const val REVEAL_MARGIN = 0.6f
@@ -246,6 +249,8 @@ internal fun CardOptionsPanel(
     styles: List<ResolvedCardStyle>,
     custom: ResolvedCardStyle?,
     onStyle: (ResolvedCardStyle) -> Unit,
+    onSelect: (String) -> Unit,
+    designsEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
@@ -257,7 +262,7 @@ internal fun CardOptionsPanel(
         val shown = options.filter { !(palette && it == CardOption.COLOURS) }
         val grouped = TAB_GROUPS.map { group -> group.filter { it in shown } }.filter { it.isNotEmpty() }
         val groups = grouped + (shown - grouped.flatten().toSet()).map { listOf(it) }
-        listOfNotNull(PALETTE_TOOL.takeIf { palette }) + groups.map { group -> group.first().let { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it), group) } }
+        listOf(DESIGN_TOOL) + listOfNotNull(PALETTE_TOOL.takeIf { palette }) + groups.map { group -> group.first().let { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it), group) } }
     }
     var picked by rememberSaveable(design) { mutableStateOf(tools.firstOrNull()?.key.orEmpty()) }
     val current = tools.firstOrNull { it.key == picked } ?: tools.firstOrNull() ?: return
@@ -276,7 +281,8 @@ internal fun CardOptionsPanel(
             // The picked tool names itself in the group below, so the control stands alone here.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val group = tools.firstOrNull { it.key == shown }?.options.orEmpty()
-                if (group.isEmpty()) CardStyleRow(styles, overrides, design, enabled, onStyle, custom = custom)
+                if (shown == DESIGN_TOOL.key) DesignStrip(design, enabled = designsEnabled, dimmed = !designsEnabled, onSelect = onSelect, modifier = Modifier.fillMaxSize())
+                else if (group.isEmpty()) CardStyleRow(styles, overrides, design, enabled, onStyle, custom = custom)
                 else Column(verticalArrangement = Arrangement.spacedBy(PHOTO_ROWS_GAP)) {
                     for (option in group) OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
                 }
@@ -838,6 +844,7 @@ private fun List<String>.swap(a: Int, b: Int): List<String> {
 
 private data class PanelTool(val key: String, val icon: ImageVector, val label: StringResource, val description: StringResource, val options: List<CardOption> = emptyList())
 
+private val DESIGN_TOOL = PanelTool("design", Icons.Outlined.Dashboard, MR.string.profile_card_tool_design, MR.string.profile_card_option_design)
 private val PALETTE_TOOL = PanelTool("presets", Icons.Outlined.Palette, MR.string.profile_card_tool_palette, MR.string.profile_card_option_presets)
 
 // After Palette: Photo (size, with the shape row under it), Background, Style, then the rest one tab each in their usual order.

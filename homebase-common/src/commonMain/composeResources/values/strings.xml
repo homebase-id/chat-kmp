@@ -2629,9 +2629,6 @@
     <string name="profile_card_save_public_message">Your %1$s card is only shown to people in %1$s when they visit your home page. Saving gives you your public card.</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
-    <string name="profile_card_step_customise">Customise</string>
-    <string name="profile_card_step_count">Step %1$d of %2$d</string>
-    <string name="profile_card_step_design_title">Choose a design</string>
     <string name="profile_card_option_accent">Accent colour</string>
     <string name="profile_card_option_background">Background pattern</string>
     <string name="profile_card_tool_background">Background</string>
@@ -2697,12 +2694,14 @@
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_block_style">Content style</string>
     <string name="profile_card_tool_style">Style</string>
+    <string name="profile_card_tool_design">Design</string>
     <string name="profile_card_tool_palette">Palette</string>
     <string name="profile_card_style_ocean">Ocean</string>
     <string name="profile_card_style_espresso">Espresso</string>
     <string name="profile_card_style_linen">Linen</string>
     <string name="profile_card_style_onyx">Onyx</string>
     <string name="profile_card_style_frost">Frost</string>
+    <string name="profile_card_option_design">Choose a design</string>
     <string name="profile_card_option_presets">Ready-made styles</string>
     <string name="profile_card_presentation_bare">Plain</string>
     <string name="profile_card_presentation_boxed">Boxed</string>
