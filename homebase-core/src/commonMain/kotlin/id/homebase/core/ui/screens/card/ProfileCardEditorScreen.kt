@@ -1243,7 +1243,6 @@ private fun DesignTile(
     }
 }
 
-
 internal enum class EditorMode { Content, Design }
 
 @Composable
