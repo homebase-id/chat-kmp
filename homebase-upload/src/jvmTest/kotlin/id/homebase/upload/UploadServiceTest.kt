@@ -230,7 +230,7 @@ class UploadServiceTest {
     }
 
     @Test
-    fun buildRequest_buildsWhatUploadQueues_withNothingQueuedSeededOrWritten() = runTest {
+    fun prepare_buildsTheRequestQueueEnqueues_withNothingQueuedSeededOrWrittenBefore() = runTest {
         val h = buildHarness(backgroundScope)
         val uid = Uuid.random()
         val spec = MediaUploadSpec(
@@ -239,14 +239,14 @@ class UploadServiceTest {
             existingFileIsSuccess = true, sealDescriptorContent = true, sendNow = false,
         )
 
-        val built = h.service.buildRequest(spec, backgroundScope)
+        val prepared = h.service.prepare(spec, backgroundScope)
 
         assertEquals(0L, countRows(h))
         assertTrue(h.seeder.seededFileIds.isEmpty())
         assertTrue(h.writer.newFileIds.isEmpty())
-        assertIs<UploadOutcome.Enqueued>(h.service.upload(spec, backgroundScope))
+        assertIs<UploadOutcome.Enqueued>(h.service.queue(prepared))
         val queued = assertNotNull(h.dbm.outbox.selectByUniqueId(uid)).json.decodeToString()
-        assertEquals(queued, OutboxSerializer.serialize<UploadFileRequest>(built))
+        assertEquals(queued, OutboxSerializer.serialize<UploadFileRequest>(prepared.request))
     }
 
     // ---------- updateFile (PR3.5) ----------
@@ -441,7 +441,7 @@ class UploadServiceTest {
 /** Fake encryptor: counts calls, echoes the input as "pre-encrypted", or throws a swept source. */
 private class RecordingEncryptor(private val throwMissing: String? = null) : PayloadBundleEncryptor {
     override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
-    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+    override suspend fun discard(bundle: PayloadBundle) = Unit
 
     var callCount = 0
         private set
@@ -460,68 +460,6 @@ private class RecordingEncryptor(private val throwMissing: String? = null) : Pay
             previewThumbs = emptyList(),
         )
     }
-}
-
-/** Records the optimistic writes the pipeline performs. */
-private class RecordingOptimisticWriter : OptimisticLocalWriter {
-    val newFileIds = mutableListOf<Uuid>()
-    var updateCount = 0
-        private set
-
-    /** The descriptors passed to the LAST `writeUpdate` — null means "preserve existing payloads". */
-    var lastUpdateDescriptors: List<PayloadDescriptor>? = null
-        private set
-
-    override suspend fun writeNewFile(
-        driveId: Uuid,
-        keyHeader: KeyHeader,
-        unecryptedMetadata: UploadFileMetadata,
-        originalRecipientCount: Int,
-        fileSystemType: FileSystemType,
-        payloadDescriptors: List<PayloadDescriptor>?,
-        fileId: Uuid,
-    ): Uuid {
-        newFileIds += fileId
-        return fileId
-    }
-
-    override suspend fun writeUpdate(
-        driveId: Uuid,
-        keyHeader: KeyHeader,
-        unecryptedMetadata: UploadFileMetadata,
-        payloadDescriptors: List<PayloadDescriptor>?,
-    ) {
-        updateCount++
-        lastUpdateDescriptors = payloadDescriptors
-    }
-
-    override suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid): Boolean = true
-}
-
-/** Records the fileId of each seed instead of doing real byte IO (which the NoopFileOps forbids). */
-private class RecordingSeeder(
-    driveFileProvider: DriveFileProvider,
-    fileOperationsProvider: FileOperationsProvider,
-) : PayloadCacheSeeder(driveFileProvider, fileOperationsProvider) {
-    val seededFileIds = mutableListOf<Uuid>()
-    val unseededFileIds = mutableListOf<Uuid>()
-    val rowsAtSeed = mutableListOf<Long>()
-    var countRows: suspend () -> Long = { 0 }
-
-    override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle, encrypted: Boolean) {
-        assertTrue(encrypted, "UploadService only ever seeds the ciphertext it made")
-        rowsAtSeed += countRows()
-        seededFileIds += fileId
-    }
-
-    override suspend fun unseed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
-        unseededFileIds += fileId
-    }
-}
-
-private object ThrowingUploader : OutboxUploader {
-    override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) =
-        error("OutboxUploader.upload must not run (setOnline(false))")
 }
 
 /**

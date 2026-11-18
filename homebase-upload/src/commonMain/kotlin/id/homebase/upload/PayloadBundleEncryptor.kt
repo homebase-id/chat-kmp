@@ -20,8 +20,11 @@ interface PayloadBundleEncryptor {
      */
     suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle
 
-    /** Deletes the copies [stageBundle] made for [staged], when no outbox row took them. */
-    suspend fun discardStaged(staged: PayloadBundle)
+    /**
+     * Deletes the files [bundle]'s payloads point at, a video's HLS folder included, when no outbox row took them. Runs
+     * to the end even when the caller is cancelled.
+     */
+    suspend fun discard(bundle: PayloadBundle)
 }
 
 val EMPTY_BUNDLE = PayloadBundle(payloads = emptyList(), thumbnails = emptyList(), previewThumbs = emptyList())

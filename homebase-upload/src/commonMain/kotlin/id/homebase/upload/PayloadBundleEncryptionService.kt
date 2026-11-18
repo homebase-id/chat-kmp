@@ -15,6 +15,8 @@ import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.video.VideoPayloadProgressPhase
 import id.homebase.api.video.VideoPayloadProcessor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -52,8 +54,9 @@ class PayloadBundleEncryptionService(
         }
     }
 
-    override suspend fun discardStaged(staged: PayloadBundle) {
-        staged.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+    override suspend fun discard(bundle: PayloadBundle) = withContext(NonCancellable) {
+        bundle.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+        cleanupHlsScratch(bundle.payloads)
     }
 
     override suspend fun encryptBundle(
@@ -152,11 +155,7 @@ class PayloadBundleEncryptionService(
             // or a video whose transcode failed (VideoCompressionFailedException). Reap the
             // encrypted temps produced so far so the failed send leaves no orphaned
             // enc*/video temps, then rethrow to fail soft.
-            newPayloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
-            // The per-file delete above reaps a staged HLS index.ts but leaves its
-            // hls_<uuid>/ parent (and sibling playlist). In the durable staging dir that
-            // would linger until the idle reap instead of the next startup sweep (#842).
-            runCatching { cleanupHlsScratch(newPayloads) }
+            discard(bundle.copy(payloads = newPayloads))
             throw e
         }
 

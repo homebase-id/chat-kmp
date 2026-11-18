@@ -805,7 +805,7 @@ class FakeConversationLoader : ConversationLoader {
 
 class FakePayloadBundleEncryptor : PayloadBundleEncryptor {
     override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
-    override suspend fun discardStaged(staged: PayloadBundle) = Unit
+    override suspend fun discard(bundle: PayloadBundle) = Unit
 
     val calls = mutableListOf<Uuid>()
     override suspend fun encryptBundle(
