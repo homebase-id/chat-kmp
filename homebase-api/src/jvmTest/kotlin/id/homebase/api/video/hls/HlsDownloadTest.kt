@@ -9,6 +9,13 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.video.downloadHlsAsMp4
+import id.homebase.api.video.isHlsVideo
+import id.homebase.api.video.playableContentType
+import id.homebase.api.video.VideoMetadata
+import id.homebase.api.client.drives.files.DescriptorContentV1
+import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -20,6 +27,7 @@ import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -61,6 +69,33 @@ class HlsDownloadTest {
 
     @Test
     fun aSourceWithItsIndexLastToo() = runTest { check("moov_last.mp4") }
+
+    @Test
+    fun anHlsVideoIsExportedAsAnMp4WhateverTheAskedSuffix() = runTest {
+        val source = File(cache, "moov_first.mp4").apply { HlsDownloadTest::class.java.getResourceAsStream("/hls/moov_first.mp4")!!.use { i -> outputStream().use { i.copyTo(it) } } }
+        val segmented = assertNotNull(HlsSegmenter.segmentAndEncrypt(fileOps, source.absolutePath, keyHeader))
+        val current = DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO)
+            .withVideo(VideoMetadata(mimeType = "video/mp2t", isSegmented = true), original = false, playlistKey = "pls_0001").encode()
+        val descriptors = listOf(current, """{"mimeType":"video/mp2t","isSegmented":true}""")
+        for (descriptor in descriptors) {
+            val payload = PayloadDescriptor(key = "chat_web0", contentType = "video/mp2t", descriptorContent = descriptor)
+            assertTrue(payload.isHlsVideo, descriptor)
+            assertEquals("video/mp4", payload.playableContentType)
+
+            val service = PayloadDownloadService(server(File(segmented.segmentsPath).readBytes()), fileOps)
+            val exported = assertNotNull(service.exportPlayable(DRIVE, FILE, payload, keyHeader, ExportDestination.ShareOutbound(".ts")))
+            assertTrue(exported.endsWith(".mp4"), exported)
+            assertSameMedia(fileOps, source, File(exported))
+        }
+    }
+
+    @Test
+    fun aVideoThatIsntHlsIsSentAsItIs() {
+        val payload = PayloadDescriptor(key = "chat_web0", contentType = "video/mp4", descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""")
+        assertFalse(payload.isHlsVideo)
+        assertEquals("video/mp4", payload.playableContentType)
+        assertFalse(PayloadDescriptor(key = "chat_web0", contentType = "image/jpeg").isHlsVideo)
+    }
 
     private suspend fun check(name: String) {
         val source = File(cache, name).apply { HlsDownloadTest::class.java.getResourceAsStream("/hls/$name")!!.use { i -> outputStream().use { i.copyTo(it) } } }

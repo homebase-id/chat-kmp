@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.api.video.isHlsVideo
+import id.homebase.api.video.playableContentType
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -311,13 +313,12 @@ class VaultUploaderService(
             // Stream-decrypt into a disposable upload-temp file (#845) — bounded RAM
             // for any payload size; the old byte path buffered the whole payload
             // (~2×) in memory. Same dir + sweep lifecycle as writeBytesToTempFile.
-            payloadDownloadService.exportToTemp(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                key = payloadKey,
-                keyHeader = keyHeader,
-                destination = ExportDestination.UploadTemp("share_", ".$extension"),
-            )
+            val destination = ExportDestination.UploadTemp("share_", ".$extension")
+            if (payloadDescriptor != null) {
+                payloadDownloadService.exportPlayable(file.driveId, file.fileId, payloadDescriptor, keyHeader, destination)
+            } else {
+                payloadDownloadService.exportToTemp(file.driveId, file.fileId, payloadKey, keyHeader, destination)
+            }
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to download payload $payloadKey from ${file.fileId}" }
             null
@@ -345,3 +346,11 @@ class VaultUploaderService(
         payloadKey = keyFor,
     )
 }
+
+/** The type of the file [VaultUploaderService.downloadPayload] gives for [payloadKey]: an MP4 for an HLS video. */
+internal fun VaultEntry.playableContentType(payloadKey: String): String =
+    payloadDescriptors.find { it.key == payloadKey }?.playableContentType ?: contentType
+
+/** [name] as the file [VaultUploaderService.downloadPayload] gives for [payloadKey]: an HLS video's ends in `.mp4`. */
+internal fun VaultEntry.playableFileName(payloadKey: String, name: String = fileName): String =
+    if (payloadDescriptors.find { it.key == payloadKey }?.isHlsVideo == true) "${name.substringBeforeLast('.')}.mp4" else name

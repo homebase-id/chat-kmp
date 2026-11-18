@@ -124,7 +124,7 @@ class ChatMediaAutoSaveRulesTest {
     )
 
     @Test
-    fun segmentedVideoIsSkipped() = assertFalse(
+    fun aSegmentedVideoIsSavedAsTheAlbumSaverRemuxesIt() = assertTrue(
         decide(
             payload = PayloadDescriptor(
                 key = "chat_web0",

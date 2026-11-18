@@ -2,7 +2,9 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.FileOperationsProvider
 import kotlin.uuid.Uuid
 
@@ -27,3 +29,11 @@ suspend fun DriveFileProvider.downloadHlsAsMp4(
     if (!found) Logger.e(tag = "HlsSave") { "download/decrypt failed: $label" }
     return found && remuxed
 }
+
+/** An HLS video's payload is an MPEG-TS stream, not a file people can open: it leaves the app through [downloadHlsAsMp4]. */
+val PayloadDescriptor.isHlsVideo: Boolean
+    get() = (descriptorInfo() as? DescriptorContent.VideoFile)?.isSegmented == true
+
+/** The type of the file a person gets for this payload: an MP4 for an HLS video. */
+val PayloadDescriptor.playableContentType: String?
+    get() = if (isHlsVideo) "video/mp4" else contentType

@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.video.playableContentType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -173,7 +174,7 @@ private fun SharedMediaViewer(
         .collectAsStateWithLifecycle(false)
     val vaultFileSaver = org.koin.compose.koinInject<VaultFileSaver>()
 
-    val ext = remember(item) { extensionForContentType(item.payload.contentType) }
+    val ext = remember(item) { extensionForContentType(item.payload.playableContentType) }
 
     FullScreenMediaViewer(
         data = FullScreenOverlay.ViewMessageData(
@@ -195,7 +196,7 @@ private fun SharedMediaViewer(
                     // bounded RAM for any payload size; the old byte path
                     // buffered the whole payload (~2×) in memory.
                     val path = actionService.streamPayloadToShareOutbound(
-                        item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
+                        item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
                     )
                     if (path != null) {
                         fileSystemHandler.shareFile(
@@ -227,10 +228,10 @@ private fun SharedMediaViewer(
             scope.launch {
                 val saved = try {
                     val iv = item.payload.iv?.bytes
-                    val contentType = item.payload.contentType
+                    val contentType = item.payload.playableContentType
                     val path = if (iv != null && contentType != null) {
                         actionService.streamPayloadToUploadTemp(
-                            item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), "vault_", ".$ext"
+                            item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey), "vault_", ".$ext"
                         )
                     } else null
                     path != null && vaultFileSaver.save(
@@ -286,8 +287,7 @@ fun rememberSharedMediaSaver(
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
                     val saved = albumSaver.saveReceived(
-                        driveFileProvider, fileOps, driveId, item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey),
-                        item.payload.filename(), item.payload.contentType, hls = false,
+                        driveFileProvider, fileOps, driveId, item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey),
                     )
                     when (saved) {
                         is AlbumSaveResult.Saved ->

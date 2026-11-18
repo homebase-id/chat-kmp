@@ -603,22 +603,10 @@ class ChatMessageActionService(
      * 1 GB attachment used to buffer ~2× its size in RAM through getPayloadBytes.
      */
     suspend fun streamPayloadToShareOutbound(
-        fileId: Uuid, payloadKey: String, keyHeader: KeyHeader, suffix: String
-    ): String? = payloadDownloadService.exportToTemp(
-        driveId = chatTargetDrive.alias,
-        fileId = fileId,
-        key = payloadKey,
-        keyHeader = keyHeader,
-        destination = ExportDestination.ShareOutbound(suffix),
-    )
+        fileId: Uuid, payload: PayloadDescriptor, keyHeader: KeyHeader, suffix: String
+    ): String? = payloadDownloadService.exportPlayable(chatTargetDrive.alias, fileId, payload, keyHeader, ExportDestination.ShareOutbound(suffix))
 
     suspend fun streamPayloadToUploadTemp(
-        fileId: Uuid, payloadKey: String, keyHeader: KeyHeader, prefix: String, suffix: String
-    ): String? = payloadDownloadService.exportToTemp(
-        driveId = chatTargetDrive.alias,
-        fileId = fileId,
-        key = payloadKey,
-        keyHeader = keyHeader,
-        destination = ExportDestination.UploadTemp(prefix, suffix),
-    )
+        fileId: Uuid, payload: PayloadDescriptor, keyHeader: KeyHeader, prefix: String, suffix: String
+    ): String? = payloadDownloadService.exportPlayable(chatTargetDrive.alias, fileId, payload, keyHeader, ExportDestination.UploadTemp(prefix, suffix))
 }

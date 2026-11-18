@@ -2,11 +2,13 @@ package id.homebase.core.util
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
 import id.homebase.api.util.safeFileName
 import id.homebase.api.video.downloadHlsAsMp4
+import id.homebase.api.video.isHlsVideo
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -137,27 +139,29 @@ private suspend fun AlbumSaver.targetOrRefusal(name: String, asked: Boolean): Al
 private const val COPY_CHUNK = 256 * 1024
 
 /**
- * A received payload saved through [saveWritten], named for the person; an HLS video ([hls]) is remuxed into an `.mp4`
- * on the way. The one save path for media people receive, in chat and Moments.
+ * A received payload saved through [saveWritten], named [name]; an HLS video is remuxed into an `.mp4` on the way
+ * ([downloadHlsAsMp4]). The one save path for media people receive, in chat, Moments and auto-save.
  */
 suspend fun AlbumSaver.saveReceived(
     driveFileProvider: DriveFileProvider,
     fileOps: FileOperationsProvider,
     driveId: Uuid,
     fileId: Uuid,
-    payloadKey: String,
+    payload: PayloadDescriptor,
     keyHeader: KeyHeader,
-    fileName: String?,
-    contentType: String?,
-    hls: Boolean,
+    name: String = if (payload.isHlsVideo) {
+        safeFileName(payload.filename()?.substringBeforeLast('.'), "video", "mp4")
+    } else {
+        saveFileName(payload.filename(), payload.key, payload.contentType)
+    },
+    asked: Boolean = true,
 ): AlbumSaveResult {
-    val name = if (hls) safeFileName(fileName?.substringBeforeLast('.'), "video", "mp4") else saveFileName(fileName, payloadKey, contentType)
     val scratch = "${fileOps.scratchDir(AppCacheDirs.DOWNLOADS)}/${Uuid.random().toString().take(8)}_$name"
-    return saveWritten(name, scratch, fileOps) { path ->
-        if (hls) {
-            driveFileProvider.downloadHlsAsMp4(driveId, fileId, payloadKey, keyHeader, fileOps, path)
+    return saveWritten(name, scratch, fileOps, asked) { path ->
+        if (payload.isHlsVideo) {
+            driveFileProvider.downloadHlsAsMp4(driveId, fileId, payload.key, keyHeader, fileOps, path)
         } else {
-            driveFileProvider.streamPayloadDecryptedToPath(driveId, fileId, payloadKey, keyHeader, path, fileOps)
+            driveFileProvider.streamPayloadDecryptedToPath(driveId, fileId, payload.key, keyHeader, path, fileOps)
         }
     }
 }

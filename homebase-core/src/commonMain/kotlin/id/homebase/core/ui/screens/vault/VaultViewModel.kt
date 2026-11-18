@@ -610,7 +610,7 @@ class VaultViewModel(
             val tempPath = vaultUploaderService.downloadPayload(file, firstKey)
             if (tempPath != null) {
                 _events.tryEmit(
-                    VaultUiEvent.ShareFileReady(tempPath, file.fileName, file.contentType),
+                    VaultUiEvent.ShareFileReady(tempPath, file.playableFileName(firstKey), file.playableContentType(firstKey)),
                 )
             } else {
                 _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadFailed))
@@ -924,10 +924,10 @@ class VaultViewModel(
             try {
                 val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
                 if (tempPath != null) {
-                    val descriptor = action.file.payloadDescriptors.find { it.key == action.payloadKey }
-                    val contentType = descriptor?.contentType ?: action.file.contentType
                     _events.tryEmit(
-                        VaultUiEvent.ShareFileReady(tempPath, action.file.fileName, contentType),
+                        VaultUiEvent.ShareFileReady(
+                            tempPath, action.file.playableFileName(action.payloadKey), action.file.playableContentType(action.payloadKey),
+                        ),
                     )
                 } else {
                     _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
@@ -974,8 +974,8 @@ class VaultViewModel(
                     }
                     staged += PickedDropFile(
                         path = tempPath,
-                        name = names[index],
-                        contentType = descriptor.contentType ?: file.contentType,
+                        name = file.playableFileName(descriptor.key, names[index]),
+                        contentType = file.playableContentType(descriptor.key),
                         size = 0,
                     )
                 }
@@ -997,7 +997,7 @@ class VaultViewModel(
                 val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
                 if (tempPath != null) {
                     _events.tryEmit(
-                        VaultUiEvent.SaveFileReady(tempPath, action.file.fileName),
+                        VaultUiEvent.SaveFileReady(tempPath, action.file.playableFileName(action.payloadKey)),
                     )
                 } else {
                     _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))

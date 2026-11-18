@@ -9,6 +9,9 @@ import id.homebase.api.crypto.hashedBy
 import id.homebase.api.crypto.newHasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.downloadHlsAsMp4
+import id.homebase.api.video.isHlsVideo
+import id.homebase.api.video.playableContentType
 import kotlinx.coroutines.flow.Flow
 import kotlin.uuid.Uuid
 
@@ -27,6 +30,12 @@ sealed interface ExportDestination {
     data class ShareOutbound(val suffix: String) : ExportDestination
     data class UploadTemp(val prefix: String, val suffix: String) : ExportDestination
     data class Scratch(val prefix: String, val suffix: String) : ExportDestination
+
+    fun withSuffix(suffix: String): ExportDestination = when (this) {
+        is ShareOutbound -> copy(suffix = suffix)
+        is UploadTemp -> copy(suffix = suffix)
+        is Scratch -> copy(suffix = suffix)
+    }
 }
 
 /**
@@ -93,6 +102,25 @@ class PayloadDownloadService(
         onProgress: ((Float) -> Unit)? = null,
     ): String? = exportWith(destination) { path ->
         driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOperationsProvider.writeDownload(path, it) }
+    }
+
+    /**
+     * [payload] exported as a file people can open, for sharing or handing to another app: an HLS video remuxed into
+     * an `.mp4` ([downloadHlsAsMp4], whatever [destination]'s suffix), anything else as [exportToTemp]. Null when the
+     * payload isn't there or a video can't be remuxed. Its type is [playableContentType].
+     */
+    suspend fun exportPlayable(
+        driveId: Uuid,
+        fileId: Uuid,
+        payload: PayloadDescriptor,
+        keyHeader: KeyHeader,
+        destination: ExportDestination,
+    ): String? = if (payload.isHlsVideo) {
+        exportWith(destination.withSuffix(".mp4")) { path ->
+            driveFileProvider.downloadHlsAsMp4(driveId, fileId, payload.key, keyHeader, fileOperationsProvider, path)
+        }
+    } else {
+        exportToTemp(driveId, fileId, payload.key, keyHeader, destination)
     }
 
     /** [exportToTemp] that checks the plaintext against [hash] as it streams; [keyHeader] is the payload's key. */
