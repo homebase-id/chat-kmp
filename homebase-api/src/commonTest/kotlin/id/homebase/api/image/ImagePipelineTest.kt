@@ -133,12 +133,12 @@ class ImagePipelineTest {
 
     @Test
     fun aWholeHalvingStillEndsOnLanczos() = runTest {
-        for (from in listOf(854, 1708)) {
+        for ((from, steps) in listOf(854 to listOf(true), 1708 to listOf(false, true))) {
             val log = Log()
 
             renderFrom(FakeSource(from, from * 9 / 16, log)) { listOf(output(427, 240)) }
 
-            assertEquals(true, log.lanczos.last(), "$from -> 427 ended on ${log.scales.last()}")
+            assertEquals(steps, log.lanczos, "$from -> 427")
             assertEquals(427 to 240, log.scales.last().second)
         }
     }
