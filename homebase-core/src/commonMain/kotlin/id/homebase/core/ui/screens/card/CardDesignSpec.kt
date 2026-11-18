@@ -71,9 +71,6 @@ object CardDesignSpecs {
     private val PINNED_CHAT_KINDS = listOf("links", "moments")
     private val ALL_OPTIONS = CardOption.entries.toSet()
 
-    // The web draws Simple's links and Collage's links and chat the same for every style, so the option would change nothing.
-    private val WITHOUT_BLOCK_STYLE = ALL_OPTIONS - CardOption.BLOCK_STYLE
-
     // Poster's ground tints a photo and its paper section is set in the ground colour, so it only takes dark grounds.
     private val specs = listOf(
         CardDesignSpec(
@@ -112,11 +109,11 @@ object CardDesignSpecs {
         ),
         CardDesignSpec(
             CardDesign.COLLAGE,
-            WITHOUT_BLOCK_STYLE,
+            ALL_OPTIONS,
             orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 2,
             presetOrder = listOf("chat", "links", "moments"),
-            defaults = mapOf(CardOption.BACKGROUND to "speckle", CardOption.DISPLAY_FONT to "caveat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SIZE to DEFAULT_PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE to "square", CardOption.SOCIALS_STYLE to "wordmark"),
+            defaults = mapOf(CardOption.BACKGROUND to "speckle", CardOption.DISPLAY_FONT to "caveat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SIZE to DEFAULT_PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE to "square", CardOption.SOCIALS_STYLE to "wordmark", CardOption.BLOCK_STYLE to "boxed"),
             accent = "#B4553A",
             schemes = listOf(
                 CardColourScheme("sage", "#DDE5D3", "#26331F", "#56664A", "#FFFFFF", "#26331F", listOf("#3F7A3A", "#B4553A", "#2E6F8F", "#8A5A00")),
@@ -153,10 +150,10 @@ object CardDesignSpecs {
         ),
         CardDesignSpec(
             CardDesign.LINKS,
-            WITHOUT_BLOCK_STYLE,
+            ALL_OPTIONS,
             portraitSlots = 1,
             presetOrder = listOf("links", "moments", "chat"),
-            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "montserrat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SIZE to DEFAULT_PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE to "circle", CardOption.SOCIALS_STYLE to "glyphs"),
+            defaults = mapOf(CardOption.BACKGROUND to "none", CardOption.DISPLAY_FONT to "montserrat", CardOption.TEXT_FONT to "montserrat", CardOption.PORTRAIT_SIZE to DEFAULT_PORTRAIT_SIZE, CardOption.PORTRAIT_SHAPE to "circle", CardOption.SOCIALS_STYLE to "glyphs", CardOption.BLOCK_STYLE to "boxed"),
             accent = "#1A66D6",
             presetAccents = listOf("#2E6FB5", "#5A4FB5", "#1F7A70", "#C23B2A"),
             schemes = listOf(
