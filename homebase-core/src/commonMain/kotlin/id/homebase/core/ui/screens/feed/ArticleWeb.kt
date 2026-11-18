@@ -29,9 +29,9 @@ import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * The feed web app's post page, served from the signed-in identity's host so the WebView's auth applies; a
- * post on another identity is addressed through [authorDomain] (the web app reads it over peer). Null for
- * every post type except [PostType.Article], which stay native.
+ * The feed web app's full-page article reader, served from the signed-in identity's host so the WebView's
+ * auth applies; a post on another identity is addressed through [authorDomain] (the web app reads it over
+ * peer). Null for every post type except [PostType.Article], which stay native.
  */
 internal fun articleWebUrl(
     ownDomain: String,
@@ -44,7 +44,7 @@ internal fun articleWebUrl(
     if (type != PostType.Article || channelId.isBlank()) return null
     val identity = authorDomain ?: ownDomain
     val post = slug.ifBlank { postId }
-    return "https://$ownDomain/apps/feed/preview/" +
+    return "https://$ownDomain/apps/feed/read/" +
         "${identity.encodeURLPathPart()}/${channelId.encodeURLPathPart()}/${post.encodeURLPathPart()}"
 }
 
@@ -129,6 +129,7 @@ internal fun ArticleWebContent(
             url = url,
             injectionScript = state.injectionScript,
             isLoading = isLoading,
+            identityHosts = setOfNotNull(post.authorOdinId?.domainName?.lowercase()),
             onAction = { action ->
                 when (action) {
                     FeedUiAction.PageStarted -> isLoading = true

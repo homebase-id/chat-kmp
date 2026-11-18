@@ -134,19 +134,22 @@ internal fun FeedWebView(
     isLoading: Boolean,
     onAction: (FeedUiAction) -> Unit,
     reloadKey: Int = 0,
+    identityHosts: Set<String> = emptySet(),
 ) {
     val uriHandler = getUriHandler()
     val feedHost = remember(url) { extractHost(url) }
     var lastInjectedScript by remember { mutableStateOf<String?>(null) }
+    var reloadIssued by remember { mutableStateOf(false) }
+    var isReady by remember { mutableStateOf(false) }
     val interceptor = remember(feedHost) {
         feedRequestInterceptor(
             allowedHost = feedHost,
-            isFeedReady = { lastInjectedScript != null },
+            identityHosts = identityHosts,
+            isFeedReady = { isReady },
             openExternally = { externalUrl: String -> uriHandler.openUrl(externalUrl) },
         )
     }
     val webView = rememberFeedWebView(url, interceptor)
-    var isReady by remember { mutableStateOf(false) }
     var minDisplayElapsed by remember { mutableStateOf(false) }
 
     LaunchedEffect(reloadKey) {
@@ -171,12 +174,26 @@ internal fun FeedWebView(
     LaunchedEffect(webView.state.isLoading, injectionScript) {
         if (!webView.state.isLoading && injectionScript != null && injectionScript != lastInjectedScript) {
             lastInjectedScript = injectionScript
-            webView.controller.evaluateJavaScript(injectionScript) {
+            webView.controller.evaluateJavaScript("$injectionScript\nwindow.$PRE_AUTH_MARKER = true;") {
                 // Navigate explicitly rather than reload(): the SPA may have
                 // client-side-redirected to /owner/login before our injection ran,
                 // and reload() would reload the login page instead of /apps/feed.
                 webView.controller.loadUrl(url)
+                reloadIssued = true
             }
+        }
+    }
+
+    // The first load is unauthenticated, and isLoading can miss the reload entirely (desktop polls it), so ready
+    // means the reloaded document, the one without the marker, has finished loading.
+    LaunchedEffect(reloadIssued) {
+        if (!reloadIssued) return@LaunchedEffect
+        while (!isReady) {
+            // A number: iOS hands a boolean back as "1", the other engines as "true".
+            webView.controller.evaluateJavaScript(
+                "!window.$PRE_AUTH_MARKER && document.readyState === 'complete' ? 1 : 0"
+            ) { if (it == "1") isReady = true }
+            delay(100)
         }
     }
 
@@ -185,7 +202,6 @@ internal fun FeedWebView(
             onAction(FeedUiAction.PageStarted)
         } else if (lastInjectedScript != null) {
             onAction(FeedUiAction.PageFinished)
-            isReady = true
         }
     }
 
@@ -284,24 +300,31 @@ private fun FeedLoadingOverlay() {
     }
 }
 
+private const val PRE_AUTH_MARKER = "homebasePreAuth"
+
 private fun feedRequestInterceptor(
     allowedHost: String?,
+    identityHosts: Set<String>,
     isFeedReady: () -> Boolean,
     openExternally: (String) -> Unit,
 ): (FeedWebRequest) -> FeedWebRequestDecision = { request ->
     when {
         !request.isForMainFrame -> FeedWebRequestDecision.Allow
+        // Desktop reports every frame's load as the main frame's; these only ever load a frame (the live blocks).
+        request.url.startsWith("about:") || request.url.startsWith("blob:") || request.url.startsWith("data:") ->
+            FeedWebRequestDecision.Allow
         else -> {
-            val isSameHost = extractHost(request.url) == allowedHost
+            val host = extractHost(request.url)
+            val isSameHost = host == allowedHost
             val path = extractPath(request.url)
             val isFeedPath = path == "/apps/feed" || path?.startsWith("/apps/feed/") == true
 
             when {
                 isSameHost && isFeedPath -> FeedWebRequestDecision.Allow
                 // Until the auth handoff completes, silently reject — the SPA may try to
-                // redirect to /owner/login before our injection lands. Once the feed is
-                // up, treat any non-/apps/ navigation as a user-driven link.
-                !isFeedReady() -> FeedWebRequestDecision.Reject
+                // redirect to /owner/login before our injection lands. Our own identity's other
+                // pages and the page's identities are in-app links: nothing to open.
+                !isFeedReady() || isSameHost || host in identityHosts -> FeedWebRequestDecision.Reject
                 else -> {
                     openExternally(request.url)
                     FeedWebRequestDecision.Reject
