@@ -49,7 +49,7 @@ internal fun EmailKeyFileSaveEffect(
                             )
                         }
                     },
-                    onSettled = { viewModel.discardKeyFile(event.path) },
+                    onFileReleased = { viewModel.discardKeyFile(event.path) },
                 )
 
                 EmailSecretsUiEvent.KeySaveFailed -> snackbarHostState.showSnackbar(

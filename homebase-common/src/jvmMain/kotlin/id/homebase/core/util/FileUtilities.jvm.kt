@@ -86,8 +86,8 @@ internal class JvmFileSystemHandler(
         suggestedName: String,
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
-        onSettled: () -> Unit,
-    ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, onSuccess, onError, onSettled)
+        onFileReleased: () -> Unit,
+    ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, onSuccess, onError, onFileReleased)
 
     override fun shareText(text: String, onError: (Throwable) -> Unit) {
         try {

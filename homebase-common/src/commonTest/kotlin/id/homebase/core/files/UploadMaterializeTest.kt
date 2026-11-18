@@ -84,7 +84,7 @@ class UploadMaterializeTest {
     }
 }
 
-private class InMemoryFileOps : FileOperationsProvider {
+internal class InMemoryFileOps : FileOperationsProvider {
     private val store = mutableMapOf<String, ByteArray>()
     private var counter = 0
 

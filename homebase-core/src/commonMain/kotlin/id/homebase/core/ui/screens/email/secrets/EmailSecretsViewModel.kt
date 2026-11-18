@@ -109,9 +109,8 @@ class EmailSecretsViewModel(
      * A file rather than the clipboard because that is what mail apps import - and on phones
      * the clipboard is not an option at all.
      *
-     * The temp is deleted as soon as the platform has taken it. It lives in the cache dir,
-     * which the CacheSweeper reaps anyway, but a private key sitting around waiting for a
-     * sweep is not a risk worth accepting for the sake of two lines.
+     * The temp is deleted as soon as the save is over, whatever its outcome. Only Android 9 without storage access, which
+     * hands the file to the share sheet, leaves it for the CacheSweeper: the receiving app reads it later.
      */
     private fun savePrivateKey(key: EmailKeyRef) {
         viewModelScope.launch {

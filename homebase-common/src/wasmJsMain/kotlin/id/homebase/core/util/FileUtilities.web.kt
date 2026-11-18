@@ -32,8 +32,8 @@ actual fun getUriHandler(): FileSystemHandler {
             suggestedName: String,
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
-            onSettled: () -> Unit,
-        ) = saveThroughAlbum(WebAlbumSaver, fileOps, file, suggestedName, onSuccess, onError, onSettled)
+            onFileReleased: () -> Unit,
+        ) = saveThroughAlbum(WebAlbumSaver, fileOps, file, suggestedName, onSuccess, onError, onFileReleased)
     }
 }
 

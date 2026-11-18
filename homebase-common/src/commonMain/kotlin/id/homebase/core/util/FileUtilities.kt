@@ -6,6 +6,7 @@ import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.safeFileName
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 
@@ -44,16 +45,16 @@ interface FileSystemHandler {
 
     /**
      * Save a file to the user's device storage (Downloads/Photos/etc), under [suggestedName] made [safeFileName].
-     * [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). [onSettled] runs once [file] is
-     * no longer needed, whatever the outcome, cancelled included, so the caller can delete it; not when it was handed to
-     * the share sheet instead, which reads it later.
+     * [onSuccess] receives a human-readable location name (e.g. "Downloads", "Photos"). [onFileReleased] runs once
+     * [file] is no longer needed, after any outcome, cancelled included, so the caller can delete it. It doesn't run when
+     * the file went to the share sheet instead, which reads it later, so it isn't a completion signal.
      */
     fun saveFile(
         file: Path,
         suggestedName: String,
         onSuccess: (String) -> Unit = {},
         onError: (Throwable) -> Unit = {},
-        onSettled: () -> Unit = {},
+        onFileReleased: () -> Unit = {},
     ) = shareFile(file, onError)
 }
 
@@ -62,8 +63,9 @@ private val saveScope = supervisedScope("saveFile")
 
 /**
  * [FileSystemHandler.saveFile] on every platform: [file] saved through [albumSaver] as a person's save, under
- * [suggestedName] made safe. [onRefused] gets the file when the album won't take it; by default that's an error saying
- * why. [onSettled] runs after every outcome but [onRefused], which settles it itself.
+ * [suggestedName] made safe. [onRefused] gets the file when the album won't take it, and says whether it handed the file
+ * on to something that reads it later; by default it reports an error and doesn't. [onFileReleased] runs last, once,
+ * unless the file was handed on.
  */
 internal fun saveThroughAlbum(
     albumSaver: AlbumSaver,
@@ -72,41 +74,38 @@ internal fun saveThroughAlbum(
     suggestedName: String,
     onSuccess: (String) -> Unit,
     onError: (Throwable) -> Unit,
-    onSettled: () -> Unit,
-    onRefused: (Path, reason: String) -> Unit = { _, reason ->
-        try {
-            onError(AlbumAccessDeniedException(reason))
-        } finally {
-            onSettled()
-        }
-    },
+    onFileReleased: () -> Unit,
+    onRefused: (Path, reason: String) -> Boolean = { _, reason -> onError(AlbumAccessDeniedException(reason)); false },
+    scope: CoroutineScope = saveScope,
 ) {
-    saveScope.launch {
-        // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
-        val saved = try {
-            albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)
-        } catch (e: CancellationException) {
-            onSettled()
-            throw e
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = "saveFile") { "Failed to save file: ${e.message}" }
-            try {
-                onError(e)
-            } finally {
-                onSettled()
-            }
-            return@launch
-        }
-        if (saved is AlbumSaveResult.Refused) return@launch onRefused(file, saved.reason)
+    scope.launch {
+        var handedOn = false
         try {
+            // The callbacks run once the save has settled, so one that throws isn't taken for a failed save.
+            val saved = try {
+                albumSaver.saveFile(file.sourcePath(), safeFileName(suggestedName), asked = true, fileOps)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Logger.e(throwable = e, tag = "saveFile") { "Failed to save file: ${e.message}" }
+                onError(e)
+                return@launch
+            }
             when (saved) {
                 is AlbumSaveResult.Saved -> onSuccess(saved.location)
                 AlbumSaveResult.Cancelled -> Unit
                 AlbumSaveResult.WriteFailed -> onError(IllegalStateException("Couldn't write $suggestedName"))
-                is AlbumSaveResult.Refused -> Unit
+                is AlbumSaveResult.Refused -> handedOn = onRefused(file, saved.reason)
             }
         } finally {
-            onSettled()
+            // Caught here, so a failed cleanup can't hide what the save itself threw.
+            if (!handedOn) {
+                try {
+                    onFileReleased()
+                } catch (e: Throwable) {
+                    Logger.e(throwable = e, tag = "saveFile") { "Releasing the saved file failed: ${e.message}" }
+                }
+            }
         }
     }
 }
