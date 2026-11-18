@@ -15,6 +15,8 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.testChatMessageStream
 import id.homebase.core.calling.CallsPreferences
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -22,6 +24,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.Collections
 import kotlin.test.Test
@@ -33,6 +36,15 @@ import kotlin.uuid.Uuid
 
 class CallLogDeleteIntegrationTest {
     private val atMs = 1_700_000_000_000L
+
+    // The chat window applies an event after reading the fixture's database on a real thread, which advanceUntilIdle
+    // doesn't wait for; checked on the test thread, waiting in real time up to 5 s.
+    private suspend fun awaitWindow(applied: () -> Boolean) {
+        repeat(500) {
+            if (applied()) return
+            withContext(Dispatchers.Default) { delay(10) }
+        }
+    }
 
     private fun callHeader(f: ChatMessageActionServiceTestFixture, conversationId: Uuid, id: Uuid, fileId: Uuid): HomebaseFile =
         OdinSystemSerializer.deserialize(
@@ -109,6 +121,7 @@ class CallLogDeleteIntegrationTest {
             )
             stream.loadConversation(convo)
             advanceUntilIdle()
+            awaitWindow { stream.isMessageInWindow(convo, id) }
             assertTrue(stream.isMessageInWindow(convo, id), "the call event is a message in its chat before the delete")
 
             CallLogDeleter { messageId, everyone -> actions.deleteMessage(messageId, everyone) }.delete(id, deleteForEveryone = false)
@@ -120,6 +133,7 @@ class CallLogDeleteIntegrationTest {
                 f.dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, f.chatDriveId, id)?.isSoftDeleted() == true,
                 "DriveMainIndex row is soft-deleted",
             )
+            awaitWindow { stream.messageInWindow(convo, id)?.isDeleted ?: true }
             val inChat = stream.messageInWindow(convo, id)
             assertTrue(
                 inChat == null || inChat.isDeleted,
