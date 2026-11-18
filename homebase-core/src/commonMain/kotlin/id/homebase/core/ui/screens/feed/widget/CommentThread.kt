@@ -44,6 +44,7 @@ import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.PostCommentItem
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.widget.keepSnackbarsAbove
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.delete
@@ -199,7 +200,8 @@ private fun CommentRow(
                             onValueChange = { draft = it },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 4.dp),
+                                .padding(top = 4.dp)
+                                .keepSnackbarsAbove(),
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
