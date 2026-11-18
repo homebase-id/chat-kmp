@@ -118,6 +118,8 @@ import id.homebase.chat.agentui.AgentUiTreeLoader
 import id.homebase.chat.agentui.LocalAgentUiConversation
 import id.homebase.chat.agentui.agentUiConversation
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.widget.LocalSnackbarAboveInputHost
+import id.homebase.core.widget.keepSnackbarsAbove
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.LocalContactCardSnackbar
@@ -312,7 +314,8 @@ fun ConversationContent(
     // too, via `MessageInputBar`'s onPayloadRenderersChange callback.
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
-    val snackbarHostState = remember { SnackbarHostState() }
+    val sharedSnackbarHost = LocalSnackbarAboveInputHost.current
+    val snackbarHostState = sharedSnackbarHost ?: remember { SnackbarHostState() }
     val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
 
     var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
@@ -1410,7 +1413,7 @@ fun ConversationContent(
                     } else {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
-                    SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+                    if (sharedSnackbarHost == null) SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
                 }
 
                 AnimatedVisibility(
@@ -1656,7 +1659,7 @@ fun ConversationContent(
                                 onUiAction(ConversationListUiAction.CancelEditMessage)
                             },
                             onAddAttachmentClick = { toggleAttachmentSheet() },
-                            modifier = Modifier.focusProperties { canFocus = inputFocusable },
+                            modifier = Modifier.focusProperties { canFocus = inputFocusable }.keepSnackbarsAbove(),
                             attachmentActions = popoverAttachmentActions,
                             onAttachmentPopoverDismissed = { focusRequester.requestFocus() },
                         ) {

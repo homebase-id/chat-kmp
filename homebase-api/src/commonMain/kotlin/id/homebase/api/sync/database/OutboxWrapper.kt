@@ -173,9 +173,7 @@ class OutboxWrapper(
         }
     }
 
-    /** Guarded cancel: deletes the row only when no worker holds it
-     *  (checkOutStamp IS NULL). Returns rows deleted — 0 means the row is
-     *  either gone or in flight; see [OutboxSync.cancelPending]. */
+    /** Deletes the row only when no worker holds it; returns rows deleted, 0 when it's gone or in flight. */
     suspend fun deleteByIfNotCheckedOut(
         driveId: Uuid,
         uniqueId: Uuid,
@@ -185,14 +183,21 @@ class OutboxWrapper(
         }
     }
 
-    /** Deletes the row for (driveId, uniqueId) if no worker holds it, and returns it. One write, so no checkout lands between. */
-    suspend fun deleteIdle(driveId: Uuid, uniqueId: Uuid): Outbox? = databaseManager.withWriteValue {
-        delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
-            ?.takeIf { it.checkOutStamp == null }
-            ?.also { delegate.deleteByRowId(it.rowId) }
+    /**
+     * The row for (driveId, uniqueId), deleted when no worker holds it, as one write saw it; null when there's none.
+     * One write, so no checkout lands between the look and the delete.
+     */
+    suspend fun removeIdle(driveId: Uuid, uniqueId: Uuid): IdleRemoval? = databaseManager.withWriteValue {
+        delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()?.let { row ->
+            val idle = row.checkOutStamp == null
+            if (idle) delegate.deleteByRowId(row.rowId)
+            IdleRemoval(row, deleted = idle)
+        }
     }
 
     suspend fun deleteAll(): Long {
         return databaseManager.withWriteValue { delegate.deleteAll().value }
     }
 }
+
+class IdleRemoval(val row: Outbox, val deleted: Boolean)

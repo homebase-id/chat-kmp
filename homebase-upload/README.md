@@ -68,7 +68,7 @@ disposable."* So upload temps live in **two** dirs under the app cache dir, swep
 - **`outbox-temp/`** — cleaned along the **outbox's own lifecycle** (`homebase-api` sync layer,
   *outside this module* — it's the hand-off point where we deliver the encrypted file to the
   outbox): each file is deleted when its send **succeeds** (`cleanupPayloadTempFiles`), or when its
-  row is **dropped** after ~48h of failed retries or **replaced** (`deleteEndedRowFiles`), and the whole
+  row is **dropped** after ~48h of failed retries, **replaced** or **cancelled** (`deleteEndedRowFiles`), and the whole
   dir is wiped on **logout**. The `CacheSweeper` never touches it (a pending/offline send's payload
   must survive). Its **self-heal for crash-orphans** (a process death between server-ack and the
   outbox's per-file cleanup leaves a file with no live row) is **built + tested**:

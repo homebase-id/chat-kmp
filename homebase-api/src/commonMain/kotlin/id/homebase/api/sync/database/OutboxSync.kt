@@ -834,22 +834,15 @@ class OutboxSync(
      * silent lie while the request still ships. Callers branch on the returned
      * [CancelOutcome] instead of guessing.
      */
-    public suspend fun cancelPending(driveId: Uuid, uniqueId: Uuid): CancelOutcome {
-        val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
-            ?: return CancelOutcome.NothingPending
-        val isCreate = row.uploadType.isCreate()
-        if (row.checkOutStamp != null) return CancelOutcome.InFlight(isCreate)
-
-        val deleted = databaseManager.outbox.deleteByIfNotCheckedOut(driveId, uniqueId)
-        if (deleted == 0L) {
-            // Raced: between the select and the guarded delete the row was
-            // either checked out or drained. Re-read to report which.
-            val now = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
-                ?: return CancelOutcome.NothingPending
-            return CancelOutcome.InFlight(now.uploadType.isCreate())
-        }
+    public suspend fun cancelPending(driveId: Uuid, uniqueId: Uuid): CancelOutcome = withContext(NonCancellable) {
+        val seen = databaseManager.outbox.removeIdle(driveId, uniqueId) ?: return@withContext CancelOutcome.NothingPending
+        val isCreate = seen.row.uploadType.isCreate()
+        if (!seen.deleted) return@withContext CancelOutcome.InFlight(isCreate)
         Logger.i("OutboxSync: cancelPending removed queued ${if (isCreate) "create" else "row"} uniqueId=$uniqueId")
-        return if (isCreate) CancelOutcome.CancelledCreate else CancelOutcome.Cancelled
+        clearLastUploadError(driveId, uniqueId)
+        // Before returning, so a caller that queues again under this key can't race the cleanup.
+        withContext(ioDispatcher) { deleteEndedRowFiles(seen.row) }
+        if (isCreate) CancelOutcome.CancelledCreate else CancelOutcome.Cancelled
     }
 
     /**
@@ -1100,7 +1093,7 @@ class OutboxSync(
         return withContext(NonCancellable) {
             // Only an idle row is deleted here with its files; one a worker checked out (perhaps since the read
             // above) is removed without them, and its upload deletes them when it ends.
-            val replaced = databaseManager.outbox.deleteIdle(driveId, uniqueId)
+            val replaced = databaseManager.outbox.removeIdle(driveId, uniqueId)?.takeIf { it.deleted }?.row
             if (replaced == null && existing != null) databaseManager.outbox.deleteBy(driveId, uniqueId)
             val result = tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
             if (replaced != null) scope.launch { deleteEndedRowFiles(replaced) }
@@ -1159,13 +1152,13 @@ class OutboxSync(
     }
 
     /**
-     * A row that ended (sent, dropped, replaced, or checked in after it was replaced) no longer needs its payload files.
+     * A row that ended (sent, dropped, replaced, cancelled, or checked in after it was replaced) no longer needs its payload files.
      * They're deleted with their `hls_<uuid>/` directories, except a file the row now queued under the same key lists, or
      * anything in an `hls_<uuid>/` directory that row uses: an edit coalesced into a pending send reuses its media.
      * Never fails the caller: a failure is logged.
      */
     private suspend fun deleteEndedRowFiles(row: Outbox) {
-        runCatching {
+        try {
             val payloads = payloadsOf(row.uploadType, row.json.decodeToString())
             if (payloads.isNullOrEmpty()) return
             val current = databaseManager.outbox.selectByDriveAndUnique(row.driveId, row.uniqueId)
@@ -1184,12 +1177,14 @@ class OutboxSync(
                 }
             }
             cleanupHlsScratch(gone, fileSystem)
-        }.onFailure {
-            Logger.w("OutboxSync: payload cleanup failed for uniqueId=${row.uniqueId}", it)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w("OutboxSync: payload cleanup failed for uniqueId=${row.uniqueId}", e)
         }
     }
 
-    /** A check-in that matched no row means the row was replaced or cancelled while it uploaded: nobody else ends it. */
+    /** A check-in that matched no row means the row was replaced while it uploaded: nobody else ends it. */
     private suspend fun checkedInOrGone(row: Outbox, rowsCheckedIn: Long) {
         if (rowsCheckedIn == 0L) deleteEndedRowFiles(row)
     }
