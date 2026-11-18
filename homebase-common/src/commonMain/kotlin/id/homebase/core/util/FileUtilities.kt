@@ -158,7 +158,7 @@ internal suspend fun FileOperationsProvider.stageForShare(source: String, name: 
 }
 
 // Logged, not thrown, so a failed delete can't hide what the save itself threw.
-private fun FileOperationsProvider.deleteQuietly(path: String) {
+fun FileOperationsProvider.deleteQuietly(path: String) {
     runCatching { deleteTempFile(path) }.onFailure { Logger.e(throwable = it, tag = "saveFile") { "Deleting the saved file failed" } }
 }
 

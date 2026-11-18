@@ -30,7 +30,7 @@ sealed interface ConversationListUiEvent {
     data class OpenFile(val filePath: String) : ConversationListUiEvent
     /** The person's own file, which the save leaves alone. */
     data class SaveFileToDevice(val filePath: String, val suggestedName: String) : ConversationListUiEvent
-    /** The album refused a save; the screen offers the decrypted copy another way. */
+    /** The album refused a save. */
     data class OfferRefusedSave(val refused: AlbumSaveResult.Refused) : ConversationListUiEvent
     /** Already saved, at [location] (a folder name or a path). */
     data class FileSaved(val location: String) : ConversationListUiEvent

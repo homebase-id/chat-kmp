@@ -42,13 +42,13 @@ import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.saveReceived
+import id.homebase.core.util.showSaveFailed
+import id.homebase.core.util.showSavedTo
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_copy_image
 import id.homebase.resources.chat_image_copied
 import id.homebase.resources.error_unknown
-import id.homebase.resources.file_save_failed
-import id.homebase.resources.file_saved_to
 import id.homebase.resources.file_share_failed
 import id.homebase.resources.vault_chat_image_name
 import id.homebase.resources.vault_save_failed
@@ -282,9 +282,6 @@ fun rememberSharedMediaSaver(
     val fileOps = org.koin.compose.koinInject<FileOperationsProvider>()
     val albumSaver = org.koin.compose.koinInject<AlbumSaver>()
     val fileSystemHandler = getUriHandler()
-    suspend fun saveFailed(detail: String?) = snackbarHostState.showSnackbar(
-        TranslationUtil.getString(MR.string.file_save_failed, detail ?: TranslationUtil.getString(MR.string.error_unknown)),
-    )
     return remember(driveId) {
         { item ->
             scope.launch {
@@ -294,15 +291,14 @@ fun rememberSharedMediaSaver(
                         driveFileProvider, fileOps, driveId, item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey),
                     )
                     when (saved) {
-                        is AlbumSaveResult.Saved ->
-                            snackbarHostState.showSnackbar(TranslationUtil.getString(MR.string.file_saved_to, saved.location))
-                        // The album won't take it (Android 9 without storage access): offered another way instead.
-                        is AlbumSaveResult.Refused -> fileSystemHandler.offerRefused(saved, onError = { e -> scope.launch { saveFailed(e.message) } })
+                        is AlbumSaveResult.Saved -> snackbarHostState.showSavedTo(saved.location)
+                        is AlbumSaveResult.Refused ->
+                            fileSystemHandler.offerRefused(saved, onError = { e -> scope.launch { snackbarHostState.showSaveFailed(e.message) } })
                         AlbumSaveResult.Cancelled -> Unit
-                        AlbumSaveResult.WriteFailed -> saveFailed(null)
+                        AlbumSaveResult.WriteFailed -> snackbarHostState.showSaveFailed(null)
                     }
                 } catch (e: Exception) {
-                    saveFailed(e.message)
+                    snackbarHostState.showSaveFailed(e.message)
                 }
             }
         }

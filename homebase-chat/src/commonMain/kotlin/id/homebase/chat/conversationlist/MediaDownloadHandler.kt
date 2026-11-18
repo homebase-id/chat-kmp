@@ -13,6 +13,7 @@ import id.homebase.api.file.FileTooLargeForMemoryException
 import id.homebase.api.file.extensionForContentType
 import id.homebase.chat.agentui.agentUiImagePayloads
 import id.homebase.chat.conversationlist.ConversationListUiEvent.FileSaved
+import id.homebase.chat.conversationlist.ConversationListUiEvent.OfferRefusedSave
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
@@ -263,12 +264,11 @@ internal class MediaDownloadHandler(
         }
     }
 
-    // Refused: the album won't take it (Android 9 without storage access), so the screen offers it another way.
     private fun report(saved: AlbumSaveResult, failed: StringResource) = when (saved) {
         is AlbumSaveResult.Saved -> sendEvent(FileSaved(saved.location))
         AlbumSaveResult.Cancelled -> Unit
         AlbumSaveResult.WriteFailed -> sendEvent(ShowErrorMessage(failed))
-        is AlbumSaveResult.Refused -> sendEvent(ConversationListUiEvent.OfferRefusedSave(saved))
+        is AlbumSaveResult.Refused -> sendEvent(OfferRefusedSave(saved))
     }
 
     private fun closePreviewOf(fileId: Uuid, payloadKey: String) {
