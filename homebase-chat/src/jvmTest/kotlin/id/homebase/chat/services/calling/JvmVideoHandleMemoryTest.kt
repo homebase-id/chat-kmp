@@ -82,11 +82,13 @@ class JvmVideoHandleMemoryTest {
             val first = assertNotNull(handle.frame.value)
             assertEquals(90, first.rotation)
             assertEquals(1280, first.image.width)
+            assertEquals(720 to 1280, handle.frameSize.value, "a portrait phone reports its upright size so the call screen letterboxes it")
 
             Thread.sleep(60)
             push(source, 640, 360, rotation = 0)
             val second = assertNotNull(handle.frame.value)
             assertEquals(640, second.image.width)
+            assertEquals(640 to 360, handle.frameSize.value)
             var drewStale = false
             handle.draw(first) { drewStale = true }
             assertFalse(drewStale, "a frame whose bitmap was resized away is never drawn")
