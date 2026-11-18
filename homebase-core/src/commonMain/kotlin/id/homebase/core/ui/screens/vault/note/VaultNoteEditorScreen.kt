@@ -56,6 +56,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.chat.widget.RichTextEditorButtons
 import id.homebase.core.util.applyMarkDownContent
+import id.homebase.core.util.pureImePadding
 import id.homebase.core.widget.SnackbarAboveInput
 import id.homebase.core.widget.keepSnackbarsAbove
 import id.homebase.resources.MR
@@ -219,11 +220,10 @@ fun VaultNoteEditorScreen(
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
-                val pureImeBottomDp = with(imeState.density) { imeState.pureImeBottomPx.toDp() }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = pureImeBottomDp),
+                        .pureImePadding(imeState),
                 ) {
                     NoteTitle(
                         title = uiState.title,
