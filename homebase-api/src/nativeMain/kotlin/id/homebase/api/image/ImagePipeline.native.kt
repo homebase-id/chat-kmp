@@ -89,8 +89,7 @@ private class ImageIoSource(
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
             ?: throw IllegalStateException("Couldn't create decode options")
-        // ImageIO aliases on reductions under 2x and can land a pixel off the plan, so it makes one of at least 2x or
-        // none, even under the memory guard: vImage does the rest from a full decode.
+        // ImageIO aliases under 2x and can land a pixel off the plan, so it steps 2x or more, or not at all.
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
         val guarded = memoryGuardScale(displayedSize, minLongEdge)?.let { ceil(longEdge * it).toInt() }
             ?.takeIf { it <= longEdge / 2 } ?: Int.MAX_VALUE

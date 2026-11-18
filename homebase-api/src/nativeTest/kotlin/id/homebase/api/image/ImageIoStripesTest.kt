@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-// Sources over 24 MP, so every decode goes through the memory guard.
+// Sources over the memory guard's 24 MP limit.
 class ImageIoStripesTest {
     private fun stripes(width: Int, height: Int) =
         ImageUtils.encodeArgbToPng(ArgbImage(IntArray(width * height) { if (it % 2 == 0) BLACK else WHITE }, width, height))
