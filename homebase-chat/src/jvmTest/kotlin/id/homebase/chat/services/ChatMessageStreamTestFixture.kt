@@ -38,10 +38,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /** A real [ChatMessageStream] on an in-memory database, without DI. */
 internal class ChatMessageStreamTestFixture private constructor(
@@ -247,8 +247,8 @@ internal suspend fun ChatMessageStream.awaitMessage(
     settled: (MessageUiModel?) -> Boolean,
 ): MessageUiModel? {
     fun ChatMessagesData.message() = (this as? ChatMessagesData.Messages)?.window?.messages?.firstOrNull { it.id == messageId }
-    withContext(Dispatchers.Default) {
+    val matched = withContext(Dispatchers.Default) {
         withTimeoutOrNull(5_000) { observeMessages(conversationId).first { it is ChatMessagesData.Messages && settled(it.message()) } }
     }
-    return observeMessages(conversationId).value.message()
+    return if (matched != null) matched.message() else messageInWindow(conversationId, messageId)
 }
