@@ -21,9 +21,7 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
@@ -101,6 +99,7 @@ import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
 import id.homebase.core.widget.DialogTitle
+import id.homebase.core.widget.SnackbarAboveInput
 import id.homebase.resources.MR
 import id.homebase.resources.action_cannot_be_undone
 import id.homebase.resources.cancel
@@ -876,8 +875,8 @@ fun ConversationListUi(
         }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) {
-        Box(modifier = Modifier.fillMaxSize()) {
+    Surface(color = MaterialTheme.colorScheme.background) {
+        SnackbarAboveInput(snackbarHostState) {
             ListDetailPaneScaffold(
                 modifier = Modifier.fillMaxSize().onGloballyPositioned {
                     scaffoldLeft = it.positionInRoot().x
@@ -999,7 +998,7 @@ fun ConversationListUi(
                 },
                 )
 
-            // Inside the Scaffold, so snackbars still draw above it. The bubble that opened it
+            // Inside SnackbarAboveInput, whose host draws after it, so snackbars still show above it. The bubble that opened it
             // belongs to the pane's SharedTransitionLayout, out of reach of this one, so what is
             // left here is a crossfade run in step with the pane's.
             if (isExpanded) {
