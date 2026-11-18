@@ -148,6 +148,34 @@ class FeedTimelineSyncAndErrorTest {
         }
     }
 
+    // A feed push names the post by globalTransitId (new post, comment) or our own post's fileId (reaction).
+    @Test
+    fun findStoredPostResolvesNotificationIdsPastTheLoadedPages() = feedTest { env, service ->
+        env.seedBothDrives()
+        val gtid = Uuid.random()
+        val followed = postFile(gtid, feedDrive, "old followed", createdMs = 1).let {
+            it.copy(
+                fileMetadata = it.fileMetadata.copy(
+                    globalTransitId = gtid,
+                    appData = it.fileMetadata.appData.copy(uniqueId = null),
+                ),
+            )
+        }
+        val ownId = Uuid.random()
+        val own = postFile(ownId, channelDrive, "old own", createdMs = 2)
+        env.seed(feedDrive, followed)
+        env.seed(channelDrive, own)
+        service.start()
+        advanceUntilIdle()
+        service.timeline.first { it.isNotEmpty() }
+        assertTrue(service.timeline.value.none { it.id == gtid }, "the followed post sits past the first page")
+
+        assertEquals("old followed", service.findStoredPost(gtid)?.caption)
+        assertEquals(ownId, service.findStoredPost(own.fileId)?.id)
+        assertEquals(ownId, service.findStoredPost(ownId)?.id)
+        assertNull(service.findStoredPost(Uuid.random()))
+    }
+
     @Test
     fun successfulButEmptyColdLoadReportsNoError() = feedTest { _, service ->
         service.refresh()

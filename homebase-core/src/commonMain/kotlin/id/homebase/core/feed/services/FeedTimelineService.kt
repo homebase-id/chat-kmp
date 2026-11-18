@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.config.feedLabeledDrive
@@ -230,6 +231,22 @@ class FeedTimelineService(
     }
 
     suspend fun refresh() = coldLoad()
+
+    // A notification names its post by globalTransitId or fileId, and the post can sit past the loaded pages.
+    suspend fun findStoredPost(id: Uuid): FeedPostItem? {
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
+        val index = databaseManager.driveMainIndex
+        for (drive in sourceDrives) {
+            val row = index.selectByIdentityAndDriveAndUnique(identityId, drive, id)
+                ?: index.selectByIdentityAndDriveAndGlobal(identityId, drive, id)
+                ?: index.selectByIdentityAndDriveAndFile(identityId, drive, id)
+                ?: continue
+            val file = OdinSystemSerializer.deserialize<HomebaseFile>(row.jsonHeader)
+            if (file.isSoftDeleted() || file.fileMetadata.appData.fileType != FeedProtocol.PostFileType) continue
+            return file.toFeedPostItem()
+        }
+        return null
+    }
 
     // A followed identity's post lands on the feed drive as a reference with NO uniqueId, only a globalTransitId.
     // Keying on uniqueId alone dropped every one, so live pushes for followed posts never applied incrementally.
