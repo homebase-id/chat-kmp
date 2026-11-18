@@ -488,7 +488,7 @@ private fun NameBadge(text: String) {
 @Composable
 internal fun nodeDetails(node: FilesyncNode): String {
     if (node.removed) {
-        return node.versionMs?.let { deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(it))) } ?: stringResource(MR.string.filesync_deleted)
+        return node.shownRemovedMs?.let { deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(it))) } ?: stringResource(MR.string.filesync_deleted)
     }
     if (node.isFolder) return ""
     return listOfNotNull(

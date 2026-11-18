@@ -66,7 +66,7 @@ data class FilesyncNode(
 
     internal val notOnComputers: Boolean = nameKey == FilesyncNames.stateFolderKey
 
-    /** Set while it's in Recently deleted: nothing writes to a removed node, so its last version is its removal. An unknown time is the newest: never old enough to purge. */
+    /** Its removal's time while in Recently deleted; unknown is the newest, never purged. */
     val removedMs: Long? get() = if (removed) versionMs ?: Long.MAX_VALUE else null
 
     /** [removedMs] to show, null when unknown. */
