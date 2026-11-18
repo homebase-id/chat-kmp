@@ -4,6 +4,7 @@ package id.homebase.chat.services.calling.history
 
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.chat.calling.CallEventDescriptor
@@ -15,11 +16,14 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.testChatMessageStream
 import id.homebase.core.calling.CallsPreferences
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
+import java.util.Collections
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -71,6 +75,16 @@ class CallLogDeleteIntegrationTest {
                 .convertFileHeaderToDriveMainIndexRecord(f.testIdentityId, f.chatDriveId, callHeader(f, convo, id, fileId))
             MainIndexMetaHelpers.upsertDriveMainIndex(f.dbm, record)
 
+            // Lets a CI failure say whether the delete's BatchReceived reached the bus, and from which thread.
+            val events = Collections.synchronizedList(mutableListOf<String>())
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                f.eventBus.events.collect { e ->
+                    val files = (e as? BackendEvent.DataEvent.BatchReceived)?.batchData
+                        ?.joinToString(prefix = "[", postfix = "]") { "${it.fileMetadata.appData.uniqueId}:${it.fileState}:${it.fileMetadata.updated}" }
+                        .orEmpty()
+                    events += "${e::class.simpleName}$files@${Thread.currentThread().name}"
+                }
+            }
             val history = CallHistoryService(
                 credentialsManager = f.credentialsManager,
                 dbm = f.dbm,
@@ -107,7 +121,11 @@ class CallLogDeleteIntegrationTest {
                 "DriveMainIndex row is soft-deleted",
             )
             val inChat = stream.messageInWindow(convo, id)
-            assertTrue(inChat == null || inChat.isDeleted, "the chat window drops the message or keeps only a deleted tombstone")
+            assertTrue(
+                inChat == null || inChat.isDeleted,
+                "the chat window drops the message or keeps only a deleted tombstone; window has " +
+                    "id=${inChat?.id} fileId=${inChat?.fileId} deleted=${inChat?.isDeleted} modified=${inChat?.modified}; events=$events",
+            )
             val deletes = f.drainOutbox().filter { it.uploadType == DriveOutboxUploader.DeleteFile }
             val payload = OdinSystemSerializer.deserialize<id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest>(
                 deletes.single().json.decodeToString(),
