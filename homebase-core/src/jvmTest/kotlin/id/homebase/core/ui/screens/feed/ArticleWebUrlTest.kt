@@ -14,14 +14,14 @@ class ArticleWebUrlTest {
     ) = articleWebUrl("frodo.dotyou.cloud", author, type, channel, slug, "post-id")
 
     @Test
-    fun articleOpensTheFeedPreviewPageOnOwnHost() {
-        assertEquals("https://frodo.dotyou.cloud/apps/feed/preview/frodo.dotyou.cloud/chan-id/my-post", url())
+    fun articleOpensTheFeedReaderPageOnOwnHost() {
+        assertEquals("https://frodo.dotyou.cloud/apps/feed/read/frodo.dotyou.cloud/chan-id/my-post", url())
     }
 
     @Test
     fun otherAuthorIsAddressedByIdentityKeyButServedFromOwnHost() {
         assertEquals(
-            "https://frodo.dotyou.cloud/apps/feed/preview/sam.dotyou.cloud/chan-id/my-post",
+            "https://frodo.dotyou.cloud/apps/feed/read/sam.dotyou.cloud/chan-id/my-post",
             url(author = "sam.dotyou.cloud"),
         )
     }
@@ -29,11 +29,11 @@ class ArticleWebUrlTest {
     @Test
     fun blankSlugFallsBackToPostIdAndSegmentsAreEncoded() {
         assertEquals(
-            "https://frodo.dotyou.cloud/apps/feed/preview/frodo.dotyou.cloud/chan-id/post-id",
+            "https://frodo.dotyou.cloud/apps/feed/read/frodo.dotyou.cloud/chan-id/post-id",
             url(slug = ""),
         )
         assertEquals(
-            "https://frodo.dotyou.cloud/apps/feed/preview/frodo.dotyou.cloud/chan-id/a%2Fb",
+            "https://frodo.dotyou.cloud/apps/feed/read/frodo.dotyou.cloud/chan-id/a%2Fb",
             url(slug = "a/b"),
         )
     }
