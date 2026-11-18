@@ -840,8 +840,8 @@ class OutboxSync(
         val isCreate = row.uploadType.isCreate()
         if (row.checkOutStamp != null) return CancelOutcome.InFlight(isCreate)
 
-        val deleted = databaseManager.outbox.deleteByIfNotCheckedOut(driveId, uniqueId)
-        if (deleted == 0L) {
+        val cancelled = databaseManager.outbox.deleteIdle(driveId, uniqueId)
+        if (cancelled == null) {
             // Raced: between the select and the guarded delete the row was
             // either checked out or drained. Re-read to report which.
             val now = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
@@ -849,6 +849,7 @@ class OutboxSync(
             return CancelOutcome.InFlight(now.uploadType.isCreate())
         }
         Logger.i("OutboxSync: cancelPending removed queued ${if (isCreate) "create" else "row"} uniqueId=$uniqueId")
+        scope.launch { deleteEndedRowFiles(cancelled) }
         return if (isCreate) CancelOutcome.CancelledCreate else CancelOutcome.Cancelled
     }
 
@@ -1159,7 +1160,7 @@ class OutboxSync(
     }
 
     /**
-     * A row that ended (sent, dropped, replaced, or checked in after it was replaced) no longer needs its payload files.
+     * A row that ended (sent, dropped, replaced, cancelled, or checked in after it was replaced) no longer needs its payload files.
      * They're deleted with their `hls_<uuid>/` directories, except a file the row now queued under the same key lists, or
      * anything in an `hls_<uuid>/` directory that row uses: an edit coalesced into a pending send reuses its media.
      * Never fails the caller: a failure is logged.
