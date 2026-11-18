@@ -484,7 +484,9 @@ private fun NameBadge(text: String) {
 /** A file's size and date, nothing for a folder; a deleted node says when it was deleted instead. */
 @Composable
 internal fun nodeDetails(node: FilesyncNode): String {
-    if (node.removed) return node.shownRemovedMs?.let { deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(it))) } ?: stringResource(MR.string.filesync_deleted)
+    if (node.removed) {
+        return node.shownRemovedMs?.let { deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(it))) } ?: stringResource(MR.string.filesync_deleted)
+    }
     if (node.isFolder) return ""
     return listOfNotNull(
         node.sizeBytes?.let { formatBytes(it) },
