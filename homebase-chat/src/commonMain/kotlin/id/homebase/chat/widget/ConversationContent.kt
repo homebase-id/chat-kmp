@@ -283,6 +283,7 @@ fun ConversationContent(
     onCameraClick: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    snackbarHostState: SnackbarHostState,
 ) {
     val savedStickers by koinInject<StickerStream>().stickers.collectAsStateWithLifecycle()
     val savedStickerSourceIds = remember(savedStickers) { savedStickers.mapNotNullTo(HashSet()) { it.sourceFileId } }
@@ -312,7 +313,6 @@ fun ConversationContent(
     // too, via `MessageInputBar`'s onPayloadRenderersChange callback.
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
-    val snackbarHostState = remember { SnackbarHostState() }
     val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
 
     var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }

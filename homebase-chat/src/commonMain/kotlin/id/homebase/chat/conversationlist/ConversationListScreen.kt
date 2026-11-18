@@ -890,7 +890,9 @@ fun ConversationListUi(
         }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) {
+    // While the composer is on screen the chat shows these above it instead, where they don't cover the input.
+    val composerShown = detail is ChatDetail.Open && !hasOverlay
+    Scaffold(snackbarHost = { if (!composerShown) SnackbarHost(snackbarHostState) }) {
         Box(modifier = Modifier.fillMaxSize()) {
             ListDetailPaneScaffold(
                 modifier = Modifier.fillMaxSize().onGloballyPositioned {
@@ -963,6 +965,7 @@ fun ConversationListUi(
                                     onUiAction = if (closing) ({}) else onUiAction,
                                     hoistMediaViewer = isExpanded,
                                     vaultActive = uiState.vaultActive,
+                                    snackbarHostState = snackbarHostState,
                                 )
                             }
                         } else {
