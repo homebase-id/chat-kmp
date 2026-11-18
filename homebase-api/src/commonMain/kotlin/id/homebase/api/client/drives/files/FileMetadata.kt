@@ -19,6 +19,8 @@ data class FileMetadata(
     @Serializable(with = UuidSerializer::class) val globalTransitId: Uuid? = null,
     val created: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val updated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
+    /** When its [versionTag] was written; a share change moves [updated] alone. */
+    val versionUpdated: UnixTimeUtc? = null,
     val transitCreated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val transitUpdated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     /** False once the header is decrypted or on synced copies; read HomebaseFile.serverFileIsEncrypted for what the server stores. */

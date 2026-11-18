@@ -92,6 +92,8 @@ class DesktopChatNotificationBridge(
             } ?: continue
 
             if (message.isDeleted || message.isStatusMessage || message.isPendingSend) continue
+            // Mobile gets no push for these (the sender turns it off); desktop matches.
+            if (message.messageContent?.pushesToRecipient == false) continue
             if (message.isAuthoredBy(domain)) continue
             if (message.created < floor) continue
             if (!notifiedMessageIds.add(message.id)) continue

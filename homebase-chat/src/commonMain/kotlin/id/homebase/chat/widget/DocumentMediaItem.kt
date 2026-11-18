@@ -49,7 +49,8 @@ fun DocumentMediaItem(
     previewImageData: HomebaseImageData? = null,
     showDownloadButton: Boolean = true,
 ) {
-    val fileName = payload.descriptorContent ?: payload.key
+    // An older markdown document's name is its whole descriptor content, which appContent() returns.
+    val fileName = payload.filename() ?: payload.appContent()?.takeIf { it.isNotBlank() } ?: payload.key
     val fileSize = payload.bytesWritten?.formatFileSize() ?: ""
     val fileIcon = fileKindOf(payload.contentType, fileName).icon
 

@@ -11,7 +11,7 @@ import id.homebase.api.client.withRetry
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.clipboard.platformFileFromPath
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -114,7 +114,8 @@ class HomebaseImageLoader(
     suspend fun loadThumbnail(
         data: HomebaseImageData,
         targetSize: ImageSize,
-        retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
+        retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG,
+        crop: Boolean = false,
     ): CachedImage? {
         // Check pending file first - no retry needed for local files
         if (data.isPending) {
@@ -130,11 +131,7 @@ class HomebaseImageLoader(
             return loadFullPayload(data, retryConfig)
         }
 
-        // Snap the measured display size to the best native thumbnail the server
-        // actually stores. Keying the request (and thus the disk cache) by the
-        // native size deduplicates entries across measured sizes/devices and lets
-        // the read hit what the sender seeded under the optimistic fileId.
-        val nativeSize = thumbSizeToRequest(targetSize, data)
+        val nativeSize = selectThumbSize(targetSize, data.availableThumbSizes, crop, data.shortfallPercent)
 
         return withRetry(retryConfig, TAG) {
             val response = try {

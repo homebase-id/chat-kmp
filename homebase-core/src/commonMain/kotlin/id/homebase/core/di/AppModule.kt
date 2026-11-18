@@ -70,12 +70,15 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
+import id.homebase.api.client.calling.IceServersProvider
+import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.calling.CallViewModel
 import id.homebase.chat.calling.history.CallLogDeleter
 import id.homebase.chat.calling.history.CallsViewModel
 import id.homebase.chat.services.calling.history.CallHistoryService
 import id.homebase.core.calling.CallsPreferences
+import id.homebase.chat.services.calling.CallIceServerSource
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.platformCallEngineFactory
 import id.homebase.chat.services.livelocation.LiveLocationShareService
@@ -487,7 +490,7 @@ val appModule = module {
             eventBus = get(),
             relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push, wakeCause = null) },
             engineFactory = platformCallEngineFactory().takeIf { get<CallsPreferences>().enabled.value },
-            stunUrls = get(),
+            iceServers = CallIceServerSource({ peer -> get<IceServersProvider>().iceServers(peer) }, get<StunUrlStore>().urls)::forCall,
             scope = get(),
             onCallActiveChanged = { active ->
                 get<AuthConnectionCoordinator>().run { if (active) holdWebSocket(CALL_WS_HOLD) else releaseWebSocket(CALL_WS_HOLD) }
@@ -1028,7 +1031,7 @@ val appModule = module {
     factoryOf(::DefaultProfileCardSource) bind ProfileCardSource::class
     singleOf(::CardPreferences)
     single { CardRepository(ProfileRepositoryCardStore(get())) }
-    singleOf(::CardTapShare)
+    single { CardTapShare(get<DeveloperPreferences>(), get<CardPreferences>(), get<OwnerSessionRepository>()) }
     singleOf(::ChatMessageActionService)
     single { ViewOnceActions(get(), get()) }
     single {
@@ -1142,7 +1145,7 @@ val appModule = module {
             // Nor on web, where the cache is gone at the next reload.
             mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
             ensureThumbnail = { item, size ->
-                files.ensureThumbCached(item.driveId, item.fileId, item.payload.key, size.pixelWidth, size.pixelHeight, item.payload.lastModified)
+                files.ensureThumbCached(item.driveId, item.fileId, item.shown.key, size.pixelWidth, size.pixelHeight, item.shown.lastModified)
             },
         )
     }
@@ -1157,7 +1160,7 @@ val appModule = module {
     single { FilesyncMemberWrites(get<FilesyncSharing>(), get(), get()) }
     single { FilesyncPeerSends(get(), get<FilesyncSharing>(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit, get(), get()) }
-    single { FilesyncEditor(get(), get(), get()) }
+    single { FilesyncEditor(get(), get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
 
@@ -1299,6 +1302,7 @@ val appModule = module {
             locationService = get(),
             driveSyncManager = get(),
             optionalDriveActivation = get(),
+            albumSaver = get(),
             vaultFileSaver = get(),
         )
     }
@@ -1461,6 +1465,7 @@ val appModule = module {
             contactInfo = get(),
             reportingUrlProvider = get(),
             permissionService = get(),
+            driveSyncManager = get(),
         )
     }
     viewModel { params ->
@@ -1480,6 +1485,7 @@ val appModule = module {
             fileOperationsProvider = get(),
             recipientLookup = get(),
             payloadDownloadService = get(),
+            albumSaver = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {
@@ -1732,7 +1738,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         }
         val exports = HashedExports(backup.source, get())
         val hasher = AssetHasher(exports, get())
-        val requests = BackupRequestBuilder(get())
+        val requests = BackupRequestBuilder(get(), hasher, settings = { settings.settings.value })
         val outbox = OutboxBackupUploader(get(), exports, hasher, requests, get(), get(), scope)
         val uploader = backup.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get()) { settings.settings.value.wifiOnly }) ?: outbox
         val storageQuota = get<StorageQuota>()

@@ -65,7 +65,7 @@ import id.homebase.core.ui.screens.webdrop.WebDropUiAction
 import id.homebase.core.ui.screens.webdrop.WebDropUiState
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.ui.screens.webdrop.model.WebDropTtlChoice
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.core.webdrop.WebDropProtocol
 import id.homebase.resources.MR
 import id.homebase.resources.webdrop_compose_title

@@ -29,7 +29,7 @@ import kotlin.coroutines.resume
 @OptIn(ExperimentalForeignApi::class)
 internal class AvFoundationVideoDecoder : VideoDecoder {
 
-    override suspend fun extractPosterFrame(videoPath: String): ByteArray? {
+    override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
         if (!NSFileManager.defaultManager.fileExistsAtPath(videoPath)) return null
 
         val asset = AVURLAsset.URLAssetWithURL(NSURL.fileURLWithPath(videoPath), null)

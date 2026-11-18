@@ -24,15 +24,18 @@ class DeviceBackupWrapper(
     suspend fun selectAllIdsExcept(state: Long): List<String> =
         databaseManager.readValue("deviceBackup.selectAllIds") { assets.selectAllIdsExcept(state).executeAsList() }
 
-    suspend fun selectDue(state: Long, now: Long, includeVideos: Boolean, limit: Long, newestFirst: Boolean): List<DeviceBackupAsset> =
+    suspend fun selectDue(state: Long, now: Long, maxVideoBytes: Long?, limit: Long, newestFirst: Boolean): List<DeviceBackupAsset> =
         databaseManager.readValue("deviceBackup.selectDue") {
-            val videos = if (includeVideos) 1L else 0L
+            val videos = maxVideoBytes ?: -1L
             if (newestFirst) {
                 assets.selectDueNewestFirst(state, now, videos, limit).executeAsList()
             } else {
                 assets.selectDueOldestFirst(state, now, videos, limit).executeAsList()
             }
         }
+
+    suspend fun anyPhotoDue(states: Collection<Long>, now: Long): Boolean =
+        databaseManager.readValue("deviceBackup.anyPhotoDue") { assets.anyPhotoDue(states, now).executeAsOne() }
 
     suspend fun selectByUnique(uniqueId: String): List<DeviceBackupAsset> =
         databaseManager.readValue("deviceBackup.selectByUnique") { assets.selectByUnique(uniqueId).executeAsList() }
@@ -91,17 +94,34 @@ class DeviceBackupWrapper(
         databaseManager.withWriteValue { assets.setUploadTask(state, uploadTaskId, uniqueId) }
     }
 
-    suspend fun requeueFailed(failedState: Long, newState: Long, hashedState: Long) {
-        databaseManager.withWriteValue { assets.requeueFailed(newState, hashedState, failedState) }
+    /** Rows whose lastError is in [keep] stay failed. */
+    suspend fun requeueFailed(failedState: Long, newState: Long, hashedState: Long, keep: Collection<String>) {
+        databaseManager.withWriteValue { assets.requeueFailed(newState, hashedState, failedState, keep) }
     }
 
     suspend fun recheckDone(doneState: Long, newState: Long, hashedState: Long) {
         databaseManager.withWriteValue { assets.recheckDone(newState, hashedState, doneState) }
     }
 
+    suspend fun prepareStarts(uniqueId: String): Long =
+        databaseManager.readValue("deviceBackup.prepareStarts") { assets.prepareStarts(uniqueId).executeAsOneOrNull() ?: 0 }
+
+    suspend fun countPrepareStart(uniqueId: String) {
+        databaseManager.withWriteValue { assets.countPrepareStart(uniqueId) }
+    }
+
+    suspend fun clearAllPrepareStarts() {
+        databaseManager.withWriteValue { assets.clearAllPrepareStarts() }
+    }
+
+    suspend fun clearPrepareStart(uniqueId: String) {
+        databaseManager.withWriteValue { assets.clearPrepareStart(uniqueId) }
+    }
+
     suspend fun deleteAll() {
         databaseManager.withWriteTransaction {
             assets.deleteAll()
+            assets.clearAllPrepareStarts()
             checkpoints.deleteAll()
         }
     }

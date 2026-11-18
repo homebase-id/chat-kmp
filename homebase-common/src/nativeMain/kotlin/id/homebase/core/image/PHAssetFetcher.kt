@@ -1,5 +1,6 @@
 package id.homebase.core.image
 
+import id.homebase.api.file.contentTypeFromBytes
 import coil3.ImageLoader
 import coil3.Uri
 import coil3.asImage
@@ -142,7 +143,7 @@ class PHAssetFetcher(
         // freezes a GIF on its first frame — the bug for quick-switch gallery previews.
         // Single-frame GIF/WebP fall through to the default static Skia decoder inside
         // the chain, so non-animated images are unaffected.
-        val format = ImageFormatDetector.detectFormat(header)
+        val format = contentTypeFromBytes(header)
         if (format == "image/gif" || format == "image/webp") {
             val bytes = ByteArray(nsData.length.toInt())
             bytes.usePinned { pinned ->

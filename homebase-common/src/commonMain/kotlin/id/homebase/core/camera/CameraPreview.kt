@@ -15,3 +15,6 @@ expect fun CameraPreview(
     modifier: Modifier = Modifier,
     onLongPressFocus: (Offset) -> Unit = {},
 )
+
+/** True where [CameraPreview] is drawn by Compose, so a clip or scale on its layer reaches the viewfinder; iOS's is a UIView. */
+internal expect val previewFollowsComposeTransforms: Boolean

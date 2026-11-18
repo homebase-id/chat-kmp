@@ -9,7 +9,6 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
-import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
@@ -110,9 +109,7 @@ class FilesyncDiscussionsTest {
 
         val (upload, body) = requests.single { it.first.url.encodedPath.endsWith("/files") }
         assertEquals("Comment", upload.url.parameters["xfst"])
-        val parts = multipart(body, upload)
-        val transferIv = Base64.decode(Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject["transferIv"]!!.jsonPrimitive.content)
-        val descriptor = Json.parseToJsonElement(AesCbc.decrypt(parts.getValue("metadata"), sharedSecret, transferIv).decodeToString()).jsonObject
+        val descriptor = uploadDescriptor(body, upload, sharedSecret)
 
         val keyHeader = descriptor["encryptedKeyHeader"]!!.jsonObject
         assertEquals("fileKey", keyHeader["type"]!!.jsonPrimitive.content)

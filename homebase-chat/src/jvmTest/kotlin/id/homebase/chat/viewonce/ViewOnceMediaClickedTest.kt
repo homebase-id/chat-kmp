@@ -74,6 +74,9 @@ class ViewOnceMediaClickedTest {
             viewOnceActions = actions,
             chatMessageStream = unusedStream(),
             localVideoContextStore = LocalAttachmentContextStore(fixture.eventBus, scope.backgroundScope),
+            albumSaver = object : id.homebase.core.util.AlbumSaver {
+                override suspend fun target(name: String, asked: Boolean) = error("view-once media is never saved")
+            },
             sendEvent = {},
             dispatch = {},
             onMobile = mobile?.let { m -> { m } } ?: { id.homebase.core.util.isMobile() },

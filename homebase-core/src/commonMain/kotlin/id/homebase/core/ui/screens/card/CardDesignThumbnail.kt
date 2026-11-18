@@ -12,6 +12,10 @@ import androidx.compose.ui.graphics.drawscope.rotate
 
 internal const val CARD_THUMB_ASPECT = 0.66f
 
+/** The accent the card's page draws its links and highlights with: the chosen one, else the design's own. */
+internal fun cardAccentArgb(design: String, overrides: CardOverrides): Int =
+    overrides.palette?.accent?.let(::hexToArgb) ?: thumbnailAccentArgb(design).toInt()
+
 // The accent each page draws with none set (odin-js cards/presets.ts), so a Default tile shows the card it gives; Poster's is its ink.
 private fun thumbnailAccentArgb(design: String): Long = when (design) {
     CardDesign.POSTER -> 0xFFF4F0EA

@@ -87,7 +87,7 @@ import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.feed.services.PostAudience
-import id.homebase.core.util.contentType
+import id.homebase.api.file.contentType
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.cancel

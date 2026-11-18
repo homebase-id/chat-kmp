@@ -44,6 +44,10 @@ import id.homebase.core.widget.ProvideSettingsChrome
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onNodeWithTag
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinIsolatedContext
@@ -174,6 +178,51 @@ class AppsEverywhereScreenshotTest {
         )
         shot("wide-rail-states", 340, 420) {
             Row { states.forEach { Column(Modifier.background(MaterialTheme.colorScheme.surface)) { Rail(it, tab = TopLevelRoute.Apps.takeIf { _ -> it !== states[0] }) } } }
+        }
+    }
+    // The hub's identity header, section headers and rows sit on one surface.
+    @Test
+    fun widePaneHubIsOneSurface() {
+        for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(1100, 760) {
+                setContent {
+                    KoinIsolatedContext(koin) {
+                        HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) {
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)), contentAlignment = Alignment.Center) {
+                                val pane: @Composable () -> Unit = {
+                                    Column {
+                                        SettingsPaneHeader(onDismiss = {})
+                                        Row {
+                                            SettingsSidebar(selected = SettingsCategory.General, onSelect = {})
+                                            VerticalDivider()
+                                            Box(Modifier.weight(1f).fillMaxHeight()) {
+                                                ProvideSettingsChrome(embedded = true) { SettingsUi(uiState = state, onAction = {}, actions = hubActions) }
+                                            }
+                                        }
+                                    }
+                                }
+                                FloatingPaneContainer(onDismiss = {}, paneContent = pane, content = pane)
+                            }
+                        }
+                    }
+                }
+                waitForIdle()
+                val image = onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage()
+                ImageIO.write(image, "png", File(outDir, "wide-pane-hub-${if (dark) "dark" else "light"}.png"))
+                val list = onNodeWithTag("settingsList").getBoundsInRoot()
+                val account = onNodeWithTag("accountButton").getBoundsInRoot()
+                val notifications = onNodeWithTag("notificationsButton").getBoundsInRoot()
+                val x = with(density) { (list.right - 6.dp).roundToPx() }
+                fun at(y: Dp) = image.getRGB(x, with(density) { y.roundToPx() })
+                val samples = mapOf(
+                    "header band" to at((account.bottom + notifications.top) / 2),
+                    "pane header" to at(list.top - 6.dp),
+                    "account row" to at((account.top + account.bottom) / 2),
+                    "notifications row" to at((notifications.top + notifications.bottom) / 2),
+                    "list top" to at(list.top + 4.dp),
+                ).mapValues { "%08x".format(it.value) }
+                assertEquals(1, samples.values.toSet().size, "dark=$dark $samples")
+            }
         }
     }
 }

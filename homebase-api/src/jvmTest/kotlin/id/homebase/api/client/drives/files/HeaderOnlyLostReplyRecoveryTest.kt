@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.CryptoHelper
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
@@ -110,6 +111,7 @@ class HeaderOnlyLostReplyRecoveryTest {
             reactionProvider = DriveFileGroupReactionProvider(http, credentialsManager),
             databaseManager = dbm,
             credentialsManager = credentialsManager,
+            peerUploadProvider = PeerDriveUploadProvider(http, credentialsManager, fileOps),
         )
     }
 

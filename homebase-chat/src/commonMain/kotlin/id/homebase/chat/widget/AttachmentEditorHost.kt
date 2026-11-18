@@ -132,6 +132,7 @@ internal fun AttachmentEditorHost(
             }
         },
         collapseSecondaryChrome = captionEmojiPickerOpen,
+        fadeInChrome = data.isChatListCapture,
         bottomBar = {
             MessageTextFieldForAttachment(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -144,6 +145,7 @@ internal fun AttachmentEditorHost(
                         viewOnceState.toggle(viewOnceIsVideo, viewOnceEligible)
                     }
                 },
+                nextInsteadOfSend = data.isChatListCapture,
                 onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                 onPasteImage = { imageBytes ->
                     onUiAction(

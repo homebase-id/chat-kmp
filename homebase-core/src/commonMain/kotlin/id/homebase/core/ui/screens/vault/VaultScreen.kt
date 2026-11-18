@@ -202,6 +202,7 @@ fun VaultScreen(
                     fileSystemHandler.saveFile(
                         file = Path(event.filePath),
                         suggestedName = event.fileName,
+                        deleteAfter = true,
                     )
                 }
                 is VaultUiEvent.Error -> {
@@ -417,6 +418,9 @@ fun VaultScreen(
                                 onAddEntry = { section ->
                                     activeSectionForEntry = section
                                     showImageAddSheet = true
+                                },
+                                onFilesDropped = { section, files ->
+                                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
                                 },
                                 onMoveUp = {
                                     viewModel.onAction(VaultUiAction.MoveSectionUp(it))

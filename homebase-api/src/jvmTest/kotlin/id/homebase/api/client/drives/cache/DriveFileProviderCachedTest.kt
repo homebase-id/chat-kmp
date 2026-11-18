@@ -358,7 +358,7 @@ class DriveFileProviderCachedTest {
     }
 
     /**
-     * Seed-on-send round-trip: bytes written via [DriveFileProviderCached.cachePayloadBytesEncrypted]
+     * Seed-on-send round-trip: bytes written via [DriveFileProviderCached.cachePayloadBytes]
      * must be served by the read path with NO network — this is what makes a
      * never-sent (failed) message's media retrievable for retry. The mock
      * engine throws on any request to prove the network is never touched.
@@ -530,7 +530,7 @@ class DriveFileProviderCachedTest {
         nextException = IOException("network must not be reached")
         val oversized = ByteArray((PayloadSizePolicy.RENDER_LIMIT_BYTES + 1).toInt())
 
-        provider.cachePayloadBytesEncrypted(driveId, fileId, key, oversized, "application/zip")
+        provider.cachePayloadBytes(driveId, fileId, key, oversized, "application/zip")
 
         assertTrue(
             logCollector.entries.any { it.message.contains("cache-admit REFUSED") },
@@ -559,7 +559,7 @@ class DriveFileProviderCachedTest {
         nextException = IOException("network must not be reached for a seeded payload")
         val bytes = ByteArray(64) { it.toByte() }
 
-        provider.cachePayloadBytesEncrypted(driveId, fileId, key, bytes, "image/jpeg")
+        provider.cachePayloadBytes(driveId, fileId, key, bytes, "image/jpeg")
         val result = provider.getPayloadBytesRaw(driveId, fileId, key)
 
         assertEquals(0, requestCount, "seeded read must not hit the network")
@@ -577,7 +577,7 @@ class DriveFileProviderCachedTest {
         nextException = IOException("network must not be reached for a seeded thumb")
         val bytes = ByteArray(32) { (it * 3).toByte() }
 
-        provider.cacheThumbBytesEncrypted(driveId, fileId, key, 100, 100, bytes, "image/webp")
+        provider.cacheThumbBytes(driveId, fileId, key, 100, 100, bytes, "image/webp")
         val result = provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
 
         assertEquals(0, requestCount, "seeded read must not hit the network")
@@ -603,7 +603,7 @@ class DriveFileProviderCachedTest {
         val nativeW = 320
         val nativeH = 240
         val bytes = ByteArray(48) { (it * 5).toByte() }
-        provider.cacheThumbBytesEncrypted(driveId, fileId, key, nativeW, nativeH, bytes, "image/webp")
+        provider.cacheThumbBytes(driveId, fileId, key, nativeW, nativeH, bytes, "image/webp")
 
         // Native-keyed read: served by the seed, network must not be touched.
         nextException = IOException("native-size read must be served from the seed, not the network")
@@ -638,7 +638,7 @@ class DriveFileProviderCachedTest {
         val countAfter404 = requestCount
 
         val bytes = ByteArray(16) { 0x42 }
-        provider.cachePayloadBytesEncrypted(driveId, fileId, key, bytes, "image/jpeg")
+        provider.cachePayloadBytes(driveId, fileId, key, bytes, "image/jpeg")
 
         nextException = IOException("network must not be reached after seeding")
         val result = provider.getPayloadBytesRaw(driveId, fileId, key)
@@ -672,8 +672,8 @@ class DriveFileProviderCachedTest {
     fun `rekey moves seeded payload and thumb to the new fileId without touching the network`() = runTest {
         val payloadBytes = ByteArray(64) { it.toByte() }
         val thumbBytes = ByteArray(32) { (it * 3).toByte() }
-        provider.cachePayloadBytesEncrypted(driveId, fileId, key, payloadBytes, "image/jpeg")
-        provider.cacheThumbBytesEncrypted(driveId, fileId, key, 100, 100, thumbBytes, "image/webp")
+        provider.cachePayloadBytes(driveId, fileId, key, payloadBytes, "image/jpeg")
+        provider.cacheThumbBytes(driveId, fileId, key, 100, 100, thumbBytes, "image/webp")
 
         nextException = IOException("network must not be reached for a rekeyed entry")
         provider.rekeyCachedFile(driveId, fileId, newFileId, rekeyDescriptors())
@@ -700,7 +700,7 @@ class DriveFileProviderCachedTest {
 
     @Test
     fun `rekey removes the old entries`() = runTest {
-        provider.cachePayloadBytesEncrypted(driveId, fileId, key, ByteArray(16) { 1 }, "image/jpeg")
+        provider.cachePayloadBytes(driveId, fileId, key, ByteArray(16) { 1 }, "image/jpeg")
         provider.rekeyCachedFile(driveId, fileId, newFileId, rekeyDescriptors())
 
         // The old key's LRU budget is freed — a read under the old fileId must
@@ -720,7 +720,7 @@ class DriveFileProviderCachedTest {
         val countAfter404 = requestCount
 
         val bytes = ByteArray(16) { 0x42 }
-        provider.cachePayloadBytesEncrypted(driveId, fileId, key, bytes, "image/jpeg")
+        provider.cachePayloadBytes(driveId, fileId, key, bytes, "image/jpeg")
         provider.rekeyCachedFile(driveId, fileId, newFileId, rekeyDescriptors())
 
         nextException = IOException("network must not be reached after rekey")

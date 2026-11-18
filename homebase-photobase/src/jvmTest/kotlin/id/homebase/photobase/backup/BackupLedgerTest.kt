@@ -21,6 +21,14 @@ class BackupLedgerTest {
     private suspend fun stateOf(id: String) = ledger.row(id)?.state
 
     @Test
+    fun forgettingStartsTheCrashCountsAgain() = runTest {
+        val id = Uuid.random()
+        repeat(2) { ledger.prepareStarting(id) }
+        ledger.clear()
+        assertEquals(0L, ledger.unfinishedPrepares(id))
+    }
+
+    @Test
     fun reapplyingTheSameListingChangesNothing() = runTest {
         ledger.apply(fullListing(asset("a")), null)
         ledger.markHashed("a", "ff", Uuid.random(), 10)
@@ -275,7 +283,7 @@ class BackupLedgerTest {
         val seen = mutableSetOf<String>()
         val batches = mutableListOf<List<String>>()
         while (true) {
-            val batch = ledger.dueExcept(BackupState.New, includeVideos = true, batch = 10, newestFirst = false, seen = seen)
+            val batch = ledger.dueExcept(BackupState.New, maxVideoBytes = Long.MAX_VALUE, batch = 10, newestFirst = false, seen = seen)
             if (batch.isEmpty()) break
             batches += batch.map { it.deviceAssetId }
             seen += batches.last()

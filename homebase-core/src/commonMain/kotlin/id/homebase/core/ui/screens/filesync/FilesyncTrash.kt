@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.runtime.Immutable
+import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.uuid.Uuid
 
 /** An item of Recently deleted, deleted on its own; [count] is how many removed nodes are below it, whenever each was removed. */
@@ -21,7 +22,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         fun at(node: FilesyncNode, seen: MutableSet<Uuid>): Long? {
             if (node.nodeId in memo) return memo[node.nodeId]
             val parent = all.nodes[node.parentId]?.takeIf { seen.add(it.nodeId) }
-            val folderAt = parent?.let { if (it.removed) it.updatedMs else at(it, seen) }
+            val folderAt = parent?.let { it.removedMs ?: at(it, seen) }
             return folderAt?.takeIf { wentWith(node, it) }.also { memo[node.nodeId] = it }
         }
         all.nodes.keys.filterTo(mutableSetOf()) { id -> at(all.nodes.getValue(id), mutableSetOf(id)) != null }
@@ -63,11 +64,11 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         return result
     }
 
-    /** [node] and the folders above it whose delete it went with, up to its item. */
-    fun chainOf(node: FilesyncNode): List<FilesyncNode> {
+    /** [node] and the folders above it whose delete it went with, up to its item or a folder in [stopAt] (one a restore moves). */
+    fun chainOf(node: FilesyncNode, stopAt: Set<Uuid> = emptySet()): List<FilesyncNode> {
         val chain = mutableListOf(node)
         val seen = mutableSetOf(node.nodeId)
-        while (chain.last().nodeId in wentWithParent) {
+        while (chain.last().nodeId in wentWithParent && chain.last().nodeId !in stopAt) {
             val parent = all.nodes.getValue(chain.last().parentId)
             if (!seen.add(parent.nodeId)) break
             chain += parent
@@ -111,9 +112,37 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         ancestorsOf(node).takeWhile { it.removed || it.nodeId in itemOf }.filter { it.removed }.asReversed() +
             group(node).filter { it.removed }
 
+    /**
+     * Where restoring [tops] breaks the loops of removed folders above them, each in the next (two writers' moves left one),
+     * as filesync's plan_restore_from does. A loop's fixed folders come back at the top; a loop without one comes back
+     * through one folder, the item where it is one of the loop, else the loop's folder the walk up from it met first.
+     */
+    fun loopBreaks(tops: List<FilesyncNode>, plans: List<List<FilesyncNode>>): FilesyncLoopBreaks {
+        val atTop = mutableSetOf<Uuid>()
+        val toExit = mutableSetOf<Uuid>()
+        val planned = mutableSetOf<Uuid>()
+        for ((top, plan) in tops.zip(plans)) {
+            if (top.nodeId !in planned) {
+                val up = ancestorsOf(top)
+                val walked = up.takeWhile { it.removed && it.nodeId !in planned }
+                // ancestorsOf ends where a parent repeats: then the walk went round a loop back to [again] (the top itself too).
+                val again = (walked.lastOrNull() ?: top).parentId.takeIf { walked.size == up.size }
+                val round = if (again == top.nodeId) listOf(top) + walked else walked.dropWhile { it.nodeId != again }
+                val fixed = round.filter { !it.movable || it.nodeId == FilesyncProtocol.DesktopsNodeId }
+                if (round.isNotEmpty() && fixed.isEmpty()) toExit += round.first().nodeId
+                fixed.mapTo(atTop) { it.nodeId }
+            }
+            plan.mapTo(planned) { it.nodeId }
+        }
+        return FilesyncLoopBreaks(atTop, toExit)
+    }
+
     companion object {
         /** Whether [node], in a folder deleted at [folderDeletedMs], went with it: removed no earlier, or still live and written no later. */
         fun wentWith(node: FilesyncNode, folderDeletedMs: Long): Boolean =
-            if (node.removed) node.updatedMs >= folderDeletedMs else node.updatedMs <= folderDeletedMs
+            node.removedMs?.let { it >= folderDeletedMs } ?: (node.versionMs?.let { it <= folderDeletedMs } == true)
     }
 }
+
+/** [atTop]: fixed folders of a loop, back at the top. [toExit]: each loop's one folder, back in Recovered files or else at the top. */
+internal class FilesyncLoopBreaks(val atTop: Set<Uuid>, val toExit: Set<Uuid>)

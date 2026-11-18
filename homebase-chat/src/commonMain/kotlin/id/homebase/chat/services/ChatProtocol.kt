@@ -177,7 +177,6 @@ object ChatProtocol {
     const val PAYLOAD_KEY_AGENT_UI = "agent_ui"
 
     const val DefaultPayloadKey = "dflt_key"
-    const val MaxDescriptorContentLength = 1024
     const val MaxHeaderContentBytes = HomebaseProtocol.MaxHeaderContentBytes
 
 }

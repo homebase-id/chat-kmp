@@ -43,7 +43,6 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.MediaItem
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_event_live_now
 import id.homebase.resources.chat_event_past
@@ -159,7 +158,6 @@ fun EventBubble(
                 driveId = chatTargetDrive.alias,
                 previewThumbnail = coverPreviewThumbnail,
                 keyHeader = coverKeyHeader,
-                imageSize = ImageSize.THUMB_MEDIUM,
                 preserveAspectRatio = true,
                 shape = RoundedCornerShape(0.dp),
                 onClick = if (canOpenDetail) ({ showDetail = true }) else null,

@@ -94,9 +94,9 @@ class FilesyncNamesTest {
 
     @Test
     fun recoveredFilesLeavesItsNameFreeForAPlainFolder() {
-        fun folder(id: Uuid, name: String) = FilesyncNode(id, FilesyncProtocol.RootNodeId, true, name, null, null, updatedMs = 1)
+        fun folder(id: Uuid, name: String) = FilesyncNode(id, FilesyncProtocol.RootNodeId, true, name, null, null, versionMs = 1)
         val nodes = listOf(folder(FilesyncProtocol.RecoveredFilesNodeId, "Recovered files"), folder(Uuid.random(), "Photos"))
-        val taken = FilesyncNames.takenKeys(FilesyncProtocol.RootNodeId, nodes)
+        val taken = FilesyncNames.takenKeys(nodes)
         assertEquals("Recovered files", FilesyncNames.freeName("Recovered files", taken))
         assertTrue(FilesyncNames.key("Photos") in taken && FilesyncNames.key("Recovered files") !in taken)
     }
@@ -113,24 +113,23 @@ class FilesyncNamesTest {
     }
 
     @Test
-    fun theStateFolderNameIsTakenAtTheTopInAnySpelling() {
-        val top = FilesyncNames.takenKeys(FilesyncProtocol.RootNodeId, emptyList())
+    fun theStateFolderNameIsTakenInEveryFolderInAnySpelling() {
+        val taken = FilesyncNames.takenKeys(emptyList())
         for (name in listOf(".hbsync", ".HBSYNC", ".HbSync", ".hbſync")) {
             assertEquals(FilesyncNames.stateFolderKey, FilesyncNames.key(name), name)
         }
-        assertEquals(".HBSYNC (1)", FilesyncNames.freeName(".HBSYNC", top))
-        assertEquals(".hbsync (restored)", FilesyncNames.restoredName(".hbsync", top))
-        assertEquals(".hbsync", FilesyncNames.freeName(".hbsync", FilesyncNames.takenKeys(Uuid.random(), emptyList())))
-        assertEquals(".hbsync (1)", FilesyncNames.freeName(".hbsync", FilesyncNames.takenKeys(FilesyncRoleFolder.Documents.nodeId, emptyList())))
-        assertEquals(".hbsync2", FilesyncNames.freeName(".hbsync2", top))
+        assertEquals(".HBSYNC (1)", FilesyncNames.freeName(".HBSYNC", taken))
+        assertEquals(".hbsync (restored)", FilesyncNames.restoredName(".hbsync", taken))
+        assertEquals(".hbsync2", FilesyncNames.freeName(".hbsync2", taken))
     }
 
     @Test
-    fun onlyTheStateFolderNameAtTheTopIsNotOnComputers() {
-        fun node(parent: Uuid, name: String) = FilesyncNode(Uuid.random(), parent, true, name, null, null, updatedMs = 1)
+    fun theStateFolderNameIsNotOnComputersInAnyFolder() {
+        fun node(parent: Uuid, name: String, folder: Boolean = true) = FilesyncNode(Uuid.random(), parent, folder, name, null, null, versionMs = 1)
         assertTrue(node(FilesyncProtocol.RootNodeId, ".HBSYNC").notOnComputers)
         assertTrue(node(FilesyncRoleFolder.Pictures.nodeId, ".hbsync").notOnComputers)
-        assertFalse(node(Uuid.random(), ".hbsync").notOnComputers)
+        assertTrue(node(Uuid.random(), ".HbSync").notOnComputers)
+        assertTrue(node(Uuid.random(), ".hbsync", folder = false).notOnComputers)
         assertFalse(node(FilesyncProtocol.RootNodeId, ".hbsync2").notOnComputers)
     }
 }

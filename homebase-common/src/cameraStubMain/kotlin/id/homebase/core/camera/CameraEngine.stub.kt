@@ -29,3 +29,5 @@ internal actual fun rememberReduceMotion(): Boolean = false
 
 @Composable
 internal actual fun HardwareShutterEffect(onDown: () -> Unit, onUp: () -> Unit) = Unit
+
+internal actual val previewFollowsComposeTransforms: Boolean = true

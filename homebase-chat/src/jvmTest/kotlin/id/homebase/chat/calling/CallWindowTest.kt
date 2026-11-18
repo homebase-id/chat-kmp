@@ -40,11 +40,11 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallChannel
+import id.homebase.chat.services.calling.CallIceServers
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.CallSignalCodec
 import id.homebase.chat.services.calling.CallController
@@ -159,7 +159,7 @@ class CallWindowTest {
                 true
             },
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
-            stunUrls = StunUrlStore(EventBus(), kotlinx.coroutines.flow.flowOf(null), scope.backgroundScope),
+            iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
         )
         val peer = CallController(
@@ -205,7 +205,7 @@ class CallWindowTest {
             assertTrue(rig.model.windowVisible.value)
             assertEquals(CallPhase.Outgoing, rig.model.uiState.value.phase)
 
-            settle(3_001) // no STUN URLs here, so the offer waits out awaitStunUrls before the peer rings
+            settle()
             rig.peer.accept()
             settle(1_001)
             assertEquals(CallPhase.Connected, rig.model.uiState.value.phase)
@@ -339,11 +339,7 @@ class CallWindowTest {
                             viewModel = model.viewModel,
                             ui = ui,
                             peerName = "Samwise Gamgee",
-                            avatar = { size ->
-                                Box(Modifier.size(size).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape), contentAlignment = Alignment.Center) {
-                                    Text("SG", color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                }
-                            },
+                            avatar = testPeerAvatar,
                         )
                     }
                 }
@@ -450,7 +446,13 @@ class CallWindowTest {
                             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
                                 CallChrome(callWindow = model, topInset = 0.dp, callHost = { it() }) { _ ->
                                     LazyColumn(Modifier.fillMaxWidth()) {
-                                        items(12) { i -> ListItem(headlineContent = { Text("Conversation $i") }, supportingContent = { Text("Last message preview") }) }
+                                        items(12) { i ->
+                                            ListItem(
+                                                headlineContent = { Text("Conversation $i", style = MaterialTheme.typography.titleMedium) },
+                                                supportingContent = { Text("Last message preview") },
+                                                leadingContent = { Box(Modifier.size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape)) },
+                                            )
+                                        }
                                     }
                                 }
                             }

@@ -9,6 +9,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.image.ImageMetadataScrubber
+import id.homebase.api.media.MediaMetadataStripper
+import kotlinx.coroutines.flow.Flow
 import id.homebase.api.video.VideoPayloadProcessor
 import kotlinx.coroutines.test.runTest
 import java.io.File
@@ -104,6 +106,91 @@ class PayloadBundleImageScrubTest {
         }
     }
 
+    @Test
+    fun aPublicUploadStagesTheScrubbedCopyDurably() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val original = geotaggedJpeg()
+        val src = provider.writeBytesToTempFile(original, "public_src_", ".jpg")
+        val public = service(provider).stageBundle(bundle(PayloadFile(key = "pst_mdi0", filePath = src, contentType = "image/jpeg"))).payloads.single()
+        try {
+            val sent = File(public.filePath).readBytes()
+            assertContentEquals(ImageMetadataScrubber.scrub(original), sent, "the same function as the encryption step")
+            assertFalse(indexOfSub(sent, gpsMarker) >= 0, "GPS bytes must not be published")
+            assertTrue(public.filePath.startsWith(provider.getOutboxStagingDirectory()), "the outbox sends it later, so it is staged durably")
+            assertContentEquals(original, File(src).readBytes(), "the user's file is left alone")
+        } finally {
+            provider.deleteTempFile(src)
+            provider.deleteTempFile(public.filePath)
+        }
+    }
+
+    @Test
+    fun aPublicUploadKeepsWhatItsAppKeepsAndLeavesOtherFilesAlone() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val original = geotaggedJpeg()
+        val src = provider.writeBytesToTempFile(original, "public_keep_", ".jpg")
+        val staged = service(provider).stageBundle(
+            bundle(
+                PayloadFile(key = "p0", filePath = src, contentType = "image/jpeg", stripMetadata = false),
+                PayloadFile(key = "p1", filePath = src, contentType = "application/pdf"),
+            ),
+        ).payloads
+        try {
+            staged.forEach { assertContentEquals(original, File(it.filePath).readBytes(), it.key) }
+        } finally {
+            provider.deleteTempFile(src)
+            staged.forEach { provider.deleteTempFile(it.filePath) }
+        }
+    }
+
+    /** Counts whole-file reads of [source] and every file written. */
+    private class CountingFiles(private val files: FileOperationsProvider, private val source: String) : FileOperationsProvider by files {
+        var reads = 0
+        var writes = 0
+        private fun read(path: String) { if (path == source) reads++ }
+        override fun openFileInput(path: String) = files.openFileInput(path).also { read(path) }
+        override suspend fun readFileBytes(path: String) = files.readFileBytes(path).also { read(path) }
+        override fun readFileAsFlow(path: String, chunkSize: Int) = files.readFileAsFlow(path, chunkSize).also { read(path) }
+        override suspend fun readFileHeaderBytes(path: String, maxBytes: Int) = files.readFileHeaderBytes(path, maxBytes).also { read(path) }
+        override suspend fun readFileRange(path: String, offset: Long, length: Int) = files.readFileRange(path, offset, length).also { read(path) }
+        override suspend fun writeStream(path: String, data: Flow<ByteArray>) = files.writeStream(path, data).also { writes++ }
+        override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String) = files.writeBytesToTempFile(bytes, prefix, suffix).also { writes++ }
+        override suspend fun writeBytesToOutboxTempFile(bytes: ByteArray, prefix: String, suffix: String) = files.writeBytesToOutboxTempFile(bytes, prefix, suffix).also { writes++ }
+    }
+
+    @Test
+    fun everyPayloadIsReadOnceAndWrittenOnceWhetherOrNotItsStripped() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val plainJpeg = ImageMetadataScrubber.scrub(geotaggedJpeg())
+        val cases = listOf(
+            Triple("stripped JPEG", geotaggedJpeg(), PayloadFile(key = "p0", filePath = "", contentType = "image/jpeg")),
+            Triple("JPEG with nothing to strip", plainJpeg, PayloadFile(key = "p0", filePath = "", contentType = "image/jpeg")),
+            Triple("format the scrubber can't handle", "GIF89a".encodeToByteArray() + ByteArray(32) { 4 }, PayloadFile(key = "p0", filePath = "", contentType = "image/gif")),
+            Triple("image its app keeps", geotaggedJpeg(), PayloadFile(key = "p0", filePath = "", contentType = "image/jpeg", stripMetadata = false)),
+            Triple("not an image", "%PDF-1.4".encodeToByteArray(), PayloadFile(key = "p0", filePath = "", contentType = "application/pdf")),
+        )
+        for ((name, bytes, template) in cases) {
+            for (encrypted in listOf(true, false)) {
+                val src = provider.writeBytesToTempFile(bytes, "passes_", ".bin")
+                val files = CountingFiles(provider, src)
+                val payload = template.copy(filePath = src)
+                val sent = if (encrypted) {
+                    service(files).encryptBundle(Uuid.random(), bundle(payload), KeyHeader.newRandom16().aesKey, this)
+                } else {
+                    service(files).stageBundle(bundle(payload))
+                }.payloads.single()
+                try {
+                    val how = if (encrypted) "encrypted" else "public"
+                    assertEquals(1, files.reads, "$name, $how: one read of the file")
+                    assertEquals(1, files.writes, "$name, $how: one write, the file that's sent")
+                } finally {
+                    provider.deleteTempFile(src)
+                    provider.deleteTempFile(sent.filePath)
+                }
+            }
+        }
+    }
+
     // Same fixture as homebase-api's HeicFixtures: ImageIO's HEIC with GPS, serial and XMP; hvc1 data at 3227.
     @Test
     fun encryptBundle_uploadsHeicWithMetadataStripped() = runTest {
@@ -140,11 +227,14 @@ class PayloadBundleImageScrubTest {
     }
 
     @Test
-    fun encryptBundle_leavesNoScrubbedTempBehind() = runTest {
+    fun encryptBundle_leavesNothingBehindButWhatItSends() = runTest {
         val provider = JvmFileOperationsProvider()
         val svc = service(provider)
         val key = KeyHeader.newRandom16()
         val src = provider.writeBytesToTempFile(geotaggedJpeg(), "scrub_src_", ".jpg")
+        fun files() = listOf(provider.getCacheDirectory(), provider.getOutboxStagingDirectory())
+            .flatMap { File(it).walkTopDown().filter(File::isFile).map(File::getPath).toList() }.toSet()
+        val before = files()
         var staged: String? = null
         try {
             staged = svc.encryptBundle(
@@ -154,11 +244,32 @@ class PayloadBundleImageScrubTest {
                 this,
             ).payloads.single().filePath
 
-            val leftovers = File(provider.getCacheDirectory())
-                .listFiles { f -> f.name.startsWith("scrubbed_") }
-                ?.toList()
-                .orEmpty()
-            assertTrue(leftovers.isEmpty(), "scrubbed temp must be reaped, found: $leftovers")
+            assertEquals(setOf(File(staged).path), files() - before, "no stripped copy or other temp is left")
+        } finally {
+            provider.deleteTempFile(src)
+            staged?.let { provider.deleteTempFile(it) }
+        }
+    }
+
+    @Test
+    fun encryptBundle_keepsTheMetadataOfAnImageTheAppKeeps() = runTest {
+        val provider = JvmFileOperationsProvider()
+        val key = KeyHeader.newRandom16()
+        val original = geotaggedJpeg()
+        val src = provider.writeBytesToTempFile(original, "keep_", ".jpg")
+        var staged: String? = null
+        try {
+            val payload = service(provider).encryptBundle(
+                Uuid.random(),
+                bundle(PayloadFile(key = "p0", filePath = src, contentType = "image/jpeg", stripMetadata = false)),
+                key.aesKey,
+                this,
+            ).payloads.single()
+            staged = payload.filePath
+            assertContentEquals(
+                KeyHeader(aesKey = key.aesKey, iv = assertNotNull(payload.iv)).encryptDataAes(original),
+                File(staged).readBytes(),
+            )
         } finally {
             provider.deleteTempFile(src)
             staged?.let { provider.deleteTempFile(it) }
@@ -229,6 +340,15 @@ class PayloadBundleImageScrubTest {
         }
         val warning = warnings.single()
         assertTrue("image/gif" in warning && "intact" in warning, warning)
+    }
+
+    @Test
+    fun anImageHeldInMemoryIsStrippedAndAnythingElseLeftAlone() = runTest {
+        val jpeg = geotaggedJpeg()
+        assertContentEquals(ImageMetadataScrubber.scrub(jpeg), MediaMetadataStripper.imageBytes(jpeg, "image/jpeg"))
+        assertFalse(indexOfSub(MediaMetadataStripper.imageBytes(jpeg, "image/jpeg"), gpsMarker) >= 0)
+        val pdf = "%PDF-1.4".encodeToByteArray()
+        assertContentEquals(pdf, MediaMetadataStripper.imageBytes(pdf, "application/pdf"))
     }
 
     private fun indexOfSub(haystack: ByteArray, needle: ByteArray): Int {

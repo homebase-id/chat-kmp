@@ -72,7 +72,6 @@ import id.homebase.chat.widget.SharedMediaHero
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.components.CircleLabel
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
@@ -680,7 +679,6 @@ private fun SharedMediaThumb(item: SharedMediaItem, size: Dp, hero: SharedMediaH
             driveId = chatTargetDrive.alias,
             previewThumbnail = item.previewThumbnail,
             keyHeader = item.keyHeader,
-            imageSize = ImageSize.THUMB_MEDIUM,
             isSticker = item.isSticker,
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(12.dp),

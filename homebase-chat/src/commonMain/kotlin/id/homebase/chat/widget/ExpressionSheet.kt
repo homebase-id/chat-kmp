@@ -37,7 +37,7 @@ import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.StickerFilled
 import id.homebase.core.ui.assets.StickerOutlined
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.core.widget.EmojiSelection
 import id.homebase.resources.MR
 import id.homebase.resources.cancel

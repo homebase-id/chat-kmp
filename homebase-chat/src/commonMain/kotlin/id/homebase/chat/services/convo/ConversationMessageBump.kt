@@ -2,9 +2,11 @@ package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.mentionsIdentity
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.content.MessageContent
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -17,9 +19,10 @@ import kotlin.uuid.Uuid
  * last message left every denormalised field unchanged). Returns the
  * new list otherwise.
  *
- * A **status message** (`dataType = 202`) is not a last message and returns
- * null outright, matching cold-load enrichment, whose query excludes
- * `dataType = 202` — when the two disagree the row's preview *and* sort key
+ * A **status message** (`dataType = 202`) or an **agent-card action reply**
+ * (`dataType = 220`, shown on its card like a poll vote) is not a last message
+ * and returns null outright ([leavesConversationRow]), matching cold-load
+ * enrichment, whose query excludes `dataType IN (202, 220)` — when the two disagree the row's preview *and* sort key
  * change on restart (#1153). The exclusion has to be duplicated rather than
  * moved into the SQL: status visibility depends on decrypted content the query
  * can't read, so a row it returned could fail to map and blank the preview
@@ -79,6 +82,10 @@ import kotlin.uuid.Uuid
  * @return                       the new list, or null if the message
  *                               doesn't trigger a change.
  */
+/** A status message or an agent-card action reply: neither is the row's last message, bumps unread, nor unarchives. */
+internal val MessageUiModel.leavesConversationRow: Boolean
+    get() = isStatusMessage || messageContent is MessageContent.AgentUiAction
+
 internal fun applyIncomingMessageBump(
     items: List<ConversationUiModel>,
     targetConversationId: Uuid,
@@ -86,7 +93,7 @@ internal fun applyIncomingMessageBump(
     sqlUserDate: Instant,
     activeDomain: OdinId?,
 ): List<ConversationUiModel>? {
-    if (m.isStatusMessage) return null
+    if (m.leavesConversationRow) return null
 
     val increment = if (!m.isEdited && !m.isAuthoredBy(activeDomain)) 1 else 0
 
@@ -119,6 +126,10 @@ internal fun applyIncomingMessageBump(
                 val next = existing
                     .copy(
                         unreadCount = existing.unreadCount + increment,
+                        unreadMentionCount = existing.unreadMentionCount +
+                            if (existing.isGroup && increment == 1 && activeDomain != null &&
+                                mentionsIdentity(m.content, activeDomain.domainName)
+                            ) 1 else 0,
                         latestMessageTimestamp = sqlUserDate,
                     )
                     .withPreviewOf()

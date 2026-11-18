@@ -1,6 +1,38 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toShape
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.graphics.shapes.Morph
+import id.homebase.core.widget.MorphShape
+import id.homebase.resources.profile_card_nfc_android_only
+import id.homebase.resources.profile_card_nfc_android_to_android
+import id.homebase.resources.profile_card_nfc_instead
+import id.homebase.resources.profile_card_nfc_iphone_to_android
+import id.homebase.resources.profile_card_nfc_iphone_to_iphone
+import id.homebase.resources.profile_card_nfc_live
+import id.homebase.resources.profile_card_nfc_not_possible
+import id.homebase.resources.profile_card_nfc_works
+import id.homebase.resources.profile_card_share
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -20,13 +52,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Nfc
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,10 +66,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.core.settings.DeveloperPreferences
@@ -50,23 +85,29 @@ import id.homebase.resources.profile_card_nfc_body
 import id.homebase.resources.profile_card_nfc_off
 import id.homebase.resources.profile_card_nfc_open_settings
 import id.homebase.resources.profile_card_nfc_switch
+import id.homebase.resources.profile_card_nfc_iphone_body
+import id.homebase.resources.profile_card_nfc_iphone_title
 import id.homebase.resources.profile_card_nfc_switch_desc
 import id.homebase.resources.profile_card_nfc_title
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
 interface CardNfc {
+    /** False on iPhone: Apple gives apps no way to act as a tap tag, so only the explanation is shown. */
+    val canShare: Boolean
     val isEnabled: Boolean
     fun openSettings()
 }
 
-/** Null where this device can't act as an NFC tag (no HCE, iOS, desktop, web). */
+/** Null where there is no NFC action at all (desktop, web, Android without card emulation). */
 @Composable
 expect fun rememberCardNfc(): CardNfc?
 
@@ -75,25 +116,38 @@ internal data class CardTapShareGate(
     val tapShareEnabled: Boolean,
     val odinId: String?,
     val design: String?,
+    val sheetOpen: Boolean = false,
 ) {
     val servedUrl: String?
-        get() = if (profileCardEnabled && tapShareEnabled && odinId != null) cardLinkUrl(odinId, design) else null
+        get() = if (profileCardEnabled && (tapShareEnabled || sheetOpen) && odinId != null) cardLinkUrl(odinId, design) else null
 }
 
-class CardTapShare(
+class CardTapShare internal constructor(
     developerPreferences: DeveloperPreferences,
     cardPreferences: CardPreferences,
-    ownerSessionRepository: OwnerSessionRepository,
+    user: StateFlow<OwnerSession?>,
 ) {
+    constructor(
+        developerPreferences: DeveloperPreferences,
+        cardPreferences: CardPreferences,
+        ownerSessionRepository: OwnerSessionRepository,
+    ) : this(developerPreferences, cardPreferences, ownerSessionRepository.user)
+
     private val scope = supervisedScope("card-tap-share", Dispatchers.Default)
+    private val sheetOpen = MutableStateFlow(false)
+
+    fun setSheetOpen(open: Boolean) {
+        sheetOpen.value = open
+    }
 
     val servedUrl: StateFlow<String?> = combine(
         developerPreferences.profileCardEnabled,
         cardPreferences.tapShareEnabled,
-        ownerSessionRepository.user,
+        user,
         cardPreferences.design,
-    ) { profileCardEnabled, tapShareEnabled, user, design ->
-        CardTapShareGate(profileCardEnabled, tapShareEnabled, user?.odinId?.domainName, design).servedUrl
+        sheetOpen,
+    ) { profileCardEnabled, tapShareEnabled, user, design, open ->
+        CardTapShareGate(profileCardEnabled, tapShareEnabled, user?.odinId?.domainName, design, open).servedUrl
     }.stateIn(scope, SharingStarted.Eagerly, null)
 }
 
@@ -114,67 +168,205 @@ internal fun hceSteps(resumed: Boolean, servedUrl: String?, enabled: Boolean, pr
 @Composable
 expect fun CardTapShareDriver(onShared: () -> Unit)
 
+internal enum class CardNfcPanel(val titleRes: StringResource, val bodyRes: StringResource) {
+    AndroidReady(MR.string.profile_card_nfc_title, MR.string.profile_card_nfc_body),
+    AndroidOff(MR.string.profile_card_nfc_title, MR.string.profile_card_nfc_body),
+    Iphone(MR.string.profile_card_nfc_iphone_title, MR.string.profile_card_nfc_iphone_body),
+}
+
+internal fun cardNfcPanel(canShare: Boolean, nfcEnabled: Boolean): CardNfcPanel = when {
+    !canShare -> CardNfcPanel.Iphone
+    nfcEnabled -> CardNfcPanel.AndroidReady
+    else -> CardNfcPanel.AndroidOff
+}
+
+/** [onShareInstead] is the card's own share, offered where tapping can't work; null when sharing is unavailable. */
 @Composable
-fun CardNfcAction(nfc: CardNfc) {
+fun CardNfcAction(nfc: CardNfc, onShareInstead: (() -> Unit)? = null) {
     var open by remember { mutableStateOf(false) }
     IconButton(onClick = { open = true }) {
         Icon(Icons.Outlined.Nfc, contentDescription = stringResource(MR.string.profile_card_nfc))
     }
     if (open) {
-        CardNfcSheet(nfc = nfc, onDismiss = { open = false })
+        CardNfcSheet(nfc = nfc, onShareInstead = onShareInstead, onDismiss = { open = false })
     }
 }
 
 @Composable
-private fun CardNfcSheet(nfc: CardNfc, onDismiss: () -> Unit) {
-    val toggle = rememberTapShareToggle()
-    val active = nfc.isEnabled && toggle.checked
-    val motion = MaterialTheme.motionScheme
+private fun CardNfcSheet(nfc: CardNfc, onShareInstead: (() -> Unit)?, onDismiss: () -> Unit) {
+    val tapShare = koinInject<CardTapShare>()
+    if (nfc.canShare) {
+        DisposableEffect(tapShare) {
+            tapShare.setSheetOpen(true)
+            onDispose { tapShare.setSheetOpen(false) }
+        }
+    }
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+        CardNfcPanelContent(
+            panel = cardNfcPanel(nfc.canShare, nfc.isEnabled),
+            onOpenSettings = nfc::openSettings,
+            onShareInstead = onShareInstead?.let { share -> { dismiss(share) } },
+            onDialog = isDialog,
+        )
+    }
+}
+
+@Composable
+internal fun CardNfcPanelContent(panel: CardNfcPanel, onOpenSettings: () -> Unit, onShareInstead: (() -> Unit)?, onDialog: Boolean = false) {
+    // The wide dialog's elevated surface is as light as the highest container; the lowest one stands out from it instead.
+    val raised = if (onDialog) MaterialTheme.colorScheme.surfaceContainerLowest else MaterialTheme.colorScheme.surfaceContainerHighest
+    val active = panel == CardNfcPanel.AndroidReady
+    val motion = MaterialTheme.motionScheme
+    Column(
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        NfcPulse(active = active, idle = raised)
+        AnimatedVisibility(
+            visible = active,
+            enter = fadeIn(motion.defaultEffectsSpec()) + expandVertically(motion.defaultSpatialSpec()),
+            exit = fadeOut(motion.fastEffectsSpec()) + shrinkVertically(motion.defaultSpatialSpec()),
         ) {
-            NfcPulse(active = active)
-            AnimatedVisibility(
-                visible = active,
-                enter = fadeIn(motion.defaultEffectsSpec()) + expandVertically(motion.defaultSpatialSpec()),
-                exit = fadeOut(motion.fastEffectsSpec()) + shrinkVertically(motion.defaultSpatialSpec()),
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+            LivePill(modifier = Modifier.padding(top = 4.dp, bottom = 20.dp))
+        }
+        if (panel == CardNfcPanel.AndroidOff) {
+            Text(
+                text = stringResource(MR.string.profile_card_nfc_off),
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            MediumButton(Icons.Outlined.Settings, stringResource(MR.string.profile_card_nfc_open_settings), onOpenSettings, Modifier.padding(top = 24.dp))
+            return@Column
+        }
+        Text(
+            text = stringResource(panel.titleRes),
+            style = MaterialTheme.typography.headlineSmallEmphasized,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(
+            text = stringResource(panel.bodyRes),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        if (panel == CardNfcPanel.AndroidReady) {
+            AndroidOnlyChip(modifier = Modifier.padding(top = 20.dp))
+        } else {
+            TapCompatibility(container = raised, modifier = Modifier.padding(top = 24.dp))
+            Text(
+                text = stringResource(MR.string.profile_card_nfc_instead),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 20.dp),
+            )
+            if (onShareInstead != null) {
+                MediumButton(Icons.Outlined.Share, stringResource(MR.string.profile_card_share), onShareInstead, Modifier.padding(top = 16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediumButton(icon: ImageVector, text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val height = ButtonDefaults.MediumContainerHeight
+    Button(
+        onClick = onClick,
+        shapes = ButtonDefaults.shapes(),
+        modifier = modifier.heightIn(min = height),
+        contentPadding = ButtonDefaults.contentPaddingFor(height),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(height)))
+        Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(height)))
+        Text(text, style = ButtonDefaults.textStyleFor(height))
+    }
+}
+
+@Composable
+private fun LivePill(modifier: Modifier = Modifier) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+        ) {
+            Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(MR.string.profile_card_nfc_live), style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun AndroidOnlyChip(modifier: Modifier = Modifier) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.heightIn(min = 48.dp).padding(start = 16.dp, end = 20.dp),
+        ) {
+            Icon(Icons.Outlined.PhoneAndroid, contentDescription = null)
+            Spacer(Modifier.width(12.dp))
+            Text(stringResource(MR.string.profile_card_nfc_android_only), style = MaterialTheme.typography.titleSmall)
+        }
+    }
+}
+
+private val IPHONE_TAP_ROUTES = listOf(
+    MR.string.profile_card_nfc_iphone_to_iphone to false,
+    MR.string.profile_card_nfc_iphone_to_android to false,
+    MR.string.profile_card_nfc_android_to_android to true,
+)
+
+@Composable
+private fun TapCompatibility(container: Color, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        IPHONE_TAP_ROUTES.forEachIndexed { index, (route, works) ->
+            val verdict = stringResource(if (works) MR.string.profile_card_nfc_works else MR.string.profile_card_nfc_not_possible)
+            // A plain background: a Surface in `surface` colour would pick up the dialog's tonal elevation and vanish into it.
+            Box(Modifier.fillMaxWidth().background(container, groupedShape(index, IPHONE_TAP_ROUTES.size))) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp).semantics(mergeDescendants = true) {},
                 ) {
-                    Text(
-                        text = stringResource(MR.string.profile_card_nfc_title),
-                        style = MaterialTheme.typography.headlineSmall,
-                        textAlign = TextAlign.Center,
-                    )
-                    Text(
-                        text = stringResource(MR.string.profile_card_nfc_body),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
+                    val colors = MaterialTheme.colorScheme
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .then(
+                                if (works) Modifier.background(colors.secondary, MaterialShapes.Cookie9Sided.toShape())
+                                else Modifier.border(1.5.dp, colors.outline, CircleShape),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            if (works) Icons.Outlined.Check else Icons.Outlined.Close,
+                            contentDescription = null,
+                            tint = if (works) colors.onSecondary else colors.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = stringResource(route), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = verdict,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (works) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-            }
-            if (!nfc.isEnabled) {
-                Text(
-                    text = stringResource(MR.string.profile_card_nfc_off),
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                )
-                FilledTonalButton(onClick = nfc::openSettings) {
-                    Text(stringResource(MR.string.profile_card_nfc_open_settings))
-                }
-            }
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                shape = MaterialTheme.shapes.large,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                TapShareRow(toggle = toggle, supportingText = stringResource(MR.string.profile_card_nfc_switch_desc))
             }
         }
     }
@@ -182,7 +374,7 @@ private fun CardNfcSheet(nfc: CardNfc, onDismiss: () -> Unit) {
 
 @Composable
 fun CardTapShareSettingsRow() {
-    val nfc = rememberCardNfc() ?: return
+    val nfc = rememberCardNfc()?.takeIf { it.canShare } ?: return
     TapShareRow(
         toggle = rememberTapShareToggle(),
         supportingText = stringResource(if (nfc.isEnabled) MR.string.profile_card_nfc_switch_desc else MR.string.profile_card_nfc_off),
@@ -208,18 +400,20 @@ private fun TapShareRow(toggle: SettingsRowAction.Toggle, supportingText: String
 }
 
 @Composable
-private fun NfcPulse(active: Boolean) {
-    Box(modifier = Modifier.size(160.dp), contentAlignment = Alignment.Center) {
+private fun NfcPulse(active: Boolean, idle: Color) {
+    val motion = MaterialTheme.motionScheme
+    val colors = MaterialTheme.colorScheme
+    val morph = remember { Morph(MaterialShapes.Circle, MaterialShapes.Cookie9Sided) }
+    val progress by animateFloatAsState(if (active) 1f else 0f, motion.defaultSpatialSpec())
+    val fill by animateColorAsState(if (active) colors.primaryContainer else idle, motion.defaultEffectsSpec())
+    val tint by animateColorAsState(if (active) colors.onPrimaryContainer else colors.onSurfaceVariant, motion.defaultEffectsSpec())
+    Box(modifier = Modifier.size(if (active) 160.dp else 120.dp), contentAlignment = Alignment.Center) {
         if (active) NfcPulseRings()
-        Surface(
-            shape = CircleShape,
-            color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-            contentColor = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(80.dp),
+        Box(
+            modifier = Modifier.size(88.dp).background(fill, MorphShape(morph, progress.coerceIn(0f, 1f))),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Nfc, contentDescription = null, modifier = Modifier.size(40.dp))
-            }
+            Icon(Icons.Outlined.Nfc, contentDescription = null, tint = tint, modifier = Modifier.size(40.dp))
         }
     }
 }

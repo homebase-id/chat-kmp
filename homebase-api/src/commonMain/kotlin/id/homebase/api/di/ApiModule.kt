@@ -19,6 +19,7 @@ import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.storage.StorageQuota
 import id.homebase.api.client.storage.StorageUsageProvider
 import id.homebase.api.client.liverelay.LiveRelayProvider
+import id.homebase.api.client.calling.IceServersProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
@@ -102,7 +103,7 @@ val apiModule = module {
     // Composite outbox uploader: drive transit + the scheduled-push shim (offline-durable
     // schedule/cancel of reminder pushes, reconciled against the server via tagId; see
     // ScheduledPushOutboxUploader).
-    single { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
+    single { DriveOutboxUploader(get(), get(), get(), get(), get(), get(), get()) }
     single { ScheduledPushOutboxUploader(get()) }
     single<OutboxUploader> { CompositeOutboxUploader(get(), get()) }
     // Explicit `single` (not `singleOf`) because the ctor's background-assertion factory is
@@ -144,6 +145,7 @@ val apiModule = module {
     factoryOf(::PeerDriveUploadProvider)
     factoryOf(::PeerNotificationProvider)
     factoryOf(::LiveRelayProvider)
+    factoryOf(::IceServersProvider)
     // Single: one set of peer (owner-hosted) websocket connections per app session; reset on logout
     // via AuthConnectionCoordinator.disconnect(). Uses its own internal scope (default ctor arg).
     single {

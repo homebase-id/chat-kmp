@@ -10,7 +10,6 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
-import id.homebase.core.image.ImageSize
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -91,14 +90,13 @@ internal const val TRAY_ANIMATED_MAX_BYTES = 2L * 1024 * 1024
  * assembly so the tray tile addresses the same Coil cache entry as the eventual bubble.
  */
 @OptIn(ExperimentalEncodingApi::class)
-fun SavedSticker.toImageData(requestedSize: ImageSize? = ImageSize.THUMB_SMALL): HomebaseImageData? {
+fun SavedSticker.toImageData(): HomebaseImageData? {
     val ivBytes = payloadDescriptor.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
         descriptor = payloadDescriptor,
         previewThumbnail = previewThumbnail,
-        requestedSize = requestedSize,
         // Lets a GIF animate from its original, but only small ones: a tray is a grid of these.
         payloadContentType = contentType.takeIf {
             it !in HomebaseImageLoader.THUMBLESS_CONTENT_TYPES ||

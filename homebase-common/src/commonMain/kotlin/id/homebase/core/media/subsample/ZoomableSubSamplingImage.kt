@@ -53,6 +53,8 @@ import id.homebase.core.HomebaseConstants
 import id.homebase.core.avatars.rememberPublicAvatarUrl
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.image.HdrWindowEffect
+import id.homebase.core.image.carriesGainmap
 import id.homebase.core.image.fullScreenImageRequest
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.koinInject
@@ -84,6 +86,8 @@ fun ZoomableSubSamplingImage(
      * so they never crop/uncrop and need no hero. See [VaultZoomableImage].
      */
     heroContentAspect: Float? = null,
+    /** Full-screen viewers set this on the page in view, so a photo with a gain map is shown in HDR. */
+    showsHdr: Boolean = false,
 ) {
     val coilImageLoader: ImageLoader = koinInject()
     val homebaseImageLoader: HomebaseImageLoader = koinInject()
@@ -112,10 +116,11 @@ fun ZoomableSubSamplingImage(
 
     val platformContext = LocalPlatformContext.current
     val windowSize = LocalWindowInfo.current.containerSize
+    var remoteFailed by remember(source) { mutableStateOf(false) }
     val model: Any? = when (source) {
         is SubSamplingImageSource.Remote -> {
             val imageData = source.imageData
-            remember(imageData, platformContext, windowSize) {
+            val request = remember(imageData, platformContext, windowSize) {
                 if (windowSize.width > 0 && windowSize.height > 0) {
                     // Pin the base decode to the window size so a press-time
                     // prefetch and this request share one Coil memory-cache entry
@@ -127,12 +132,15 @@ fun ZoomableSubSamplingImage(
                     imageData
                 }
             }
+            source.standIn?.takeIf { remoteFailed } ?: request
         }
         is SubSamplingImageSource.LocalFile -> source.filePath
         is SubSamplingImageSource.Avatar -> rememberPublicAvatarUrl(source.odinId)
     }
 
     var imageLoaded by remember(model) { mutableStateOf(false) }
+    var hasGainmap by remember(model) { mutableStateOf(false) }
+    HdrWindowEffect(active = showsHdr && hasGainmap)
 
     // Cross-fade the sharp image in over the placeholder so the unavoidable
     // decode (a 6 MB JPEG can take a few hundred ms on older devices) reads as a
@@ -176,6 +184,7 @@ fun ZoomableSubSamplingImage(
             }
             HomebaseImage(
                 imageData = thumbnailData,
+                stepUpToPayload = false,
                 contentDescription = null,
                 contentScale = contentScale,
                 modifier = Modifier.fillMaxSize(),
@@ -189,11 +198,18 @@ fun ZoomableSubSamplingImage(
             contentScale = contentScale,
             zoomState = zoomState,
             scrollBar = null,
-            onSuccess = {
+            onSuccess = { success ->
+                hasGainmap = carriesGainmap(success.result.image)
                 imageLoaded = true
                 onLoaded?.invoke()
             },
-            onError = onError?.let { callback -> { _ -> callback() } },
+            onError = { _ ->
+                if (source is SubSamplingImageSource.Remote && source.standIn != null && !remoteFailed) {
+                    remoteFailed = true
+                } else {
+                    onError?.invoke()
+                }
+            },
             onTap = onTap?.let { callback ->
                 { _: Offset ->
                     if (onDoubleTap == null) {

@@ -22,6 +22,7 @@ data class CardOverrides(
     val blocks: List<CardBlock>? = null,
     val socials: String? = null,
     val fields: CardFields? = null,
+    val background: String? = null,
 ) {
     fun isEmpty(): Boolean = this == EMPTY
 
@@ -35,8 +36,8 @@ data class CardOverrides(
             CardOverrides(
                 palette = json.field("palette") { o ->
                     CardPalette(
-                        ground = o.strictString("ground"), ink = o.strictString("ink"), muted = o.strictString("muted"),
-                        accent = o.strictString("accent"), surface = o.strictString("surface"), surfaceInk = o.strictString("surfaceInk"),
+                        ground = o.colour("ground"), ink = o.colour("ink"), muted = o.colour("muted"),
+                        accent = o.colour("accent"), surface = o.colour("surface"), surfaceInk = o.colour("surfaceInk"),
                     )
                 },
                 type = json.field("type") { o ->
@@ -50,6 +51,7 @@ data class CardOverrides(
                         CardPortrait(
                             source = o.strictString("source"), shape = o.strictString("shape"), ring = o.strictDouble("ring"),
                             shadow = o.strictString("shadow"), tilt = o.strictDouble("tilt"), tape = o.strictBoolean("tape"), mono = o.strictBoolean("mono"),
+                            size = o.strictString("size")?.takeIf { it in CardDesignSpecs.PORTRAIT_SIZES },
                         )
                     }
                 },
@@ -59,7 +61,13 @@ data class CardOverrides(
                 },
                 socials = json.strictString("socials"),
                 fields = json.field("fields") { o -> CardFields(order = o.texts("order"), hidden = o.texts("hidden"), hiddenSections = o.texts("hiddenSections")) },
+                background = CardBackgrounds.known(json.strictString("background")),
             )
+
+        // The web's colour(): anything but #RRGGBB is dropped, and the app's hexToArgb would throw on it.
+        private fun JsonObject.colour(key: String): String? = strictString(key)?.takeIf { HEX_COLOUR.matches(it) }
+
+        private val HEX_COLOUR = Regex("^#[0-9a-fA-F]{6}$")
 
         private fun <T> JsonObject.field(key: String, read: (JsonObject) -> T): T? =
             (this[key] as? JsonObject)?.let(read)
@@ -107,6 +115,7 @@ data class CardPortrait(
     @Serializable(with = CardNumberSerializer::class) val tilt: Double? = null,
     val tape: Boolean? = null,
     val mono: Boolean? = null,
+    val size: String? = null,
 )
 
 @Serializable

@@ -1,8 +1,6 @@
 package id.homebase.api.storage
 
 import android.security.keystore.KeyPermanentlyInvalidatedException
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import java.security.InvalidKeyException
 import java.security.KeyStoreException
 import java.security.ProviderException
@@ -10,8 +8,12 @@ import java.security.UnrecoverableKeyException
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class KeystoreKeyLossTest {
 
     @Test

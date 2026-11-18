@@ -4,7 +4,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import kotlin.uuid.Uuid
 
 /**
- * Outcome of [UploadService.upload]. Distinguishes the cases a feature must handle
+ * Outcome of [UploadService.upload], [UploadService.queue] and [UploadService.updateFile]. Distinguishes the cases a feature must handle
  * differently — durable success, a swept pre-encryption source (re-pick), a benign
  * already-queued collision, the strand guard, and a real failure.
  */

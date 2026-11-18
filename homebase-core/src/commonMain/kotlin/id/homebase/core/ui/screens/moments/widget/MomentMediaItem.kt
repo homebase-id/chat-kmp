@@ -1,13 +1,12 @@
 package id.homebase.core.ui.screens.moments.widget
 
+import id.homebase.chat.services.builder.locationPreviews
+import id.homebase.chat.services.builder.linkPreviews
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,35 +33,32 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.toImageBitmap
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.localImageOnly
+import id.homebase.chat.services.imageStandIn
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.builder.LinkPreviewDescriptor
-import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
 import id.homebase.chat.widget.DocumentMediaItem
 import id.homebase.chat.widget.LinkPreviewCard
 import id.homebase.chat.widget.LocationPreviewCard
-import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.mediaGestures
+import id.homebase.core.image.LocalFileImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.ui.theme.Dimens
@@ -75,6 +71,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+import id.homebase.core.image.mediaSharedKey
 
 // Moments-specific clone of `id.homebase.chat.widget.MediaItem`, free to diverge from chat's copy.
 @Composable
@@ -86,7 +83,7 @@ fun MomentMediaItem(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     modifier: Modifier = Modifier,
     keyHeader: KeyHeader,
-    imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
+    isEncrypted: Boolean,
     preserveAspectRatio: Boolean = false,
     // Set when the host gives an explicit size (comments-shrink band, detail/reels pager page): without it the
     // intrinsic `.aspectRatio()` below sizes the image to its own ratio and overflows that box.
@@ -97,6 +94,9 @@ fun MomentMediaItem(
     onRequestDecryptedFile: (() -> Unit)? = null,
     // Routes photos through [ZoomableSubSamplingImage] for inline pinch-zoom; only affects image payloads.
     enableZoom: Boolean = false,
+    stepUpToPayload: Boolean = true,
+    /** Only the full-screen detail viewer's page in view sets this; feed cards stay SDR as they scroll. */
+    showsHdr: Boolean = false,
     // True while the zoomed photo is panned past fit; the carousel pager uses it to suspend page-swiping.
     onZoomedChanged: ((Boolean) -> Unit)? = null,
     shape: Shape =
@@ -145,15 +145,7 @@ fun MomentMediaItem(
     when {
         payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
             val linkDescriptors = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
-                    try {
-                        OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
-                            content
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.linkPreviews()
             }
 
             val payloadIv = payload.iv?.bytes
@@ -180,15 +172,7 @@ fun MomentMediaItem(
 
         payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> {
             val locationDescriptors = remember(payload.descriptorContent) {
-                payload.descriptorContent?.let { content ->
-                    try {
-                        OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
-                            content
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.locationPreviews()
             }
 
             val payloadIv = payload.iv?.bytes
@@ -214,18 +198,15 @@ fun MomentMediaItem(
         }
 
         payload.isImage() && enableZoom -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
             val zoomSource = remember(
-                imageLocalContext?.localFilePath,
-                driveId, fileId, payload.key, payload.lastModified,
+                localContext.imageStandIn,
+                driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted,
             ) {
-                val localPath = imageLocalContext?.localFilePath
+                val localPath = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {
-                    // A public (unencrypted) post carries no IV — build the source anyway (encrypted
-                    // only when an IV is present). Bailing to null here left public feed images as a
-                    // blank Box that never even requested bytes; matches the non-zoom builder below.
+                    // A public post's payloads carry no IV: request the plain bytes, never an empty Box.
                     val payloadIv = payload.iv?.bytes
                     val imageData = HomebaseImageData.from(
                         driveId = driveId,
@@ -233,8 +214,7 @@ fun MomentMediaItem(
                         descriptor = payload,
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
-                        requestedSize = imageSize,
-                        isEncrypted = payloadIv != null,
+                        isEncrypted = isEncrypted,
                         keyHeader = payloadIv
                             ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                             ?: KeyHeader.empty(),
@@ -244,7 +224,7 @@ fun MomentMediaItem(
                         // pinched photo shows real detail, not an upscaled thumb.
                         loadFullPayload = true,
                     )
-                    SubSamplingImageSource.Remote(imageData)
+                    SubSamplingImageSource.Remote(imageData, standIn = localContext.imageStandIn)
                 }
             }
             ZoomableSubSamplingImage(
@@ -260,53 +240,26 @@ fun MomentMediaItem(
                 // path, like chat) — see ZoomableSubSamplingImage docs.
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
-                sharedContentStateKey = "image-${fileId}-${payload.key}",
+                sharedContentStateKey = mediaSharedKey(fileId, payload.key),
+                showsHdr = showsHdr,
             )
         }
 
         payload.isImage() -> {
-            val imageLocalContext = localContext as? LocalAttachmentContext.Image
-            if (imageLocalContext != null) {
-                var imageModifier = if (onClick != null || onLongPress != null) {
-                    finalModifier.pointerInput(onClick, onLongPress) {
-                        detectTapGestures(
-                            onTap = { onClick?.invoke() },
-                            onLongPress = { offset -> onLongPress?.invoke(offset) },
-                        )
-                    }
-                } else {
-                    finalModifier
-                }
-                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                    with(sharedTransitionScope) {
-                        imageModifier = imageModifier.sharedBounds(
-                            rememberSharedContentState(key = "image-${fileId}-${payload.key}"),
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            boundsTransform = { _, _ ->
-                                tween(
-                                    durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
-                                    easing = FastOutSlowInEasing,
-                                )
-                            },
-                            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                        )
-                    }
-                }
-                AsyncImage(
-                    model = imageLocalContext.localFilePath,
+            val localOnly = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
+            if (localOnly != null) {
+                LocalFileImage(
+                    localOnly,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = imageModifier,
+                    modifier = finalModifier.mediaGestures(
+                        onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope, animatedVisibilityScope,
+                    ),
                     contentScale = imageContentScale,
                 )
             } else {
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
-                        // Public feed posts are unencrypted: a plaintext payload carries
-                        // no IV. Build a plaintext request (isEncrypted=false, empty
-                        // keyHeader) rather than bailing to an empty Box — the server's
-                        // `payloadencrypted=false` header makes the loader return the bytes
-                        // as-is (keyHeader ignored). Encrypted payloads (chat, moments) still
-                        // carry an IV, so they keep the encrypted path unchanged.
+                    remember(driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted) {
+                        // A public post's payloads carry no IV: request the plain bytes, never an empty Box.
                         val payloadIv = payload.iv?.bytes
                         HomebaseImageData.from(
                             driveId = driveId,
@@ -314,8 +267,7 @@ fun MomentMediaItem(
                             descriptor = payload,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
-                            requestedSize = imageSize,
-                            isEncrypted = payloadIv != null,
+                            isEncrypted = isEncrypted,
                             keyHeader = payloadIv
                                 ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                                 ?: KeyHeader.empty(),
@@ -326,6 +278,8 @@ fun MomentMediaItem(
 
                 HomebaseImage(
                     imageData = imageData,
+                    standIn = localContext.imageStandIn,
+                    stepUpToPayload = stepUpToPayload,
                     modifier = finalModifier,
                     contentScale = imageContentScale,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
@@ -356,6 +310,7 @@ fun MomentMediaItem(
                     payloadKey = payload.key,
                     keyHeader = perPayloadKeyHeader,
                     descriptorContent = payload.descriptorContent,
+                    contentType = payload.contentType,
                 )
             }
             val videoDescriptor = remember(payload.descriptorContent) {
@@ -372,15 +327,14 @@ fun MomentMediaItem(
                     onProgress = { preloadProgress = it },
                 )
             }
-            val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
+            val imageData = remember(driveId, fileId, payload.key, payload.lastModified, perPayloadKeyHeader, isEncrypted) {
                 HomebaseImageData.from(
                     driveId = driveId,
                     fileId = fileId,
                     descriptor = payload,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
-                    requestedSize = ImageSize.THUMB_MEDIUM,
-                    isEncrypted = payloadIv != null,
+                    isEncrypted = isEncrypted,
                     keyHeader = perPayloadKeyHeader,
                     remoteOdinId = remoteOdinId,
                     globalTransitId = globalTransitId,
@@ -402,17 +356,8 @@ fun MomentMediaItem(
                         videoLocalContext.thumbnailBytes.toImageBitmap()
                     }
                     if (uploadBitmap != null) {
-                        val thumbBaseModifier = Modifier.fillMaxSize()
-                        val thumbModifier = if (onClick != null || onLongPress != null) {
-                            thumbBaseModifier.pointerInput(onClick, onLongPress) {
-                                detectTapGestures(
-                                    onTap = { onClick?.invoke() },
-                                    onLongPress = { offset -> onLongPress?.invoke(offset) },
-                                )
-                            }
-                        } else {
-                            thumbBaseModifier
-                        }
+                        val thumbModifier = Modifier.fillMaxSize()
+                            .mediaGestures(onClick, onLongPress, mediaSharedKey(fileId, payload.key), sharedTransitionScope = null, animatedVisibilityScope = null)
                         Image(
                             bitmap = uploadBitmap,
                             contentDescription = stringResource(MR.string.chat_message_video_thumbnail),

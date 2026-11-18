@@ -7,27 +7,28 @@ import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.extensionForMimeType
+import id.homebase.api.video.playableContentType
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.AlbumAccessDeniedException
+import id.homebase.core.util.AlbumSaveResult
 import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.NetworkMonitor
-import id.homebase.core.util.extensionForMimeType
-import id.homebase.core.util.saveAwait
+import id.homebase.core.util.deleteQuietly
+import id.homebase.core.util.saveReceived
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.io.files.Path
 
 private const val TAG = "ChatMediaAutoSave"
 
@@ -47,7 +48,7 @@ class ChatMediaAutoSaveService(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
-    private val payloadDownloadService: PayloadDownloadService,
+    private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
     private val albumSaver: AlbumSaver,
     private val networkMonitor: NetworkMonitor,
@@ -135,29 +136,28 @@ class ChatMediaAutoSaveService(
 
     private suspend fun saveOne(file: HomebaseFile, payload: PayloadDescriptor) {
         val iv = payload.iv ?: return
-        val extension = payload.contentType?.let { extensionForMimeType(it) } ?: "bin"
+        val extension = payload.playableContentType?.let { extensionForMimeType(it) } ?: "bin"
         val name = "homebase_${file.fileId}_${payload.key}.$extension"
 
-        val path = payloadDownloadService.exportToTemp(
-            driveId = chatDrive,
-            fileId = file.fileId,
-            key = payload.key,
-            keyHeader = KeyHeader(iv.bytes, file.keyHeader.aesKey),
-            destination = ExportDestination.Scratch("hbautosave_", ".$extension"),
-        ) ?: return
-
         try {
-            // The export lands in cacheDir, which the CacheSweeper reaps — hand it straight over
-            // and drop it, rather than treating it as the saved copy.
-            val location = albumSaver.saveAwait(Path(path), name)
+            val saved = albumSaver.saveReceived(
+                driveFileProvider, fileOperationsProvider, chatDrive, file.fileId, payload, KeyHeader(iv.bytes, file.keyHeader.aesKey),
+                name = name, asked = false,
+            )
+            val location = when (saved) {
+                is AlbumSaveResult.Saved -> saved.location
+                is AlbumSaveResult.Refused -> {
+                    fileOperationsProvider.deleteQuietly(saved.file)
+                    throw AlbumAccessDeniedException(saved.reason)
+                }
+                AlbumSaveResult.Cancelled, AlbumSaveResult.WriteFailed -> error("couldn't save $name")
+            }
             dbm.autoSavedMedia.markSaved(file.fileId.toString(), payload.key)
             Logger.d(tag = TAG) { "Saved ${payload.key} of ${file.fileId} to $location" }
         } catch (e: AlbumAccessDeniedException) {
             throw e
         } catch (e: Exception) {
             Logger.w(throwable = e, tag = TAG) { "Auto-save failed for ${payload.key}" }
-        } finally {
-            runCatching { fileOperationsProvider.deleteTempFile(path) }
         }
     }
 }

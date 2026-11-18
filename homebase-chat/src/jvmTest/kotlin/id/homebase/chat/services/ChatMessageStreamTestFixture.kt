@@ -20,6 +20,7 @@ import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
@@ -35,7 +36,10 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -56,9 +60,14 @@ internal class ChatMessageStreamTestFixture private constructor(
         }
 
     /** Build a chat-message header without writing it to `DriveMainIndex`. */
-    fun buildMessageFile(userDateMs: Long, uniqueId: Uuid = Uuid.random()): HomebaseFile {
+    fun buildMessageFile(
+        userDateMs: Long,
+        uniqueId: Uuid = Uuid.random(),
+        text: String = "msg-${uniqueId.toString().take(8)}",
+        author: String = testDomain,
+    ): HomebaseFile {
         val content =
-            """{"message":"msg-${uniqueId.toString().take(8)}","deliveryStatus":20,"isEdited":false,"version":1}"""
+            """{"message":"$text","deliveryStatus":20,"isEdited":false,"version":1}"""
                 .replace("\"", "\\\"")
         return OdinSystemSerializer.deserialize<HomebaseFile>(
             """{
@@ -78,8 +87,8 @@ internal class ChatMessageStreamTestFixture private constructor(
                     "transitCreated": $userDateMs,
                     "transitUpdated": 0,
                     "isEncrypted": false,
-                    "senderOdinId": "$testDomain",
-                    "originalAuthor": "$testDomain",
+                    "senderOdinId": "$author",
+                    "originalAuthor": "$author",
                     "appData": {
                         "uniqueId": "$uniqueId",
                         "tags": null,
@@ -225,4 +234,21 @@ internal object ThrowingOutboxUploader : OutboxUploader {
     override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
         error("OutboxUploader.upload should never be called while the test outbox is offline")
     }
+}
+
+/**
+ * The window's copy of [messageId] once [settled] holds for it (null when the window lost it). The stream applies events
+ * in its own scope, which advanceUntilIdle doesn't wait for, so this waits on the window itself, up to 5 s; on a
+ * timeout it returns the window's current copy for the caller's assertion to report.
+ */
+internal suspend fun ChatMessageStream.awaitMessage(
+    conversationId: Uuid,
+    messageId: Uuid,
+    settled: (MessageUiModel?) -> Boolean,
+): MessageUiModel? {
+    fun ChatMessagesData.message() = (this as? ChatMessagesData.Messages)?.window?.messages?.firstOrNull { it.id == messageId }
+    val matched = withContext(Dispatchers.Default) {
+        withTimeoutOrNull(5_000) { observeMessages(conversationId).first { it is ChatMessagesData.Messages && settled(it.message()) } }
+    }
+    return if (matched != null) matched.message() else messageInWindow(conversationId, messageId)
 }

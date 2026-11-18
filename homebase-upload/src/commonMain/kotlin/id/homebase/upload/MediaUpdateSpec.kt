@@ -44,7 +44,8 @@ data class MediaUpdateSpec(
     val seedCache: Boolean = true,
     /**
      * Already-encrypted payloads to re-attach as-is (the service skips encryption). Mutually
-     * exclusive with [bundle]; used when reusing a file's existing payloads (add-recipients).
+     * exclusive with [bundle]; used when reusing a file's existing payloads (add-recipients). Copies made for this
+     * request: the update owns them from the call on.
      */
     val preEncryptedPayloads: List<PayloadFile>? = null,
     val preEncryptedThumbnails: List<ThumbnailFile>? = null,

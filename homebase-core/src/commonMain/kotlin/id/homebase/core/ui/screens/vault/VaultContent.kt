@@ -22,6 +22,7 @@ import id.homebase.core.ui.screens.vault.components.VaultEmptyState
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import kotlin.uuid.ExperimentalUuidApi
+import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
 @Composable
@@ -32,6 +33,7 @@ fun VaultContent(
     localAttachmentStore: LocalAttachmentContextStore,
     onEntryClick: (VaultEntry) -> Unit,
     onAddEntry: (VaultSection) -> Unit,
+    onFilesDropped: (VaultSection, List<PlatformFile>) -> Unit,
     onMoveUp: (VaultSection) -> Unit,
     onMoveDown: (VaultSection) -> Unit,
     onRenameSection: (VaultSection) -> Unit,
@@ -83,6 +85,7 @@ fun VaultContent(
                         rowState = rowState,
                         onEntryClick = { onEntryClick(it) },
                         onAddEntry = { onAddEntry(section) },
+                        onFilesDropped = { onFilesDropped(section, it) },
                         onMoveUp = { onMoveUp(section) },
                         onMoveDown = { onMoveDown(section) },
                         onRenameSection = { onRenameSection(section) },

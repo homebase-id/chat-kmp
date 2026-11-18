@@ -53,6 +53,9 @@ sealed class NotificationNavigationEvent {
      */
     data object OpenWebDropCompose : NotificationNavigationEvent()
 
+    /** Open the native feed's post detail over the Feed tab; [postId] may be a post's id, globalTransitId or fileId. */
+    data class OpenFeedPost(val postId: String) : NotificationNavigationEvent()
+
     /** Open a mini app's root screen, e.g. from a web `#filesync` link. */
     data class OpenApp(val route: Route) : NotificationNavigationEvent()
 }

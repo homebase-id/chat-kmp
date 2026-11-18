@@ -21,7 +21,6 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
-import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import kotlinx.collections.immutable.ImmutableMap
 import kotlin.time.Instant
@@ -103,7 +102,6 @@ fun StickerMessage(
                 decryptedFiles = decryptedFiles,
                 keyHeader = keyHeader,
                 modifier = Modifier.sizeIn(maxWidth = stickerMaxSize, maxHeight = stickerMaxSize),
-                imageSize = ImageSize.THUMB_MEDIUM,
                 preserveAspectRatio = true,
                 isSticker = true,
                 onClick = { onMediaClick(payload) },

@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Rect
 import id.homebase.core.camera.CameraModes
 import id.homebase.core.camera.rememberInAppCameraManager
 import io.github.vinceglb.filekit.PlatformFile
@@ -26,6 +27,9 @@ fun rememberCameraManager(
 
 interface PlatformCameraManager {
     fun launch()
+
+    /** Opens the camera grown out of [origin], the launching control's bounds in window coordinates, and shrinks it back there on close. */
+    fun launchFrom(origin: Rect) = launch()
 
     /** Tells a camera held over the app that the capture it handed off is on screen. */
     fun resultShown() = Unit

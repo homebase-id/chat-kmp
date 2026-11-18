@@ -48,6 +48,7 @@ class ConversationMessageBumpTest {
         id: Uuid = convoId,
         latestMs: Long = 0L,
         unread: Int = 0,
+        isGroup: Boolean = false,
     ) = ConversationUiModel(
         id = id,
         name = "alice",
@@ -64,7 +65,7 @@ class ConversationMessageBumpTest {
         ),
         admins = emptySet(),
         conversationState = ConversationState.Active,
-        isGroup = false,
+        isGroup = isGroup,
     )
 
     private fun message(
@@ -652,6 +653,35 @@ class ConversationMessageBumpTest {
                 hasDirtyUnread = false,
             ),
         )
+    }
+
+    private fun bumpMention(content: String, author: OdinId = alice, group: Boolean = true) =
+        applyIncomingMessageBump(
+            items = listOf(convo(isGroup = group)),
+            targetConversationId = convoId,
+            m = message(author = author, userDateMs = 1_000L, content = content),
+            sqlUserDate = Instant.fromEpochMilliseconds(1_000L),
+            activeDomain = me,
+        )!!.first().unreadMentionCount
+
+    @Test
+    fun groupMessageMentioningMe_bumpsMentionCount() {
+        assertEquals(1, bumpMention("hey @OWNER.test look"))
+    }
+
+    @Test
+    fun mentionOfSomeoneElse_doesNotBump() {
+        assertEquals(0, bumpMention("hey @bob.test look"))
+    }
+
+    @Test
+    fun mentionInDirectConversation_doesNotBump() {
+        assertEquals(0, bumpMention("hey @owner.test look", group = false))
+    }
+
+    @Test
+    fun ownMessageMentioningMe_doesNotBump() {
+        assertEquals(0, bumpMention("note to @owner.test", author = me))
     }
 
     // endregion

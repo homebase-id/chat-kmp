@@ -40,6 +40,7 @@ class FilesyncNodeTest {
         payloads: List<PayloadDescriptor>? = null,
         serverFileIsEncrypted: Boolean = true,
         status: ArchivalStatus? = null,
+        versionMs: Long? = VERSION_MS,
     ) = HomebaseFile(
         fileId = Uuid.random(),
         driveId = FilesyncProtocol.DriveAlias,
@@ -50,6 +51,7 @@ class FilesyncNodeTest {
         fileMetadata = FileMetadata(
             isEncrypted = false,
             updated = UnixTimeUtc(UPDATED_MS),
+            versionUpdated = versionMs?.let(::UnixTimeUtc),
             appData = AppFileMetaData(
                 uniqueId = nodeId,
                 groupId = FilesyncProtocol.RootNodeId,
@@ -152,12 +154,19 @@ class FilesyncNodeTest {
     }
 
     @Test
-    fun aRemovedNodeWasRemovedAtItsUpdateWhateverItsRmSays() {
+    fun aRemovedNodeWasRemovedAtItsVersionWhateverItsRmOrALaterShareSays() {
         for (rm in listOf("", ""","rm":{"at":5,"root":"${Uuid.random()}"}""")) {
             val content = """{"v":1,"name":"a"$rm}"""
             val (node, _) = row(FilesyncProtocol.FolderFileType, content, status = ArchivalStatus.Removed).toFilesyncNode()!!
-            assertEquals(UPDATED_MS, node.removedMs, rm)
+            assertEquals(VERSION_MS, node.removedMs, rm)
         }
+    }
+
+    @Test
+    fun aRemovalAtAnUnknownTimeIsTheNewestAndShowsNoTime() {
+        val (node, _) = row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"a"}""", status = ArchivalStatus.Removed, versionMs = null).toFilesyncNode()!!
+        assertEquals(Long.MAX_VALUE, node.removedMs)
+        assertNull(node.shownRemovedMs)
     }
 
     @Test
@@ -166,7 +175,7 @@ class FilesyncNodeTest {
         for (status in listOf(null, ArchivalStatus.None, ArchivalStatus.Archived)) {
             val node = row(FilesyncProtocol.FolderFileType, content, status = status).toFilesyncNode()!!.first
             assertNull(node.removedMs)
-            assertEquals(UPDATED_MS, node.updatedMs)
+            assertEquals(VERSION_MS, node.versionMs)
         }
     }
 
@@ -208,6 +217,9 @@ class FilesyncNodeTest {
     }
 
     private companion object {
-        const val UPDATED_MS = 1759920009000
+        const val VERSION_MS = 1759920009000
+
+        // A share given since moved updated alone.
+        const val UPDATED_MS = VERSION_MS + 60_000
     }
 }

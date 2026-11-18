@@ -23,6 +23,7 @@ import id.homebase.core.ui.screens.vault.model.imageDataFor
 import id.homebase.resources.MR
 import id.homebase.resources.vault_error_image_unavailable
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.core.image.mediaSharedKey
 
 
 @Composable
@@ -33,6 +34,7 @@ fun VaultZoomableImage(
     onToggleUI: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    showsHdr: Boolean = false,
 ) {
     val localImage by localAttachmentStore.collectContext(file.uniqueId, descriptor.key)
     val localFilePath = (localImage as? LocalAttachmentContext.Image)?.localFilePath
@@ -69,8 +71,9 @@ fun VaultZoomableImage(
                 onTap = onToggleUI,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
-                sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
+                sharedContentStateKey = mediaSharedKey(file.fileId, descriptor.key),
                 heroContentAspect = heroAspect,
+                showsHdr = showsHdr,
             )
             if (isPending) {
                 MediaPendingOverlay(onTap = onToggleUI)
@@ -96,8 +99,9 @@ fun VaultZoomableImage(
                 onTap = onToggleUI,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
-                sharedContentStateKey = "image-${file.fileId}-${descriptor.key}",
+                sharedContentStateKey = mediaSharedKey(file.fileId, descriptor.key),
                 heroContentAspect = heroAspect,
+                showsHdr = showsHdr,
             )
         } else {
             MediaUnavailablePlaceholder(

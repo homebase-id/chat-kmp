@@ -16,4 +16,6 @@ data class VideoPlayerData(
     val globalTransitId: Uuid? = null,
     /** Scratch subdirectory a non-segmented MP4 is decrypted into; the player deletes it on dispose and the startup sweep is the backstop. */
     val scratchSub: String = AppCacheDirs.EXPORT,
+    /** The payload's content type: a progressive video kept as picked may be QuickTime or WebM. */
+    val contentType: String? = null,
 )

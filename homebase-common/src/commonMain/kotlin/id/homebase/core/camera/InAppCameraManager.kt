@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
 import id.homebase.core.settings.rememberMirrorFrontCamera
 import id.homebase.core.util.PlatformCameraManager
 import io.github.vinceglb.filekit.PlatformFile
@@ -35,9 +36,16 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
     internal var warmer: CameraWarmer? = null
     internal var warmEngine: CameraEngine? = null
     internal var recordsVideo = false
+    internal var origin: Rect? = null
+    internal var collapsing by mutableStateOf(false)
 
-    override fun launch() {
+    override fun launch() = open(origin = null)
+
+    override fun launchFrom(origin: Rect) = open(origin)
+
+    private fun open(origin: Rect?) {
         if (isOpen) return
+        this.origin = origin
         warmEngine = warmer?.warm(recordsVideo)
         isOpen = true
     }
@@ -46,6 +54,7 @@ class InAppCameraLauncher internal constructor() : PlatformCameraManager {
 
     internal fun close() {
         isOpen = false
+        collapsing = false
         handoffEpoch = null
     }
 
@@ -69,6 +78,21 @@ fun rememberInAppCameraManager(
     val currentOnOpenGallery by rememberUpdatedState(onOpenGallery)
     if (launcher.isOpen) {
         val fade = remember { Animatable(1f) }
+        val origin = launcher.origin
+        val stillMotion = rememberReduceMotion()
+        val reveal = remember { Animatable(if (origin == null || stillMotion) 1f else 0f) }
+        val expandSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+        val collapseSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
+        var windowDrawn by remember { mutableStateOf(false) }
+        // The dialog window takes a few frames to appear; expanding before then plays the motion off screen.
+        LaunchedEffect(windowDrawn) { if (windowDrawn) reveal.animateTo(1f, expandSpec) }
+        if (launcher.collapsing) {
+            LaunchedEffect(Unit) {
+                reveal.animateTo(0f, collapseSpec)
+                launcher.close()
+                currentOnResult(null)
+            }
+        }
         val epoch = launcher.handoffEpoch
         if (epoch != null) {
             val exitSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
@@ -91,8 +115,11 @@ fun rememberInAppCameraManager(
             allowedModes = allowedModes,
             mirrorFront = rememberMirrorFrontCamera(),
             warmEngine = launcher.warmEngine,
-            handingOff = epoch != null,
+            handingOff = epoch != null || launcher.collapsing,
             fade = { fade.value },
+            origin = origin,
+            reveal = { reveal.value },
+            onWindowDrawn = { windowDrawn = true },
             onOpenGallery = if (onOpenGallery == null) null else {
                 {
                     launcher.close()
@@ -105,8 +132,14 @@ fun rememberInAppCameraManager(
             },
             onDismiss = {
                 val delivered = launcher.handoffEpoch != null
-                launcher.close()
-                if (!delivered) currentOnResult(null)
+                when {
+                    launcher.collapsing -> Unit
+                    !delivered && origin != null && !stillMotion -> launcher.collapsing = true
+                    else -> {
+                        launcher.close()
+                        if (!delivered) currentOnResult(null)
+                    }
+                }
             },
         )
     } else if (launcher.galleryRequested) {

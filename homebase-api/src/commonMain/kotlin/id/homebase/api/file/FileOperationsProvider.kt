@@ -1,5 +1,6 @@
 package id.homebase.api.file
 
+import id.homebase.api.util.safeFileName
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -31,6 +32,20 @@ interface FileOperationsProvider {
     suspend fun readFileHeaderBytes(path: String, maxBytes: Int = DEFAULT_HEADER_BYTES): ByteArray {
         val all = readFileBytes(path)
         return if (all.size <= maxBytes) all else all.copyOf(maxBytes)
+    }
+
+    /** Up to [length] bytes from [offset]; fewer at the end of the file. Providers that can seek override it. */
+    suspend fun readFileRange(path: String, offset: Long, length: Int): ByteArray =
+        readFileBytes(path).let { it.copyOfRange(minOf(offset, it.size.toLong()).toInt(), minOf(offset + length, it.size.toLong()).toInt()) }
+
+    /**
+     * [path] opened once for several [FileRanges.read]s, each with [readFileRange]'s contract, until it's closed.
+     * A read then costs no open of its own, which for an Android `content://` URI is a round trip to another
+     * process. Throws as [readFileRange] would for a file that can't be opened. Providers that can seek override it.
+     */
+    suspend fun openRanges(path: String): FileRanges = object : FileRanges {
+        override suspend fun read(offset: Long, length: Int) = readFileRange(path, offset, length)
+        override suspend fun size() = getFileSize(path)
     }
 
     /** Returns true for a missing path or a directory (neither is deleted); never throws. */
@@ -101,7 +116,7 @@ interface FileOperationsProvider {
         promoteIntoStaging(path, getOutboxStagingDirectory())
 
     /**
-     * Write an ENCRYPTED, ready-to-transmit payload into the durable outbox
+     * Write a ready-to-transmit payload (encrypted, or a public upload's plaintext) into the durable outbox
      * staging dir ([getOutboxStagingDirectory]) and return its absolute path.
      * Each staged file is referenced by an outbox row and reaped only along the
      * outbox lifecycle — never by the CacheSweeper or OS cache reclaim.
@@ -148,6 +163,12 @@ interface FileOperationsProvider {
             suffix,
         )
 
+    /** A path for [name] made safe, in a folder of its own in `share_outbound/`, so whatever it's handed to sees the name. */
+    suspend fun createNamedShareOutboundPath(name: String): String = "${createShareOutboundPath("")}/${safeFileName(name)}"
+
+    /** Moves the file at [from] to [to] without copying, creating [to]'s folder; false when it can't (another volume, a `content://`). */
+    suspend fun moveFile(from: String, to: String): Boolean = false
+
     /**
      * Reserve a unique writable path inside `<cacheDir>/hb-scratch/upload-temp/` (creating the
      * dir) WITHOUT writing bytes — the streaming seam for export flows that need a
@@ -170,6 +191,15 @@ interface FileOperationsProvider {
      * and removes the partial file. Elsewhere it is [writeStream].
      */
     suspend fun writeDownload(path: String, data: Flow<ByteArray>) = writeStream(path, data)
+
+    /**
+     * Writes [bytes] over the existing file at [path] from [offset], in place, leaving every other byte as it is: for a
+     * size a writer only knows at the end. Throws [IllegalArgumentException], changing nothing, when the file doesn't
+     * reach `offset + bytes.size`, and an I/O error when it doesn't exist. Okio's provider, which every platform's
+     * extends, implements it; anything else must.
+     */
+    suspend fun overwrite(path: String, offset: Long, bytes: ByteArray): Unit =
+        throw UnsupportedOperationException("overwrite isn't supported by ${this::class.simpleName}")
 
     /**
      * Resolves a path that may be a content URI (Android) to a real filesystem path
@@ -200,13 +230,15 @@ fun FileOperationsProvider.uploadTempDirectory(): String =
  * `resolveToFilePath` is a no-op the path is unchanged and nothing is deleted.
  *
  * The reap runs in `finally`, so it also covers the failure path; the startup
- * sweep stays as the backstop if even that delete fails.
+ * sweep stays as the backstop if even that delete fails. With [resolve] false, [block]
+ * gets [path] itself and nothing is copied.
  */
 suspend fun <T> FileOperationsProvider.withResolvedFile(
     path: String,
+    resolve: Boolean = true,
     block: suspend (resolvedPath: String) -> T,
 ): T {
-    val resolved = resolveToFilePath(path)
+    val resolved = if (resolve) resolveToFilePath(path) else path
     return try {
         block(resolved)
     } finally {
@@ -233,4 +265,14 @@ suspend fun <T> FileOperationsProvider.withResolvedFiles(
             if (resolved[i] != paths[i]) deleteTempFile(resolved[i])
         }
     }
+}
+
+/** A file held open by [FileOperationsProvider.openRanges]. */
+interface FileRanges : AutoCloseable {
+    suspend fun read(offset: Long, length: Int): ByteArray
+
+    /** As [FileOperationsProvider.getFileSize], with no lookup of its own; 0 where it isn't known. */
+    suspend fun size(): Long
+
+    override fun close() {}
 }

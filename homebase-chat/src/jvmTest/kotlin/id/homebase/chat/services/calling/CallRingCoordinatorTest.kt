@@ -3,7 +3,6 @@ package id.homebase.chat.services.calling
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.core.notifications.CallPushRouter
@@ -144,7 +143,7 @@ class CallRingCoordinatorTest {
             eventBus = EventBus(),
             relay = { _, _, blob, _ -> relayed += blob; true },
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
-            stunUrls = StunUrlStore(EventBus(), kotlinx.coroutines.flow.flowOf(null), scope.backgroundScope),
+            iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
         )
         val coordinator = CallRingCoordinator(service, service.transitions, sink, { null }, scope.backgroundScope)

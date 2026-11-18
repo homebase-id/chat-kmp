@@ -74,7 +74,7 @@ import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
+import id.homebase.core.image.forGridTile
 import id.homebase.core.media.subsample.fullScreenImageSharedBounds
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -94,6 +94,7 @@ import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_label
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+import id.homebase.core.image.mediaSharedKey
 
 // Under what's left of the first page after a screenful, or opening would fetch the next one straight away.
 private const val LOAD_MORE_WHEN_WITHIN = 15
@@ -193,7 +194,7 @@ private fun GalleryViewer(
         pageSpacing = 24.dp,
         // Around the pager, not inside a page: from inside a page the open animation restarts mid-flight and jumps.
         modifier = Modifier.fillMaxSize().fullScreenImageSharedBounds(
-            shown?.let { "image-${it.fileId}-${it.payload.key}" },
+            shown?.let { mediaSharedKey(it.fileId, it.shown.key) },
             sharedTransitionScope,
             animatedVisibilityScope,
         ),
@@ -223,7 +224,7 @@ private fun GalleryViewer(
 @Composable
 private fun VideoStill(item: PhotoGalleryItem) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
-        item.tileImageData()?.let { imageData ->
+        remember(item.fileId, item.payload.key) { item.tileImageData() }?.let { imageData ->
             HomebaseImage(
                 imageData = imageData,
                 contentDescription = stringResource(MR.string.photobase_gallery_video),
@@ -241,14 +242,12 @@ private fun VideoStill(item: PhotoGalleryItem) {
 }
 
 private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
-    val iv = payload.iv?.bytes ?: return null
+    val iv = shown.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
-        descriptor = payload,
-        previewThumbnail = tinyPreview ?: payload.previewThumbnail?.toEmbeddedThumb(),
-        requestedSize = ImageSize.THUMB_SMALL,
-        thumbSizeLimit = ImageSize.THUMB_SMALL,
+        descriptor = shown,
+        previewThumbnail = shown.previewThumbnail?.toEmbeddedThumb(),
         keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
     )
 }
@@ -441,7 +440,7 @@ private fun PhotoCell(
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .clickable(onClick = onClick),
     ) {
-        val imageData = remember(item.fileId, item.payload.key) { item.tileImageData() }
+        val imageData = remember(item.fileId, item.payload.key) { item.tileImageData()?.forGridTile() }
         if (imageData != null) {
             HomebaseImage(
                 imageData = imageData,

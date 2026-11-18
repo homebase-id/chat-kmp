@@ -44,7 +44,7 @@ private sealed interface WebVps {
  * Web video playback: decrypt the (already warm-cached) payload and play it through a real HTML
  * `<video>` overlaid on the Compose canvas (see [createVideoOverlay]). MP4/compress-path clips
  * play; >5 MB HLS clips show a "not yet" message rather than a dark, stuck player (deferred —
- * `FFmpegUtils.remuxHlsToMp4` exists for a future follow-up).
+ * `VideoCompressionService.remuxTsToMp4` exists for a future follow-up).
  */
 @Composable
 actual fun VideoPlayerSurface(
@@ -94,6 +94,7 @@ actual fun VideoPlayerSurface(
                     data.payloadKey,
                     data.keyHeader,
                     data.payload.descriptorContent,
+                    contentType = data.payload.contentType,
                 ),
                 driveFileProvider,
                 // Web builds a Blob object URL, so it needs bytes (the wasm FS

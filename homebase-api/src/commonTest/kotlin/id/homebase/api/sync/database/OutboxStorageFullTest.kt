@@ -66,10 +66,11 @@ class OutboxStorageFullTest {
             uploadType = DriveOutboxUploader.UploadNewFile, json = "")
         assertEquals(null, db.outbox.selectByUniqueId(text)?.dependencyUniqueId, "queued past the held photo")
 
-        // The outbox may still be parked on the photo's retry, so wait for the text rather than for a drain to end
+        // The outbox may still be parked on the photo's retry, so wait for the text rather than for a drain to end; its
+        // row is removed just after the upload returns, so wait for that too.
         sync.send()
         withContext(Dispatchers.Default) {
-            withTimeout(5.seconds) { while (text !in uploader.uploaded) delay(20) }
+            withTimeout(5.seconds) { while (text !in uploader.uploaded || db.outbox.selectByUniqueId(text) != null) delay(20) }
         }
 
         assertEquals(listOf(text), uploader.uploaded)

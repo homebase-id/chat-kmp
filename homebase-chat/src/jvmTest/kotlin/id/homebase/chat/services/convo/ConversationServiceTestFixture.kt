@@ -1,5 +1,6 @@
 package id.homebase.chat.services.convo
 
+import id.homebase.upload.ContentHashes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -9,6 +10,7 @@ import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -20,17 +22,19 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.buildTestUploadService
-import id.homebase.upload.PayloadBundle
-import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.chat.services.SendMessageResult
 import id.homebase.chat.services.StatusMessageData
+import id.homebase.chat.services.buildTestUploadService
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.upload.EMPTY_BUNDLE
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PayloadBundleEncryptor
+import kotlin.test.assertEquals
+import kotlin.time.Clock
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.TestScope
-import kotlin.time.Clock
-import kotlin.uuid.Uuid
 
 /**
  * Shared setup for ConversationService tests.
@@ -655,6 +659,11 @@ fun Outbox.asHardDeleteRequestOrNull(): DeleteLocalFilesByFileIdRequest? {
     }
 }
 
+fun Outbox.asUploadFileRequest(): UploadFileRequest {
+    assertEquals(DriveOutboxUploader.UploadNewFile, uploadType)
+    return OdinSystemSerializer.deserialize<UploadFileRequest>(json.decodeToString())
+}
+
 fun Outbox.isHardDeleteRequest(): Boolean = asHardDeleteRequestOrNull() != null
 
 // ---------- Test doubles ----------
@@ -796,12 +805,16 @@ class FakeConversationLoader : ConversationLoader {
 }
 
 class FakePayloadBundleEncryptor : PayloadBundleEncryptor {
+    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun discard(bundle: PayloadBundle) = Unit
+
     val calls = mutableListOf<Uuid>()
     override suspend fun encryptBundle(
         uniqueId: Uuid,
         bundle: PayloadBundle?,
         aesKey: SecureByteArray,
         scope: CoroutineScope,
+        hashes: ContentHashes?,
     ): PayloadBundle {
         calls += uniqueId
         // Empty bundle regardless of input. Tests that need to assert payload contents

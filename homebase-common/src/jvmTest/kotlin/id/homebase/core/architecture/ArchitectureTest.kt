@@ -54,6 +54,47 @@ class ArchitectureTest {
         ) { it.text.contains(wholeFileRead) }
     }
 
+    private companion object {
+        // Production code only (tests build descriptors and thumbnails to check them), parsed once for both upload guards.
+        val productionFiles by lazy {
+            Konsist.scopeFromProject().files.filter { Regex("""/src/[a-zA-Z]*[Mm]ain/""").containsMatchIn(it.path.replace('\\', '/')) }
+        }
+    }
+
+    @Test
+    fun `Only the upload builder writes descriptor content`() {
+        // ServerFile opens sealed descriptors on arrival; the video step learns its facts while transcoding.
+        val writers = setOf("UserUploadBuilder", "DescriptorContentV1", "PayloadDescriptor", "VideoPayloadProcessor", "ServerFile")
+        val builds = Regex("""DescriptorContentV1\s*\(|descriptorContentFrom[A-Z]\w*\s*\(""")
+        val assignment = Regex("""\bdescriptorContent\s*=(?!=)\s*([^\n,)]+)""")
+        val copyThrough = Regex("""^(null|[\w?.!]*\.descriptorContent|(UserUploadBuilder|DescriptorContentSeal)\.\w+\(.*)$""")
+        val others = productionFiles.filter { it.name !in writers }
+        assertTrue(others.size > 100, "guard matched too few files; update the path filter")
+        others.assertFalse(
+            additionalMessage = "Descriptor content is built by UserUploadBuilder (UPLOADS.md section 4); " +
+                "anywhere else may only copy a payload's descriptorContent through.",
+        ) { file ->
+            file.text.contains(builds) ||
+                assignment.findAll(file.text).any { !copyThrough.matches(it.groupValues[1].trim()) }
+        }
+    }
+
+    @Test
+    fun `Only the upload builder makes an upload's thumbnails`() {
+        // Contact and profile photos and the video poster have their own sizes; the previews make a tiny only.
+        val allowed = setOf(
+            "UploadImages", "VideoPayloadProcessor", "ContactsProvider", "ProfileAvatarEditViewModel",
+            "LinkPreviewPayloadBuilder", "LocationPreviewPayloadBuilder",
+        )
+        val pipeline = Regex("""\b(createMediaImages|createThumbnails|createImageThumbnail|createTinyPreview)\s*\(""")
+        productionFiles
+            .filter { it.name !in allowed }
+            .filter { !it.path.replace('\\', '/').contains("/id/homebase/api/image/") }
+            .assertFalse(
+                additionalMessage = "An upload's thumbnails and tiny come from UserUploadBuilder (UPLOADS.md section 4).",
+            ) { it.text.contains(pipeline) }
+    }
+
     @Test
     fun `No hardcoded strings in Composables`() {
         Konsist.scopeFromProject()
@@ -68,38 +109,49 @@ class ArchitectureTest {
     }
 
     /**
-     * Single-upload-path guard (#844). Payload encryption for an upload must go through the shared
-     * pipeline — `UploadService.upload`/`updateFile` — so the payload-cache/fail-soft/seed policies
-     * live in exactly one place. `encryptBundle` is the true "I'm doing a payload upload" signal, so
-     * calling it anywhere else is the violation. (The two-request-type rule was unworkable: header-only
-     * system records and the outbox rekey plumbing legitimately build UploadFileRequest /
-     * UpdateFileByUniqueIdRequest, and a text rule can't tell payload-bearing from header-only.)
-     *
-     * The regex matches CALLS (`.encryptBundle(`); the interface/impl `fun encryptBundle(` definitions
-     * have no leading dot and don't match. `UploadService` is excluded (it owns the one allowed call).
-     * Three functions are documented exceptions — each re-encrypts an in-memory text-overflow mixed
-     * with already-encrypted payloads (recovery plumbing) or is a hot multi-purpose mutation whose
-     * encrypt branch is rare, so routing them through UploadService adds risk without payoff:
-     *   - `updateMessage` (chat edit / amend-pending-create), `resendAsCreate` (chat resend),
-     *   - `updateConversationInternal` (conversation update: archival/participants/leaveGroup/heal).
-     * Adding a NEW `encryptBundle` call anywhere else — or a new media-send function — fails here.
+     * The media upload spine (encrypt or stage, enqueue, seed the cache, write the optimistic row) lives once, in
+     * `UploadService`; the exceptions are other designs or recovery plumbing, not copies of it.
      */
     @Test
-    fun `encryptBundle is confined to the shared upload pipeline`() {
-        val documentedExceptions = setOf("updateMessage", "resendAsCreate", "updateConversationInternal")
+    fun `uploads with payloads are built and encrypted only by UploadService`() {
+        // Recovery plumbing: re-encrypts a text overflow among payloads that are already encrypted.
+        val bundleCallers = setOf(
+            "ChatMessageSenderService.updateMessage", "ChatMessageSenderService.resendAsCreate",
+            "ConversationService.updateConversationInternal",
+        )
+        val requestBuilders = bundleCallers + setOf(
+            // Recovery plumbing: re-sends or re-attaches payloads that are already encrypted.
+            "ResendHelpers.buildResendUpdateRequest", "DriveOutboxUploader.retryAsUpdate",
+            // Own designs: WebDrop encrypts under the link's key for an anonymous recipient; Filesync sends with live
+            // progress, re-encrypts on a rejected hash and seals keys for peers.
+            "WebDropService.buildWebDrop", "FilesyncUploader.create", "FilesyncMemberWrites.add",
+        )
+        val bundleCall = Regex("""\.\s*(encrypt|stage)Bundle\s*\(""")
+        val request = Regex("""\b(UploadFileRequest|UpdateFileByUniqueIdRequest)\s*\(""")
+        val payloadsArgument = Regex("""\bpayloads\s*=\s*([^,\n]+)""")
+        val emptyPayloads = Regex("""^(emptyList\(\)|listOf\(\)|null)$""")
+        fun buildsWithPayloads(text: String): Boolean = request.findAll(text).any { match ->
+            var depth = 1
+            var end = match.range.last + 1
+            while (depth > 0 && end < text.length) {
+                when (text[end]) { '(' -> depth++; ')' -> depth-- }
+                end++
+            }
+            // Every `payloads =` in the call, a nested manifest's included: one that isn't empty is enough.
+            payloadsArgument.findAll(text.substring(match.range.last + 1, end)).any { !emptyPayloads.matches(it.groupValues[1].trim()) }
+        }
         Konsist.scopeFromProject()
             .files
-            .filter { !it.hasNameEndingWith("Test") }
-            .filter { !it.hasNameEndingWith("UploadService") }
+            .filter { !it.hasNameEndingWith("Test") && !it.path.contains("/test/") && !it.path.contains("Test/") }
+            .filter { it.nameWithExtension != "UploadService.kt" }
             .functions()
-            .filter { it.name !in documentedExceptions }
             .assertFalse(
-                additionalMessage = "Payload encryption for an upload must go through " +
-                    "UploadService.upload/updateFile (issue #844), not a direct encryptBundle call. " +
-                    "If this is a genuine recovery/plumbing exception, add it to documentedExceptions " +
-                    "with a comment explaining why it can't route through UploadService."
+                additionalMessage = "An upload with payloads goes through UploadService.upload/updateFile: it encrypts " +
+                    "(or stages a public post), enqueues, seeds the cache and writes the optimistic row."
             ) {
-                it.text.contains(Regex("""\.\s*encryptBundle\s*\("""))
+                val name = "${it.containingFile.nameWithExtension.removeSuffix(".kt")}.${it.name}"
+                (name !in bundleCallers && bundleCall.containsMatchIn(it.text)) ||
+                    (name !in requestBuilders && buildsWithPayloads(it.text))
             }
     }
 

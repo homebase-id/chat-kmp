@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import id.homebase.chat.services.builder.linkPreviews
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
@@ -38,7 +39,6 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.widget.LinkPreviewCard
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
@@ -365,6 +365,7 @@ private fun QuotedPostMedia(
         previewThumbnail = thumb,
         // Repost is only offered on public (unencrypted) posts, so these payloads carry no per-payload iv.
         keyHeader = KeyHeader.empty(),
+        isEncrypted = false,
         modifier = modifier.fillMaxWidth(),
         onMediaClick = onClick?.let { open -> { _: PayloadDescriptor -> open() } },
         sharedTransitionScope = null,
@@ -387,11 +388,7 @@ private fun PostLinkPreview(
 ) {
     val payload = post.payloads.firstOrNull { it.key == FeedProtocol.LinksPayloadKey } ?: return
     val descriptor = remember(payload.descriptorContent) {
-        payload.descriptorContent?.let { content ->
-            runCatching {
-                OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(content).firstOrNull()
-            }.getOrNull()
-        }
+        payload.linkPreviews()?.firstOrNull()
     } ?: return
 
     // Public posts ship the payload plaintext (no per-payload iv); only encrypted posts carry one. This
@@ -448,6 +445,7 @@ private fun PostMedia(
             driveId = mediaDriveId,
             previewThumbnail = post.previewThumbnail,
             keyHeader = post.keyHeader,
+            isEncrypted = post.isEncrypted,
             modifier = Modifier.fillMaxWidth(),
             onMediaClick = { payload ->
                 val index = mediaPayloads.indexOf(payload).coerceAtLeast(0)

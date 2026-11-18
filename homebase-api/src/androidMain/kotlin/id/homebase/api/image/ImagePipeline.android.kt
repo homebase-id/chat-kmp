@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorSpace
 import android.graphics.ImageDecoder
+import android.os.Build
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import co.touchlab.kermit.Logger
@@ -21,7 +22,6 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     override val width get() = bitmap.width
     override val height get() = bitmap.height
     override val isSrgb get() = bitmap.colorSpace.let { it == null || it == ColorSpace.get(ColorSpace.Named.SRGB) }
-
     override fun scaledTo(width: Int, height: Int): PipelineBitmap =
         AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true))
 
@@ -136,6 +136,8 @@ private class AndroidImageSource(private val input: AndroidImageInput) : ImageSo
         } catch (e: OutOfMemoryError) {
             throw IllegalStateException("Not enough memory to decode the image", e)
         }
+        // The pipeline renders gain maps itself (HdrGainmap); compress would otherwise write this one too.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && bitmap.hasGainmap()) bitmap.gainmap = null
         return AndroidPipelineBitmap(bitmap)
     }
 
@@ -170,6 +172,9 @@ private fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {
 }
 
 internal actual fun openImageSource(bytes: ByteArray): ImageSource = AndroidImageSource(AndroidImageInput.Bytes(bytes))
+
+// ImageDecoder reads an untagged JPEG as sRGB and keeps its values.
+internal actual fun openGainmapSource(bytes: ByteArray): ImageSource = openImageSource(bytes)
 
 internal actual fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource? {
     val files = fileOps as? AndroidFileOperationsProvider

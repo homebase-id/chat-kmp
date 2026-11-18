@@ -1,5 +1,6 @@
 package id.homebase.api.client.peer
 
+import id.homebase.api.client.drives.upload.sealedPayloads
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.KeyHeader
@@ -75,7 +76,7 @@ class PeerDriveUploadProvider(
         val instructions = TransitInstructionSet(
             transferIv = transferIv,
             manifest = UploadManifest.build(
-                request.payloads,
+                request.sealedPayloads(),
                 request.thumbnails,
                 generatePayloadIv = request.metadata.isEncrypted,
             ),
@@ -108,7 +109,7 @@ class PeerDriveUploadProvider(
         // body is the same V1 transit bundle (TransitInstructionSet with remoteTargetDrive +
         // recipients, then metadata, then payload/thumbnail parts).
         val owner = recipients.first()
-        val url = apiUrl(creds.domain, "/peer/$owner/drives/${remoteTargetDrive.alias}/files/send")
+        val url = apiUrl(creds.domain, "/peer/$owner/drives/${remoteTargetDrive.alias}/files/send" + (request.fileSystemType?.let { "?xfst=$it" } ?: ""))
         Logger.i(tag = TAG) {
             "uploadFileOverPeer: POST $url recipients=${recipients.map { it.domainName }} " +
                 "remoteDrive=$remoteTargetDrive"

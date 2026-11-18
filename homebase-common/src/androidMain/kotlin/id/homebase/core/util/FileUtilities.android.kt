@@ -9,8 +9,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
-import kotlinx.io.files.Path
+import id.homebase.api.file.AndroidFileOperationsProvider
+import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import java.io.File
+import kotlinx.io.files.Path
 
 private const val TAG = "getUriHandler"
 
@@ -19,8 +21,10 @@ actual fun getUriHandler(): FileSystemHandler {
     val context = LocalContext.current
 
     return remember {
-        val albumSaver = AndroidAlbumSaver(context)
+        val fileOps = AndroidFileOperationsProvider(context.applicationContext)
         object : FileSystemHandler {
+            private val saver = FileSaver(AndroidAlbumSaver(context), fileOps, ShareSheetFallback(fileOps) { path, onError -> shareFile(path, onError) })
+
             override fun openUrl(url: String, onError: (Throwable) -> Unit) {
                 val customTabsIntent =
                     CustomTabsIntent.Builder().setColorScheme(CustomTabsIntent.COLOR_SCHEME_SYSTEM)
@@ -101,12 +105,13 @@ actual fun getUriHandler(): FileSystemHandler {
             override fun saveFile(
                 file: Path,
                 suggestedName: String,
+                deleteAfter: Boolean,
                 onSuccess: (String) -> Unit,
                 onError: (Throwable) -> Unit,
-            ) = albumSaver.save(file, suggestedName, onSuccess) { e ->
-                // API 28 without WRITE_EXTERNAL_STORAGE has no album to write to.
-                if (e is AlbumAccessDeniedException) shareFile(file, onError) else onError(e)
-            }
+            ) = saver.save(file, suggestedName, deleteAfter, onSuccess, onError)
+
+            override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
+                saver.offerRefused(refused, onError)
 
             override fun shareText(text: String, onError: (Throwable) -> Unit) {
                 try {

@@ -205,6 +205,7 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
+        keepMetadata: Boolean,
     ): String = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
         if (!fileManager.fileExistsAtPath(inputPath)) {
@@ -255,6 +256,7 @@ actual object FFmpegUtils {
                 inputPath = inputPath,
                 outputPath = outputPath,
                 quality = quality,
+                keepMetadata = keepMetadata,
                 trimStartMs = effectiveTrimStart,
                 trimEndMs = effectiveTrimEnd,
                 probedWidthPx = widthPx,
@@ -296,47 +298,6 @@ actual object FFmpegUtils {
         deleteFailedFfmpegOutput(outputPath)
         throw VideoCompressionFailedException(inputPath, "all encoders failed (${encoders.joinToString()})")
     }
-
-    actual suspend fun segmentVideo(
-            inputPath: String,
-            onProgress: ((Float) -> Unit)?
-    ): Pair<String, String>? =
-            withContext(Dispatchers.IO) {
-                val outputDir = hlsOutputDir(inputPath)
-
-                val fileManager = NSFileManager.defaultManager
-                if (!fileManager.fileExistsAtPath(outputDir)) {
-                    fileManager.createDirectoryAtPath(outputDir, true, null, null)
-                }
-
-                val indexPath = "$outputDir/index.m3u8"
-                val segmentPath = "$outputDir/index.ts"
-
-                val rotation = getRotationFromFile(inputPath)
-                val absRot = kotlin.math.abs(((rotation % 360) + 360) % 360)
-                val needsRotationFix = absRot == 90 || absRot == 270
-
-                val baseCommand =
-                        if (!needsRotationFix) {
-                            "-i \"$inputPath\" -codec:v copy -codec:a copy"
-                        } else {
-                            "-i \"$inputPath\" -c:v libx264 -preset veryfast -crf 23 -g 30 -bf 2 -c:a copy"
-                        }
-
-                val command =
-                        "$baseCommand -hls_time 6 -hls_list_size 0 -hls_flags single_file -f hls -hls_segment_filename \"$segmentPath\" \"$indexPath\""
-
-                val result = bridge.executeFFmpeg(command)
-
-                if (result.isSuccess) {
-                    Pair(indexPath, segmentPath)
-                } else {
-                    println("Docs: Error segmenting video: ${result.failStackTrace}")
-                    // Delete the leftover hls_<uuid>/ dir (see #5).
-                    deleteFailedFfmpegOutput(outputDir)
-                    null
-                }
-            }
 
     private fun progressFraction(timeMs: Long, durationMs: Long): Float =
         if (durationMs <= 0L) 0f else (timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
@@ -383,22 +344,6 @@ actual object FFmpegUtils {
 
     private fun hlsOutputDir(inputPath: String): String =
         "${scratchDir(AppCacheDirs.HLS)}/${AppCacheDirs.HLS_DIR_PREFIX}${getUniqueId(inputPath)}"
-
-    actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
-            withContext(Dispatchers.IO) {
-                val cacheDir = getCacheDirectory()
-                val outputPath = "$cacheDir/input_$fileName"
-
-                // Use memScoped to allocate buffer and copy bytes
-                memScoped {
-                    val buffer = allocArrayOf(data)
-                    // dataWithBytes expects CPointer and length
-                    val nsData = NSData.dataWithBytes(bytes = buffer, length = data.size.toULong())
-                    nsData.writeToFile(outputPath, true)
-                }
-
-                outputPath
-            }
 
     actual suspend fun segmentAndEncryptVideo(
             inputPath: String,
@@ -460,47 +405,6 @@ actual object FFmpegUtils {
                     // Delete the whole hls_<uuid>/ dir — partial segments + key material (see #5).
                     deleteFailedFfmpegOutput(outputDir)
                     null
-                }
-            }
-
-    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-            withContext(Dispatchers.IO) {
-                val fileManager = NSFileManager.defaultManager
-                if (fileManager.fileExistsAtPath(outputPath)) {
-                    fileManager.removeItemAtPath(outputPath, null)
-                }
-                val command =
-                        "-y -allowed_extensions ALL -i \"$playlistPath\" -c copy -bsf:a aac_adtstoasc -movflags +faststart \"$outputPath\""
-                val result = bridge.executeFFmpeg(command)
-                if (!result.isSuccess) {
-                    println("Docs: Error remuxing HLS→MP4: ${result.failStackTrace}")
-                }
-                result.isSuccess
-            }
-
-    actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
-            withContext(Dispatchers.IO) {
-                val id = NSUUID.UUID().UUIDString
-                val inputPath = "${getCacheDirectory()}/transcode_in_$id.$extension"
-                val outputPath = "${getCacheDirectory()}/transcode_out_$id.$extension"
-                try {
-                    input.usePinned {
-                        NSData.create(bytesNoCopy = it.addressOf(0), length = input.size.toULong(), freeWhenDone = false)
-                            .writeToFile(inputPath, atomically = false)
-                    }
-                    val args = listOf("-y", "-i", inputPath) + outputArgs + outputPath
-                    val result = awaitSession { onComplete ->
-                        bridge.executeFFmpegAsyncArgs(args = args, onProgress = {}, onComplete = onComplete)
-                    }
-                    if (result.isSuccess) {
-                        NSData.dataWithContentsOfFile(outputPath)?.toByteArray()
-                    } else {
-                        println("Docs: transcode failed: ${result.failStackTrace}")
-                        null
-                    }
-                } finally {
-                    NSFileManager.defaultManager.removeItemAtPath(inputPath, null)
-                    NSFileManager.defaultManager.removeItemAtPath(outputPath, null)
                 }
             }
 

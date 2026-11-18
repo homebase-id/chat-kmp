@@ -1,6 +1,8 @@
 package id.homebase.api.image
 
+import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.media.MediaLocation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
@@ -31,7 +33,10 @@ data class ImageMetadata(
     val pixelHeight: Int? = null,
     val cameraMake: String? = null,
     val cameraModel: String? = null,
-)
+) {
+    val location: MediaLocation?
+        get() = if (latitude != null && longitude != null) MediaLocation(latitude, longitude, altitudeMeters) else null
+}
 
 /**
  * Read EXIF / image-file metadata from encoded image bytes (JPEG, HEIC, TIFF,
@@ -43,10 +48,29 @@ data class ImageMetadata(
 expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
 
 /** [readImageMetadata] for the file at [path], reading only its header where the platform can. */
-suspend fun readImageMetadata(path: String, fileOps: FileOperationsProvider): ImageMetadata? =
+internal suspend fun readImageMetadata(path: String, fileOps: FileOperationsProvider): ImageMetadata? =
     withContext(Dispatchers.Default) {
         val file = openImageFile(path, fileOps) ?: return@withContext readImageMetadata(fileOps.readFileBytes(path))
         file.use { it.metadata() }
+    }
+
+/**
+ * The upright size of the image at [path], the one its thumbnails will have, reading only the
+ * file's header wherever the format allows. Throws on a file no decoder can read.
+ */
+suspend fun readImageSize(path: String, fileOps: FileOperationsProvider): ImageSize =
+    withContext(Dispatchers.Default) {
+        openImageFile(path, fileOps)?.use { return@withContext it.displayedSize }
+        val header = fileOps.readFileHeaderBytes(path)
+        // Only a JPEG's turn is read here; decoders also turn other formats (WebP) by their EXIF.
+        if (contentTypeFromBytes(header) == "image/jpeg") {
+            ImageHeaderParser.parse(header)?.let { stored ->
+                val turned = readJpegExifOrientation(header)?.let(::jpegOrientationSwapsDimensions) == true
+                return@withContext if (turned) ImageSize(stored.pixelHeight, stored.pixelWidth) else stored
+            }
+        }
+        val whole = if (header.size < FileOperationsProvider.DEFAULT_HEADER_BYTES) header else fileOps.readFileBytes(path)
+        ImageUtils.getNaturalSize(whole)
     }
 
 /**

@@ -35,11 +35,14 @@ fun chatOwnsWindow(
     uiState: ConversationListUiState,
     messagesUiState: MessageListUiState,
     isExpanded: Boolean,
-): Boolean = if (isExpanded) {
+): Boolean = isChatListCaptureOpen(messagesUiState) || if (isExpanded) {
     messagesUiState.hoistedMediaViewer(isExpandedLayout = true) != null
 } else {
     chatDetail(uiState.selectedConversationId, uiState.activeConversations) is ChatDetail.Open
 }
+
+private fun isChatListCaptureOpen(messagesUiState: MessageListUiState): Boolean =
+    (messagesUiState.fullScreenOverlay as? FullScreenOverlay.AttachmentData)?.isChatListCapture == true
 
 // The view-once viewer is black to the screen's edge, so the app scaffold must not pad it for the home indicator.
 fun showsViewOnceViewer(messagesUiState: MessageListUiState): Boolean =

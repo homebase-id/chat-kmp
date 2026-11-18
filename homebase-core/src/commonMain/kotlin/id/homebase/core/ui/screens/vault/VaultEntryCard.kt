@@ -50,11 +50,11 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.vault_pdf_badge
 import id.homebase.resources.vault_upload_failed
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.resources.MR
 import org.jetbrains.compose.resources.stringResource
 import id.homebase.chat.services.collectContext
+import id.homebase.core.image.mediaSharedKey
 
 private val CARD_WIDTH = 100.dp
 private val CARD_HEIGHT = 120.dp
@@ -299,7 +299,6 @@ private fun VaultCardThumbnail(
                 it,
                 loadFullPayload = false,
                 previewThumbnail = file.previewThumbnail,
-                requestedSize = ImageSize.THUMB_MEDIUM,
             )
         }
     }
@@ -371,7 +370,7 @@ private fun Modifier.vaultSharedBounds(
     if (sharedTransitionScope == null || animatedVisibilityScope == null) return this
     return with(sharedTransitionScope) {
         this@vaultSharedBounds.sharedBounds(
-            rememberSharedContentState(key = "image-${file.fileId}-${firstPayloadKey}"),
+            rememberSharedContentState(key = mediaSharedKey(file.fileId, firstPayloadKey)),
             animatedVisibilityScope = animatedVisibilityScope,
             boundsTransform = { _, _ ->
                 tween(
