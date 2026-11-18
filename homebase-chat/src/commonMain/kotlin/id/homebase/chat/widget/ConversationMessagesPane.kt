@@ -90,8 +90,7 @@ fun ConversationMessagesPane(
      *  drops [ConversationContent] so the composer cannot hold focus behind one. */
     hoistMediaViewer: Boolean = false,
     vaultActive: Boolean = false,
-    // The screen's snackbars, shown above the composer while this pane is open.
-    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    snackbarHostState: SnackbarHostState,
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
 

@@ -875,10 +875,11 @@ fun ConversationListUi(
     LaunchedEffect(scaffoldValue) { scaffoldState.animateTo(scaffoldValue) }
 
     val hasOverlay = messagesUiState.fullScreenOverlay != null
+    val composerUncovered = detail is ChatDetail.Open && !hasOverlay
     @Suppress("DEPRECATION") BackHandler(detail is ChatDetail.Open && hasOverlay) {
         onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
     }
-    @Suppress("DEPRECATION") PredictiveBackHandler(detail is ChatDetail.Open && !hasOverlay && !isExpanded) { progress ->
+    @Suppress("DEPRECATION") PredictiveBackHandler(composerUncovered && !isExpanded) { progress ->
         val listValue = chatScaffoldValue(isExpanded = false, detail = ChatDetail.None)
         try {
             progress.collect { scaffoldState.seekTo(it.progress, listValue) }
@@ -890,9 +891,8 @@ fun ConversationListUi(
         }
     }
 
-    // While the composer is on screen the chat shows these above it instead, where they don't cover the input.
-    val composerShown = detail is ChatDetail.Open && !hasOverlay
-    Scaffold(snackbarHost = { if (!composerShown) SnackbarHost(snackbarHostState) }) {
+    // While the composer is uncovered the chat shows these above it instead, where they don't cover the input.
+    Scaffold(snackbarHost = { if (!composerUncovered) SnackbarHost(snackbarHostState) }) {
         Box(modifier = Modifier.fillMaxSize()) {
             ListDetailPaneScaffold(
                 modifier = Modifier.fillMaxSize().onGloballyPositioned {
