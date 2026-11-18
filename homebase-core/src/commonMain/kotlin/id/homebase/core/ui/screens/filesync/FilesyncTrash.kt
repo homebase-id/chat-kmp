@@ -140,7 +140,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
     companion object {
         /** Whether [node], in a folder deleted at [folderDeletedMs], went with it: removed no earlier, or still live and written no later. */
         fun wentWith(node: FilesyncNode, folderDeletedMs: Long): Boolean =
-            node.removedMs?.let { it >= folderDeletedMs } ?: (node.versionMs?.let { it <= folderDeletedMs } == true)
+            node.versionMs.let { at -> if (node.removed) at == null || at >= folderDeletedMs else at != null && at <= folderDeletedMs }
     }
 }
 
