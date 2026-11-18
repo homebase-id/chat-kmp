@@ -22,11 +22,10 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * Pins the redirect URL a tapped notification builds for the web-app companions
- * (community, owner, mail, feed). These open the *logged-in* identity's own web
+ * (community, owner, mail). These open the *logged-in* identity's own web
  * app — NOT the message sender's domain. The companion web clients are served
  * from and authenticated against our own identity; the author's host has no
- * session for us. Mirrors the RN app (which built these from getIdentity()) and
- * the in-app Feed WebView (https://{ownDomain}/apps/feed).
+ * session for us. Mirrors the RN app (which built these from getIdentity()).
  *
  * Regression guards:
  *  - the original KMP port used notification.senderId here, sending the user to
@@ -85,23 +84,9 @@ class CompanionAppUrlTest {
     }
 
     @Test
-    fun feed_withTag_opensPost() {
-        val event = buildCompanionAppUrlEvent(FEED_APP_ID, ownDomain, "", "post-7")
-        assertEquals(
-            NotificationNavigationEvent.OpenUrl(
-                "https://frodo.dotyou.cloud/apps/feed/post/post-7"
-            ),
-            event,
-        )
-    }
-
-    @Test
-    fun feed_withoutTag_opensFeedRoot() {
-        val event = buildCompanionAppUrlEvent(FEED_APP_ID, ownDomain, "", "")
-        assertEquals(
-            NotificationNavigationEvent.OpenUrl("https://frodo.dotyou.cloud/apps/feed"),
-            event,
-        )
+    fun feed_isNotACompanion() {
+        // The web feed app has no /apps/feed/post/{id} route: that URL 404'd in a Custom Tab.
+        assertNull(buildCompanionAppUrlEvent(FEED_APP_ID, ownDomain, "", "post-7"))
     }
 
     @Test

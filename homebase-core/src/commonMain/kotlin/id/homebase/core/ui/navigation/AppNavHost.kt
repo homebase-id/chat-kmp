@@ -865,6 +865,14 @@ fun AppNavHost(
                     openWebDrop()
                 }
 
+                is NotificationNavigationEvent.OpenFeedPost -> {
+                    Logger.i(tag = "AppNavHost") { "OpenFeedPost received: ${event.postId}" }
+                    navController.awaitChatList()
+                    // Feed first, so Back from the post lands on the timeline.
+                    navController.openApp(Route.Feed, tabRoutes)
+                    navController.navigate(Route.PostDetail(event.postId))
+                }
+
                 is NotificationNavigationEvent.OpenApp -> {
                     Logger.i(tag = "AppNavHost") { "OpenApp received: ${event.route}" }
                     navController.awaitChatList()
