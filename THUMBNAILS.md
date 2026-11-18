@@ -683,11 +683,11 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 | What | Issue |
 |---|---|
-| Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` | #2301 |
+| Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` (Android's are done) | #2383 |
 | iOS: peak memory of a 48 MP decode on a real iPhone, and whether ImageIO's own decoded copy can be skipped | #2273 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
-| Time, memory and battery measured on a real iPhone and Android phone | #2221, #2236 |
+| Time, memory and battery measured on a real iPhone and Android phone | #2383, #2384 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |
 | RAW: verify on real phones which formats decode (ProRAW and DNG on iOS; DNG on Android) | – |
 

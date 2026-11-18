@@ -144,7 +144,8 @@ private fun CGImageRef.toSkiaImage(): Image {
     var pixels: Pixmap? = null
     val colorSpace = CGColorSpaceCreateWithName(if (wide) kCGColorSpaceDisplayP3 else kCGColorSpaceSRGB)
     try {
-        check(bitmap.allocPixels(info)) { "Couldn't allocate $width x $height pixels" }
+        // Zeroed: the context draws source-over, so a transparent image would show whatever was there.
+        check(bitmap.allocPixelsFlags(info, zeroPixels = true)) { "Couldn't allocate $width x $height pixels" }
         val target = checkNotNull(bitmap.peekPixels()).also { pixels = it }
         val context = CGBitmapContextCreate(
             interpretCPointer<ByteVar>(target.addr),
