@@ -1,22 +1,18 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.api.video.isHlsVideo
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.common.OdinId
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.extensionForContentType
-import id.homebase.api.video.VideoMetadata
-import id.homebase.api.video.downloadHlsAsMp4
-import id.homebase.api.video.videoMetadataFrom
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
@@ -666,17 +662,8 @@ class MomentDetailViewModel(
     }
 
     /**
-     * Decrypt the selected payload to a cleartext file and surface it (with the
-     * moment's caption) so the screen can hand it to the platform share sheet.
-     *
-     * Images / progressive video stream into the share_outbound sweep dir, so
-     * the cold-start + foreground sweepers reap the cleartext copy. A segmented
-     * HLS video is first remuxed to a playable MP4 (a raw .ts segment shared
-     * as-is won't open in the target app) — the same path `saveMedia` takes;
-     * that MP4 lands in the cache dir and is reaped by the cache sweeper.
-     *
-     * [isSharingMedia] gates the overflow-menu spinner over the decrypt/remux,
-     * which is the slow part (videos especially) before the sheet opens.
+     * The selected payload as a file for the share sheet, with the moment's caption ([PayloadDownloadService.exportPlayable]:
+     * an HLS video becomes an MP4). [isSharingMedia] gates the spinner over the export, the slow part.
      */
     @OptIn(ExperimentalEncodingApi::class)
     private fun shareMedia(payloadKey: String) {
@@ -694,37 +681,15 @@ class MomentDetailViewModel(
         _screenLocal.update { it.copy(isSharingMedia = true) }
         viewModelScope.launch {
             try {
-                val hlsMetadata = resolveHlsVideoMetadata(
-                    payload = payload,
-                    driveId = moment.driveId,
-                    fileId = moment.fileId,
-                    keyHeader = keyHeader,
-                )
-                val sharePath = if (hlsMetadata != null) {
-                    // The share sheet takes a finished file.
-                    val mp4Path = fileOperationsProvider.createShareOutboundPath(".mp4")
-                    val remuxed = withContext(ioDispatcher) {
-                        driveFileProvider.downloadHlsAsMp4(moment.driveId, moment.fileId, payloadKey, keyHeader, fileOperationsProvider, mp4Path)
-                    }
-                    if (!remuxed) {
-                        _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not convert video"))
-                        return@launch
-                    }
-                    mp4Path
-                } else {
-                    val extension = extensionForContentType(payload.contentType)
-                    val exported = payloadDownloadService.exportToTemp(
-                        driveId = moment.driveId,
-                        fileId = moment.fileId,
-                        key = payloadKey,
-                        keyHeader = keyHeader,
-                        destination = ExportDestination.ShareOutbound(".$extension"),
+                val sharePath = withContext(ioDispatcher) {
+                    payloadDownloadService.exportPlayable(
+                        moment.driveId, moment.fileId, payload, keyHeader,
+                        ExportDestination.ShareOutbound(".${extensionForContentType(payload.contentType)}"),
                     )
-                    if (exported == null) {
-                        _events.tryEmit(MomentDetailUiEvent.ShareFailed("Could not download file"))
-                        return@launch
-                    }
-                    exported
+                }
+                if (sharePath == null) {
+                    _events.tryEmit(MomentDetailUiEvent.ShareFailed(if (payload.isHlsVideo) "Could not convert video" else "Could not download file"))
+                    return@launch
                 }
                 _events.tryEmit(MomentDetailUiEvent.ShareFileReady(sharePath, caption))
             } catch (t: Throwable) {
@@ -755,23 +720,14 @@ class MomentDetailViewModel(
         _screenLocal.update { it.copy(isSavingMedia = true) }
         viewModelScope.launch {
             try {
-                val hlsMetadata = resolveHlsVideoMetadata(
-                    payload = payload,
-                    driveId = moment.driveId,
-                    fileId = moment.fileId,
-                    keyHeader = keyHeader,
-                )
                 val saved = withContext(ioDispatcher) {
-                    albumSaver.saveReceived(
-                        driveFileProvider, fileOperationsProvider, moment.driveId, moment.fileId, payloadKey, keyHeader,
-                        payload.filename(), payload.contentType, hls = hlsMetadata != null,
-                    )
+                    albumSaver.saveReceived(driveFileProvider, fileOperationsProvider, moment.driveId, moment.fileId, payload, keyHeader)
                 }
                 when (saved) {
                     is AlbumSaveResult.Saved -> _events.tryEmit(MomentDetailUiEvent.MediaSaved(saved.location))
                     AlbumSaveResult.Cancelled -> Unit
                     AlbumSaveResult.WriteFailed -> _events.tryEmit(
-                        MomentDetailUiEvent.MediaSaveFailed(if (hlsMetadata != null) "Could not convert video" else "Could not download file"),
+                        MomentDetailUiEvent.MediaSaveFailed(if (payload.isHlsVideo) "Could not convert video" else "Could not download file"),
                     )
                     // The album won't take it (Android 9 without storage access): the screen's save flow offers it instead.
                     is AlbumSaveResult.Refused -> _events.tryEmit(MomentDetailUiEvent.MediaSaveReady(saved.file, saved.name))
@@ -783,20 +739,6 @@ class MomentDetailViewModel(
                 _screenLocal.update { it.copy(isSavingMedia = false) }
             }
         }
-    }
-
-    /** The segmented video's metadata with its playlist; null for anything else, which saves by plain decrypt. */
-    private suspend fun resolveHlsVideoMetadata(
-        payload: PayloadDescriptor,
-        driveId: Uuid,
-        fileId: Uuid,
-        keyHeader: KeyHeader,
-    ): VideoMetadata? {
-        if ((payload.descriptorInfo() as? DescriptorContent.VideoFile)?.isSegmented != true) return null
-        val full = videoMetadataFrom(payload.descriptorContent ?: return null, payload.key, payload.contentType) { key ->
-            payloadDownloadService.renderBytes(driveId = driveId, fileId = fileId, key = key, keyHeader = keyHeader)?.decodeToString()
-        } ?: return null
-        return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
     }
 
     /**

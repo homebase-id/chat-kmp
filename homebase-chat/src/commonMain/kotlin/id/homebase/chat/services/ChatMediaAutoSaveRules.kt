@@ -37,13 +37,10 @@ fun shouldAutoSave(
         contentType.startsWith("image/") ->
             (payload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker != true
 
-        // ponytail: segmented video is skipped rather than remuxed. Saving it needs
-        // MediaDownloadHandler.downloadAndRemuxHlsToMp4, whose concurrent ffmpeg_execute calls
-        // crash on iOS — put the remux behind a single-permit semaphore before enabling it here.
         contentType == HLS_PLAYLIST_CONTENT_TYPE -> false
 
-        contentType.startsWith("video/") ->
-            (payload.descriptorInfo() as? DescriptorContent.VideoFile)?.isSegmented != true
+        // An HLS video is saved as an MP4 (saveReceived).
+        contentType.startsWith("video/") -> true
 
         else -> false
     }

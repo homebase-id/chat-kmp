@@ -95,7 +95,7 @@ class VaultNoteEditorViewModel(
                 val payloadKey = entry.payloadDescriptors.firstOrNull()?.key
                     ?: VaultEntry.DEFAULT_PAYLOAD_KEY
                 val tempPath = withContext(Dispatchers.Default) {
-                    vaultUploaderService.downloadPayload(entry, payloadKey)
+                    vaultUploaderService.downloadPayload(entry, payloadKey)?.path
                 }
                 if (tempPath == null) {
                     _events.tryEmit(VaultNoteEditorEvent.LoadFailed)

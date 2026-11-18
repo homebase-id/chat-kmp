@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.video.playableContentType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -191,11 +192,8 @@ private fun SharedMediaViewer(
             scope.launch {
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
-                    // Stream-decrypt straight into share_outbound (#845) —
-                    // bounded RAM for any payload size; the old byte path
-                    // buffered the whole payload (~2×) in memory.
-                    val path = actionService.streamPayloadToShareOutbound(
-                        item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
+                    val path = actionService.exportToShareOutbound(
+                        item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
                     )
                     if (path != null) {
                         fileSystemHandler.shareFile(
@@ -210,6 +208,10 @@ private fun SharedMediaViewer(
                                     )
                                 }
                             },
+                        )
+                    } else {
+                        snackbarHostState.showSnackbar(
+                            TranslationUtil.getString(MR.string.file_share_failed, TranslationUtil.getString(MR.string.error_unknown)),
                         )
                     }
                 } catch (e: Exception) {
@@ -227,10 +229,10 @@ private fun SharedMediaViewer(
             scope.launch {
                 val saved = try {
                     val iv = item.payload.iv?.bytes
-                    val contentType = item.payload.contentType
+                    val contentType = item.payload.playableContentType
                     val path = if (iv != null && contentType != null) {
-                        actionService.streamPayloadToUploadTemp(
-                            item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), "vault_", ".$ext"
+                        actionService.exportToUploadTemp(
+                            item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey), "vault_", ".$ext"
                         )
                     } else null
                     path != null && vaultFileSaver.save(
@@ -286,8 +288,7 @@ fun rememberSharedMediaSaver(
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
                     val saved = albumSaver.saveReceived(
-                        driveFileProvider, fileOps, driveId, item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey),
-                        item.payload.filename(), item.payload.contentType, hls = false,
+                        driveFileProvider, fileOps, driveId, item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey),
                     )
                     when (saved) {
                         is AlbumSaveResult.Saved ->
