@@ -24,6 +24,7 @@ import id.homebase.core.util.AlbumAccessDeniedException
 import id.homebase.core.util.AlbumSaveResult
 import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.NetworkMonitor
+import id.homebase.core.util.deleteQuietly
 import id.homebase.core.util.saveReceived
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -146,7 +147,7 @@ class ChatMediaAutoSaveService(
             val location = when (saved) {
                 is AlbumSaveResult.Saved -> saved.location
                 is AlbumSaveResult.Refused -> {
-                    runCatching { fileOperationsProvider.deleteTempFile(saved.file) }
+                    fileOperationsProvider.deleteQuietly(saved.file)
                     throw AlbumAccessDeniedException(saved.reason)
                 }
                 AlbumSaveResult.Cancelled, AlbumSaveResult.WriteFailed -> error("couldn't save $name")

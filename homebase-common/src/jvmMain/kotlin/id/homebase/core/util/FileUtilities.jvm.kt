@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
@@ -10,12 +11,14 @@ import kotlinx.io.files.Path
 private const val TAG = "getUriHandler"
 
 @Composable
-actual fun getUriHandler(): FileSystemHandler = JvmFileSystemHandler()
+actual fun getUriHandler(): FileSystemHandler = remember { JvmFileSystemHandler() }
 
 internal class JvmFileSystemHandler(
-    private val albumSaver: AlbumSaver = JvmAlbumSaver(),
-    private val fileOps: FileOperationsProvider = JvmFileOperationsProvider(),
+    albumSaver: AlbumSaver = JvmAlbumSaver(),
+    fileOps: FileOperationsProvider = JvmFileOperationsProvider(),
 ) : FileSystemHandler {
+    private val saver = FileSaver(albumSaver, fileOps)
+
     override fun openUrl(url: String, onError: (Throwable) -> Unit) {
         try {
             BrowserUtils.openSystemBrowser(url, enableClipboardFallback = false)
@@ -87,7 +90,10 @@ internal class JvmFileSystemHandler(
         deleteAfter: Boolean,
         onSuccess: (String) -> Unit,
         onError: (Throwable) -> Unit,
-    ) = saveThroughAlbum(albumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
+    ) = saver.save(file, suggestedName, deleteAfter, onSuccess, onError)
+
+    override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
+        saver.offerRefused(refused, onError)
 
     override fun shareText(text: String, onError: (Throwable) -> Unit) {
         try {

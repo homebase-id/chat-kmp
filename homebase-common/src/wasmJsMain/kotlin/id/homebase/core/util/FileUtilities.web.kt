@@ -12,6 +12,7 @@ import kotlinx.io.files.Path
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
     val fileOps = remember { WebFileOperationsProvider() }
+    val saver = remember { FileSaver(WebAlbumSaver, fileOps) }
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
             runCatching { window.open(url, "_blank") }.onFailure { onError(it) }
@@ -33,7 +34,10 @@ actual fun getUriHandler(): FileSystemHandler {
             deleteAfter: Boolean,
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
-        ) = saveThroughAlbum(WebAlbumSaver, fileOps, file, suggestedName, deleteAfter, onSuccess, onError)
+        ) = saver.save(file, suggestedName, deleteAfter, onSuccess, onError)
+
+        override fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) =
+            saver.offerRefused(refused, onError)
     }
 }
 

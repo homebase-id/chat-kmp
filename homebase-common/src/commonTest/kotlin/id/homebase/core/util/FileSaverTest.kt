@@ -15,10 +15,11 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** A save the caller gives its file to deletes it once done, whatever the outcome; any other leaves it alone. */
-class SaveThroughAlbumTest {
+class FileSaverTest {
     private class Run(val calls: List<String>, val thrown: List<Throwable>, val fileLeft: Boolean)
 
     private class JsLikeFailure(message: String) : Throwable(message)
@@ -32,7 +33,7 @@ class SaveThroughAlbumTest {
         deleteAfter: Boolean = true,
         onSuccess: () -> Unit = {},
         onError: () -> Unit = {},
-        onRefused: (suspend (String, String, String) -> Unit)? = null,
+        onRefused: (suspend (file: String, name: String, giveAway: Boolean) -> Unit)? = null,
         cancelBeforeItRuns: Boolean = false,
     ): Run {
         val fileOps = InMemoryFileOps()
@@ -43,13 +44,10 @@ class SaveThroughAlbumTest {
         val scope = CoroutineScope(SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, e -> thrown += e })
         val success = { _: String -> calls += "success"; onSuccess() }
         val error = { _: Throwable -> calls += "error"; onError() }
-        if (onRefused == null) {
-            saveThroughAlbum(saver, fileOps, Path(file), "key.txt", deleteAfter, success, error, scope = scope)
-        } else {
-            val refused: suspend (String, String, String) -> Unit =
-                { f, name, reason -> calls += "refused"; onRefused(f, name, reason) }
-            saveThroughAlbum(saver, fileOps, Path(file), "key.txt", deleteAfter, success, error, refused, scope)
-        }
+        val fallback = onRefused?.let { handOn ->
+            RefusedSaveFallback { refused, giveAway, _ -> calls += "refused"; handOn(refused.file, refused.name, giveAway) }
+        } ?: ReportRefusal
+        FileSaver(saver, fileOps, fallback, scope).save(Path(file), "key.txt", deleteAfter, success, error)
         val launched = scope.coroutineContext.job.children.toList()
         if (cancelBeforeItRuns) scope.cancel()
         launched.joinAll()
@@ -120,9 +118,10 @@ class SaveThroughAlbumTest {
     }
 
     @Test
-    fun aRefusalHandlerThatThrowsStillDeletes() = runTest {
+    fun aRefusalHandlerThatThrowsIsReportedAndStillDeletes() = runTest {
         val run = save(refusing, onRefused = { _, _, _ -> error("no share sheet") })
-        assertEquals("no share sheet", run.thrown.single().message)
+        assertEquals(listOf("refused", "error"), run.calls)
+        assertTrue(run.thrown.isEmpty())
         assertFalse(run.fileLeft)
     }
 
@@ -141,5 +140,62 @@ class SaveThroughAlbumTest {
     @Test
     fun aSaveCancelledBeforeItRunsStillDeletes() = runTest {
         assertFalse(save(saved, cancelBeforeItRuns = true).fileLeft)
+    }
+
+    @Test
+    fun theFallbackMayGiveTheFileAwayOnlyWhenTheCallerDeletesIt() = runTest {
+        var giveAway: Boolean? = null
+        save(refusing, onRefused = { _, _, give -> giveAway = give })
+        assertEquals(true, giveAway)
+        save(refusing, deleteAfter = false, onRefused = { _, _, give -> giveAway = give })
+        assertEquals(false, giveAway)
+    }
+
+    private class Offered(val fileOps: InMemoryFileOps, val file: String, val errors: List<Throwable>)
+
+    private suspend fun offer(fallbackOn: (InMemoryFileOps) -> RefusedSaveFallback = { ReportRefusal }): Offered {
+        val fileOps = InMemoryFileOps()
+        val fallback = fallbackOn(fileOps)
+        val file = fileOps.writeBytesToTempFile("photo".encodeToByteArray(), "scratch", ".jpg")
+        val errors = mutableListOf<Throwable>()
+        val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, _ -> })
+        FileSaver(refusing, fileOps, fallback, scope).offerRefused(AlbumSaveResult.Refused(file, "photo.jpg", "denied")) { errors += it }
+        scope.coroutineContext.job.children.toList().joinAll()
+        return Offered(fileOps, file, errors)
+    }
+
+    @Test
+    fun aRefusedFileIsOfferedOnceUnderItsNameToGiveAwayThenDeleted() = runTest {
+        val offered = mutableListOf<Triple<String, String, Boolean>>()
+        val run = offer { RefusedSaveFallback { refused, giveAway, _ -> offered += Triple(refused.file, refused.name, giveAway) } }
+        assertEquals(listOf(Triple(run.file, "photo.jpg", true)), offered)
+        assertFalse(run.fileOps.sourceExists(run.file))
+    }
+
+    @Test
+    fun withNothingElseToTakeItARefusedFileIsReportedAndDeleted() = runTest {
+        val run = offer()
+        assertIs<AlbumAccessDeniedException>(run.errors.single())
+        assertEquals("denied", run.errors.single().message)
+        assertFalse(run.fileOps.sourceExists(run.file))
+    }
+
+    @Test
+    fun aFallbackThatFailsIsReportedAndTheFileStillDeleted() = runTest {
+        val run = offer { RefusedSaveFallback { _, _, _ -> error("no share sheet") } }
+        assertEquals("no share sheet", run.errors.single().message)
+        assertFalse(run.fileOps.sourceExists(run.file))
+    }
+
+    @Test
+    fun theShareSheetGetsTheFileStagedUnderItsNameOnTheMainDispatcher() = runTest {
+        val shared = mutableListOf<String>()
+        val run = offer { ops -> ShareSheetFallback(ops, StandardTestDispatcher(testScheduler)) { path, _ -> shared += path.toString() } }
+        assertEquals(1, shared.size)
+        assertTrue(shared.single().startsWith("/tmp/share_outbound/"))
+        assertTrue(shared.single().endsWith("/photo.jpg"))
+        assertTrue(run.fileOps.sourceExists(shared.single()), "the staged copy stays for the share target")
+        assertFalse(run.fileOps.sourceExists(run.file), "the refused file was given away")
+        assertTrue(run.errors.isEmpty())
     }
 }

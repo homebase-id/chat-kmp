@@ -656,8 +656,7 @@ fun ConversationContent(
                 onUiAction(ConversationListUiAction.DismissStickerOptions)
             },
             onSaveToDevice = {
-                // Reuse the existing decrypt-to-cache + SaveFileToDevice path the fullscreen
-                // viewer's onSave uses — no new device-export code.
+                // The same save as the full-screen viewer's: saveReceived, then FileSaved or OfferRefusedSave.
                 onUiAction(
                     ConversationListUiAction.DownloadMedia(sheet.messageId, sheet.payloadKey)
                 )
