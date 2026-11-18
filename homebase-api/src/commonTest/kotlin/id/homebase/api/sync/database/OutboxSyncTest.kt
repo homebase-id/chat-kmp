@@ -1209,33 +1209,24 @@ class OutboxSyncTest {
      */
     @Test
     fun testCancelPendingRefusesInFlightRow() = runOutboxTest { db ->
-        val eventBus = EventBus()
-        val uploader = TestUploader()
-        val sync = OutboxSync(
-            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
-        )
-
-        val driveId = Uuid.random()
+        val fs = FakeFileSystem()
+        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
         val uniqueId = Uuid.random()
-        db.outbox.insert(
-            driveId = driveId,
-            uniqueId = uniqueId,
-            dependencyUniqueId = null,
-            priority = 0,
-            uploadType = DriveOutboxUploader.UploadNewFile,
-            json = byteArrayOf(),
-            filePaths = null,
-        )
+        val file = fs.file("/cache/outbox-temp/uploading.enc")
+        sync.tryEnqueue(upload(uniqueId, file.toString()), sendNow = false)
         // Simulate a worker holding the row.
         val checkedOut = db.outbox.checkout()
         assertNotNull(checkedOut)
 
-        val outcome = sync.cancelPending(driveId, uniqueId)
+        val outcome = sync.cancelPending(replaceDrive, uniqueId)
         assertEquals(CancelOutcome.InFlight(isCreate = true), outcome)
+        advanceUntilIdle()
+        runCurrent()
 
-        val row = db.outbox.selectByDriveAndUnique(driveId, uniqueId)
+        val row = db.outbox.selectByDriveAndUnique(replaceDrive, uniqueId)
         assertNotNull(row, "in-flight row must survive a cancel attempt")
         assertNotNull(row.checkOutStamp, "row must remain checked out")
+        assertTrue(fs.exists(file), "the upload in progress still reads its file")
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 
@@ -1831,22 +1822,5 @@ class OutboxSyncTest {
 
         assertFalse(fs.exists(file), "a cancelled send's file goes with it")
         assertFalse(fs.exists(hls.parent!!), "and so does its hls_ folder")
-    }
-
-    @Test
-    fun aRowMidUploadIsntCancelledAndKeepsItsFiles() = runOutboxTest { db ->
-        val fs = FakeFileSystem()
-        val sync = OutboxSync(db, TestUploader(), EventBus(), backgroundScope, fileSystem = fs)
-        val id = Uuid.random()
-        val file = fs.file("/cache/outbox-temp/uploading.enc")
-        sync.tryEnqueue(upload(id, file.toString()), sendNow = false)
-        assertNotNull(db.outbox.checkout(), "the row is now mid-upload")
-
-        assertEquals(CancelOutcome.InFlight(isCreate = true), sync.cancelPending(replaceDrive, id))
-        advanceUntilIdle()
-        runCurrent()
-
-        assertTrue(fs.exists(file), "the upload in progress still reads its file")
-        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
 }

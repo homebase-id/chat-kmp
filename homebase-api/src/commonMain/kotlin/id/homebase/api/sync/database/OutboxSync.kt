@@ -835,19 +835,11 @@ class OutboxSync(
      * [CancelOutcome] instead of guessing.
      */
     public suspend fun cancelPending(driveId: Uuid, uniqueId: Uuid): CancelOutcome {
-        val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
-            ?: return CancelOutcome.NothingPending
-        val isCreate = row.uploadType.isCreate()
-        if (row.checkOutStamp != null) return CancelOutcome.InFlight(isCreate)
-
         val cancelled = databaseManager.outbox.deleteIdle(driveId, uniqueId)
-        if (cancelled == null) {
-            // Raced: between the select and the guarded delete the row was
-            // either checked out or drained. Re-read to report which.
-            val now = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
-                ?: return CancelOutcome.NothingPending
-            return CancelOutcome.InFlight(now.uploadType.isCreate())
-        }
+            ?: return databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+                ?.let { CancelOutcome.InFlight(it.uploadType.isCreate()) }
+                ?: CancelOutcome.NothingPending
+        val isCreate = cancelled.uploadType.isCreate()
         Logger.i("OutboxSync: cancelPending removed queued ${if (isCreate) "create" else "row"} uniqueId=$uniqueId")
         scope.launch { deleteEndedRowFiles(cancelled) }
         return if (isCreate) CancelOutcome.CancelledCreate else CancelOutcome.Cancelled
@@ -1190,7 +1182,7 @@ class OutboxSync(
         }
     }
 
-    /** A check-in that matched no row means the row was replaced or cancelled while it uploaded: nobody else ends it. */
+    /** A check-in that matched no row means the row was replaced while it uploaded: nobody else ends it. */
     private suspend fun checkedInOrGone(row: Outbox, rowsCheckedIn: Long) {
         if (rowsCheckedIn == 0L) deleteEndedRowFiles(row)
     }
