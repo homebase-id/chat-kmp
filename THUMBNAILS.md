@@ -395,6 +395,22 @@ Results on 1-pixel black and white stripes, which a correct filter turns flat gr
 
 None of Skia's sampling modes is good enough, and neither is a simple area average. Android's `Bitmap.createScaledBitmap` is Skia underneath, so it has the same limits. Lanczos also keeps coarser detail at full contrast, which a blur would not.
 
+### Block shrinks leave Lanczos the last 2×
+
+Any 2× block shrink, our 2×2 average or a phone decoder's own reduction, aliases fine detail that the step after it can't remove. So a block shrink may only run while it leaves Lanczos at least the last 2×. This is the rule libvips (shrink-on-load "is a simple block shrink and will add quite a bit of extra sharpness ... Leave at least a factor of two for the final resize step") and Pillow (`reducing_gap`, 2.0 for thumbnails, "indistinguishable from fair resampling" at 3.0) follow.
+
+**What we measured** (Pixel 5, November 2026; numbers in `OPTIMIZE.md`):
+
+- **The 2×2 average as the last step** cost the 240-px thumbnails 1.4–2.1 dB on real photos (#2369). Halving now stops at 4× (rule 4).
+- **Android's JPEG decoder halving** is the same block average: 3-pixel stripes came out at a spread of 60.2, against 59.9 for a 2×2 average and 5.7 for Lanczos. On real photos it cost 0.9 dB as the final step, and 0.13–0.54 dB even with Lanczos after it at 24 and 48 MP. So the decoder now stops while the decoded size is at least twice the largest output.
+- **The price** is memory on photos 2–4× bigger than the largest output: a 48 MP JPEG at Standard or Original decodes in full, 58 → 195 MB at peak and +0.4 s. That's what a 48 MP HEIC always cost (Android decodes HEIC in full), and the phone's highest peak in any case stays 231 MB (48 MP at HD).
+
+**Rejected: planning HD at exactly half a 48–50 MP photo** (8064 → 4032, not 4096), so the decoder makes the whole step on a quarter of the pixels. It saved 158 MB at HD, but made the decoder's block shrink the final step: the aliasing above, on every 48 MP HD photo.
+
+**How others choose.** Quality-first tools keep the gap and pay in memory: Immich makes its thumbnails on the server with libvips (and resamples in linear light). Apps that make images on the phone keep them small or skip the derived large image: Ente (end-to-end encrypted, like us) has the OS make a 512 px thumbnail and shows the untouched original at full size; Signal lets the decoder shrink as far as it can (Glide's power-of-two sampling), at 1600 px (Standard) or 4096 px (HD). We make 2048 and 4096 px images on the phone, as a chat app does, at a photo app's quality, so we take the memory cost where it's bounded.
+
+**iOS bends the rule over 24 MP.** Below the memory guard, ImageIO is asked for twice the output only when the source is at least 4× too big. Over it, which includes the iPhone's 24 and 48 MP photos, ImageIO still halves a photo 2–4× too big, and 48 MP at HD still gets its 1.43× step (#2365). Whether a full 24 or 48 MP decode is affordable on an iPhone is being measured (`IphonePhotoBench`, and a pass on a real iPhone); if it is, raising the guard brings these photos under the rule too.
+
 ### On the phones: native where it's better
 
 | | iOS | Android |
