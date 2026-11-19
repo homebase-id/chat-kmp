@@ -276,9 +276,9 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 
 | App | `keyPrefix` | `quality` | `metadata` | `encrypted` | Transport |
 |---|---|---|---|---|---|
-| Chat | `chat_web` | user setting | STRIP | yes | `UploadService` |
-| Moments posts / comments | `mmt_` / `mmc_` (existing 4-digit index) | user setting | STRIP (GPS opt-in kept) | per audience | `UploadService` (a public one staged, not encrypted) |
-| Feed posts / comments | `pst_mdi_` / `cmmnt_md` | user setting | STRIP | per audience | `UploadService` (a public one staged, not encrypted) |
+| Chat | `chat_web` | its photo setting and video setting (defaults STANDARD, STANDARD) | STRIP | yes | `UploadService` |
+| Moments posts / comments | `mmt_` / `mmc_` (existing 4-digit index) | its photo setting and video setting (defaults HD, HD) | STRIP (GPS opt-in kept) | per audience | `UploadService` (a public one staged, not encrypted) |
+| Feed posts / comments | `pst_mdi_` / `cmmnt_md` | its photo setting and video setting (defaults HD, HD) | STRIP | per audience | `UploadService` (a public one staged, not encrypted) |
 | Stickers (saved) | `sticker_` | ORIGINAL | STRIP | yes | `UploadService` |
 | Photos | `photo_main`, `photo_live`, `video_main` (+ `vcp_0000` at Original) | its photo setting (default ORIGINAL) and video setting (default HD), each STANDARD, HD or ORIGINAL | KEEP | yes | `UploadService` (keeps its hashing, dedupe and `uniqueId`); photos on iOS: its request, sent by a background session |
 | Vault | `vlt_pg_` (existing 2-digit index) | ORIGINAL (photos), HD (videos) | KEEP | yes | `UploadService` |
@@ -286,6 +286,8 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 | WebDrop | existing | none | KEEP | link key | its own outbox path |
 | Contact photo | none | its own sizes | STRIP | yes | contacts image API |
 | Profile and card photos | none | its own sizes | STRIP | server-side | profile attribute API |
+
+Each app that sends media people pick has its own photo setting and video setting, on its page in Settings → Apps. A photo setting is STANDARD, HD or ORIGINAL; a video setting outside Photos is STANDARD or HD, because ORIGINAL there is HD's 1080p (`THUMBNAILS.md`, "The three settings"). The share sheet and view-once send with Chat's settings. Chat's settings start from the single setting every app shared before (`media_quality`, an ORIGINAL video becoming HD).
 
 Filesync, WebDrop and the two photo APIs use the builder's rules but keep their transport:
 
