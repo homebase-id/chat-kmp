@@ -8,6 +8,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import id.homebase.core.ui.assets.Apps
+import id.homebase.core.ui.screens.settings.AppsPage
+import id.homebase.core.ui.screens.settings.appRoute
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.resources.MR
 import id.homebase.resources.nav_apps
@@ -28,9 +30,20 @@ class TopLevelRoutesTest {
     )
 
     @Test
-    fun callsSitsRightAfterChatsWhenAvailableAndVisible() {
+    fun callsSitsWhereSettingsListsItWhenAvailableAndVisible() {
         val routes = routes(callsAvailable = true, callsIconVisible = true)
-        assertEquals(listOf(Route.ChatList, Route.Calls, Route.Feed, Route.Moments, Route.Home), routes.map { it.route })
+        assertEquals(listOf(Route.ChatList, Route.Feed, Route.Moments, Route.Calls, Route.Home), routes.map { it.route })
+    }
+
+    @Test
+    fun theBarRunsInTheOrderOfSettingsAppsThenApps() {
+        val every = topLevelRoutesFor(
+            callsAvailable = true, callsIconVisible = true, momentsVisible = true, vaultVisible = true,
+            locationVisible = true, contactBookVisible = true, emailVisible = true,
+            filesyncVisible = true, photobaseVisible = true, feedVisible = true,
+        ).map { it.route }
+        val settingsOrder = AppsPage.entries.map { it.appRoute }.filter { it in every }
+        assertEquals(settingsOrder + Route.Home, every)
     }
 
     @Test

@@ -2808,16 +2808,17 @@ internal fun topLevelRoutesFor(
     photobaseVisible: Boolean = false,
     feedVisible: Boolean = true,
 ): List<TopLevelRoute> = buildList {
+    // The order of Settings → Apps (AppsPage), then Apps.
     add(TopLevelRoute.Chat)
-    if (callsAvailable && callsIconVisible) add(TopLevelRoute.Calls)
-    if (feedVisible) add(TopLevelRoute.Feed)
-    if (momentsVisible) add(TopLevelRoute.Moments)
-    if (vaultVisible) add(TopLevelRoute.Vault)
-    if (filesyncVisible) add(TopLevelRoute.Filesync)
     if (photobaseVisible) add(TopLevelRoute.Photobase)
-    if (locationVisible) add(TopLevelRoute.Location)
-    if (contactBookVisible) add(TopLevelRoute.ContactBook)
+    if (filesyncVisible) add(TopLevelRoute.Filesync)
     if (emailVisible) add(TopLevelRoute.Email)
+    if (feedVisible) add(TopLevelRoute.Feed)
+    if (vaultVisible) add(TopLevelRoute.Vault)
+    if (locationVisible) add(TopLevelRoute.Location)
+    if (momentsVisible) add(TopLevelRoute.Moments)
+    if (callsAvailable && callsIconVisible) add(TopLevelRoute.Calls)
+    if (contactBookVisible) add(TopLevelRoute.ContactBook)
     add(TopLevelRoute.Apps)
 }
 

@@ -38,11 +38,11 @@ class BottomBarDefaultsTest {
     )
 
     @Test
-    fun freshInstallBarIsChatsCallsFeedMomentsContactsApps() = runTest {
+    fun freshInstallBarIsChatFeedMomentsCallsContactsApps() = runTest {
         val db = db()
         BottomBarDefaultsMigration.run(db)
         assertEquals(
-            listOf(Route.ChatList, Route.Calls, Route.Feed, Route.Moments, Route.ContactBook, Route.Home),
+            listOf(Route.ChatList, Route.Feed, Route.Moments, Route.Calls, Route.ContactBook, Route.Home),
             routes(db),
         )
         assertEquals(TopLevelRoute.Apps, tabs(db).last())
