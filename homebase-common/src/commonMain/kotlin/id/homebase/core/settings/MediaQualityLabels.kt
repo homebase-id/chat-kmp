@@ -9,11 +9,8 @@ import id.homebase.resources.photobase_backup_video_standard_desc
 import id.homebase.resources.photobase_backup_video_hd_desc
 import id.homebase.resources.photobase_backup_video_original_desc
 import id.homebase.resources.settings_media_quality_hd
-import id.homebase.resources.settings_media_quality_hd_description
 import id.homebase.resources.settings_media_quality_original
-import id.homebase.resources.settings_media_quality_original_description
 import id.homebase.resources.settings_media_quality_standard
-import id.homebase.resources.settings_media_quality_standard_description
 import org.jetbrains.compose.resources.StringResource
 
 val MediaQuality.label: StringResource
@@ -21,13 +18,6 @@ val MediaQuality.label: StringResource
         MediaQuality.STANDARD -> MR.string.settings_media_quality_standard
         MediaQuality.HD -> MR.string.settings_media_quality_hd
         MediaQuality.ORIGINAL -> MR.string.settings_media_quality_original
-    }
-
-val MediaQuality.description: StringResource
-    get() = when (this) {
-        MediaQuality.STANDARD -> MR.string.settings_media_quality_standard_description
-        MediaQuality.HD -> MR.string.settings_media_quality_hd_description
-        MediaQuality.ORIGINAL -> MR.string.settings_media_quality_original_description
     }
 
 val MediaQuality.photoDescription: StringResource

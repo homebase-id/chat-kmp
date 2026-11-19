@@ -107,13 +107,16 @@ fun SendQualityRows(
     quality: SendQuality,
     onChange: (SendQuality) -> Unit,
     rowColor: Color = MaterialTheme.colorScheme.surface,
+    note: StringResource = MR.string.settings_media_quality_footer,
+    // Only Photos keeps an Original video as recorded.
+    videoChoices: List<MediaQuality> = SendQuality.VideoChoices,
 ) {
     MediaQualityRow(
         icon = Icons.Outlined.Image,
         title = stringResource(MR.string.photobase_backup_photo_quality),
         selected = quality.photo,
         description = { it.photoDescription },
-        note = MR.string.settings_media_quality_footer,
+        note = note,
         rowColor = rowColor,
         testTagPrefix = "photo-",
         onSelect = { onChange(quality.copy(photo = it)) },
@@ -123,10 +126,10 @@ fun SendQualityRows(
         title = stringResource(MR.string.photobase_backup_video_quality),
         selected = quality.video,
         description = { it.videoDescription },
-        note = MR.string.settings_media_quality_footer,
+        note = note,
         rowColor = rowColor,
         testTagPrefix = "video-",
         onSelect = { onChange(quality.copy(video = it)) },
-        choices = SendQuality.VideoChoices,
+        choices = videoChoices,
     )
 }

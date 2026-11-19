@@ -2044,7 +2044,6 @@
     <string name="camera_recording_started">Optagelsen er startet</string>
     <string name="camera_recording_stopped">Optagelsen er stoppet, %1$s</string>
     <string name="camera_ae_af_lock">AE/AF-lås</string>
-    <string name="settings_media_camera_header">Kamera</string>
     <string name="settings_media_mirror_front">Spejlvend frontkamera</string>
     <string name="settings_media_mirror_front_description">Gem selfies og videoer fra frontkameraet, som de ser ud i forhåndsvisningen.</string>
     <string name="profile_edit_load_failed_desc">Tjek din forbindelse, og prøv igen.</string>
@@ -2433,12 +2432,8 @@
     <string name="profile_card_colours_blue">Blå</string>
     <string name="settings_media_quality_hd">HD</string>
     <string name="settings_media_quality_original">Original</string>
-    <string name="settings_media_quality_header">Kvalitet for billeder og videoer, du sender</string>
     <string name="settings_media_quality_standard">Standard</string>
     <string name="settings_media_quality_footer">Uanset hvad du vælger, er det, du gemmer på din enhed, den version, der blev sendt.</string>
-    <string name="settings_media_quality_standard_description">Billeder op til 2048 pixels og video i 720p. Ser godt ud, sendes hurtigt og holder skærmbilleder læsbare.</string>
-    <string name="settings_media_quality_hd_description">Billeder op til 4096 pixels og video i 1080p. Forbliver skarpe, når du zoomer.</string>
-    <string name="settings_media_quality_original_description">Den nøjagtige billedfil uden komprimering, og video i 1080p. Bruger mest data.</string>
     <string name="cd_media_quality_choice">Mediekvalitet: %1$s. Tryk for at ændre.</string>
     <string name="cd_media_quality_hd_badge">Sendt i HD</string>
     <string name="cd_media_quality_original_badge">Sendt som den originale fil</string>

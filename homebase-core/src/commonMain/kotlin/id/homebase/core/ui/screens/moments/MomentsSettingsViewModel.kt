@@ -42,9 +42,6 @@ class MomentsSettingsViewModel(
 
     fun onAction(action: MomentsSettingsUiAction) {
         when (action) {
-            MomentsSettingsUiAction.OpenMomentsClicked -> {
-                // Handled by the screen — it dispatches to the navigation callback.
-            }
             is MomentsSettingsUiAction.SetIconVisible -> {
                 viewModelScope.launch { momentsPreferences.setIconVisible(action.visible) }
             }

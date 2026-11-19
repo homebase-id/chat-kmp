@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
+import org.jetbrains.compose.resources.StringResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.assets.Filesync
 import id.homebase.core.ui.assets.BootstrapChatOutlined
@@ -65,19 +67,23 @@ import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
 import org.jetbrains.compose.resources.stringResource
 
-internal val AppsSettingsRowTags = listOf(
-    "chatSettingsButton",
-    "photobaseSettingsButton",
-    "filesyncSettingsButton",
-    "emailSettingsButton",
-    "feedSettingsButton",
-    "vaultSettingsButton",
-    "locationSettingsButton",
-    "momentsSettingsButton",
-    "callsSettingsButton",
-    "contactBookSettingsButton",
-    "webDropButton",
+private class AppsRow(val page: AppsPage, val tag: String, val icon: ImageVector, val title: StringResource, val subtitle: StringResource)
+
+private val AppsRows = listOf(
+    AppsRow(AppsPage.Chat, "chatSettingsButton", BootstrapChatOutlined, MR.string.nav_chats, MR.string.settings_chat_desc),
+    AppsRow(AppsPage.Photobase, "photobaseSettingsButton", Icons.Outlined.PhotoLibrary, MR.string.photobase_label, MR.string.photobase_home_subtitle),
+    AppsRow(AppsPage.Filesync, "filesyncSettingsButton", HomebaseIcons.Filesync, MR.string.filesync_label, MR.string.filesync_home_subtitle),
+    AppsRow(AppsPage.Email, "emailSettingsButton", Icons.Outlined.MailOutline, MR.string.email_settings_section, MR.string.settings_email_desc),
+    AppsRow(AppsPage.Feed, "feedSettingsButton", HomebaseIcons.RssFeed, MR.string.nav_feed, MR.string.settings_feed_desc),
+    AppsRow(AppsPage.Vault, "vaultSettingsButton", Icons.Outlined.Lock, MR.string.vault_settings_section, MR.string.settings_vault_desc),
+    AppsRow(AppsPage.Location, "locationSettingsButton", Icons.Outlined.LocationOn, MR.string.location_settings_section, MR.string.settings_location_desc),
+    AppsRow(AppsPage.Moments, "momentsSettingsButton", Icons.Outlined.AutoAwesome, MR.string.moments_settings_section, MR.string.settings_moments_desc),
+    AppsRow(AppsPage.Calls, "callsSettingsButton", Icons.Outlined.Call, MR.string.nav_calls, MR.string.calls_home_subtitle),
+    AppsRow(AppsPage.Contacts, "contactBookSettingsButton", Icons.Outlined.People, MR.string.contactbook_settings_section, MR.string.settings_contactbook_desc),
+    AppsRow(AppsPage.WebDrop, "webDropButton", Icons.Outlined.Redeem, MR.string.webdrop_label, MR.string.webdrop_home_subtitle),
 )
+
+internal val AppsSettingsRowTags = AppsRows.map { it.tag }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,94 +118,16 @@ internal fun AppsSettingsScreen(actions: AppsSettingsActions) {
                     .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             ) {
                 AppsGroup(stringResource(MR.string.settings_apps_section_pages)) {
-                    SettingsRow(
-                        modifier = Modifier.testTag("chatSettingsButton"),
-                        icon = BootstrapChatOutlined,
-                        title = stringResource(MR.string.nav_chats),
-                        supportingText = stringResource(MR.string.settings_chat_desc),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Chat) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("photobaseSettingsButton"),
-                        icon = Icons.Outlined.PhotoLibrary,
-                        title = stringResource(MR.string.photobase_label),
-                        supportingText = stringResource(MR.string.photobase_home_subtitle),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Photobase) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("filesyncSettingsButton"),
-                        icon = HomebaseIcons.Filesync,
-                        title = stringResource(MR.string.filesync_label),
-                        supportingText = stringResource(MR.string.filesync_home_subtitle),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Filesync) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("emailSettingsButton"),
-                        icon = Icons.Outlined.MailOutline,
-                        title = stringResource(MR.string.email_settings_section),
-                        supportingText = stringResource(MR.string.settings_email_desc),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Email) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("feedSettingsButton"),
-                        icon = HomebaseIcons.RssFeed,
-                        title = stringResource(MR.string.nav_feed),
-                        supportingText = stringResource(MR.string.settings_feed_desc),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Feed) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("vaultSettingsButton"),
-                        icon = Icons.Outlined.Lock,
-                        title = stringResource(MR.string.vault_settings_section),
-                        supportingText = stringResource(MR.string.settings_vault_desc),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Vault) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("locationSettingsButton"),
-                        icon = Icons.Outlined.LocationOn,
-                        title = stringResource(MR.string.location_settings_section),
-                        supportingText = stringResource(MR.string.settings_location_desc),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Location) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("momentsSettingsButton"),
-                        icon = Icons.Outlined.AutoAwesome,
-                        title = stringResource(MR.string.moments_settings_section),
-                        supportingText = stringResource(MR.string.settings_moments_desc),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Moments) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("callsSettingsButton"),
-                        icon = Icons.Outlined.Call,
-                        title = stringResource(MR.string.nav_calls),
-                        supportingText = stringResource(MR.string.calls_home_subtitle),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Calls) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("contactBookSettingsButton"),
-                        icon = Icons.Outlined.People,
-                        title = stringResource(MR.string.contactbook_settings_section),
-                        supportingText = stringResource(MR.string.settings_contactbook_desc),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Contacts) },
-                    )
-                    SettingsRow(
-                        modifier = Modifier.testTag("webDropButton"),
-                        icon = Icons.Outlined.Redeem,
-                        title = stringResource(MR.string.webdrop_label),
-                        supportingText = stringResource(MR.string.webdrop_home_subtitle),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.WebDrop) },
-                    )
+                    AppsRows.forEach { row ->
+                        SettingsRow(
+                            modifier = Modifier.testTag(row.tag),
+                            icon = row.icon,
+                            title = stringResource(row.title),
+                            supportingText = stringResource(row.subtitle),
+                            containerColor = rowColor,
+                            action = SettingsRowAction.Navigate { actions.onOpenPage(row.page) },
+                        )
+                    }
                 }
             }
         }

@@ -85,14 +85,11 @@ class UserPreferences(private val settings: Settings) {
 
     fun setSendQuality(app: SendQualityApp, value: SendQuality) {
         settings.putString("${app.key}_photo_quality", value.photo.code)
-        settings.putString("${app.key}_video_quality", value.video.asVideoChoice().code)
-        _preferenceState.value = _preferenceState.value.let {
-            it.copy(sendQualities = it.sendQualities + (app to sendQuality(app)))
-        }
+        settings.putString("${app.key}_video_quality", value.video.code)
+        _preferenceState.value = _preferenceState.value.let { it.copy(sendQualities = it.sendQualities + (app to value)) }
     }
 
-    private fun quality(key: String): MediaQuality? =
-        settings.getStringOrNull(key)?.let { code -> MediaQuality.entries.find { it.code == code } }
+    private fun quality(key: String): MediaQuality? = MediaQuality.fromCodeOrNull(settings.getStringOrNull(key))
 
     private fun MediaQuality.asVideoChoice(): MediaQuality = takeIf { it in SendQuality.VideoChoices } ?: MediaQuality.HD
 

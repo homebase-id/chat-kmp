@@ -10,7 +10,6 @@ data class MomentsSettingsUiState(
 )
 
 sealed interface MomentsSettingsUiAction {
-    data object OpenMomentsClicked : MomentsSettingsUiAction
     data class SetIconVisible(val visible: Boolean) : MomentsSettingsUiAction
     data class SetQuality(val quality: SendQuality) : MomentsSettingsUiAction
     data class SetAutoSaveIncomingMedia(val enabled: Boolean) : MomentsSettingsUiAction

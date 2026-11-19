@@ -213,6 +213,7 @@ import id.homebase.core.ui.screens.settings.SettingsCategory
 import id.homebase.core.ui.screens.settings.AppsPage
 import id.homebase.core.ui.screens.settings.AppsPageContent
 import id.homebase.core.ui.screens.settings.AppsPageLinks
+import id.homebase.core.ui.screens.settings.appRoute
 import id.homebase.core.ui.screens.settings.AppsSettingsActions
 import id.homebase.core.ui.screens.settings.appsPage
 import id.homebase.core.ui.screens.settings.route
@@ -711,18 +712,9 @@ fun AppNavHost(
         onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
     ).takeIf { photobaseAvailable && koinInject<PhotoBackupController>().isSupported }
     val appsPageLinks = AppsPageLinks(
-        onOpenChat = { navController.openApp(Route.ChatList, tabRoutes) },
-        onOpenFeed = { navController.openApp(Route.Feed, tabRoutes) },
-        onOpenMoments = openMoments,
-        onOpenVault = openVault,
-        onOpenEmail = openEmail,
+        onOpenApp = { page -> navController.openApp(page.appRoute, tabRoutes) },
         onOpenEmailModeSwitch = { navController.navigate(Route.EmailModeSwitch) },
-        onOpenContacts = openContactBook,
-        onOpenFilesync = openFilesync,
-        onOpenPhotobase = openPhotobase,
-        onOpenWebDrop = openWebDrop,
-        onOpenLocation = openLocation,
-        onOpenCalls = openCalls.takeIf { callsAvailable },
+        callsAvailable = callsAvailable,
         photobaseAvailable = photobaseAvailable,
         photoBackup = photoBackupLinks,
         locationViewModel = locationViewModel,
@@ -2564,12 +2556,7 @@ fun AppNavHost(
                                         onBack = { navController.popBackStack() },
                                         links = appsPageLinks,
                                         emailMailboxMode = emailMailboxMode,
-                                        openedFromApp = when (page) {
-                                            AppsPage.Vault -> from?.hasRoute(Route.Vault::class) == true
-                                            AppsPage.Contacts -> from?.hasRoute(Route.ContactBook::class) == true
-                                            AppsPage.Photobase -> from?.hasRoute(Route.Photobase::class) == true
-                                            else -> false
-                                        },
+                                        openedFromApp = from?.hasRoute(page.appRoute::class) == true,
                                         settingsOwner = rememberSettingsOwner(navController, entry),
                                     )
                                 }

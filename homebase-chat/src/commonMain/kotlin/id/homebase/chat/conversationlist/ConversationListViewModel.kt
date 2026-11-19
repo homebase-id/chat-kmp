@@ -1711,7 +1711,7 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SetSendQuality -> {
                 userPreferences.setSendQuality(SendQualityApp.Chat, action.quality)
-                _messagesUiState.update { it.copy(sendQuality = userPreferences.sendQuality(SendQualityApp.Chat)) }
+                _messagesUiState.update { it.copy(sendQuality = action.quality) }
             }
             is ConversationListUiAction.ToggleStickerAttachment -> attachmentHandler.handleToggleStickerAttachment(action)
 

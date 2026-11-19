@@ -11,7 +11,6 @@ data class FeedSettingsUiState(
 )
 
 sealed interface FeedSettingsUiAction {
-    data object OpenFeedClicked : FeedSettingsUiAction
     data class SetIconVisible(val visible: Boolean) : FeedSettingsUiAction
     data class SetUseNativeFeed(val enabled: Boolean) : FeedSettingsUiAction
     data class SetQuality(val quality: SendQuality) : FeedSettingsUiAction

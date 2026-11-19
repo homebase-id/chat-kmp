@@ -1,13 +1,9 @@
 package id.homebase.photobase.ui
 
 import id.homebase.resources.photobase_backup_quality_note
-import id.homebase.resources.photobase_backup_video_quality
-import id.homebase.resources.photobase_backup_photo_quality
-import id.homebase.core.settings.MediaQualityRow
-import id.homebase.core.settings.photoDescription
-import id.homebase.core.settings.videoDescription
-import androidx.compose.material.icons.outlined.Movie
-import androidx.compose.material.icons.outlined.Image
+import id.homebase.api.image.MediaQuality
+import id.homebase.api.image.SendQuality
+import id.homebase.core.settings.SendQualityRows
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -152,25 +148,15 @@ fun BackupSettingsSection(
                 showAlbums = true
             },
         )
-        MediaQualityRow(
-            icon = Icons.Outlined.Image,
-            title = stringResource(MR.string.photobase_backup_photo_quality),
-            selected = settings.photoQuality,
-            description = { it.photoDescription },
-            note = MR.string.photobase_backup_quality_note,
+        SendQualityRows(
+            quality = SendQuality(settings.photoQuality, settings.videoQuality),
+            onChange = { q ->
+                if (q.photo != settings.photoQuality) onAction(BackupSettingsUiAction.SetPhotoQuality(q.photo))
+                if (q.video != settings.videoQuality) onAction(BackupSettingsUiAction.SetVideoQuality(q.video))
+            },
             rowColor = rowColor,
-            testTagPrefix = "photo-",
-            onSelect = { onAction(BackupSettingsUiAction.SetPhotoQuality(it)) },
-        )
-        MediaQualityRow(
-            icon = Icons.Outlined.Movie,
-            title = stringResource(MR.string.photobase_backup_video_quality),
-            selected = settings.videoQuality,
-            description = { it.videoDescription },
             note = MR.string.photobase_backup_quality_note,
-            rowColor = rowColor,
-            testTagPrefix = "video-",
-            onSelect = { onAction(BackupSettingsUiAction.SetVideoQuality(it)) },
+            videoChoices = MediaQuality.entries,
         )
         SettingsRow(
             icon = Icons.Outlined.Wifi,

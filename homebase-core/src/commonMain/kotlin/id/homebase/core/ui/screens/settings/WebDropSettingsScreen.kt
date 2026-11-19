@@ -19,16 +19,18 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun WebDropSettingsUi(
     onBack: () -> Unit,
-    onOpenWebDrop: () -> Unit,
+    onOpenWebDrop: (() -> Unit)?,
 ) {
     SettingsDetailScaffold(title = stringResource(MR.string.webdrop_label), onBack = onBack) {
         Spacer(modifier = Modifier.height(8.dp))
-        SettingsRow(
-            modifier = Modifier.testTag("webDropOpenButton"),
-            icon = Icons.Outlined.Redeem,
-            title = stringResource(MR.string.webdrop_settings_open),
-            action = SettingsRowAction.Navigate(onOpenWebDrop),
-        )
+        onOpenWebDrop?.let { open ->
+            SettingsRow(
+                modifier = Modifier.testTag("webDropOpenButton"),
+                icon = Icons.Outlined.Redeem,
+                title = stringResource(MR.string.webdrop_settings_open),
+                action = SettingsRowAction.Navigate(open),
+            )
+        }
         Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }
 }

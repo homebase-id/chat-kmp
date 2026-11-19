@@ -26,16 +26,10 @@ import org.jetbrains.compose.resources.stringResource
 fun FilesyncSettingsScreen(
     viewModel: FilesyncSettingsViewModel,
     onBackClick: () -> Unit,
-    onOpenDrive: () -> Unit,
+    onOpenDrive: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    FilesyncSettingsUi(
-        uiState = uiState,
-        onAction = { action ->
-            if (action is FilesyncSettingsUiAction.OpenDriveClicked) onOpenDrive() else viewModel.onAction(action)
-        },
-        onBackClick = onBackClick,
-    )
+    FilesyncSettingsUi(uiState = uiState, onAction = viewModel::onAction, onBackClick = onBackClick, onOpenDrive = onOpenDrive)
 }
 
 @Composable
@@ -43,18 +37,21 @@ fun FilesyncSettingsUi(
     uiState: FilesyncSettingsUiState,
     onAction: (FilesyncSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    onOpenDrive: (() -> Unit)? = null,
 ) {
     SettingsDetailScaffold(
         title = stringResource(MR.string.filesync_label),
         onBack = onBackClick,
     ) {
         Spacer(modifier = Modifier.height(8.dp))
-        SettingsRow(
-            modifier = Modifier.testTag("filesyncOpenButton"),
-            icon = HomebaseIcons.Filesync,
-            title = stringResource(MR.string.filesync_settings_open),
-            action = SettingsRowAction.Navigate { onAction(FilesyncSettingsUiAction.OpenDriveClicked) },
-        )
+        onOpenDrive?.let { open ->
+            SettingsRow(
+                modifier = Modifier.testTag("filesyncOpenButton"),
+                icon = HomebaseIcons.Filesync,
+                title = stringResource(MR.string.filesync_settings_open),
+                action = SettingsRowAction.Navigate(open),
+            )
+        }
         SettingsRow(
             modifier = Modifier.testTag("filesyncIconToggle"),
             icon = Icons.Outlined.Visibility,

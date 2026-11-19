@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.feed.FeedPreferences
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.settings.sendQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,16 +31,16 @@ class FeedSettingsViewModel(
         viewModelScope.launch {
             feedPreferences.iconVisible.collect { v -> _uiState.update { it.copy(iconVisible = v) } }
         }
+        // The composer's quality chip writes the same preference.
+        viewModelScope.launch {
+            userPreferences.preferenceState.collect { prefs -> _uiState.update { it.copy(quality = prefs.sendQuality(SendQualityApp.Feed)) } }
+        }
     }
 
     fun onAction(action: FeedSettingsUiAction) {
         when (action) {
-            FeedSettingsUiAction.OpenFeedClicked -> Unit
             is FeedSettingsUiAction.SetIconVisible -> viewModelScope.launch { feedPreferences.setIconVisible(action.visible) }
-            is FeedSettingsUiAction.SetQuality -> {
-                userPreferences.setSendQuality(SendQualityApp.Feed, action.quality)
-                _uiState.update { it.copy(quality = userPreferences.sendQuality(SendQualityApp.Feed)) }
-            }
+            is FeedSettingsUiAction.SetQuality -> userPreferences.setSendQuality(SendQualityApp.Feed, action.quality)
             is FeedSettingsUiAction.SetAutoSaveIncomingMedia -> {
                 userPreferences.feedAutoSaveIncomingMedia = action.enabled
                 _uiState.update { it.copy(autoSaveIncomingMedia = action.enabled) }

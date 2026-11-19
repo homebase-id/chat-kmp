@@ -1,7 +1,7 @@
 package id.homebase.core.ui.screens.feed.settings
 
 import id.homebase.core.settings.SendQualityRows
-import id.homebase.core.ui.screens.settings.IncomingMediaSaveNotWorkingRow
+import id.homebase.core.ui.screens.settings.IncomingMediaSaveRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,16 +30,10 @@ import org.jetbrains.compose.resources.stringResource
 fun FeedSettingsScreen(
     viewModel: FeedSettingsViewModel,
     onBackClick: () -> Unit,
-    onOpenFeed: () -> Unit,
+    onOpenFeed: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    FeedSettingsUi(
-        uiState = uiState,
-        onAction = { action ->
-            if (action is FeedSettingsUiAction.OpenFeedClicked) onOpenFeed() else viewModel.onAction(action)
-        },
-        onBackClick = onBackClick,
-    )
+    FeedSettingsUi(uiState = uiState, onAction = viewModel::onAction, onBackClick = onBackClick, onOpenFeed = onOpenFeed)
 }
 
 @Composable
@@ -47,18 +41,21 @@ fun FeedSettingsUi(
     uiState: FeedSettingsUiState,
     onAction: (FeedSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    onOpenFeed: (() -> Unit)? = null,
 ) {
     SettingsDetailScaffold(
         title = stringResource(MR.string.nav_feed),
         onBack = onBackClick,
     ) {
         Spacer(modifier = Modifier.height(8.dp))
-        SettingsRow(
-            modifier = Modifier.testTag("feedOpenButton"),
-            icon = HomebaseIcons.RssFeed,
-            title = stringResource(MR.string.feed_settings_open),
-            action = SettingsRowAction.Navigate { onAction(FeedSettingsUiAction.OpenFeedClicked) },
-        )
+        onOpenFeed?.let { open ->
+            SettingsRow(
+                modifier = Modifier.testTag("feedOpenButton"),
+                icon = HomebaseIcons.RssFeed,
+                title = stringResource(MR.string.feed_settings_open),
+                action = SettingsRowAction.Navigate(open),
+            )
+        }
         SettingsRow(
             modifier = Modifier.testTag("feedIconToggle"),
             icon = Icons.Outlined.Visibility,
@@ -78,7 +75,7 @@ fun FeedSettingsUi(
             ),
         )
         SendQualityRows(quality = uiState.quality, onChange = { onAction(FeedSettingsUiAction.SetQuality(it)) })
-        IncomingMediaSaveNotWorkingRow(
+        IncomingMediaSaveRow(
             checked = uiState.autoSaveIncomingMedia,
             onCheckedChange = { onAction(FeedSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
         )

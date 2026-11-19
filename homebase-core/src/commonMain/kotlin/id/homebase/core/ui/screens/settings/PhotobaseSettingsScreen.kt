@@ -49,15 +49,11 @@ internal fun PhotobaseSettingsScreen(
     onBack: () -> Unit,
     // Null where photo backup doesn't exist: desktop and web.
     backup: PhotoBackupLinks?,
-    // False while the developer flag keeps Photos dark: the page only says how to turn it on.
-    available: Boolean,
     // Null when the page was opened from Photos itself.
     onOpenPhotos: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    if (!available) {
-        PhotobaseInTestingUi(onBack)
-    } else if (backup == null) {
+    if (backup == null) {
         PhotobaseSettingsUi(uiState, viewModel::onAction, onBack, onOpenPhotos, intervalRow = null, backupSection = null)
     } else {
         PhotobaseSetupGate(onDismiss = onBack) {

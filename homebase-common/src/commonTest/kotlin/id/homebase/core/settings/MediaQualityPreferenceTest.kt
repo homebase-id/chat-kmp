@@ -45,13 +45,6 @@ class MediaQualityPreferenceTest {
     }
 
     @Test
-    fun aVideoSettingIsNeverOriginal() {
-        val prefs = prefs()
-        prefs.setSendQuality(SendQualityApp.Feed, SendQuality(MediaQuality.HD, MediaQuality.ORIGINAL))
-        assertEquals(MediaQuality.HD, prefs.sendQuality(SendQualityApp.Feed).video)
-    }
-
-    @Test
     fun anUnrecognisedStoredValueFallsBackToTheDefault() {
         val prefs = prefs("moments_photo_quality" to "ultra-hd-from-a-future-build")
         assertEquals(MediaQuality.HD, prefs.sendQuality(SendQualityApp.Moments).photo)

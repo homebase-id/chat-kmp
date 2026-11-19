@@ -150,8 +150,8 @@ class AppsSettingsScreenTest {
             MaterialTheme {
                 when (page) {
                     0 -> ChatSettingsUi(ChatSettingsUiState(), {}, onBack = {}, onOpenChat = { fired += "open chat" })
-                    1 -> FeedSettingsUi(FeedSettingsUiState(), { if (it == FeedSettingsUiAction.OpenFeedClicked) fired += "open feed" }, {})
-                    2 -> FilesyncSettingsUi(FilesyncSettingsUiState(), { if (it == FilesyncSettingsUiAction.OpenDriveClicked) fired += "open drive" }, {})
+                    1 -> FeedSettingsUi(FeedSettingsUiState(), {}, {}, onOpenFeed = { fired += "open feed" })
+                    2 -> FilesyncSettingsUi(FilesyncSettingsUiState(), {}, {}, onOpenDrive = { fired += "open drive" })
                     3 -> WebDropSettingsUi(onBack = {}, onOpenWebDrop = { fired += "open webdrop" })
                     else -> CallsSettingsUi(CallsSettingsUiState(enabled = true), {}, {}, onOpenCalls = { fired += "open calls" })
                 }

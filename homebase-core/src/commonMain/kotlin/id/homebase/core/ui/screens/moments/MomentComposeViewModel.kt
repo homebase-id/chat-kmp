@@ -244,7 +244,7 @@ class MomentComposeViewModel(
 
             is MomentComposeUiAction.SetSendQuality -> {
                 userPreferences.setSendQuality(SendQualityApp.Moments, action.quality)
-                _uiState.update { it.copy(sendQuality = userPreferences.sendQuality(SendQualityApp.Moments)) }
+                _uiState.update { it.copy(sendQuality = action.quality) }
             }
         }
     }

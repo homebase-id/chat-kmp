@@ -1675,9 +1675,7 @@
     <!-- Media quality -->
     <string name="settings_media">Camera</string>
     <string name="settings_media_desc">Mirror front camera</string>
-    <string name="settings_media_quality">Media quality</string>
     <string name="settings_data_storage">Data and storage</string>
-    <string name="settings_media_quality_header">Quality for photos and videos you send</string>
     <string name="settings_media_quality_standard">Standard</string>
     <string name="settings_media_quality_footer">Whichever you choose, what you save to your device is the version that was sent.</string>
 
@@ -1687,7 +1685,6 @@
     <string name="settings_media_autosave_description">Photos and videos people send you are downloaded in the background and added to your album.</string>
     <string name="settings_media_autosave_unmetered">Only on Wi-Fi</string>
     <string name="settings_media_autosave_unmetered_description">Wait for an unmetered network instead of using mobile data.</string>
-    <string name="settings_media_camera_header">Camera</string>
     <string name="settings_media_mirror_front">Mirror front camera</string>
     <string name="settings_media_mirror_front_description">Save selfies and front-camera videos as they look in the preview.</string>
 
@@ -3510,9 +3507,6 @@
     <string name="photobase_keep_open_done">Done</string>
     <string name="settings_media_quality_hd">HD</string>
     <string name="settings_media_quality_original">Original</string>
-    <string name="settings_media_quality_standard_description">Photos up to 2048 pixels and video at 720p. Looks good, sends quickly and keeps screenshots readable.</string>
-    <string name="settings_media_quality_hd_description">Photos up to 4096 pixels and video at 1080p. Stays sharp when zoomed.</string>
-    <string name="settings_media_quality_original_description">The exact photo file, with nothing compressed, and video at 1080p. Uses the most data.</string>
     <string name="cd_media_quality_choice">Media quality: %1$s. Tap to change.</string>
     <string name="cd_media_quality_hd_badge">Sent in HD</string>
     <string name="cd_media_quality_original_badge">Sent as the original file</string>

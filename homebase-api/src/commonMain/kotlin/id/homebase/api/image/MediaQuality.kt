@@ -24,7 +24,7 @@ enum class MediaQuality(val code: String) {
     ORIGINAL("high");
 
     companion object {
-        fun fromCode(code: String?): MediaQuality = entries.find { it.code == code } ?: STANDARD
+        fun fromCodeOrNull(code: String?): MediaQuality? = entries.find { it.code == code }
     }
 }
 

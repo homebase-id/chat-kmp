@@ -23,7 +23,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -36,6 +35,7 @@ import id.homebase.core.widget.SettingsSectionHeader
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.ui.platform.testTag
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
@@ -97,23 +97,16 @@ fun LocationContent(
 
         // ── Display ──
         Card(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(MR.string.location_settings_show_icon),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
+            SettingsRow(
+                modifier = Modifier.testTag("locationIconToggle"),
+                icon = Icons.Outlined.Visibility,
+                title = stringResource(MR.string.location_settings_show_icon),
+                containerColor = CardDefaults.cardColors().containerColor,
+                action = SettingsRowAction.Toggle(
                     checked = uiState.iconVisible,
                     onCheckedChange = { onAction(LocationUiAction.SetIconVisible(it)) },
-                )
-            }
+                ),
+            )
         }
 
         // Until Location is set up, its permissions wait for its own disclosure.
