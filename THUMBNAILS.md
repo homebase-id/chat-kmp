@@ -2,14 +2,14 @@
 
 How chat-kmp turns a photo into the images people see. Read this before changing anything that creates, sizes, scales, encodes or picks an image, or strips its metadata. Code that contradicts it is a bug or a design change: stop and ask before writing it (see `CLAUDE.md`, "User uploads").
 
-> **Status (2026-11-14).** This is the agreed design, and `main` runs it: the table, the 10% band and the 1.5 rule (`MediaImagePlan.kt`), the decode-once pipeline, and native resampling on both phones. Everything not built yet is listed in [To do, and what isn't settled](#to-do-and-what-isnt-settled) at the end.
+> **Status (2026-11-19).** This is the agreed design, and `main` runs it: the table, the 10% band and the 1.5 rule (`MediaImagePlan.kt`), the decode-once pipeline, and native resampling on both phones. Everything not built yet is listed in [To do, and what isn't settled](#to-do-and-what-isnt-settled) at the end.
 >
 > | Issue | What it covers |
 > |---|---|
 > | #2221 | Goals for the pipeline |
 > | #2230 | Spec for the settings and the table |
 > | #2235 | Fixes from review of the pipeline and the table |
-> | #2236 | The resampler, and iOS pixel hand-off |
+> | #2236 | The resampler |
 > | #2301 | Native resampling on the phones |
 
 ## Contents
@@ -427,7 +427,7 @@ Same decode-once pipeline and the same quality bar, on Skia. The last scaling st
 
 ### Reading from a file
 
-`createMediaImages(path, fileOps, …)` hands the decoder the file itself, so the encoded file never sits in memory whole: `ImageDecoder.createSource(File)` or a content URI on Android, `CGImageSourceCreateWithURL` on iOS. Photobase backup (`BackupRequestBuilder`) and chat (`MessageThumbnailGenerator`) use it. Where a file can't be opened that way, such as a Photos-library asset, and on desktop and web, it reads the bytes and takes the byte-array path. Both paths give the same output (`ImageFileSourceContractTest`).
+`createMediaImages(path, fileOps, …)` hands the decoder the file itself, so the encoded file never sits in memory whole: `ImageDecoder.createSource(File)` or a content URI on Android, `CGImageSourceCreateWithURL` on iOS. Every upload through `UserUploadBuilder` (`UploadImages.generate`) uses it: chat, Moments, Vault, stickers and Photos. An iOS Photos-library pick is streamed to a file once per send first, so it takes this path too. On desktop and web, it reads the bytes and takes the byte-array path. Both paths give the same output (`ImageFileSourceContractTest`).
 
 ### The contract
 
@@ -558,7 +558,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
   Original keeps `"high"` because every existing `"high"` already means "the exact file". Saved "High" settings become Original.
 - **Older clients** read `"hd"` as null, through `coerceInputValues`, and show no badge. A test proves it, because a failure there would lose the whole descriptor.
 - **New descriptor fields** in `ImageFile` (descriptor content), such as the final image's pixel size, are safe: older clients have `ignoreUnknownKeys`.
-- **Two descriptor formats are read.** Clients read both the legacy `ImageFile` JSON above and the [UPLOADS.md](UPLOADS.md) format (`DescriptorContentV1`), sealed or not. In that format, quality is `"q"`: `"sd"`, `"hd"` or `"org"`; the size is `"w"` and `"h"`; and `"o": 1` marks the sender's untouched file. Senders still write only the legacy form (`MessageAttachmentBuilder`, `StickerService`), which never sets `original`, so a view infers an untouched file from `"high"` alone (`HomebaseImageData`).
+- **Two descriptor formats are read.** Clients read both the legacy `ImageFile` JSON above and the [UPLOADS.md](UPLOADS.md) format (`DescriptorContentV1`), sealed or not. In that format, quality is `"q"`: `"sd"`, `"hd"` or `"org"`; the size is `"w"` and `"h"`; and `"o": 1` marks the sender's untouched file. Photos writes this format; every other sender still writes the legacy form until the switch (#2521), and that form never sets `original`, so a view infers an untouched file from `"high"` alone (`HomebaseImageData`).
 - **Badges:** Original shows "Original", HD shows "HD", and Standard or missing values show nothing.
 - **Existing messages are never regenerated.** Any thumbnail size is readable by every client, so new sizes don't need a migration.
 
@@ -701,15 +701,17 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 ### Not built yet
 
-- **Every upload records its final image's size and whether it's the user's original** (#911). Chat, Moments, the feed, Vault and saved stickers build through the shared builder and record it. Photos stops at its largest thumbnail until it moves onto the builder too.
+- **Every upload records its final image's size and whether it's the user's original** (#911). Every app builds through the shared builder and records it. Photos writes the UPLOADS.md format; everything else still writes the legacy form until `DescriptorContentV1.WRITE` flips (#2521).
 - **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
 
 | What | Issue |
 |---|---|
 | Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` (Android's are done) | #2383 |
 | iOS: peak memory of a 48 MP decode on a real iPhone, and whether ImageIO's own decoded copy can be skipped | #2273 |
-| iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
-| A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
+| Make the keep-or-strip metadata parameter required (`UploadOptions.metadata` defaults to strip; Photos and Vault pass keep) | – |
+| iOS: 48 MP at HD still gets ImageIO's 1.43× step; a full decode isn't affordable (killed at 3 GB), so it waits on the send-memory measurement | #2365, #2553 |
+| iOS: sending three 48 MP photos peaks at about 2.75 GB of the 3 GB limit, mostly outside the decode | #2553 |
+| iOS ImageIO: one shared decode path, and keep an iPhone HEIC's HDR gain map | #2522 |
 | Time, memory and battery measured on a real iPhone and Android phone | #2383, #2384 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |
 | RAW: verify on real phones which formats decode (ProRAW and DNG on iOS; DNG on Android) | – |
