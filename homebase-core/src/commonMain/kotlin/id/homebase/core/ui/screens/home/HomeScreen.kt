@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
@@ -59,6 +60,8 @@ import id.homebase.resources.app_version
 import id.homebase.resources.clear_log
 import id.homebase.resources.contactbook_home_subtitle
 import id.homebase.resources.contactbook_label
+import id.homebase.resources.email_home_subtitle
+import id.homebase.resources.email_label
 import id.homebase.resources.export_log
 import id.homebase.resources.homebase_logo
 import id.homebase.resources.location_attention_cd
@@ -70,6 +73,7 @@ import id.homebase.resources.vault_home_subtitle
 import id.homebase.resources.vault_label
 import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
+import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.resources.filesync_label
 import id.homebase.resources.photobase_home_subtitle
@@ -91,6 +95,7 @@ fun HomeScreen(
     onNavigateToLocation: () -> Unit,
     onNavigateToContacts: () -> Unit,
     onNavigateToCalls: (() -> Unit)?,
+    onNavigateToEmail: () -> Unit,
     onNavigateToExamples: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -150,6 +155,7 @@ fun HomeScreen(
         onNavigateToLocation = onNavigateToLocation,
         onNavigateToContacts = onNavigateToContacts,
         onNavigateToCalls = onNavigateToCalls,
+        onNavigateToEmail = onNavigateToEmail,
         locationAttention = locationAttention,
     )
 }
@@ -167,6 +173,7 @@ fun HomeUi(
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
     onNavigateToCalls: (() -> Unit)? = null,
+    onNavigateToEmail: () -> Unit = {},
     locationAttention: Boolean = false,
 ) {
     val scrollState = rememberScrollState()
@@ -257,6 +264,16 @@ fun HomeUi(
                 onClick = onNavigateToContacts,
             )
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FeatureCard(
+                icon = Icons.Outlined.MailOutline,
+                label = stringResource(MR.string.email_label),
+                subtitle = stringResource(MR.string.email_home_subtitle),
+                onClick = onNavigateToEmail,
+                modifier = Modifier.testTag("homeEmailCard"),
+            )
+
             if (onNavigateToCalls != null) {
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -283,10 +300,11 @@ private fun FeatureCard(
     onClick: () -> Unit,
     badged: Boolean = false,
     badgeContentDescription: String? = null,
+    modifier: Modifier = Modifier,
 ) {
     ElevatedCard(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.elevatedCardColors(

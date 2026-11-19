@@ -1150,6 +1150,7 @@ fun AppNavHost(
                                         onNavigateToLocation = openLocation,
                                         onNavigateToContacts = openContactBook,
                                         onNavigateToCalls = if (callsAvailable) openCalls else null,
+                                        onNavigateToEmail = openEmail,
                                         onNavigateToExamples = { navController.navigate(Route.Examples) },
                                     )
                                 }
