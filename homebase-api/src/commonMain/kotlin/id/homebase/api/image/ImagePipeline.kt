@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
+import kotlin.time.TimeSource
 
 /** One image a pipeline run makes. The caller works out the size; the pipeline never chooses it. */
 data class ImageOutput(
@@ -61,7 +62,9 @@ class RenderedImages(val displayedSize: ImageSize, val images: List<RenderedImag
  * Contract for every platform:
  * - [displayedSize] is the size after EXIF rotation, read without decoding the pixels.
  * - [decode] decodes at most once per source, upright, with a long edge of at least
- *   `min(minLongEdge, displayedSize's long edge)`. Decoding less than the full image is encouraged.
+ *   `min(minLongEdge, displayedSize's long edge)`. A decoder's own shrink is a block average, so it only shrinks
+ *   while it leaves at least [HALVE_WHILE_AT_LEAST] times [minLongEdge] for Lanczos (libvips' rule), except where a
+ *   platform's memory budget forces more (iOS over 24 MP, Android over 50 MP).
  * - Both throw on bytes the platform can't read.
  * - [metadata] reads the file's EXIF without decoding pixels, or is null where the platform can't.
  */
@@ -176,23 +179,37 @@ internal suspend fun renderFrom(
 
     val largestFirst = outputs.withIndex().sortedByDescending { longEdge(it.value) }
     val rendered = arrayOfNulls<RenderedImage>(outputs.size)
-    var current = source.decode(longEdge(largestFirst.first().value))
+    val started = TimeSource.Monotonic.markNow()
+    var decoded: ImageSize? = null
     try {
-        for ((index, output) in largestFirst) {
-            checkCancelled()
-            val scaled = scaleDown(current, output.width, output.height)
-            if (scaled !== current) current.close()
-            current = scaled
-            rendered[index] = gainmap?.takeIf { output.keepsHdr }?.let { hdrWithinLimit(current, output, it, size) } ?: when {
-                output.keepColorProfile -> encodeWithin(current, output)
-                else -> encodeInSrgb(current, output)
+        var current = source.decode(longEdge(largestFirst.first().value))
+        decoded = ImageSize(current.width, current.height)
+        try {
+            for ((index, output) in largestFirst) {
+                checkCancelled()
+                val scaled = scaleDown(current, output.width, output.height)
+                if (scaled !== current) current.close()
+                current = scaled
+                rendered[index] = gainmap?.takeIf { output.keepsHdr }?.let { hdrWithinLimit(current, output, it, size) } ?: when {
+                    output.keepColorProfile -> encodeWithin(current, output)
+                    else -> encodeInSrgb(current, output)
+                }
             }
+        } finally {
+            current.close()
         }
     } finally {
-        current.close()
+        // In a finally, so a decode that runs out of memory still says what it was asked to decode.
+        Logger.d(tag = "ImagePipeline") {
+            "${size.pixelWidth}x${size.pixelHeight} decoded at ${decoded?.let { "${it.pixelWidth}x${it.pixelHeight}" } ?: "(failed)"} -> " +
+                "${rendered.filterNotNull().joinToString { "${it.width}x${it.height}" }} in ${started.elapsedNow().inWholeMilliseconds} ms"
+        }
     }
     return RenderedImages(size, rendered.map { it!! })
 }
+
+// A block shrink (a 2x2 average, a decoder's sampling) runs only while it leaves Lanczos at least the last 2x.
+internal const val HALVE_WHILE_AT_LEAST = 4
 
 /**
  * Halves each axis while it's at least 4x too big, then Lanczos makes the last 2-4x: a 2x2 average
@@ -200,8 +217,6 @@ internal suspend fun renderFrom(
  * Returns [source] when it's already the right size. Intermediate bitmaps are closed; [source] is
  * left to the caller.
  */
-private const val HALVE_WHILE_AT_LEAST = 4
-
 internal suspend fun scaleDown(source: PipelineBitmap, width: Int, height: Int): PipelineBitmap {
     var current = source
     while (true) {

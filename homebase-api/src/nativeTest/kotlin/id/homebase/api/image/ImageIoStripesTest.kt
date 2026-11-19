@@ -1,39 +1,45 @@
 package id.homebase.api.image
 
 import kotlinx.coroutines.test.runTest
-import kotlin.math.sqrt
 import kotlin.test.Test
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 
 class ImageIoStripesTest {
-    // 48 MP, so the decode goes through the memory guard.
-    private val stripes = ImageUtils.encodeArgbToPng(
-        ArgbImage(IntArray(WIDTH * HEIGHT) { if (it % 2 == 0) BLACK else WHITE }, WIDTH, HEIGHT),
-    )
+    // Over the 24 MP memory guard, so the decode goes through it.
+    private fun stripes(period: Int, height: Int) =
+        ImageUtils.encodeArgbToPng(ArgbImage(IntArray(WIDTH * height) { if (it % period == 0) BLACK else WHITE }, WIDTH, height))
 
-    private suspend fun spreadAt(target: Int): Double {
-        val image = renderImages(stripes) { listOf(ImageOutput(target, 2, 100, Int.MAX_VALUE, ImageFormat.PNG)) }.images.single()
-        val pixels = assertNotNull(ImageUtils.decodeToArgb(image.bytes))
-        val greens = (pixels.width / 8 until pixels.width * 7 / 8).map { (pixels.pixels[it] shr 8) and 0xFF }
-        val mean = greens.average()
-        return sqrt(greens.sumOf { (it - mean) * (it - mean) } / greens.size)
+    private suspend fun spreadAt(target: Int, period: Int = 2, height: Int = HEIGHT): Double {
+        val image = renderImages(stripes(period, height)) { listOf(ImageOutput(target, 2, 100, Int.MAX_VALUE, ImageFormat.PNG)) }.images.single()
+        return deviation(middleGreens(image.bytes))
     }
 
     @Test
-    fun onePixelStripesTurnGreyThroughTheMemoryGuard() = runTest {
+    fun onePixelStripesTurnGreyThroughTheMemoryGuard() = runTest(timeout = TIMEOUT) {
         val spread = spreadAt(2048)
         assertTrue(spread <= 5.0, "$WIDTH -> 2048 deviated by $spread")
     }
 
-    // HD's 4096 can't get a 2x step under the guard, so ImageIO makes a 1.43x one and aliases until resizing goes native.
+    // A 4096 output from 48 MP can't get a 2x step under the guard, so ImageIO makes a 1.43x one, and aliases.
     @Test
-    fun theGuardsSubTwoTimesStepStillShrinksTheStripes() = runTest {
+    fun theGuardsSubTwoTimesStepStillShrinksTheStripes() = runTest(timeout = TIMEOUT) {
         val spread = spreadAt(4096)
         assertTrue(spread <= 30.0, "$WIDTH -> 4096 deviated by $spread")
     }
 
+    // Over the guard, ImageIO still halves a photo 2-4x too big before Lanczos: the one block shrink left without 2x of
+    // Lanczos after it. 24.2 MP is just over the guard; at worst it's a 2x2 average (about 60).
+    @Test
+    fun threePixelStripesThroughImageIosHalfUnderTheGuard() = runTest(timeout = TIMEOUT) {
+        val spread = spreadAt(2048, period = 3, height = 3000)
+        println("ImageIO 3-px stripes $WIDTH x 3000 -> 2048 under the guard: spread $spread")
+        assertTrue(spread <= 60.0, "$WIDTH -> 2048 deviated by $spread")
+    }
+
     private companion object {
+        // Encoding and decoding 48 MP on the simulator; runTest's default is 60 s.
+        val TIMEOUT = 5.minutes
         const val WIDTH = 8064
         const val HEIGHT = 6048
         const val BLACK = 0xFF000000.toInt()

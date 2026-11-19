@@ -138,6 +138,9 @@ class ImagePipelineContractTest {
 
     private fun stripes(width: Int, half: Int) = png(width, STRIPES_HEIGHT) { x, _ -> if ((x / half) % 2 == 0) BLACK else WHITE }
 
+    // A block average can't cancel these, as it can 1-pixel stripes.
+    private fun threePixelStripes(width: Int) = png(width, STRIPES_HEIGHT) { x, _ -> if (x % 3 == 0) BLACK else WHITE }
+
     private suspend fun stripesAfter(source: ByteArray, sourceWidth: Int, target: Int, viaDecoder: Boolean): ByteArray {
         val outputs = buildList {
             // A full-size output first forces a full decode, so the pipeline's own scaler does the work.
@@ -167,11 +170,24 @@ class ImagePipelineContractTest {
     @Test
     fun threePixelStripesTurnGreyAtWholeAndNearWholeHalvings() = runTest {
         val failures = listOf(854 to 427, 1708 to 427, 940 to 427, 3416 to 427).mapNotNull { (from, to) ->
-            val source = png(from, STRIPES_HEIGHT) { x, _ -> if (x % 3 == 0) BLACK else WHITE }
+            val source = threePixelStripes(from)
             val spread = deviation(middleGreens(stripesAfter(source, from, to, viaDecoder = false)))
             "$from -> $to deviated by $spread".takeIf { spread > 8.0 }
         }
         assertTrue(failures.isEmpty(), failures.joinToString())
+    }
+
+    // A decoder's own shrink is a block average, so the decoder must leave Lanczos at least the last 2x.
+    @Test
+    fun threePixelStripesTurnGreyWhenTheDecoderMayShrink() = runTest {
+        val spreads = listOf(854, 1708).flatMap { width ->
+            val png = threePixelStripes(width)
+            val jpeg = renderImages(png) { listOf(ImageOutput(width, STRIPES_HEIGHT, 100, Int.MAX_VALUE, ImageFormat.JPEG)) }.images.single().bytes
+            listOf("PNG" to png, "JPEG" to jpeg).map { (format, source) ->
+                "$format $width -> 427" to deviation(middleGreens(stripesAfter(source, width, 427, viaDecoder = true)))
+            }
+        }
+        assertTrue(spreads.all { it.second <= 8.0 }, "$spreads")
     }
 
     @Test

@@ -40,7 +40,9 @@ class ImageIoSourceTest {
         openImageSource(png).use { source ->
             assertEquals(ImageSize(300, 200), source.displayedSize)
             source.decode(15).use { bitmap -> assertEquals(30 to 20, bitmap.width to bitmap.height) }
-            source.decode(100).use { bitmap -> assertEquals(150 to 100, bitmap.width to bitmap.height) }
+            source.decode(75).use { bitmap -> assertEquals(150 to 100, bitmap.width to bitmap.height) }
+            // Under 4x, ImageIO doesn't shrink: Lanczos makes the whole 3x.
+            source.decode(100).use { bitmap -> assertEquals(300 to 200, bitmap.width to bitmap.height) }
             source.decode(200).use { bitmap -> assertEquals(300 to 200, bitmap.width to bitmap.height) }
         }
     }
