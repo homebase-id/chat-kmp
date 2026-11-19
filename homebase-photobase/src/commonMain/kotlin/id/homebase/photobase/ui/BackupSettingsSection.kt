@@ -1,5 +1,7 @@
 package id.homebase.photobase.ui
 
+import id.homebase.core.settings.photoDescription
+import id.homebase.core.settings.videoDescription
 import id.homebase.resources.photobase_backup_quality_note
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.SendQuality
@@ -157,6 +159,8 @@ fun BackupSettingsSection(
             rowColor = rowColor,
             note = MR.string.photobase_backup_quality_note,
             videoChoices = MediaQuality.entries,
+            photoDescription = { it.photoDescription },
+            videoDescription = { it.videoDescription },
         )
         SettingsRow(
             icon = Icons.Outlined.Wifi,

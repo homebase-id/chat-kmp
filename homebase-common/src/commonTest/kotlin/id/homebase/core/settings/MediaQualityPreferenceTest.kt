@@ -4,6 +4,7 @@ import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.SendQuality
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** Each app's photo and video setting, its default, and Chat's start from the one shared setting. */
 class MediaQualityPreferenceTest {
@@ -48,5 +49,19 @@ class MediaQualityPreferenceTest {
     fun anUnrecognisedStoredValueFallsBackToTheDefault() {
         val prefs = prefs("moments_photo_quality" to "ultra-hd-from-a-future-build")
         assertEquals(MediaQuality.HD, prefs.sendQuality(SendQualityApp.Moments).photo)
+    }
+
+    @Test
+    fun aStoredOriginalVideoReadsAsHdOutsidePhotos() {
+        val prefs = prefs("feed_video_quality" to MediaQuality.ORIGINAL.code)
+        assertEquals(MediaQuality.HD, prefs.sendQuality(SendQualityApp.Feed).video)
+    }
+
+    @Test
+    fun turningMomentsSaveOnStampsWhenSoTheSaveWontBackfill() {
+        val settings = InMemorySettings()
+        val prefs = UserPreferences(settings)
+        prefs.momentsAutoSaveIncomingMedia = true
+        assertTrue(settings.getLong("moments_auto_save_since", 0L) > 0L)
     }
 }

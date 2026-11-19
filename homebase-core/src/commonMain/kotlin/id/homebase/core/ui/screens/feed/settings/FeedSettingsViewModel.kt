@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed.settings
 
+import id.homebase.core.util.AlbumSaver
 import id.homebase.core.settings.SendQualityApp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
 class FeedSettingsViewModel(
     private val userPreferences: UserPreferences,
     private val feedPreferences: FeedPreferences,
+    albumSaver: AlbumSaver,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -23,6 +25,7 @@ class FeedSettingsViewModel(
             iconVisible = feedPreferences.iconVisible.value,
             quality = userPreferences.sendQuality(SendQualityApp.Feed),
             autoSaveIncomingMedia = userPreferences.feedAutoSaveIncomingMedia,
+            savesInBackground = albumSaver.savesUnasked,
         ),
     )
     val uiState: StateFlow<FeedSettingsUiState> = _uiState.asStateFlow()

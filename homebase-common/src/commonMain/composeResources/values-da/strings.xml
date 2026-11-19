@@ -2487,4 +2487,11 @@
     <string name="settings_not_working">%1$s (virker ikke endnu)</string>
     <string name="settings_media">Kamera</string>
     <string name="settings_media_desc">Spejlvend frontkamera</string>
+    <string name="settings_send_photo_standard_desc">Op til 2048 pixels. Sendes hurtigt og holder skærmbilleder læsbare.</string>
+    <string name="settings_send_photo_hd_desc">Op til 4096 pixels. Forbliver skarpt, når du zoomer.</string>
+    <string name="settings_send_photo_original_desc">Den præcise billedfil, uden komprimering. Bruger mest data.</string>
+    <string name="settings_send_video_standard_desc">720p. Sendes hurtigt.</string>
+    <string name="settings_send_video_hd_desc">1080p. Forbliver skarp på store skærme.</string>
+    <string name="photobase_backup_photo_quality">Billedkvalitet</string>
+    <string name="photobase_backup_video_quality">Videokvalitet</string>
 </resources>

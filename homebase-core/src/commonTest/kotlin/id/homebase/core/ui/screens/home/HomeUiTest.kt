@@ -37,8 +37,17 @@ class HomeUiTest {
             .assertExists()
         onNodeWithTag("homeEmailCard").performSemanticsAction(SemanticsActions.OnClick)
         assertTrue(clicked)
-        listOf("Vault", "WebDrop", "Drive", "Photos", "Moments", "Location", "Contacts", "Calls").forEach {
+        listOf("Vault", "WebDrop", "Drive", "Photos", "Feed", "Moments", "Location", "Contacts", "Calls").forEach {
             onNodeWithText(it).assertExists()
         }
+    }
+
+    @Test
+    fun theFeedCardOpensFeedForWhenItIsOffTheNavigationBar() = runComposeUiTest {
+        setTestLocale("en-US")
+        var clicked = false
+        setContent { MaterialTheme { HomeUi(uiState = HomeUiState(appVersion = "1"), onAction = {}, onNavigateToFeed = { clicked = true }) } }
+        onNodeWithTag("homeFeedCard").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
+        assertTrue(clicked)
     }
 }

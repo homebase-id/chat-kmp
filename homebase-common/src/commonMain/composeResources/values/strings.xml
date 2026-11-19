@@ -3530,4 +3530,9 @@
     <string name="location_settings_open">Open Location</string>
     <string name="calls_settings_open">Open Calls</string>
     <string name="settings_not_working">%1$s (not working)</string>
+    <string name="settings_send_photo_standard_desc">Up to 2048 pixels. Sends quickly and keeps screenshots readable.</string>
+    <string name="settings_send_photo_hd_desc">Up to 4096 pixels. Stays sharp when zoomed.</string>
+    <string name="settings_send_photo_original_desc">The exact photo file, with nothing compressed. Uses the most data.</string>
+    <string name="settings_send_video_standard_desc">720p. Sends quickly.</string>
+    <string name="settings_send_video_hd_desc">1080p. Stays sharp on big screens.</string>
 </resources>

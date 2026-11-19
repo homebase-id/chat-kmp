@@ -29,18 +29,18 @@ import org.jetbrains.compose.resources.stringResource
 fun ContactBookSettingsScreen(
     viewModel: ContactBookSettingsViewModel,
     onBackClick: () -> Unit,
-    onOpenContacts: () -> Unit,
-    showOpenContacts: Boolean = true,
+    // Null when there's nothing to open: the page was opened from Contacts itself.
+    onOpenContacts: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     ContactBookSettingsUi(
         uiState = uiState,
         onAction = { action ->
-            if (action is ContactBookSettingsUiAction.OpenContactsClicked) onOpenContacts()
+            if (action is ContactBookSettingsUiAction.OpenContactsClicked) onOpenContacts?.invoke()
             else viewModel.onAction(action)
         },
         onBackClick = onBackClick,
-        showOpenContacts = showOpenContacts,
+        showOpenContacts = onOpenContacts != null,
     )
 }
 

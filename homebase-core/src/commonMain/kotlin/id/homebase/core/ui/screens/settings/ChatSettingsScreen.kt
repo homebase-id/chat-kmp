@@ -62,12 +62,14 @@ internal fun ChatSettingsUi(
         )
         SendQualityRows(quality = uiState.quality, onChange = { onAction(ChatSettingsUiAction.SetQuality(it)) })
 
-        IncomingMediaSaveRow(
-            checked = uiState.autoSaveIncomingMedia,
-            onCheckedChange = { onAction(ChatSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
-            working = true,
-        )
-        AnimatedVisibility(visible = uiState.autoSaveIncomingMedia) {
+        if (uiState.savesInBackground) {
+            IncomingMediaSaveRow(
+                checked = uiState.autoSaveIncomingMedia,
+                onCheckedChange = { onAction(ChatSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
+                working = true,
+            )
+        }
+        AnimatedVisibility(visible = uiState.savesInBackground && uiState.autoSaveIncomingMedia) {
             SettingsRow(
                 modifier = Modifier.testTag("autoSaveUnmeteredToggle"),
                 icon = Icons.Outlined.Wifi,

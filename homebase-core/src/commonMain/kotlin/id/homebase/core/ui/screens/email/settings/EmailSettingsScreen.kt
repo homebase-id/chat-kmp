@@ -36,10 +36,10 @@ import org.jetbrains.compose.resources.stringResource
 fun EmailSettingsScreen(
     viewModel: EmailSettingsViewModel,
     onBackClick: () -> Unit,
-    onOpenEmail: () -> Unit,
+    // Null when there's nothing to open: the page was opened from Email itself.
+    onOpenEmail: (() -> Unit)?,
     mailboxMode: MailboxMode?,
     onChangeMode: () -> Unit,
-    showOpenEmail: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     EmailSettingsUi(
@@ -47,11 +47,11 @@ fun EmailSettingsScreen(
         mailboxMode = mailboxMode,
         onChangeMode = onChangeMode,
         onAction = { action ->
-            if (action is EmailSettingsUiAction.OpenEmailClicked) onOpenEmail()
+            if (action is EmailSettingsUiAction.OpenEmailClicked) onOpenEmail?.invoke()
             else viewModel.onAction(action)
         },
         onBackClick = onBackClick,
-        showOpenEmail = showOpenEmail,
+        showOpenEmail = onOpenEmail != null,
     )
 }
 

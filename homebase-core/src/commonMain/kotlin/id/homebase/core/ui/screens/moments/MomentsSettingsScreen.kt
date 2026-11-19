@@ -62,10 +62,12 @@ fun MomentsSettingsUi(
             ),
         )
         SendQualityRows(quality = uiState.quality, onChange = { onAction(MomentsSettingsUiAction.SetQuality(it)) })
-        IncomingMediaSaveRow(
-            checked = uiState.autoSaveIncomingMedia,
-            onCheckedChange = { onAction(MomentsSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
-        )
+        if (uiState.savesInBackground) {
+            IncomingMediaSaveRow(
+                checked = uiState.autoSaveIncomingMedia,
+                onCheckedChange = { onAction(MomentsSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
+            )
+        }
         Spacer(modifier = Modifier
             .fillMaxWidth()
             .height(24.dp))

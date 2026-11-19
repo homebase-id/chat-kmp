@@ -2,39 +2,33 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import id.homebase.api.image.SendQuality
+import id.homebase.core.settings.PreferenceState
 import id.homebase.core.settings.SendQualityApp
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.sendQuality
-import kotlinx.coroutines.flow.SharingStarted
+import id.homebase.core.util.AlbumSaver
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-data class ChatSettingsUiState(
-    val quality: SendQuality = SendQualityApp.Chat.default,
-    val autoSaveIncomingMedia: Boolean = false,
-    val autoSaveOnUnmeteredOnly: Boolean = true,
-)
+class ChatSettingsViewModel(
+    private val userPreferences: UserPreferences,
+    albumSaver: AlbumSaver,
+) : ViewModel() {
 
-sealed interface ChatSettingsUiAction {
-    data class SetQuality(val quality: SendQuality) : ChatSettingsUiAction
-    data class SetAutoSaveIncomingMedia(val enabled: Boolean) : ChatSettingsUiAction
-    data class SetAutoSaveOnUnmeteredOnly(val enabled: Boolean) : ChatSettingsUiAction
-}
+    private val _uiState = MutableStateFlow(
+        ChatSettingsUiState(savesInBackground = albumSaver.savesUnasked).with(userPreferences.preferenceState.value),
+    )
+    val uiState: StateFlow<ChatSettingsUiState> = _uiState.asStateFlow()
 
-class ChatSettingsViewModel(private val userPreferences: UserPreferences) : ViewModel() {
-
-    // The composer's quality chip writes the same preference, so follow the mirrored flow.
-    val uiState: StateFlow<ChatSettingsUiState> = userPreferences.preferenceState
-        .map { prefs ->
-            ChatSettingsUiState(
-                quality = prefs.sendQuality(SendQualityApp.Chat),
-                autoSaveIncomingMedia = prefs.autoSaveIncomingMedia,
-                autoSaveOnUnmeteredOnly = prefs.autoSaveOnUnmeteredOnly,
-            )
+    init {
+        // The composer's quality chip writes the same preference.
+        viewModelScope.launch {
+            userPreferences.preferenceState.collect { prefs -> _uiState.update { it.with(prefs) } }
         }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, ChatSettingsUiState())
+    }
 
     fun onAction(action: ChatSettingsUiAction) {
         when (action) {
@@ -43,4 +37,10 @@ class ChatSettingsViewModel(private val userPreferences: UserPreferences) : View
             is ChatSettingsUiAction.SetAutoSaveOnUnmeteredOnly -> userPreferences.autoSaveOnUnmeteredOnly = action.enabled
         }
     }
+
+    private fun ChatSettingsUiState.with(prefs: PreferenceState) = copy(
+        quality = prefs.sendQuality(SendQualityApp.Chat),
+        autoSaveIncomingMedia = prefs.autoSaveIncomingMedia,
+        autoSaveOnUnmeteredOnly = prefs.autoSaveOnUnmeteredOnly,
+    )
 }

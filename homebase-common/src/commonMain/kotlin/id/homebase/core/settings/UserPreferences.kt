@@ -79,7 +79,7 @@ class UserPreferences(private val settings: Settings) {
         val shared = if (app == SendQualityApp.Chat) quality("media_quality") else null
         return SendQuality(
             photo = quality("${app.key}_photo_quality") ?: shared ?: app.default.photo,
-            video = quality("${app.key}_video_quality") ?: shared?.asVideoChoice() ?: app.default.video,
+            video = (quality("${app.key}_video_quality") ?: shared)?.asVideoChoice() ?: app.default.video,
         )
     }
 
@@ -116,11 +116,17 @@ class UserPreferences(private val settings: Settings) {
     // Saved but not read yet: Moments' and Feed's saves to the album are still to be built.
     var momentsAutoSaveIncomingMedia: Boolean
         get() = settings.getBoolean("moments_auto_save", false)
-        set(value) = settings.putBoolean("moments_auto_save", value)
+        set(value) = setAutoSave("moments_auto_save", value)
 
     var feedAutoSaveIncomingMedia: Boolean
         get() = settings.getBoolean("feed_auto_save", false)
-        set(value) = settings.putBoolean("feed_auto_save", value)
+        set(value) = setAutoSave("feed_auto_save", value)
+
+    // Stamped like Chat's, so the save, once built, doesn't backfill the album with what came before.
+    private fun setAutoSave(key: String, value: Boolean) {
+        if (value && !settings.getBoolean(key, false)) settings.putLong("${key}_since", Clock.System.now().toEpochMilliseconds())
+        settings.putBoolean(key, value)
+    }
 
     /** Guard on [autoSaveIncomingMedia]: skip the download while the network is metered. */
     var autoSaveOnUnmeteredOnly: Boolean

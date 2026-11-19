@@ -7,6 +7,8 @@ data class MomentsSettingsUiState(
     val iconVisible: Boolean = true,
     val quality: SendQuality = SendQualityApp.Moments.default,
     val autoSaveIncomingMedia: Boolean = false,
+    /** False on the web, whose album only takes what a person saves. */
+    val savesInBackground: Boolean = true,
 )
 
 sealed interface MomentsSettingsUiAction {

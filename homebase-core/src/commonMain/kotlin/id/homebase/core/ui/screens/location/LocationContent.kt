@@ -109,8 +109,8 @@ fun LocationContent(
             )
         }
 
-        // Until Location is set up, its permissions wait for its own disclosure.
-        if (!uiState.activated) return@Column
+        // On Settings → Apps, until Location is set up, its permissions wait for its own disclosure.
+        if (onOpenLocation != null && !uiState.activated) return@Column
 
 
         Text(

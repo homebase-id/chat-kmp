@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.core.util.AlbumSaver
 import id.homebase.core.settings.SendQualityApp
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.sendQuality
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
 class MomentsSettingsViewModel(
     private val momentsPreferences: MomentsPreferences,
     private val userPreferences: UserPreferences,
+    albumSaver: AlbumSaver,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -22,6 +24,7 @@ class MomentsSettingsViewModel(
             iconVisible = momentsPreferences.iconVisible.value,
             quality = userPreferences.sendQuality(SendQualityApp.Moments),
             autoSaveIncomingMedia = userPreferences.momentsAutoSaveIncomingMedia,
+            savesInBackground = albumSaver.savesUnasked,
         )
     )
     val uiState: StateFlow<MomentsSettingsUiState> = _uiState.asStateFlow()

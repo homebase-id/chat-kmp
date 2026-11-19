@@ -75,10 +75,12 @@ fun FeedSettingsUi(
             ),
         )
         SendQualityRows(quality = uiState.quality, onChange = { onAction(FeedSettingsUiAction.SetQuality(it)) })
-        IncomingMediaSaveRow(
-            checked = uiState.autoSaveIncomingMedia,
-            onCheckedChange = { onAction(FeedSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
-        )
+        if (uiState.savesInBackground) {
+            IncomingMediaSaveRow(
+                checked = uiState.autoSaveIncomingMedia,
+                onCheckedChange = { onAction(FeedSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
+            )
+        }
         Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }
 }

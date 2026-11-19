@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.core.settings.sendQuality
 import id.homebase.core.settings.SendQualityApp
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.snapshotFlow
@@ -545,6 +546,12 @@ class ConversationListViewModel(
 
     init {
         addCloseable(stickerPermissionViewModel)
+        // This view model lives as long as the Chats tab: follow the setting, which Settings → Apps → Chats also writes.
+        viewModelScope.launch {
+            userPreferences.preferenceState.collect { prefs ->
+                _messagesUiState.update { it.copy(sendQuality = prefs.sendQuality(SendQualityApp.Chat)) }
+            }
+        }
         optionalDriveActivation?.let { activation ->
             viewModelScope.launch {
                 activation.isActivatedFlow(id.homebase.core.config.vaultLabeledDrive)
@@ -1711,7 +1718,6 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SetSendQuality -> {
                 userPreferences.setSendQuality(SendQualityApp.Chat, action.quality)
-                _messagesUiState.update { it.copy(sendQuality = action.quality) }
             }
             is ConversationListUiAction.ToggleStickerAttachment -> attachmentHandler.handleToggleStickerAttachment(action)
 

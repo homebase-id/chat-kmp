@@ -80,8 +80,7 @@ internal fun AppsPageContent(
         AppsPage.Vault -> VaultSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onBack,
-            onOpenVault = { open?.invoke() },
-            showOpenVault = open != null,
+            onOpenVault = open,
         )
 
         AppsPage.Filesync -> FilesyncSettingsScreen(viewModel = koinViewModel(), onBackClick = onBack, onOpenDrive = open)
@@ -89,17 +88,15 @@ internal fun AppsPageContent(
         AppsPage.Email -> EmailSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onBack,
-            onOpenEmail = { open?.invoke() },
+            onOpenEmail = open,
             mailboxMode = emailMailboxMode,
             onChangeMode = links.onOpenEmailModeSwitch,
-            showOpenEmail = open != null,
         )
 
         AppsPage.Contacts -> ContactBookSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onBack,
-            onOpenContacts = { open?.invoke() },
-            showOpenContacts = open != null,
+            onOpenContacts = open,
         )
 
         AppsPage.WebDrop -> WebDropSettingsUi(onBack = onBack, onOpenWebDrop = open)

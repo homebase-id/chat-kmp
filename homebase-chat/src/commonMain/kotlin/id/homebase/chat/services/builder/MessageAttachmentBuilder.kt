@@ -38,7 +38,7 @@ object MessageAttachmentBuilder {
     ): PayloadBundle =
         UserUploadBuilder.build(
             sources = attachments.map { it.toUploadSource() },
-            options = UploadOptions(quality = quality.photo, metadata = MetadataPolicy.STRIP, videoQuality = quality.video.toVideoQuality()),
+            options = quality.uploadOptions(),
             fileOps = fileOperationsProvider,
             pdfPageRenderer = { path, width -> generatePdfThumbnailFromFile(path, width)?.thumbnailBytes },
         ) { index -> payloadKeyFactory(index, attachments[index]) }
@@ -55,3 +55,6 @@ private fun AttachmentInput.toUploadSource() = UploadSource(
     trimEndMs = trimEndMs,
     inputBlobUrl = inputBlobUrl,
 )
+
+internal fun SendQuality.uploadOptions(): UploadOptions =
+    UploadOptions(quality = photo, metadata = MetadataPolicy.STRIP, videoQuality = video.toVideoQuality())

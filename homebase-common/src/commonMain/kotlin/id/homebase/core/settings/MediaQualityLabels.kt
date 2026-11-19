@@ -1,5 +1,10 @@
 package id.homebase.core.settings
 
+import id.homebase.resources.settings_send_photo_standard_desc
+import id.homebase.resources.settings_send_photo_hd_desc
+import id.homebase.resources.settings_send_photo_original_desc
+import id.homebase.resources.settings_send_video_standard_desc
+import id.homebase.resources.settings_send_video_hd_desc
 import id.homebase.api.image.MediaQuality
 import id.homebase.resources.MR
 import id.homebase.resources.photobase_backup_photo_standard_desc
@@ -18,6 +23,20 @@ val MediaQuality.label: StringResource
         MediaQuality.STANDARD -> MR.string.settings_media_quality_standard
         MediaQuality.HD -> MR.string.settings_media_quality_hd
         MediaQuality.ORIGINAL -> MR.string.settings_media_quality_original
+    }
+
+val MediaQuality.sendPhotoDescription: StringResource
+    get() = when (this) {
+        MediaQuality.STANDARD -> MR.string.settings_send_photo_standard_desc
+        MediaQuality.HD -> MR.string.settings_send_photo_hd_desc
+        MediaQuality.ORIGINAL -> MR.string.settings_send_photo_original_desc
+    }
+
+val MediaQuality.sendVideoDescription: StringResource
+    get() = when (this) {
+        MediaQuality.STANDARD -> MR.string.settings_send_video_standard_desc
+        // Outside Photos an Original video is HD's.
+        MediaQuality.HD, MediaQuality.ORIGINAL -> MR.string.settings_send_video_hd_desc
     }
 
 val MediaQuality.photoDescription: StringResource

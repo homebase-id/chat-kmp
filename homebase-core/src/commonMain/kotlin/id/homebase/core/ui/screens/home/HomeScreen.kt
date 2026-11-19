@@ -1,5 +1,8 @@
 package id.homebase.core.ui.screens.home
 
+import id.homebase.core.ui.assets.RssFeed
+import id.homebase.resources.nav_feed
+import id.homebase.resources.settings_feed_desc
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -96,6 +99,7 @@ fun HomeScreen(
     onNavigateToContacts: () -> Unit,
     onNavigateToCalls: (() -> Unit)?,
     onNavigateToEmail: () -> Unit,
+    onNavigateToFeed: () -> Unit,
     onNavigateToExamples: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -156,6 +160,7 @@ fun HomeScreen(
         onNavigateToContacts = onNavigateToContacts,
         onNavigateToCalls = onNavigateToCalls,
         onNavigateToEmail = onNavigateToEmail,
+        onNavigateToFeed = onNavigateToFeed,
         locationAttention = locationAttention,
     )
 }
@@ -174,6 +179,7 @@ fun HomeUi(
     onNavigateToContacts: () -> Unit = {},
     onNavigateToCalls: (() -> Unit)? = null,
     onNavigateToEmail: () -> Unit = {},
+    onNavigateToFeed: () -> Unit = {},
     locationAttention: Boolean = false,
 ) {
     val scrollState = rememberScrollState()
@@ -236,6 +242,16 @@ fun HomeUi(
 
                 Spacer(modifier = Modifier.height(12.dp))
             }
+
+            FeatureCard(
+                icon = HomebaseIcons.RssFeed,
+                label = stringResource(MR.string.nav_feed),
+                subtitle = stringResource(MR.string.settings_feed_desc),
+                onClick = onNavigateToFeed,
+                modifier = Modifier.testTag("homeFeedCard"),
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             FeatureCard(
                 icon = Icons.Outlined.AutoAwesome,

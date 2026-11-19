@@ -82,7 +82,7 @@ sealed interface MomentComposeUiAction {
     /** Flip the per-image GPS opt-in. No-op if the image has no GPS metadata. */
     data class ToggleIncludeLocation(val attachmentId: Uuid) : MomentComposeUiAction
 
-    /** Sets the global media quality, the same preference chat and settings read. */
+    /** Sets Moments' photo and video quality, the setting its page in Settings → Apps shows. */
     data class SetSendQuality(val quality: SendQuality) : MomentComposeUiAction
 
     /**

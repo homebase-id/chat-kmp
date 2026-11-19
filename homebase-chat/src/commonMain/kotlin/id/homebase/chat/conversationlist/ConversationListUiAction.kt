@@ -354,7 +354,7 @@ sealed interface ConversationListUiAction {
         val trimEndMs: Long?,
     ) : ConversationListUiAction
 
-    /** The quality chooser in the attachment editor. It sets the global preference, not this send. */
+    /** The quality chooser in the attachment editor. It sets Chat's setting, not this send. */
     data class SetSendQuality(val quality: SendQuality) : ConversationListUiAction
 
     /** User toggled Send-as-sticker on an image attachment. */

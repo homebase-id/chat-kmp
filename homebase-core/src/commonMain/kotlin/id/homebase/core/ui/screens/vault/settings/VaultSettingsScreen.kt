@@ -32,18 +32,18 @@ import org.jetbrains.compose.resources.stringResource
 fun VaultSettingsScreen(
     viewModel: VaultSettingsViewModel,
     onBackClick: () -> Unit,
-    onOpenVault: () -> Unit,
-    showOpenVault: Boolean = true,
+    // Null when there's nothing to open: the page was opened from Vault itself.
+    onOpenVault: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     VaultSettingsUi(
         uiState = uiState,
         onAction = { action ->
-            if (action is VaultSettingsUiAction.OpenVaultClicked) onOpenVault()
+            if (action is VaultSettingsUiAction.OpenVaultClicked) onOpenVault?.invoke()
             else viewModel.onAction(action)
         },
         onBackClick = onBackClick,
-        showOpenVault = showOpenVault,
+        showOpenVault = onOpenVault != null,
     )
 }
 
