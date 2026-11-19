@@ -65,6 +65,12 @@ jobs:
           restore-keys: |
             sqlcipher-
 
+      # Seconds-to-minutes instead of the app build's tens: a Kotlin error fails here, and Xcode reuses the output.
+      - name: Compile the Kotlin for the simulator
+        run: ./gradlew :homebase-core:compileKotlinIosSimulatorArm64
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
       - name: Boot a simulator with full Photos access
         run: |
           udid=$(xcrun simctl list devices available -j | python3 -c '
@@ -88,6 +94,7 @@ jobs:
             -configuration Debug \
             -destination "id=$SIM_UDID" \
             -resultBundlePath build/iosAppTests.xcresult \
+            -only-testing:iosAppTests/PhotoLibraryCheckTests \
             CODE_SIGNING_ALLOWED=NO \
             | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|error:|failed|passed|\*\* TEST"
         env:

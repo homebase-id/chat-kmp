@@ -11,7 +11,9 @@ import id.homebase.photobase.backup.IosDeviceChangeSource
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import platform.CoreGraphics.CGBitmapContextCreate
@@ -47,12 +49,17 @@ import kotlin.coroutines.resumeWithException
 /**
  * Checks the Photos-library paths against the real library: what a send resolves a picked photo to, and what
  * Photos backup exports. Needs full Photos access, and adds its own photos, which it leaves (deleting asks the
- * user). Returns one line per failed check; empty means every check passed.
+ * user).
  */
 object PhotoLibraryChecks {
-    suspend fun run(): List<String> = withContext(Dispatchers.Default) {
+    /** [run] for Swift, called back on a background thread. */
+    fun runChecks(onDone: (CheckReport) -> Unit) {
+        CoroutineScope(Dispatchers.Default).launch { onDone(run()) }
+    }
+
+    suspend fun run(): CheckReport = withContext(Dispatchers.Default) {
         if (PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite) != PHAuthorizationStatusAuthorized) {
-            return@withContext listOf("no full Photos access")
+            return@withContext CheckReport(listOf("no full Photos access"), emptyList())
         }
         val failures = mutableListOf<String>()
         suspend fun verify(name: String, block: suspend () -> Unit) {
@@ -105,7 +112,7 @@ object PhotoLibraryChecks {
                 fileOps.deleteTempFile(part.path)
             }
         }
-        failures
+        CheckReport(failures, emptyList())
     }
 
     private suspend fun addPhoto(data: NSData): String {
