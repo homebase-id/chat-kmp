@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGBitmapContextCreateImage
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
@@ -37,6 +38,7 @@ import platform.Photos.PHAssetChangeRequest
 import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHAssetResourceTypePhoto
 import platform.Photos.PHAuthorizationStatusAuthorized
+import platform.Photos.PHAuthorizationStatusNotDetermined
 import platform.Photos.PHContentEditingInput
 import platform.Photos.PHContentEditingOutput
 import platform.Photos.PHPhotoLibrary
@@ -58,7 +60,15 @@ object PhotoLibraryChecks {
     }
 
     suspend fun run(): CheckReport = withContext(Dispatchers.Default) {
-        val access = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
+        var access = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
+        // A grant made outside the app can read as not determined until asked; with no grant, asking shows a prompt.
+        if (access == PHAuthorizationStatusNotDetermined) {
+            access = withTimeoutOrNull(ACCESS_PROMPT_MS) {
+                suspendCancellableCoroutine { continuation ->
+                    PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { continuation.resume(it) }
+                }
+            } ?: access
+        }
         if (access != PHAuthorizationStatusAuthorized) {
             return@withContext CheckReport(listOf("no full Photos access (authorization status $access)"), emptyList())
         }
@@ -172,4 +182,5 @@ object PhotoLibraryChecks {
     private const val EDITED_W = 200
     private const val EDITED_H = 100
     private const val MISSING = "ph://00000000-0000-0000-0000-000000000000/L0/001"
+    private const val ACCESS_PROMPT_MS = 20_000L
 }

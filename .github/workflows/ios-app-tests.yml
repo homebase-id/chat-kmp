@@ -106,7 +106,8 @@ jobs:
           xcrun simctl install "$SIM_UDID" "$app"
           xcrun simctl privacy "$SIM_UDID" grant photos id.homebase.feed.dev
           sqlite3 ~/Library/Developer/CoreSimulator/Devices/$SIM_UDID/data/Library/TCC/TCC.db \
-            "select service, client, auth_value from access where client like 'id.homebase%'" || true
+            "select * from access where client like '%homebase%'" || true
+          xcrun simctl get_app_container "$SIM_UDID" id.homebase.feed.dev
 
       - name: Run iosAppTests
         run: |
