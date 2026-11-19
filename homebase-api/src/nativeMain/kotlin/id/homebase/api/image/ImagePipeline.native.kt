@@ -16,7 +16,6 @@ import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.value
 import kotlin.math.ceil
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.sqrt
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryGetValue
@@ -93,17 +92,15 @@ private class ImageIoSource(
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
             ?: throw IllegalStateException("Couldn't create decode options")
-        // ImageIO aliases on reductions under 2x and can land a pixel off the plan, so only the memory guard forces one.
+        // ImageIO's shrink is a block average that leaves Lanczos at least 2x; only the memory guard forces less.
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
-        val guarded = memoryGuardScale(displayedSize, minLongEdge)?.let { ceil(longEdge * it).toInt() } ?: Int.MAX_VALUE
-        // ImageIO's shrink leaves at least 2x for Lanczos, as libvips does, unless the guard rules out a full decode.
-        val overGuard = displayedSize.pixelWidth.toLong() * displayedSize.pixelHeight > FULL_DECODE_PIXEL_LIMIT
+        val guard = memoryGuardScale(displayedSize, minLongEdge)
         val coarse = when {
-            longEdge >= minLongEdge.toLong() * 4 -> minLongEdge * 2
-            longEdge >= minLongEdge.toLong() * 2 && overGuard -> (longEdge + 1) / 2
+            longEdge >= minLongEdge.toLong() * HALVE_WHILE_AT_LEAST -> minLongEdge * 2
+            guard != null && longEdge >= minLongEdge.toLong() * 2 -> (longEdge + 1) / 2
             else -> longEdge
         }
-        val coarseEdge = minOf(coarse, guarded)
+        val coarseEdge = guard?.let { minOf(coarse, ceil(longEdge * it).toInt()) } ?: coarse
         val maxSize = CFBridgingRetain(NSNumber(int = coarseEdge))
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
@@ -249,7 +246,7 @@ private fun memoryGuardScale(size: ImageSize, minLongEdge: Int): Double? {
     val longEdge = max(size.pixelWidth, size.pixelHeight)
     if (pixels <= FULL_DECODE_PIXEL_LIMIT || longEdge <= minLongEdge) return null
     val smallest = minLongEdge.toDouble() / longEdge
-    return max(smallest, min(sqrt(FULL_DECODE_PIXEL_LIMIT / pixels), smallest * 2))
+    return max(smallest, sqrt(FULL_DECODE_PIXEL_LIMIT / pixels))
 }
 
 internal actual fun openImageSource(bytes: ByteArray): ImageSource =

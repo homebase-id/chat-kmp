@@ -170,7 +170,7 @@ private class AndroidImageSource(private val input: AndroidImageInput) : ImageSo
  */
 internal fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {
     var sample = 1
-    while (longEdge / (sample * 2) >= minLongEdge.toLong() * 2) sample *= 2
+    while (longEdge / sample >= minLongEdge.toLong() * HALVE_WHILE_AT_LEAST) sample *= 2
     return sample
 }
 

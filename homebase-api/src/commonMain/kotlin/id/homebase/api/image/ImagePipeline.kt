@@ -179,7 +179,8 @@ internal suspend fun renderFrom(
     val rendered = arrayOfNulls<RenderedImage>(outputs.size)
     val started = TimeSource.Monotonic.markNow()
     var current = source.decode(longEdge(largestFirst.first().value))
-    val decoded = "${current.width}x${current.height}"
+    val decodedWidth = current.width
+    val decodedHeight = current.height
     try {
         for ((index, output) in largestFirst) {
             checkCancelled()
@@ -194,11 +195,12 @@ internal suspend fun renderFrom(
     } finally {
         current.close()
     }
-    Logger.i(tag = "ImagePipeline") {
-        "${size.pixelWidth}x${size.pixelHeight} decoded at $decoded -> ${rendered.joinToString { "${it!!.width}x${it.height}" }} " +
-            "in ${started.elapsedNow().inWholeMilliseconds} ms"
+    val images = rendered.map { it!! }
+    Logger.d(tag = "ImagePipeline") {
+        "${size.pixelWidth}x${size.pixelHeight} decoded at ${decodedWidth}x$decodedHeight -> " +
+            "${images.joinToString { "${it.width}x${it.height}" }} in ${started.elapsedNow().inWholeMilliseconds} ms"
     }
-    return RenderedImages(size, rendered.map { it!! })
+    return RenderedImages(size, images)
 }
 
 /**
@@ -207,7 +209,7 @@ internal suspend fun renderFrom(
  * Returns [source] when it's already the right size. Intermediate bitmaps are closed; [source] is
  * left to the caller.
  */
-private const val HALVE_WHILE_AT_LEAST = 4
+internal const val HALVE_WHILE_AT_LEAST = 4
 
 internal suspend fun scaleDown(source: PipelineBitmap, width: Int, height: Int): PipelineBitmap {
     var current = source
