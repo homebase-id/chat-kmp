@@ -10,12 +10,7 @@ import id.homebase.photobase.backup.BackupMediaType
 import id.homebase.photobase.backup.IosDeviceChangeSource
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGBitmapContextCreateImage
@@ -56,10 +51,10 @@ import kotlin.coroutines.resumeWithException
 object PhotoLibraryChecks {
     /** [run] for Swift, called back on a background thread. */
     fun runChecks(onDone: (CheckReport) -> Unit) {
-        CoroutineScope(Dispatchers.Default).launch { onDone(run()) }
+        launchChecks({ run() }, onDone)
     }
 
-    suspend fun run(): CheckReport = withContext(Dispatchers.Default) {
+    suspend fun run(): CheckReport = checkRun {
         var access = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
         // A grant made outside the app can read as not determined until asked; with no grant, asking shows a prompt.
         if (access == PHAuthorizationStatusNotDetermined) {
@@ -70,17 +65,8 @@ object PhotoLibraryChecks {
             } ?: access
         }
         if (access != PHAuthorizationStatusAuthorized) {
-            return@withContext CheckReport(listOf("no full Photos access (authorization status $access)"), emptyList())
-        }
-        val failures = mutableListOf<String>()
-        suspend fun verify(name: String, block: suspend () -> Unit) {
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                failures += "$name: $e"
-            }
+            fail("no full Photos access (authorization status $access)")
+            return@checkRun
         }
         val fileOps = IOSFileOperationsProvider()
         val backup = IosDeviceChangeSource(fileOps)
@@ -123,7 +109,6 @@ object PhotoLibraryChecks {
                 fileOps.deleteTempFile(part.path)
             }
         }
-        CheckReport(failures, emptyList())
     }
 
     private suspend fun addPhoto(data: NSData): String {
