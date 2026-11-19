@@ -138,6 +138,7 @@ internal fun PhotobaseSettingsUi(
                     modifier = Modifier.testTag("photobaseIconToggle"),
                     icon = Icons.Outlined.PhotoLibrary,
                     title = stringResource(MR.string.settings_photobase_icon_desc),
+                    supportingText = navigationBarSwitchNote(),
                     containerColor = rowColor,
                     action = SettingsRowAction.Toggle(
                         checked = uiState.photobaseIconVisible,

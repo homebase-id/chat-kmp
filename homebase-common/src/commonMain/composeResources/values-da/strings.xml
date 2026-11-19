@@ -2492,4 +2492,5 @@
     <string name="settings_send_video_hd_desc">1080p. Forbliver skarp på store skærme.</string>
     <string name="photobase_backup_photo_quality">Billedkvalitet</string>
     <string name="photobase_backup_video_quality">Videokvalitet</string>
+    <string name="settings_navigation_bar_switch_wide">På brede skærme er alle apps i sidebjælken; dette gælder bundbjælken på telefoner.</string>
 </resources>

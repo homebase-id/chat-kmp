@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed.settings
 
+import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
 import id.homebase.core.settings.SendQualityRows
 import id.homebase.core.ui.screens.settings.IncomingMediaSaveRow
 import androidx.compose.foundation.layout.Spacer
@@ -60,6 +61,7 @@ fun FeedSettingsUi(
             modifier = Modifier.testTag("feedIconToggle"),
             icon = Icons.Outlined.Visibility,
             title = stringResource(MR.string.feed_settings_show_icon),
+            supportingText = navigationBarSwitchNote(),
             action = SettingsRowAction.Toggle(
                 checked = uiState.iconVisible,
                 onCheckedChange = { onAction(FeedSettingsUiAction.SetIconVisible(it)) },

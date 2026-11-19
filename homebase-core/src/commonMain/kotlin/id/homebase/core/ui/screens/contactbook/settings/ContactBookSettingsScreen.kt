@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook.settings
 
+import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -69,6 +70,7 @@ fun ContactBookSettingsUi(
         SettingsRow(
             icon = Icons.Outlined.Visibility,
             title = stringResource(MR.string.contactbook_settings_show_icon),
+            supportingText = navigationBarSwitchNote(),
             action = SettingsRowAction.Toggle(
                 checked = uiState.iconVisible,
                 onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },

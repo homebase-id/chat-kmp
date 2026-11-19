@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync.settings
 
+import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -56,6 +57,7 @@ fun FilesyncSettingsUi(
             modifier = Modifier.testTag("filesyncIconToggle"),
             icon = Icons.Outlined.Visibility,
             title = stringResource(MR.string.settings_filesync_icon_desc),
+            supportingText = navigationBarSwitchNote(),
             action = SettingsRowAction.Toggle(
                 checked = uiState.iconVisible,
                 onCheckedChange = { onAction(FilesyncSettingsUiAction.SetIconVisible(it)) },

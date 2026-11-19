@@ -3533,4 +3533,5 @@
     <string name="settings_send_photo_original_desc">The exact photo file, with nothing compressed. Uses the most data.</string>
     <string name="settings_send_video_standard_desc">720p. Sends quickly.</string>
     <string name="settings_send_video_hd_desc">1080p. Stays sharp on big screens.</string>
+    <string name="settings_navigation_bar_switch_wide">On wide screens every app is in the side bar; this is for the bottom bar on phones.</string>
 </resources>

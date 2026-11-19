@@ -443,7 +443,9 @@ fun AppNavHost(
     val callsBadge = callsAvailable && callsBadgeVisible(callsMissedCount)
     // Above the NavHost: the picker pops right after starting, and its permission prompt must outlive it.
     val peerCallStarter = rememberPeerCallStarter()
+    val showNavigationRail = isExpandedLayout()
     val topLevelRoutes = remember(
+        showNavigationRail,
         callsAvailable,
         callsIconVisible,
         momentsIconVisible,
@@ -457,17 +459,19 @@ fun AppNavHost(
         emailIconVisible,
         serverSupportsMail,
     ) {
+        // A wide layout's rail has room for every app; the switches choose for a phone's bottom bar.
+        val everyApp = showNavigationRail
         topLevelRoutesFor(
             callsAvailable = callsAvailable,
-            callsIconVisible = callsIconVisible,
-            momentsVisible = momentsIconVisible,
-            vaultVisible = vaultIconVisible,
-            filesyncVisible = filesyncIconVisible,
-            feedVisible = feedIconVisible,
-            photobaseVisible = photobaseAvailable && photobaseIconVisible,
-            locationVisible = locationIconVisible,
-            contactBookVisible = contactBookIconVisible,
-            emailVisible = emailIconVisible && serverSupportsMail == true,
+            callsIconVisible = everyApp || callsIconVisible,
+            momentsVisible = everyApp || momentsIconVisible,
+            vaultVisible = everyApp || vaultIconVisible,
+            filesyncVisible = everyApp || filesyncIconVisible,
+            feedVisible = everyApp || feedIconVisible,
+            photobaseVisible = photobaseAvailable && (everyApp || photobaseIconVisible),
+            locationVisible = everyApp || locationIconVisible,
+            contactBookVisible = everyApp || contactBookIconVisible,
+            emailVisible = (everyApp || emailIconVisible) && serverSupportsMail == true,
         )
     }
     // Read at call time: the event collectors below capture these lambdas once.
@@ -525,7 +529,6 @@ fun AppNavHost(
     // when the user has hidden the Vault icon from the nav bar.
     val isTopLevelRoute = chromeDestination.isTopLevelRoute()
 
-    val showNavigationRail = isExpandedLayout()
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     // The full-screen image editor (newly-picked images) is a state-driven overlay, not a nav
     // destination, so it folds into the same gate the gallery uses.

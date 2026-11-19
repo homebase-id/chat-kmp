@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
 import id.homebase.core.settings.SendQualityRows
 import id.homebase.core.ui.screens.settings.IncomingMediaSaveRow
 import androidx.compose.foundation.layout.Spacer
@@ -56,6 +57,7 @@ fun MomentsSettingsUi(
         SettingsRow(
             icon = Icons.Outlined.Visibility,
             title = stringResource(MR.string.moments_settings_show_icon),
+            supportingText = navigationBarSwitchNote(),
             action = SettingsRowAction.Toggle(
                 checked = uiState.iconVisible,
                 onCheckedChange = { onAction(MomentsSettingsUiAction.SetIconVisible(it)) },

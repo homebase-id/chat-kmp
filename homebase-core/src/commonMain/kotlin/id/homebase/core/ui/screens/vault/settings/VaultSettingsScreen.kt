@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.vault.settings
 
+import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -72,6 +73,7 @@ fun VaultSettingsUi(
         SettingsRow(
             icon = Icons.Outlined.Visibility,
             title = stringResource(MR.string.vault_settings_show_icon),
+            supportingText = navigationBarSwitchNote(),
             action = SettingsRowAction.Toggle(
                 checked = uiState.iconVisible,
                 onCheckedChange = { onAction(VaultSettingsUiAction.SetIconVisible(it)) },

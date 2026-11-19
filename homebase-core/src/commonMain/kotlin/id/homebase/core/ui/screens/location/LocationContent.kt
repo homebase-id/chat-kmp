@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.location
 
+import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -101,6 +102,7 @@ fun LocationContent(
                 modifier = Modifier.testTag("locationIconToggle"),
                 icon = Icons.Outlined.Visibility,
                 title = stringResource(MR.string.location_settings_show_icon),
+                supportingText = navigationBarSwitchNote(),
                 containerColor = CardDefaults.cardColors().containerColor,
                 action = SettingsRowAction.Toggle(
                     checked = uiState.iconVisible,
