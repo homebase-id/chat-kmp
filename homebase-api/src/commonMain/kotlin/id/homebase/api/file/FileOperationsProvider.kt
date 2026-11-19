@@ -202,18 +202,16 @@ interface FileOperationsProvider {
         throw UnsupportedOperationException("overwrite isn't supported by ${this::class.simpleName}")
 
     /**
-     * Resolves a path that may be a content URI (Android) or a Photos-library asset (iOS: its photo or
-     * video resource, streamed) to a real filesystem path by copying it to a temp file. Elsewhere,
-     * returns [path] unchanged.
+     * Resolves a path that may be a content URI (Android) or a Photos-library asset (iOS) to a real
+     * filesystem path by copying it to a temp file; elsewhere returns [path] unchanged. A library photo
+     * is its own resource (the full-size edit if there is one, else the original), streamed to an upload
+     * temp file; a video, its movie resource. Throws [SourceUnavailableException] when the asset is gone
+     * or no longer shared with the app. The copy is the caller's to delete: use [withResolvedFile].
      */
     suspend fun resolveToFilePath(path: String): String = path
 
-    /**
-     * False where every read of [path], header reads included, fetches the whole source again: an
-     * iOS Photos-library asset. Read such a path through [withResolvedFile] once instead. True on
-     * every other platform and path.
-     */
-    fun readsInPlace(path: String): Boolean = true
+    /** Whether [path] is an iOS Photos-library asset, which every read fetches whole: read it via [withResolvedFile]. */
+    fun isPhotoLibraryAsset(path: String): Boolean = false
 
     companion object {
         const val DEFAULT_HEADER_BYTES: Int = 64 * 1024

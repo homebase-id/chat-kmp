@@ -5,7 +5,6 @@ import kotlinx.coroutines.test.runTest
 import okio.fakefilesystem.FakeFileSystem
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ReadableImagesTest {
@@ -13,9 +12,9 @@ class ReadableImagesTest {
     private class LibraryProvider(private val fs: FakeFileSystem) : OkioFileOperationsProvider(fs, "/cache") {
         val resolved = mutableListOf<String>()
         val deleted = mutableListOf<String>()
-        override fun readsInPlace(path: String) = !path.startsWith("library/")
+        override fun isPhotoLibraryAsset(path: String) = path.startsWith("library/")
         override suspend fun resolveToFilePath(path: String): String {
-            if (readsInPlace(path)) return path
+            if (!isPhotoLibraryAsset(path)) return path
             resolved += path
             return "/cache/resolved_${resolved.size}.heic"
         }
@@ -30,16 +29,21 @@ class ReadableImagesTest {
     @Test
     fun aLibraryPhotoIsResolvedOnceForTheSendAndItsCopyGoesAfter() = runTest {
         val ops = LibraryProvider(FakeFileSystem())
-        val attachments = listOf(image("library/A/L0/001"), image("/picked/b.jpg"), AttachmentInput("library/C/L0/001", "video/quicktime"))
+        val attachments = listOf(
+            image("library/A/L0/001"),
+            image("/picked/b.jpg"),
+            AttachmentInput("library/C/L0/001", "video/quicktime"),
+            AttachmentInput("library/D/L0/001", "application/octet-stream"),
+        )
 
         val seen = ops.withReadableImages(attachments) { readable ->
             assertTrue(ops.deleted.isEmpty(), "the copy lives until the send is done with it")
             readable.map { it.filePath }
         }
 
-        assertEquals(listOf("/cache/resolved_1.heic", "/picked/b.jpg", "library/C/L0/001"), seen)
-        assertEquals(listOf("library/A/L0/001"), ops.resolved, "only the library photo; a video keeps its own resolve")
-        assertEquals(listOf("/cache/resolved_1.heic"), ops.deleted)
+        assertEquals(listOf("/cache/resolved_1.heic", "/picked/b.jpg", "library/C/L0/001", "/cache/resolved_2.heic"), seen)
+        assertEquals(listOf("library/A/L0/001", "library/D/L0/001"), ops.resolved, "the library photos, a RAW one too; a video keeps its own resolve")
+        assertEquals(listOf("/cache/resolved_1.heic", "/cache/resolved_2.heic"), ops.deleted)
     }
 
     @Test
@@ -54,6 +58,6 @@ class ReadableImagesTest {
         val ops = LibraryProvider(FakeFileSystem())
         val attachments = listOf(image("/picked/a.jpg"))
         ops.withReadableImages(attachments) { assertEquals(attachments, it) }
-        assertFalse(ops.resolved.isNotEmpty() || ops.deleted.isNotEmpty())
+        assertTrue(ops.resolved.isEmpty() && ops.deleted.isEmpty())
     }
 }

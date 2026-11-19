@@ -4,17 +4,19 @@ import io.ktor.client.request.forms.InputProvider
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.io.Buffer
 import okio.FileSystem
 import okio.ForwardingSource
 import okio.Source
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSCachesDirectory
-import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSNumber
 import platform.Foundation.NSTemporaryDirectory
@@ -23,7 +25,6 @@ import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUUID
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
-import platform.Foundation.writeToFile
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetMediaTypeVideo
 import platform.Photos.PHAssetResource
@@ -176,52 +177,36 @@ class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, 
         return dir
     }
 
-    override fun readsInPlace(path: String): Boolean = !isPhotoLibraryPath(path)
+    override fun isPhotoLibraryAsset(path: String): Boolean = isPhotoLibraryPath(path)
 
-    @OptIn(ExperimentalForeignApi::class)
     override suspend fun resolveToFilePath(path: String): String {
-        if (path.startsWith("ph://") || path.contains("/L0/")) {
-            // A video PHAsset must be read via PHAssetResourceManager: requestImageDataForAsset
-            // (used by readPhotoLibraryAsset) is image-only and returns a tiny poster frame for
-            // videos — that's the "video sends as a few-KB file" bug. Stream the original movie
-            // resource straight to the temp file (also avoids holding the whole video in memory).
-            val videoAsset = phVideoAssetOrNull(path)
-            if (videoAsset != null) {
+        if (!isPhotoLibraryPath(path)) return path
+        return withContext(Dispatchers.Default) {
+            val asset = phAssetOrNull(path) ?: throw SourceUnavailableException(path)
+            // requestImageDataForAsset is image-only (a video gets its poster frame), so a video streams its own resource.
+            if (asset.mediaType == PHAssetMediaTypeVideo) {
                 val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.mov"
-                writeVideoAssetToFile(videoAsset, tmpPath)
-                return tmpPath
+                writeVideoAssetToFile(asset, tmpPath)
+                return@withContext tmpPath
             }
-
-            // A photo the same way: its own resource streamed to a file, the edit if there is one, as Photos shows it.
-            val photo = phAssetOrNull(path)?.let(::photoResourceOf)
-            if (photo != null) {
-                val extension = photo.originalFilename.substringAfterLast('.', "").lowercase().ifEmpty { "img" }
-                val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.$extension"
-                writeAssetResourceToFile(photo, tmpPath)
-                return tmpPath
+            val resources = PHAssetResource.assetResourcesForAsset(asset).filterIsInstance<PHAssetResource>()
+            val photo = PhotoLibraryResources.pick(resources, PHAssetResourceTypeFullSizePhoto, PHAssetResourceTypePhoto)
+            val extension = photo?.let { extensionForContentType(PhotoLibraryResources.contentTypeOf(it)) } ?: "img"
+            val tmpPath = createUploadTempPath("resolved_", ".$extension")
+            try {
+                if (photo != null) {
+                    PhotoLibraryResources.write(photo, tmpPath, mayDownload = true) { IllegalStateException("export refused") }
+                } else {
+                    // An image asset with no photo resource: what PhotoKit renders for it, as the send always had.
+                    writeStream(tmpPath, flowOf(readPhotoLibraryAsset(path)))
+                }
+            } catch (e: Throwable) {
+                runCatching { deleteTempFile(tmpPath) }
+                throw e
             }
-
-            val bytes = readPhotoLibraryAsset(path)
-            val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.mov"
-            val data = bytes.usePinned { pinned ->
-                NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
-            }
-            data.writeToFile(tmpPath, atomically = true)
-            return tmpPath
+            tmpPath
         }
-
-        return path
     }
-
-    /**
-     * The [PHAsset] for a Photos-library video path iff it is a video, else null (images, or a
-     * non-library path). Accepts BOTH a `ph://<id>` URI and the raw PHAsset localIdentifier
-     * (`<uuid>/L0/nnn`): the gallery picker hands the send path the raw localIdentifier — never a
-     * `ph://` URI — so gating on `ph://` alone left gallery video picks falling through to the
-     * image-only `requestImageDataForAsset` path, which returns a few-KB poster frame for `.mp4`
-     * (the "mp4 sends as a tiny file" bug). Mirrors the `ph:// || /L0/` guard used above.
-     */
-    private fun phVideoAssetOrNull(path: String): PHAsset? = phAssetOrNull(path)?.takeIf { it.mediaType == PHAssetMediaTypeVideo }
 
     /** The [PHAsset] for a Photos-library path (`ph://<id>` or a raw `<uuid>/L0/nnn` identifier), else null. */
     @OptIn(ExperimentalForeignApi::class)
@@ -236,37 +221,30 @@ class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, 
         return fetchResult.objectAtIndex(0u) as PHAsset
     }
 
-    // The edited photo's full-size render when there is one, else the original; null for a video.
-    private fun photoResourceOf(asset: PHAsset): PHAssetResource? {
-        if (asset.mediaType == PHAssetMediaTypeVideo) return null
-        val resources = PHAssetResource.assetResourcesForAsset(asset).filterIsInstance<PHAssetResource>()
-        return resources.firstOrNull { it.type == PHAssetResourceTypeFullSizePhoto }
-            ?: resources.firstOrNull { it.type == PHAssetResourceTypePhoto }
-    }
-
     /** Streams a video PHAsset's original movie resource to [destPath] via PHAssetResourceManager. */
-    private suspend fun writeVideoAssetToFile(asset: PHAsset, destPath: String) {
-        val videoResource = PHAssetResource.assetResourcesForAsset(asset)
-            .filterIsInstance<PHAssetResource>()
-            .firstOrNull { it.type == PHAssetResourceTypeVideo || it.type == PHAssetResourceTypeFullSizeVideo }
-            ?: throw IllegalStateException("No video resource for asset ${asset.localIdentifier}")
-        writeAssetResourceToFile(videoResource, destPath)
-    }
-
-    /** Streams [resource] to [destPath] via PHAssetResourceManager, never holding it whole in memory. */
     @OptIn(ExperimentalForeignApi::class)
-    private suspend fun writeAssetResourceToFile(resource: PHAssetResource, destPath: String): Unit =
+    private suspend fun writeVideoAssetToFile(asset: PHAsset, destPath: String): Unit =
         suspendCancellableCoroutine { continuation ->
+            val videoResource = PHAssetResource.assetResourcesForAsset(asset)
+                .filterIsInstance<PHAssetResource>()
+                .firstOrNull { it.type == PHAssetResourceTypeVideo || it.type == PHAssetResourceTypeFullSizeVideo }
+            if (videoResource == null) {
+                continuation.resumeWithException(
+                    IllegalStateException("No video resource for asset ${asset.localIdentifier}")
+                )
+                return@suspendCancellableCoroutine
+            }
+
             val options = PHAssetResourceRequestOptions().apply { setNetworkAccessAllowed(true) }
             val destUrl = NSURL.fileURLWithPath(destPath)
             PHAssetResourceManager.defaultManager().writeDataForAssetResource(
-                resource,
+                videoResource,
                 toFile = destUrl,
                 options = options,
                 completionHandler = { error ->
                     if (error != null) {
                         continuation.resumeWithException(
-                            IllegalStateException("Failed to export the asset resource: ${error.localizedDescription}")
+                            IllegalStateException("Failed to export video resource: ${error.localizedDescription}")
                         )
                     } else {
                         continuation.resume(Unit)
