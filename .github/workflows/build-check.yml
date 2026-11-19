@@ -139,14 +139,22 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
-      # iOS simulator tests for homebase-api (and the NSE preview in homebase-notifshared) — covers FfmpegDecoderCommonTest (real FFmpegKit
-      # via cinterop), FFmpegKitVideoDecoderNativeTest (polling/cancel paths driven by mock
-      # bridges), and the full commonTest suite (sync/database/outbox/etc.).
+      # iOS simulator tests for homebase-api, homebase-common (the on-screen image decoders) and the NSE preview
+      # in homebase-notifshared.
       - name: Run iOS simulator tests
         if: ${{ matrix.name == 'iOS' }}
-        run: ./gradlew :homebase-api:iosSimulatorArm64Test :homebase-notifshared:iosSimulatorArm64Test
+        run: ./gradlew --continue :homebase-api:iosSimulatorArm64Test :homebase-common:iosSimulatorArm64Test :homebase-notifshared:iosSimulatorArm64Test
         env:
           JDK_21: ${{ env.JAVA_HOME }}
+
+      # Kept so the numbers measurement tests print (memory, quality) can be read after the run.
+      - name: Upload iOS test reports
+        if: ${{ always() && matrix.name == 'iOS' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-test-reports
+          path: '**/build/test-results/iosSimulatorArm64Test/*.xml'
+          if-no-files-found: ignore
 
       - name: Verify Android build artifact
         if: ${{ matrix.name == 'Android & Desktop' }}

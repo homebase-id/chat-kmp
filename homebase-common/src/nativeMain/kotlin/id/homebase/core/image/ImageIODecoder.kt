@@ -1,5 +1,6 @@
 package id.homebase.core.image
 
+import coil3.ComponentRegistry
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DecodeResult
@@ -77,6 +78,13 @@ class ImageIODecoder(
         }
     }
 }
+
+/**
+ * The iOS decoders, in the app's order: animated GIF/WebP first, then ImageIO for HEIC and JPEG at the
+ * requested size. Anything else falls through to Coil's own Skia decoder.
+ */
+fun ComponentRegistry.Builder.addNativeImageDecoders(): ComponentRegistry.Builder =
+    add(AnimatedSkiaDecoder.Factory()).add(ImageIODecoder.Factory())
 
 private fun isJpegSource(result: SourceFetchResult): Boolean {
     if (result.mimeType == "image/jpeg") return true

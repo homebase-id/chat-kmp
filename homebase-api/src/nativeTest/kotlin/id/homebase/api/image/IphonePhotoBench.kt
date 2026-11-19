@@ -3,15 +3,9 @@
 package id.homebase.api.image
 
 import id.homebase.api.file.IOSFileOperationsProvider
+import id.homebase.api.platform.processFootprintBytes
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toKString
-import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -23,13 +17,6 @@ import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
 import platform.Foundation.writeToFile
-import platform.darwin.KERN_SUCCESS
-import platform.darwin.TASK_VM_INFO
-import platform.darwin.mach_msg_type_number_tVar
-import platform.darwin.mach_task_self_
-import platform.darwin.natural_tVar
-import platform.darwin.task_info
-import platform.darwin.task_vm_info_data_t
 import platform.posix.getenv
 import kotlin.native.runtime.GC
 import kotlin.native.runtime.NativeRuntimeApi
@@ -64,14 +51,14 @@ class IphonePhotoBench {
                     listOfNotNull(warmUp.finalImage?.let { "${it.width}x${it.height} final" })).joinToString(", ")
                 val samples = List(3) {
                     GC.collect()
-                    val base = footprintBytes()
+                    val base = processFootprintBytes()
                     var peak = base
-                    val sampler = launch { while (isActive) { peak = maxOf(peak, footprintBytes()); delay(1) } }
+                    val sampler = launch { while (isActive) { peak = maxOf(peak, processFootprintBytes()); delay(1) } }
                     val started = TimeSource.Monotonic.markNow()
                     createMediaImages(path, ops, "bench", setting)
                     val elapsed = started.elapsedNow().inWholeMilliseconds
                     sampler.cancelAndJoin()
-                    peak = maxOf(peak, footprintBytes())
+                    peak = maxOf(peak, processFootprintBytes())
                     elapsed to (peak - base)
                 }
                 val source = "${warmUp.displayedSize.pixelWidth}x${warmUp.displayedSize.pixelHeight}"
@@ -82,14 +69,5 @@ class IphonePhotoBench {
         }
         NSString.create(string = rows.joinToString("\n", postfix = "\n"))
             .writeToFile("$dir/results-$label.md", atomically = true, encoding = NSUTF8StringEncoding, error = null)
-    }
-
-    // The process's physical footprint, the number iOS kills apps by.
-    private fun footprintBytes(): Long = memScoped {
-        val info = alloc<task_vm_info_data_t>()
-        val count = alloc<mach_msg_type_number_tVar>()
-        count.value = (sizeOf<task_vm_info_data_t>() / sizeOf<natural_tVar>()).convert()
-        val result = task_info(mach_task_self_, TASK_VM_INFO.convert(), info.ptr.reinterpret(), count.ptr)
-        if (result == KERN_SUCCESS) info.phys_footprint.toLong() else 0L
     }
 }
