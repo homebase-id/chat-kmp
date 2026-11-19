@@ -89,3 +89,8 @@ callable id.homebase.api.video.StreamInfo.*
 // kmpnotifier
 callable com.mmk.kmpnotifier.notification.NotifierManager.*
 callable com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Ios.*
+
+// On-device checks the app-hosted tests run (iosAppTests)
+function id.homebase.core.diagnostics.PhotoLibraryChecks.runChecks
+property id.homebase.core.diagnostics.CheckReport.failures
+property id.homebase.core.diagnostics.CheckReport.measurements
