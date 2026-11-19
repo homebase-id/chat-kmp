@@ -287,7 +287,7 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 | Contact photo | none | its own sizes | STRIP | yes | contacts image API |
 | Profile and card photos | none | its own sizes | STRIP | server-side | profile attribute API |
 
-Each app that sends media people pick has its own photo setting and video setting, on its page in Settings → Apps. A photo setting is STANDARD, HD or ORIGINAL; a video setting outside Photos is STANDARD or HD, because ORIGINAL there is HD's 1080p (`THUMBNAILS.md`, "The three settings"). The share sheet and view-once send with Chat's settings. Chat's settings start from the single setting every app shared before (`media_quality`, an ORIGINAL video becoming HD).
+Each app that sends media people pick has its own photo setting and video setting, on its page in Settings → Apps. A photo setting is STANDARD, HD or ORIGINAL; a video setting outside Photos is STANDARD or HD, because ORIGINAL there is HD's 1080p (`THUMBNAILS.md`, "The three settings"). The share sheet and view-once send with Chat's settings. Each app starts at its default; the single setting every app shared before (`media_quality`) isn't read.
 
 Filesync, WebDrop and the two photo APIs use the builder's rules but keep their transport:
 

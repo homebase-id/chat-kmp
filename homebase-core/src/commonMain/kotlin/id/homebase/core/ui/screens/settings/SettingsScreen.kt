@@ -71,7 +71,6 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
-import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
@@ -109,8 +108,6 @@ import id.homebase.resources.settings_notifications_status_denied
 import id.homebase.resources.settings_notifications_status_error
 import id.homebase.resources.settings_notifications_status_on
 import id.homebase.resources.settings_section_apps
-import id.homebase.resources.settings_section_device
-import id.homebase.resources.settings_section_preferences
 import id.homebase.resources.settings_security_setup
 import id.homebase.resources.settings_security_setup_desc
 import id.homebase.resources.settings_storage
@@ -230,15 +227,14 @@ fun SettingsUi(
 
             item {
                 SettingsRow(
-                    modifier = Modifier.testTag("accountButton"),
-                    icon = Icons.Outlined.ManageAccounts,
-                    title = stringResource(MR.string.settings_account),
-                    supportingText = stringResource(MR.string.settings_account_desc),
-                    action = SettingsRowAction.Navigate(actions.onAccount),
+                    modifier = Modifier.testTag("appsSettingsButton"),
+                    icon = HomebaseIcons.Apps,
+                    title = stringResource(MR.string.settings_section_apps),
+                    supportingText = stringResource(MR.string.settings_apps_desc),
+                    action = SettingsRowAction.Navigate(actions.onApps),
                 )
             }
 
-            item { HubSectionHeader(stringResource(MR.string.settings_section_preferences)) }
             item {
                 SettingsRow(
                     modifier = Modifier.testTag("notificationsButton"),
@@ -262,6 +258,17 @@ fun SettingsUi(
                     status = { NotificationStatusIndicator(uiState.notificationStatus) },
                 )
             }
+
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("accountButton"),
+                    icon = Icons.Outlined.ManageAccounts,
+                    title = stringResource(MR.string.settings_account),
+                    supportingText = stringResource(MR.string.settings_account_desc),
+                    action = SettingsRowAction.Navigate(actions.onAccount),
+                )
+            }
+
             item {
                 SettingsRow(
                     modifier = Modifier.testTag("appearanceButton"),
@@ -274,6 +281,7 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onAppearance),
                 )
             }
+
             item {
                 SettingsRow(
                     modifier = Modifier.testTag("mediaButton"),
@@ -298,17 +306,6 @@ fun SettingsUi(
 
             item {
                 SettingsRow(
-                    modifier = Modifier.testTag("appsSettingsButton"),
-                    icon = HomebaseIcons.Apps,
-                    title = stringResource(MR.string.settings_section_apps),
-                    supportingText = stringResource(MR.string.settings_apps_desc),
-                    action = SettingsRowAction.Navigate(actions.onApps),
-                )
-            }
-
-            item { HubSectionHeader(stringResource(MR.string.settings_section_device)) }
-            item {
-                SettingsRow(
                     modifier = Modifier.testTag("storageButton"),
                     icon = Icons.Outlined.Storage,
                     title = stringResource(MR.string.settings_data_storage),
@@ -318,6 +315,7 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onStorage),
                 )
             }
+
             item {
                 SettingsRow(
                     modifier = Modifier.testTag("helpButton"),
@@ -425,14 +423,6 @@ private fun IdentityHeader(
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-}
-
-@Composable
-private fun HubSectionHeader(title: String) {
-    SettingsSectionHeader(
-        title = title,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-    )
 }
 
 // Decorative: the row's supporting text already states the status in words.

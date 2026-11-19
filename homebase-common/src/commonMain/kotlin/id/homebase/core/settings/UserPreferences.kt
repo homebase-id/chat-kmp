@@ -74,14 +74,11 @@ class UserPreferences(private val settings: Settings) {
         }
 
     /** The photo and video quality [app] sends with. */
-    fun sendQuality(app: SendQualityApp): SendQuality {
-        // Chat starts from the one setting every app shared before each had its own.
-        val shared = if (app == SendQualityApp.Chat) quality("media_quality") else null
-        return SendQuality(
-            photo = quality("${app.key}_photo_quality") ?: shared ?: app.default.photo,
-            video = (quality("${app.key}_video_quality") ?: shared)?.asVideoChoice() ?: app.default.video,
-        )
-    }
+    // The one setting every app shared before (media_quality) isn't read: each app starts at its own default.
+    fun sendQuality(app: SendQualityApp): SendQuality = SendQuality(
+        photo = quality("${app.key}_photo_quality") ?: app.default.photo,
+        video = quality("${app.key}_video_quality")?.asVideoChoice() ?: app.default.video,
+    )
 
     fun setSendQuality(app: SendQualityApp, value: SendQuality) {
         settings.putString("${app.key}_photo_quality", value.photo.code)

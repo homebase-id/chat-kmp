@@ -1260,9 +1260,7 @@
     <string name="video_web_large_playback_unsupported">Store videoer kan endnu ikke afspilles i browseren</string>
 
     <!-- Settings hub -->
-    <string name="settings_section_preferences">Præferencer</string>
     <string name="settings_section_apps">Apps</string>
-    <string name="settings_section_device">Enhed</string>
     <string name="settings_edit_profile">Rediger profil</string>
     <string name="settings_security_setup_desc">Adgangskode og gendannelsesnøgle</string>
     <string name="settings_notifications_status_checking">Kontrollerer…</string>

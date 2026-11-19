@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Each app's photo and video setting, its default, and Chat's start from the one shared setting. */
+/** Each app's photo and video setting and its default. */
 class MediaQualityPreferenceTest {
 
     private fun prefs(vararg stored: Pair<String, String>) =
@@ -21,17 +21,10 @@ class MediaQualityPreferenceTest {
     }
 
     @Test
-    fun chatStartsFromTheOldSharedSettingAndAnOriginalVideoBecomesHd() {
+    fun theOldSharedSettingIsLeftBehind() {
         val prefs = prefs("media_quality" to MediaQuality.ORIGINAL.code)
-        assertEquals(SendQuality(MediaQuality.ORIGINAL, MediaQuality.HD), prefs.sendQuality(SendQualityApp.Chat))
+        assertEquals(SendQualityApp.Chat.default, prefs.sendQuality(SendQualityApp.Chat))
         assertEquals(SendQualityApp.Moments.default, prefs.sendQuality(SendQualityApp.Moments))
-        assertEquals(SendQualityApp.Feed.default, prefs.sendQuality(SendQualityApp.Feed))
-    }
-
-    @Test
-    fun anAppsOwnSettingWinsOverTheOldSharedOne() {
-        val prefs = prefs("media_quality" to MediaQuality.HD.code, "chat_photo_quality" to MediaQuality.STANDARD.code)
-        assertEquals(SendQuality(MediaQuality.STANDARD, MediaQuality.HD), prefs.sendQuality(SendQualityApp.Chat))
     }
 
     @Test
