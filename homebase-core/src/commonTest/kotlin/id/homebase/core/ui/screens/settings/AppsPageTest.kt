@@ -24,6 +24,7 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalTestApi::class)
 class AppsPageTest {
     private val rowTags = mapOf(
+        AppsPage.Chat to "chatSettingsButton",
         AppsPage.Feed to "feedSettingsButton",
         AppsPage.Moments to "momentsSettingsButton",
         AppsPage.Vault to "vaultSettingsButton",
@@ -32,14 +33,13 @@ class AppsPageTest {
         AppsPage.Contacts to "contactBookSettingsButton",
         AppsPage.Calls to "callsSettingsButton",
         AppsPage.Photobase to "photobaseSettingsButton",
+        AppsPage.WebDrop to "webDropButton",
+        AppsPage.Location to "locationSettingsButton",
     )
 
     private fun actions(onBack: () -> Unit, onOpenPage: (AppsPage) -> Unit) = AppsSettingsActions(
         onBack = onBack,
         onOpenPage = onOpenPage,
-        onOpenWebDrop = {},
-        onLocation = {},
-        photobaseAvailable = true,
     )
 
     private fun ComposeUiTest.tap(tag: String) {

@@ -413,7 +413,7 @@
     <string name="moments_empty_action">Add a moment</string>
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Open Moments</string>
-    <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
+    <string name="moments_settings_show_icon">Show Moments in the navigation bar</string>
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
     <string name="moments_push_new_post">A moment has been shared with you...</string>
@@ -1239,7 +1239,7 @@
     <string name="email_unreachable_body">This is not the same as your server having no email — we simply did not get an answer.</string>
     <string name="email_settings_section">Email setup</string>
     <string name="email_settings_open">Open Email setup</string>
-    <string name="email_settings_show_icon">Show Email setup icon in bottom bar</string>
+    <string name="email_settings_show_icon">Show Email setup in the navigation bar</string>
     <string name="email_settings_biometrics">Biometrics protection</string>
     <string name="email_mode_row_title">Mailbox type</string>
     <string name="email_mode_encrypted">Encrypted</string>
@@ -1473,7 +1473,7 @@
     <string name="vault_welcome">Welcome to the vault</string>
     <string name="vault_settings_section">Vault</string>
     <string name="vault_settings_open">Open Vault</string>
-    <string name="vault_settings_show_icon">Show Vault icon in bottom bar</string>
+    <string name="vault_settings_show_icon">Show Vault in the navigation bar</string>
     <string name="vault_settings_biometrics">Biometrics protection</string>
     <string name="vault_settings_biometrics_unavailable">This device can't verify your identity, so the Vault opens unlocked.</string>
     <string name="vault_biometric_prompt_title">Unlock Vault</string>
@@ -1885,7 +1885,7 @@
     <string name="location_onboarding_setup">Set it up</string>
     <string name="location_onboarding_dismiss">Not now</string>
     <string name="location_settings_section">Location</string>
-    <string name="location_settings_show_icon">Show Location icon in bottom bar</string>
+    <string name="location_settings_show_icon">Show Location in the navigation bar</string>
     <string name="location_map_section">Map</string>
     <string name="location_map_none">No map</string>
     <string name="location_map_osm">Open maps</string>
@@ -2267,7 +2267,7 @@
 
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
-    <string name="contactbook_settings_show_icon">Show Contacts icon in bottom bar</string>
+    <string name="contactbook_settings_show_icon">Show Contacts in the navigation bar</string>
 
     <string name="contactbook_error_save">Couldn't save the contact.</string>
     <string name="contactbook_error_follow">Couldn't update the follow.</string>
@@ -3522,4 +3522,17 @@
     <string name="feed_wide_see_all">See all</string>
     <string name="feed_wide_suggestions_empty">No suggestions yet</string>
     <string name="feed_wide_channels_empty">Channels you post to will show up here</string>
+    <!-- Settings → Apps: one page shape for every app -->
+    <string name="settings_chat_desc">Your conversations, and the photos and videos in them</string>
+    <string name="chat_settings_open">Open Chats</string>
+    <string name="chat_settings_show_icon">Show Chats in the navigation bar</string>
+    <string name="chat_settings_icon_always">Chats always stay in the navigation bar.</string>
+    <string name="feed_settings_open">Open Feed</string>
+    <string name="feed_settings_show_icon">Show Feed in the navigation bar</string>
+    <string name="filesync_settings_open">Open Drive</string>
+    <string name="photobase_settings_open">Open Photos</string>
+    <string name="photobase_settings_in_testing">Photos is still being tested. Turn it on in the Developer menu to try it.</string>
+    <string name="webdrop_settings_open">Open WebDrop</string>
+    <string name="location_settings_open">Open Location</string>
+    <string name="calls_settings_open">Open Calls</string>
 </resources>

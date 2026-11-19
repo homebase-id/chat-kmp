@@ -30,6 +30,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.assets.Filesync
+import id.homebase.core.ui.assets.BootstrapChatOutlined
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.RssFeed
 import id.homebase.core.widget.SettingsRow
@@ -37,6 +38,8 @@ import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.nav_chats
+import id.homebase.resources.settings_chat_desc
 import id.homebase.resources.calls_home_subtitle
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.email_settings_section
@@ -63,6 +66,7 @@ import id.homebase.resources.webdrop_label
 import org.jetbrains.compose.resources.stringResource
 
 internal val AppsSettingsRowTags = listOf(
+    "chatSettingsButton",
     "feedSettingsButton",
     "momentsSettingsButton",
     "vaultSettingsButton",
@@ -109,6 +113,14 @@ internal fun AppsSettingsScreen(actions: AppsSettingsActions) {
             ) {
                 AppsGroup(stringResource(MR.string.settings_apps_section_pages)) {
                     SettingsRow(
+                        modifier = Modifier.testTag("chatSettingsButton"),
+                        icon = BootstrapChatOutlined,
+                        title = stringResource(MR.string.nav_chats),
+                        supportingText = stringResource(MR.string.settings_chat_desc),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Chat) },
+                    )
+                    SettingsRow(
                         modifier = Modifier.testTag("feedSettingsButton"),
                         icon = HomebaseIcons.RssFeed,
                         title = stringResource(MR.string.nav_feed),
@@ -140,16 +152,14 @@ internal fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         containerColor = rowColor,
                         action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Filesync) },
                     )
-                    if (actions.photobaseAvailable) {
-                        SettingsRow(
-                            modifier = Modifier.testTag("photobaseSettingsButton"),
-                            icon = Icons.Outlined.PhotoLibrary,
-                            title = stringResource(MR.string.photobase_label),
-                            supportingText = stringResource(MR.string.photobase_home_subtitle),
-                            containerColor = rowColor,
-                            action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Photobase) },
-                        )
-                    }
+                    SettingsRow(
+                        modifier = Modifier.testTag("photobaseSettingsButton"),
+                        icon = Icons.Outlined.PhotoLibrary,
+                        title = stringResource(MR.string.photobase_label),
+                        supportingText = stringResource(MR.string.photobase_home_subtitle),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Photobase) },
+                    )
                     SettingsRow(
                         modifier = Modifier.testTag("emailSettingsButton"),
                         icon = Icons.Outlined.MailOutline,
@@ -164,7 +174,7 @@ internal fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.webdrop_label),
                         supportingText = stringResource(MR.string.webdrop_home_subtitle),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.WebDrop) },
                     )
                     SettingsRow(
                         modifier = Modifier.testTag("locationSettingsButton"),
@@ -172,7 +182,7 @@ internal fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         title = stringResource(MR.string.location_settings_section),
                         supportingText = stringResource(MR.string.settings_location_desc),
                         containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onLocation),
+                        action = SettingsRowAction.Navigate { actions.onOpenPage(AppsPage.Location) },
                     )
                     SettingsRow(
                         modifier = Modifier.testTag("contactBookSettingsButton"),

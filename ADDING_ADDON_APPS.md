@@ -265,7 +265,10 @@ existing range. Current owners:
 | `0000...0a09xx` | `DeveloperPreferences` (profile card) |
 | `0000...0a0axx` | Filesync |
 | `0000...0a0bxx` | Profile card |
-| `0000...0a0cxx` | **next free** — claim it here when you take it |
+| `0000...0a0cxx` | Calls |
+| `0000...0a0dxx` | Bottom-bar defaults migration |
+| `0000...0a0exx` | Feed |
+| `0000...0a0fxx` | **next free** — claim it here when you take it |
 
 ---
 

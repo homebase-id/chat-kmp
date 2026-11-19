@@ -33,6 +33,13 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.widget.SettingsSectionHeader
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.ui.platform.testTag
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
+import id.homebase.resources.location_settings_open
 import id.homebase.resources.MR
 import id.homebase.resources.location_history_map_disclosure
 import id.homebase.resources.location_map_none
@@ -62,6 +69,8 @@ fun LocationContent(
     uiState: LocationUiState,
     innerPadding: PaddingValues,
     onAction: (LocationUiAction) -> Unit,
+    // Set on Settings → Apps, which leads into the app.
+    onOpenLocation: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -73,6 +82,43 @@ fun LocationContent(
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         Spacer(modifier = Modifier.height(0.dp))
+
+        onOpenLocation?.let { open ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                SettingsRow(
+                    modifier = Modifier.testTag("locationOpenButton"),
+                    icon = Icons.Outlined.LocationOn,
+                    title = stringResource(MR.string.location_settings_open),
+                    containerColor = CardDefaults.cardColors().containerColor,
+                    action = SettingsRowAction.Navigate(open),
+                )
+            }
+        }
+
+        // ── Display ──
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(MR.string.location_settings_show_icon),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = uiState.iconVisible,
+                    onCheckedChange = { onAction(LocationUiAction.SetIconVisible(it)) },
+                )
+            }
+        }
+
+        // Until Location is set up, its permissions wait for its own disclosure.
+        if (!uiState.activated) return@Column
+
 
         Text(
             text = stringResource(MR.string.location_settings_helper),
@@ -162,27 +208,6 @@ fun LocationContent(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp, top = 24.dp, end = 4.dp),
-                )
-            }
-        }
-
-        // ── Display ──
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(MR.string.location_settings_show_icon),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = uiState.iconVisible,
-                    onCheckedChange = { onAction(LocationUiAction.SetIconVisible(it)) },
                 )
             }
         }

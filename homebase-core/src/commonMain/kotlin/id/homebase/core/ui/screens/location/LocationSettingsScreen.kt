@@ -11,7 +11,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.location_settings_section
 import id.homebase.resources.location_settings_title
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
@@ -44,6 +46,28 @@ fun LocationSettingsScreen(
                 uiState = uiState,
                 innerPadding = innerPadding,
                 onAction = dispatch,
+            )
+        }
+    }
+}
+
+/** Location's page in Settings → Apps: its own settings, led by a way into the app. */
+@Composable
+fun LocationAppSettingsScreen(
+    viewModel: LocationViewModel,
+    onBack: () -> Unit,
+    onOpenLocation: () -> Unit,
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    LocationPermissionHost(viewModel = viewModel, uiState = uiState) { dispatch ->
+        Scaffold(
+            topBar = { SettingsTopBar(title = stringResource(MR.string.location_settings_section), onBack = onBack) },
+        ) { innerPadding ->
+            LocationContent(
+                uiState = uiState,
+                innerPadding = innerPadding,
+                onAction = dispatch,
+                onOpenLocation = onOpenLocation,
             )
         }
     }

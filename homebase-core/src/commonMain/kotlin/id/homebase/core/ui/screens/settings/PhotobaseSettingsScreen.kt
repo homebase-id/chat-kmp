@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +35,8 @@ import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.photobase.ui.PushIntervalRow
 import id.homebase.resources.MR
 import id.homebase.resources.photobase_label
+import id.homebase.resources.photobase_settings_in_testing
+import id.homebase.resources.photobase_settings_open
 import id.homebase.resources.settings_photobase_icon_desc
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -46,10 +49,16 @@ internal fun PhotobaseSettingsScreen(
     onBack: () -> Unit,
     // Null where photo backup doesn't exist: desktop and web.
     backup: PhotoBackupLinks?,
+    // False while the developer flag keeps Photos dark: the page only says how to turn it on.
+    available: Boolean,
+    // Null when the page was opened from Photos itself.
+    onOpenPhotos: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    if (backup == null) {
-        PhotobaseSettingsUi(uiState, viewModel::onAction, onBack, intervalRow = null, backupSection = null)
+    if (!available) {
+        PhotobaseInTestingUi(onBack)
+    } else if (backup == null) {
+        PhotobaseSettingsUi(uiState, viewModel::onAction, onBack, onOpenPhotos, intervalRow = null, backupSection = null)
     } else {
         PhotobaseSetupGate(onDismiss = onBack) {
             val photobaseViewModel: PhotobaseSettingsViewModel = koinViewModel()
@@ -58,6 +67,7 @@ internal fun PhotobaseSettingsScreen(
                 uiState = uiState,
                 onAction = viewModel::onAction,
                 onBack = onBack,
+                onOpenPhotos = onOpenPhotos,
                 intervalRow = { PushIntervalRow(photobaseUiState, photobaseViewModel::onAction) },
                 backupSection = {
                     BackupSettingsSection(
@@ -95,6 +105,7 @@ internal fun PhotobaseSettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     onBack: () -> Unit,
+    onOpenPhotos: (() -> Unit)?,
     intervalRow: (@Composable () -> Unit)?,
     backupSection: (@Composable () -> Unit)?,
 ) {
@@ -118,6 +129,15 @@ internal fun PhotobaseSettingsUi(
                     .clip(MaterialTheme.shapes.large),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
+                onOpenPhotos?.let { open ->
+                    SettingsRow(
+                        modifier = Modifier.testTag("photobaseOpenButton"),
+                        icon = Icons.Outlined.PhotoLibrary,
+                        title = stringResource(MR.string.photobase_settings_open),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(open),
+                    )
+                }
                 SettingsRow(
                     modifier = Modifier.testTag("photobaseIconToggle"),
                     icon = Icons.Outlined.PhotoLibrary,
@@ -134,5 +154,17 @@ internal fun PhotobaseSettingsUi(
                 Column(modifier = Modifier.widthIn(max = AppsContentMaxWidth).fillMaxWidth()) { section() }
             }
         }
+    }
+}
+
+@Composable
+internal fun PhotobaseInTestingUi(onBack: () -> Unit) {
+    SettingsDetailScaffold(title = stringResource(MR.string.photobase_label), onBack = onBack) {
+        Text(
+            text = stringResource(MR.string.photobase_settings_in_testing),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(16.dp).testTag("photobaseInTesting"),
+        )
     }
 }

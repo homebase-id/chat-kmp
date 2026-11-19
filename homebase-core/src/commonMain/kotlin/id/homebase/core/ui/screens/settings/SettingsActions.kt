@@ -23,8 +23,4 @@ data class SettingsActions(
 internal data class AppsSettingsActions(
     val onBack: () -> Unit,
     val onOpenPage: (AppsPage) -> Unit,
-    val onOpenWebDrop: () -> Unit,
-    val onLocation: () -> Unit,
-    /** False while Photobase is dark-launched off, which hides its row. */
-    val photobaseAvailable: Boolean,
 )

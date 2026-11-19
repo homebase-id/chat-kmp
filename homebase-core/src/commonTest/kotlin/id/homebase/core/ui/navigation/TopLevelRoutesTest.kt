@@ -40,6 +40,21 @@ class TopLevelRoutesTest {
         assertTrue(TopLevelRoute.Chat in routes(callsAvailable = false, callsIconVisible = false))
     }
 
+    @Test
+    fun feedFollowsItsSwitchWhileChatAndAppsAlwaysStay() {
+        val routes = topLevelRoutesFor(
+            callsAvailable = false,
+            callsIconVisible = false,
+            momentsVisible = false,
+            vaultVisible = false,
+            locationVisible = false,
+            contactBookVisible = false,
+            emailVisible = false,
+            feedVisible = false,
+        )
+        assertEquals(listOf(Route.ChatList, Route.Home), routes.map { it.route })
+    }
+
     // A nav-bar app missing from isTopLevelRoute() loses the rail and bottom tabs, stranding the user.
     @OptIn(ExperimentalTestApi::class)
     @Test

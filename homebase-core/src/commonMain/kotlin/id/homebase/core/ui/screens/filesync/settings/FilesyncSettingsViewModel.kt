@@ -24,6 +24,7 @@ class FilesyncSettingsViewModel(
 
     fun onAction(action: FilesyncSettingsUiAction) {
         when (action) {
+            FilesyncSettingsUiAction.OpenDriveClicked -> Unit
             is FilesyncSettingsUiAction.SetIconVisible ->
                 viewModelScope.launch { preferences.setIconVisible(action.visible) }
         }

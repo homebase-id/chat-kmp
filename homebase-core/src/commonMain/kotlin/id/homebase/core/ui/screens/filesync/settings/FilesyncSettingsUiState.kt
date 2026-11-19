@@ -5,5 +5,6 @@ data class FilesyncSettingsUiState(
 )
 
 sealed interface FilesyncSettingsUiAction {
+    data object OpenDriveClicked : FilesyncSettingsUiAction
     data class SetIconVisible(val visible: Boolean) : FilesyncSettingsUiAction
 }

@@ -8,6 +8,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
@@ -36,19 +38,10 @@ class AppsSettingsScreenTest {
     private val actions = AppsSettingsActions(
         onBack = { fired += "back" },
         onOpenPage = { fired += it.name },
-        onOpenWebDrop = { fired += "webdrop" },
-        onLocation = { fired += "location" },
-        photobaseAvailable = true,
     )
 
     private fun ComposeUiTest.apps(screenActions: AppsSettingsActions = actions) = setContent {
         MaterialTheme { AppsSettingsScreen(screenActions) }
-    }
-
-    @Test
-    fun aDarkPhotobaseHasNoRow() = runComposeUiTest {
-        apps(actions.copy(photobaseAvailable = false))
-        onNodeWithTag("photobaseSettingsButton").assertDoesNotExist()
     }
 
     private fun ComposeUiTest.tap(tag: String) {
@@ -56,11 +49,11 @@ class AppsSettingsScreenTest {
     }
 
     @Test
-    fun allTenRowsAreThereInOrder() = runComposeUiTest {
+    fun allElevenRowsAreThereInOrder() = runComposeUiTest {
         apps()
         assertEquals(
             listOf(
-                "feedSettingsButton", "momentsSettingsButton", "vaultSettingsButton", "filesyncSettingsButton", "photobaseSettingsButton",
+                "chatSettingsButton", "feedSettingsButton", "momentsSettingsButton", "vaultSettingsButton", "filesyncSettingsButton", "photobaseSettingsButton",
                 "emailSettingsButton", "webDropButton", "locationSettingsButton", "contactBookSettingsButton",
                 "callsSettingsButton",
             ),
@@ -86,7 +79,7 @@ class AppsSettingsScreenTest {
     @Test
     fun hasNoFeatureToggles() = runComposeUiTest {
         apps()
-        listOf("nativeFeedToggle", "filesyncIconToggle", "callsBetaToggle").forEach {
+        listOf("nativeFeedToggle", "feedIconToggle", "filesyncIconToggle", "callsBetaToggle").forEach {
             onNodeWithTag(it).assertDoesNotExist()
         }
     }
@@ -105,6 +98,7 @@ class AppsSettingsScreenTest {
             }
         }
         tap("nativeFeedToggle")
+        tap("feedIconToggle")
         page = 1
         tap("filesyncIconToggle")
         page = 2
@@ -112,6 +106,7 @@ class AppsSettingsScreenTest {
         assertEquals(
             listOf(
                 FeedSettingsUiAction.SetUseNativeFeed(false),
+                FeedSettingsUiAction.SetIconVisible(false),
                 FilesyncSettingsUiAction.SetIconVisible(false),
                 CallsSettingsUiAction.SetEnabled(true),
             ),
@@ -120,24 +115,25 @@ class AppsSettingsScreenTest {
     }
 
     @Test
-    fun theTenNavigationRowsCallTheirActions() = runComposeUiTest {
+    fun theElevenNavigationRowsOpenTheirPages() = runComposeUiTest {
         apps()
         listOf(
+            "chatSettingsButton" to "Chat",
             "feedSettingsButton" to "Feed",
             "momentsSettingsButton" to "Moments",
             "vaultSettingsButton" to "Vault",
             "filesyncSettingsButton" to "Filesync",
             "photobaseSettingsButton" to "Photobase",
             "emailSettingsButton" to "Email",
-            "webDropButton" to "webdrop",
-            "locationSettingsButton" to "location",
+            "webDropButton" to "WebDrop",
+            "locationSettingsButton" to "Location",
             "contactBookSettingsButton" to "Contacts",
             "callsSettingsButton" to "Calls",
         ).forEach { (tag, route) ->
             tap(tag)
             assertEquals(route, fired.last(), tag)
         }
-        assertEquals(10, fired.size)
+        assertEquals(11, fired.size)
     }
 
     @Test
@@ -145,5 +141,39 @@ class AppsSettingsScreenTest {
         apps()
         onNodeWithTag("appsSettingsBackButton").performClick()
         assertEquals(listOf("back"), fired)
+    }
+
+    @Test
+    fun eachPageStartsWithItsOpenRow() = runComposeUiTest {
+        var page by mutableStateOf(0)
+        setContent {
+            MaterialTheme {
+                when (page) {
+                    0 -> ChatSettingsUi(onBack = {}, onOpenChat = { fired += "open chat" })
+                    1 -> FeedSettingsUi(FeedSettingsUiState(), { if (it == FeedSettingsUiAction.OpenFeedClicked) fired += "open feed" }, {})
+                    2 -> FilesyncSettingsUi(FilesyncSettingsUiState(), { if (it == FilesyncSettingsUiAction.OpenDriveClicked) fired += "open drive" }, {})
+                    3 -> WebDropSettingsUi(onBack = {}, onOpenWebDrop = { fired += "open webdrop" })
+                    else -> CallsSettingsUi(CallsSettingsUiState(enabled = true), {}, {}, onOpenCalls = { fired += "open calls" })
+                }
+            }
+        }
+        listOf("chatOpenButton", "feedOpenButton", "filesyncOpenButton", "webDropOpenButton", "callsOpenButton").forEachIndexed { i, tag ->
+            page = i
+            waitForIdle()
+            tap(tag)
+        }
+        assertEquals(listOf("open chat", "open feed", "open drive", "open webdrop", "open calls"), fired)
+    }
+
+    @Test
+    fun chatCantLeaveTheNavigationBar() = runComposeUiTest {
+        setContent { MaterialTheme { ChatSettingsUi(onBack = {}, onOpenChat = {}) } }
+        onNodeWithTag("chatIconToggle").assertIsOn().assertIsNotEnabled()
+    }
+
+    @Test
+    fun callsOffHaveNothingToOpen() = runComposeUiTest {
+        setContent { MaterialTheme { CallsSettingsUi(CallsSettingsUiState(enabled = false), {}, {}, onOpenCalls = null) } }
+        onNodeWithTag("callsOpenButton").assertDoesNotExist()
     }
 }

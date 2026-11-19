@@ -392,7 +392,7 @@
     <string name="moments_empty_action">Tilføj et øjeblik</string>
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Åbn Moments</string>
-    <string name="moments_settings_show_icon">Vis Moments-ikonet i bundbjælken</string>
+    <string name="moments_settings_show_icon">Vis Moments i navigationslinjen</string>
     <string name="moments_create_action">Opret et nyt øjeblik</string>
     <string name="moments_post_open">Åbn øjeblik</string>
     <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
@@ -1065,7 +1065,7 @@
     <string name="vault_welcome">Velkommen til din Vault</string>
     <string name="vault_settings_section">Vault</string>
     <string name="vault_settings_open">Åbn Vault</string>
-    <string name="vault_settings_show_icon">Vis Vault-ikonet i bundbjælken</string>
+    <string name="vault_settings_show_icon">Vis Vault i navigationslinjen</string>
     <string name="vault_settings_biometrics">Biometrisk beskyttelse</string>
     <string name="vault_settings_biometrics_unavailable">Denne enhed kan ikke bekræfte din identitet, så Vault åbnes uden lås.</string>
     <string name="vault_biometric_prompt_title">Lås Vault op</string>
@@ -1417,7 +1417,7 @@
     <string name="location_onboarding_setup">Sæt det op</string>
     <string name="location_onboarding_dismiss">Ikke nu</string>
     <string name="location_settings_section">Lokation</string>
-    <string name="location_settings_show_icon">Vis Lokations-ikonet i bundbjælken</string>
+    <string name="location_settings_show_icon">Vis Lokation i navigationslinjen</string>
     <string name="location_map_section">Kort</string>
     <string name="location_map_none">Intet kort</string>
     <string name="location_map_osm">Open maps</string>
@@ -1764,7 +1764,7 @@
 
     <string name="contactbook_settings_section">Kontakter</string>
     <string name="contactbook_settings_open">Åbn Kontakter</string>
-    <string name="contactbook_settings_show_icon">Vis Kontakter-ikonet i bundbjælken</string>
+    <string name="contactbook_settings_show_icon">Vis Kontakter i navigationslinjen</string>
 
     <string name="contactbook_error_save">Kunne ikke gemme kontakten.</string>
     <string name="contactbook_error_forbidden">Kunne ikke gemme — denne app har ikke tilladelse til at administrere dine kontakter. Giv adgang igen ved at udvide tilladelserne i ejer konsollen, og prøv derefter igen.</string>
@@ -2223,7 +2223,7 @@
     <string name="email_settings_section">Mailopsætning</string>
     <string name="email_settings_security">Sikkerhed</string>
     <string name="email_settings_server">Server</string>
-    <string name="email_settings_show_icon">Vis ikonet for Mailopsætning i bundlinjen</string>
+    <string name="email_settings_show_icon">Vis Mailopsætning i navigationslinjen</string>
     <string name="email_settings_title">Indstillinger til mailapp</string>
     <string name="email_settings_username">Brugernavn</string>
     <string name="email_setup_action_resume">Gør opsætningen færdig</string>
@@ -2476,4 +2476,17 @@
     <string name="chat_contact_card_save_homebase_supporting">Gem dem i din Homebase</string>
     <string name="chat_contact_card_update_homebase_supporting">Opdater de gemte oplysninger</string>
     <string name="chat_contact_card_save_phone_supporting">Åbner telefonens Kontakter-app</string>
+    <!-- Settings → Apps: one page shape for every app -->
+    <string name="settings_chat_desc">Dine samtaler, og billederne og videoerne i dem</string>
+    <string name="chat_settings_open">Åbn Chats</string>
+    <string name="chat_settings_show_icon">Vis Chats i navigationslinjen</string>
+    <string name="chat_settings_icon_always">Chats bliver altid i navigationslinjen.</string>
+    <string name="feed_settings_open">Åbn Feed</string>
+    <string name="feed_settings_show_icon">Vis Feed i navigationslinjen</string>
+    <string name="filesync_settings_open">Åbn Drive</string>
+    <string name="photobase_settings_open">Åbn Photos</string>
+    <string name="photobase_settings_in_testing">Photos er stadig under test. Slå det til i Udviklermenu for at prøve det.</string>
+    <string name="webdrop_settings_open">Åbn WebDrop</string>
+    <string name="location_settings_open">Åbn Lokation</string>
+    <string name="calls_settings_open">Åbn Opkald</string>
 </resources>

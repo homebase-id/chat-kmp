@@ -61,10 +61,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 internal data class SettingsPaneActions(
-    val onOpenWebDrop: () -> Unit,
-    val onLocation: () -> Unit,
     val appsPageLinks: AppsPageLinks,
-    val photobaseAvailable: Boolean = false,
     val onNavigateToCropper: (Uuid) -> Unit,
     val onNavigateToDeveloperMenu: () -> Unit,
     val onNavigateToDefragmenter: () -> Unit,
@@ -291,9 +288,6 @@ private fun CategoryPage(
                     actions = AppsSettingsActions(
                         onBack = onDismiss,
                         onOpenPage = onSelectAppsPage,
-                        onOpenWebDrop = actions.onOpenWebDrop,
-                        onLocation = actions.onLocation,
-                        photobaseAvailable = actions.photobaseAvailable,
                     ),
                 )
             },
