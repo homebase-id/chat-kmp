@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class, NativeRuntimeApi::class)
+@file:OptIn(ExperimentalForeignApi::class)
 
 package id.homebase.core.diagnostics
 
@@ -17,20 +17,10 @@ import id.homebase.core.image.NativeImageDecoder
 import id.homebase.core.image.SkiaAnimatedImage
 import id.homebase.core.image.addNativeImageDecoders
 import id.homebase.core.image.encodedImageFetchResult
-import id.homebase.api.platform.processFootprintBytes
+import id.homebase.api.foundation.toByteArray
+import id.homebase.api.platform.peakFootprintGrowth
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.usePinned
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import platform.CoreFoundation.CFDataCreateMutable
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionarySetValue
@@ -61,141 +51,109 @@ import platform.ImageIO.CGImageDestinationFinalize
 import platform.ImageIO.kCGImagePropertyGIFDelayTime
 import platform.ImageIO.kCGImagePropertyGIFDictionary
 import platform.ImageIO.kCGImagePropertyOrientation
-import platform.posix.memcpy
-import kotlin.native.runtime.GC
-import kotlin.native.runtime.NativeRuntimeApi
 
-/**
- * What the app does with a Photos-library picture on screen: its encoded bytes, as PHAssetFetcher hands them over,
- * through the app's own decoder chain. The photos are drawn here with ImageIO, so every expected size, colour and
- * number is known. Runs in the app (iosAppTests in CI, the dev menu on a phone): a test binary can't link the app's
- * frameworks.
- */
+/** The on-screen decode of a Photos-library picture, measured in the app: a test binary can't link the app's frameworks. */
 object DisplayDecodeChecks {
     /** [run] for Swift, called back on a background thread. */
     fun runChecks(onDone: (CheckReport) -> Unit) {
-        CoroutineScope(Dispatchers.Default).launch { onDone(run()) }
+        launchChecks({ run() }, onDone)
     }
 
-    private val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
-        .components {
-            add(EncodedPhotoFetcher.Factory())
-            addNativeImageDecoders()
-        }
-        .memoryCache(null)
-        .diskCache(null)
-        .build()
-
-    suspend fun run(): CheckReport = withContext(Dispatchers.Default) {
-        val failures = mutableListOf<String>()
-        val measurements = mutableListOf<String>()
-        suspend fun verify(name: String, block: suspend () -> Unit) {
-            try {
-                block()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                failures += "$name: ${e.message ?: e}"
+    suspend fun run(): CheckReport = checkRun {
+        val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
+            .components {
+                add(EncodedPhotoFetcher.Factory())
+                addNativeImageDecoders()
             }
+            .memoryCache(null)
+            .diskCache(null)
+            .build()
+        val big = quadrants(8064, 6048)
+        val photos = try {
+            listOf(JPEG, HEIC, PNG).associateWith { encode(it, listOf(big)) }
+        } finally {
+            CGImageRelease(big)
         }
-        verify("the meter sees a full-size decode") { theMeterSeesAFullSizeDecode(measurements) }
-        verify("a 48 MP photo becomes a thumbnail without a full-size bitmap") { fortyEightMegapixelThumbnails(measurements) }
-        verify("a PNG is sized too") { aPngIsSizedToo(measurements) }
-        verify("every EXIF orientation shows upright") { everyExifOrientationShowsUpright() }
-        verify("an animated GIF stays animated") { anAnimatedGifStaysAnimated() }
-        CheckReport(failures, measurements)
+        verify("the meter sees a full-size decode") { theMeterSeesAFullSizeDecode(photos.getValue(JPEG)) }
+        verify("a 48 MP photo becomes a thumbnail without a full-size bitmap") {
+            for (type in listOf(JPEG, HEIC)) thumbnailWithoutAFullSizeBitmap(loader, type, photos.getValue(type))
+        }
+        verify("a PNG is sized too") { aPngIsSizedToo(loader, photos.getValue(PNG)) }
+        verify("every EXIF orientation shows upright") { everyExifOrientationShowsUpright(loader) }
+        verify("an animated GIF stays animated") { anAnimatedGifStaysAnimated(loader) }
     }
 
-    private suspend fun theMeterSeesAFullSizeDecode(measurements: MutableList<String>) {
-        val photo = bytesOf(fortyEightMegapixel(JPEG))
-        val (image, growthMb) = peakGrowthMb { NativeImageDecoder.decodeThumbnail(photo) { w, h -> maxOf(w, h) } }
+    private suspend fun CheckRun.theMeterSeesAFullSizeDecode(jpeg: NSData) {
+        val bytes = jpeg.toByteArray()
+        val (image, growth) = peakFootprintGrowth { NativeImageDecoder.decodeThumbnail(bytes) { w, h -> maxOf(w, h) } }
         image?.close()
-        measurements += "full-size decode of a 48 MP JPEG: peak +$growthMb MB"
+        val growthMb = growth / MB
+        measured("full-size decode of a 48 MP JPEG: peak +$growthMb MB")
         check(growthMb >= FULL_BITMAP_MB * 3 / 4) { "a full-size 48 MP decode grew memory by only $growthMb MB; the meter can't be trusted" }
     }
 
-    private suspend fun fortyEightMegapixelThumbnails(measurements: MutableList<String>) {
-        for (type in listOf(JPEG, HEIC)) {
-            val photo = fortyEightMegapixel(type)
-            val (image, growthMb) = peakGrowthMb { display(photo, THUMB_PX) }
-            measurements += "$type 48 MP for a $THUMB_PX px thumbnail: ${image.width}x${image.height}, peak +$growthMb MB"
-            check(maxOf(image.width, image.height) == THUMB_PX) { "$type thumbnail is ${image.width}x${image.height}" }
-            check(growthMb < FULL_BITMAP_MB / 2) {
-                "$type: a $THUMB_PX px thumbnail grew memory by $growthMb MB; a full-size bitmap is $FULL_BITMAP_MB MB"
-            }
+    private suspend fun CheckRun.thumbnailWithoutAFullSizeBitmap(loader: ImageLoader, type: String, photo: NSData) {
+        val (image, growth) = peakFootprintGrowth { display(loader, photo, THUMB_PX) }
+        val growthMb = growth / MB
+        measured("$type 48 MP for a $THUMB_PX px thumbnail: ${image.width}x${image.height}, peak +$growthMb MB")
+        check(maxOf(image.width, image.height) == THUMB_PX) { "$type thumbnail is ${image.width}x${image.height}" }
+        check(growthMb < FULL_BITMAP_MB / 2) {
+            "$type: a $THUMB_PX px thumbnail grew memory by $growthMb MB; a full-size bitmap is $FULL_BITMAP_MB MB"
         }
     }
 
-    private suspend fun aPngIsSizedToo(measurements: MutableList<String>) {
-        val photo = fortyEightMegapixel(PNG)
-        val (image, growthMb) = peakGrowthMb { display(photo, THUMB_PX) }
-        // Recorded, not bounded: Coil's own Skia decoder takes a PNG and may decode it in full first.
-        measurements += "PNG 48 MP for a $THUMB_PX px thumbnail: ${image.width}x${image.height}, peak +$growthMb MB"
+    private suspend fun CheckRun.aPngIsSizedToo(loader: ImageLoader, png: NSData) {
+        val (image, growth) = peakFootprintGrowth { display(loader, png, THUMB_PX) }
+        // Recorded, not bounded: Coil's own Skia decoder takes a PNG and decodes it in full first.
+        measured("PNG 48 MP for a $THUMB_PX px thumbnail: ${image.width}x${image.height}, peak +${growth / MB} MB")
         check(maxOf(image.width, image.height) == THUMB_PX) { "PNG thumbnail is ${image.width}x${image.height}" }
     }
 
-    private suspend fun everyExifOrientationShowsUpright() {
+    private suspend fun everyExifOrientationShowsUpright(loader: ImageLoader) {
         val source = quadrants(400, 300)
         val failures = mutableListOf<String>()
-        for (type in listOf(JPEG, HEIC)) {
-            for ((orientation, expected) in UPRIGHT) {
-                val image = display(encode(type, listOf(source), orientation), 200)
-                val (w, h) = if (orientation >= 5) 150 to 200 else 200 to 150
-                if (image.width != w || image.height != h) {
-                    failures += "$type orientation $orientation: ${image.width}x${image.height}, expected ${w}x$h"
-                    continue
-                }
-                val bitmap = checkNotNull(image as? BitmapImage) { "$type orientation $orientation: not a bitmap" }.bitmap
-                Corner.entries.forEachIndexed { i, displayed ->
-                    val x = if (displayed == Corner.TL || displayed == Corner.BL) w / 4 else w * 3 / 4
-                    val y = if (displayed == Corner.TL || displayed == Corner.TR) h / 4 else h * 3 / 4
-                    val shown = nearest(bitmap.getColor(x, y))
-                    if (shown != expected[i]) failures += "$type orientation $orientation: $displayed shows ${shown ?: "no known colour"}, expected ${expected[i]}"
+        try {
+            for (type in listOf(JPEG, HEIC)) {
+                for ((orientation, expected) in UPRIGHT) {
+                    val image = display(loader, encode(type, listOf(source), orientation), 200)
+                    val (w, h) = if (orientation >= 5) 150 to 200 else 200 to 150
+                    val bitmap = (image as? BitmapImage)?.bitmap
+                    if (bitmap == null || image.width != w || image.height != h) {
+                        failures += "$type orientation $orientation: ${image.width}x${image.height} ${image::class.simpleName}, expected a ${w}x$h bitmap"
+                        continue
+                    }
+                    Corner.entries.forEachIndexed { i, displayed ->
+                        val x = if (displayed == Corner.TL || displayed == Corner.BL) w / 4 else w * 3 / 4
+                        val y = if (displayed == Corner.TL || displayed == Corner.TR) h / 4 else h * 3 / 4
+                        val shown = nearest(bitmap.getColor(x, y))
+                        if (shown != expected[i]) failures += "$type orientation $orientation: $displayed shows ${shown ?: "no known colour"}, expected ${expected[i]}"
+                    }
                 }
             }
+        } finally {
+            CGImageRelease(source)
         }
-        CGImageRelease(source)
         check(failures.isEmpty()) { failures.joinToString("; ") }
     }
 
-    private suspend fun anAnimatedGifStaysAnimated() {
+    private suspend fun anAnimatedGifStaysAnimated(loader: ImageLoader) {
         val first = quadrants(40, 30)
         val second = quadrants(40, 30, Corner.entries.reversed())
-        val image = display(encode(GIF, listOf(first, second)), 200)
-        CGImageRelease(first)
-        CGImageRelease(second)
+        val gif = try {
+            encode(GIF, listOf(first, second))
+        } finally {
+            CGImageRelease(first)
+            CGImageRelease(second)
+        }
+        val image = display(loader, gif, 200)
         check(image is SkiaAnimatedImage) { "a two-frame GIF decoded to ${image::class.simpleName}, not the animated decoder's image" }
     }
 
-    private suspend fun display(photo: NSData, px: Int): Image {
+    private suspend fun display(loader: ImageLoader, photo: NSData, px: Int): Image {
         val request = ImageRequest.Builder(PlatformContext.INSTANCE).data(EncodedPhoto(photo)).size(px).build()
         return when (val result = loader.execute(request)) {
             is SuccessResult -> result.image
             is ErrorResult -> throw IllegalStateException("decode failed: ${result.throwable}", result.throwable)
-        }
-    }
-
-    private suspend fun <T> peakGrowthMb(block: suspend () -> T): Pair<T, Long> = coroutineScope {
-        GC.collect()
-        val base = processFootprintBytes()
-        var peak = base
-        val sampler = launch(Dispatchers.Default) {
-            while (isActive) {
-                peak = maxOf(peak, processFootprintBytes())
-                delay(1)
-            }
-        }
-        val value = try { block() } finally { sampler.cancelAndJoin() }
-        peak = maxOf(peak, processFootprintBytes())
-        value to (peak - base) / MB
-    }
-
-    private fun fortyEightMegapixel(type: String): NSData {
-        val image = quadrants(8064, 6048)
-        try {
-            return encode(type, listOf(image))
-        } finally {
-            CGImageRelease(image)
         }
     }
 
@@ -278,12 +236,6 @@ object DisplayDecodeChecks {
         val value = CFBridgingRetain(number)
         CFDictionarySetValue(dictionary, key, value)
         CFRelease(value)
-    }
-
-    private fun bytesOf(data: NSData): ByteArray {
-        val bytes = ByteArray(data.length.toInt())
-        bytes.usePinned { memcpy(it.addressOf(0), data.bytes, data.length) }
-        return bytes
     }
 
     private const val JPEG = "public.jpeg"

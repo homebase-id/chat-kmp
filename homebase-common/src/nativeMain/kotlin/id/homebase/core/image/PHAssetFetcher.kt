@@ -11,9 +11,8 @@ import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.size.Dimension
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.suspendCancellableCoroutine
+import id.homebase.api.foundation.toByteArray
 import okio.Buffer
 import okio.FileSystem
 import platform.CoreGraphics.CGSizeMake
@@ -26,7 +25,6 @@ import platform.Photos.PHImageRequestOptions
 import platform.Photos.PHImageRequestOptionsDeliveryModeHighQualityFormat
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
-import platform.posix.memcpy
 import kotlin.coroutines.resume
 
 /**
@@ -145,10 +143,7 @@ class PHAssetFetcher(
 @OptIn(ExperimentalForeignApi::class)
 internal fun encodedImageFetchResult(nsData: NSData, fileSystem: FileSystem): FetchResult? {
     if (nsData.length == 0uL) return null
-    val bytes = ByteArray(nsData.length.toInt())
-    bytes.usePinned { pinned ->
-        memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
-    }
+    val bytes = nsData.toByteArray()
     return SourceFetchResult(
         source = ImageSource(Buffer().apply { write(bytes) }, fileSystem),
         mimeType = contentTypeFromBytes(bytes),

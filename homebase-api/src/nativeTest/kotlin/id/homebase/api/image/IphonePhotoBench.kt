@@ -3,14 +3,10 @@
 package id.homebase.api.image
 
 import id.homebase.api.file.IOSFileOperationsProvider
-import id.homebase.api.platform.processFootprintBytes
+import id.homebase.api.platform.peakFootprintGrowth
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.toKString
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSString
@@ -18,8 +14,6 @@ import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
 import platform.Foundation.writeToFile
 import platform.posix.getenv
-import kotlin.native.runtime.GC
-import kotlin.native.runtime.NativeRuntimeApi
 import kotlin.test.Test
 import kotlin.time.TimeSource
 
@@ -29,7 +23,6 @@ import kotlin.time.TimeSource
  * table goes to results-<IMAGE_BENCH_LABEL>.md in that folder. How to run it is in OPTIMIZE.md.
  */
 class IphonePhotoBench {
-    @OptIn(NativeRuntimeApi::class)
     @Test
     fun measure() {
         val dir = getenv("IMAGE_BENCH_DIR")?.toKString() ?: return
@@ -50,16 +43,11 @@ class IphonePhotoBench {
                 val outputs = (warmUp.thumbnails.map { "${it.pixelWidth}x${it.pixelHeight}" } +
                     listOfNotNull(warmUp.finalImage?.let { "${it.width}x${it.height} final" })).joinToString(", ")
                 val samples = List(3) {
-                    GC.collect()
-                    val base = processFootprintBytes()
-                    var peak = base
-                    val sampler = launch { while (isActive) { peak = maxOf(peak, processFootprintBytes()); delay(1) } }
-                    val started = TimeSource.Monotonic.markNow()
-                    createMediaImages(path, ops, "bench", setting)
-                    val elapsed = started.elapsedNow().inWholeMilliseconds
-                    sampler.cancelAndJoin()
-                    peak = maxOf(peak, processFootprintBytes())
-                    elapsed to (peak - base)
+                    peakFootprintGrowth {
+                        val started = TimeSource.Monotonic.markNow()
+                        createMediaImages(path, ops, "bench", setting)
+                        started.elapsedNow().inWholeMilliseconds
+                    }
                 }
                 val source = "${warmUp.displayedSize.pixelWidth}x${warmUp.displayedSize.pixelHeight}"
                 val time = samples.map { it.first }.sorted()[1]
