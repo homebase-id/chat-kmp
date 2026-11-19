@@ -214,6 +214,7 @@ import id.homebase.core.ui.screens.settings.AppsPage
 import id.homebase.core.ui.screens.settings.AppsPageContent
 import id.homebase.core.ui.screens.settings.AppsPageLinks
 import id.homebase.core.ui.screens.settings.appRoute
+import id.homebase.core.ui.screens.settings.of
 import id.homebase.core.ui.screens.settings.AppsSettingsActions
 import id.homebase.core.ui.screens.settings.appsPage
 import id.homebase.core.ui.screens.settings.route
@@ -1052,15 +1053,16 @@ fun AppNavHost(
                                     icon = Icons.Outlined.Settings,
                                     contentDescription = stringResource(MR.string.settings),
                                     onClick = {
-                                        // From Chat, Settings opens on Chat's own page.
-                                        val inChat = selectedTab?.hasRoute(Route.ChatList::class) == true
+                                        // From inside an app, Settings opens on that app's own page; the screen shown
+                                        // first (WebDrop has no tab), then its tab.
+                                        val page = AppsPage.of(currentDestination) ?: AppsPage.of(selectedTab)
                                         when {
-                                            !inChat -> navController.navigate(Route.Settings)
+                                            page == null -> navController.navigate(Route.Settings)
                                             settingsIsPane -> {
-                                                SettingsPaneRequest.open(SettingsCategory.Apps, AppsPage.Chat)
+                                                SettingsPaneRequest.open(SettingsCategory.Apps, page)
                                                 navController.navigate(Route.Settings)
                                             }
-                                            else -> navController.navigate(AppsPage.Chat.route)
+                                            else -> navController.navigate(page.route)
                                         }
                                     },
                                 )

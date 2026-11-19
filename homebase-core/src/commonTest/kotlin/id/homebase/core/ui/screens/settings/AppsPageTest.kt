@@ -102,4 +102,25 @@ class AppsPageTest {
             onNodeWithTag(tag).assertExists()
         }
     }
+
+    @Test
+    fun eachAppsMainScreenLeadsToItsOwnSettingsPage() = runComposeUiTest {
+        lateinit var nav: NavHostController
+        setContent {
+            nav = rememberNavController()
+            NavHost(nav, startDestination = Route.Home) {
+                composable<Route.Home> { Text("") }
+                composable<Route.ChatList> { Text("") }
+                composable<Route.Moments> { Text("") }
+                composable<Route.WebDrop> { Text("") }
+            }
+        }
+        assertEquals(null, AppsPage.of(nav.currentDestination))
+        listOf(Route.ChatList to AppsPage.Chat, Route.Moments to AppsPage.Moments, Route.WebDrop to AppsPage.WebDrop).forEach { (route, page) ->
+            runOnIdle { nav.navigate(route) }
+            waitForIdle()
+            assertEquals(page, AppsPage.of(nav.currentDestination))
+        }
+        assertEquals(AppsPage.entries.size, AppsPage.entries.map { it.appRoute }.toSet().size)
+    }
 }
