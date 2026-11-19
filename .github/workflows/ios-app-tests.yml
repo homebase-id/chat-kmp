@@ -84,6 +84,8 @@ jobs:
           xcrun simctl privacy "$udid" grant photos id.homebase.feed.dev
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
 
+      # Signed ad hoc, not unsigned: without its entitlements the app gets no Keychain (OSStatus -34018), so its
+      # database can't open and launch crashes before any test runs.
       - name: Run iosAppTests
         run: |
           set -o pipefail
@@ -95,7 +97,7 @@ jobs:
             -destination "id=$SIM_UDID" \
             -resultBundlePath build/iosAppTests.xcresult \
             -only-testing:iosAppTests/PhotoLibraryCheckTests \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
             | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|error:|failed|passed|\*\* TEST"
         env:
           JDK_21: ${{ env.JAVA_HOME }}
