@@ -34,7 +34,7 @@ class ImagePipelinePerfBench {
             pixels.recycle()
             log("${width}x$height JPEG ${jpeg.size / 1024} KB, HEIC ${heic.size / 1024} KB")
             for ((format, bytes) in listOf("JPEG" to jpeg, "HEIC" to heic)) {
-                for (quality in listOf(MediaQuality.STANDARD, MediaQuality.HD)) {
+                for (quality in listOf(MediaQuality.STANDARD, MediaQuality.HD, MediaQuality.ORIGINAL)) {
                     measure("createMediaImages ${width}x$height $format ${quality.name}") { createMediaImages(bytes, "bench", quality) }
                 }
             }
