@@ -1551,7 +1551,13 @@ val appModule = module {
             scope = get<kotlinx.coroutines.CoroutineScope>(),
         )
     }
-    viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier), get<PhotobaseUninstallCleanup>()::onNotInstalled) }
+    viewModel {
+        PhotobaseSetupViewModel(
+            get(PhotobasePermissionQualifier),
+            get<PhotobaseUninstallCleanup>()::onNotInstalled,
+            get<PhotoBackupController>().takeIf { it.isSupported },
+        )
+    }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel {
