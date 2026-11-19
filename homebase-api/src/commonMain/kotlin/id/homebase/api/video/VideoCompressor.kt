@@ -15,8 +15,7 @@ interface VideoCompressor {
      * `[trimStartMs, trimEndMs]`. Returns the path of the re-encoded output — always a new
      * file, never the input. A failure throws [VideoCompressionFailedException]; there is no
      * fall-back-to-input, which would defeat the 8-bit pin. [keepMetadata] is the app's policy:
-     * the source's location and capture time are copied, or dropped. iOS keeps only the location:
-     * AVAssetWriter can't write a capture time into an MP4.
+     * the source's location and capture time are copied, or dropped.
      *
      * Every platform's output: an MP4 of 8-bit SDR H.264 (HDR is tone-mapped or relabelled), with AAC audio when the
      * source has audio; frames upright with no rotation flag, since an HLS stream can't carry one; the short edge

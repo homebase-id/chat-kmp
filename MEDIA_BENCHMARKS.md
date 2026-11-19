@@ -291,7 +291,7 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
 
 - **iOS compresses with an AVFoundation reader and writer, not an export session** (2026-11-19).
   - **Why:** `AVAssetExportSession` has no bitrate setting. Its presets encoded Standard (720p) at about 8 Mbps, 3.2× the 2.5 Mbps target, on every size preset; iPhone videos would be 3× Android's and cross the 5 MB HLS line sooner. The reader/writer asks the hardware encoder for the same bitrate as Media3 (`hardwareVideoBitrate`) and lands on it.
-  - **Also learned:** the size presets don't override a video composition's `renderSize`, so they weren't the problem; a rotation written by ffmpeg has no translation and must be moved back onto the canvas, or the picture is blank; AVAssetWriter can't write a capture time into an MP4, so a kept video keeps its location but not its capture time.
+  - **Also learned:** the size presets don't override a video composition's `renderSize`, so they weren't the problem; a rotation written by ffmpeg has no translation and must be moved back onto the canvas, or the picture is blank; in an MP4, AVAssetWriter writes a kept location and capture time as 3GPP `loci` and `date` boxes, not Apple's keys.
   - **Reopen** if Apple adds a bitrate setting to export sessions.
 ## History
 

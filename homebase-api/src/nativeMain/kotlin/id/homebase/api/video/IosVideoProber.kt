@@ -65,7 +65,7 @@ internal object IosVideoProber : VideoProber {
         VideoTrackInfo(info?.first, width, height, info?.second, info?.third)
     }
 
-    // AVFoundation opens MP4, MOV, M4V and 3GP; MKV, WebM and AVI it refuses.
+    // AVFoundation opens MP4, MOV, M4V, 3GP and AVI; MKV and WebM it refuses.
     override fun canRead(contentType: String): Boolean =
         contentType.startsWith("video/") && AVURLAsset.isPlayableExtendedMIMEType(contentType)
 

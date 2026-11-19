@@ -22,11 +22,19 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import platform.AVFoundation.AVURLAsset
+import platform.AVFoundation.creationDate
+import platform.AVFoundation.dateValue
 import platform.Foundation.NSFileManager
+import platform.Foundation.timeIntervalSince1970
 import platform.posix.getenv
 
 /** [IosVideoCompressor] on the simulator's AVFoundation, with the clips Android's `Media3VideoCompressorTest` uses. */
 class IosVideoCompressorTest {
+    private companion object {
+        const val CAPTURED_AT = 1_767_323_045L // 2026-01-02T03:04:05Z, the fixture's capture time
+    }
+
     private val fileOps = IosVideoCompressor.fileOps
     private val clips = checkNotNull(getenv("TEST_VIDEOS")?.toKString()) { "TEST_VIDEOS isn't set: run through Gradle" }
 
@@ -90,12 +98,19 @@ class IosVideoCompressorTest {
     }
 
     @Test
-    fun keepingMetadataKeepsTheLocation() = runBlocking<Unit> {
+    fun keepingMetadataKeepsTheLocationAndCaptureTime() = runBlocking<Unit> {
         compressed("landscape_1080p_gps.mp4", keep = true) { out ->
             val location = assertNotNull(MediaMetadataReader(fileOps).videoLocation(out))
             assertTrue(abs(location.latitude - 59.9139) < 1e-4 && abs(location.longitude - 10.7522) < 1e-4, "location $location")
+            assertEquals(CAPTURED_AT, captureTime(out))
+        }
+        compressed("landscape_1080p_gps.mp4") { out ->
+            assertNotEquals(CAPTURED_AT, captureTime(out), "a stripped video must not carry its capture time")
         }
     }
+
+    private fun captureTime(path: String) =
+        AVURLAsset.URLAssetWithURL(fileUrl(path), null).creationDate?.dateValue?.timeIntervalSince1970?.toLong()
 
     @Test
     fun eachQualitySettingGivesItsSizeAndAboutItsBitrate() = runBlocking<Unit> {
@@ -158,8 +173,9 @@ class IosVideoCompressorTest {
     fun onlyFormatsAvFoundationOpensAreCompressed() {
         assertTrue(IosVideoProber.canRead("video/mp4"))
         assertTrue(IosVideoProber.canRead("video/quicktime"))
+        assertTrue(IosVideoProber.canRead("video/x-msvideo"))
         assertFalse(IosVideoProber.canRead("video/x-matroska"))
-        assertFalse(IosVideoProber.canRead("video/x-msvideo"))
+        assertFalse(IosVideoProber.canRead("video/webm"))
         assertFalse(IosVideoProber.canRead("image/jpeg"))
     }
 }

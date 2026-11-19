@@ -576,7 +576,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 **Original video is only for Photos** (decided by the team, 2026-11-14). An untouched video may not play on every client (an iPhone's HEVC, often 10-bit HDR) and has to download whole before it plays, so a sent video is always a transcode. A backup that isn't the original isn't a backup, so Photos at Original keeps the user's file and adds a copy to play; download, save and restore get the original (UPLOADS.md section 3.6). Vault videos are HD, with no setting.
 
-**Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata, and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them. On iOS a kept re-encode has the location but not the capture time: AVAssetWriter can't write one into an MP4. The library never decides; each app does.
+**Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata, and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them. The library never decides; each app does.
 
 A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source's `moov` box, skipping the media (`MediaMetadataReader.videoLocation`, common code: Apple's ISO 6709 key and the `©xyz` atom Android writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
 
@@ -601,9 +601,9 @@ iOS compresses with AVFoundation (`IosVideoCompressor`): an `AVAssetReader` whos
 - **Not an export session.** `AVAssetExportSession` has no bitrate setting: its presets encode 720p at about 8 Mbps, about 3× Standard's 2.5 Mbps (MEDIA_BENCHMARKS.md), so iPhone videos would be 3× Android's and cross the 5 MB HLS line sooner.
 - **Portrait.** Upright frames, no rotation flag. A rotation written by ffmpeg has no translation, so the frame is moved back onto the canvas; without that the picture is blank.
 - **Audio.** Plain AAC-LC with up to two channels is copied, as on Android; anything else (an iPhone's spatial-audio track isn't the first audio track, so it isn't read) is re-encoded to AAC-LC at the quality's bitrate.
-- **Location.** AVFoundation can't read a location ffmpeg wrote, so a kept location is read by `MediaMetadataReader` and written as Apple's ISO 6709 key, as Media3 does. The capture time isn't kept (above).
+- **Location and capture time.** AVFoundation can't read a location ffmpeg or Android wrote, so a kept location is read by `MediaMetadataReader`; AVAssetWriter writes it, with the capture time, as 3GPP's `loci` and `date` boxes, which the shared reader also reads.
 - **HLS.** Our segmenter, as on Android.
-- **Formats it can't open** (MKV, WebM, AVI) are sent as files, not videos (UPLOADS.md 3.1).
+- **Formats it can't open** (MKV, WebM) are sent as files, not videos (UPLOADS.md 3.1).
 
 ## How others do it
 

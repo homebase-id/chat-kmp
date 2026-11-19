@@ -82,6 +82,7 @@ import platform.AVFoundation.AVVideoTransferFunction_ITU_R_709_2
 import platform.AVFoundation.AVVideoWidthKey
 import platform.AVFoundation.AVVideoYCbCrMatrixKey
 import platform.AVFoundation.AVVideoYCbCrMatrix_ITU_R_709_2
+import platform.AVFoundation.creationDate
 import platform.AVFoundation.duration
 import platform.AVFoundation.estimatedDataRate
 import platform.AVFoundation.formatDescriptions
@@ -142,10 +143,11 @@ internal object IosVideoCompressor : VideoCompressor {
             "${fileOps.scratchDir(AppCacheDirs.MEDIA_WORK)}/compressed_${Uuid.random()}.mp4"
         }
         val trim = if (trimStartMs != null && trimEndMs != null) trimStartMs to trimEndMs else null
+        // AVFoundation can't see a location ffmpeg or Android wrote, so the shared reader finds it.
         val location = if (keepMetadata) MediaMetadataReader(fileOps).videoLocation(input) else null
         val started = TimeSource.Monotonic.markNow()
         try {
-            Export(input, output, quality.targets(), trim, location).run(onProgress)
+            Export(input, output, quality.targets(), trim, keepMetadata, location).run(onProgress)
         } catch (e: Exception) {
             fileOps.deleteTempFile(output)
             if (e is CancellationException || e is VideoCompressionFailedException) throw e
@@ -167,6 +169,7 @@ internal object IosVideoCompressor : VideoCompressor {
         private val output: String,
         private val targets: QualityTargets,
         private val trim: Pair<Long, Long>?,
+        private val keepMetadata: Boolean,
         private val location: MediaLocation?,
     ) {
         private val asset = AVURLAsset.URLAssetWithURL(fileUrl(input), null)
@@ -192,11 +195,17 @@ internal object IosVideoCompressor : VideoCompressor {
                 reader.addOutput(pump.output)
                 writer.addInput(pump.input)
             }
-            location?.let { place ->
-                writer.metadata = listOf(AVMutableMetadataItem().apply {
-                    setIdentifier(AVMetadataIdentifierQuickTimeMetadataLocationISO6709)
-                    setValue(NSString.create(string = place.toIso6709()))
-                })
+            // In an MP4 these become 3GPP's loci and date boxes.
+            if (keepMetadata) {
+                writer.metadata = listOfNotNull(
+                    location?.let { place ->
+                        AVMutableMetadataItem().apply {
+                            setIdentifier(AVMetadataIdentifierQuickTimeMetadataLocationISO6709)
+                            setValue(NSString.create(string = place.toIso6709()))
+                        }
+                    },
+                    asset.creationDate,
+                )
             }
 
             if (!writer.startWriting()) fail("writer didn't start", writer.error)

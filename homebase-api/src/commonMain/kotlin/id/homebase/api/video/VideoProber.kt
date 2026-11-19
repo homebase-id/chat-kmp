@@ -34,7 +34,7 @@ interface VideoProber {
 
     /**
      * Whether [contentType] is a video this platform can compress, decided from the type alone so a failed read can't
-     * change the answer. False for anything not `video/`, and for videos the platform can't open (MKV, WebM, AVI on
+     * change the answer. False for anything not `video/`, and for videos the platform can't open (MKV and WebM on
      * iOS), which are sent as plain files (UPLOADS.md 3.1).
      */
     fun canRead(contentType: String): Boolean
