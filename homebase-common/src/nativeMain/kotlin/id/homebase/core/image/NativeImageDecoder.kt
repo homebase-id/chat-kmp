@@ -64,11 +64,8 @@ import platform.UIKit.UIImage
 import org.jetbrains.skia.Image as SkiaImage
 
 /**
- * Decodes image bytes (including HEIC/HEIF) to a Skia Image using iOS native APIs.
- *
- * Pipeline: ByteArray → NSData → UIImage → CGBitmapContext (BGRA) → Skia Image.
- * UIImage.drawInRect applies EXIF orientation automatically, so the returned
- * image is always orientation-normalized. No intermediate JPEG encoding.
+ * Decodes images (including HEIC/HEIF) to orientation-normalized Skia Images using iOS
+ * native APIs, rasterized through a CGBitmapContext (BGRA).
  *
  * Follows the same CGBitmapContext → Skia pixel pattern used by PdfRenderer.
  */
@@ -77,20 +74,6 @@ object NativeImageDecoder {
     // Max pixel buffer size to prevent Int overflow in bytesPerRow * height.
     // ~512 MP (e.g. 23170×23170) — well above any real camera output.
     private const val MAX_PIXEL_BYTES = Int.MAX_VALUE.toLong()
-
-    fun decode(imageBytes: ByteArray): SkiaImage? {
-        if (imageBytes.isEmpty()) return null
-
-        val nsData = imageBytes.usePinned { pinned ->
-            NSData.dataWithBytes(pinned.addressOf(0), imageBytes.size.toULong())
-        }
-        return decode(nsData)
-    }
-
-    fun decode(nsData: NSData): SkiaImage? {
-        val uiImage = UIImage.imageWithData(nsData) ?: return null
-        return decodeUIImage(uiImage)
-    }
 
     /**
      * Decodes straight to an orientation-normalized image whose longer edge is at most the

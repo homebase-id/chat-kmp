@@ -3,24 +3,18 @@ package id.homebase.core.image
 import id.homebase.api.file.contentTypeFromBytes
 import coil3.ImageLoader
 import coil3.Uri
-import coil3.asImage
 import coil3.decode.DataSource
 import coil3.decode.ImageSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
-import coil3.fetch.ImageFetchResult
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.size.Dimension
-import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okio.Buffer
-import org.jetbrains.skia.Bitmap
-import org.jetbrains.skia.Canvas
-import org.jetbrains.skia.impl.use
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSData
 import platform.Photos.PHAsset
@@ -37,8 +31,8 @@ import kotlin.coroutines.resume
 /**
  * Coil Fetcher for loading iOS PHAsset thumbnails / images.
  *
- * Accepts URIs of the form `ph://localIdentifier`. For images, uses the binary asset
- * data path (preserves orientation). For VIDEO assets, uses requestImageForAsset which
+ * Accepts URIs of the form `ph://localIdentifier`. For images, hands the asset's current
+ * (edited) encoded data to the decoder chain. For VIDEO assets, uses requestImageForAsset which
  * extracts a representative frame — `requestImageDataAndOrientationForAsset` returns
  * nothing for videos.
  */
@@ -121,64 +115,23 @@ class PHAssetFetcher(
             }
         } ?: return null
 
-        // Convert UIImage → JPEG bytes → Skia Image. We pay one JPEG encode per frame
-        // so the rest of the Coil pipeline can decode like any other image.
+        // One JPEG encode per frame so the Coil decoder chain can decode it like any other image.
         val jpegData = UIImageJPEGRepresentation(uiImage, 0.85) ?: return null
         return imageFromNSData(jpegData)
     }
 
+    // Encoded bytes, not a bitmap: the decoder chain then decodes to the requested size
+    // (ImageIODecoder for HEIC/JPEG, EXIF orientation applied) and animates GIF/WebP.
     @OptIn(ExperimentalForeignApi::class)
-    private fun imageFromNSData(nsData: NSData): FetchResult {
-        // Peek at header to detect HEIC without copying the full image
-        val header = ByteArray(minOf(12, nsData.length.toInt()))
-        if (header.isNotEmpty()) {
-            header.usePinned { pinned ->
-                memcpy(pinned.addressOf(0), nsData.bytes, header.size.toULong())
-            }
+    private fun imageFromNSData(nsData: NSData): FetchResult? {
+        if (nsData.length == 0uL) return null
+        val bytes = ByteArray(nsData.length.toInt())
+        bytes.usePinned { pinned ->
+            memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
         }
-
-        // Animated containers (GIF / animated WebP): hand the raw bytes to the Coil
-        // decoder chain as a SourceFetchResult so AnimatedSkiaDecoder can animate
-        // multi-frame images. Decoding to a single Bitmap here (the static path below)
-        // freezes a GIF on its first frame — the bug for quick-switch gallery previews.
-        // Single-frame GIF/WebP fall through to the default static Skia decoder inside
-        // the chain, so non-animated images are unaffected.
-        val format = contentTypeFromBytes(header)
-        if (format == "image/gif" || format == "image/webp") {
-            val bytes = ByteArray(nsData.length.toInt())
-            bytes.usePinned { pinned ->
-                memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
-            }
-            return SourceFetchResult(
-                source = ImageSource(Buffer().apply { write(bytes) }, options.fileSystem),
-                mimeType = format,
-                dataSource = DataSource.DISK,
-            )
-        }
-
-        val skiaImage = if (ImageFormatDetector.isHeic(header)) {
-            NativeImageDecoder.decode(nsData)
-                ?: throw IllegalStateException("Failed to decode HEIC image via native decoder")
-        } else {
-            val bytes = ByteArray(nsData.length.toInt())
-            bytes.usePinned { pinned ->
-                memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
-            }
-            org.jetbrains.skia.Image.makeFromEncoded(bytes)
-        }
-
-        val bitmap = Bitmap()
-        if (!bitmap.allocN32Pixels(skiaImage.width, skiaImage.height)) {
-            skiaImage.close()
-            throw IllegalStateException("Failed to allocate bitmap for ${skiaImage.width}x${skiaImage.height} image")
-        }
-        Canvas(bitmap).use { canvas -> canvas.drawImage(skiaImage, 0f, 0f) }
-        bitmap.setImmutable()
-        skiaImage.close()
-
-        return ImageFetchResult(
-            image = bitmap.asImage(),
-            isSampled = false,
+        return SourceFetchResult(
+            source = ImageSource(Buffer().apply { write(bytes) }, options.fileSystem),
+            mimeType = contentTypeFromBytes(bytes),
             dataSource = DataSource.DISK,
         )
     }
