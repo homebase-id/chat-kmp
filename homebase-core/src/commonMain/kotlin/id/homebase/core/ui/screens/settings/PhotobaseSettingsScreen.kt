@@ -29,7 +29,9 @@ import id.homebase.core.widget.SettingsTopBar
 import id.homebase.photobase.ui.BackupSettingsSection
 import id.homebase.photobase.ui.PhotobaseCheckingScreen
 import id.homebase.photobase.ui.PhotobaseOnboardingScreen
+import id.homebase.photobase.ui.PhotobaseQualityConfirmScreen
 import id.homebase.photobase.ui.PhotobaseSettingsViewModel
+import id.homebase.photobase.ui.PhotobaseSetupStep
 import id.homebase.photobase.ui.PhotobaseSetupUiAction
 import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.photobase.ui.PushIntervalRow
@@ -82,16 +84,17 @@ internal fun PhotobaseSetupGate(onDismiss: () -> Unit, installed: @Composable ()
     val viewModel: PhotobaseSetupViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     Crossfade(
-        targetState = uiState.installed,
+        targetState = uiState.step,
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-    ) { state ->
-        when (state) {
-            null -> PhotobaseCheckingScreen(
+    ) { step ->
+        when (step) {
+            PhotobaseSetupStep.Checking -> PhotobaseCheckingScreen(
                 failed = uiState.checkFailed,
                 onRetry = { viewModel.onAction(PhotobaseSetupUiAction.RetryCheck) },
             )
-            false -> PhotobaseOnboardingScreen(viewModel = viewModel, onDismiss = onDismiss)
-            true -> installed()
+            PhotobaseSetupStep.Onboarding -> PhotobaseOnboardingScreen(viewModel = viewModel, onDismiss = onDismiss)
+            PhotobaseSetupStep.ConfirmQuality -> PhotobaseQualityConfirmScreen(viewModel = viewModel)
+            PhotobaseSetupStep.Installed -> installed()
         }
     }
 }

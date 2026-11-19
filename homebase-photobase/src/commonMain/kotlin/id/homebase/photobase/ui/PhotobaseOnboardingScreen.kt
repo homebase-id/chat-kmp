@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -32,8 +33,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.image.MediaQuality
 import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.core.settings.MediaQualityOptions
+import id.homebase.core.settings.photoDescription
+import id.homebase.core.settings.videoDescription
 import id.homebase.resources.MR
+import id.homebase.resources.photobase_backup_photo_quality
+import id.homebase.resources.photobase_backup_video_quality
 import id.homebase.resources.photobase_check_failed
 import id.homebase.resources.photobase_check_retry
 import id.homebase.resources.photobase_label
@@ -42,6 +49,11 @@ import id.homebase.resources.photobase_onboarding_body_2
 import id.homebase.resources.photobase_onboarding_dismiss
 import id.homebase.resources.photobase_onboarding_setup
 import id.homebase.resources.photobase_onboarding_title
+import id.homebase.resources.photobase_quality_confirm_body
+import id.homebase.resources.photobase_quality_confirm_change_later
+import id.homebase.resources.photobase_quality_confirm_continue
+import id.homebase.resources.photobase_quality_confirm_title
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -114,6 +126,88 @@ fun PhotobaseOnboardingScreen(viewModel: PhotobaseSetupViewModel, onDismiss: () 
             }
         }
     }
+}
+
+@Composable
+fun PhotobaseQualityConfirmScreen(viewModel: PhotobaseSetupViewModel) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    Scaffold(
+        topBar = { TopAppBar(title = { Text(stringResource(MR.string.photobase_label)) }) },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 24.dp),
+        ) {
+            Text(
+                text = stringResource(MR.string.photobase_quality_confirm_title),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(MR.string.photobase_quality_confirm_body),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+            QualityGroup(
+                title = stringResource(MR.string.photobase_backup_photo_quality),
+                selected = uiState.quality.photo,
+                description = { it.photoDescription },
+                testTagPrefix = "confirm-photo-",
+                onSelect = { viewModel.onAction(PhotobaseSetupUiAction.SetPhotoQuality(it)) },
+            )
+            QualityGroup(
+                title = stringResource(MR.string.photobase_backup_video_quality),
+                selected = uiState.quality.video,
+                description = { it.videoDescription },
+                testTagPrefix = "confirm-video-",
+                onSelect = { viewModel.onAction(PhotobaseSetupUiAction.SetVideoQuality(it)) },
+            )
+            Text(
+                text = stringResource(MR.string.photobase_quality_confirm_change_later),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = { viewModel.onAction(PhotobaseSetupUiAction.QualityConfirmed) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            ) {
+                Text(stringResource(MR.string.photobase_quality_confirm_continue))
+            }
+        }
+    }
+}
+
+@Composable
+private fun QualityGroup(
+    title: String,
+    selected: MediaQuality,
+    description: (MediaQuality) -> StringResource,
+    testTagPrefix: String,
+    onSelect: (MediaQuality) -> Unit,
+) {
+    Spacer(Modifier.height(24.dp))
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 24.dp),
+    )
+    MediaQualityOptions(
+        selected = selected,
+        description = description,
+        note = null,
+        onSelect = onSelect,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        testTagPrefix = testTagPrefix,
+    )
 }
 
 @Composable
