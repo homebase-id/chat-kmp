@@ -175,7 +175,7 @@ class HomebaseImageLoaderTest {
     }
 
     @Test
-    fun `HomebaseImageData_from derives payloadKey contentType thumb sizes preview and lastModified from the descriptor`() {
+    fun `HomebaseImageData_from derives payloadKey, contentType, thumb sizes, preview and lastModified from the descriptor`() {
         val descriptor = PayloadDescriptor(
             key = "chat_web0",
             contentType = "image/gif",
