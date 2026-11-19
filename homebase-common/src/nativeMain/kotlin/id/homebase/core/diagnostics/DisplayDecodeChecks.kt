@@ -59,6 +59,7 @@ object DisplayDecodeChecks {
         launchChecks({ run() }, onDone)
     }
 
+    // One cold measurement each: a repeat reuses the pages the allocator kept from the first, and reads as no growth.
     suspend fun run(): CheckReport = checkRun {
         val loader = ImageLoader.Builder(PlatformContext.INSTANCE)
             .components {
@@ -85,14 +86,14 @@ object DisplayDecodeChecks {
 
     private suspend fun CheckRun.theMeterSeesAFullSizeDecode(jpeg: NSData) {
         val bytes = jpeg.toByteArray()
-        val (_, growth) = leastGrowth { NativeImageDecoder.decodeThumbnail(bytes) { w, h -> maxOf(w, h) }.also { it?.close() } }
+        val (_, growth) = peakFootprintGrowth { NativeImageDecoder.decodeThumbnail(bytes) { w, h -> maxOf(w, h) }.also { it?.close() } }
         val growthMb = growth / MB
         measured("full-size decode of a 48 MP JPEG: peak +$growthMb MB")
         check(growthMb >= FULL_BITMAP_MB * 3 / 4) { "a full-size 48 MP decode grew memory by only $growthMb MB; the meter can't be trusted" }
     }
 
     private suspend fun CheckRun.thumbnailWithoutAFullSizeBitmap(loader: ImageLoader, type: String, photo: NSData) {
-        val (image, growth) = leastGrowth { display(loader, photo, THUMB_PX) }
+        val (image, growth) = peakFootprintGrowth { display(loader, photo, THUMB_PX) }
         val growthMb = growth / MB
         measured("$type 48 MP for a $THUMB_PX px thumbnail: ${image.width}x${image.height}, peak +$growthMb MB")
         check(maxOf(image.width, image.height) == THUMB_PX) { "$type thumbnail is ${image.width}x${image.height}" }
@@ -102,7 +103,7 @@ object DisplayDecodeChecks {
     }
 
     private suspend fun CheckRun.aPngIsSizedToo(loader: ImageLoader, png: NSData) {
-        val (image, growth) = leastGrowth { display(loader, png, THUMB_PX) }
+        val (image, growth) = peakFootprintGrowth { display(loader, png, THUMB_PX) }
         // Recorded, not bounded: Coil's own Skia decoder takes a PNG and decodes it in full first.
         measured("PNG 48 MP for a $THUMB_PX px thumbnail: ${image.width}x${image.height}, peak +${growth / MB} MB")
         check(maxOf(image.width, image.height) == THUMB_PX) { "PNG thumbnail is ${image.width}x${image.height}" }
@@ -147,10 +148,6 @@ object DisplayDecodeChecks {
         val image = display(loader, gif, 200)
         check(image is SkiaAnimatedImage) { "a two-frame GIF decoded to ${image::class.simpleName}, not the animated decoder's image" }
     }
-
-    // The app around the checks allocates too; a burst only ever adds, so the least of three is the decode's own.
-    private suspend fun <T> leastGrowth(block: suspend () -> T): Pair<T, Long> =
-        List(3) { peakFootprintGrowth(block) }.minBy { it.second }
 
     private suspend fun display(loader: ImageLoader, photo: NSData, px: Int): Image {
         val request = ImageRequest.Builder(PlatformContext.INSTANCE).data(EncodedPhoto(photo)).size(px).build()
