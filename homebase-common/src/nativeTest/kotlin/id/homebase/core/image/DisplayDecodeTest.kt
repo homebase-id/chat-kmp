@@ -143,6 +143,7 @@ class DisplayDecodeTest {
         CGImageRelease(first)
         CGImageRelease(second)
         assertIs<SkiaAnimatedImage>(image, "a two-frame GIF should reach the animated decoder")
+        Unit
     }
 
     private suspend fun display(photo: NSData, px: Int): Image {
