@@ -13,6 +13,7 @@ import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -38,7 +39,7 @@ import kotlin.time.TimeSource
 /**
  * Time and peak memory of real photos through the pipeline, as the app renders them from a file. Skipped unless
  * IMAGE_BENCH_DIR names a folder of HEIC or JPEG photos (pass it to the simulator as SIMCTL_CHILD_IMAGE_BENCH_DIR); the
- * table goes to results-<IMAGE_BENCH_LABEL>.md in that folder. See the PR's test plan for how to run it.
+ * table goes to results-<IMAGE_BENCH_LABEL>.md in that folder. How to run it is in OPTIMIZE.md.
  */
 class IphonePhotoBench {
     @OptIn(NativeRuntimeApi::class)
@@ -69,7 +70,7 @@ class IphonePhotoBench {
                     val started = TimeSource.Monotonic.markNow()
                     createMediaImages(path, ops, "bench", setting)
                     val elapsed = started.elapsedNow().inWholeMilliseconds
-                    sampler.cancel()
+                    sampler.cancelAndJoin()
                     peak = maxOf(peak, footprintBytes())
                     elapsed to (peak - base)
                 }
@@ -89,6 +90,6 @@ class IphonePhotoBench {
         val count = alloc<mach_msg_type_number_tVar>()
         count.value = (sizeOf<task_vm_info_data_t>() / sizeOf<natural_tVar>()).convert()
         val result = task_info(mach_task_self_, TASK_VM_INFO.convert(), info.ptr.reinterpret(), count.ptr)
-        if (result == KERN_SUCCESS) info.phys_footprint.toLong() else -1L
+        if (result == KERN_SUCCESS) info.phys_footprint.toLong() else 0L
     }
 }

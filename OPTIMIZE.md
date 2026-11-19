@@ -113,6 +113,21 @@ adb shell cat /sdcard/Android/data/id.homebase.api.test/cache/image-bench.txt
 
 For a before/after comparison, copy the bench into a worktree of the base commit and run both APKs back to back, letting the phone cool in between.
 
+### Real photos on iOS
+
+`IphonePhotoBench` (homebase-api nativeTest) renders a folder of real photos from their files at Standard, HD and
+Original, as the app does, and writes the time and peak physical-footprint growth of each to
+`results-<label>.md` in that folder. It's skipped unless pointed at a folder, so CI only compiles it. On a Mac, with
+the photos copied as original HEIC files:
+
+```bash
+./gradlew --stop
+SIMCTL_CHILD_IMAGE_BENCH_DIR="$HOME/image-bench" SIMCTL_CHILD_IMAGE_BENCH_LABEL=as-is \
+  ./gradlew :homebase-api:iosSimulatorArm64Test --tests 'id.homebase.api.image.IphonePhotoBench' --rerun
+```
+
+The simulator's memory isn't an iPhone's limit; confirm on a device that the app isn't killed.
+
 ## Baselines
 
 ### 2026-10-23, d0bbc2e18, desktop JVM (Linux), synthetic fixture v1

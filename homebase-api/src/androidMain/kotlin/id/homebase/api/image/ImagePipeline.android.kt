@@ -129,8 +129,7 @@ private class AndroidImageSource(private val input: AndroidImageInput) : ImageSo
         // Only a JPEG decoder averages when it samples (DCT scaling). Every other format here picks
         // every Nth pixel, which is the aliasing this pipeline exists to remove.
         val isJpeg = header.mimeType == "image/jpeg"
-        val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
-        val sampleSize = if (isJpeg) sampleSizeFor(longEdge, minLongEdge) else 1
+        val sampleSize = if (isJpeg) sampleSizeFor(displayedSize, minLongEdge) else 1
         val bitmap = try {
             decodeSampled(sampleSize)
         } catch (e: OutOfMemoryError) {
@@ -165,14 +164,25 @@ private class AndroidImageSource(private val input: AndroidImageInput) : ImageSo
 }
 
 /**
- * The biggest power of two that still leaves at least twice [minLongEdge]: a JPEG decoder's shrink is a block average
- * that aliases fine detail, so Lanczos makes at least the last 2x.
+ * A JPEG decoder's sample size: a block shrink, so it stops while Lanczos still gets the last 2x, unless the full decode
+ * would pass [MAX_FULL_DECODE_PIXELS]. Never below [minLongEdge], and at most 8, the DCT's own reduction.
  */
-internal fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {
+internal fun sampleSizeFor(size: ImageSize, minLongEdge: Int): Int {
+    val longEdge = max(size.pixelWidth, size.pixelHeight).toLong()
+    val pixels = size.pixelWidth.toLong() * size.pixelHeight
     var sample = 1
-    while (longEdge / sample >= minLongEdge.toLong() * HALVE_WHILE_AT_LEAST) sample *= 2
+    while (sample < 8 && longEdge / (sample * 2) >= minLongEdge) {
+        val leavesLanczosTwice = longEdge / sample >= minLongEdge.toLong() * HALVE_WHILE_AT_LEAST
+        val overBudget = pixels / (sample.toLong() * sample) > MAX_FULL_DECODE_PIXELS
+        if (!leavesLanczosTwice && !overBudget) break
+        sample *= 2
+    }
     return sample
 }
+
+// Android has no memory guard of its own. A 48-50 MP photo decodes in full (about 200 MB, what HD always cost); a
+// bigger one keeps the old halving rather than going to 0.4-1 GB.
+private const val MAX_FULL_DECODE_PIXELS = 50_000_000L
 
 internal actual fun openImageSource(bytes: ByteArray): ImageSource = AndroidImageSource(AndroidImageInput.Bytes(bytes))
 

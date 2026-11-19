@@ -97,7 +97,7 @@ private class ImageIoSource(
         val guard = memoryGuardScale(displayedSize, minLongEdge)
         val coarse = when {
             longEdge >= minLongEdge.toLong() * HALVE_WHILE_AT_LEAST -> minLongEdge * 2
-            guard != null && longEdge >= minLongEdge.toLong() * 2 -> (longEdge + 1) / 2
+            guard != null && longEdge >= minLongEdge.toLong() * 2 -> longEdge / 2
             else -> longEdge
         }
         val coarseEdge = guard?.let { minOf(coarse, ceil(longEdge * it).toInt()) } ?: coarse
