@@ -2,19 +2,20 @@
 
 package id.homebase.api.image
 
+import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.interpretCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.value
 import kotlin.math.ceil
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.sqrt
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryGetValue
@@ -25,11 +26,13 @@ import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFNumberIntType
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
+import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorSpace
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Pixmap
 import platform.CoreFoundation.CFDataRef
 import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFRelease
@@ -89,11 +92,15 @@ private class ImageIoSource(
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
             ?: throw IllegalStateException("Couldn't create decode options")
-        // ImageIO aliases on reductions under 2x and can land a pixel off the plan, so only the memory guard forces one.
+        // ImageIO's shrink is a block average that leaves Lanczos at least 2x; only the memory guard forces less.
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
-        val guarded = memoryGuardScale(displayedSize, minLongEdge)?.let { ceil(longEdge * it).toInt() } ?: Int.MAX_VALUE
-        val coarse = if (longEdge >= minLongEdge.toLong() * 2) minOf(minLongEdge * 2, (longEdge + 1) / 2) else longEdge
-        val coarseEdge = minOf(coarse, guarded)
+        val guard = memoryGuardScale(displayedSize, minLongEdge)
+        val coarse = when {
+            longEdge >= minLongEdge.toLong() * HALVE_WHILE_AT_LEAST -> minLongEdge * 2
+            guard != null && longEdge >= minLongEdge.toLong() * 2 -> longEdge / 2
+            else -> longEdge
+        }
+        val coarseEdge = guard?.let { minOf(coarse, ceil(longEdge * it).toInt()) } ?: coarse
         val maxSize = CFBridgingRetain(NSNumber(int = coarseEdge))
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
@@ -129,30 +136,6 @@ private fun CGImageRef.toSkiaImage(): Image {
     val height = CGImageGetHeight(this).toInt()
     val wide = CGImageGetColorSpace(this)?.let { CGColorSpaceIsWideGamutRGB(it) } == true
     val opaque = CGImageGetAlphaInfo(this) in OPAQUE_ALPHA_INFO
-    val colorSpace = CGColorSpaceCreateWithName(if (wide) kCGColorSpaceDisplayP3 else kCGColorSpaceSRGB)
-    require(width.toLong() * 4 * height <= Int.MAX_VALUE) { "$width x $height is too large to decode" }
-    val rowBytes = width * 4
-    val pixels = ByteArray(rowBytes * height)
-    try {
-        pixels.usePinned { pinned ->
-            val context = CGBitmapContextCreate(
-                pinned.addressOf(0),
-                width.convert(),
-                height.convert(),
-                8.convert(),
-                rowBytes.convert(),
-                colorSpace,
-                CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value or kCGBitmapByteOrder32Big,
-            ) ?: throw IllegalStateException("Couldn't create a bitmap context")
-            try {
-                CGContextDrawImage(context, CGRectMake(0.0, 0.0, width.toDouble(), height.toDouble()), this)
-            } finally {
-                CGContextRelease(context)
-            }
-        }
-    } finally {
-        CGColorSpaceRelease(colorSpace)
-    }
     val info = ImageInfo(
         width,
         height,
@@ -160,7 +143,34 @@ private fun CGImageRef.toSkiaImage(): Image {
         if (opaque) ColorAlphaType.OPAQUE else ColorAlphaType.PREMUL,
         if (wide) ColorSpace.displayP3 else ColorSpace.sRGB,
     )
-    return Image.makeRaster(info, pixels, rowBytes)
+    val bitmap = Bitmap()
+    var pixels: Pixmap? = null
+    val colorSpace = CGColorSpaceCreateWithName(if (wide) kCGColorSpaceDisplayP3 else kCGColorSpaceSRGB)
+    try {
+        // Zeroed: the context draws source-over, so a transparent image would show whatever was there.
+        check(bitmap.allocPixelsFlags(info, zeroPixels = true)) { "Couldn't allocate $width x $height pixels" }
+        val target = checkNotNull(bitmap.peekPixels()).also { pixels = it }
+        val context = CGBitmapContextCreate(
+            interpretCPointer<ByteVar>(target.addr),
+            width.convert(),
+            height.convert(),
+            8.convert(),
+            target.rowBytes.convert(),
+            colorSpace,
+            CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value or kCGBitmapByteOrder32Big,
+        ) ?: throw IllegalStateException("Couldn't create a bitmap context")
+        try {
+            CGContextDrawImage(context, CGRectMake(0.0, 0.0, width.toDouble(), height.toDouble()), this)
+        } finally {
+            CGContextRelease(context)
+        }
+        bitmap.setImmutable()
+        return Image.makeFromBitmap(bitmap)
+    } finally {
+        CGColorSpaceRelease(colorSpace)
+        pixels?.close()
+        bitmap.close()
+    }
 }
 
 private val OPAQUE_ALPHA_INFO = setOf(
@@ -236,7 +246,7 @@ private fun memoryGuardScale(size: ImageSize, minLongEdge: Int): Double? {
     val longEdge = max(size.pixelWidth, size.pixelHeight)
     if (pixels <= FULL_DECODE_PIXEL_LIMIT || longEdge <= minLongEdge) return null
     val smallest = minLongEdge.toDouble() / longEdge
-    return max(smallest, min(sqrt(FULL_DECODE_PIXEL_LIMIT / pixels), smallest * 2))
+    return max(smallest, sqrt(FULL_DECODE_PIXEL_LIMIT / pixels))
 }
 
 internal actual fun openImageSource(bytes: ByteArray): ImageSource =

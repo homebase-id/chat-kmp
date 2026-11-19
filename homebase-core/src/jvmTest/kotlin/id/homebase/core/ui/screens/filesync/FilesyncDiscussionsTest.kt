@@ -20,6 +20,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -44,7 +45,8 @@ class FilesyncDiscussionsTest {
     private val globalTransitId = Uuid.random()
     private val handle = FilesyncHandle(Uuid.random(), null, FilesyncProtocol.FileFileType, fileKey, JsonObject(emptyMap()), null, globalTransitId = globalTransitId)
 
-    private val requests = mutableListOf<Pair<HttpRequestData, ByteArray>>()
+    // load() sends its requests in parallel, so the mock engine records them from several threads at once.
+    private val requests = CopyOnWriteArrayList<Pair<HttpRequestData, ByteArray>>()
     private var summaryJson = """{"reactions":[],"total":0}"""
     private var mineJson = "[]"
     private var commentsJson = "[]"

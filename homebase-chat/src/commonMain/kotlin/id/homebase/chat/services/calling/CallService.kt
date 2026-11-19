@@ -38,9 +38,9 @@ class CallService(
     private val engineFactory: CallEngineFactory?,
     private val iceServers: suspend (peer: String) -> CallIceServers,
     private val scope: CoroutineScope,
+    private val ringback: RingbackTone,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val onCallActiveChanged: (Boolean) -> Unit = {},
-    private val ringback: RingbackTone = platformRingbackTone(),
 ) : CallSession, CallPushTarget {
     val available: Boolean get() = engineFactory != null
 

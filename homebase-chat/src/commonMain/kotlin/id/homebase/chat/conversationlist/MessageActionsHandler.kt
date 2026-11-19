@@ -24,6 +24,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.builder.withReadableImages
 import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ReplyContext
@@ -725,14 +726,17 @@ internal class MessageActionsHandler(
                 val text = picker.caption.trimEnd()
                 messagesUiState.update { it.copy(fullScreenOverlay = null, sendTo = null) }
                 opened?.let(openConversation)
-                messagesUiState.sendSharedFilesToTargets(
-                    targets = targets,
-                    visibleConversationId = opened ?: NO_CONVERSATION,
-                    text = if (picker.viewOnce) "" else text,
-                    attachmentCount = attachments.size,
-                    sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
-                ) { messageId, targetId ->
-                    bundleAndSend(messageId, targetId, text, attachments, replyTo = null, sentAt = sentAt, viewOnce = picker.viewOnce)
+                // Once for every chat it goes to, not once per chat.
+                fileOperationsProvider.withReadableImages(attachments) { readable ->
+                    messagesUiState.sendSharedFilesToTargets(
+                        targets = targets,
+                        visibleConversationId = opened ?: NO_CONVERSATION,
+                        text = if (picker.viewOnce) "" else text,
+                        attachmentCount = attachments.size,
+                        sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
+                    ) { messageId, targetId ->
+                        bundleAndSend(messageId, targetId, text, readable, replyTo = null, sentAt = sentAt, viewOnce = picker.viewOnce)
+                    }
                 }
                 if (opened == null) sendEvent(ShowInfoMessage(MR.string.chat_send_to_sent))
             } catch (e: CancellationException) {
@@ -877,7 +881,7 @@ internal class MessageActionsHandler(
                 // A lone photo's bubble takes the photo's shape, so the placeholder briefly waits for it; album tiles are fixed.
                 val lonePhoto = resolvedFiles.singleOrNull()
                     ?.takeIf { it is AttachmentPendingFile.FileImage || it is AttachmentPendingFile.Gallery }
-                val aspectSoon = lonePhoto?.let { scope.async { uprightAspect(attachments.single().filePath) } }
+                val aspectSoon = lonePhoto?.let { photo -> scope.async { libraryAspect(photo) ?: uprightAspect(attachments.single().filePath) } }
                 val aspectNow = aspectSoon?.let { withTimeoutOrNull(PLACEHOLDER_SIZE_WAIT) { it.await() } }
                 resolvedFiles.forEachIndexed { index, file ->
                     val payloadKey = payloadKey(index)
@@ -960,7 +964,9 @@ internal class MessageActionsHandler(
                                 localVideoContextStore.put(newMessageId, payloadKey(index), preview.copy(localFilePath = input.filePath))
                             }
                         }
-                        bundleAndSend(newMessageId, conversationId, content, prepared, replyTo, sentAt, viewOnce)
+                        fileOperationsProvider.withReadableImages(prepared) { readable ->
+                            bundleAndSend(newMessageId, conversationId, content, readable, replyTo, sentAt, viewOnce)
+                        }
                     }
                     jumpToLatestAfterOwnSend(conversationId)
                 } catch (e: Throwable) {
@@ -1113,6 +1119,12 @@ internal class MessageActionsHandler(
             shareContentProcessor.cleanup(descriptor)
         }
     }
+
+    // PhotoKit already knows a library pick's upright size; reading it to find out would fetch the whole photo.
+    private fun libraryAspect(file: AttachmentPendingFile): Float? =
+        (file as? AttachmentPendingFile.Gallery)?.image
+            ?.takeIf { fileOperationsProvider.isPhotoLibraryAsset(it.file.toString()) && it.width > 0 && it.height > 0 }
+            ?.let { it.width.toFloat() / it.height }
 
     private suspend fun uprightAspect(path: String): Float? = try {
         readImageSize(path, fileOperationsProvider).aspectRatio

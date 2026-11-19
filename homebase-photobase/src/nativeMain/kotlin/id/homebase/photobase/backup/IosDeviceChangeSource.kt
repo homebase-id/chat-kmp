@@ -1,24 +1,19 @@
 package id.homebase.photobase.backup
 
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.PhotoLibraryResources
 import kotlinx.cinterop.ObjCObjectVar
-import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.plus
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSKeyedArchiver
 import platform.Foundation.NSKeyedUnarchiver
-import platform.Foundation.NSOutputStream
-import platform.Foundation.outputStreamToFileAtPath
 import platform.Foundation.base64EncodedStringWithOptions
 import platform.Foundation.create
 import platform.Foundation.timeIntervalSince1970
@@ -30,10 +25,6 @@ import platform.Photos.PHAssetMediaSubtypePhotoLive
 import platform.Photos.PHAssetMediaTypeImage
 import platform.Photos.PHAssetMediaTypeVideo
 import platform.Photos.PHAssetResource
-import platform.Photos.PHAssetResourceDataRequestID
-import platform.Photos.PHAssetResourceManager
-import platform.Photos.PHAssetResourceRequestOptions
-import platform.Photos.PHAssetResourceType
 import platform.Photos.PHAssetResourceTypeFullSizePairedVideo
 import platform.Photos.PHAssetResourceTypeFullSizePhoto
 import platform.Photos.PHAssetResourceTypeFullSizeVideo
@@ -45,9 +36,6 @@ import platform.Photos.PHObjectTypeAsset
 import platform.Photos.PHPersistentChangeFetchResult
 import platform.Photos.PHPersistentChangeToken
 import platform.Photos.PHPhotoLibrary
-import platform.UniformTypeIdentifiers.UTType
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
  * PHPersistentChangeToken, falling back to listing everything when the token is missing or expired.
@@ -77,11 +65,11 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
             ?: throw AssetPermanentlyUnavailableException("asset gone")
         val resources = PHAssetResource.assetResourcesForAsset(asset).filterIsInstance<PHAssetResource>()
         val parts = when (mediaType) {
-            BackupMediaType.Image -> listOfNotNull(resources.pick(PHAssetResourceTypeFullSizePhoto, PHAssetResourceTypePhoto)?.let { ExportedPartRole.Primary to it })
-            BackupMediaType.Video -> listOfNotNull(resources.pick(PHAssetResourceTypeFullSizeVideo, PHAssetResourceTypeVideo)?.let { ExportedPartRole.Primary to it })
+            BackupMediaType.Image -> listOfNotNull(PhotoLibraryResources.pick(resources, PHAssetResourceTypeFullSizePhoto, PHAssetResourceTypePhoto)?.let { ExportedPartRole.Primary to it })
+            BackupMediaType.Video -> listOfNotNull(PhotoLibraryResources.pick(resources, PHAssetResourceTypeFullSizeVideo, PHAssetResourceTypeVideo)?.let { ExportedPartRole.Primary to it })
             BackupMediaType.LivePhoto -> listOfNotNull(
-                resources.pick(PHAssetResourceTypeFullSizePhoto, PHAssetResourceTypePhoto)?.let { ExportedPartRole.Primary to it },
-                resources.pick(PHAssetResourceTypeFullSizePairedVideo, PHAssetResourceTypePairedVideo)?.let { ExportedPartRole.PairedVideo to it },
+                PhotoLibraryResources.pick(resources, PHAssetResourceTypeFullSizePhoto, PHAssetResourceTypePhoto)?.let { ExportedPartRole.Primary to it },
+                PhotoLibraryResources.pick(resources, PHAssetResourceTypeFullSizePairedVideo, PHAssetResourceTypePairedVideo)?.let { ExportedPartRole.PairedVideo to it },
             )
         }
         val expected = if (mediaType == BackupMediaType.LivePhoto) 2 else 1
@@ -92,12 +80,12 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
             for ((role, resource) in parts) {
                 val path = fileOps.createUploadTempPath("photo_export_", ".bin")
                 try {
-                    write(resource, path, mayDownload)
+                    PhotoLibraryResources.write(resource, path, mayDownload) { AssetNotOnDeviceException() }
                 } catch (e: Throwable) {
                     runCatching { fileOps.deleteTempFile(path) }
                     throw e
                 }
-                exported += ExportedPart(role, path, contentTypeOf(resource), isTemporary = true)
+                exported += ExportedPart(role, path, PhotoLibraryResources.contentTypeOf(resource), isTemporary = true)
             }
         } catch (e: Throwable) {
             exported.forEach { runCatching { fileOps.deleteTempFile(it.path) } }
@@ -180,54 +168,6 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
             )
         }
     }
-
-    private fun List<PHAssetResource>.pick(preferred: PHAssetResourceType, fallback: PHAssetResourceType): PHAssetResource? =
-        firstOrNull { it.type == preferred } ?: firstOrNull { it.type == fallback }
-
-    /** Not writeDataForAssetResource: only a data request can be cancelled, and a download must stop with its run. */
-    private suspend fun write(resource: PHAssetResource, path: String, mayDownload: Boolean) = suspendCancellableCoroutine<Unit> { continuation ->
-        val options = PHAssetResourceRequestOptions().apply { networkAccessAllowed = mayDownload }
-        val manager = PHAssetResourceManager.defaultManager()
-        val stream = NSOutputStream.outputStreamToFileAtPath(path, append = false)
-        stream.open()
-        var writeFailed = false
-        var request: PHAssetResourceDataRequestID = 0
-        request = manager.requestDataForAssetResource(
-            resource,
-            options,
-            dataReceivedHandler = { data ->
-                if (data != null && !writeFailed && !stream.writeAll(data)) {
-                    writeFailed = true
-                    manager.cancelDataRequest(request)
-                }
-            },
-            completionHandler = { error ->
-                stream.close()
-                when {
-                    writeFailed -> continuation.resumeWithException(IllegalStateException("export failed: could not write the file"))
-                    error == null -> continuation.resume(Unit)
-                    // Any refusal, not one error code: a real failure still counts when a run that may download meets it.
-                    !mayDownload -> continuation.resumeWithException(AssetNotOnDeviceException())
-                    else -> continuation.resumeWithException(IllegalStateException("export failed: ${error.localizedDescription}"))
-                }
-            },
-        )
-        continuation.invokeOnCancellation { manager.cancelDataRequest(request) }
-    }
-
-    private fun NSOutputStream.writeAll(data: NSData): Boolean {
-        val bytes = data.bytes?.reinterpret<UByteVar>() ?: return data.length == 0uL
-        var written = 0L
-        while (written < data.length.toLong()) {
-            val count = write(bytes + written, data.length - written.toULong())
-            if (count <= 0) return false
-            written += count
-        }
-        return true
-    }
-
-    private fun contentTypeOf(resource: PHAssetResource): String =
-        UTType.typeWithIdentifier(resource.uniformTypeIdentifier)?.preferredMIMEType ?: "application/octet-stream"
 
     private fun encode(token: PHPersistentChangeToken): String = memScoped {
         val error = alloc<ObjCObjectVar<NSError?>>()

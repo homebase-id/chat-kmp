@@ -60,6 +60,18 @@ class RingbackToneTest {
     }
 
     @Test
+    fun cancelledWhileRingingStopsTheTone() = runTest {
+        val tone = Recorder()
+        val state = MutableStateFlow(outgoing(ringing = true))
+        val job = launch { state.driveRingback(tone, fallbackMs = 4_000) }
+        runCurrent()
+        assertEquals(listOf("start"), tone.events)
+        job.cancel()
+        runCurrent()
+        assertEquals(listOf("start", "stop"), tone.events)
+    }
+
+    @Test
     fun wavIsAWellFormedLoop() {
         val wav = ringbackWav()
         assertEquals("RIFF", wav.decodeToString(0, 4))

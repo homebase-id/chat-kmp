@@ -202,10 +202,16 @@ interface FileOperationsProvider {
         throw UnsupportedOperationException("overwrite isn't supported by ${this::class.simpleName}")
 
     /**
-     * Resolves a path that may be a content URI (Android) to a real filesystem path
-     * by copying it to a temp file. On platforms without content URIs, returns [path] unchanged.
+     * Resolves a path that may be a content URI (Android) or a Photos-library asset (iOS) to a real
+     * filesystem path by copying it to a temp file; elsewhere returns [path] unchanged. A library photo
+     * is its own resource (the full-size edit if there is one, else the original), streamed to an upload
+     * temp file; a video, its movie resource. Throws [SourceUnavailableException] when the asset is gone
+     * or no longer shared with the app. The copy is the caller's to delete: use [withResolvedFile].
      */
     suspend fun resolveToFilePath(path: String): String = path
+
+    /** Whether [path] is an iOS Photos-library asset, which every read fetches whole: read it via [withResolvedFile]. */
+    fun isPhotoLibraryAsset(path: String): Boolean = false
 
     companion object {
         const val DEFAULT_HEADER_BYTES: Int = 64 * 1024
@@ -257,13 +263,13 @@ suspend fun <T> FileOperationsProvider.withResolvedFiles(
     paths: List<String>,
     block: suspend (resolvedPaths: List<String>) -> T,
 ): T {
-    val resolved = paths.map { resolveToFilePath(it) }
-    return try {
-        block(resolved)
+    val resolved = mutableListOf<String>()
+    try {
+        for (path in paths) resolved += resolveToFilePath(path)
+        return block(resolved)
     } finally {
-        for (i in paths.indices) {
-            if (resolved[i] != paths[i]) deleteTempFile(resolved[i])
-        }
+        // Over what resolved so far, so a later path failing to resolve still reaps the earlier copies.
+        resolved.forEachIndexed { i, copy -> if (copy != paths[i]) deleteTempFile(copy) }
     }
 }
 

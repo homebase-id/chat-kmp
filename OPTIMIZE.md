@@ -113,6 +113,21 @@ adb shell cat /sdcard/Android/data/id.homebase.api.test/cache/image-bench.txt
 
 For a before/after comparison, copy the bench into a worktree of the base commit and run both APKs back to back, letting the phone cool in between.
 
+### Real photos on iOS
+
+`IphonePhotoBench` (homebase-api nativeTest) renders a folder of real photos from their files at Standard, HD and
+Original, as the app does, and writes the time and peak physical-footprint growth of each to
+`results-<label>.md` in that folder. It's skipped unless pointed at a folder, so CI only compiles it. On a Mac, with
+the photos copied as original HEIC files:
+
+```bash
+./gradlew --stop
+SIMCTL_CHILD_IMAGE_BENCH_DIR="$HOME/image-bench" SIMCTL_CHILD_IMAGE_BENCH_LABEL=as-is \
+  ./gradlew :homebase-api:iosSimulatorArm64Test --tests 'id.homebase.api.image.IphonePhotoBench' --rerun
+```
+
+The simulator's memory isn't an iPhone's limit; confirm on a device that the app isn't killed.
+
 ## Baselines
 
 ### 2026-10-23, d0bbc2e18, desktop JVM (Linux), synthetic fixture v1
@@ -252,6 +267,101 @@ JPEG by sample size only. A plain full decode peaks at the "after" figure in eve
 
 1-pixel stripes from the 28 MP PNG straight out of the guard's decode had a spread of about 74,
 full contrast, so the aliasing happened before any resampler ran.
+
+### 2026-11-12, Lanczos for the last 2–4× (#2369), desktop JVM (macOS), test fixtures
+
+`ThumbnailPerfBench`, as above, against unmodified main. Halving only while 4× too big means the
+Kotlin Lanczos runs on bigger images with wider windows; Pillow and libvips pay the same.
+
+| Fixture | Before | After (two runs) | Why |
+|---|---|---|---|
+| 5760x4320 JPEG | 608 ms | 1480–2061 ms | 2048 from 5760 is 2.81×: Lanczos with 19 taps on 25 MP, instead of a halving and 11 taps on 6 MP |
+| waterhouse.jpg | 443 ms | 395–421 ms | No change in the chain's expensive steps |
+| 800x600 JPEG | 94 ms | 88–106 ms | |
+| dice.png | 128 ms | 125–141 ms | |
+
+Thumbnail bytes are unchanged to the KB. Phones resize natively and weren't measured. Folding the
+horizontal pass's four channel loops into one gained about 10%, within noise, so it wasn't kept.
+
+### 2026-11-18, Lanczos for the last 2–4× (#2369) on a phone, Pixel 5 (Android 14)
+
+The same change measured where it matters, against main at b9a61a2f2 (halve while 2× too big) and a
+variant that never halves. Run back to back on one phone, battery 23–25 °C.
+
+**Quality.** Three real 12 MP Pixel 5 photos, upright, each also cropped to 16:9, through
+`createMediaImages` at Standard. Each output is compared with Pillow's Lanczos straight from the
+source (luma PSNR, mean of 3); only the sizes that changed are listed:
+
+| Output | Halve while 2× (main) | Halve while 4× | Never halve |
+|---|---|---|---|
+| 480×854 (from 1152×2048, 2.4×) | 33.57 dB | 34.95 dB | 34.95 dB |
+| 240×427 (from 480×854, 2×) | 33.23 dB | 35.16 dB | 35.16 dB |
+| 240×320 (from 480×640, 2×) | 33.14 dB | 35.20 dB | 35.20 dB |
+
+2048, 1080 and 640 outputs are identical under all three. A chart of 0.40 and 0.30 cycles/px
+detail, which should come out flat grey, keeps a pattern with main at 854×480 and 427×240 (standard
+deviation 4.5 and 3.6) and none with the change (0.5). "Never halve" is byte-identical to "halve
+while 4×" for every output: no step in these chains is 4× or more.
+
+**Cost.** `ImagePipelinePerfBench`, median of 3. Every case was within 1% across the three, except:
+
+| Case | Halve while 2× (main) | Halve while 4× | Never halve |
+|---|---|---|---|
+| 48 MP HEIC, Standard | 3166 ms, native +241 MB | 3298 ms, native +207 MB | 3315 ms, native +207 MB |
+
+Android decodes HEIC at full size, so 8000 → 2048 (3.9×) is now one Lanczos pass instead of a
+halving and a pass: 4% slower, and 34 MB lower at peak because the halved copy is gone. 12 MP JPEG
+and HEIC, and 48 MP JPEG, are unchanged at Standard and HD. iOS and web weren't measured.
+
+### 2026-11-19, a decoder's shrink leaves Lanczos the last 2× (Pixel 5, Android 14)
+
+**A decoder's 2× is a block average.** 3-pixel stripes, 854 → 427 through the decoder: a PNG (which
+Android decodes in full, so Lanczos makes the step) comes out at a spread of 5.7; a JPEG, which
+Android's decoder halves itself (sample size 2), at 60.2. A plain 2×2 average gives 59.9. libvips
+("shrink-on-load is a simple block shrink and will add quite a bit of extra sharpness") and Pillow
+(`reducing_gap`, 2.0 by default for thumbnails) let a decoder shrink only while it leaves the
+resampler at least 2×; Android let its JPEG decoder shrink right down to the largest output.
+
+**Rejected first: plan HD at exactly half a 48–50 MP photo** (8064 → 4032 instead of 4096) so the
+decoder makes the whole step. It saved memory (48 MP JPEG at HD: 231 → 73 MB, 3447 → 2780 ms), but
+made the decoder's block shrink the final step: on real 12 MP photos, the same step as the final
+image cost 0.9 dB against Lanczos. It would have brought back the aliasing #2369 removed.
+
+**Adopted: the decoder leaves Lanczos at least 2×.** Android's JPEG sample size now stops while the
+decoded size is still at least twice the largest output; iOS asks ImageIO for twice the output only
+when the source is at least 4× too big (below that, a full decode), except over the memory guard.
+
+Quality, real photo content at 24 MP (two 12 MP photos side by side) and 48 MP (2×2), luma PSNR
+against Pillow's Lanczos from the source, mean of 3:
+
+| Output | Change |
+|---|---|
+| 24 MP, Standard final (2048) | +0.45 dB |
+| 24 MP, Original's largest thumbnail (2048) | +0.54 dB |
+| 48 MP, Standard final (2048) | +0.13 dB |
+| 48 MP, Original's largest thumbnail (2048) | +0.22 dB |
+
+HD and every smaller output were unchanged. Cost, `ImagePipelinePerfBench`, median of 3:
+
+| Case | Before | After |
+|---|---|---|
+| 48 MP JPEG, Standard | 1085 ms, native +58 MB | 1493 ms, native +195 MB |
+| 48 MP JPEG, Original | 1123 ms, native +58 MB | 1525 ms, native +195 MB |
+
+Everything else (12 MP JPEG and HEIC, 48 MP HEIC, 48 MP JPEG at HD) was within noise. The highest
+peak in any case stays 231 MB (48 MP at HD), so a 48 MP JPEG now costs what a 48 MP HEIC always did.
+Over 24 MP the iOS memory guard still lets ImageIO halve (#2365), and it stays: on an iPhone 15 (6 GB, iOS's
+3072 MB per-app limit, debug Kotlin framework, peaks from Xcode's memory gauge):
+
+| Build | Send | Setting | Peak | Outcome |
+|---|---|---|---|---|
+| Guard as is (24 MP) | 3 × 48 MP | Standard, HD | about 2.75 GB | sent; decoded at 3024×4032 (2×) and 4243×5657 (1.43×) |
+| Guard as is | 1 × 24 MP | Standard / HD | not captured | decoded at 2142×2856 / 4243×5657 |
+| Guard 100 MP (full decodes) | 3 × 48 MP | Standard | over 3072 MB | **killed** (`EXC_RESOURCE`, high watermark memory limit) |
+| Guard 100 MP | 1 × 24 MP | Standard / HD | 1920 / 2800 MB | sent; decoded in full |
+
+One 48 MP bitmap is about 195 MB, so most of the 2–2.8 GB is the rest of the send path, on a 300–700 MB
+baseline; that's measured next, before any change here.
 
 ## Findings
 
