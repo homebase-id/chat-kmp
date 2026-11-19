@@ -28,9 +28,11 @@ import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.photobase.ui.BackupSettingsSection
 import id.homebase.photobase.ui.PhotobaseCheckingScreen
+import id.homebase.photobase.ui.PhotobaseFinishingScreen
 import id.homebase.photobase.ui.PhotobaseOnboardingScreen
 import id.homebase.photobase.ui.PhotobaseQualityConfirmScreen
 import id.homebase.photobase.ui.PhotobaseSettingsViewModel
+import id.homebase.photobase.ui.PhotobaseSetupLifecycle
 import id.homebase.photobase.ui.PhotobaseSetupStep
 import id.homebase.photobase.ui.PhotobaseSetupUiAction
 import id.homebase.photobase.ui.PhotobaseSetupViewModel
@@ -83,6 +85,7 @@ internal fun PhotobaseSettingsScreen(
 internal fun PhotobaseSetupGate(onDismiss: () -> Unit, installed: @Composable () -> Unit) {
     val viewModel: PhotobaseSetupViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    PhotobaseSetupLifecycle(viewModel)
     Crossfade(
         targetState = uiState.step,
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
@@ -93,6 +96,9 @@ internal fun PhotobaseSetupGate(onDismiss: () -> Unit, installed: @Composable ()
                 onRetry = { viewModel.onAction(PhotobaseSetupUiAction.RetryCheck) },
             )
             PhotobaseSetupStep.Onboarding -> PhotobaseOnboardingScreen(viewModel = viewModel, onDismiss = onDismiss)
+            PhotobaseSetupStep.Finishing -> PhotobaseFinishingScreen(
+                onCancel = { viewModel.onAction(PhotobaseSetupUiAction.FinishingCancelled) },
+            )
             PhotobaseSetupStep.ConfirmQuality -> PhotobaseQualityConfirmScreen(viewModel = viewModel)
             PhotobaseSetupStep.Installed -> installed()
         }

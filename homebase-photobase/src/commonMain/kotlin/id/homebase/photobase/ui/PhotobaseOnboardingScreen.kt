@@ -53,6 +53,8 @@ import id.homebase.resources.photobase_quality_confirm_body
 import id.homebase.resources.photobase_quality_confirm_change_later
 import id.homebase.resources.photobase_quality_confirm_continue
 import id.homebase.resources.photobase_quality_confirm_title
+import id.homebase.resources.photobase_setup_finishing
+import id.homebase.resources.photobase_setup_finishing_cancel
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -60,10 +62,12 @@ import org.jetbrains.compose.resources.stringResource
 fun PhotobaseOnboardingScreen(viewModel: PhotobaseSetupViewModel, onDismiss: () -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     // The grant is checked silently on open; the dialog only appears once the user asks to set up.
-    if (uiState.setupInitiated) ExtendPermissionDialog(viewModel = viewModel.extendPermissionViewModel)
-    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onAction(PhotobaseSetupUiAction.Paused) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onAction(PhotobaseSetupUiAction.Resumed) }
-    DisposableEffect(viewModel) { onDispose { viewModel.onAction(PhotobaseSetupUiAction.SetupLeft) } }
+    if (uiState.setupInitiated) {
+        ExtendPermissionDialog(
+            viewModel = viewModel.extendPermissionViewModel,
+            onOpenedOwnerConsole = { viewModel.onAction(PhotobaseSetupUiAction.OpenedOwnerConsole) },
+        )
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(MR.string.photobase_label)) }) },
@@ -208,6 +212,31 @@ private fun QualityGroup(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
         testTagPrefix = testTagPrefix,
     )
+}
+
+/** Lives on the gate, not a step's screen: switching steps must not count as leaving setup. */
+@Composable
+fun PhotobaseSetupLifecycle(viewModel: PhotobaseSetupViewModel) {
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onAction(PhotobaseSetupUiAction.Paused) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onAction(PhotobaseSetupUiAction.Resumed) }
+    DisposableEffect(viewModel) { onDispose { viewModel.onAction(PhotobaseSetupUiAction.SetupLeft) } }
+}
+
+@Composable
+fun PhotobaseFinishingScreen(onCancel: () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+            CircularProgressIndicator()
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = stringResource(MR.string.photobase_setup_finishing),
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onCancel) { Text(stringResource(MR.string.photobase_setup_finishing_cancel)) }
+        }
+    }
 }
 
 @Composable

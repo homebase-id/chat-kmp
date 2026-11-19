@@ -3480,6 +3480,8 @@
     <string name="photobase_quality_confirm_body">Pick how your photos and videos are kept on your Homebase. Higher quality uses more storage.</string>
     <string name="photobase_quality_confirm_change_later">You can change these later in Photos settings.</string>
     <string name="photobase_quality_confirm_continue">Continue</string>
+    <string name="photobase_setup_finishing">Finishing setup…</string>
+    <string name="photobase_setup_finishing_cancel">Cancel</string>
     <string name="photobase_check_failed">Couldn't check whether Photos is set up. Check your connection and try again.</string>
     <string name="photobase_check_retry">Try again</string>
     <string name="photobase_home_subtitle">Your backed-up photos and videos</string>

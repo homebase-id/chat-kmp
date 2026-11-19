@@ -16,20 +16,22 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class PhotobaseSetupStep { Checking, Onboarding, ConfirmQuality, Installed }
+enum class PhotobaseSetupStep { Checking, Onboarding, Finishing, ConfirmQuality, Installed }
 
 /** [installed]: null until the server has answered. */
 data class PhotobaseSetupUiState(
     val installed: Boolean? = null,
     val setupInitiated: Boolean = false,
     val checkFailed: Boolean = false,
+    /** Away in the owner console, or back and waiting on the recheck: the last verdict is stale. */
+    val finishing: Boolean = false,
     val qualityUnconfirmed: Boolean = false,
     val quality: SendQuality = BackupSettings().let { SendQuality(it.photoQuality, it.videoQuality) },
 ) {
     val step: PhotobaseSetupStep
         get() = when (installed) {
             null -> PhotobaseSetupStep.Checking
-            false -> PhotobaseSetupStep.Onboarding
+            false -> if (finishing) PhotobaseSetupStep.Finishing else PhotobaseSetupStep.Onboarding
             true -> if (qualityUnconfirmed) PhotobaseSetupStep.ConfirmQuality else PhotobaseSetupStep.Installed
         }
 }
@@ -40,6 +42,8 @@ sealed interface PhotobaseSetupUiAction {
     data object Resumed : PhotobaseSetupUiAction
     data object SetupLeft : PhotobaseSetupUiAction
     data object RetryCheck : PhotobaseSetupUiAction
+    data object OpenedOwnerConsole : PhotobaseSetupUiAction
+    data object FinishingCancelled : PhotobaseSetupUiAction
     data class SetPhotoQuality(val quality: MediaQuality) : PhotobaseSetupUiAction
     data class SetVideoQuality(val quality: MediaQuality) : PhotobaseSetupUiAction
     data object QualityConfirmed : PhotobaseSetupUiAction
@@ -67,6 +71,7 @@ class PhotobaseSetupViewModel(
                 extendPermissionViewModel.permissionsGranted,
             ) { checked, granted -> if (granted) true else if (checked) false else null }
                 .collect { installed ->
+                    if (installed == true) setupPaused = false
                     if (installed == false) {
                         onNotInstalled()
                         backup?.let { controller ->
@@ -74,7 +79,11 @@ class PhotobaseSetupViewModel(
                         }
                     }
                     _uiState.update {
-                        it.copy(installed = installed, setupInitiated = if (installed == true) false else it.setupInitiated)
+                        it.copy(
+                            installed = installed,
+                            setupInitiated = if (installed == true) false else it.setupInitiated,
+                            finishing = if (installed == true) false else it.finishing,
+                        )
                     }
                 }
         }
@@ -91,16 +100,27 @@ class PhotobaseSetupViewModel(
             }
         }
         viewModelScope.launch {
-            extendPermissionViewModel.checkFailed.collect { failed -> _uiState.update { it.copy(checkFailed = failed) } }
+            extendPermissionViewModel.checkFailed.collect { failed ->
+                _uiState.update { it.copy(checkFailed = failed, finishing = it.finishing && !failed) }
+            }
         }
         viewModelScope.launch {
             // Cancelled in the owner console while away: coming back must not ask again.
-            extendPermissionViewModel.navigateAwayRequest.collect { setupPaused = false }
+            extendPermissionViewModel.navigateAwayRequest.collect {
+                setupPaused = false
+                _uiState.update { it.copy(finishing = false) }
+            }
         }
         viewModelScope.launch {
             extendPermissionViewModel.uiState
                 .filter { it is ExtendPermissionUiState.Dismissed }
                 .collect { _uiState.update { state -> state.copy(setupInitiated = false) } }
+        }
+        viewModelScope.launch {
+            // Still missing after the return: back to onboarding, where the dialog asks again.
+            extendPermissionViewModel.uiState
+                .filter { it is ExtendPermissionUiState.ShowDialog }
+                .collect { _uiState.update { state -> state.copy(finishing = false) } }
         }
     }
 
@@ -119,7 +139,21 @@ class PhotobaseSetupViewModel(
                 setupPaused = false
                 onAction(PhotobaseSetupUiAction.SetupClicked)
             }
-            PhotobaseSetupUiAction.SetupLeft -> setupPaused = false
+            PhotobaseSetupUiAction.SetupLeft -> {
+                setupPaused = false
+                _uiState.update { it.copy(finishing = false) }
+            }
+            // Marked at the click, not ON_PAUSE: the dialog's own dismiss can clear setupInitiated first.
+            PhotobaseSetupUiAction.OpenedOwnerConsole -> {
+                setupPaused = true
+                _uiState.update { it.copy(finishing = true) }
+            }
+            // Drops the in-flight recheck too, so its dialog can't pop up over onboarding.
+            PhotobaseSetupUiAction.FinishingCancelled -> {
+                setupPaused = false
+                extendPermissionViewModel.dismissDialog()
+                _uiState.update { it.copy(finishing = false) }
+            }
             PhotobaseSetupUiAction.RetryCheck -> extendPermissionViewModel.recheckPermissions()
             is PhotobaseSetupUiAction.SetPhotoQuality -> backup?.update { it.copy(photoQuality = action.quality) }
             is PhotobaseSetupUiAction.SetVideoQuality -> backup?.update { it.copy(videoQuality = action.quality) }

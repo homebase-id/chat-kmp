@@ -23,6 +23,19 @@ class PhotobaseSetupStepTest {
     }
 
     @Test
+    fun backFromTheOwnerConsoleShowsFinishingNotOnboarding() {
+        assertEquals(PhotobaseSetupStep.Finishing, PhotobaseSetupUiState(installed = false, finishing = true).step)
+    }
+
+    @Test
+    fun theRecheckFindingTheInstallLeavesFinishing() {
+        assertEquals(
+            PhotobaseSetupStep.ConfirmQuality,
+            PhotobaseSetupUiState(installed = true, finishing = true, qualityUnconfirmed = true).step,
+        )
+    }
+
+    @Test
     fun settingsSavedBeforeTheFlagExistedNeverAsk() {
         val saved = """{"enabled":true,"photoQuality":"hd","videoQuality":"standard"}"""
         assertFalse(OdinSystemSerializer.deserialize<BackupSettings>(saved).qualityUnconfirmed)
