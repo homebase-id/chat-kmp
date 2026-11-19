@@ -94,3 +94,4 @@ callable com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConf
 function id.homebase.core.diagnostics.PhotoLibraryChecks.runChecks
 property id.homebase.core.diagnostics.CheckReport.failures
 property id.homebase.core.diagnostics.CheckReport.measurements
+function id.homebase.core.diagnostics.DisplayDecodeChecks.runChecks
