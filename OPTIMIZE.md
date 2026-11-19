@@ -350,18 +350,19 @@ HD and every smaller output were unchanged. Cost, `ImagePipelinePerfBench`, medi
 
 Everything else (12 MP JPEG and HEIC, 48 MP HEIC, 48 MP JPEG at HD) was within noise. The highest
 peak in any case stays 231 MB (48 MP at HD), so a 48 MP JPEG now costs what a 48 MP HEIC always did.
-Over 24 MP the iOS memory guard still lets ImageIO halve (#2365), and it stays: on an iPhone 15 (6 GB, iOS's
-3072 MB per-app limit, debug Kotlin framework, peaks from Xcode's memory gauge):
+Over 24 MP the iOS memory guard still lets ImageIO halve (#2365). On an iPhone 15 (6 GB, iOS's 3072 MB
+per-app limit, debug Kotlin framework, peaks from Xcode's memory gauge, so about ±300 MB), three 48 MP photos
+from the gallery strip:
 
-| Build | Send | Setting | Peak | Outcome |
-|---|---|---|---|---|
-| Guard as is (24 MP) | 3 × 48 MP | Standard, HD | about 2.75 GB | sent; decoded at 3024×4032 (2×) and 4243×5657 (1.43×) |
-| Guard as is | 1 × 24 MP | Standard / HD | not captured | decoded at 2142×2856 / 4243×5657 |
-| Guard 100 MP (full decodes) | 3 × 48 MP | Standard | over 3072 MB | **killed** (`EXC_RESOURCE`, high watermark memory limit) |
-| Guard 100 MP | 1 × 24 MP | Standard / HD | 1920 / 2800 MB | sent; decoded in full |
+| Build | Standard | HD | Decoded at (Standard / HD) |
+|---|---|---|---|
+| Before the on-screen fix (#2558) | about 2.75 GB; the app could die while picking | about 2.75 GB | 3024×4032 / 4243×5657 |
+| With it, guard as is (24 MP) | 471–600 MB | 949 MB | 3024×4032 / 4243×5657 |
+| With it, guard 100 MP (full decodes) | 1.09 GB | about 0.8 GB | 6048×8064 / 6048×8064 |
 
-One 48 MP bitmap is about 195 MB, so most of the 2–2.8 GB is the rest of the send path, on a 300–700 MB
-baseline; that's measured next, before any change here.
+The 2.75 GB, and a run with a 100 MP guard that got killed at the limit, were the gallery strip and the
+editor decoding each picture at full size for the screen (#2553), not the send. So full decodes look
+affordable on a 6 GB iPhone; #2365 decides the guard, with a 4 GB iPhone measured too.
 
 ## Findings
 
