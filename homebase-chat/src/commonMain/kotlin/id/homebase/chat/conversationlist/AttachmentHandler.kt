@@ -260,7 +260,7 @@ internal class AttachmentHandler(
                         // that AVPlayer (the editor preview) and the thumbnail/duration probe can't
                         // open — materialize it to a real temp file first. Android content:// and
                         // desktop paths are playable as-is; send resolves `file` separately either way.
-                        val playable = if (rawPath.startsWith("ph://") || rawPath.contains("/L0/")) {
+                        val playable = if (fileOperationsProvider.isPhotoLibraryAsset(rawPath)) {
                             fileOperationsProvider.resolveToFilePath(rawPath)
                         } else {
                             rawPath
