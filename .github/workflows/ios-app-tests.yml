@@ -119,7 +119,6 @@ jobs:
             -destination "id=$SIM_UDID" \
             -derivedDataPath build/dd \
             -resultBundlePath build/iosAppTests.xcresult \
-            -only-testing:iosAppTests/PhotoLibraryCheckTests \
             -only-testing:iosAppTests/DisplayDecodeCheckTests \
             | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|measured:|error:|failed|passed|\*\* TEST"
 
