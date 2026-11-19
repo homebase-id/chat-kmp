@@ -32,7 +32,7 @@ class HomeUiTest {
                 )
             }
         }
-        onNode(hasTestTag("homeEmailCard") and hasText("Email setup", substring = true), useUnmergedTree = false)
+        onNode(hasTestTag("homeEmailCard") and hasText("Email", substring = true), useUnmergedTree = false)
             .performScrollTo()
             .assertExists()
         onNodeWithTag("homeEmailCard").performSemanticsAction(SemanticsActions.OnClick)

@@ -1044,10 +1044,22 @@ fun AppNavHost(
                                             ?.savedStateHandle?.set(SHOW_ARCHIVED_KEY, true)
                                     },
                                 )
+                                val settingsIsPane = isDesktopOrWeb() && isExpandedLayout()
                                 RailActionItem(
                                     icon = Icons.Outlined.Settings,
                                     contentDescription = stringResource(MR.string.settings),
-                                    onClick = { navController.navigate(Route.Settings) },
+                                    onClick = {
+                                        // From Chat, Settings opens on Chat's own page.
+                                        val inChat = selectedTab?.hasRoute(Route.ChatList::class) == true
+                                        when {
+                                            !inChat -> navController.navigate(Route.Settings)
+                                            settingsIsPane -> {
+                                                SettingsPaneRequest.open(SettingsCategory.Apps, AppsPage.Chat)
+                                                navController.navigate(Route.Settings)
+                                            }
+                                            else -> navController.navigate(AppsPage.Chat.route)
+                                        }
+                                    },
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                             }

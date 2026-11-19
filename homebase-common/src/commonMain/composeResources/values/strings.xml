@@ -1216,14 +1216,14 @@
 
     <!-- Email setup — the add-on that turns email on for this identity and manages its
          keys. Not a mail reader: reading happens in Thunderbird-class clients. -->
-    <string name="email_label">Email setup</string>
+    <string name="email_label">Email</string>
     <string name="email_home_subtitle">Set up and manage your email</string>
     <string name="email_onboarding_title">Email on your own identity</string>
     <string name="email_onboarding_body_1">Set up an address that belongs to your Homebase identity, and keep the keys to it on your own drive.</string>
     <string name="email_onboarding_body_2">You read and write mail in the app you already use. This screen is where you set it up and manage your keys.</string>
     <string name="email_onboarding_setup">Set it up</string>
     <string name="email_onboarding_dismiss">Dismiss</string>
-    <string name="email_onboarding_dismiss_hint">Dismissing hides the icon — find Email setup again under Home.</string>
+    <string name="email_onboarding_dismiss_hint">Dismissing hides the icon — find Email again under Apps.</string>
     <string name="email_permission_dialog_title">Extend Permissions</string>
     <string name="email_permission_dialog_text">To set up email we need a drive to keep your mail keys and app passwords on.</string>
     <string name="email_permission_extend">Extend</string>
@@ -1237,9 +1237,9 @@
     <string name="email_checking">Checking with your server…</string>
     <string name="email_unreachable_title">Could not reach your server</string>
     <string name="email_unreachable_body">This is not the same as your server having no email — we simply did not get an answer.</string>
-    <string name="email_settings_section">Email setup</string>
-    <string name="email_settings_open">Open Email setup</string>
-    <string name="email_settings_show_icon">Show Email setup in the navigation bar</string>
+    <string name="email_settings_section">Email</string>
+    <string name="email_settings_open">Open Email</string>
+    <string name="email_settings_show_icon">Show Email in the navigation bar</string>
     <string name="email_settings_biometrics">Biometrics protection</string>
     <string name="email_mode_row_title">Mailbox type</string>
     <string name="email_mode_encrypted">Encrypted</string>
@@ -1262,7 +1262,7 @@
     <string name="email_mode_switching">Switching…</string>
     <string name="email_mode_load_failed">Could not read your mailbox settings.</string>
     <string name="email_mode_failed">The switch did not complete. Try again.</string>
-    <string name="email_biometric_prompt_title">Unlock Email setup</string>
+    <string name="email_biometric_prompt_title">Unlock Email</string>
     <string name="email_biometric_prompt_subtitle">Authenticate to access your mail keys</string>
     <string name="settings_email_desc">Your address, keys and mail app passwords</string>
 
@@ -1287,7 +1287,7 @@
     <string name="email_setup_failed">Setup did not complete.</string>
     <string name="email_setup_stalled">That step reported success but nothing changed, so setup stopped rather than repeating it.</string>
     <string name="email_setup_retry">Try again</string>
-    <string name="email_setup_records_manual">Your DNS is not managed here, so the email records have to be added by hand. Once setup finishes, Email setup lists each one to add.</string>
+    <string name="email_setup_records_manual">Your DNS is not managed here, so the email records have to be added by hand. Once setup finishes, Email lists each one to add.</string>
     <string name="email_setup_done_title">Email is ready</string>
     <string name="email_home_address_label">Your address</string>
     <string name="email_home_status_incomplete">Setup is not finished</string>
@@ -1733,7 +1733,7 @@
     <string name="audio_sender_avatar_you">Voice note from you</string>
 
     <!-- Bottom navigation -->
-    <string name="nav_chats">Chats</string>
+    <string name="nav_chats">Chat</string>
     <string name="nav_feed">Feed</string>
     <string name="nav_moments">Moments</string>
     <string name="nav_calls">Calls</string>
@@ -3352,7 +3352,7 @@
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
     <string name="vault_chat_image_name">Chat image, %1$s</string>
-    <string name="email_locked_title">Mail setup is locked</string>
+    <string name="email_locked_title">Email is locked</string>
     <string name="email_locked_unlock">Unlock</string>
     <string name="email_make_private">Click to change your Email drive to true zero knowledge encryption</string>
     <string name="email_sign_in_again_title">Sign in again to open your email keys</string>
@@ -3518,9 +3518,9 @@
     <string name="feed_wide_channels_empty">Channels you post to will show up here</string>
     <!-- Settings → Apps: one page shape for every app -->
     <string name="settings_chat_desc">Your conversations, and the photos and videos in them</string>
-    <string name="chat_settings_open">Open Chats</string>
-    <string name="chat_settings_show_icon">Show Chats in the navigation bar</string>
-    <string name="chat_settings_icon_always">Chats always stay in the navigation bar.</string>
+    <string name="chat_settings_open">Open Chat</string>
+    <string name="chat_settings_show_icon">Show Chat in the navigation bar</string>
+    <string name="chat_settings_icon_always">Chat always stays in the navigation bar.</string>
     <string name="feed_settings_open">Open Feed</string>
     <string name="feed_settings_show_icon">Show Feed in the navigation bar</string>
     <string name="filesync_settings_open">Open Drive</string>

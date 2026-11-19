@@ -77,10 +77,12 @@ class SettingsUiTest {
         assertEquals(listOf("back"), routes.fired)
     }
 
-    /** Account sits right below General in the wide layout's sidebar, as it does near the top of the hub. */
     @Test
-    fun accountComesRightAfterGeneralInTheSidebar() {
-        assertEquals(listOf(SettingsCategory.General, SettingsCategory.Account), SettingsCategory.entries.take(2))
+    fun theSidebarLeadsWithGeneralAppsNotificationsAndAccount() {
+        assertEquals(
+            listOf(SettingsCategory.General, SettingsCategory.Apps, SettingsCategory.Notifications, SettingsCategory.Account),
+            SettingsCategory.entries.take(4),
+        )
     }
 
     /** Walks the hub top to bottom. */
