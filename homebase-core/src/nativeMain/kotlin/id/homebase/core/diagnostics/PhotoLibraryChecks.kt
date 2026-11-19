@@ -26,6 +26,7 @@ import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.isEqualToData
 import platform.Foundation.writeToURL
 import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHAdjustmentData
@@ -37,6 +38,7 @@ import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHContentEditingInput
 import platform.Photos.PHContentEditingOutput
 import platform.Photos.PHPhotoLibrary
+import platform.Photos.requestContentEditingInputWithOptions
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 import kotlin.coroutines.resume
