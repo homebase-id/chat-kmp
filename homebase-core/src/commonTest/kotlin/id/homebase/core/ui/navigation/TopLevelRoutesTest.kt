@@ -27,6 +27,9 @@ class TopLevelRoutesTest {
         locationVisible = false,
         contactBookVisible = false,
         emailVisible = false,
+        everyApp = false,
+        photobaseAvailable = true,
+        emailAvailable = true,
     )
 
     @Test
@@ -53,6 +56,9 @@ class TopLevelRoutesTest {
             callsAvailable = true, callsIconVisible = true, momentsVisible = true, vaultVisible = true,
             locationVisible = true, contactBookVisible = true, emailVisible = true,
             filesyncVisible = true, photobaseVisible = true, feedVisible = true,
+            everyApp = false,
+            photobaseAvailable = true,
+            emailAvailable = true,
         ).map { it.route }
         val settingsOrder = AppsPage.entries.map { it.appRoute }.filter { it in every }
         assertEquals(settingsOrder + Route.Home, every)
@@ -76,6 +82,9 @@ class TopLevelRoutesTest {
             contactBookVisible = false,
             emailVisible = false,
             feedVisible = false,
+            everyApp = false,
+            photobaseAvailable = true,
+            emailAvailable = true,
         )
         assertEquals(listOf(Route.ChatList, Route.Home), routes.map { it.route })
     }
@@ -111,6 +120,9 @@ class TopLevelRoutesTest {
             emailVisible = true,
             filesyncVisible = true,
             photobaseVisible = true,
+            everyApp = false,
+            photobaseAvailable = true,
+            emailAvailable = true,
         )
         all.forEach { topLevel ->
             runOnIdle { nav.navigate(topLevel.route) }

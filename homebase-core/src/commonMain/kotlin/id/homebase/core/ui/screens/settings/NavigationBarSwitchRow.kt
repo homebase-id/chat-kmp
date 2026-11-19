@@ -7,14 +7,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.resources.MR
 import id.homebase.resources.settings_navigation_bar_switch_wide
 import org.jetbrains.compose.resources.stringResource
 
-/** An app's "Show X in the navigation bar" switch. On a wide layout the rail shows every app, which it says. */
+/** An app's "Show X in the navigation bar" switch. Desktop and web show every app in the side bar, which it says there. */
 @Composable
 internal fun NavigationBarSwitchRow(
     title: String,
@@ -28,7 +28,7 @@ internal fun NavigationBarSwitchRow(
         modifier = modifier,
         icon = icon,
         title = title,
-        supportingText = if (isExpandedLayout()) stringResource(MR.string.settings_navigation_bar_switch_wide) else null,
+        supportingText = if (isDesktopOrWeb()) stringResource(MR.string.settings_navigation_bar_switch_wide) else null,
         containerColor = containerColor,
         action = SettingsRowAction.Toggle(checked = checked, onCheckedChange = onCheckedChange),
     )

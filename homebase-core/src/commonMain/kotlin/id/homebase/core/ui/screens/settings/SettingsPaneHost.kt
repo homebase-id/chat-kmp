@@ -81,6 +81,7 @@ internal fun SettingsPaneHost(
     val requested = remember { SettingsPaneRequest.take() }
     var category by remember { mutableStateOf(requested?.category ?: SettingsCategory.General) }
     var appsPage by remember { mutableStateOf(requested?.appsPage) }
+    val openedOverApp = requested?.appsPage?.takeIf { requested.fromApp }
     var profilePage by remember { mutableStateOf(if (requested?.profileCard == true) ProfilePage.Card else null) }
     var editorOpenedFromCard by remember { mutableStateOf(false) }
     var editorOpensDesign by remember { mutableStateOf(false) }
@@ -150,6 +151,7 @@ internal fun SettingsPaneHost(
                         CategoryPage(
                             category = shownCategory,
                             appsPage = shownAppsPage,
+                            openedOverApp = openedOverApp,
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
                             onSelectAppsPage = { appsPage = it },
@@ -233,6 +235,7 @@ private fun ProfilePage?.isCard() = this == ProfilePage.Card || this == ProfileP
 private fun CategoryPage(
     category: SettingsCategory,
     appsPage: AppsPage?,
+    openedOverApp: AppsPage?,
     onDismiss: () -> Unit,
     onSelectCategory: (SettingsCategory) -> Unit,
     onSelectAppsPage: (AppsPage?) -> Unit,
@@ -297,6 +300,7 @@ private fun CategoryPage(
                     onBack = { onSelectAppsPage(null) },
                     links = actions.appsPageLinks,
                     emailMailboxMode = emailMailboxMode,
+                    openedFromApp = shown == openedOverApp,
                 )
             },
         )

@@ -12,7 +12,7 @@ files mentioned below.
 
 A self-contained feature that:
 
-1. Shows up as a **toggleable icon** in the bottom navigation bar (or side rail for desktop).
+1. Shows up as a **toggleable icon** in a phone's bottom navigation bar. Desktop and web show every available app in the side rail, whatever the switch.
 2. Has an **onboarding screen** the first time the user taps it, with *Set it up* and
    *Dismiss* options.
 3. When setup it flips a runtime **activation flag** via an "Extend Permissions" dialog — which in
@@ -879,15 +879,13 @@ val fooPreferences = koinInject<FooPreferences>()
 val fooIconVisible by fooPreferences.iconVisible.collectAsStateWithLifecycle()
 val fooViewModel: FooViewModel = koinViewModel()
 
-val topLevelRoutes = remember(fooIconVisible) {
-    buildList {
-        add(TopLevelRoute.Chat)
-        if (fooIconVisible) add(TopLevelRoute.Foo)
-        add(TopLevelRoute.Apps)
-    }
+val topLevelRoutes = remember(fooIconVisible, /* the other apps' flags */) {
+    topLevelRoutesFor(fooVisible = fooIconVisible, everyApp = isDesktopOrWeb(), /* … */)
 }
 ```
 
+Add the app to `topLevelRoutesFor` (in `AppNavHost.kt`) at its `AppsPage` position, through `shown(...)`, so
+desktop and web show it whatever the switch (`everyApp`), and to the narrow-window `bottomBarRoutes` filter.
 `remember(fooIconVisible)` rebuilds the list whenever the Settings switch flips.
 
 ### 8c — `openFoo` helper that branches on activation
@@ -1196,10 +1194,10 @@ Copy this into your PR description and tick off each wiring point:
 - **Placeholder drive UUIDs.** Vault currently ships with a stub `f47ac10b-…`.
   Get real alias/type UUIDs from the server team before enabling the drive in
   production — otherwise the WebSocket will subscribe to a non-existent drive.
-- **Dismiss is sticky.** Dismissing onboarding only hides the icon
+- **Dismiss is sticky.** Dismissing onboarding only hides the phone's icon
   (`iconVisible = false`) — it never activates the drive. The user must re-enable
-  the icon via Settings → *Show Foo icon in bottom bar* to see the onboarding
-  flow again.
+  the icon via Settings → Apps → *Show Foo in the navigation bar* to see the onboarding
+  flow again. On desktop and web the app stays in the side rail.
 - **Koin binds by class name.** `viewModelOf(::FooViewModel)` breaks silently if
   you rename the VM without updating `AppModule.kt`.
 - **Fresh UUID namespace per add-on.** Reusing Vault's `0a01xx` range will corrupt

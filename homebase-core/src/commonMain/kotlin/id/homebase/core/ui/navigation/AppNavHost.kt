@@ -39,6 +39,8 @@ import id.homebase.chat.conversationlist.chatOwnsWindow
 import id.homebase.chat.conversationlist.showsViewOnceViewer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -444,7 +446,6 @@ fun AppNavHost(
     val peerCallStarter = rememberPeerCallStarter()
     val showNavigationRail = isExpandedLayout()
     val topLevelRoutes = remember(
-        showNavigationRail,
         callsAvailable,
         callsIconVisible,
         momentsIconVisible,
@@ -469,10 +470,31 @@ fun AppNavHost(
             locationVisible = locationIconVisible,
             contactBookVisible = contactBookIconVisible,
             emailVisible = emailIconVisible,
-            everyApp = showNavigationRail,
+            // Fixed per platform, never per window size: tabs that came and went with the layout would leave a
+            // pushed app inside another tab's saved stack.
+            everyApp = isDesktopOrWeb(),
             photobaseAvailable = photobaseAvailable,
             emailAvailable = serverSupportsMail == true,
         )
+    }
+    // A narrow desktop window's bottom bar has room only for the apps whose switches are on.
+    val bottomBarRoutes = remember(topLevelRoutes, callsIconVisible, momentsIconVisible, vaultIconVisible,
+        filesyncIconVisible, feedIconVisible, photobaseIconVisible, locationIconVisible, contactBookIconVisible, emailIconVisible) {
+        if (!isDesktopOrWeb()) topLevelRoutes
+        else topLevelRoutes.filter { route ->
+            when (route) {
+                TopLevelRoute.Calls -> callsIconVisible
+                TopLevelRoute.Moments -> momentsIconVisible
+                TopLevelRoute.Vault -> vaultIconVisible
+                TopLevelRoute.Filesync -> filesyncIconVisible
+                TopLevelRoute.Feed -> feedIconVisible
+                TopLevelRoute.Photobase -> photobaseIconVisible
+                TopLevelRoute.Location -> locationIconVisible
+                TopLevelRoute.ContactBook -> contactBookIconVisible
+                TopLevelRoute.Email -> emailIconVisible
+                TopLevelRoute.Chat, TopLevelRoute.Apps -> true
+            }
+        }
     }
     // Read at call time: the event collectors below capture these lambdas once.
     val tabRoutes by rememberUpdatedState(topLevelRoutes.map { it.route })
@@ -953,7 +975,7 @@ fun AppNavHost(
                     fadeOut(chromeMotion.fastEffectsSpec()),
             ) {
                 ShortNavigationBar(modifier = Modifier.onSizeChanged { bottomBarHeightPx = it.height }) {
-                    topLevelRoutes.forEach { topLevelRoute ->
+                    bottomBarRoutes.forEach { topLevelRoute ->
                         val isSelected =
                             selectedTab?.hasRoute(topLevelRoute.route::class) == true
                         ShortNavigationBarItem(
@@ -1015,6 +1037,13 @@ fun AppNavHost(
                             },
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
+                            // Every app can outgrow a short window: the apps scroll, the actions below stay.
+                            Column(
+                                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                                // NavigationRail's own spacing between items.
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
                             topLevelRoutes.forEach { topLevelRoute ->
                                 val isSelected = !settingsOpen &&
                                     selectedTab?.hasRoute(topLevelRoute.route::class) == true
@@ -1034,9 +1063,9 @@ fun AppNavHost(
                                         }
                                     })
                             }
+                            }
 
                             if (isDesktopOrWeb()) {
-                                Spacer(modifier = Modifier.weight(1f))
                                 RailActionItem(
                                     icon = Icons.Default.Archive,
                                     contentDescription = stringResource(MR.string.chat_archived_chats),
@@ -1051,10 +1080,9 @@ fun AppNavHost(
                                     icon = Icons.Outlined.Settings,
                                     contentDescription = stringResource(MR.string.settings),
                                     onClick = {
-                                        // From inside an app, the pane opens on that app's own page; the screen shown
-                                        // first (WebDrop has no tab), then its tab.
+                                        // The app shown, else its tab: Email on a host without mail opens over Apps.
                                         val page = AppsPage.of(currentDestination) ?: AppsPage.of(selectedTab)
-                                        if (page != null) SettingsPaneRequest.open(SettingsCategory.Apps, page)
+                                        if (page != null) SettingsPaneRequest.open(SettingsCategory.Apps, page, fromApp = true)
                                         navController.navigate(Route.Settings)
                                     },
                                 )
@@ -2801,10 +2829,10 @@ internal fun topLevelRoutesFor(
     filesyncVisible: Boolean = false,
     photobaseVisible: Boolean = false,
     feedVisible: Boolean = true,
-    // A wide layout's rail has room for every available app; the switches choose for a phone's bottom bar.
-    everyApp: Boolean = false,
-    photobaseAvailable: Boolean = true,
-    emailAvailable: Boolean = true,
+    // Desktop and web show every available app; a phone's switches choose.
+    everyApp: Boolean,
+    photobaseAvailable: Boolean,
+    emailAvailable: Boolean,
 ): List<TopLevelRoute> = buildList {
     fun shown(iconVisible: Boolean) = everyApp || iconVisible
     // The order of Settings → Apps (AppsPage), then Apps.
