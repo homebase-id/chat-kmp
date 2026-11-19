@@ -1,0 +1,111 @@
+name: iOS app tests
+
+# The app-hosted XCTests (iosAppTests): what needs a real app on a simulator, such as the Photos library.
+# A full app build, so it runs only when iOS code changes, and nightly on main.
+on:
+  pull_request:
+    paths:
+      - 'iosApp/**'
+      - '**/src/nativeMain/**'
+      - '**/src/appleMain/**'
+      - '**/src/iosMain/**'
+      - '.github/workflows/ios-app-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'iosApp/**'
+      - '**/src/nativeMain/**'
+      - '**/src/appleMain/**'
+      - '**/src/iosMain/**'
+      - '.github/workflows/ios-app-tests.yml'
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: iosAppTests on a simulator
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Cache Kotlin/Native
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/gradle.properties') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
+
+      - name: Cache SQLCipher xcframework
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/homebase-sqlcipher
+          key: sqlcipher-${{ hashFiles('homebase-api/build.gradle.kts') }}
+          restore-keys: |
+            sqlcipher-
+
+      # Seconds-to-minutes instead of the app build's tens: a Kotlin error fails here, and Xcode reuses the output.
+      - name: Compile the Kotlin for the simulator
+        run: ./gradlew :homebase-core:compileKotlinIosSimulatorArm64
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      - name: Boot a simulator with full Photos access
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in devices if "iOS" in k), reverse=True)
+          print(next(d["udid"] for k in ios for d in devices[k] if d["name"].startswith("iPhone")))')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          # The Debug app's bundle id; full access, which adding and editing test photos needs.
+          xcrun simctl privacy "$udid" grant photos id.homebase.feed.dev
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+
+      - name: Run iosAppTests
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild test \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -destination "id=$SIM_UDID" \
+            -resultBundlePath build/iosAppTests.xcresult \
+            -only-testing:iosAppTests/PhotoLibraryCheckTests \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|error:|failed|passed|\*\* TEST"
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-app-test-results
+          path: |
+            build/iosAppTests.xcresult
+            build/xcodebuild-test.log
+          if-no-files-found: ignore
