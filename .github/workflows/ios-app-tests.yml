@@ -9,6 +9,10 @@ on:
       - '**/src/nativeMain/**'
       - '**/src/appleMain/**'
       - '**/src/iosMain/**'
+      - '**/diagnostics/**'
+      - 'homebase-core/objc-entry-points.txt'
+      - 'gradle/libs.versions.toml'
+      - '**/build.gradle.kts'
       - '.github/workflows/ios-app-tests.yml'
   push:
     branches: [main]
@@ -17,6 +21,10 @@ on:
       - '**/src/nativeMain/**'
       - '**/src/appleMain/**'
       - '**/src/iosMain/**'
+      - '**/diagnostics/**'
+      - 'homebase-core/objc-entry-points.txt'
+      - 'gradle/libs.versions.toml'
+      - '**/build.gradle.kts'
       - '.github/workflows/ios-app-tests.yml'
   schedule:
     - cron: '0 3 * * *'
@@ -65,7 +73,7 @@ jobs:
           restore-keys: |
             sqlcipher-
 
-      # Seconds-to-minutes instead of the app build's tens: a Kotlin error fails here, and Xcode reuses the output.
+      # Minutes instead of the app build's tens: a Kotlin error fails here, and Xcode reuses the klibs.
       - name: Compile the Kotlin for the simulator
         run: ./gradlew :homebase-core:compileKotlinIosSimulatorArm64
         env:
@@ -82,6 +90,7 @@ jobs:
           xcrun simctl bootstatus "$udid" -b
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
 
+      # Debug framework: Dev.xcconfig asks for the release link, the slowest step of the iOS build.
       # Signed ad hoc, not unsigned: without its entitlements the app gets no Keychain (OSStatus -34018), so its
       # database can't open and launch crashes before any test runs.
       - name: Build for testing
@@ -95,6 +104,7 @@ jobs:
             -destination "id=$SIM_UDID" \
             -derivedDataPath build/dd \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
+            KOTLIN_FRAMEWORK_BUILD_TYPE=debug \
             | tee build/xcodebuild-build.log | grep -E --line-buffered "error:|\*\* BUILD|\*\* TEST BUILD"
         env:
           JDK_21: ${{ env.JAVA_HOME }}

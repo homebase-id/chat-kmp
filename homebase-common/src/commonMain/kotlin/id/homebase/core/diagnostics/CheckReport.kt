@@ -3,6 +3,8 @@ package id.homebase.core.diagnostics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -26,7 +28,9 @@ class CheckRun {
         try {
             check()
         } catch (e: CancellationException) {
-            throw e
+            // A check's own timeout is a failure; only the run being cancelled stops the run.
+            currentCoroutineContext().ensureActive()
+            failures += "$name: cancelled (${e.message})"
         } catch (e: Throwable) {
             failures += "$name: ${e.message ?: e}"
         }
@@ -35,10 +39,21 @@ class CheckRun {
     internal fun report() = CheckReport(failures.toList(), measurements.toList())
 }
 
-suspend fun checkRun(checks: suspend CheckRun.() -> Unit): CheckReport =
-    withContext(Dispatchers.Default) { CheckRun().apply { checks() }.report() }
+suspend fun checkRun(checks: suspend CheckRun.() -> Unit): CheckReport = withContext(Dispatchers.Default) {
+    val run = CheckRun()
+    run.verify("setting up the checks") { run.checks() }
+    run.report()
+}
 
 /** [checks] for Swift, which can't call a suspend function: [onDone] is called back on a background thread. */
 fun launchChecks(checks: suspend () -> CheckReport, onDone: (CheckReport) -> Unit) {
-    CoroutineScope(Dispatchers.Default).launch { onDone(checks()) }
+    CoroutineScope(Dispatchers.Default).launch {
+        // A throw out of a coroutine launched for Swift would kill the app; report it instead.
+        val report = try {
+            checks()
+        } catch (e: Throwable) {
+            CheckReport(listOf("the checks crashed: ${e.message ?: e}"), emptyList())
+        }
+        onDone(report)
+    }
 }
