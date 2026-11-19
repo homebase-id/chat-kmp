@@ -85,7 +85,7 @@ object DisplayDecodeChecks {
 
     private suspend fun CheckRun.theMeterSeesAFullSizeDecode(jpeg: NSData) {
         val bytes = jpeg.toByteArray()
-        val (image, growth) = leastGrowth { NativeImageDecoder.decodeThumbnail(bytes) { w, h -> maxOf(w, h) }.also { it?.close() } }
+        val (_, growth) = leastGrowth { NativeImageDecoder.decodeThumbnail(bytes) { w, h -> maxOf(w, h) }.also { it?.close() } }
         val growthMb = growth / MB
         measured("full-size decode of a 48 MP JPEG: peak +$growthMb MB")
         check(growthMb >= FULL_BITMAP_MB * 3 / 4) { "a full-size 48 MP decode grew memory by only $growthMb MB; the meter can't be trusted" }
