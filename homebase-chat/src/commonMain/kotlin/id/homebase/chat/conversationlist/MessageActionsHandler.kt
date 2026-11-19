@@ -24,6 +24,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.builder.withReadableImages
 import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ReplyContext
@@ -1136,17 +1137,19 @@ internal class MessageActionsHandler(
         if (replyTo != null) {
             Logger.d(tag = TAG) { "addMessageWithFiles: reply message=$messageId conversation=$conversationId replyTo=${replyTo.id}" }
         }
-        chatMessageSenderService.sendAttachmentsMessage(
-            viewOnce = viewOnce,
-            messageId = messageId,
-            conversationId = conversationId,
-            text = content,
-            attachments = attachments,
-            replyTo = replyTo?.toReplyPreview(),
-            sentAt = sentAt,
-            fileOperationsProvider = fileOperationsProvider,
-            mediaQuality = userPreferences.mediaQuality,
-        )
+        fileOperationsProvider.withReadableImages(attachments) { readable ->
+            chatMessageSenderService.sendAttachmentsMessage(
+                viewOnce = viewOnce,
+                messageId = messageId,
+                conversationId = conversationId,
+                text = content,
+                attachments = readable,
+                replyTo = replyTo?.toReplyPreview(),
+                sentAt = sentAt,
+                fileOperationsProvider = fileOperationsProvider,
+                mediaQuality = userPreferences.mediaQuality,
+            )
+        }
     }
 
     private fun editMessage(messageId: Uuid, versionTag: Uuid, content: String) {

@@ -202,10 +202,18 @@ interface FileOperationsProvider {
         throw UnsupportedOperationException("overwrite isn't supported by ${this::class.simpleName}")
 
     /**
-     * Resolves a path that may be a content URI (Android) to a real filesystem path
-     * by copying it to a temp file. On platforms without content URIs, returns [path] unchanged.
+     * Resolves a path that may be a content URI (Android) or a Photos-library asset (iOS: its photo or
+     * video resource, streamed) to a real filesystem path by copying it to a temp file. Elsewhere,
+     * returns [path] unchanged.
      */
     suspend fun resolveToFilePath(path: String): String = path
+
+    /**
+     * False where every read of [path], header reads included, fetches the whole source again: an
+     * iOS Photos-library asset. Read such a path through [withResolvedFile] once instead. True on
+     * every other platform and path.
+     */
+    fun readsInPlace(path: String): Boolean = true
 
     companion object {
         const val DEFAULT_HEADER_BYTES: Int = 64 * 1024
@@ -257,13 +265,13 @@ suspend fun <T> FileOperationsProvider.withResolvedFiles(
     paths: List<String>,
     block: suspend (resolvedPaths: List<String>) -> T,
 ): T {
-    val resolved = paths.map { resolveToFilePath(it) }
-    return try {
-        block(resolved)
+    val resolved = mutableListOf<String>()
+    try {
+        for (path in paths) resolved += resolveToFilePath(path)
+        return block(resolved)
     } finally {
-        for (i in paths.indices) {
-            if (resolved[i] != paths[i]) deleteTempFile(resolved[i])
-        }
+        // Over what resolved so far, so a later path failing to resolve still reaps the earlier copies.
+        resolved.forEachIndexed { i, copy -> if (copy != paths[i]) deleteTempFile(copy) }
     }
 }
 
