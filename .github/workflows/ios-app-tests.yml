@@ -71,7 +71,7 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
-      - name: Boot a simulator with full Photos access
+      - name: Boot a simulator
         run: |
           udid=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
@@ -80,27 +80,46 @@ jobs:
           print(next(d["udid"] for k in ios for d in devices[k] if d["name"].startswith("iPhone")))')
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
-          # The Debug app's bundle id; full access, which adding and editing test photos needs.
-          xcrun simctl privacy "$udid" grant photos id.homebase.feed.dev
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
 
       # Signed ad hoc, not unsigned: without its entitlements the app gets no Keychain (OSStatus -34018), so its
       # database can't open and launch crashes before any test runs.
-      - name: Run iosAppTests
+      - name: Build for testing
         run: |
           set -o pipefail
           mkdir -p build
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Debug \
             -destination "id=$SIM_UDID" \
-            -resultBundlePath build/iosAppTests.xcresult \
-            -only-testing:iosAppTests/PhotoLibraryCheckTests \
+            -derivedDataPath build/dd \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
-            | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|error:|failed|passed|\*\* TEST"
+            | tee build/xcodebuild-build.log | grep -E --line-buffered "error:|\*\* BUILD|\*\* TEST BUILD"
         env:
           JDK_21: ${{ env.JAVA_HOME }}
+
+      # Installed first, then granted: a grant for an app that isn't installed yet didn't reach it.
+      - name: Install the app and give it full Photos access
+        run: |
+          app=$(find build/dd/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          xcrun simctl install "$SIM_UDID" "$app"
+          xcrun simctl privacy "$SIM_UDID" grant photos id.homebase.feed.dev
+          sqlite3 ~/Library/Developer/CoreSimulator/Devices/$SIM_UDID/data/Library/TCC/TCC.db \
+            "select service, client, auth_value from access where client like 'id.homebase%'" || true
+
+      - name: Run iosAppTests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath build/dd \
+            -resultBundlePath build/iosAppTests.xcresult \
+            -only-testing:iosAppTests/PhotoLibraryCheckTests \
+            | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|measured:|error:|failed|passed|\*\* TEST"
 
       - name: Upload test results
         if: always()
@@ -110,4 +129,5 @@ jobs:
           path: |
             build/iosAppTests.xcresult
             build/xcodebuild-test.log
+            build/xcodebuild-build.log
           if-no-files-found: ignore
