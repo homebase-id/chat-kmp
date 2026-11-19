@@ -115,6 +115,10 @@ jobs:
           app=$(find build/dd/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
           xcrun simctl install "$SIM_UDID" "$app"
           xcrun simctl privacy "$SIM_UDID" grant photos id.homebase.feed.dev
+          # The grant was in TCC.db yet the app still read "not determined": reboot so the privacy daemons reread it.
+          xcrun simctl shutdown "$SIM_UDID"
+          xcrun simctl boot "$SIM_UDID"
+          xcrun simctl bootstatus "$SIM_UDID" -b
           sqlite3 ~/Library/Developer/CoreSimulator/Devices/$SIM_UDID/data/Library/TCC/TCC.db \
             "select * from access where client like '%homebase%'" || true
           xcrun simctl get_app_container "$SIM_UDID" id.homebase.feed.dev
