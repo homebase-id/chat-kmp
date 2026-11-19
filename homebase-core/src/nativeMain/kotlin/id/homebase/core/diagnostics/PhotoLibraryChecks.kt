@@ -58,8 +58,9 @@ object PhotoLibraryChecks {
     }
 
     suspend fun run(): CheckReport = withContext(Dispatchers.Default) {
-        if (PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite) != PHAuthorizationStatusAuthorized) {
-            return@withContext CheckReport(listOf("no full Photos access"), emptyList())
+        val access = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
+        if (access != PHAuthorizationStatusAuthorized) {
+            return@withContext CheckReport(listOf("no full Photos access (authorization status $access)"), emptyList())
         }
         val failures = mutableListOf<String>()
         suspend fun verify(name: String, block: suspend () -> Unit) {
