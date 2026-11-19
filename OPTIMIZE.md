@@ -298,6 +298,46 @@ Android decodes HEIC at full size, so 8000 → 2048 (3.9×) is now one Lanczos p
 halving and a pass: 4% slower, and 34 MB lower at peak because the halved copy is gone. 12 MP JPEG
 and HEIC, and 48 MP JPEG, are unchanged at Standard and HD. iOS and web weren't measured.
 
+### 2026-11-19, a decoder's shrink leaves Lanczos the last 2× (Pixel 5, Android 14)
+
+**A decoder's 2× is a block average.** 3-pixel stripes, 854 → 427 through the decoder: a PNG (which
+Android decodes in full, so Lanczos makes the step) comes out at a spread of 5.7; a JPEG, which
+Android's decoder halves itself (sample size 2), at 60.2. A plain 2×2 average gives 59.9. libvips
+("shrink-on-load is a simple block shrink and will add quite a bit of extra sharpness") and Pillow
+(`reducing_gap`, 2.0 by default for thumbnails) let a decoder shrink only while it leaves the
+resampler at least 2×; Android let its JPEG decoder shrink right down to the largest output.
+
+**Rejected first: plan HD at exactly half a 48–50 MP photo** (8064 → 4032 instead of 4096) so the
+decoder makes the whole step. It saved memory (48 MP JPEG at HD: 231 → 73 MB, 3447 → 2780 ms), but
+made the decoder's block shrink the final step: on real 12 MP photos, the same step as the final
+image cost 0.9 dB against Lanczos. It would have brought back the aliasing #2369 removed.
+
+**Adopted: the decoder leaves Lanczos at least 2×.** Android's JPEG sample size now stops while the
+decoded size is still at least twice the largest output; iOS asks ImageIO for twice the output only
+when the source is at least 4× too big (below that, a full decode), except over the memory guard.
+
+Quality, real photo content at 24 MP (two 12 MP photos side by side) and 48 MP (2×2), luma PSNR
+against Pillow's Lanczos from the source, mean of 3:
+
+| Output | Change |
+|---|---|
+| 24 MP, Standard final (2048) | +0.45 dB |
+| 24 MP, Original's largest thumbnail (2048) | +0.54 dB |
+| 48 MP, Standard final (2048) | +0.13 dB |
+| 48 MP, Original's largest thumbnail (2048) | +0.22 dB |
+
+HD and every smaller output were unchanged. Cost, `ImagePipelinePerfBench`, median of 3:
+
+| Case | Before | After |
+|---|---|---|
+| 48 MP JPEG, Standard | 1085 ms, native +58 MB | 1493 ms, native +195 MB |
+| 48 MP JPEG, Original | 1123 ms, native +58 MB | 1525 ms, native +195 MB |
+
+Everything else (12 MP JPEG and HEIC, 48 MP HEIC, 48 MP JPEG at HD) was within noise. The highest
+peak in any case stays 231 MB (48 MP at HD), so a 48 MP JPEG now costs what a 48 MP HEIC always did.
+iOS isn't measured: over 24 MP the memory guard still lets ImageIO halve (#2365), pending iPhone
+measurements of a full 24 and 48 MP decode.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,

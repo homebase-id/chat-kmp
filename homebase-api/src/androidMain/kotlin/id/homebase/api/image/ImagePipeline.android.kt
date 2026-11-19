@@ -164,10 +164,13 @@ private class AndroidImageSource(private val input: AndroidImageInput) : ImageSo
     override fun close() = Unit
 }
 
-/** The biggest power of two that still leaves at least [minLongEdge]; the pipeline scales the rest. */
-private fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {
+/**
+ * The biggest power of two that still leaves at least twice [minLongEdge]: a JPEG decoder's shrink is a block average
+ * that aliases fine detail, so Lanczos makes at least the last 2x.
+ */
+internal fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {
     var sample = 1
-    while (longEdge / (sample * 2) >= minLongEdge) sample *= 2
+    while (longEdge / (sample * 2) >= minLongEdge.toLong() * 2) sample *= 2
     return sample
 }
 

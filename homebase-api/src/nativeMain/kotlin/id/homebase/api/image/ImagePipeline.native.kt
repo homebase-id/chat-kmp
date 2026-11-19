@@ -96,7 +96,13 @@ private class ImageIoSource(
         // ImageIO aliases on reductions under 2x and can land a pixel off the plan, so only the memory guard forces one.
         val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
         val guarded = memoryGuardScale(displayedSize, minLongEdge)?.let { ceil(longEdge * it).toInt() } ?: Int.MAX_VALUE
-        val coarse = if (longEdge >= minLongEdge.toLong() * 2) minOf(minLongEdge * 2, (longEdge + 1) / 2) else longEdge
+        // ImageIO's shrink leaves at least 2x for Lanczos, as libvips does, unless the guard rules out a full decode.
+        val overGuard = displayedSize.pixelWidth.toLong() * displayedSize.pixelHeight > FULL_DECODE_PIXEL_LIMIT
+        val coarse = when {
+            longEdge >= minLongEdge.toLong() * 4 -> minLongEdge * 2
+            longEdge >= minLongEdge.toLong() * 2 && overGuard -> (longEdge + 1) / 2
+            else -> longEdge
+        }
         val coarseEdge = minOf(coarse, guarded)
         val maxSize = CFBridgingRetain(NSNumber(int = coarseEdge))
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)

@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
+import kotlin.time.TimeSource
 
 /** One image a pipeline run makes. The caller works out the size; the pipeline never chooses it. */
 data class ImageOutput(
@@ -176,7 +177,9 @@ internal suspend fun renderFrom(
 
     val largestFirst = outputs.withIndex().sortedByDescending { longEdge(it.value) }
     val rendered = arrayOfNulls<RenderedImage>(outputs.size)
+    val started = TimeSource.Monotonic.markNow()
     var current = source.decode(longEdge(largestFirst.first().value))
+    val decoded = "${current.width}x${current.height}"
     try {
         for ((index, output) in largestFirst) {
             checkCancelled()
@@ -190,6 +193,10 @@ internal suspend fun renderFrom(
         }
     } finally {
         current.close()
+    }
+    Logger.i(tag = "ImagePipeline") {
+        "${size.pixelWidth}x${size.pixelHeight} decoded at $decoded -> ${rendered.joinToString { "${it!!.width}x${it.height}" }} " +
+            "in ${started.elapsedNow().inWholeMilliseconds} ms"
     }
     return RenderedImages(size, rendered.map { it!! })
 }

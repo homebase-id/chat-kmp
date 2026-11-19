@@ -174,6 +174,19 @@ class ImagePipelineContractTest {
         assertTrue(failures.isEmpty(), failures.joinToString())
     }
 
+    // A decoder's own shrink is a block average, so the decoder must leave Lanczos at least the last 2x.
+    @Test
+    fun threePixelStripesTurnGreyWhenTheDecoderMayShrink() = runTest {
+        val spreads = listOf(854, 1708).flatMap { width ->
+            val png = png(width, STRIPES_HEIGHT) { x, _ -> if (x % 3 == 0) BLACK else WHITE }
+            val jpeg = renderImages(png) { listOf(ImageOutput(width, STRIPES_HEIGHT, 100, Int.MAX_VALUE, ImageFormat.JPEG)) }.images.single().bytes
+            listOf("PNG" to png, "JPEG" to jpeg).map { (format, source) ->
+                "$format $width -> 427" to deviation(middleGreens(stripesAfter(source, width, 427, viaDecoder = true)))
+            }
+        }
+        assertTrue(spreads.all { it.second <= 8.0 }, "$spreads")
+    }
+
     @Test
     fun coarseStripesKeepTheirContrast() = runTest {
         val greens = middleGreens(stripesAfter(stripes(1080, 8), 1080, 640, viaDecoder = false))
