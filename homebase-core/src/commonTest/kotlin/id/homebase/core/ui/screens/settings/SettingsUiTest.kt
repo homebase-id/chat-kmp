@@ -92,11 +92,11 @@ class SettingsUiTest {
         settings(routes = routes)
 
         val expected = listOf(
-            "accountButton" to "account",
+            "appsSettingsButton" to "apps",
             "notificationsButton" to "notifications",
+            "accountButton" to "account",
             "appearanceButton" to "appearance",
             "mediaButton" to "media",
-            "appsSettingsButton" to "apps",
             "storageButton" to "storage",
             "helpButton" to "help",
         )

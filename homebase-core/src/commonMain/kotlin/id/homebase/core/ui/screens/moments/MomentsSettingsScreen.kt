@@ -1,6 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
-import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
+import id.homebase.core.ui.screens.settings.NavigationBarSwitchRow
 import id.homebase.core.settings.SendQualityRows
 import id.homebase.core.ui.screens.settings.IncomingMediaSaveRow
 import androidx.compose.foundation.layout.Spacer
@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,14 +53,10 @@ fun MomentsSettingsUi(
                 action = SettingsRowAction.Navigate(open),
             )
         }
-        SettingsRow(
-            icon = Icons.Outlined.Visibility,
+        NavigationBarSwitchRow(
             title = stringResource(MR.string.moments_settings_show_icon),
-            supportingText = navigationBarSwitchNote(),
-            action = SettingsRowAction.Toggle(
-                checked = uiState.iconVisible,
-                onCheckedChange = { onAction(MomentsSettingsUiAction.SetIconVisible(it)) },
-            ),
+            checked = uiState.iconVisible,
+            onCheckedChange = { onAction(MomentsSettingsUiAction.SetIconVisible(it)) },
         )
         SendQualityRows(quality = uiState.quality, onChange = { onAction(MomentsSettingsUiAction.SetQuality(it)) })
         if (uiState.savesInBackground) {

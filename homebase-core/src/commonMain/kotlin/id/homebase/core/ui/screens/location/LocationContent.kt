@@ -1,6 +1,6 @@
 package id.homebase.core.ui.screens.location
 
-import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
+import id.homebase.core.ui.screens.settings.NavigationBarSwitchRow
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -36,7 +36,6 @@ import id.homebase.core.widget.SettingsSectionHeader
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.ui.platform.testTag
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
@@ -98,16 +97,12 @@ fun LocationContent(
 
         // ── Display ──
         Card(modifier = Modifier.fillMaxWidth()) {
-            SettingsRow(
+            NavigationBarSwitchRow(
                 modifier = Modifier.testTag("locationIconToggle"),
-                icon = Icons.Outlined.Visibility,
                 title = stringResource(MR.string.location_settings_show_icon),
-                supportingText = navigationBarSwitchNote(),
+                checked = uiState.iconVisible,
+                onCheckedChange = { onAction(LocationUiAction.SetIconVisible(it)) },
                 containerColor = CardDefaults.cardColors().containerColor,
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.iconVisible,
-                    onCheckedChange = { onAction(LocationUiAction.SetIconVisible(it)) },
-                ),
             )
         }
 

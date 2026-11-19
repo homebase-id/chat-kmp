@@ -1,17 +1,12 @@
 package id.homebase.core.ui.screens.contactbook.settings
 
-import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
+import id.homebase.core.ui.screens.settings.NavigationBarSwitchRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.People
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -67,14 +62,10 @@ fun ContactBookSettingsUi(
                 },
             )
         }
-        SettingsRow(
-            icon = Icons.Outlined.Visibility,
+        NavigationBarSwitchRow(
             title = stringResource(MR.string.contactbook_settings_show_icon),
-            supportingText = navigationBarSwitchNote(),
-            action = SettingsRowAction.Toggle(
-                checked = uiState.iconVisible,
-                onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
-            ),
+            checked = uiState.iconVisible,
+            onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
         )
         Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }

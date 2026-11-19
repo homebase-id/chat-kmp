@@ -36,6 +36,18 @@ class TopLevelRoutesTest {
     }
 
     @Test
+    fun aWideRailShowsEveryAvailableAppWhateverTheSwitches() {
+        fun rail(photobaseAvailable: Boolean, emailAvailable: Boolean, callsAvailable: Boolean) = topLevelRoutesFor(
+            callsAvailable = callsAvailable, callsIconVisible = false, momentsVisible = false, vaultVisible = false,
+            locationVisible = false, contactBookVisible = false, emailVisible = false,
+            filesyncVisible = false, photobaseVisible = false, feedVisible = false,
+            everyApp = true, photobaseAvailable = photobaseAvailable, emailAvailable = emailAvailable,
+        ).map { it.route }
+        assertEquals(AppsPage.entries.map { it.appRoute }.filter { it != Route.WebDrop } + Route.Home, rail(true, true, true))
+        assertEquals(listOf(Route.Photobase, Route.Email, Route.Calls).toSet(), (rail(true, true, true) - rail(false, false, false).toSet()).toSet())
+    }
+
+    @Test
     fun theBarRunsInTheOrderOfSettingsAppsThenApps() {
         val every = topLevelRoutesFor(
             callsAvailable = true, callsIconVisible = true, momentsVisible = true, vaultVisible = true,

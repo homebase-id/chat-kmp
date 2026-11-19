@@ -1,6 +1,6 @@
 package id.homebase.core.ui.screens.feed.settings
 
-import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
+import id.homebase.core.ui.screens.settings.NavigationBarSwitchRow
 import id.homebase.core.settings.SendQualityRows
 import id.homebase.core.ui.screens.settings.IncomingMediaSaveRow
 import androidx.compose.foundation.layout.Spacer
@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DynamicFeed
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -57,15 +56,11 @@ fun FeedSettingsUi(
                 action = SettingsRowAction.Navigate(open),
             )
         }
-        SettingsRow(
+        NavigationBarSwitchRow(
             modifier = Modifier.testTag("feedIconToggle"),
-            icon = Icons.Outlined.Visibility,
             title = stringResource(MR.string.feed_settings_show_icon),
-            supportingText = navigationBarSwitchNote(),
-            action = SettingsRowAction.Toggle(
-                checked = uiState.iconVisible,
-                onCheckedChange = { onAction(FeedSettingsUiAction.SetIconVisible(it)) },
-            ),
+            checked = uiState.iconVisible,
+            onCheckedChange = { onAction(FeedSettingsUiAction.SetIconVisible(it)) },
         )
         SettingsRow(
             modifier = Modifier.testTag("nativeFeedToggle"),

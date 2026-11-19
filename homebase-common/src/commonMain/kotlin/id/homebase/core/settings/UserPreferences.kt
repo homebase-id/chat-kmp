@@ -74,7 +74,6 @@ class UserPreferences(private val settings: Settings) {
         }
 
     /** The photo and video quality [app] sends with. */
-    // The one setting every app shared before (media_quality) isn't read: each app starts at its own default.
     fun sendQuality(app: SendQualityApp): SendQuality = SendQuality(
         photo = quality("${app.key}_photo_quality") ?: app.default.photo,
         video = quality("${app.key}_video_quality")?.asVideoChoice() ?: app.default.video,

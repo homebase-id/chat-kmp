@@ -214,7 +214,6 @@ import id.homebase.core.ui.screens.settings.AppsPage
 import id.homebase.core.ui.screens.settings.AppsPageContent
 import id.homebase.core.ui.screens.settings.AppsPageLinks
 import id.homebase.core.ui.screens.settings.appRoute
-import id.homebase.core.ui.screens.settings.of
 import id.homebase.core.ui.screens.settings.AppsSettingsActions
 import id.homebase.core.ui.screens.settings.appsPage
 import id.homebase.core.ui.screens.settings.route
@@ -256,7 +255,6 @@ import id.homebase.core.ui.screens.openedfile.OpenedFileRequest
 import id.homebase.core.ui.screens.openedfile.OpenedFileScreen
 import id.homebase.core.ui.screens.openedfile.openedFileStagingRoot
 import id.homebase.core.ui.screens.openedfile.sweepStaged
-import id.homebase.core.ui.screens.filesync.FilesyncCrumb
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.withContext
@@ -460,19 +458,20 @@ fun AppNavHost(
         emailIconVisible,
         serverSupportsMail,
     ) {
-        // A wide layout's rail has room for every app; the switches choose for a phone's bottom bar.
-        val everyApp = showNavigationRail
         topLevelRoutesFor(
             callsAvailable = callsAvailable,
-            callsIconVisible = everyApp || callsIconVisible,
-            momentsVisible = everyApp || momentsIconVisible,
-            vaultVisible = everyApp || vaultIconVisible,
-            filesyncVisible = everyApp || filesyncIconVisible,
-            feedVisible = everyApp || feedIconVisible,
-            photobaseVisible = photobaseAvailable && (everyApp || photobaseIconVisible),
-            locationVisible = everyApp || locationIconVisible,
-            contactBookVisible = everyApp || contactBookIconVisible,
-            emailVisible = (everyApp || emailIconVisible) && serverSupportsMail == true,
+            callsIconVisible = callsIconVisible,
+            momentsVisible = momentsIconVisible,
+            vaultVisible = vaultIconVisible,
+            filesyncVisible = filesyncIconVisible,
+            feedVisible = feedIconVisible,
+            photobaseVisible = photobaseIconVisible,
+            locationVisible = locationIconVisible,
+            contactBookVisible = contactBookIconVisible,
+            emailVisible = emailIconVisible,
+            everyApp = showNavigationRail,
+            photobaseAvailable = photobaseAvailable,
+            emailAvailable = serverSupportsMail == true,
         )
     }
     // Read at call time: the event collectors below capture these lambdas once.
@@ -1048,22 +1047,15 @@ fun AppNavHost(
                                             ?.savedStateHandle?.set(SHOW_ARCHIVED_KEY, true)
                                     },
                                 )
-                                val settingsIsPane = isDesktopOrWeb() && isExpandedLayout()
                                 RailActionItem(
                                     icon = Icons.Outlined.Settings,
                                     contentDescription = stringResource(MR.string.settings),
                                     onClick = {
-                                        // From inside an app, Settings opens on that app's own page; the screen shown
+                                        // From inside an app, the pane opens on that app's own page; the screen shown
                                         // first (WebDrop has no tab), then its tab.
                                         val page = AppsPage.of(currentDestination) ?: AppsPage.of(selectedTab)
-                                        when {
-                                            page == null -> navController.navigate(Route.Settings)
-                                            settingsIsPane -> {
-                                                SettingsPaneRequest.open(SettingsCategory.Apps, page)
-                                                navController.navigate(Route.Settings)
-                                            }
-                                            else -> navController.navigate(page.route)
-                                        }
+                                        if (page != null) SettingsPaneRequest.open(SettingsCategory.Apps, page)
+                                        navController.navigate(Route.Settings)
                                     },
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -2574,7 +2566,7 @@ fun AppNavHost(
                                         onBack = { navController.popBackStack() },
                                         links = appsPageLinks,
                                         emailMailboxMode = emailMailboxMode,
-                                        openedFromApp = from?.hasRoute(page.appRoute::class) == true,
+                                        openedFromApp = AppsPage.of(from) == page,
                                         settingsOwner = rememberSettingsOwner(navController, entry),
                                     )
                                 }
@@ -2809,18 +2801,23 @@ internal fun topLevelRoutesFor(
     filesyncVisible: Boolean = false,
     photobaseVisible: Boolean = false,
     feedVisible: Boolean = true,
+    // A wide layout's rail has room for every available app; the switches choose for a phone's bottom bar.
+    everyApp: Boolean = false,
+    photobaseAvailable: Boolean = true,
+    emailAvailable: Boolean = true,
 ): List<TopLevelRoute> = buildList {
+    fun shown(iconVisible: Boolean) = everyApp || iconVisible
     // The order of Settings → Apps (AppsPage), then Apps.
     add(TopLevelRoute.Chat)
-    if (photobaseVisible) add(TopLevelRoute.Photobase)
-    if (filesyncVisible) add(TopLevelRoute.Filesync)
-    if (emailVisible) add(TopLevelRoute.Email)
-    if (feedVisible) add(TopLevelRoute.Feed)
-    if (vaultVisible) add(TopLevelRoute.Vault)
-    if (locationVisible) add(TopLevelRoute.Location)
-    if (momentsVisible) add(TopLevelRoute.Moments)
-    if (callsAvailable && callsIconVisible) add(TopLevelRoute.Calls)
-    if (contactBookVisible) add(TopLevelRoute.ContactBook)
+    if (photobaseAvailable && shown(photobaseVisible)) add(TopLevelRoute.Photobase)
+    if (shown(filesyncVisible)) add(TopLevelRoute.Filesync)
+    if (emailAvailable && shown(emailVisible)) add(TopLevelRoute.Email)
+    if (shown(feedVisible)) add(TopLevelRoute.Feed)
+    if (shown(vaultVisible)) add(TopLevelRoute.Vault)
+    if (shown(locationVisible)) add(TopLevelRoute.Location)
+    if (shown(momentsVisible)) add(TopLevelRoute.Moments)
+    if (callsAvailable && shown(callsIconVisible)) add(TopLevelRoute.Calls)
+    if (shown(contactBookVisible)) add(TopLevelRoute.ContactBook)
     add(TopLevelRoute.Apps)
 }
 

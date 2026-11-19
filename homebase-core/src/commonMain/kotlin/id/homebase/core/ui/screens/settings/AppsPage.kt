@@ -21,7 +21,11 @@ import org.koin.compose.viewmodel.koinViewModel
 internal enum class AppsPage {
     Chat, Photobase, Filesync, Email, Feed, Vault, Location, Moments, Calls, Contacts, WebDrop;
 
-    companion object
+    companion object {
+        /** The page of the app whose screen [destination] is, if it's one's main screen. */
+        fun of(destination: NavDestination?): AppsPage? =
+            destination?.let { d -> entries.firstOrNull { d.hasRoute(it.appRoute::class) } }
+    }
 }
 
 // The route carries the name: enum route arguments have no NavType on iOS and wasmJs.
@@ -44,10 +48,6 @@ internal val AppsPage.appRoute: Route
         AppsPage.Contacts -> Route.ContactBook
         AppsPage.WebDrop -> Route.WebDrop
     }
-
-/** The page of the app whose screen [destination] is, if it's one's main screen. */
-internal fun AppsPage.Companion.of(destination: NavDestination?): AppsPage? =
-    destination?.let { d -> AppsPage.entries.firstOrNull { d.hasRoute(it.appRoute::class) } }
 
 internal class AppsPageLinks(
     val onOpenApp: (AppsPage) -> Unit,

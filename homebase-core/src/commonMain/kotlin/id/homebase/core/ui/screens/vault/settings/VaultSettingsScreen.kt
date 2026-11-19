@@ -1,13 +1,12 @@
 package id.homebase.core.ui.screens.vault.settings
 
-import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
+import id.homebase.core.ui.screens.settings.NavigationBarSwitchRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,14 +69,10 @@ fun VaultSettingsUi(
                 },
             )
         }
-        SettingsRow(
-            icon = Icons.Outlined.Visibility,
+        NavigationBarSwitchRow(
             title = stringResource(MR.string.vault_settings_show_icon),
-            supportingText = navigationBarSwitchNote(),
-            action = SettingsRowAction.Toggle(
-                checked = uiState.iconVisible,
-                onCheckedChange = { onAction(VaultSettingsUiAction.SetIconVisible(it)) },
-            ),
+            checked = uiState.iconVisible,
+            onCheckedChange = { onAction(VaultSettingsUiAction.SetIconVisible(it)) },
         )
         if (uiState.showBiometricsRow) {
             SettingsRow(

@@ -134,16 +134,13 @@ internal fun PhotobaseSettingsUi(
                         action = SettingsRowAction.Navigate(open),
                     )
                 }
-                SettingsRow(
+                NavigationBarSwitchRow(
                     modifier = Modifier.testTag("photobaseIconToggle"),
-                    icon = Icons.Outlined.PhotoLibrary,
                     title = stringResource(MR.string.settings_photobase_icon_desc),
-                    supportingText = navigationBarSwitchNote(),
+                    checked = uiState.photobaseIconVisible,
+                    onCheckedChange = { onAction(SettingsUiAction.SetPhotobaseIconVisible(it)) },
+                    icon = Icons.Outlined.PhotoLibrary,
                     containerColor = rowColor,
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.photobaseIconVisible,
-                        onCheckedChange = { onAction(SettingsUiAction.SetPhotobaseIconVisible(it)) },
-                    ),
                 )
                 intervalRow?.invoke()
             }

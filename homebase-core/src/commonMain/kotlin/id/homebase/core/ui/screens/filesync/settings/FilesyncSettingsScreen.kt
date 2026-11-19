@@ -1,11 +1,9 @@
 package id.homebase.core.ui.screens.filesync.settings
 
-import id.homebase.core.ui.screens.settings.navigationBarSwitchNote
+import id.homebase.core.ui.screens.settings.NavigationBarSwitchRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -53,15 +51,11 @@ fun FilesyncSettingsUi(
                 action = SettingsRowAction.Navigate(open),
             )
         }
-        SettingsRow(
+        NavigationBarSwitchRow(
             modifier = Modifier.testTag("filesyncIconToggle"),
-            icon = Icons.Outlined.Visibility,
             title = stringResource(MR.string.settings_filesync_icon_desc),
-            supportingText = navigationBarSwitchNote(),
-            action = SettingsRowAction.Toggle(
-                checked = uiState.iconVisible,
-                onCheckedChange = { onAction(FilesyncSettingsUiAction.SetIconVisible(it)) },
-            ),
+            checked = uiState.iconVisible,
+            onCheckedChange = { onAction(FilesyncSettingsUiAction.SetIconVisible(it)) },
         )
         Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }
