@@ -46,6 +46,7 @@ import id.homebase.chat.widget.replyQuoteConversationMediaPayloads
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
+import id.homebase.core.settings.SendQualityApp
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.SharedContentDescriptor
@@ -1157,7 +1158,7 @@ internal class MessageActionsHandler(
             replyTo = replyTo?.toReplyPreview(),
             sentAt = sentAt,
             fileOperationsProvider = fileOperationsProvider,
-            mediaQuality = userPreferences.mediaQuality,
+            quality = userPreferences.sendQuality(SendQualityApp.Chat),
         )
     }
 

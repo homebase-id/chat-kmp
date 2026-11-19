@@ -1,7 +1,8 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.core.settings.SendQualityApp
+import id.homebase.api.image.SendQuality
 import id.homebase.api.image.ImageMetadata
-import id.homebase.api.image.MediaQuality
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -31,7 +32,7 @@ data class MomentComposeUiState(
      * date picker (we treat that as "go back to following the photos").
      */
     val isMomentDateUserOverride: Boolean = false,
-    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
+    val sendQuality: SendQuality = SendQualityApp.Moments.default,
 ) {
     val canContinue: Boolean get() = attachments.isNotEmpty()
 }
@@ -82,7 +83,7 @@ sealed interface MomentComposeUiAction {
     data class ToggleIncludeLocation(val attachmentId: Uuid) : MomentComposeUiAction
 
     /** Sets the global media quality, the same preference chat and settings read. */
-    data class SetMediaQuality(val quality: MediaQuality) : MomentComposeUiAction
+    data class SetSendQuality(val quality: SendQuality) : MomentComposeUiAction
 
     /**
      * User picked a date via the date chip. `epochMillis = null` clears the

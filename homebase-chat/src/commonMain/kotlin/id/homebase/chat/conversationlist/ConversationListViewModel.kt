@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.core.settings.SendQualityApp
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
@@ -224,7 +225,7 @@ class ConversationListViewModel(
             userDefaultReactions = userPreferences.preferredUserReactions
                 .distinctByEmoji()
                 .toPersistentList(),
-            mediaQuality = userPreferences.mediaQuality,
+            sendQuality = userPreferences.sendQuality(SendQualityApp.Chat),
         )
     )
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
@@ -1708,9 +1709,9 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ApplyTrimResult -> attachmentHandler.handleApplyTrimResult(action)
 
-            is ConversationListUiAction.SetMediaQuality -> {
-                userPreferences.mediaQuality = action.quality
-                _messagesUiState.update { it.copy(mediaQuality = userPreferences.mediaQuality) }
+            is ConversationListUiAction.SetSendQuality -> {
+                userPreferences.setSendQuality(SendQualityApp.Chat, action.quality)
+                _messagesUiState.update { it.copy(sendQuality = userPreferences.sendQuality(SendQualityApp.Chat)) }
             }
             is ConversationListUiAction.ToggleStickerAttachment -> attachmentHandler.handleToggleStickerAttachment(action)
 

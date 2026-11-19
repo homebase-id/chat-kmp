@@ -27,3 +27,13 @@ enum class MediaQuality(val code: String) {
         fun fromCode(code: String?): MediaQuality = entries.find { it.code == code } ?: STANDARD
     }
 }
+
+/** An app's two send settings: photos and videos are chosen apart (UPLOADS.md section 5). */
+data class SendQuality(val photo: MediaQuality, val video: MediaQuality) {
+    companion object {
+        val Standard = SendQuality(MediaQuality.STANDARD, MediaQuality.STANDARD)
+
+        /** Outside Photos an Original video is HD's 1080p, so a video setting offers only these. */
+        val VideoChoices: List<MediaQuality> = listOf(MediaQuality.STANDARD, MediaQuality.HD)
+    }
+}

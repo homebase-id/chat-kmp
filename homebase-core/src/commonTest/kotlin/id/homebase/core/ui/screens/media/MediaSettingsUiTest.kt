@@ -9,7 +9,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
-import id.homebase.api.image.MediaQuality
 import id.homebase.core.test.setTestLocale
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,92 +18,13 @@ import kotlin.test.assertTrue
 class MediaSettingsUiTest {
 
     @Test
-    fun showsTitleAndAllThreeQualities() = runComposeUiTest {
+    fun theCameraPageHoldsOnlyTheCamera() = runComposeUiTest {
         setTestLocale("en-US")
-        setContent {
-            MaterialTheme {
-                MediaSettingsUi(
-                    uiState = MediaSettingsUiState(),
-                    onAction = {},
-                    onBackClick = {},
-                )
-            }
-        }
-        onNodeWithText("Media").assertExists()
-        onNodeWithText("Standard").assertExists()
-        onNodeWithText("HD").assertExists()
-        onNodeWithText("Original").assertExists()
-    }
-
-    @Test
-    fun currentQualityRendersSelected() = runComposeUiTest {
-        setTestLocale("en-US")
-        setContent {
-            MaterialTheme {
-                MediaSettingsUi(
-                    uiState = MediaSettingsUiState(mediaQuality = MediaQuality.ORIGINAL),
-                    onAction = {},
-                    onBackClick = {},
-                )
-            }
-        }
-        onNodeWithTag(MediaQuality.ORIGINAL.code).assertIsSelected()
-    }
-
-    @Test
-    fun selectingOriginalEmitsTheAction() = runComposeUiTest {
-        setTestLocale("en-US")
-        var selected: MediaQuality? = null
-        setContent {
-            MaterialTheme {
-                MediaSettingsUi(
-                    uiState = MediaSettingsUiState(mediaQuality = MediaQuality.STANDARD),
-                    onAction = { action ->
-                        if (action is MediaSettingsUiAction.SetMediaQuality) selected = action.quality
-                    },
-                    onBackClick = {},
-                )
-            }
-        }
-        onNodeWithTag(MediaQuality.ORIGINAL.code).performClick()
-        assertEquals(MediaQuality.ORIGINAL, selected)
-    }
-
-    @Test
-    fun theWifiGuardRowAppearsOnlyWhileAutoSaveIsOn() = runComposeUiTest {
-        setTestLocale("en-US")
-        setContent {
-            MaterialTheme {
-                MediaSettingsUi(
-                    uiState = MediaSettingsUiState(autoSaveIncomingMedia = false),
-                    onAction = {},
-                    onBackClick = {},
-                )
-            }
-        }
-        onNodeWithTag("autoSaveToggle").assertExists()
-        onNodeWithTag("autoSaveUnmeteredToggle").assertDoesNotExist()
-    }
-
-    @Test
-    fun togglingAutoSaveEmitsTheAction() = runComposeUiTest {
-        setTestLocale("en-US")
-        var enabled: Boolean? = null
-        setContent {
-            MaterialTheme {
-                MediaSettingsUi(
-                    uiState = MediaSettingsUiState(autoSaveIncomingMedia = false),
-                    onAction = { action ->
-                        if (action is MediaSettingsUiAction.SetAutoSaveIncomingMedia) {
-                            enabled = action.enabled
-                        }
-                    },
-                    onBackClick = {},
-                )
-            }
-        }
-        onNodeWithTag("autoSaveToggle").performClick()
-        assertEquals(true, enabled)
+        setContent { MaterialTheme { MediaSettingsUi(uiState = MediaSettingsUiState(), onAction = {}, onBackClick = {}) } }
+        onNodeWithText("Camera").assertExists()
+        onNodeWithTag("mirrorFrontCameraToggle").assertExists()
+        onNodeWithTag("autoSaveToggle").assertDoesNotExist()
+        onNodeWithText("Standard").assertDoesNotExist()
     }
 
     @Test

@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.core.settings.SendQualityApp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -80,7 +81,7 @@ class MomentComposeViewModel(
         val draft = flowState.draft.value
             ?: return MomentComposeUiState(
                 momentInstant = Clock.System.now(),
-                mediaQuality = userPreferences.mediaQuality,
+                sendQuality = userPreferences.sendQuality(SendQualityApp.Moments),
             )
         return MomentComposeUiState(
             attachments = draft.attachments,
@@ -89,7 +90,7 @@ class MomentComposeViewModel(
             // null; treat that the same as a fresh compose and default to now.
             momentInstant = draft.momentInstant ?: Clock.System.now(),
             isMomentDateUserOverride = draft.isMomentDateUserOverride,
-            mediaQuality = userPreferences.mediaQuality,
+            sendQuality = userPreferences.sendQuality(SendQualityApp.Moments),
         )
     }
 
@@ -241,9 +242,9 @@ class MomentComposeViewModel(
                 }
             }
 
-            is MomentComposeUiAction.SetMediaQuality -> {
-                userPreferences.mediaQuality = action.quality
-                _uiState.update { it.copy(mediaQuality = userPreferences.mediaQuality) }
+            is MomentComposeUiAction.SetSendQuality -> {
+                userPreferences.setSendQuality(SendQualityApp.Moments, action.quality)
+                _uiState.update { it.copy(sendQuality = userPreferences.sendQuality(SendQualityApp.Moments)) }
             }
         }
     }

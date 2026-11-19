@@ -2489,4 +2489,7 @@
     <string name="webdrop_settings_open">Åbn WebDrop</string>
     <string name="location_settings_open">Åbn Lokation</string>
     <string name="calls_settings_open">Åbn Opkald</string>
+    <string name="settings_not_working">%1$s (virker ikke endnu)</string>
+    <string name="settings_media">Kamera</string>
+    <string name="settings_media_desc">Spejlvend frontkamera</string>
 </resources>

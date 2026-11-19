@@ -307,6 +307,7 @@ import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
 import id.homebase.core.ui.screens.calls.settings.CallsSettingsViewModel
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsViewModel
+import id.homebase.core.ui.screens.settings.ChatSettingsViewModel
 import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
@@ -1340,6 +1341,7 @@ val appModule = module {
     viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
     viewModelOf(::MomentsSettingsViewModel)
     viewModelOf(::FeedSettingsViewModel)
+    viewModelOf(::ChatSettingsViewModel)
     viewModelOf(::FilesyncSettingsViewModel)
     viewModelOf(::CallsSettingsViewModel)
     viewModel(LocationPermissionQualifier) {

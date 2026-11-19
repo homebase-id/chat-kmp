@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.core.settings.SendQualityRows
+import id.homebase.core.ui.screens.settings.IncomingMediaSaveNotWorkingRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -68,6 +70,11 @@ fun MomentsSettingsUi(
                 checked = uiState.iconVisible,
                 onCheckedChange = { onAction(MomentsSettingsUiAction.SetIconVisible(it)) },
             ),
+        )
+        SendQualityRows(quality = uiState.quality, onChange = { onAction(MomentsSettingsUiAction.SetQuality(it)) })
+        IncomingMediaSaveNotWorkingRow(
+            checked = uiState.autoSaveIncomingMedia,
+            onCheckedChange = { onAction(MomentsSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
         )
         Spacer(modifier = Modifier
             .fillMaxWidth()

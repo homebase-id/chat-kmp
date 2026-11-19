@@ -16,7 +16,7 @@ import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import org.koin.compose.viewmodel.koinViewModel
 
-internal enum class AppsPage { Chat, Feed, Moments, Vault, Filesync, Photobase, Email, WebDrop, Location, Contacts, Calls }
+internal enum class AppsPage { Chat, Photobase, Filesync, Email, Feed, Vault, Location, Moments, Calls, Contacts, WebDrop }
 
 // The route carries the name: enum route arguments have no NavType on iOS and wasmJs.
 internal val AppsPage.route: Route.AppSettings get() = Route.AppSettings(name)
@@ -58,7 +58,7 @@ internal fun AppsPageContent(
     settingsOwner: ViewModelStoreOwner = checkNotNull(LocalViewModelStoreOwner.current),
 ) {
     when (page) {
-        AppsPage.Chat -> ChatSettingsUi(onBack = onBack, onOpenChat = links.onOpenChat)
+        AppsPage.Chat -> ChatSettingsScreen(viewModel = koinViewModel(), onBack = onBack, onOpenChat = links.onOpenChat)
 
         AppsPage.Feed -> FeedSettingsScreen(viewModel = koinViewModel(), onBackClick = onBack, onOpenFeed = links.onOpenFeed)
 

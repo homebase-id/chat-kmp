@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.feed.settings
 
+import id.homebase.core.settings.SendQualityRows
+import id.homebase.core.ui.screens.settings.IncomingMediaSaveNotWorkingRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -74,6 +76,11 @@ fun FeedSettingsUi(
                 checked = uiState.useNativeFeed,
                 onCheckedChange = { onAction(FeedSettingsUiAction.SetUseNativeFeed(it)) },
             ),
+        )
+        SendQualityRows(quality = uiState.quality, onChange = { onAction(FeedSettingsUiAction.SetQuality(it)) })
+        IncomingMediaSaveNotWorkingRow(
+            checked = uiState.autoSaveIncomingMedia,
+            onCheckedChange = { onAction(FeedSettingsUiAction.SetAutoSaveIncomingMedia(it)) },
         )
         Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }

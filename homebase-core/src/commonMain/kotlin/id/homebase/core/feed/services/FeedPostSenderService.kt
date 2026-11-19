@@ -20,6 +20,7 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.core.settings.SendQualityApp
 import id.homebase.core.settings.UserPreferences
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.UploadOutcome
@@ -61,7 +62,7 @@ class FeedPostSenderService(
         val mediaBundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOps,
-            mediaQuality = userPreferences.mediaQuality,
+            quality = userPreferences.sendQuality(SendQualityApp.Feed),
         ) { index, _ -> FeedProtocol.mediaPayloadKey(index) }
 
         val (descriptor, overflowText) = buildDescriptor(

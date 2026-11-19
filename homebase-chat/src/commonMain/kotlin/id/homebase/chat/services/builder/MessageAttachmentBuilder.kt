@@ -2,7 +2,8 @@ package id.homebase.chat.services.builder
 
 import id.homebase.upload.MetadataPolicy
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.MediaQuality
+import id.homebase.api.image.SendQuality
+import id.homebase.api.video.toVideoQuality
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.UploadOptions
@@ -15,29 +16,29 @@ object MessageAttachmentBuilder {
         attachment: AttachmentInput,
         fileOperationsProvider: FileOperationsProvider,
         payloadKey: String,
-        mediaQuality: MediaQuality = MediaQuality.STANDARD,
+        quality: SendQuality = SendQuality.Standard,
     ): PayloadBundle {
         return build(
             attachments = listOf(attachment),
             fileOperationsProvider = fileOperationsProvider,
-            mediaQuality = mediaQuality,
+            quality = quality,
         ) { _, _ -> payloadKey }
     }
 
     /**
-     * [mediaQuality] defaults to STANDARD so callers that send incidental images — group avatars,
-     * event covers — get the downscale without threading the preference. Only the four user-media
-     * send paths read the real setting.
+     * [quality] defaults to Standard so callers that send incidental images — group avatars,
+     * event covers — get the downscale without threading the preference. Only the user-media
+     * send paths read an app's setting.
      */
     suspend fun build(
         attachments: List<AttachmentInput>,
         fileOperationsProvider: FileOperationsProvider,
-        mediaQuality: MediaQuality = MediaQuality.STANDARD,
+        quality: SendQuality = SendQuality.Standard,
         payloadKeyFactory: (index: Int, attachment: AttachmentInput) -> String
     ): PayloadBundle =
         UserUploadBuilder.build(
             sources = attachments.map { it.toUploadSource() },
-            options = UploadOptions(quality = mediaQuality, metadata = MetadataPolicy.STRIP),
+            options = UploadOptions(quality = quality.photo, metadata = MetadataPolicy.STRIP, videoQuality = quality.video.toVideoQuality()),
             fileOps = fileOperationsProvider,
             pdfPageRenderer = { path, width -> generatePdfThumbnailFromFile(path, width)?.thumbnailBytes },
         ) { index -> payloadKeyFactory(index, attachments[index]) }

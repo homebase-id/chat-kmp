@@ -53,9 +53,9 @@ class AppsSettingsScreenTest {
         apps()
         assertEquals(
             listOf(
-                "chatSettingsButton", "feedSettingsButton", "momentsSettingsButton", "vaultSettingsButton", "filesyncSettingsButton", "photobaseSettingsButton",
-                "emailSettingsButton", "webDropButton", "locationSettingsButton", "contactBookSettingsButton",
-                "callsSettingsButton",
+                "chatSettingsButton", "photobaseSettingsButton", "filesyncSettingsButton", "emailSettingsButton",
+                "feedSettingsButton", "vaultSettingsButton", "locationSettingsButton", "momentsSettingsButton",
+                "callsSettingsButton", "contactBookSettingsButton", "webDropButton",
             ),
             AppsSettingsRowTags,
         )
@@ -149,7 +149,7 @@ class AppsSettingsScreenTest {
         setContent {
             MaterialTheme {
                 when (page) {
-                    0 -> ChatSettingsUi(onBack = {}, onOpenChat = { fired += "open chat" })
+                    0 -> ChatSettingsUi(ChatSettingsUiState(), {}, onBack = {}, onOpenChat = { fired += "open chat" })
                     1 -> FeedSettingsUi(FeedSettingsUiState(), { if (it == FeedSettingsUiAction.OpenFeedClicked) fired += "open feed" }, {})
                     2 -> FilesyncSettingsUi(FilesyncSettingsUiState(), { if (it == FilesyncSettingsUiAction.OpenDriveClicked) fired += "open drive" }, {})
                     3 -> WebDropSettingsUi(onBack = {}, onOpenWebDrop = { fired += "open webdrop" })
@@ -167,7 +167,7 @@ class AppsSettingsScreenTest {
 
     @Test
     fun chatCantLeaveTheNavigationBar() = runComposeUiTest {
-        setContent { MaterialTheme { ChatSettingsUi(onBack = {}, onOpenChat = {}) } }
+        setContent { MaterialTheme { ChatSettingsUi(ChatSettingsUiState(), {}, onBack = {}, onOpenChat = {}) } }
         onNodeWithTag("chatIconToggle").assertIsOn().assertIsNotEnabled()
     }
 

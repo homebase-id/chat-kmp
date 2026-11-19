@@ -1,25 +1,11 @@
 package id.homebase.photobase.ui
 
 import id.homebase.resources.photobase_backup_quality_note
-import id.homebase.resources.photobase_backup_video_original_desc
-import id.homebase.resources.photobase_backup_video_hd_desc
-import id.homebase.resources.photobase_backup_video_standard_desc
-import id.homebase.resources.photobase_backup_photo_original_desc
-import id.homebase.resources.photobase_backup_photo_hd_desc
-import id.homebase.resources.photobase_backup_photo_standard_desc
 import id.homebase.resources.photobase_backup_video_quality
 import id.homebase.resources.photobase_backup_photo_quality
-import org.jetbrains.compose.resources.StringResource
-import id.homebase.api.image.MediaQuality
-import id.homebase.core.settings.MediaQualityOptions
-import id.homebase.core.settings.label
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import id.homebase.core.settings.MediaQualityRow
+import id.homebase.core.settings.photoDescription
+import id.homebase.core.settings.videoDescription
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -166,20 +152,22 @@ fun BackupSettingsSection(
                 showAlbums = true
             },
         )
-        QualityRow(
+        MediaQualityRow(
             icon = Icons.Outlined.Image,
             title = stringResource(MR.string.photobase_backup_photo_quality),
             selected = settings.photoQuality,
-            description = { photoQualityDescription(it) },
+            description = { it.photoDescription },
+            note = MR.string.photobase_backup_quality_note,
             rowColor = rowColor,
             testTagPrefix = "photo-",
             onSelect = { onAction(BackupSettingsUiAction.SetPhotoQuality(it)) },
         )
-        QualityRow(
+        MediaQualityRow(
             icon = Icons.Outlined.Movie,
             title = stringResource(MR.string.photobase_backup_video_quality),
             selected = settings.videoQuality,
-            description = { videoQualityDescription(it) },
+            description = { it.videoDescription },
+            note = MR.string.photobase_backup_quality_note,
             rowColor = rowColor,
             testTagPrefix = "video-",
             onSelect = { onAction(BackupSettingsUiAction.SetVideoQuality(it)) },
@@ -261,48 +249,6 @@ fun BackupSettingsSection(
             },
         )
     }
-}
-
-@Composable
-private fun QualityRow(
-    icon: ImageVector,
-    title: String,
-    selected: MediaQuality,
-    description: (MediaQuality) -> StringResource,
-    rowColor: Color,
-    testTagPrefix: String,
-    onSelect: (MediaQuality) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    SettingsRow(
-        icon = icon,
-        title = title,
-        supportingText = stringResource(selected.label),
-        containerColor = rowColor,
-        action = SettingsRowAction.Expand(expanded = expanded, onExpandedChange = { expanded = it }),
-    )
-    AnimatedVisibility(visible = expanded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-        MediaQualityOptions(
-            selected = selected,
-            description = description,
-            note = MR.string.photobase_backup_quality_note,
-            onSelect = onSelect,
-            modifier = Modifier.fillMaxWidth(),
-            testTagPrefix = testTagPrefix,
-        )
-    }
-}
-
-private fun photoQualityDescription(quality: MediaQuality): StringResource = when (quality) {
-    MediaQuality.STANDARD -> MR.string.photobase_backup_photo_standard_desc
-    MediaQuality.HD -> MR.string.photobase_backup_photo_hd_desc
-    MediaQuality.ORIGINAL -> MR.string.photobase_backup_photo_original_desc
-}
-
-private fun videoQualityDescription(quality: MediaQuality): StringResource = when (quality) {
-    MediaQuality.STANDARD -> MR.string.photobase_backup_video_standard_desc
-    MediaQuality.HD -> MR.string.photobase_backup_video_hd_desc
-    MediaQuality.ORIGINAL -> MR.string.photobase_backup_video_original_desc
 }
 
 @Composable

@@ -1,6 +1,6 @@
 package id.homebase.chat.conversationlist
 
-import id.homebase.api.image.MediaQuality
+import id.homebase.api.image.SendQuality
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
@@ -355,7 +355,7 @@ sealed interface ConversationListUiAction {
     ) : ConversationListUiAction
 
     /** The quality chooser in the attachment editor. It sets the global preference, not this send. */
-    data class SetMediaQuality(val quality: MediaQuality) : ConversationListUiAction
+    data class SetSendQuality(val quality: SendQuality) : ConversationListUiAction
 
     /** User toggled Send-as-sticker on an image attachment. */
     data class ToggleStickerAttachment(

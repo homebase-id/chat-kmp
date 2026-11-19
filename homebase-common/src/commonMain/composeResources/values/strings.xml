@@ -1673,8 +1673,8 @@
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
     <!-- Media quality -->
-    <string name="settings_media">Media</string>
-    <string name="settings_media_desc">Quality and auto-saving</string>
+    <string name="settings_media">Camera</string>
+    <string name="settings_media_desc">Mirror front camera</string>
     <string name="settings_media_quality">Media quality</string>
     <string name="settings_data_storage">Data and storage</string>
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
@@ -3535,4 +3535,5 @@
     <string name="webdrop_settings_open">Open WebDrop</string>
     <string name="location_settings_open">Open Location</string>
     <string name="calls_settings_open">Open Calls</string>
+    <string name="settings_not_working">%1$s (not working)</string>
 </resources>

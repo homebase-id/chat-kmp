@@ -1,5 +1,6 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.api.image.SendQuality
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.FileOperationsProvider
@@ -87,7 +88,7 @@ class MessageAttachmentBuilderQualityTest {
             attachment = AttachmentInput(filePath = path, contentType = "image/jpeg"),
             fileOperationsProvider = fakeFsServing(path, ByteArray(64)),
             payloadKey = "chat_web0",
-            mediaQuality = MediaQuality.HD,
+            quality = SendQuality(MediaQuality.HD, MediaQuality.HD),
         )
         assertNull(received(bundle.payloads.single().descriptorContent).badgedQuality())
     }
@@ -105,7 +106,7 @@ class MessageAttachmentBuilderQualityTest {
             ),
             fileOperationsProvider = fakeFsServing(path, opaqueJpeg()),
             payloadKey = "chat_web0",
-            mediaQuality = quality,
+            quality = SendQuality(quality, quality),
         )
         return bundle.payloads.single().descriptorContent
     }

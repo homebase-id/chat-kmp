@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed.settings
 
+import id.homebase.core.settings.SendQualityApp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.feed.FeedPreferences
@@ -16,7 +17,12 @@ class FeedSettingsViewModel(
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
-        FeedSettingsUiState(useNativeFeed = userPreferences.useNativeFeed, iconVisible = feedPreferences.iconVisible.value),
+        FeedSettingsUiState(
+            useNativeFeed = userPreferences.useNativeFeed,
+            iconVisible = feedPreferences.iconVisible.value,
+            quality = userPreferences.sendQuality(SendQualityApp.Feed),
+            autoSaveIncomingMedia = userPreferences.feedAutoSaveIncomingMedia,
+        ),
     )
     val uiState: StateFlow<FeedSettingsUiState> = _uiState.asStateFlow()
 
@@ -30,6 +36,14 @@ class FeedSettingsViewModel(
         when (action) {
             FeedSettingsUiAction.OpenFeedClicked -> Unit
             is FeedSettingsUiAction.SetIconVisible -> viewModelScope.launch { feedPreferences.setIconVisible(action.visible) }
+            is FeedSettingsUiAction.SetQuality -> {
+                userPreferences.setSendQuality(SendQualityApp.Feed, action.quality)
+                _uiState.update { it.copy(quality = userPreferences.sendQuality(SendQualityApp.Feed)) }
+            }
+            is FeedSettingsUiAction.SetAutoSaveIncomingMedia -> {
+                userPreferences.feedAutoSaveIncomingMedia = action.enabled
+                _uiState.update { it.copy(autoSaveIncomingMedia = action.enabled) }
+            }
             is FeedSettingsUiAction.SetUseNativeFeed -> {
                 userPreferences.useNativeFeed = action.enabled
                 _uiState.update { it.copy(useNativeFeed = action.enabled) }

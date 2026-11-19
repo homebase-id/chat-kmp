@@ -1,5 +1,6 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.api.image.SendQuality
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileOperationsProvider
@@ -60,7 +61,7 @@ class ChatSendsNoMetadataJvmTest {
     }
 
     private suspend fun sent(path: String, contentType: String, quality: MediaQuality): Pair<PayloadBundle, KeyHeader> {
-        val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(path, contentType), fileOps, "chat_web0", quality)
+        val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(path, contentType), fileOps, "chat_web0", SendQuality(quality, quality))
         val key = KeyHeader.newRandom16()
         val encrypted = encryptor.encryptBundle(Uuid.random(), bundle, key.aesKey, kotlinx.coroutines.GlobalScope)
         return encrypted to key
@@ -91,7 +92,7 @@ class ChatSendsNoMetadataJvmTest {
     fun aPublicPhotoIsStagedWithoutMetadataAtAnyQuality() = runTest {
         val source = file("public.jpg", geotaggedJpeg(5000, 3000))
         for (quality in MediaQuality.entries) {
-            val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(source, "image/jpeg"), fileOps, "chat_web0", quality)
+            val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(source, "image/jpeg"), fileOps, "chat_web0", SendQuality(quality, quality))
             val staged = publicStager.stageBundle(bundle)
             assertNull(ImageMetadataScrubber.readBlocks(File(staged.payloads.single().filePath).readBytes()), "$quality: a public photo goes out without EXIF")
         }
@@ -100,7 +101,7 @@ class ChatSendsNoMetadataJvmTest {
     @Test
     fun aPublicVideoIsRefusedRatherThanSentUnprocessed() = runTest {
         val clip = file("public.mp4", this::class.java.getResourceAsStream("/test_videos/sample.mp4")!!.readBytes())
-        val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(clip, "video/mp4"), fileOps, "chat_web0", MediaQuality.entries.first())
+        val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(clip, "video/mp4"), fileOps, "chat_web0", SendQuality.Standard)
         assertFailsWith<IllegalArgumentException> { publicStager.stageBundle(bundle) }
     }
 

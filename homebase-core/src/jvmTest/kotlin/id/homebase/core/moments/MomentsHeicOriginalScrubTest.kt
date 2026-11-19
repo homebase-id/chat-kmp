@@ -1,5 +1,7 @@
 package id.homebase.core.moments
 
+import id.homebase.api.image.SendQuality
+import id.homebase.core.settings.SendQualityApp
 import id.homebase.upload.ContentHashes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.eventbus.EventBus
@@ -57,7 +59,7 @@ class MomentsHeicOriginalScrubTest {
             },
         )
         env.login()
-        env.userPreferences.mediaQuality = MediaQuality.ORIGINAL
+        env.userPreferences.setSendQuality(SendQualityApp.Moments, SendQuality(MediaQuality.ORIGINAL, MediaQuality.HD))
         val sender = MomentsPostSenderService(
             uploadService = env.uploadService,
             fileOps = fileOps,

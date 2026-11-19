@@ -1,5 +1,6 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.api.image.SendQuality
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.image.MediaQuality
 import kotlinx.coroutines.test.runTest
@@ -29,7 +30,7 @@ class MessageAttachmentBuilderOldFormatTest {
     private fun file(name: String, bytes: ByteArray) = File(dir, name).apply { writeBytes(bytes) }.path
 
     private suspend fun send(input: AttachmentInput, quality: MediaQuality = MediaQuality.STANDARD) =
-        MessageAttachmentBuilder.buildSingle(input, fileOps, "chat_web0", quality)
+        MessageAttachmentBuilder.buildSingle(input, fileOps, "chat_web0", SendQuality(quality, quality))
 
     @Test
     fun anImageKeepsTheTypeItWasGiven() = runTest {
