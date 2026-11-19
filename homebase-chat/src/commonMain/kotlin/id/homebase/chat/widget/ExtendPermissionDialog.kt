@@ -34,6 +34,7 @@ import org.jetbrains.compose.resources.stringResource
 fun ExtendPermissionDialog(
     viewModel: ExtendPermissionViewModel,
     onCancel: (() -> Unit)? = null,
+    onOpenedOwnerConsole: (() -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -75,7 +76,10 @@ fun ExtendPermissionDialog(
                 text = { Text(body) },
                 confirmButton = {
                     TextButton(onClick = {
-                        viewModel.buildExtendPermissionUrl()?.let { uriHandler.openUrl(it) }
+                        viewModel.buildExtendPermissionUrl()?.let {
+                            uriHandler.openUrl(it)
+                            onOpenedOwnerConsole?.invoke()
+                        }
                         viewModel.dismissDialog()
                     }) {
                         Text(confirm)

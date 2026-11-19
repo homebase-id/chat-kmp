@@ -27,6 +27,8 @@ data class BackupSettings(
     val photoQuality: MediaQuality = MediaQuality.ORIGINAL,
     /** At Original, the video as recorded plus a 1080p copy to play (UPLOADS.md section 3.6). */
     val videoQuality: MediaQuality = MediaQuality.HD,
+    /** Set while Photos isn't installed, so only a new install asks the owner to confirm the qualities. */
+    val qualityUnconfirmed: Boolean = false,
 ) {
     companion object {
         val DEFAULT_PUSH_INTERVAL: Duration = 1.hours

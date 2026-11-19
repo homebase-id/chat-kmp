@@ -36,12 +36,12 @@ import id.homebase.resources.settings_media_quality_footer
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-/** [choices] as radio rows, each with [description]'s text, and [note] beneath. */
+/** [choices] as radio rows, each with [description]'s text, and [note], if any, beneath. */
 @Composable
 fun MediaQualityOptions(
     selected: MediaQuality,
     description: (MediaQuality) -> StringResource,
-    note: StringResource,
+    note: StringResource?,
     onSelect: (MediaQuality) -> Unit,
     modifier: Modifier = Modifier,
     testTagPrefix: String = "",
@@ -57,12 +57,14 @@ fun MediaQualityOptions(
                 onClick = { onSelect(quality) },
             )
         }
-        Text(
-            text = stringResource(note),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+        if (note != null) {
+            Text(
+                text = stringResource(note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
     }
 }
 
