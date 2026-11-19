@@ -1,13 +1,9 @@
 package id.homebase.core.ui.screens.media
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Flip
-import androidx.compose.material.icons.outlined.SaveAlt
-import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,22 +13,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
-import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.ui.screens.settings.SettingsDetailScaffold
 import id.homebase.resources.MR
 import id.homebase.resources.settings_media
-import id.homebase.resources.settings_media_autosave
-import id.homebase.resources.settings_media_autosave_description
-import id.homebase.resources.settings_media_autosave_header
-import id.homebase.resources.settings_media_autosave_unmetered
-import id.homebase.resources.settings_media_autosave_unmetered_description
-import id.homebase.resources.settings_media_camera_header
 import id.homebase.resources.settings_media_mirror_front
 import id.homebase.resources.settings_media_mirror_front_description
-import id.homebase.core.settings.description
-import id.homebase.core.settings.MediaQualityOptions
-import id.homebase.resources.settings_media_quality_footer
-import id.homebase.resources.settings_media_quality_header
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -60,53 +45,7 @@ fun MediaSettingsUi(
         title = stringResource(MR.string.settings_media),
         onBack = onBackClick,
     ) {
-        SettingsSectionHeader(
-            title = stringResource(MR.string.settings_media_quality_header),
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-        )
-        MediaQualityOptions(
-            selected = uiState.mediaQuality,
-            description = { it.description },
-            note = MR.string.settings_media_quality_footer,
-            onSelect = { onAction(MediaSettingsUiAction.SetMediaQuality(it)) },
-        )
-
-        SettingsSectionHeader(
-            title = stringResource(MR.string.settings_media_autosave_header),
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-        )
-        SettingsRow(
-            modifier = Modifier.testTag("autoSaveToggle"),
-            icon = Icons.Outlined.SaveAlt,
-            title = stringResource(MR.string.settings_media_autosave),
-            supportingText = stringResource(MR.string.settings_media_autosave_description),
-            action = SettingsRowAction.Toggle(
-                checked = uiState.autoSaveIncomingMedia,
-                onCheckedChange = {
-                    onAction(MediaSettingsUiAction.SetAutoSaveIncomingMedia(it))
-                },
-            ),
-        )
-        AnimatedVisibility(visible = uiState.autoSaveIncomingMedia) {
-            SettingsRow(
-                modifier = Modifier.testTag("autoSaveUnmeteredToggle"),
-                icon = Icons.Outlined.Wifi,
-                title = stringResource(MR.string.settings_media_autosave_unmetered),
-                supportingText =
-                    stringResource(MR.string.settings_media_autosave_unmetered_description),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.autoSaveOnUnmeteredOnly,
-                    onCheckedChange = {
-                        onAction(MediaSettingsUiAction.SetAutoSaveOnUnmeteredOnly(it))
-                    },
-                ),
-            )
-        }
-
-        SettingsSectionHeader(
-            title = stringResource(MR.string.settings_media_camera_header),
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-        )
+        Spacer(modifier = Modifier.height(8.dp))
         SettingsRow(
             modifier = Modifier.testTag("mirrorFrontCameraToggle"),
             icon = Icons.Outlined.Flip,

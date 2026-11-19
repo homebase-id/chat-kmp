@@ -107,6 +107,7 @@ import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber
 import id.homebase.api.image.MediaQuality
+import id.homebase.api.image.SendQuality
 import id.homebase.core.settings.label
 import id.homebase.resources.MR
 import id.homebase.resources.cd_media_quality_choice
@@ -209,10 +210,10 @@ fun MediaAttachmentEditor(
     onRemoveFile: ((attachmentId: Uuid) -> Unit)? = null,
     /**
      * Signal and Telegram both make this button the setting rather than a per-send override, so
-     * the choice writes straight through to the global preference.
+     * the choice writes straight through to the app's setting: its photo one on a photo, its video one on a video.
      */
-    mediaQuality: MediaQuality = MediaQuality.STANDARD,
-    onSetMediaQuality: ((MediaQuality) -> Unit)? = null,
+    sendQuality: SendQuality = SendQuality.Standard,
+    onSetSendQuality: ((SendQuality) -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
@@ -749,7 +750,7 @@ fun MediaAttachmentEditor(
                 canCrop = onCropImage != null,
                 canDraw = onDrawImage != null,
                 canSave = onSaveFile != null,
-                canSetQuality = onSetMediaQuality != null,
+                canSetQuality = onSetSendQuality != null,
             )
         }
         val toolset = toolsetFor(currentAttachment)
@@ -810,9 +811,13 @@ fun MediaAttachmentEditor(
                             connectedButtonShapes(0, groupSize),
                         )
                     }
+                    val isVideo = currentAttachment is AttachmentPendingFile.FileVideo
                     MediaQualityChoice(
-                        selected = mediaQuality,
-                        onSelected = { onSetMediaQuality!!(it) },
+                        selected = if (isVideo) sendQuality.video else sendQuality.photo,
+                        choices = if (isVideo) SendQuality.VideoChoices else MediaQuality.entries,
+                        onSelected = { quality ->
+                            onSetSendQuality!!(if (isVideo) sendQuality.copy(video = quality) else sendQuality.copy(photo = quality))
+                        },
                         shapes = connectedButtonShapes(groupSize - 1, groupSize),
                     )
                 }
@@ -854,6 +859,7 @@ private fun ConnectedToolButton(tool: EditorTool, shapes: ToggleButtonShapes) {
 @Composable
 private fun MediaQualityChoice(
     selected: MediaQuality,
+    choices: List<MediaQuality>,
     onSelected: (MediaQuality) -> Unit,
     shapes: ToggleButtonShapes,
 ) {
@@ -876,7 +882,7 @@ private fun MediaQualityChoice(
             Text(selectedLabel)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            MediaQuality.entries.forEach { quality ->
+            choices.forEach { quality ->
                 DropdownMenuItem(
                     text = { Text(stringResource(quality.label)) },
                     onClick = {

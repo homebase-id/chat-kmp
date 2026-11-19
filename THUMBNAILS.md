@@ -92,9 +92,11 @@ These are agreed. Change one only with the evidence described in [Changing the t
 
 | Setting | What people expect | Photo | Video |
 |---|---|---|---|
-| **Standard** (default) | Looks good, quick to send, screenshots readable | 2048 px, WebP q60 | 720p |
-| **HD** | Stays sharp when zoomed | 4096 px, WebP q80 | 1080p |
+| **Standard** (Chat's default) | Looks good, quick to send, screenshots readable | 2048 px, WebP q60 | 720p |
+| **HD** (Moments' and Feed's default) | Stays sharp when zoomed | 4096 px, WebP q80 | 1080p |
 | **Original** | The exact file | The file, untouched | 1080p, as HD; in Photos only, the file untouched plus a 1080p copy for playback (see [Video](#video)) |
+
+**Per app.** Chat, Moments and Feed each have a photo setting and a video setting, on their pages in Settings → Apps (`UPLOADS.md` section 5); Photos has its own two ([Where each caller lands](#where-each-caller-lands)). Outside Photos a video setting is Standard or HD, since Original there is HD's 1080p.
 
 **Names.** Every screen uses exactly these names: chat, Moments, the share sheet, settings, badges and Photos. They're **Standard**, **HD** and **Original**, in every language, all from one place (`MediaQualityLabels.kt`). Descriptions quote this table's numbers, for example "Photos up to 2048 pixels". Change the table, and its names and descriptions change with it.
 
@@ -508,9 +510,11 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 | Caller | Rows |
 |---|---|
 | Photobase backup | Its photo setting (default Original) and its video setting (default HD), each Standard, HD or Original |
-| Chat photos, Moments, share sheet, view-once | The sender's setting |
+| Chat, share sheet, view-once | Chat's photo setting and video setting (default Standard, Standard) |
+| Moments posts and comments | Moments' photo setting and video setting (default HD, HD) |
+| Feed posts and comments | Feed's photo setting and video setting (default HD, HD) |
 | Group avatars and other incidental images through `MessageAttachmentBuilder` | Standard |
-| Stickers | The sender's setting for thumbnails; the file stays the final image, and no quality is recorded |
+| Stickers | Chat's photo setting for thumbnails; the file stays the final image, and no quality is recorded |
 | PDF previews, audio, Vault, contacts, video posters, saved stickers | Original's rows, as thumbnails only (Vault videos are HD) |
 | Link and location previews | Tiny only, made with `createTinyPreview` |
 | Profile avatars | Their own sizes and budgets, plus the shared tiny rule |

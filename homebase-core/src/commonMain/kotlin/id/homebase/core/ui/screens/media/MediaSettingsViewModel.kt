@@ -17,38 +17,16 @@ class MediaSettingsViewModel(
     val uiState: StateFlow<MediaSettingsUiState> = _uiState.asStateFlow()
 
     init {
-        // The composer's HD chip writes the same preference, so follow the mirrored flow.
         viewModelScope.launch {
             userPreferences.preferenceState.collect { prefs ->
-                _uiState.update {
-                    it.copy(
-                        mediaQuality = prefs.mediaQuality,
-                        autoSaveIncomingMedia = prefs.autoSaveIncomingMedia,
-                        autoSaveOnUnmeteredOnly = prefs.autoSaveOnUnmeteredOnly,
-                        mirrorFrontCamera = prefs.mirrorFrontCamera,
-                    )
-                }
+                _uiState.update { it.copy(mirrorFrontCamera = prefs.mirrorFrontCamera) }
             }
         }
     }
 
     fun onAction(action: MediaSettingsUiAction) {
         when (action) {
-            is MediaSettingsUiAction.SetMediaQuality -> {
-                userPreferences.mediaQuality = action.quality
-            }
-
-            is MediaSettingsUiAction.SetAutoSaveIncomingMedia -> {
-                userPreferences.autoSaveIncomingMedia = action.enabled
-            }
-
-            is MediaSettingsUiAction.SetAutoSaveOnUnmeteredOnly -> {
-                userPreferences.autoSaveOnUnmeteredOnly = action.enabled
-            }
-
-            is MediaSettingsUiAction.SetMirrorFrontCamera -> {
-                userPreferences.mirrorFrontCamera = action.enabled
-            }
+            is MediaSettingsUiAction.SetMirrorFrontCamera -> userPreferences.mirrorFrontCamera = action.enabled
         }
     }
 }

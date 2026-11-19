@@ -221,7 +221,7 @@ private fun ChatListCaptureFlow(
         HomebaseTheme(darkTheme = true, followsSystemTheme = false, updatesSystemChrome = false) {
             AttachmentEditorHost(
                 data = editor,
-                mediaQuality = messagesUiState.mediaQuality,
+                sendQuality = messagesUiState.sendQuality,
                 textFieldState = caption,
                 revealed = true,
                 currentPage = page,

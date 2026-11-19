@@ -3,7 +3,7 @@ package id.homebase.chat.viewonce
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.api.image.MediaQuality
+import id.homebase.api.image.SendQuality
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
@@ -24,12 +24,12 @@ fun viewOnceKindOf(attachment: AttachmentInput): String? = when {
 suspend fun buildViewOnceBundle(
     attachment: AttachmentInput,
     fileOperationsProvider: FileOperationsProvider,
-    mediaQuality: MediaQuality,
+    quality: SendQuality,
 ): PayloadBundle = MessageAttachmentBuilder.buildSingle(
     attachment = attachment,
     fileOperationsProvider = fileOperationsProvider,
     payloadKey = VIEW_ONCE_PAYLOAD_KEY,
-    mediaQuality = mediaQuality,
+    quality = quality,
 ).withoutThumbnails()
 
 suspend fun ChatMessageSenderService.sendAttachmentsMessage(
@@ -41,7 +41,7 @@ suspend fun ChatMessageSenderService.sendAttachmentsMessage(
     replyTo: ReplyPreview?,
     sentAt: UnixTimeUtc,
     fileOperationsProvider: FileOperationsProvider,
-    mediaQuality: MediaQuality,
+    quality: SendQuality,
 ) {
     if (viewOnce) {
         require(replyTo == null) { "view-once media cannot be a reply" }
@@ -59,7 +59,7 @@ suspend fun ChatMessageSenderService.sendAttachmentsMessage(
                 ),
             ),
             previousMessageUniqueId = null,
-            payloadBundle = buildViewOnceBundle(attachment, fileOperationsProvider, mediaQuality),
+            payloadBundle = buildViewOnceBundle(attachment, fileOperationsProvider, quality),
             userDate = sentAt,
         )
         return
@@ -67,7 +67,7 @@ suspend fun ChatMessageSenderService.sendAttachmentsMessage(
     val bundle = MessageAttachmentBuilder.build(
         attachments = attachments,
         fileOperationsProvider = fileOperationsProvider,
-        mediaQuality = mediaQuality,
+        quality = quality,
         payloadKeyFactory = { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" },
     )
     if (replyTo != null) {

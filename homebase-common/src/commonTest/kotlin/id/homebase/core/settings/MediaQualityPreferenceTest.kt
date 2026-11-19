@@ -1,37 +1,60 @@
 package id.homebase.core.settings
 
 import id.homebase.api.image.MediaQuality
+import id.homebase.api.image.SendQuality
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
-/**
- * #1369 ships Standard as the default for new *and* existing installs. Because the key is new,
- * that is carried entirely by the getter's fallback — there is no migration to get wrong, but
- * there is also nothing else stopping a bad default from reaching everyone.
- */
+/** Each app's photo and video setting and its default. */
 class MediaQualityPreferenceTest {
 
+    private fun prefs(vararg stored: Pair<String, String>) =
+        UserPreferences(InMemorySettings().apply { stored.forEach { (k, v) -> putString(k, v) } })
+
     @Test
-    fun unsetKeyReadsStandard() {
-        assertEquals(MediaQuality.STANDARD, UserPreferences(InMemorySettings()).mediaQuality)
+    fun eachAppStartsAtItsDefault() {
+        val prefs = prefs()
+        assertEquals(SendQuality(MediaQuality.STANDARD, MediaQuality.STANDARD), prefs.sendQuality(SendQualityApp.Chat))
+        assertEquals(SendQuality(MediaQuality.HD, MediaQuality.HD), prefs.sendQuality(SendQualityApp.Moments))
+        assertEquals(SendQuality(MediaQuality.HD, MediaQuality.HD), prefs.sendQuality(SendQualityApp.Feed))
     }
 
     @Test
-    fun roundTripsAndMirrorsIntoPreferenceState() {
-        val prefs = UserPreferences(InMemorySettings())
-
-        prefs.mediaQuality = MediaQuality.ORIGINAL
-
-        assertEquals(MediaQuality.ORIGINAL, prefs.mediaQuality)
-        // The composer's HD chip and the settings screen both read the mirrored flow.
-        assertEquals(MediaQuality.ORIGINAL, prefs.preferenceState.value.mediaQuality)
+    fun theOldSharedSettingIsLeftBehind() {
+        val prefs = prefs("media_quality" to MediaQuality.ORIGINAL.code)
+        assertEquals(SendQualityApp.Chat.default, prefs.sendQuality(SendQualityApp.Chat))
+        assertEquals(SendQualityApp.Moments.default, prefs.sendQuality(SendQualityApp.Moments))
     }
 
     @Test
-    fun anUnrecognisedStoredValueFallsBackToStandard() {
+    fun roundTripsPerAppAndMirrorsIntoPreferenceState() {
+        val prefs = prefs()
+        prefs.setSendQuality(SendQualityApp.Moments, SendQuality(MediaQuality.ORIGINAL, MediaQuality.STANDARD))
+
+        assertEquals(SendQuality(MediaQuality.ORIGINAL, MediaQuality.STANDARD), prefs.sendQuality(SendQualityApp.Moments))
+        // The composer's chip and the app's page both read the mirrored flow.
+        assertEquals(SendQuality(MediaQuality.ORIGINAL, MediaQuality.STANDARD), prefs.preferenceState.value.sendQuality(SendQualityApp.Moments))
+        assertEquals(SendQualityApp.Chat.default, prefs.sendQuality(SendQualityApp.Chat))
+    }
+
+    @Test
+    fun anUnrecognisedStoredValueFallsBackToTheDefault() {
+        val prefs = prefs("moments_photo_quality" to "ultra-hd-from-a-future-build")
+        assertEquals(MediaQuality.HD, prefs.sendQuality(SendQualityApp.Moments).photo)
+    }
+
+    @Test
+    fun aStoredOriginalVideoReadsAsHdOutsidePhotos() {
+        val prefs = prefs("feed_video_quality" to MediaQuality.ORIGINAL.code)
+        assertEquals(MediaQuality.HD, prefs.sendQuality(SendQualityApp.Feed).video)
+    }
+
+    @Test
+    fun turningMomentsSaveOnStampsWhenSoTheSaveWontBackfill() {
         val settings = InMemorySettings()
-        settings.putString("media_quality", "ultra-hd-from-a-future-build")
-
-        assertEquals(MediaQuality.STANDARD, UserPreferences(settings).mediaQuality)
+        val prefs = UserPreferences(settings)
+        prefs.momentsAutoSaveIncomingMedia = true
+        assertTrue(settings.getLong("moments_auto_save_since", 0L) > 0L)
     }
 }

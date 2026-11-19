@@ -24,6 +24,7 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalTestApi::class)
 class AppsPageTest {
     private val rowTags = mapOf(
+        AppsPage.Chat to "chatSettingsButton",
         AppsPage.Feed to "feedSettingsButton",
         AppsPage.Moments to "momentsSettingsButton",
         AppsPage.Vault to "vaultSettingsButton",
@@ -32,14 +33,13 @@ class AppsPageTest {
         AppsPage.Contacts to "contactBookSettingsButton",
         AppsPage.Calls to "callsSettingsButton",
         AppsPage.Photobase to "photobaseSettingsButton",
+        AppsPage.WebDrop to "webDropButton",
+        AppsPage.Location to "locationSettingsButton",
     )
 
     private fun actions(onBack: () -> Unit, onOpenPage: (AppsPage) -> Unit) = AppsSettingsActions(
         onBack = onBack,
         onOpenPage = onOpenPage,
-        onOpenWebDrop = {},
-        onLocation = {},
-        photobaseAvailable = true,
     )
 
     private fun ComposeUiTest.tap(tag: String) {
@@ -101,5 +101,26 @@ class AppsPageTest {
             waitForIdle()
             onNodeWithTag(tag).assertExists()
         }
+    }
+
+    @Test
+    fun eachAppsMainScreenLeadsToItsOwnSettingsPage() = runComposeUiTest {
+        lateinit var nav: NavHostController
+        setContent {
+            nav = rememberNavController()
+            NavHost(nav, startDestination = Route.Home) {
+                composable<Route.Home> { Text("") }
+                composable<Route.ChatList> { Text("") }
+                composable<Route.Moments> { Text("") }
+                composable<Route.WebDrop> { Text("") }
+            }
+        }
+        assertEquals(null, AppsPage.of(nav.currentDestination))
+        listOf(Route.ChatList to AppsPage.Chat, Route.Moments to AppsPage.Moments, Route.WebDrop to AppsPage.WebDrop).forEach { (route, page) ->
+            runOnIdle { nav.navigate(route) }
+            waitForIdle()
+            assertEquals(page, AppsPage.of(nav.currentDestination))
+        }
+        assertEquals(AppsPage.entries.size, AppsPage.entries.map { it.appRoute }.toSet().size)
     }
 }

@@ -1,5 +1,6 @@
 package id.homebase.chat.viewonce
 
+import id.homebase.api.image.SendQuality
 import id.homebase.upload.ContentHashes
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -84,7 +85,7 @@ class ViewOnceSendTest {
                 replyTo = null,
                 sentAt = sentAt,
                 fileOperationsProvider = JvmFileOperationsProvider(),
-                mediaQuality = MediaQuality.STANDARD,
+                quality = SendQuality.Standard,
             )
 
             val stored = fixture.dbm.driveMainIndex
@@ -125,7 +126,7 @@ class ViewOnceSendTest {
                 replyTo = null,
                 sentAt = UnixTimeUtc.now(),
                 fileOperationsProvider = JvmFileOperationsProvider(),
-                mediaQuality = MediaQuality.STANDARD,
+                quality = SendQuality.Standard,
             )
 
             val stored = fixture.dbm.driveMainIndex
@@ -161,7 +162,7 @@ class ViewOnceSendTest {
                 replyTo = null,
                 sentAt = UnixTimeUtc.now(),
                 fileOperationsProvider = JvmFileOperationsProvider(),
-                mediaQuality = MediaQuality.STANDARD,
+                quality = SendQuality.Standard,
             )
 
             val stored = fixture.dbm.driveMainIndex
@@ -189,7 +190,7 @@ class ViewOnceSendTest {
                 replyTo = null,
                 sentAt = UnixTimeUtc.now(),
                 fileOperationsProvider = JvmFileOperationsProvider(),
-                mediaQuality = MediaQuality.STANDARD,
+                quality = SendQuality.Standard,
             )
 
             val stored = fixture.dbm.driveMainIndex
@@ -225,7 +226,7 @@ class ViewOnceSendTest {
                 replyTo = null,
                 sentAt = UnixTimeUtc.now(),
                 fileOperationsProvider = JvmFileOperationsProvider(),
-                mediaQuality = MediaQuality.STANDARD,
+                quality = SendQuality.Standard,
             )
 
             val stored = fixture.dbm.driveMainIndex
@@ -259,7 +260,7 @@ class ViewOnceSendTest {
                         replyTo = null,
                         sentAt = UnixTimeUtc.now(),
                         fileOperationsProvider = JvmFileOperationsProvider(),
-                        mediaQuality = MediaQuality.STANDARD,
+                        quality = SendQuality.Standard,
                     )
                 } catch (_: IllegalArgumentException) {
                     threw = true
@@ -290,7 +291,7 @@ class ViewOnceSendTest {
                     ),
                     sentAt = UnixTimeUtc.now(),
                     fileOperationsProvider = JvmFileOperationsProvider(),
-                    mediaQuality = MediaQuality.STANDARD,
+                    quality = SendQuality.Standard,
                 )
             }
             assertTrue(failure.message.orEmpty().contains("reply"))

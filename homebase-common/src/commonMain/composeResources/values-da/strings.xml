@@ -392,7 +392,7 @@
     <string name="moments_empty_action">Tilføj et øjeblik</string>
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Åbn Moments</string>
-    <string name="moments_settings_show_icon">Vis Moments-ikonet i bundbjælken</string>
+    <string name="moments_settings_show_icon">Vis Moments i navigationslinjen</string>
     <string name="moments_create_action">Opret et nyt øjeblik</string>
     <string name="moments_post_open">Åbn øjeblik</string>
     <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
@@ -1065,7 +1065,7 @@
     <string name="vault_welcome">Velkommen til din Vault</string>
     <string name="vault_settings_section">Vault</string>
     <string name="vault_settings_open">Åbn Vault</string>
-    <string name="vault_settings_show_icon">Vis Vault-ikonet i bundbjælken</string>
+    <string name="vault_settings_show_icon">Vis Vault i navigationslinjen</string>
     <string name="vault_settings_biometrics">Biometrisk beskyttelse</string>
     <string name="vault_settings_biometrics_unavailable">Denne enhed kan ikke bekræfte din identitet, så Vault åbnes uden lås.</string>
     <string name="vault_biometric_prompt_title">Lås Vault op</string>
@@ -1260,9 +1260,7 @@
     <string name="video_web_large_playback_unsupported">Store videoer kan endnu ikke afspilles i browseren</string>
 
     <!-- Settings hub -->
-    <string name="settings_section_preferences">Præferencer</string>
     <string name="settings_section_apps">Apps</string>
-    <string name="settings_section_device">Enhed</string>
     <string name="settings_edit_profile">Rediger profil</string>
     <string name="settings_security_setup_desc">Adgangskode og gendannelsesnøgle</string>
     <string name="settings_notifications_status_checking">Kontrollerer…</string>
@@ -1295,7 +1293,7 @@
     <string name="audio_play">Afspil</string>
 
     <!-- Bottom navigation -->
-    <string name="nav_chats">Chats</string>
+    <string name="nav_chats">Chat</string>
     <string name="nav_feed">Feed</string>
     <string name="nav_moments">Moments</string>
     <string name="nav_apps">Apps</string>
@@ -1417,7 +1415,7 @@
     <string name="location_onboarding_setup">Sæt det op</string>
     <string name="location_onboarding_dismiss">Ikke nu</string>
     <string name="location_settings_section">Lokation</string>
-    <string name="location_settings_show_icon">Vis Lokations-ikonet i bundbjælken</string>
+    <string name="location_settings_show_icon">Vis Lokation i navigationslinjen</string>
     <string name="location_map_section">Kort</string>
     <string name="location_map_none">Intet kort</string>
     <string name="location_map_osm">Open maps</string>
@@ -1764,7 +1762,7 @@
 
     <string name="contactbook_settings_section">Kontakter</string>
     <string name="contactbook_settings_open">Åbn Kontakter</string>
-    <string name="contactbook_settings_show_icon">Vis Kontakter-ikonet i bundbjælken</string>
+    <string name="contactbook_settings_show_icon">Vis Kontakter i navigationslinjen</string>
 
     <string name="contactbook_error_save">Kunne ikke gemme kontakten.</string>
     <string name="contactbook_error_forbidden">Kunne ikke gemme — denne app har ikke tilladelse til at administrere dine kontakter. Giv adgang igen ved at udvide tilladelserne i ejer konsollen, og prøv derefter igen.</string>
@@ -2044,7 +2042,6 @@
     <string name="camera_recording_started">Optagelsen er startet</string>
     <string name="camera_recording_stopped">Optagelsen er stoppet, %1$s</string>
     <string name="camera_ae_af_lock">AE/AF-lås</string>
-    <string name="settings_media_camera_header">Kamera</string>
     <string name="settings_media_mirror_front">Spejlvend frontkamera</string>
     <string name="settings_media_mirror_front_description">Gem selfies og videoer fra frontkameraet, som de ser ud i forhåndsvisningen.</string>
     <string name="profile_edit_load_failed_desc">Tjek din forbindelse, og prøv igen.</string>
@@ -2101,9 +2098,9 @@
     <string name="vault_saved">Gemt i Vault</string>
     <string name="vault_save_failed">Kunne ikke gemme i Vault</string>
     <string name="vault_chat_image_name">Chatbillede, %1$s</string>
-    <string name="email_biometric_prompt_title">Lås mailopsætning op</string>
+    <string name="email_biometric_prompt_title">Lås E-mail op</string>
     <string name="email_biometric_prompt_subtitle">Godkend for at se dine mailadgangskoder og nøgler</string>
-    <string name="email_locked_title">Mailopsætning er låst</string>
+    <string name="email_locked_title">E-mail er låst</string>
     <string name="email_locked_unlock">Lås op</string>
     <string name="email_make_private">Klik for at ændre dit Email-drev til ægte zero knowledge-kryptering</string>
     <string name="email_checking">Spørger din server…</string>
@@ -2124,7 +2121,7 @@
     <string name="email_home_subtitle">Sæt din mail op og administrer den</string>
     <string name="email_home_thunderbird">Sæt Thunderbird op til krypteret mail</string>
     <string name="email_home_thunderbird_detail">Installer den, tilføj din adresse, importer din nøgle</string>
-    <string name="email_label">Mailopsætning</string>
+    <string name="email_label">E-mail</string>
     <string name="email_mailbox_none_unread">Ingen ulæste e-mails</string>
     <string name="email_mailbox_open_client">Åbn %1$s</string>
     <string name="email_mailbox_open_failed">%1$s ser ikke ud til at være installeret</string>
@@ -2158,7 +2155,7 @@
     <string name="email_onboarding_body_1">Opret en adresse, der hører til din Homebase-identitet, og opbevar nøglerne til den på dit eget drev.</string>
     <string name="email_onboarding_body_2">Du læser og skriver mail i den app, du allerede bruger. Denne skærm er der, hvor du sætter den op og administrerer dine nøgler.</string>
     <string name="email_onboarding_dismiss">Afvis</string>
-    <string name="email_onboarding_dismiss_hint">Afviser du, skjules ikonet — find Mailopsætning igen under Hjem.</string>
+    <string name="email_onboarding_dismiss_hint">Afviser du, skjules ikonet — find E-mail igen under Apps.</string>
     <string name="email_onboarding_setup">Sæt det op</string>
     <string name="email_onboarding_title">Mail på din egen identitet</string>
     <string name="email_open_owner_console">Åbn ejer konsollen</string>
@@ -2216,14 +2213,14 @@
     <string name="email_settings_cert_warning">Din server beder dig måske om at acceptere en sikkerhedsundtagelse, første gang du forbinder.</string>
     <string name="email_settings_incoming">Indgående (IMAP)</string>
     <string name="email_settings_intro">De fleste mailapps finder disse automatisk. Indtast dem selv, hvis din ikke gør.</string>
-    <string name="email_settings_open">Åbn Mailopsætning</string>
+    <string name="email_settings_open">Åbn E-mail</string>
     <string name="email_settings_outgoing">Udgående (SMTP)</string>
     <string name="email_settings_password_hint">Adgangskode: brug en af app-adgangskoderne nedenfor. Den samme virker til begge.</string>
     <string name="email_settings_port">Port</string>
-    <string name="email_settings_section">Mailopsætning</string>
+    <string name="email_settings_section">E-mail</string>
     <string name="email_settings_security">Sikkerhed</string>
     <string name="email_settings_server">Server</string>
-    <string name="email_settings_show_icon">Vis ikonet for Mailopsætning i bundlinjen</string>
+    <string name="email_settings_show_icon">Vis E-mail i navigationslinjen</string>
     <string name="email_settings_title">Indstillinger til mailapp</string>
     <string name="email_settings_username">Brugernavn</string>
     <string name="email_setup_action_resume">Gør opsætningen færdig</string>
@@ -2243,7 +2240,7 @@
     <string name="email_setup_mode_standard_detail">Virker med alle mailapps. Beskeder gemmes ukrypteret på din Homebase-server, som hos en traditionel mailudbyder.</string>
     <string name="email_setup_mode_title">Vælg typen af postkasse</string>
     <string name="email_setup_ok">Din mailopsætning er i orden</string>
-    <string name="email_setup_records_manual">Din DNS administreres ikke her, så mailposterne skal tilføjes manuelt. Når opsætningen er færdig, viser Mailopsætning hver enkelt, du skal tilføje.</string>
+    <string name="email_setup_records_manual">Din DNS administreres ikke her, så mailposterne skal tilføjes manuelt. Når opsætningen er færdig, viser E-mail hver enkelt, du skal tilføje.</string>
     <string name="email_setup_retry">Prøv igen</string>
     <string name="email_setup_running">Sætter op…</string>
     <string name="email_setup_stalled">Det trin meldte, at det lykkedes, men intet ændrede sig, så opsætningen stoppede i stedet for at gentage det.</string>
@@ -2433,12 +2430,8 @@
     <string name="profile_card_colours_blue">Blå</string>
     <string name="settings_media_quality_hd">HD</string>
     <string name="settings_media_quality_original">Original</string>
-    <string name="settings_media_quality_header">Kvalitet for billeder og videoer, du sender</string>
     <string name="settings_media_quality_standard">Standard</string>
     <string name="settings_media_quality_footer">Uanset hvad du vælger, er det, du gemmer på din enhed, den version, der blev sendt.</string>
-    <string name="settings_media_quality_standard_description">Billeder op til 2048 pixels og video i 720p. Ser godt ud, sendes hurtigt og holder skærmbilleder læsbare.</string>
-    <string name="settings_media_quality_hd_description">Billeder op til 4096 pixels og video i 1080p. Forbliver skarpe, når du zoomer.</string>
-    <string name="settings_media_quality_original_description">Den nøjagtige billedfil uden komprimering, og video i 1080p. Bruger mest data.</string>
     <string name="cd_media_quality_choice">Mediekvalitet: %1$s. Tryk for at ændre.</string>
     <string name="cd_media_quality_hd_badge">Sendt i HD</string>
     <string name="cd_media_quality_original_badge">Sendt som den originale fil</string>
@@ -2476,4 +2469,28 @@
     <string name="chat_contact_card_save_homebase_supporting">Gem dem i din Homebase</string>
     <string name="chat_contact_card_update_homebase_supporting">Opdater de gemte oplysninger</string>
     <string name="chat_contact_card_save_phone_supporting">Åbner telefonens Kontakter-app</string>
+    <!-- Settings → Apps: one page shape for every app -->
+    <string name="settings_chat_desc">Dine samtaler, og billederne og videoerne i dem</string>
+    <string name="chat_settings_open">Åbn Chat</string>
+    <string name="chat_settings_show_icon">Vis Chat i navigationslinjen</string>
+    <string name="chat_settings_icon_always">Chat bliver altid i navigationslinjen.</string>
+    <string name="feed_settings_open">Åbn Feed</string>
+    <string name="feed_settings_show_icon">Vis Feed i navigationslinjen</string>
+    <string name="filesync_settings_open">Åbn Drive</string>
+    <string name="photobase_settings_open">Åbn Photos</string>
+    <string name="photobase_settings_in_testing">Photos er stadig under test. Slå det til i Udviklermenu for at prøve det.</string>
+    <string name="webdrop_settings_open">Åbn WebDrop</string>
+    <string name="location_settings_open">Åbn Lokation</string>
+    <string name="calls_settings_open">Åbn Opkald</string>
+    <string name="settings_not_working">%1$s (virker ikke endnu)</string>
+    <string name="settings_media">Kamera</string>
+    <string name="settings_media_desc">Spejlvend frontkamera</string>
+    <string name="settings_send_photo_standard_desc">Op til 2048 pixels. Sendes hurtigt og holder skærmbilleder læsbare.</string>
+    <string name="settings_send_photo_hd_desc">Op til 4096 pixels. Forbliver skarpt, når du zoomer.</string>
+    <string name="settings_send_photo_original_desc">Den præcise billedfil, uden komprimering. Bruger mest data.</string>
+    <string name="settings_send_video_standard_desc">720p. Sendes hurtigt.</string>
+    <string name="settings_send_video_hd_desc">1080p. Forbliver skarp på store skærme.</string>
+    <string name="photobase_backup_photo_quality">Billedkvalitet</string>
+    <string name="photobase_backup_video_quality">Videokvalitet</string>
+    <string name="settings_navigation_bar_switch_wide">På computer og web viser sidebjælken alle apps; dette vælger for bundbjælken.</string>
 </resources>

@@ -1,5 +1,8 @@
 package id.homebase.core.ui.screens.home
 
+import id.homebase.core.ui.assets.RssFeed
+import id.homebase.resources.nav_feed
+import id.homebase.resources.settings_feed_desc
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +48,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
@@ -59,6 +63,8 @@ import id.homebase.resources.app_version
 import id.homebase.resources.clear_log
 import id.homebase.resources.contactbook_home_subtitle
 import id.homebase.resources.contactbook_label
+import id.homebase.resources.email_home_subtitle
+import id.homebase.resources.email_label
 import id.homebase.resources.export_log
 import id.homebase.resources.homebase_logo
 import id.homebase.resources.location_attention_cd
@@ -70,6 +76,7 @@ import id.homebase.resources.vault_home_subtitle
 import id.homebase.resources.vault_label
 import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
+import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.resources.filesync_label
 import id.homebase.resources.photobase_home_subtitle
@@ -91,6 +98,8 @@ fun HomeScreen(
     onNavigateToLocation: () -> Unit,
     onNavigateToContacts: () -> Unit,
     onNavigateToCalls: (() -> Unit)?,
+    onNavigateToEmail: () -> Unit,
+    onNavigateToFeed: () -> Unit,
     onNavigateToExamples: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -150,6 +159,8 @@ fun HomeScreen(
         onNavigateToLocation = onNavigateToLocation,
         onNavigateToContacts = onNavigateToContacts,
         onNavigateToCalls = onNavigateToCalls,
+        onNavigateToEmail = onNavigateToEmail,
+        onNavigateToFeed = onNavigateToFeed,
         locationAttention = locationAttention,
     )
 }
@@ -167,6 +178,8 @@ fun HomeUi(
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
     onNavigateToCalls: (() -> Unit)? = null,
+    onNavigateToEmail: () -> Unit = {},
+    onNavigateToFeed: () -> Unit = {},
     locationAttention: Boolean = false,
 ) {
     val scrollState = rememberScrollState()
@@ -231,6 +244,16 @@ fun HomeUi(
             }
 
             FeatureCard(
+                icon = HomebaseIcons.RssFeed,
+                label = stringResource(MR.string.nav_feed),
+                subtitle = stringResource(MR.string.settings_feed_desc),
+                onClick = onNavigateToFeed,
+                modifier = Modifier.testTag("homeFeedCard"),
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FeatureCard(
                 icon = Icons.Outlined.AutoAwesome,
                 label = stringResource(MR.string.moments_label),
                 subtitle = stringResource(MR.string.moments_home_subtitle),
@@ -255,6 +278,16 @@ fun HomeUi(
                 label = stringResource(MR.string.contactbook_label),
                 subtitle = stringResource(MR.string.contactbook_home_subtitle),
                 onClick = onNavigateToContacts,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FeatureCard(
+                icon = Icons.Outlined.MailOutline,
+                label = stringResource(MR.string.email_label),
+                subtitle = stringResource(MR.string.email_home_subtitle),
+                onClick = onNavigateToEmail,
+                modifier = Modifier.testTag("homeEmailCard"),
             )
 
             if (onNavigateToCalls != null) {
@@ -283,10 +316,11 @@ private fun FeatureCard(
     onClick: () -> Unit,
     badged: Boolean = false,
     badgeContentDescription: String? = null,
+    modifier: Modifier = Modifier,
 ) {
     ElevatedCard(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.elevatedCardColors(

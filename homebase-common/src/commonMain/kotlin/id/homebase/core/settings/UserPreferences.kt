@@ -2,6 +2,7 @@ package id.homebase.core.settings
 
 import com.russhwolf.settings.Settings
 import id.homebase.api.image.MediaQuality
+import id.homebase.api.image.SendQuality
 import id.homebase.api.share.NotificationContentLevel
 import id.homebase.api.share.NotificationExtensionStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +16,7 @@ class UserPreferences(private val settings: Settings) {
             theme = theme,
             hapticsEnabled = hapticsEnabled,
             showDeveloperMenu = showDeveloperMenu,
-            mediaQuality = mediaQuality,
+            sendQualities = SendQualityApp.entries.associateWith { sendQuality(it) },
             autoSaveIncomingMedia = autoSaveIncomingMedia,
             autoSaveOnUnmeteredOnly = autoSaveOnUnmeteredOnly,
             enterSendsMessage = enterSendsMessage,
@@ -72,16 +73,21 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(hapticsEnabled = value)
         }
 
-    /**
-     * Compression tier for outgoing photos and videos. The key is new, so existing installs read
-     * the default too — Standard for everyone, no migration.
-     */
-    var mediaQuality: MediaQuality
-        get() = MediaQuality.fromCode(settings.getStringOrNull("media_quality"))
-        set(value) {
-            settings.putString("media_quality", value.code)
-            _preferenceState.value = _preferenceState.value.copy(mediaQuality = value)
-        }
+    /** The photo and video quality [app] sends with. */
+    fun sendQuality(app: SendQualityApp): SendQuality = SendQuality(
+        photo = quality("${app.key}_photo_quality") ?: app.default.photo,
+        video = quality("${app.key}_video_quality")?.asVideoChoice() ?: app.default.video,
+    )
+
+    fun setSendQuality(app: SendQualityApp, value: SendQuality) {
+        settings.putString("${app.key}_photo_quality", value.photo.code)
+        settings.putString("${app.key}_video_quality", value.video.code)
+        _preferenceState.value = _preferenceState.value.let { it.copy(sendQualities = it.sendQualities + (app to value)) }
+    }
+
+    private fun quality(key: String): MediaQuality? = MediaQuality.fromCodeOrNull(settings.getStringOrNull(key))
+
+    private fun MediaQuality.asVideoChoice(): MediaQuality = takeIf { it in SendQuality.VideoChoices } ?: MediaQuality.HD
 
     /**
      * Auto-save incoming chat photos and videos to the device album. Off by default — it writes
@@ -102,6 +108,21 @@ class UserPreferences(private val settings: Settings) {
     /** Epoch ms at which [autoSaveIncomingMedia] was last switched on; 0 when it never was. */
     val autoSaveIncomingMediaSince: Long
         get() = settings.getLong("auto_save_incoming_media_since", 0L)
+
+    // Saved but not read yet: Moments' and Feed's saves to the album are still to be built.
+    var momentsAutoSaveIncomingMedia: Boolean
+        get() = settings.getBoolean("moments_auto_save", false)
+        set(value) = setAutoSave("moments_auto_save", value)
+
+    var feedAutoSaveIncomingMedia: Boolean
+        get() = settings.getBoolean("feed_auto_save", false)
+        set(value) = setAutoSave("feed_auto_save", value)
+
+    // Stamped like Chat's, so the save, once built, doesn't backfill the album with what came before.
+    private fun setAutoSave(key: String, value: Boolean) {
+        if (value && !settings.getBoolean(key, false)) settings.putLong("${key}_since", Clock.System.now().toEpochMilliseconds())
+        settings.putBoolean(key, value)
+    }
 
     /** Guard on [autoSaveIncomingMedia]: skip the download while the network is metered. */
     var autoSaveOnUnmeteredOnly: Boolean
@@ -225,13 +246,22 @@ data class PreferenceState(
     val theme: ThemeState,
     val hapticsEnabled: Boolean,
     val showDeveloperMenu: Boolean = false,
-    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
+    val sendQualities: Map<SendQualityApp, SendQuality> = SendQualityApp.entries.associateWith { it.default },
     val autoSaveIncomingMedia: Boolean = false,
     val autoSaveOnUnmeteredOnly: Boolean = true,
     val enterSendsMessage: Boolean = true,
     val arrowUpEditsLastMessage: Boolean = true,
     val mirrorFrontCamera: Boolean = true,
 )
+
+fun PreferenceState.sendQuality(app: SendQualityApp): SendQuality = sendQualities.getValue(app)
+
+/** The apps that send media people pick, each with its own [SendQuality] and default. */
+enum class SendQualityApp(internal val key: String, val default: SendQuality) {
+    Chat("chat", SendQuality.Standard),
+    Moments("moments", SendQuality(MediaQuality.HD, MediaQuality.HD)),
+    Feed("feed", SendQuality(MediaQuality.HD, MediaQuality.HD)),
+}
 
 enum class ThemeState {
     System,

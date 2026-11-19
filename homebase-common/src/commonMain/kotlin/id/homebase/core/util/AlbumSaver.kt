@@ -37,6 +37,9 @@ interface AlbumSaver {
      * file's full path.
      */
     suspend fun target(name: String, asked: Boolean): AlbumTarget
+
+    /** Whether [target] works unasked, for saving what people receive in the background: everywhere but the web. */
+    val savesUnasked: Boolean get() = true
 }
 
 /** The album is not writable for us. Retrying or re-prompting won't change that. */

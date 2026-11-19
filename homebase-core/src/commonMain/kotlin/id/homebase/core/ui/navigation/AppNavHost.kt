@@ -39,6 +39,8 @@ import id.homebase.chat.conversationlist.chatOwnsWindow
 import id.homebase.chat.conversationlist.showsViewOnceViewer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -213,6 +215,7 @@ import id.homebase.core.ui.screens.settings.SettingsCategory
 import id.homebase.core.ui.screens.settings.AppsPage
 import id.homebase.core.ui.screens.settings.AppsPageContent
 import id.homebase.core.ui.screens.settings.AppsPageLinks
+import id.homebase.core.ui.screens.settings.appRoute
 import id.homebase.core.ui.screens.settings.AppsSettingsActions
 import id.homebase.core.ui.screens.settings.appsPage
 import id.homebase.core.ui.screens.settings.route
@@ -234,6 +237,7 @@ import id.homebase.core.ui.screens.webdrop.WebDropScreen
 import id.homebase.core.ui.screens.webdrop.WebDropUiEvent
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
+import id.homebase.core.feed.FeedPreferences
 import id.homebase.core.filesync.FilesyncPreferences
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -253,7 +257,6 @@ import id.homebase.core.ui.screens.openedfile.OpenedFileRequest
 import id.homebase.core.ui.screens.openedfile.OpenedFileScreen
 import id.homebase.core.ui.screens.openedfile.openedFileStagingRoot
 import id.homebase.core.ui.screens.openedfile.sweepStaged
-import id.homebase.core.ui.screens.filesync.FilesyncCrumb
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.withContext
@@ -408,6 +411,7 @@ fun AppNavHost(
     val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
     val vaultViewModel: VaultViewModel = koinViewModel()
     val filesyncIconVisible by koinInject<FilesyncPreferences>().iconVisible.collectAsStateWithLifecycle()
+    val feedIconVisible by koinInject<FeedPreferences>().iconVisible.collectAsStateWithLifecycle()
     val photobaseIconVisible by koinInject<PhotobasePreferences>().iconVisible.collectAsStateWithLifecycle()
     val photobaseAvailable by koinInject<DeveloperPreferences>().photobaseEnabled.collectAsStateWithLifecycle()
     val locationPreferences = koinInject<LocationPreferences>()
@@ -440,12 +444,14 @@ fun AppNavHost(
     val callsBadge = callsAvailable && callsBadgeVisible(callsMissedCount)
     // Above the NavHost: the picker pops right after starting, and its permission prompt must outlive it.
     val peerCallStarter = rememberPeerCallStarter()
+    val showNavigationRail = isExpandedLayout()
     val topLevelRoutes = remember(
         callsAvailable,
         callsIconVisible,
         momentsIconVisible,
         vaultIconVisible,
         filesyncIconVisible,
+        feedIconVisible,
         photobaseAvailable,
         photobaseIconVisible,
         locationIconVisible,
@@ -459,11 +465,36 @@ fun AppNavHost(
             momentsVisible = momentsIconVisible,
             vaultVisible = vaultIconVisible,
             filesyncVisible = filesyncIconVisible,
-            photobaseVisible = photobaseAvailable && photobaseIconVisible,
+            feedVisible = feedIconVisible,
+            photobaseVisible = photobaseIconVisible,
             locationVisible = locationIconVisible,
             contactBookVisible = contactBookIconVisible,
-            emailVisible = emailIconVisible && serverSupportsMail == true,
+            emailVisible = emailIconVisible,
+            // Fixed per platform, never per window size: tabs that came and went with the layout would leave a
+            // pushed app inside another tab's saved stack.
+            everyApp = isDesktopOrWeb(),
+            photobaseAvailable = photobaseAvailable,
+            emailAvailable = serverSupportsMail == true,
         )
+    }
+    // A narrow desktop window's bottom bar has room only for the apps whose switches are on.
+    val bottomBarRoutes = remember(topLevelRoutes, callsIconVisible, momentsIconVisible, vaultIconVisible,
+        filesyncIconVisible, feedIconVisible, photobaseIconVisible, locationIconVisible, contactBookIconVisible, emailIconVisible) {
+        if (!isDesktopOrWeb()) topLevelRoutes
+        else topLevelRoutes.filter { route ->
+            when (route) {
+                TopLevelRoute.Calls -> callsIconVisible
+                TopLevelRoute.Moments -> momentsIconVisible
+                TopLevelRoute.Vault -> vaultIconVisible
+                TopLevelRoute.Filesync -> filesyncIconVisible
+                TopLevelRoute.Feed -> feedIconVisible
+                TopLevelRoute.Photobase -> photobaseIconVisible
+                TopLevelRoute.Location -> locationIconVisible
+                TopLevelRoute.ContactBook -> contactBookIconVisible
+                TopLevelRoute.Email -> emailIconVisible
+                TopLevelRoute.Chat, TopLevelRoute.Apps -> true
+            }
+        }
     }
     // Read at call time: the event collectors below capture these lambdas once.
     val tabRoutes by rememberUpdatedState(topLevelRoutes.map { it.route })
@@ -520,7 +551,6 @@ fun AppNavHost(
     // when the user has hidden the Vault icon from the nav bar.
     val isTopLevelRoute = chromeDestination.isTopLevelRoute()
 
-    val showNavigationRail = isExpandedLayout()
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     // The full-screen image editor (newly-picked images) is a state-driven overlay, not a nav
     // destination, so it folds into the same gate the gallery uses.
@@ -707,12 +737,12 @@ fun AppNavHost(
         onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
     ).takeIf { photobaseAvailable && koinInject<PhotoBackupController>().isSupported }
     val appsPageLinks = AppsPageLinks(
-        onOpenMoments = openMoments,
-        onOpenVault = openVault,
-        onOpenEmail = openEmail,
+        onOpenApp = { page -> navController.openApp(page.appRoute, tabRoutes) },
         onOpenEmailModeSwitch = { navController.navigate(Route.EmailModeSwitch) },
-        onOpenContacts = openContactBook,
+        callsAvailable = callsAvailable,
+        photobaseAvailable = photobaseAvailable,
         photoBackup = photoBackupLinks,
+        locationViewModel = locationViewModel,
     )
     // For the Filesync screen's own view model once it's open: a folder "Show" picked, or a share opened from chat.
     var filesyncToDo by remember { mutableStateOf<FilesyncUiAction?>(null) }
@@ -945,7 +975,7 @@ fun AppNavHost(
                     fadeOut(chromeMotion.fastEffectsSpec()),
             ) {
                 ShortNavigationBar(modifier = Modifier.onSizeChanged { bottomBarHeightPx = it.height }) {
-                    topLevelRoutes.forEach { topLevelRoute ->
+                    bottomBarRoutes.forEach { topLevelRoute ->
                         val isSelected =
                             selectedTab?.hasRoute(topLevelRoute.route::class) == true
                         ShortNavigationBarItem(
@@ -1007,6 +1037,13 @@ fun AppNavHost(
                             },
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
+                            // Every app can outgrow a short window: the apps scroll, the actions below stay.
+                            Column(
+                                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                                // NavigationRail's own spacing between items.
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
                             topLevelRoutes.forEach { topLevelRoute ->
                                 val isSelected = !settingsOpen &&
                                     selectedTab?.hasRoute(topLevelRoute.route::class) == true
@@ -1026,9 +1063,9 @@ fun AppNavHost(
                                         }
                                     })
                             }
+                            }
 
                             if (isDesktopOrWeb()) {
-                                Spacer(modifier = Modifier.weight(1f))
                                 RailActionItem(
                                     icon = Icons.Default.Archive,
                                     contentDescription = stringResource(MR.string.chat_archived_chats),
@@ -1042,7 +1079,12 @@ fun AppNavHost(
                                 RailActionItem(
                                     icon = Icons.Outlined.Settings,
                                     contentDescription = stringResource(MR.string.settings),
-                                    onClick = { navController.navigate(Route.Settings) },
+                                    onClick = {
+                                        // The app shown, else its tab: Email on a host without mail opens over Apps.
+                                        val page = AppsPage.of(currentDestination) ?: AppsPage.of(selectedTab)
+                                        if (page != null) SettingsPaneRequest.open(SettingsCategory.Apps, page, fromApp = true)
+                                        navController.navigate(Route.Settings)
+                                    },
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
@@ -1150,6 +1192,8 @@ fun AppNavHost(
                                         onNavigateToLocation = openLocation,
                                         onNavigateToContacts = openContactBook,
                                         onNavigateToCalls = if (callsAvailable) openCalls else null,
+                                        onNavigateToEmail = openEmail,
+                                        onNavigateToFeed = { navController.openApp(Route.Feed, tabRoutes) },
                                         onNavigateToExamples = { navController.navigate(Route.Examples) },
                                     )
                                 }
@@ -1812,10 +1856,7 @@ fun AppNavHost(
                                         SettingsPaneHost(
                                             onDismiss = { navController.popBackStack() },
                                             actions = SettingsPaneActions(
-                                                onOpenWebDrop = openWebDrop,
-                                                onLocation = openLocation,
                                                 appsPageLinks = appsPageLinks,
-                                                photobaseAvailable = photobaseAvailable,
                                                 onNavigateToCropper = { requestId ->
                                                     navController.navigate(
                                                         Route.Crop(
@@ -2539,9 +2580,6 @@ fun AppNavHost(
                                         actions = AppsSettingsActions(
                                             onBack = { navController.popBackStack() },
                                             onOpenPage = { navController.navigate(it.route) },
-                                            onOpenWebDrop = openWebDrop,
-                                            onLocation = openLocation,
-                                            photobaseAvailable = photobaseAvailable,
                                         ),
                                     )
                                 }
@@ -2556,11 +2594,7 @@ fun AppNavHost(
                                         onBack = { navController.popBackStack() },
                                         links = appsPageLinks,
                                         emailMailboxMode = emailMailboxMode,
-                                        openedFromApp = when (page) {
-                                            AppsPage.Vault -> from?.hasRoute(Route.Vault::class) == true
-                                            AppsPage.Contacts -> from?.hasRoute(Route.ContactBook::class) == true
-                                            else -> false
-                                        },
+                                        openedFromApp = AppsPage.of(from) == page,
                                         settingsOwner = rememberSettingsOwner(navController, entry),
                                     )
                                 }
@@ -2794,17 +2828,24 @@ internal fun topLevelRoutesFor(
     emailVisible: Boolean,
     filesyncVisible: Boolean = false,
     photobaseVisible: Boolean = false,
+    feedVisible: Boolean = true,
+    // Desktop and web show every available app; a phone's switches choose.
+    everyApp: Boolean,
+    photobaseAvailable: Boolean,
+    emailAvailable: Boolean,
 ): List<TopLevelRoute> = buildList {
+    fun shown(iconVisible: Boolean) = everyApp || iconVisible
+    // The order of Settings → Apps (AppsPage), then Apps.
     add(TopLevelRoute.Chat)
-    if (callsAvailable && callsIconVisible) add(TopLevelRoute.Calls)
-    add(TopLevelRoute.Feed)
-    if (momentsVisible) add(TopLevelRoute.Moments)
-    if (vaultVisible) add(TopLevelRoute.Vault)
-    if (filesyncVisible) add(TopLevelRoute.Filesync)
-    if (photobaseVisible) add(TopLevelRoute.Photobase)
-    if (locationVisible) add(TopLevelRoute.Location)
-    if (contactBookVisible) add(TopLevelRoute.ContactBook)
-    if (emailVisible) add(TopLevelRoute.Email)
+    if (photobaseAvailable && shown(photobaseVisible)) add(TopLevelRoute.Photobase)
+    if (shown(filesyncVisible)) add(TopLevelRoute.Filesync)
+    if (emailAvailable && shown(emailVisible)) add(TopLevelRoute.Email)
+    if (shown(feedVisible)) add(TopLevelRoute.Feed)
+    if (shown(vaultVisible)) add(TopLevelRoute.Vault)
+    if (shown(locationVisible)) add(TopLevelRoute.Location)
+    if (shown(momentsVisible)) add(TopLevelRoute.Moments)
+    if (callsAvailable && shown(callsIconVisible)) add(TopLevelRoute.Calls)
+    if (shown(contactBookVisible)) add(TopLevelRoute.ContactBook)
     add(TopLevelRoute.Apps)
 }
 

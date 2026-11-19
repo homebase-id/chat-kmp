@@ -195,6 +195,7 @@ import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.ui.screens.filesync.FilesyncMemberWrites
 import id.homebase.core.ui.screens.filesync.FilesyncPeerSends
+import id.homebase.core.feed.FeedPreferences
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.config.getPhotobasePermissionExtensionConfig
 import id.homebase.core.photobase.PhotoBackupTrigger
@@ -306,6 +307,7 @@ import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
 import id.homebase.core.ui.screens.calls.settings.CallsSettingsViewModel
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsViewModel
+import id.homebase.core.ui.screens.settings.ChatSettingsViewModel
 import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
@@ -882,6 +884,7 @@ val appModule = module {
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
                 get<FilesyncPreferences>().reset()
+                get<FeedPreferences>().reset()
                 get<DeveloperPreferences>().reload()
                 get<PhotoBackupEntry>().onPostAuthenticated()
                 get<PhotobasePreferences>().reset()
@@ -1121,6 +1124,7 @@ val appModule = module {
 
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
+    single { FeedPreferences(get()) }
     single { photoBackupController() }
     single { PhotoBackupEntry({ get<DeveloperPreferences>().photobaseEnabled.value }) { get<PhotoBackupController>() } }
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
@@ -1337,6 +1341,7 @@ val appModule = module {
     viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
     viewModelOf(::MomentsSettingsViewModel)
     viewModelOf(::FeedSettingsViewModel)
+    viewModelOf(::ChatSettingsViewModel)
     viewModelOf(::FilesyncSettingsViewModel)
     viewModelOf(::CallsSettingsViewModel)
     viewModel(LocationPermissionQualifier) {
