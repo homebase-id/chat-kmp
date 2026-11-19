@@ -47,6 +47,7 @@
 		DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */; };
 		F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006A01 /* SharedContentSaverTests.swift */; };
 		F1207A520000000000007B01 /* PhotoLibraryCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000007A01 /* PhotoLibraryCheckTests.swift */; };
+		F1207A520000000000007D01 /* DisplayDecodeCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000007C01 /* DisplayDecodeCheckTests.swift */; };
 		F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006C01 /* SharedContentSaver.swift */; };
 		DF79A08C91D0173E80D2106A /* fixture_720p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = F72A108F8868D83B449653CC /* fixture_720p.mp4 */; };
 		E37B55745513C31F5CF240ED /* ffmpegkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */; };
@@ -119,6 +120,7 @@
 		1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FFmpegPipelineTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006A01 /* SharedContentSaverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedContentSaverTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000007A01 /* PhotoLibraryCheckTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PhotoLibraryCheckTests.swift; sourceTree = "<group>"; };
+		F1207A520000000000007C01 /* DisplayDecodeCheckTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DisplayDecodeCheckTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006C01 /* SharedContentSaver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedContentSaver.swift; path = ShareExtension/SharedContentSaver.swift; sourceTree = SOURCE_ROOT; };
 		43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavformat.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavformat.xcframework"; sourceTree = "<group>"; };
 		43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavutil.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavutil.xcframework"; sourceTree = "<group>"; };
@@ -329,6 +331,7 @@
 				5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */,
 				F1207A520000000000006A01 /* SharedContentSaverTests.swift */,
 				F1207A520000000000007A01 /* PhotoLibraryCheckTests.swift */,
+				F1207A520000000000007C01 /* DisplayDecodeCheckTests.swift */,
 				F1207A520000000000006C01 /* SharedContentSaver.swift */,
 				E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */,
 				03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */,
@@ -659,6 +662,7 @@
 				DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */,
 				F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */,
 				F1207A520000000000007B01 /* PhotoLibraryCheckTests.swift in Sources */,
+				F1207A520000000000007D01 /* DisplayDecodeCheckTests.swift in Sources */,
 				F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */,
 				5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */,
 			);

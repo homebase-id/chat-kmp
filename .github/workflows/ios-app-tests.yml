@@ -95,8 +95,9 @@ jobs:
             -destination "id=$SIM_UDID" \
             -resultBundlePath build/iosAppTests.xcresult \
             -only-testing:iosAppTests/PhotoLibraryCheckTests \
+            -only-testing:iosAppTests/DisplayDecodeCheckTests \
             CODE_SIGNING_ALLOWED=NO \
-            | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|error:|failed|passed|\*\* TEST"
+            | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|measured:|error:|failed|passed|\*\* TEST"
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
