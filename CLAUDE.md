@@ -153,7 +153,8 @@ Each module follows the standard KMP layout:
   in some modules
 - `src/wasmJsMain/kotlin/` — Web implementations (partial)
 - Intermediate sets that share ONE implementation across targets: `skiaMain` (jvm + native +
-  wasmJs; homebase-api images, homebase-common), `cameraStubMain` (jvm + wasmJs),
+  wasmJs; homebase-api images, homebase-common), `ffmpegMain` (jvm + wasmJs; homebase-api's
+  ffmpeg layer, the only platforms that ship ffmpeg), `cameraStubMain` (jvm + wasmJs),
   `jvmAndNativeTest`
 
 The flag `-Xexpect-actual-classes` is enabled.

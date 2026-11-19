@@ -140,7 +140,7 @@ jobs:
             pods-${{ runner.os }}-
 
       # DerivedData cache intentionally NOT used: restoring pre-signed
-      # `.framework` artifacts (FFmpegKit ships ~7 of them) collides with
+      # `.framework` artifacts collides with
       # the new run's signing identity and `codesign`'s
       # validate-then-replace path on a previously-signed nested framework
       # can hang for hours on Apple Silicon runners (Xcode 26.x). Saves a
@@ -230,22 +230,6 @@ jobs:
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
           tail -n 20 gradle.properties
-
-      - name: Strip existing FFmpegKit signatures
-        run: |
-          cd homebase-api/libs/ffmpegkit-bundled.xcframework
-          for xcf in *.xcframework; do
-            for arch in "$xcf"/*; do
-              if [ -d "$arch" ]; then
-                for framework in "$arch"/*.framework; do
-                  if [ -d "$framework" ]; then
-                    echo "Stripping signature from $framework"
-                    codesign --remove-signature "$framework" 2>/dev/null || true
-                  fi
-                done
-              fi
-            done
-          done
 
       # The build action's bundled Fastfile runs create_keychain(timeout: 3600):
       # the build keychain auto-locks after 60 minutes. A cold-cache archive

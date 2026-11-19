@@ -1,5 +1,6 @@
 package id.homebase.core.share
 
+import id.homebase.api.video.VideoCompressionService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.clipboard.platformFileFromPath
 import kotlin.uuid.ExperimentalUuidApi
@@ -21,7 +22,7 @@ fun sharedMediaAttachment(path: String, mimeType: String): AttachmentPendingFile
     return when {
         mimeType.startsWith("image/") ->
             AttachmentPendingFile.FileImage(Uuid.random(), file)
-        mimeType.startsWith("video/") ->
+        VideoCompressionService.canRead(mimeType) ->
             AttachmentPendingFile.FileVideo(Uuid.random(), file, thumbnailBytes = null)
         else ->
             AttachmentPendingFile.File(Uuid.random(), file)

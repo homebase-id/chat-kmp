@@ -128,74 +128,27 @@ kotlin {
         }
     }
 
-    // Cinterop the bundled FFmpegKit xcframework into the iOS simulator *test* compilation
-    // only so FfmpegDecoderCommonTest can stand up a real FFmpegKitBridge implementation
-    // (see src/nativeTest/.../TestFFmpegKitBridge.kt) instead of stubbing the iOS leg green.
-    // The xcframework is checked in under homebase-api/libs/ — the same artifact iosApp's
-    // pbxproj already references — so this is purely a test-link concern and doesn't touch
-    // the production framework export above. We only wire iosSimulatorArm64: we never run
-    // device-target tests (no `iosArm64Test` job exists), so configuring cinterop + linker
-    // for iosArm64's test binary would be dead-weight that confuses the next reader.
-    // ffmpegkit-bundled.xcframework ships ffmpegkit + seven sibling FFmpeg libraries
-    // (libav*, libsw*). Each is a separate .xcframework; ffmpegkit.framework's binary has
-    // `@rpath/libavdevice.framework/libavdevice` (etc.) baked in, so the test binary needs
-    // *every* sibling's simulator-slice directory on its rpath at runtime. Production iOS
-    // gets these from iosApp's pbxproj "Embed Frameworks" step.
-    val ffmpegKitBundleRoot = project.projectDir
-        .resolve("libs/ffmpegkit-bundled.xcframework")
-    val ffmpegKitSimulatorFrameworkDirs = listOf(
-        "ffmpegkit",
-        "libavcodec",
-        "libavdevice",
-        "libavfilter",
-        "libavformat",
-        "libavutil",
-        "libswresample",
-        "libswscale",
-    ).map { name ->
-        ffmpegKitBundleRoot.resolve("$name.xcframework/ios-arm64_x86_64-simulator").absolutePath
-    }
-    val ffmpegKitFrameworkDir = ffmpegKitSimulatorFrameworkDirs.first()  // ffmpegkit slice
-
-    // iOS 27 simulators refuse to dlopen unsigned frameworks, and the checked-in slices are unsigned.
-    // Test binary loads ad-hoc signed copies; libs/ and iosApp's CodeSignOnCopy embed stay untouched.
-    val signedFfmpegKitDir = layout.buildDirectory.dir("ffmpegkit-signed-simulator")
-    val signFfmpegKitSimulatorFrameworks by tasks.registering(Exec::class) {
-        val out = signedFfmpegKitDir.get().asFile
-        inputs.dir(ffmpegKitBundleRoot)
-        outputs.dir(out)
-        commandLine(
-            "sh", "-c",
-            """set -e; rm -rf "${'$'}0"; mkdir -p "${'$'}0"; for d in "${'$'}@"; do cp -R "${'$'}d"/*.framework "${'$'}0"/; done; for f in "${'$'}0"/*.framework; do codesign --force --sign - "${'$'}f"; done""",
-            out.absolutePath,
-            *ffmpegKitSimulatorFrameworkDirs.toTypedArray(),
-        )
-    }
-    val signedFfmpegKitPath = signedFfmpegKitDir.get().asFile.absolutePath
-
-    iosSimulatorArm64().compilations.getByName("test").cinterops.create("ffmpegkit") {
-        defFile(project.file("src/nativeTest/cinterop/ffmpegkit.def"))
-        compilerOpts("-F$ffmpegKitFrameworkDir")
-    }
-    // dyld needs a search path at runtime as well; the test binary is started outside
-    // iosApp's `Embed Frameworks` step, so without explicit rpath dyld can't locate
-    // ffmpegkit.framework OR its bundled FFmpeg-lib siblings. Baking the absolute paths is
-    // OK because the test binary only runs in the build environment and never ships.
-    //
     // sqliter's sqlite3 symbols come from SQLCipher, never the system libsqlite3: the app gets
     // it from iosApp's SQLCipher.swift package, this test binary from fetchSqlCipherXcframework.
     val testBinaryLinkerOpts = buildList {
-        add("-F$signedFfmpegKitPath")
-        add("-framework"); add("ffmpegkit")
-        add("-rpath"); add(signedFfmpegKitPath)
         add("-F$sqlCipherSimulatorFrameworkDir")
         add("-framework"); add("SQLCipher")
         add("-rpath"); add(sqlCipherSimulatorFrameworkDir)
     }
     iosSimulatorArm64().binaries
         .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
-        .apply { linkTaskProvider.configure { dependsOn(fetchSqlCipherXcframework, signFfmpegKitSimulatorFrameworks) } }
+        .apply { linkTaskProvider.configure { dependsOn(fetchSqlCipherXcframework) } }
         .linkerOpts(testBinaryLinkerOpts)
+
+    // The iOS compressor's tests read the same clips as Android's device tests, plus two real iPhone captures.
+    val testVideosDir = project.file("src/androidDeviceTest/assets/test_videos")
+    val iphoneVideosDir = project.file("src/nativeTest/test_videos")
+    tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+        inputs.dir(testVideosDir)
+        inputs.dir(iphoneVideosDir)
+        environment("SIMCTL_CHILD_TEST_VIDEOS", testVideosDir.absolutePath)
+        environment("SIMCTL_CHILD_IPHONE_VIDEOS", iphoneVideosDir.absolutePath)
+    }
 
     // wasmJsTest: SQLDelight has no sql.js-backed test driver wired up yet, so every
     // commonTest that calls `createInMemoryDatabase` blows up on wasmJs (see
@@ -261,6 +214,11 @@ kotlin {
         jvmMain.get().dependsOn(kotlinResamplerMain)
         wasmJsMain.get().dependsOn(kotlinResamplerMain)
 
+        // ffmpeg is on desktop and web only; Android and iOS compress with the platform's own media APIs.
+        val ffmpegMain = create("ffmpegMain") { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(ffmpegMain)
+        wasmJsMain.get().dependsOn(ffmpegMain)
+
         val javaMain = create("javaMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(javaMain)
         androidMain.get().dependsOn(javaMain)
@@ -316,6 +274,9 @@ kotlin {
         jvmTest.get().dependsOn(skiaTest)
         nativeTest.get().dependsOn(skiaTest)
         wasmJsTest.get().dependsOn(skiaTest)
+        val ffmpegTest = create("ffmpegTest") { dependsOn(commonTest.get()) }
+        jvmTest.get().dependsOn(ffmpegTest)
+        wasmJsTest.get().dependsOn(ffmpegTest)
         jvmTest.get().dependsOn(jvmAndNativeTest)
         nativeTest.get().dependsOn(jvmAndNativeTest)
         // androidHostTest is in the "test" source-set tree (runs on the host JVM with the

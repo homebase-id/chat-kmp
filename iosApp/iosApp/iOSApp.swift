@@ -257,9 +257,6 @@ struct iOSApp: App {
     
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate$
     init() {
-        // Inject FFmpegKit bridge into the Kotlin framework
-        FFmpegKitBridgeHolder.shared.setBridge(bridge: FFmpegKitBridgeImpl())
-
         // Inject Crashlytics bridge into the Kotlin framework
         CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
 

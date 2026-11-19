@@ -10,8 +10,7 @@ package id.homebase.api.video
  * [VideoPayloadProgressPhase].
  *
  * **Threading: may be invoked off the main thread.** Mid-run ticks come from the
- * platform's ffmpeg engine on its own thread (e.g. iOS FFmpegKit's statistics
- * callback fires from a background thread); the terminal `1f` runs on the coroutine
+ * platform's encoder on its own thread (e.g. iOS's AVFoundation pump queue); the terminal `1f` runs on the coroutine
  * that called the operation. A listener that touches UI state must marshal onto the
  * main dispatcher itself — do not assume any particular thread. Keep the body cheap
  * and non-blocking; it can be called frequently during an encode.

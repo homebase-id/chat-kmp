@@ -29,6 +29,13 @@ class PayloadDescriptorMediaTest {
     }
 
     @Test
+    fun aVideoSentAsAFileIsAFile() {
+        val asFile = payload("video/x-matroska", DescriptorContentV1(kind = DescriptorContentV1.Kind.FILE, name = "clip.mkv").encode())
+        assertEquals(Kind(image = false, video = false, visual = false, audio = false), Kind(asFile.isImage(), asFile.isVideo(), asFile.isVisualMedia(), asFile.isAudio()))
+        assertEquals(DescriptorContent.File(name = "clip.mkv"), asFile.descriptorInfo())
+    }
+
+    @Test
     fun audioLengthSeconds_isTheRecordedLengthOrNull() {
         val recorded = DescriptorContent.descriptorContentFromAudioFile("voice.m4a", 42)
         assertEquals(42, payload("audio/mp4", recorded).audioLengthSeconds())

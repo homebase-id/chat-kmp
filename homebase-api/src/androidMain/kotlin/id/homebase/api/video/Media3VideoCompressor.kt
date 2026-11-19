@@ -130,7 +130,7 @@ internal object Media3VideoCompressor {
     ) = withContext(transformerThread) {
         val context = fileOps.context
         val encoders = DefaultEncoderFactory.Builder(context)
-            .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(videoBitrate(targets, source)).build())
+            .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(targets.hardwareVideoBitrate(source.width, source.height, source.videoBitrateBps)).build())
             .apply {
                 // With no audio settings asked for, Transformer copies AAC as it is.
                 if (!source.copyableAudio) setRequestedAudioEncoderSettings(AudioEncoderSettings.Builder().setBitrate(targets.audioBitrateBps).build())
@@ -193,20 +193,6 @@ internal object Media3VideoCompressor {
             })
             transformer.start(composition, output.absolutePath)
         }
-
-    // Hardware encoders fill the bitrate they're given, where libx264 undershoots on simple
-    // content: a source under the target size gets the bitrate in proportion to its area, and
-    // no source gets more than its own.
-    private fun videoBitrate(targets: QualityTargets, source: Source): Int {
-        val shortSide = minOf(source.width, source.height)
-        val forSize = if (shortSide in 1 until targets.shortEdgePx) {
-            val side = shortSide.toDouble() / targets.shortEdgePx
-            (targets.videoBitrateBps * side * side).toInt()
-        } else {
-            targets.videoBitrateBps
-        }
-        return source.videoBitrateBps?.let { minOf(forSize, it) } ?: forSize
-    }
 
     // Transformer passes on rotation and capture time but not the location: a kept video gets it
     // back, a stripped one keeps only its rotation.

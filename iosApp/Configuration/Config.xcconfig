@@ -15,6 +15,5 @@ OTHER_LDFLAGS = $(inherited) -lz -lbz2 -liconv
 
 // App Store builds: skip the secure timestamp on intermediate (embed-frameworks) signing.
 // Apple re-stamps on App Store ingestion, so this is safe for store distribution and
-// avoids CI hangs when timestamp.apple.com is slow/unreachable while signing FFmpegKit's
-// many bundled frameworks (libswscale, libav*, etc).
+// avoids CI hangs when timestamp.apple.com is slow/unreachable while signing embedded frameworks.
 OTHER_CODE_SIGN_FLAGS = $(inherited) --timestamp=none

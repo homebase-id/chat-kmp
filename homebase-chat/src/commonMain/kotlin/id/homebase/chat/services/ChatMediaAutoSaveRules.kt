@@ -39,8 +39,8 @@ fun shouldAutoSave(
 
         contentType == HLS_PLAYLIST_CONTENT_TYPE -> false
 
-        // An HLS video is saved as an MP4 (saveReceived).
-        contentType.startsWith("video/") -> true
+        // An HLS video is saved as an MP4 (saveReceived); a video sent as a file isn't media.
+        contentType.startsWith("video/") -> payload.isVideo()
 
         else -> false
     }

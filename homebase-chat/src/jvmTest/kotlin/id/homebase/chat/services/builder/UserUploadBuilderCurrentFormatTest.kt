@@ -206,6 +206,31 @@ class UserUploadBuilderCurrentFormatTest {
         assertEquals(id.homebase.api.video.VideoQuality.STANDARD, clip.payloads.single().videoQuality)
     }
 
+    @Test
+    fun aVideoThePlatformCantOpenIsSentAsAFile() = runTest {
+        suspend fun sent(canRead: Boolean, libraryKind: LibraryKind? = null) = UserUploadBuilder.build(
+            listOf(UploadSource(file("c.mkv", ByteArray(8)), "video/x-matroska", pickedName = "clip.mkv", libraryKind = libraryKind)),
+            UploadOptions(currentFormat = true),
+            fileOps,
+            canReadVideo = { canRead },
+        ) { "chat_web0" }
+
+        val asFile = sent(canRead = false)
+        val payload = asFile.payloads.single()
+        assertEquals("video/x-matroska", payload.contentType)
+        assertTrue(payload.skipVideoProcessing, "sent as it is, not transcoded")
+        assertEquals(DescriptorContentV1.Kind.FILE, asFile.written().kind)
+        assertEquals("clip.mkv", asFile.written().name)
+        assertFalse(asFile.received().isVideo(), "receivers show it as a file")
+
+        val asVideo = sent(canRead = true)
+        assertEquals(DescriptorContentV1.Kind.VIDEO, asVideo.written().kind)
+        assertFalse(asVideo.payloads.single().skipVideoProcessing)
+        assertTrue(asVideo.received().isVideo())
+
+        assertEquals(DescriptorContentV1.Kind.VIDEO, sent(canRead = false, libraryKind = LibraryKind.VIDEO).written().kind, "a library video always opens")
+    }
+
     // A camera JPEG: an EXIF block whose GPS IFD holds a latitude ref marker and whose Orientation is 6.
     private fun geotagged(w: Int, h: Int): ByteArray {
         fun le16(v: Int) = byteArrayOf(v.toByte(), (v shr 8).toByte())

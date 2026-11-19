@@ -3,7 +3,6 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.video.hls.HlsSegmenter
-import kotlinx.coroutines.CancellationException
 
 internal actual fun platformVideoCompressor(): VideoCompressor = AndroidVideoCompressor
 
@@ -39,20 +38,5 @@ internal object AndroidVideoCompressor : VideoCompressor {
         inputPath: String,
         keyHeader: KeyHeader,
         onProgress: VideoProgressListener?,
-    ): SegmentedVideo? {
-        val segmented = try {
-            HlsSegmenter.segmentAndEncrypt(fileOps, inputPath, keyHeader, onProgress)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.e(tag = TAG, throwable = e) { "HLS segmenting failed" }
-            throw e
-        }
-        if (segmented == null) {
-            Logger.e(tag = TAG) { "HLS segmenting: $inputPath isn't an MP4 of H.264 and AAC" }
-            return null
-        }
-        onProgress?.invoke(1f)
-        return segmented
-    }
+    ): SegmentedVideo? = HlsSegmenter.segmentForUpload(fileOps, inputPath, keyHeader, onProgress)
 }

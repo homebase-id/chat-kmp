@@ -139,9 +139,8 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
-      # iOS simulator tests for homebase-api (and the NSE preview in homebase-notifshared) — covers FfmpegDecoderCommonTest (real FFmpegKit
-      # via cinterop), FFmpegKitVideoDecoderNativeTest (polling/cancel paths driven by mock
-      # bridges), and the full commonTest suite (sync/database/outbox/etc.).
+      # iOS simulator tests for homebase-api (and the NSE preview in homebase-notifshared): the AVFoundation video
+      # compressor on real clips (IosVideoCompressorTest), and the full commonTest suite (sync/database/outbox/etc.).
       - name: Run iOS simulator tests
         if: ${{ matrix.name == 'iOS' }}
         run: ./gradlew :homebase-api:iosSimulatorArm64Test :homebase-notifshared:iosSimulatorArm64Test

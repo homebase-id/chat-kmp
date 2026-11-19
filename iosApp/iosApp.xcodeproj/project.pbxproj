@@ -9,50 +9,20 @@
 /* Begin PBXBuildFile section */
 		7A1C0DE02F9000030055AA03 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 7A1C0DE02F9000020055AA02 /* WebRTC */; };
 		5C1A0DE02F9000030055AA13 /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = 5C1A0DE02F9000020055AA12 /* SQLCipher */; };
-		031DFB24DCA72A98A492CB45 /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB32F3A0C08000B3AFE /* libswscale.xcframework */; };
-		1B3A45515D60DA2487B59C66 /* fixture_4k.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */; };
-		3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */; };
-		43296FB62F3A0C08000B3AFE /* libavformat.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */; };
-		43296FB72F3A0C08000B3AFE /* libavformat.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		43296FB82F3A0C08000B3AFE /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */; };
-		43296FB92F3A0C08000B3AFE /* libavutil.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		43296FBA2F3A0C08000B3AFE /* libavfilter.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */; };
-		43296FBB2F3A0C08000B3AFE /* libavfilter.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		43296FBC2F3A0C08000B3AFE /* libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */; };
-		43296FBD2F3A0C08000B3AFE /* libavcodec.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		43296FBE2F3A0C08000B3AFE /* ffmpegkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */; };
-		43296FBF2F3A0C08000B3AFE /* ffmpegkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		43296FC02F3A0C08000B3AFE /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB32F3A0C08000B3AFE /* libswscale.xcframework */; };
-		43296FC12F3A0C08000B3AFE /* libswscale.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB32F3A0C08000B3AFE /* libswscale.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		43296FC22F3A0C08000B3AFE /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; };
-		43296FC32F3A0C08000B3AFE /* libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		43296FC42F3A0C08000B3AFE /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; };
-		43296FC52F3A0C08000B3AFE /* libswresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		4332A0A72F3B761C00F895B5 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A62F3B761C00F895B5 /* FirebaseCore */; };
 		4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A82F3B761C00F895B5 /* FirebaseMessaging */; };
 		4332A0AB2F3B761C00F895B5 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */; };
 		43AB755A2F87A7C4001EF1D3 /* NotificationServiceExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 43AB75532F87A7C4001EF1D3 /* NotificationServiceExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		43BEA8C5B982244B93EA8BD3 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = ADDBAA27BF461CB6B83266AB /* FirebaseCore */; };
 		43CFC1DB2F741EF200628241 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 43CFC1D12F741EF200628241 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		4E4A967FBA42C04995C22CBD /* libavfilter.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */; };
 		627D7886F63E2CD21B92DACA /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = DBA3478FBA027B889D1BA752 /* FirebaseCore */; };
-		652E7AF170C7390486F103C5 /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; };
-		65635D11761C169B983EE93C /* fixture_iphone_hevc.mov in Resources */ = {isa = PBXBuildFile; fileRef = FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */; };
-		87C7CC6CA91EC1751EDC339C /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */; };
-		8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; };
 		A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83540B919899D142F6699230 /* Foundation.framework */; };
-		CF04EFF288B21720D5F2C2A5 /* fixture_1080p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */; };
 		5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */; };
 		5B0F1A0C0000000000000A03 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 5B0F1A0C0000000000000A04 /* WebRTC */; };
-		DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */; };
 		F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006A01 /* SharedContentSaverTests.swift */; };
 		F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006C01 /* SharedContentSaver.swift */; };
-		DF79A08C91D0173E80D2106A /* fixture_720p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = F72A108F8868D83B449653CC /* fixture_720p.mp4 */; };
-		E37B55745513C31F5CF240ED /* ffmpegkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */; };
 		EEDEB518C1A6676F6AD39843 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 035D6D85BD3FD3872BA0F427 /* FirebaseCrashlytics */; };
-		F1207A510000000000005B01 /* fixture_iphone_spatial.mov in Resources */ = {isa = PBXBuildFile; fileRef = F1207A510000000000005A01 /* fixture_iphone_spatial.mov */; };
 		F28C3A9E05D09659D5830897 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = E7288D3F3D76A244F58F16DF /* FirebaseCrashlytics */; };
-		FA96B35DB50A41A5E8A351EF /* libavformat.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,24 +50,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		43296FC62F3A0C08000B3AFE /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				43296FC32F3A0C08000B3AFE /* libavdevice.xcframework in Embed Frameworks */,
-				43296FBB2F3A0C08000B3AFE /* libavfilter.xcframework in Embed Frameworks */,
-				43296FC52F3A0C08000B3AFE /* libswresample.xcframework in Embed Frameworks */,
-				43296FBF2F3A0C08000B3AFE /* ffmpegkit.xcframework in Embed Frameworks */,
-				43296FBD2F3A0C08000B3AFE /* libavcodec.xcframework in Embed Frameworks */,
-				43296FB92F3A0C08000B3AFE /* libavutil.xcframework in Embed Frameworks */,
-				43296FC12F3A0C08000B3AFE /* libswscale.xcframework in Embed Frameworks */,
-				43296FB72F3A0C08000B3AFE /* libavformat.xcframework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		43CFC1DC2F741EF200628241 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -113,19 +65,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_1080p.mp4; sourceTree = "<group>"; };
 		5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SampleBufferVideoViewTests.swift; sourceTree = "<group>"; };
-		1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FFmpegPipelineTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006A01 /* SharedContentSaverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedContentSaverTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006C01 /* SharedContentSaver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedContentSaver.swift; path = ShareExtension/SharedContentSaver.swift; sourceTree = SOURCE_ROOT; };
-		43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavformat.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavformat.xcframework"; sourceTree = "<group>"; };
-		43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavutil.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavutil.xcframework"; sourceTree = "<group>"; };
-		43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavfilter.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavfilter.xcframework"; sourceTree = "<group>"; };
-		43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavcodec.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavcodec.xcframework"; sourceTree = "<group>"; };
-		43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = ffmpegkit.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/ffmpegkit.xcframework"; sourceTree = "<group>"; };
-		43296FB32F3A0C08000B3AFE /* libswscale.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libswscale.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libswscale.xcframework"; sourceTree = "<group>"; };
-		43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavdevice.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavdevice.xcframework"; sourceTree = "<group>"; };
-		43296FB52F3A0C08000B3AFE /* libswresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libswresample.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libswresample.xcframework"; sourceTree = "<group>"; };
 		4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		43958A6D2FB46E1C00D226CE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		43958A6E2FB46E1C00D226CE /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -136,10 +78,6 @@
 		83540B919899D142F6699230 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		A119F0A8E11D557B2E98503F /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E036487443061F6060AA1439 /* Homebase.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homebase.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_4k.mp4; sourceTree = "<group>"; };
-		F1207A510000000000005A01 /* fixture_iphone_spatial.mov */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = video.quicktime; path = fixture_iphone_spatial.mov; sourceTree = "<group>"; };
-		F72A108F8868D83B449653CC /* fixture_720p.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_720p.mp4; sourceTree = "<group>"; };
-		FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = video.quicktime; path = fixture_iphone_hevc.mov; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -207,14 +145,6 @@
 			files = (
 				A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */,
 				5B0F1A0C0000000000000A03 /* WebRTC in Frameworks */,
-				E37B55745513C31F5CF240ED /* ffmpegkit.xcframework in Frameworks */,
-				3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */,
-				8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */,
-				4E4A967FBA42C04995C22CBD /* libavfilter.xcframework in Frameworks */,
-				FA96B35DB50A41A5E8A351EF /* libavformat.xcframework in Frameworks */,
-				87C7CC6CA91EC1751EDC339C /* libavutil.xcframework in Frameworks */,
-				652E7AF170C7390486F103C5 /* libswresample.xcframework in Frameworks */,
-				031DFB24DCA72A98A492CB45 /* libswscale.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -242,17 +172,9 @@
 			files = (
 				7A1C0DE02F9000030055AA03 /* WebRTC in Frameworks */,
 				5C1A0DE02F9000030055AA13 /* SQLCipher in Frameworks */,
-				43296FC22F3A0C08000B3AFE /* libavdevice.xcframework in Frameworks */,
-				43296FBA2F3A0C08000B3AFE /* libavfilter.xcframework in Frameworks */,
 				4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */,
-				43296FC42F3A0C08000B3AFE /* libswresample.xcframework in Frameworks */,
-				43296FBE2F3A0C08000B3AFE /* ffmpegkit.xcframework in Frameworks */,
-				43296FBC2F3A0C08000B3AFE /* libavcodec.xcframework in Frameworks */,
-				43296FB82F3A0C08000B3AFE /* libavutil.xcframework in Frameworks */,
-				43296FC02F3A0C08000B3AFE /* libswscale.xcframework in Frameworks */,
 				4332A0A72F3B761C00F895B5 /* FirebaseCore in Frameworks */,
 				4332A0AB2F3B761C00F895B5 /* FirebaseCrashlytics in Frameworks */,
-				43296FB62F3A0C08000B3AFE /* libavformat.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -274,14 +196,6 @@
 			isa = PBXGroup;
 			children = (
 				43958A712FB46E1C00D226CE /* NotificationServiceExtension */,
-				43296FB22F3A0C08000B3AFE /* ffmpegkit.xcframework */,
-				43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */,
-				43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */,
-				43296FB02F3A0C08000B3AFE /* libavfilter.xcframework */,
-				43296FAE2F3A0C08000B3AFE /* libavformat.xcframework */,
-				43296FAF2F3A0C08000B3AFE /* libavutil.xcframework */,
-				43296FB52F3A0C08000B3AFE /* libswresample.xcframework */,
-				43296FB32F3A0C08000B3AFE /* libswscale.xcframework */,
 				B2ACBBE9062A074C9CE55CEA /* iOS */,
 			);
 			name = Frameworks;
@@ -323,15 +237,9 @@
 		E4394BA0696F07118E612228 /* iosAppTests */ = {
 			isa = PBXGroup;
 			children = (
-				1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */,
 				5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */,
 				F1207A520000000000006A01 /* SharedContentSaverTests.swift */,
 				F1207A520000000000006C01 /* SharedContentSaver.swift */,
-				E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */,
-				03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */,
-				F72A108F8868D83B449653CC /* fixture_720p.mp4 */,
-				FEF077E370C6B2D53548A0E0 /* fixture_iphone_hevc.mov */,
-				F1207A510000000000005A01 /* fixture_iphone_spatial.mov */,
 			);
 			name = iosAppTests;
 			path = iosAppTests;
@@ -349,7 +257,6 @@
 				5FA3011530A4400784B793C9 /* Frameworks */,
 				F55073FBDD5EC068F2F08801 /* Resources */,
 				F08EA0E32F7AA81F00B61D93 /* Copy GoogleServices-Info.plist */,
-				43296FC62F3A0C08000B3AFE /* Embed Frameworks */,
 				43CFC1DC2F741EF200628241 /* Embed Foundation Extensions */,
 				F08E00712F8CEA1F006FE86B /* Upload Crashlytics DSYM files */,
 			);
@@ -513,11 +420,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1B3A45515D60DA2487B59C66 /* fixture_4k.mp4 in Resources */,
-				CF04EFF288B21720D5F2C2A5 /* fixture_1080p.mp4 in Resources */,
-				DF79A08C91D0173E80D2106A /* fixture_720p.mp4 in Resources */,
-				65635D11761C169B983EE93C /* fixture_iphone_hevc.mov in Resources */,
-				F1207A510000000000005B01 /* fixture_iphone_spatial.mov in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -653,7 +555,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */,
 				F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */,
 				F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */,
 				5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */,
@@ -950,7 +851,6 @@
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
 				ENABLE_PREVIEWS = YES;
-				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1048,7 +948,6 @@
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
 				ENABLE_PREVIEWS = YES;
-				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1237,7 +1136,6 @@
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = JNJ85M8JM6;
 				ENABLE_PREVIEWS = YES;
-				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

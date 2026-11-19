@@ -82,7 +82,6 @@ kotlin {
             val objcEntryPoints = project.file("objc-entry-points.txt")
             freeCompilerArgs += "-Xbinary=objcExportEntryPointsPath=${objcEntryPoints.absolutePath}"
             linkTaskProvider.configure { inputs.file(objcEntryPoints).withPropertyName("objcExportEntryPoints") }
-            // Export homebase-api to make FFmpegKitBridge accessible from Swift
             export(project(":homebase-api"))
             export(project(":homebase-common"))
             export(project(":image-editor-ui"))
