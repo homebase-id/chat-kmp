@@ -6,8 +6,7 @@ import java.nio.ByteBuffer
 
 internal actual fun platformBlake3Hasher(): IncrementalHasher? = stateSize?.let(::NativeBlake3Hasher)
 
-// Null where the library doesn't load (Robolectric runs Android code on a desktop JVM), or where it hashes
-// differently from the Kotlin port: no test on CI runs the native code, and a wrong hash fails every upload.
+// Null where the library doesn't load (Robolectric runs Android code on a desktop JVM).
 private val stateSize: Int? by lazy {
     val size = try {
         NativeBlake3.stateSize()
@@ -15,12 +14,7 @@ private val stateSize: Int? by lazy {
         Logger.e(tag = "Blake3", throwable = e) { "native BLAKE3 didn't load; hashing in Kotlin, about 20x slower" }
         return@lazy null
     }
-    // Across BLAKE3's 1024-byte chunk boundary and its first tree merge.
-    val probe = ByteArray(2048 + 7) { (it % 251).toByte() }
-    val native = NativeBlake3Hasher(size).apply { update(probe, 3, probe.size - 3) }.digest()
-    val portable = PortableBlake3().apply { update(probe, 3, probe.size - 3) }.digest()
-    size.takeIf { native.contentEquals(portable) }
-        ?: null.also { Logger.e(tag = "Blake3") { "native BLAKE3 disagrees with the Kotlin port; hashing in Kotlin" } }
+    size.takeIf { hashesAsThePort { NativeBlake3Hasher(size) } }
 }
 
 /** The official C BLAKE3 with NEON: many times faster than the Kotlin port on a phone. */

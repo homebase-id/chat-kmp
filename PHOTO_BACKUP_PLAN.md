@@ -161,7 +161,7 @@ reuses what chat-kmp already has:
 
 | Piece | Where |
 |---|---|
-| BLAKE3 (one `Blake3Hasher` on all four platforms, native C on Android; official test vectors, on a phone too) | `homebase-api/.../crypto/Blake3Hasher.kt`, `IncrementalHasherTest.kt` |
+| BLAKE3 (one `Blake3Hasher` on all four platforms, native C on Android and iOS; official test vectors, on a phone and the iOS simulator too) | `homebase-api/.../crypto/Blake3Hasher.kt`, `IncrementalHasherTest.kt` |
 | Encrypt + hash in one streaming pass → `PayloadHash(storedHash, contentHash)`; the server verifies the upload | `homebase-api/.../crypto/PayloadHashing.kt` (`encryptWithPayloadHash`) |
 | Download verification against the same hash | `PayloadDownloadService.streamVerified` |
 | Precedent: BLAKE3 payload hashes, 4105 treated as success | `homebase-core/.../filesync/FilesyncUploader.kt:76`, `FilesyncUploaderTest.kt:38` |

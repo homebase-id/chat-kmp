@@ -17,6 +17,9 @@ internal actual suspend fun stageSampleVideoForFfmpegTest(): String? =
 internal actual suspend fun stageSampleMovForFfmpegTest(): String? =
     stageFixture("sample.mov", SampleMovFixture.bytes)
 
+internal actual suspend fun stagePosterVideoForTest(): String? =
+    stageFixture("poster_5k.mp4", PosterVideoFixture.bytes)
+
 private suspend fun stageFixture(fileName: String, bytes: ByteArray): String? {
     if (!awaitFfmpegBridge()) return null
 

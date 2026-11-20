@@ -89,7 +89,7 @@ object MediaBenchmarks {
             hasher.digest()
             (hashMb / started.elapsedNow().toDouble(DurationUnit.SECONDS)).toInt()
         }
-        record("BLAKE3, the Kotlin port iOS runs: ${speeds.min()}–${speeds.max()} MB/s over $hashMb MB")
+        record("BLAKE3: ${speeds.min()}–${speeds.max()} MB/s over $hashMb MB")
     }
 
     private suspend fun CheckRun.generatedPhotos() {
