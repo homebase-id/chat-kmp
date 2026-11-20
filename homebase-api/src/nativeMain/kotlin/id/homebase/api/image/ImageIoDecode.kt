@@ -205,11 +205,16 @@ private val OPAQUE_ALPHA_INFO = setOf(
     CGImageAlphaInfo.kCGImageAlphaNoneSkipFirst,
 )
 
-internal fun CGImageSourceRef.auxiliaryGainmap(): HdrGainmap? {
+/** [header], the file's start, holds an HEIC's ISO tone map, which some ImageIO builds (the simulator's) don't hand over. */
+internal fun CGImageSourceRef.auxiliaryGainmap(header: () -> ByteArray): HdrGainmap? {
     val props = CGImageSourceCopyPropertiesAtIndex(this, 0.convert(), null)?.let { CFBridgingRelease(it) as? NSDictionary }
     val orientation = (props?.objectForKey(kCGImagePropertyOrientation.ns) as? NSNumber)?.intValue ?: 1
     val iso = auxiliary(kCGImageAuxiliaryDataTypeISOGainMap)
-    iso?.xmp()?.let(AppleToneMapXmp::decode)?.let { return iso.toGainmap(it, orientation, lut = null) }
+    if (iso != null) {
+        val metadata = ImageMetadataScrubber.heifToneMap(header()) ?: iso.xmp()?.let(AppleToneMapXmp::decode)
+        if (metadata != null) return iso.toGainmap(metadata, orientation, lut = null)
+        Logger.w(tag = "HdrGainmap") { "An ISO gain map without readable metadata; trying Apple's" }
+    }
     val apple = auxiliary(kCGImageAuxiliaryDataTypeHDRGainMap) ?: return null
     val headroom = apple.xmp()?.let(AppleHdrGainmap::headroomFromXmp) ?: props?.makerNoteHeadroom()
     if (headroom == null) {

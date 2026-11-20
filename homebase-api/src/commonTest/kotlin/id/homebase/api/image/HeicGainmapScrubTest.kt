@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class HeicGainmapScrubTest {
@@ -22,6 +23,14 @@ class HeicGainmapScrubTest {
         val exif = ImageMetadataScrubber.readBlocks(scrubbed)?.exif
         assertTrue(exif != null && exif.decodeToString().contains("Apple iOS"), "the MakerNote with the headroom")
         assertEquals(null, ImageMetadataScrubber.readBlocks(scrubbed)?.xmp?.decodeToString()?.takeIf { "GPS" in it || "2026" in it })
+    }
+
+    @Test
+    fun anIsoToneMapIsReadFromItsOwnItem() {
+        val metadata = assertNotNull(ImageMetadataScrubber.heifToneMap(ISO_GAINMAP_HEIC))
+        assertTrue(kotlin.math.abs(metadata.hdrCapacityMax - HeicGainmapTestFiles.ISO_HEADROOM_STOPS) < 0.01, "headroom ${metadata.hdrCapacityMax}")
+        assertEquals(null, ImageMetadataScrubber.heifToneMap(APPLE_GAINMAP_HEIC))
+        assertEquals(metadata, ImageMetadataScrubber.heifToneMap(ImageMetadataScrubber.scrub(ISO_GAINMAP_HEIC)), "scrubbing keeps it")
     }
 
     @Test

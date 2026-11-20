@@ -23,6 +23,7 @@ private class ImageIoSource(
     private val source: CGImageSourceRef,
     override val displayedSize: ImageSize,
     private val fallback: () -> ImageSource,
+    private val header: () -> ByteArray,
     private val onClose: () -> Unit = {},
 ) : ImageSource {
     override fun decode(minLongEdge: Int): PipelineBitmap {
@@ -39,7 +40,7 @@ private class ImageIoSource(
         return SkiaPipelineBitmap(image)
     }
 
-    override fun auxiliaryGainmap(): HdrGainmap? = source.auxiliaryGainmap()
+    override fun auxiliaryGainmap(): HdrGainmap? = source.auxiliaryGainmap(header)
 
     override fun metadata(): ImageMetadata? = source.readMetadata()
 
@@ -59,7 +60,7 @@ private fun openWithImageIo(bytes: ByteArray): ImageSource? {
         CFRelease(source)
         return null
     }
-    return ImageIoSource(source, displayed, fallback = { SkiaImageSource(bytes) })
+    return ImageIoSource(source, displayed, fallback = { SkiaImageSource(bytes) }, header = { bytes })
 }
 
 internal actual fun openImageFile(path: String, fileOps: FileOperationsProvider): ImageSource? {
@@ -73,8 +74,17 @@ internal actual fun openImageFile(path: String, fileOps: FileOperationsProvider)
         return null
     }
     val readWhole = { SkiaImageSource(FileSystem.SYSTEM.read(path.toPath()) { readByteArray() }) }
-    return ImageIoSource(source, displayed, fallback = readWhole, onClose = closeScope)
+    val header = {
+        FileSystem.SYSTEM.read(path.toPath()) {
+            request(HEADER_BYTES)
+            readByteArray(minOf(buffer.size, HEADER_BYTES))
+        }
+    }
+    return ImageIoSource(source, displayed, fallback = readWhole, header = header, onClose = closeScope)
 }
+
+// An HEIC's meta box, which holds its ISO tone map, comes before the image data and is a few KB to a few hundred.
+private const val HEADER_BYTES = 1024L * 1024
 
 // About 96 MB of pixels. A 12 MP photo stays a full, clean decode; a 48 MP one doesn't.
 private const val FULL_DECODE_PIXEL_LIMIT = 24_000_000L

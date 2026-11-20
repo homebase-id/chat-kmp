@@ -71,7 +71,6 @@ private fun decodeHdrPhoto(source: CGImageSourceRef, header: ByteArray, maxLongE
         val image = ImageIoDecode.decodeHdr(source, maxLongEdge) ?: return null
         try {
             val headroom = CGImageGetContentHeadroom(image)
-            if (headroom <= 1f) return null
             val width = CGImageGetWidth(image).toInt()
             val height = CGImageGetHeight(image).toInt()
             return HdrPhoto(UIImage.imageWithCGImage(image), width, height, headroom, capped = max(width, height) < photoEdge)

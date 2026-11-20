@@ -36,6 +36,7 @@ class HeicGainmapTest {
                 assertNotNull(gainmap, "$label: the viewed image keeps the gain map")
                 assertTrue(abs(gainmap.metadata.hdrCapacityMax - stops) < 0.05, "$label: headroom ${gainmap.metadata.hdrCapacityMax} stops, the source's $stops")
                 assertEquals(ImageSize(48, 64), images.displayedSize, label)
+                assertTrue(imageIoSeesTheGainmap(viewed), "$label: ImageIO reads the shared writer's Ultra HDR JPEG's gain map")
                 // Turned upright with the photo: its bright half, stored on the left, is now on top.
                 val map = Bitmap.makeFromImage(Image.makeFromEncoded(gainmap.jpeg))
                 val (top, bottom) = map.grey(map.width / 2, 1) to map.grey(map.width / 2, map.height - 2)
@@ -78,6 +79,16 @@ class HeicGainmapTest {
             } finally {
                 image.close()
             }
+        } finally {
+            platform.CoreFoundation.CFRelease(source)
+        }
+    }
+
+    private fun imageIoSeesTheGainmap(jpeg: ByteArray): Boolean {
+        val source = assertNotNull(ImageIoDecode.open(jpeg))
+        try {
+            return platform.ImageIO.CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0u, platform.ImageIO.kCGImageAuxiliaryDataTypeISOGainMap)
+                ?.also { platform.CoreFoundation.CFRelease(it) } != null
         } finally {
             platform.CoreFoundation.CFRelease(source)
         }

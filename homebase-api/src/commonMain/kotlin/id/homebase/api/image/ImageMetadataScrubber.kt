@@ -573,8 +573,10 @@ object ImageMetadataScrubber {
     /** An Exif or XMP item, by the file ranges its data occupies. */
     private class HeifMetadataItem(val isExif: Boolean, val ranges: List<IntRange>)
 
-    /** The file's Exif and XMP items, or null when its boxes can't be followed. */
-    private fun heifMetadataItems(src: ByteArray): List<HeifMetadataItem>? {
+    private class HeifItems(val items: Map<Long, HeifItem>, val locations: Map<Long, List<Extent>>, val idat: Long)
+
+    // [src] need only reach past the meta box, which comes before the image data.
+    private fun heifItems(src: ByteArray): HeifItems? {
         val meta = topLevelBox(src, "meta") ?: return null
         val items = HashMap<Long, HeifItem>()
         val locations = HashMap<Long, List<Extent>>()
@@ -589,20 +591,41 @@ object ImageMetadataScrubber {
             }
             i = box.end
         }
+        return HeifItems(items, locations, idatData)
+    }
+
+    // The file ranges of item [id]'s data, or null when they can't be followed.
+    private fun HeifItems.ranges(src: ByteArray, id: Long): List<IntRange>? = locations[id]?.map { extent ->
+        if (extent.inIdat && idat < 0) return null
+        val start = extent.offset + if (extent.inIdat) idat else 0
+        if (start < 0 || extent.length <= 0 || start + extent.length > src.size) return null
+        start.toInt() until (start + extent.length).toInt()
+    }
+
+    /** The file's Exif and XMP items, or null when its boxes can't be followed. */
+    private fun heifMetadataItems(src: ByteArray): List<HeifMetadataItem>? {
+        val heif = heifItems(src) ?: return null
         val found = mutableListOf<HeifMetadataItem>()
-        for ((id, item) in items) {
+        for ((id, item) in heif.items) {
             val isExif = item.type == "Exif"
             val isXmp = item.type == "mime" && item.contentType?.substringBefore(';')?.trim() == XMP_CONTENT_TYPE
             if (!isExif && !isXmp) continue
-            val extents = locations[id] ?: return null
-            found += HeifMetadataItem(isExif, extents.map { extent ->
-                if (extent.inIdat && idatData < 0) return null
-                val start = extent.offset + if (extent.inIdat) idatData else 0
-                if (start < 0 || extent.length <= 0 || start + extent.length > src.size) return null
-                start.toInt() until (start + extent.length).toInt()
-            })
+            found += HeifMetadataItem(isExif, heif.ranges(src, id) ?: return null)
         }
         return found
+    }
+
+    /**
+     * An HEIF's ISO 21496-1 gain-map metadata, from its `tmap` item: a version byte, then the same block a JPEG
+     * carries in APP2. Null without one. [heif] need only reach past its meta box.
+     */
+    internal fun heifToneMap(heif: ByteArray): GainmapMetadata? {
+        if (!ImageFormatDetector.isHeic(heif)) return null
+        val items = heifItems(heif) ?: return null
+        val id = items.items.entries.firstOrNull { it.value.type == "tmap" }?.key ?: return null
+        val data = concat(heif, items.ranges(heif, id) ?: return null)
+        if (data.isEmpty() || data[0] != 0.toByte()) return null
+        return IsoGainmapMetadata.decode(data.copyOfRange(1, data.size))
     }
 
     private fun concat(src: ByteArray, ranges: List<IntRange>): ByteArray {
