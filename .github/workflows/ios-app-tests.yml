@@ -30,6 +30,11 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+# A fixed build time, as Build Check has: the default, now, changes homebase-common's BuildConfig on every Gradle
+# run, so Xcode's own Gradle call recompiled everything the compile step had just built.
+env:
+  APP_BUILD_TIME: ci
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
