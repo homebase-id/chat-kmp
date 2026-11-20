@@ -212,21 +212,22 @@ class VideoPayloadProcessor(
     /** A remuxed copy of [path] when it already meets [quality] (THUMBNAILS.md, "Video"), else null: transcode it. */
     @OptIn(ExperimentalUuidApi::class)
     private suspend fun remuxIfAlreadyMet(path: String, quality: VideoQuality): String? {
-        val output = "${fileOperationsProvider.scratchDir(AppCacheDirs.MEDIA_WORK)}/remuxed_${Uuid.random()}.mp4"
+        var output: String? = null
         return try {
             val isHdr = probe.probeVideo(path)?.isHdr
             if (isHdr != false) return null
             val movie = readMoov(fileOperationsProvider, path)?.let(Mp4Movie::parse) ?: return null
             if (!meetsWithoutTranscode(movie, isHdr, quality)) return null
+            output = "${fileOperationsProvider.scratchDir(AppCacheDirs.MEDIA_WORK)}/remuxed_${Uuid.random()}.mp4"
             Mp4Remux.remux(fileOperationsProvider, path, movie, output)
             Logger.i(tag = "VideoProcessing") { "already meets $quality: sent as it is, remuxed without its metadata" }
             output
         } catch (e: CancellationException) {
-            fileOperationsProvider.deleteTempFile(output)
+            output?.let(fileOperationsProvider::deleteTempFile)
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "VideoProcessing", throwable = e) { "remux failed; transcoding instead" }
-            fileOperationsProvider.deleteTempFile(output)
+            output?.let(fileOperationsProvider::deleteTempFile)
             null
         }
     }
