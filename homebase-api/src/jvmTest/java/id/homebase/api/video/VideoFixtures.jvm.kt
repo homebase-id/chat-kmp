@@ -16,6 +16,13 @@ internal actual suspend fun stageSampleMovForFfmpegTest(): String? {
     return temp.absolutePath
 }
 
+internal actual suspend fun stagePosterVideoForTest(): String? {
+    if (!FFmpegBinaryManager.isAvailable()) return null
+    val temp = File.createTempFile("vidfixture_", "_poster_5k.mp4")
+    temp.writeBytes(PosterVideoFixture.bytes)
+    return temp.absolutePath
+}
+
 internal actual suspend fun cleanupStagedSampleVideo(path: String) {
     runCatching { File(path).delete() }
 }

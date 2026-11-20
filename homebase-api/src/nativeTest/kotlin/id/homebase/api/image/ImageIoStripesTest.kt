@@ -6,7 +6,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
 class ImageIoStripesTest {
-    // Over the 24 MP memory guard, so the decode goes through it.
     private fun stripes(period: Int, height: Int) =
         ImageUtils.encodeArgbToPng(ArgbImage(IntArray(WIDTH * height) { if (it % period == 0) BLACK else WHITE }, WIDTH, height))
 
@@ -16,25 +15,23 @@ class ImageIoStripesTest {
     }
 
     @Test
-    fun onePixelStripesTurnGreyThroughTheMemoryGuard() = runTest(timeout = TIMEOUT) {
+    fun onePixelStripesTurnGreyFrom48Mp() = runTest(timeout = TIMEOUT) {
         val spread = spreadAt(2048)
         assertTrue(spread <= 5.0, "$WIDTH -> 2048 deviated by $spread")
     }
 
-    // A 4096 output from 48 MP can't get a 2x step under the guard, so ImageIO makes a 1.43x one, and aliases.
+    // HD from 48 MP: no 2x step for ImageIO, so it decodes in full and Lanczos makes the whole 1.97x.
     @Test
-    fun theGuardsSubTwoTimesStepStillShrinksTheStripes() = runTest(timeout = TIMEOUT) {
+    fun onePixelStripesTurnGreyAtHdFrom48Mp() = runTest(timeout = TIMEOUT) {
         val spread = spreadAt(4096)
-        assertTrue(spread <= 30.0, "$WIDTH -> 4096 deviated by $spread")
+        assertTrue(spread <= 5.0, "$WIDTH -> 4096 deviated by $spread")
     }
 
-    // Over the guard, ImageIO still halves a photo 2-4x too big before Lanczos: the one block shrink left without 2x of
-    // Lanczos after it. 24.2 MP is just over the guard; at worst it's a 2x2 average (about 60).
+    // A 2x2 average can't cancel these, as it can 1-pixel stripes.
     @Test
-    fun threePixelStripesThroughImageIosHalfUnderTheGuard() = runTest(timeout = TIMEOUT) {
+    fun threePixelStripesTurnGreyFrom24Mp() = runTest(timeout = TIMEOUT) {
         val spread = spreadAt(2048, period = 3, height = 3000)
-        println("ImageIO 3-px stripes $WIDTH x 3000 -> 2048 under the guard: spread $spread")
-        assertTrue(spread <= 60.0, "$WIDTH -> 2048 deviated by $spread")
+        assertTrue(spread <= 8.0, "$WIDTH -> 2048 deviated by $spread")
     }
 
     private companion object {

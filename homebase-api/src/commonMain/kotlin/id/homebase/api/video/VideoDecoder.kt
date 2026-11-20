@@ -42,9 +42,12 @@ data class IndexedFrame(
  */
 interface VideoDecoder {
     /**
-     * Extract a poster frame. Returns JPEG bytes or null if extraction failed. With [fullSize] it's the frame at
-     * the video's own size, as the source of an upload's thumbnails; without, any size from 640 px up (or the video's
-     * own, when that's smaller) that comes fastest, for a preview.
+     * Extract a poster frame. Returns JPEG bytes or null if extraction failed. With [fullSize] it's the source of an
+     * upload's thumbnails: the frame at the video's own size, shrunk with Lanczos or the platform's best filter to
+     * [VideoThumbnailQuality.fullPosterLongEdge] where that's smaller, and encoded at
+     * [VideoThumbnailQuality.FULL_POSTER_JPEG_QUALITY_0_TO_100], well above the thumbnails' own, so they don't take a
+     * second round of loss below their quality. Without, any size from 640 px up (or the video's own, when that's
+     * smaller) to that cap that comes fastest, for a preview.
      */
     suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean = false): ByteArray?
 

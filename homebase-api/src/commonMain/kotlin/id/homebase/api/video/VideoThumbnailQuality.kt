@@ -41,6 +41,38 @@ internal object VideoThumbnailQuality {
     /** ffmpeg `-q:v` qscale (1 best, 31 worst). 4 ≈ JPEG quality 75. */
     const val POSTER_FFMPEG_QSCALE: Int = 4
 
+    // Twice Original's largest row (2048 long, at least 1080 short), so Lanczos still makes the last 2×.
+    const val FULL_POSTER_LONG_EDGE_PX: Int = 4096
+    const val FULL_POSTER_SHORT_EDGE_PX: Int = 2160
+
+    const val FULL_POSTER_JPEG_QUALITY_0_TO_100: Int = 95
+    const val FULL_POSTER_JPEG_QUALITY_0_TO_1: Double = 0.95
+
+    /** 2 ≈ JPEG quality 95. */
+    const val FULL_POSTER_FFMPEG_QSCALE: Int = 2
+
+    fun posterJpegQuality0To100(fullSize: Boolean): Int = if (fullSize) FULL_POSTER_JPEG_QUALITY_0_TO_100 else POSTER_JPEG_QUALITY_0_TO_100
+    fun posterJpegQuality0To1(fullSize: Boolean): Double = if (fullSize) FULL_POSTER_JPEG_QUALITY_0_TO_1 else POSTER_JPEG_QUALITY_0_TO_1
+    fun posterFfmpegQscale(fullSize: Boolean): Int = if (fullSize) FULL_POSTER_FFMPEG_QSCALE else POSTER_FFMPEG_QSCALE
+
+    /**
+     * An upload poster's long edge for a [width]×[height] frame: [FULL_POSTER_LONG_EDGE_PX], or more where a wide
+     * frame needs it to keep [FULL_POSTER_SHORT_EDGE_PX], never more than the frame's own.
+     */
+    fun fullPosterLongEdge(width: Int, height: Int): Int {
+        val long = maxOf(width, height)
+        val short = minOf(width, height)
+        if (short <= 0) return long
+        val needed = maxOf(FULL_POSTER_LONG_EDGE_PX.toLong(), ceilDiv(long.toLong() * FULL_POSTER_SHORT_EDGE_PX, short.toLong()))
+        return minOf(long.toLong(), needed).toInt()
+    }
+
+    private fun ceilDiv(a: Long, b: Long): Long = (a + b - 1) / b
+
+    /** [fullPosterLongEdge] as an ffmpeg filter, with Lanczos; quoted, as a bare comma would split the filtergraph. */
+    const val POSTER_FFMPEG_SCALE_FILTER: String =
+        "scale=w='round(iw*min(1,max($FULL_POSTER_LONG_EDGE_PX/max(iw,ih),$FULL_POSTER_SHORT_EDGE_PX/min(iw,ih)))/2)*2':h=-2:flags=lanczos"
+
     const val STRIP_JPEG_QUALITY_0_TO_100: Int = 60
     const val STRIP_JPEG_QUALITY_0_TO_1: Double = 0.6
 

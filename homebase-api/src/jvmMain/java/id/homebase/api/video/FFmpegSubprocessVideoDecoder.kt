@@ -17,7 +17,7 @@ import kotlinx.coroutines.isActive
 internal class FFmpegSubprocessVideoDecoder : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
-        val thumbPath = FFmpegUtils.grabThumbnail(videoPath) ?: return null
+        val thumbPath = FFmpegUtils.grabThumbnail(videoPath, fullSize) ?: return null
         return try {
             File(thumbPath).readBytes()
         } catch (_: Exception) {

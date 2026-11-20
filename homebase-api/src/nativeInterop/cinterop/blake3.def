@@ -1,0 +1,9 @@
+package = id.homebase.blake3
+headers = blake3.h
+compilerOpts = -O3 -DBLAKE3_USE_NEON=1 -DBLAKE3_NO_SSE2 -DBLAKE3_NO_SSE41 -DBLAKE3_NO_AVX2 -DBLAKE3_NO_AVX512
+---
+// homebase-blake3's sources, the ones Android builds: one copy of the C for both phones.
+#include "blake3.c"
+#include "blake3_dispatch.c"
+#include "blake3_portable.c"
+#include "blake3_neon.c"

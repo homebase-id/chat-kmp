@@ -23,7 +23,8 @@ internal class FFmpegWasmVideoDecoder : VideoDecoder {
                 "-i", MEMFS_INPUT,
                 "-ss", "0.1",
                 "-frames:v", "1",
-                "-q:v", VideoThumbnailQuality.POSTER_FFMPEG_QSCALE.toString(),
+                "-vf", VideoThumbnailQuality.POSTER_FFMPEG_SCALE_FILTER,
+                "-q:v", VideoThumbnailQuality.posterFfmpegQscale(fullSize).toString(),
                 MEMFS_POSTER,
             )
         )

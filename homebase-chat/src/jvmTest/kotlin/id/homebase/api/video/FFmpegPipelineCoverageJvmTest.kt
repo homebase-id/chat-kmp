@@ -2,6 +2,8 @@ package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.safeDeleteRecursively
+import id.homebase.api.image.ImageHeaderParser
+import id.homebase.api.image.ImageSize
 import java.io.File
 import kotlin.math.abs
 import kotlin.test.Test
@@ -187,5 +189,18 @@ class FFmpegPipelineCoverageJvmTest {
             output.contains("ffmpeg version"),
             "ffmpeg -version banner missing, output was:\n$output",
         )
+    }
+
+    // homebase-api's UploadPosterSizeTest skips on the JVM: its test classpath has no ffmpeg.
+    @Test
+    fun anUploadsPosterOfA5kVideoIs4096Wide() = runTest {
+        assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
+        val fixture = VideoTestHelper.copyToTempFile("poster_5k.mp4")
+        try {
+            val poster = assertNotNull(VideoThumbnailService.extractPosterFrame(fixture, fullSize = true))
+            assertEquals(ImageSize(4096, 2304), ImageHeaderParser.parse(poster))
+        } finally {
+            File(fixture).delete()
+        }
     }
 }

@@ -93,6 +93,13 @@ class Media3VideoCompressorTest {
     }
 
     @Test
+    fun anUploadsPosterOfA5kVideoIs4096Wide() = runBlocking {
+        val poster = assertNotNull(VideoThumbnailService.extractPosterFrame(fixture("poster_5k.mp4").absolutePath, fullSize = true))
+        val bitmap = BitmapFactory.decodeByteArray(poster, 0, poster.size)
+        assertEquals(4096 to 2304, bitmap.width to bitmap.height)
+    }
+
+    @Test
     fun keepingMetadataKeepsTheLocation() = runBlocking {
         val out = compress("landscape_1080p_gps.mp4", VideoQuality.STANDARD, keepMetadata = true)
         val info = probe(out)

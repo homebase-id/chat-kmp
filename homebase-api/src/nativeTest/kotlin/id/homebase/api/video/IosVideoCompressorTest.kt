@@ -140,7 +140,8 @@ class IosVideoCompressorTest {
         generator.setAppliesPreferredTrackTransform(true)
         generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
         generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
-        if (!fullSize) generator.setMaximumSize(CGSizeMake(640.0, 640.0))
+        val maxPx = if (fullSize) VideoThumbnailQuality.FULL_POSTER_LONG_EDGE_PX.toDouble() else 640.0
+        generator.setMaximumSize(CGSizeMake(maxPx, maxPx))
         val error = alloc<ObjCObjectVar<NSError?>>()
         val image = generator.copyCGImageAtTime(CMTimeMake(100, 1000), null, error.ptr)
         if (image != null) {

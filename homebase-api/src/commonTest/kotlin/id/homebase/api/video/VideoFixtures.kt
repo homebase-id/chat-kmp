@@ -18,5 +18,8 @@ internal expect suspend fun stageSampleVideoForFfmpegTest(): String?
  */
 internal expect suspend fun stageSampleMovForFfmpegTest(): String?
 
+/** [PosterVideoFixture], staged as [stageSampleVideoForFfmpegTest] stages its clip, for the poster's size cap. */
+internal expect suspend fun stagePosterVideoForTest(): String?
+
 /** Best-effort cleanup of the staged fixture. */
 internal expect suspend fun cleanupStagedSampleVideo(path: String)

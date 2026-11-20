@@ -22,6 +22,9 @@ internal actual suspend fun stageSampleVideoForFfmpegTest(): String? =
 internal actual suspend fun stageSampleMovForFfmpegTest(): String? =
     stageFixture(SampleMovFixture.bytes, "mov")
 
+internal actual suspend fun stagePosterVideoForTest(): String? =
+    stageFixture(PosterVideoFixture.bytes, "mp4")
+
 private fun stageFixture(bytes: ByteArray, ext: String): String? {
     val cacheDir = cacheDir()
     val path = "$cacheDir/vidfixture_${NSUUID.UUID().UUIDString}.$ext"
