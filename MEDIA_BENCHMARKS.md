@@ -91,7 +91,7 @@ Full reads of the file per operation, with the code that ships. Header reads (du
 
 The iPhone 15 rows are AVFoundation's reader and writer with our segmenter (release Kotlin framework, two runs per setting, each pair within 1 s), measured with `MediaBenchmarks` on the phone; iOS no longer has ffmpeg, so there is no comparison column. The thermal state was 0 for 21 of 82 lines, 1 for 61 and never 2; the phone reaches 1 within a run even from cool. Compress memory (footprint peak) stays at 140–157 MB (+1 to +5 MB over idle) for every input, from 13 MB to 210 MB. Standard's 10 s clip lands on 3.3 MB, 2.6 Mbps, the target.
 
-**Unexplained: the stand-in compresses to the same size at Standard (27430 kB, sent as HLS) as the input (27 MB, 2.5 Mbps 720p), and HD (24566 kB) is smaller than Standard, in both runs.** Standard doesn't shrink it and HD is not larger. Not yet looked into; the 1080p inputs behave (HD is twice Standard).
+**The stand-in, explained:** Standard asks for its target, 2.5 Mbps, which is the stand-in's own rate, so it comes out the same size (27430 kB); skipping that re-encode is #2576's open half. HD came out smaller (24566 kB) because the area-scaled bitrate gave a 720p source 2.22 Mbps at HD against Standard's 2.5; since then HD never asks for less than Standard, so these HD rows are from before the fix and are to measure again.
 
 Compressing is almost all of a send. Our MP4 encrypt also takes both payload hashes: 0.14–0.27 s against ffmpeg's plain 0.12–0.17 s, and 0.40 s on a process's first send, which also loads the native BLAKE3 and checks it.
 
