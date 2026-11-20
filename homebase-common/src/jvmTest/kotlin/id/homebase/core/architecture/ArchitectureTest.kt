@@ -82,9 +82,10 @@ class ArchitectureTest {
     @Test
     fun `Only the upload builder makes an upload's thumbnails`() {
         // Contact and profile photos and the video poster have their own sizes; the previews make a tiny only.
+        // MediaBenchmarks times the pipeline on an iPhone and uploads nothing.
         val allowed = setOf(
             "UploadImages", "VideoPayloadProcessor", "ContactsProvider", "ProfileAvatarEditViewModel",
-            "LinkPreviewPayloadBuilder", "LocationPreviewPayloadBuilder",
+            "LinkPreviewPayloadBuilder", "LocationPreviewPayloadBuilder", "MediaBenchmarks",
         )
         val pipeline = Regex("""\b(createMediaImages|createThumbnails|createImageThumbnail|createTinyPreview)\s*\(""")
         productionFiles
