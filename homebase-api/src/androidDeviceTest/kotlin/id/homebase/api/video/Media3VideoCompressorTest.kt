@@ -220,7 +220,7 @@ class Media3VideoCompressorTest {
                     val compressed = AndroidVideoCompressor.compress(input.absolutePath, null, null, null, quality, false)
                     val compressMs = System.currentTimeMillis() - started
                     val compressedBytes = File(compressed).length()
-                    val hls = compressedBytes >= 5L * 1024 * 1024
+                    val hls = compressedBytes >= HLS_MIN_BYTES
                     val second = System.currentTimeMillis()
                     val output = if (hls) {
                         File(AndroidVideoCompressor.segmentAndEncrypt(compressed, key, null)!!.segmentsPath).parentFile!!

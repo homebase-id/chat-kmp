@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.encryptWithPayloadHash
+import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.api.foundation.toByteArray
 import id.homebase.api.image.ImageFormatDetector
 import id.homebase.api.image.MediaImages
@@ -15,6 +16,7 @@ import id.homebase.api.image.createMediaImages
 import id.homebase.api.image.gif.reencodeGif
 import id.homebase.api.platform.footprintDuring
 import id.homebase.api.video.GifShrinker
+import id.homebase.api.video.HLS_MIN_BYTES
 import id.homebase.api.video.IosVideoCompressor
 import id.homebase.api.video.VideoQuality
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -52,11 +54,7 @@ import kotlin.random.Random
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
 
-/**
- * MEDIA_BENCHMARKS.md's phone measurements on an iPhone, run from Xcode by iosAppTests' MediaBenchmarkTests: BLAKE3,
- * the image pipeline on generated 12 and 48 MP photos, and each video (a whole send), GIF (every shrink step) and
- * photo in the bench folder. Numbers only; a step that throws is reported as a failure.
- */
+/** MEDIA_BENCHMARKS.md's phone measurements on an iPhone; OPTIMIZE.md, "Media on an iPhone", says how to run them. */
 object MediaBenchmarks {
     /** [run] for Swift, called back on a background thread. */
     fun runBenchmarks(onDone: (CheckReport) -> Unit) {
@@ -109,14 +107,14 @@ object MediaBenchmarks {
 
     private suspend fun CheckRun.photo(name: String, path: String) {
         for (setting in MediaQuality.entries) {
-            pipeline("$name $setting") { createMediaImages(path, IosVideoCompressor.fileOps, "bench", setting) }
+            pipeline("$name $setting") { createMediaImages(path, fileOps, "bench", setting) }
         }
     }
 
     // The footprint from the first run: later runs reuse the pages the allocator kept, and would read as no growth.
     private suspend fun CheckRun.pipeline(label: String, render: suspend () -> MediaImages) {
         val (images, start, peak) = footprintDuring { render() }
-        val times = List(RUNS) {
+        val times = List(runs) {
             val started = TimeSource.Monotonic.markNow()
             render()
             started.elapsedNow().inWholeMilliseconds
@@ -125,22 +123,23 @@ object MediaBenchmarks {
             listOfNotNull(images.finalImage?.let { "${it.width}x${it.height} final" })
         measured(
             "$label: ${images.displayedSize.pixelWidth}x${images.displayedSize.pixelHeight} -> ${outputs.joinToString()}; " +
-                "median ${times[RUNS / 2]} ms of $RUNS; first run's footprint peak ${peak / MB} MB (+${(peak - start) / MB} MB); ${thermal()}",
+                "median ${times[runs / 2]} ms of $runs; first run's footprint peak ${peak / MB} MB (+${(peak - start) / MB} MB); ${thermal()}",
         )
     }
 
     private suspend fun CheckRun.videoSend(name: String, path: String) {
-        val fileOps = IosVideoCompressor.fileOps
         val sizeMb = fileOps.getFileSize(path) / 1_000_000
-        for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) repeat(2) {
-            delay(COOL_DOWN_MS)
+        for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) repeat(repeats) {
+            delay(coolDownMs)
             val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
-            val started = TimeSource.Monotonic.markNow()
-            val (compressed, start, peak) = footprintDuring { IosVideoCompressor.compress(path, quality = quality) }
-            val compressMs = started.elapsedNow().inWholeMilliseconds
+            val (timed, start, peak) = footprintDuring {
+                val started = TimeSource.Monotonic.markNow()
+                IosVideoCompressor.compress(path, quality = quality) to started.elapsedNow().inWholeMilliseconds
+            }
+            val (compressed, compressMs) = timed
             try {
                 val bytes = fileOps.getFileSize(compressed)
-                val hls = bytes >= HLS_BYTES
+                val hls = bytes >= HLS_MIN_BYTES
                 val encrypted = TimeSource.Monotonic.markNow()
                 if (hls) {
                     val segmented = checkNotNull(IosVideoCompressor.segmentAndEncrypt(compressed, key, null)) { "segmenting failed" }
@@ -162,10 +161,10 @@ object MediaBenchmarks {
     }
 
     private suspend fun CheckRun.gifSteps(name: String, path: String) {
-        val bytes = IosVideoCompressor.fileOps.readFileBytes(path)
+        val bytes = fileOps.readFileBytes(path)
         val gif = checkNotNull(ImageFormatDetector.parseGif(bytes)) { "not a GIF" }
-        for (step in GifShrinker.encodings(gif)) repeat(2) {
-            delay(GIF_PAUSE_MS)
+        for (step in GifShrinker.encodings(gif)) repeat(repeats) {
+            delay(gifPauseMs)
             val started = TimeSource.Monotonic.markNow()
             val out = reencodeGif(bytes, step.width, step.height, step.colors, step.fps)
             measured(
@@ -217,10 +216,15 @@ object MediaBenchmarks {
 
     private fun channel(value: Double): UByte = value.toInt().coerceIn(0, 255).convert()
 
+    private val fileOps = IOSFileOperationsProvider()
+
+    // On the simulator the numbers mean nothing, so CI runs each step once, without the phone's cool-down pauses.
+    private val simulator = NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null
+    private val runs = if (simulator) 1 else 3
+    private val repeats = if (simulator) 1 else 2
+    private val coolDownMs = if (simulator) 0L else 30_000L
+    private val gifPauseMs = if (simulator) 0L else 2_000L
+
     private const val MB = 1024L * 1024
     private const val HASH_MB = 256
-    private const val RUNS = 3
-    private const val HLS_BYTES = 5L * 1024 * 1024
-    private const val COOL_DOWN_MS = 30_000L
-    private const val GIF_PAUSE_MS = 2_000L
 }
