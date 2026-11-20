@@ -7,7 +7,6 @@ import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.api.file.scratchDir
 import id.homebase.api.image.ns
 import id.homebase.api.image.writeLe32
-import id.homebase.api.media.MediaLocation
 import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.video.hls.HlsSegmenter
 import kotlin.coroutines.resume
@@ -143,11 +142,9 @@ internal object IosVideoCompressor : VideoCompressor {
             "${fileOps.scratchDir(AppCacheDirs.MEDIA_WORK)}/compressed_${Uuid.random()}.mp4"
         }
         val trim = if (trimStartMs != null && trimEndMs != null) trimStartMs to trimEndMs else null
-        // AVFoundation can't see a location ffmpeg or Android wrote, so the shared reader finds it.
-        val location = if (keepMetadata) MediaMetadataReader(fileOps).videoLocation(input) else null
         val started = TimeSource.Monotonic.markNow()
         try {
-            Export(input, output, quality.targets(), trim, keepMetadata, location).run(onProgress)
+            Export(input, output, quality.targets(), trim, keepMetadata).run(onProgress)
         } catch (e: Exception) {
             fileOps.deleteTempFile(output)
             if (e is CancellationException || e is VideoCompressionFailedException) throw e
@@ -170,7 +167,6 @@ internal object IosVideoCompressor : VideoCompressor {
         private val targets: QualityTargets,
         private val trim: Pair<Long, Long>?,
         private val keepMetadata: Boolean,
-        private val location: MediaLocation?,
     ) {
         private val asset = AVURLAsset.URLAssetWithURL(fileUrl(input), null)
 
@@ -198,7 +194,8 @@ internal object IosVideoCompressor : VideoCompressor {
             // In an MP4 these become 3GPP's loci and date boxes.
             if (keepMetadata) {
                 writer.metadata = listOfNotNull(
-                    location?.let { place ->
+                    // AVFoundation can't see a location ffmpeg or Android wrote, so the shared reader finds it.
+                    MediaMetadataReader(fileOps).videoLocation(input)?.let { place ->
                         AVMutableMetadataItem().apply {
                             setIdentifier(AVMetadataIdentifierQuickTimeMetadataLocationISO6709)
                             setValue(NSString.create(string = place.toIso6709()))
@@ -223,10 +220,11 @@ internal object IosVideoCompressor : VideoCompressor {
                 }
             }
             // A sample appended to a writer that's failed or cancelled raises, so the pumps stop before the writer goes.
+            // The reader is cancelled only once they have: cancelling it under a pump's copyNextSampleBuffer crashes.
             suspend fun stopPumps() {
                 stop.store(true)
-                reader.cancelReading()
                 if (withTimeoutOrNull(5.seconds) { drained.await() } == null) Logger.w(tag = TAG) { "pumps didn't stop" }
+                reader.cancelReading()
             }
             try {
                 select<Unit> {
