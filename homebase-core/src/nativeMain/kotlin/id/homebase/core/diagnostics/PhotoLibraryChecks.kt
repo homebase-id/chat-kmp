@@ -8,6 +8,7 @@ import id.homebase.api.diagnostics.launchChecks
 import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.file.withResolvedFile
+import id.homebase.api.foundation.toByteArray
 import id.homebase.core.image.CG_BGRA_PREMUL_BITMAP_INFO
 import id.homebase.photobase.backup.BackupMediaType
 import id.homebase.photobase.backup.IosDeviceChangeSource
@@ -34,6 +35,7 @@ import platform.Photos.PHAdjustmentData
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetChangeRequest
 import platform.Photos.PHAssetCreationRequest
+import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceTypePhoto
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusNotDetermined
@@ -77,9 +79,10 @@ object PhotoLibraryChecks {
         val plainId = addPhoto(original)
         val editedId = addPhoto(original).also { edit(it, jpeg(EDITED_W, EDITED_H)) }
 
-        verify("a picked photo resolves to its original bytes, and the copy is deleted") {
+        var sent: ByteArray? = null
+        verify("a picked photo resolves to its original, and the copy is deleted") {
             val copy = fileOps.withResolvedFile("ph://$plainId") { path ->
-                require(NSData.dataWithContentsOfFile(path)?.isEqualToData(original) == true) { "the copy at $path isn't the original's bytes" }
+                sent = requireOriginal(path, original, plainId, "the copy")
                 path
             }
             require(!NSFileManager.defaultManager.fileExistsAtPath(copy)) { "the copy at $copy is still there" }
@@ -94,11 +97,12 @@ object PhotoLibraryChecks {
             val outcome = runCatching { fileOps.resolveToFilePath(MISSING) }
             require(outcome.exceptionOrNull() is SourceUnavailableException) { "got ${outcome.getOrNull() ?: outcome.exceptionOrNull()}" }
         }
-        verify("Photos backup exports the original's bytes") {
+        verify("Photos backup exports the original, the same bytes a send gets") {
             val part = backup.export(plainId, BackupMediaType.Image).parts.single()
             try {
-                require(NSData.dataWithContentsOfFile(part.path)?.isEqualToData(original) == true) { "the export isn't the original's bytes" }
+                val exported = requireOriginal(part.path, original, plainId, "the export")
                 require(part.contentType == "image/jpeg") { "exported as ${part.contentType}" }
+                sent?.let { require(it.contentEquals(exported)) { "the export (${exported.size} B) and a send's copy (${it.size} B) differ" } }
             } finally {
                 fileOps.deleteTempFile(part.path)
             }
@@ -114,6 +118,53 @@ object PhotoLibraryChecks {
         }
     }
 
+    // A phone's Photos rewrites a photo's EXIF as it saves it, so the stored original matches what was added only
+    // EXIF aside; anything else differing is a re-encode or another resource.
+    private fun requireOriginal(path: String, original: NSData, assetId: String, what: String): ByteArray {
+        val bytes = checkNotNull(NSData.dataWithContentsOfFile(path)?.toByteArray()) { "$what is unreadable" }
+        val expected = original.toByteArray()
+        if (withoutExif(bytes).contentEquals(withoutExif(expected))) return bytes
+        throw IllegalArgumentException(
+            "$what isn't the original: ${bytes.size} B against the original's ${expected.size} B; " +
+                "segments ${jpegSegments(bytes)} against ${jpegSegments(expected)}; the asset's resources: ${resources(assetId)}",
+        )
+    }
+
+    private fun withoutExif(b: ByteArray): ByteArray {
+        var at = 2
+        while (at + 4 <= b.size && b[at] == 0xFF.toByte()) {
+            val marker = b[at + 1].toInt() and 0xFF
+            if (marker == 0xDA) break
+            val end = at + 2 + (((b[at + 2].toInt() and 0xFF) shl 8) or (b[at + 3].toInt() and 0xFF))
+            if (marker == 0xE1 && b.copyOfRange(at + 4, minOf(at + 8, b.size)).decodeToString() == "Exif") {
+                return b.copyOfRange(0, at) + b.copyOfRange(minOf(end, b.size), b.size)
+            }
+            at = end
+        }
+        return b
+    }
+
+    // A JPEG's segments up to its scan, as marker and length, e.g. "E1 Exif 1147": where two files part.
+    private fun jpegSegments(b: ByteArray): String = buildList {
+        var at = 2
+        while (at + 4 <= b.size && b[at] == 0xFF.toByte() && size < 12) {
+            val marker = b[at + 1].toInt() and 0xFF
+            val length = ((b[at + 2].toInt() and 0xFF) shl 8) or (b[at + 3].toInt() and 0xFF)
+            val name = b.copyOfRange(at + 4, minOf(at + 8, b.size)).decodeToString().filter { it.isLetterOrDigit() }
+            add("${marker.toString(16).uppercase()} $name $length")
+            if (marker == 0xDA) break
+            at += 2 + length
+        }
+    }.joinToString(prefix = "[", postfix = "]")
+
+    private fun resources(assetId: String): String {
+        val asset = asset(assetId) ?: return "the asset is gone"
+        return PHAssetResource.assetResourcesForAsset(asset).filterIsInstance<PHAssetResource>()
+            .joinToString(prefix = "[", postfix = "]") { "type ${it.type} ${it.uniformTypeIdentifier} ${it.originalFilename}" }
+    }
+
+    private fun asset(id: String) = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(id), null).firstObject as? PHAsset
+
     private suspend fun addPhoto(data: NSData): String {
         var id: String? = null
         performChanges {
@@ -125,7 +176,7 @@ object PhotoLibraryChecks {
     }
 
     private suspend fun edit(id: String, rendered: NSData) {
-        val asset = checkNotNull(PHAsset.fetchAssetsWithLocalIdentifiers(listOf(id), null).firstObject as? PHAsset) { "photo $id not found" }
+        val asset = checkNotNull(asset(id)) { "photo $id not found" }
         val input = suspendCancellableCoroutine<PHContentEditingInput> { continuation ->
             asset.requestContentEditingInputWithOptions(null) { input, _ ->
                 if (input != null) continuation.resume(input) else continuation.resumeWithException(IllegalStateException("no editing input for $id"))
