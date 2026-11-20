@@ -11,10 +11,10 @@ import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.size.Dimension
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.suspendCancellableCoroutine
+import id.homebase.api.foundation.toByteArray
 import okio.Buffer
+import okio.FileSystem
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSData
 import platform.Photos.PHAsset
@@ -25,7 +25,6 @@ import platform.Photos.PHImageRequestOptions
 import platform.Photos.PHImageRequestOptionsDeliveryModeHighQualityFormat
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
-import platform.posix.memcpy
 import kotlin.coroutines.resume
 
 /**
@@ -81,7 +80,7 @@ class PHAssetFetcher(
             }
         } ?: return null
 
-        return imageFromNSData(nsData)
+        return encodedImageFetchResult(nsData, options.fileSystem)
     }
 
     @OptIn(ExperimentalForeignApi::class)
@@ -117,23 +116,7 @@ class PHAssetFetcher(
 
         // One JPEG encode per frame so the Coil decoder chain can decode it like any other image.
         val jpegData = UIImageJPEGRepresentation(uiImage, 0.85) ?: return null
-        return imageFromNSData(jpegData)
-    }
-
-    // Encoded bytes, not a bitmap: the decoder chain then decodes to the requested size
-    // (ImageIODecoder for HEIC/JPEG, EXIF orientation applied) and animates GIF/WebP.
-    @OptIn(ExperimentalForeignApi::class)
-    private fun imageFromNSData(nsData: NSData): FetchResult? {
-        if (nsData.length == 0uL) return null
-        val bytes = ByteArray(nsData.length.toInt())
-        bytes.usePinned { pinned ->
-            memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
-        }
-        return SourceFetchResult(
-            source = ImageSource(Buffer().apply { write(bytes) }, options.fileSystem),
-            mimeType = contentTypeFromBytes(bytes),
-            dataSource = DataSource.DISK,
-        )
+        return encodedImageFetchResult(jpegData, options.fileSystem)
     }
 
     class Factory : Fetcher.Factory<Any> {
@@ -153,4 +136,17 @@ class PHAssetFetcher(
             return PHAssetFetcher(uri, options)
         }
     }
+}
+
+// Encoded bytes, not a bitmap: the decoder chain then decodes to the requested size
+// (ImageIODecoder for HEIC/JPEG, EXIF orientation applied) and animates GIF/WebP.
+@OptIn(ExperimentalForeignApi::class)
+internal fun encodedImageFetchResult(nsData: NSData, fileSystem: FileSystem): FetchResult? {
+    if (nsData.length == 0uL) return null
+    val bytes = nsData.toByteArray()
+    return SourceFetchResult(
+        source = ImageSource(Buffer().apply { write(bytes) }, fileSystem),
+        mimeType = contentTypeFromBytes(bytes),
+        dataSource = DataSource.DISK,
+    )
 }

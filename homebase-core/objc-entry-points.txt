@@ -78,3 +78,8 @@ callable id.homebase.api.platform.ContinuedProcessingBridgeHolder.*
 // kmpnotifier
 callable com.mmk.kmpnotifier.notification.NotifierManager.*
 callable com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Ios.*
+
+// On-device checks the app-hosted tests run (iosAppTests)
+function id.homebase.core.diagnostics.PhotoLibraryChecks.runChecks
+callable id.homebase.core.diagnostics.CheckReport.*
+function id.homebase.core.diagnostics.DisplayDecodeChecks.runChecks

@@ -410,7 +410,7 @@ Any 2× block shrink, our 2×2 average or a phone decoder's own reduction, alias
 
 **How others choose.** Quality-first tools keep the gap and pay in memory: Immich makes its thumbnails on the server with libvips (and resamples in linear light). Apps that make images on the phone keep them small or skip the derived large image: Ente (end-to-end encrypted, like us) has the OS make a 512 px thumbnail and shows the untouched original at full size; Signal lets the decoder shrink as far as it can (Glide's power-of-two sampling), at 1600 px (Standard) or 4096 px (HD). We make 2048 and 4096 px images on the phone, as a chat app does, at a photo app's quality, so we take the memory cost where it's bounded.
 
-**iOS bends the rule over 24 MP.** Below the memory guard, ImageIO is asked for twice the output only when the source is at least 4× too big. Over it, which includes the iPhone's 24 and 48 MP photos, ImageIO still halves a photo 2–4× too big, and 48 MP at HD still gets its 1.43× step (#2365). Raising the guard to bring them under the rule isn't affordable: on an iPhone 15 (6 GB, a 3 GB per-app limit), a guard of 100 MP got the app killed at the limit sending three 48 MP photos, and one 24 MP photo decoded in full peaked at 2.8 GB at HD. Even with the guard as it is, three 48 MP photos peak at about 2.75 GB, mostly outside the decode; that comes first.
+**iOS bends the rule over 24 MP.** Below the memory guard, ImageIO is asked for twice the output only when the source is at least 4× too big. Over it, which includes the iPhone's 24 and 48 MP photos, ImageIO still halves a photo 2–4× too big, and 48 MP at HD still gets its 1.43× step (#2365). Raising the guard to bring them under the rule looks affordable: on an iPhone 15 (6 GB, a 3 GB per-app limit), three 48 MP photos decoded in full peak at about 1.1 GB. An earlier run that got killed at the limit was the gallery's own thumbnails, decoded at full size for the screen (#2553), not the send.
 
 ### On the phones: native where it's better
 
@@ -724,8 +724,7 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 | Phone measurements of the native resamplers against the shared Kotlin Lanczos, recorded in `OPTIMIZE.md` (Android's are done) | #2383 |
 | iOS: peak memory of a 48 MP decode on a real iPhone, and whether ImageIO's own decoded copy can be skipped | #2273 |
 | Make the keep-or-strip metadata parameter required (`UploadOptions.metadata` defaults to strip; Photos and Vault pass keep) | – |
-| iOS: 48 MP at HD still gets ImageIO's 1.43× step; a full decode isn't affordable (killed at 3 GB), so it waits on the send-memory measurement | #2365, #2553 |
-| iOS: sending three 48 MP photos peaks at about 2.75 GB of the 3 GB limit, mostly outside the decode | #2553 |
+| iOS: 48 MP at HD still gets ImageIO's 1.43× step; raise the guard, tied to the memory the phone has free, and measure it on a 4 GB iPhone | #2365 |
 | iOS ImageIO: one shared decode path, and keep an iPhone HEIC's HDR gain map | #2522 |
 | Time, memory and battery measured on a real iPhone and Android phone | #2383, #2384 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |

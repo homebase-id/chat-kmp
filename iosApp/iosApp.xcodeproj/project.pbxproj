@@ -20,6 +20,8 @@
 		5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */; };
 		5B0F1A0C0000000000000A03 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 5B0F1A0C0000000000000A04 /* WebRTC */; };
 		F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006A01 /* SharedContentSaverTests.swift */; };
+		F1207A520000000000007B01 /* PhotoLibraryCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000007A01 /* PhotoLibraryCheckTests.swift */; };
+		F1207A520000000000007D01 /* DisplayDecodeCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000007C01 /* DisplayDecodeCheckTests.swift */; };
 		F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006C01 /* SharedContentSaver.swift */; };
 		EEDEB518C1A6676F6AD39843 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 035D6D85BD3FD3872BA0F427 /* FirebaseCrashlytics */; };
 		F28C3A9E05D09659D5830897 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = E7288D3F3D76A244F58F16DF /* FirebaseCrashlytics */; };
@@ -67,6 +69,8 @@
 /* Begin PBXFileReference section */
 		5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SampleBufferVideoViewTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006A01 /* SharedContentSaverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedContentSaverTests.swift; sourceTree = "<group>"; };
+		F1207A520000000000007A01 /* PhotoLibraryCheckTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PhotoLibraryCheckTests.swift; sourceTree = "<group>"; };
+		F1207A520000000000007C01 /* DisplayDecodeCheckTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DisplayDecodeCheckTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006C01 /* SharedContentSaver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedContentSaver.swift; path = ShareExtension/SharedContentSaver.swift; sourceTree = SOURCE_ROOT; };
 		4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		43958A6D2FB46E1C00D226CE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -239,6 +243,8 @@
 			children = (
 				5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */,
 				F1207A520000000000006A01 /* SharedContentSaverTests.swift */,
+				F1207A520000000000007A01 /* PhotoLibraryCheckTests.swift */,
+				F1207A520000000000007C01 /* DisplayDecodeCheckTests.swift */,
 				F1207A520000000000006C01 /* SharedContentSaver.swift */,
 			);
 			name = iosAppTests;
@@ -556,6 +562,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */,
+				F1207A520000000000007B01 /* PhotoLibraryCheckTests.swift in Sources */,
+				F1207A520000000000007D01 /* DisplayDecodeCheckTests.swift in Sources */,
 				F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */,
 				5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */,
 			);
