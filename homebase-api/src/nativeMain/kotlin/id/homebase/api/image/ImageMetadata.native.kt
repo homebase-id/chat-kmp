@@ -4,21 +4,14 @@ package id.homebase.api.image
 
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
-import kotlinx.cinterop.usePinned
-import platform.CoreFoundation.CFDataRef
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFRetain
 import platform.CoreFoundation.CFStringRef
 import platform.Foundation.CFBridgingRelease
-import platform.Foundation.CFBridgingRetain
-import platform.Foundation.NSData
 import platform.Foundation.NSDictionary
 import platform.Foundation.NSNumber
-import platform.Foundation.dataWithBytes
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
-import platform.ImageIO.CGImageSourceCreateWithData
 import platform.ImageIO.CGImageSourceRef
 import platform.ImageIO.kCGImagePropertyExifDateTimeOriginal
 import platform.ImageIO.kCGImagePropertyExifDictionary
@@ -43,20 +36,11 @@ import platform.ImageIO.kCGImagePropertyTIFFOrientation
 actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
     if (srcBytes.isEmpty()) return null
     return try {
-        val nsData = srcBytes.usePinned { pinned ->
-            NSData.dataWithBytes(pinned.addressOf(0), srcBytes.size.toULong())
-        }
-        @Suppress("UNCHECKED_CAST")
-        val cfData = CFBridgingRetain(nsData) as CFDataRef? ?: return null
+        val source = ImageIoDecode.open(srcBytes) ?: return null
         try {
-            val source = CGImageSourceCreateWithData(cfData, null) ?: return null
-            try {
-                source.readMetadata()
-            } finally {
-                CFRelease(source)
-            }
+            source.readMetadata()
         } finally {
-            CFRelease(cfData)
+            CFRelease(source)
         }
     } catch (e: Throwable) {
         Logger.w(throwable = e, tag = "readImageMetadata") { "iOS EXIF read failed" }

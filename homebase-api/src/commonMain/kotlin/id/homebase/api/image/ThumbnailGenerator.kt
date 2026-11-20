@@ -96,7 +96,7 @@ private suspend fun mediaImagesFrom(
     val format = contentTypeFromBytes(header)
     val gif = format == "image/gif"
     val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(header)
-    val gainmap = if (hdr && setting.keepsHdr && !keepsItsFile) HdrGainmap.of(header, readRange) else null
+    val gainmap = if (hdr && setting.keepsHdr && !keepsItsFile) HdrGainmap.of(header, readRange) ?: HdrGainmap.auxiliaryOf(source) else null
     val media = gainmap.use {
         renderPlanned(source, payloadKey, displayedSize = null, gainmap) { size ->
             val plan = planMediaImages(size, setting, makesFinalImage = !keepsItsFile)

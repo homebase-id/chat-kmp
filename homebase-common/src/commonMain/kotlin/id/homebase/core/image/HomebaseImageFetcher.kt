@@ -37,15 +37,7 @@ class HomebaseImageFetcher(
         val height = (options.size.height as? coil3.size.Dimension.Pixels)?.px ?: 1600
         val targetSize = ImageSize(width, height)
 
-        // Load image
-        val result =
-            if (data.loadFullPayload) {
-                homebaseImageLoader.loadFullPayload(data)
-            } else {
-                homebaseImageLoader.loadThumbnail(data, targetSize, crop = options.scale == coil3.size.Scale.FILL)
-            }
-
-        return result?.toFetchResult()
+        return homebaseImageLoader.loadEncoded(data, targetSize, crop = options.scale == coil3.size.Scale.FILL)?.toFetchResult()
     }
 
     private fun CachedImage.toFetchResult(): FetchResult {

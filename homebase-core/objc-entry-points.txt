@@ -83,4 +83,5 @@ callable com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConf
 function id.homebase.core.diagnostics.PhotoLibraryChecks.runChecks
 callable id.homebase.api.diagnostics.CheckReport.*
 function id.homebase.core.diagnostics.DisplayDecodeChecks.runChecks
+function id.homebase.core.diagnostics.HdrViewerChecks.runChecks
 function id.homebase.api.diagnostics.MediaBenchmarks.runBenchmarks

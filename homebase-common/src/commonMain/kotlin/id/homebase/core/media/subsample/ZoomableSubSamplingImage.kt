@@ -53,8 +53,11 @@ import id.homebase.core.HomebaseConstants
 import id.homebase.core.avatars.rememberPublicAvatarUrl
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.image.HdrPhotoOverlay
 import id.homebase.core.image.HdrWindowEffect
+import id.homebase.core.image.ImageSize
 import id.homebase.core.image.carriesGainmap
+import id.homebase.core.image.forFullScreen
 import id.homebase.core.image.fullScreenImageRequest
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.koinInject
@@ -141,6 +144,16 @@ fun ZoomableSubSamplingImage(
     var imageLoaded by remember(model) { mutableStateOf(false) }
     var hasGainmap by remember(model) { mutableStateOf(false) }
     HdrWindowEffect(active = showsHdr && hasGainmap)
+    val encodedPhoto: suspend () -> ByteArray? = remember(model, windowSize) {
+        {
+            if (source is SubSamplingImageSource.Remote && model !is String) {
+                homebaseImageLoader.loadEncoded(source.imageData.forFullScreen(), ImageSize(windowSize.width, windowSize.height))?.bytes
+            } else {
+                null
+            }
+        }
+    }
+    val localPhoto = (model as? String)?.takeIf { source !is SubSamplingImageSource.Avatar }
 
     // Cross-fade the sharp image in over the placeholder so the unavoidable
     // decode (a 6 MB JPEG can take a few hundred ms on older devices) reads as a
@@ -223,6 +236,15 @@ fun ZoomableSubSamplingImage(
                     }
                 }
             },
+        )
+        // A native view can't follow the Compose fade or the shared-element flight, so it waits for both to end.
+        val settled = sharpAlpha.value == 1f && animatedVisibilityScope?.transition?.isRunning != true
+        HdrPhotoOverlay(
+            active = showsHdr && imageLoaded && settled,
+            encoded = encodedPhoto,
+            path = localPhoto,
+            displayedRect = { zoomState.zoomable.contentDisplayRectF },
+            modifier = Modifier.fillMaxSize(),
         )
     }
 
