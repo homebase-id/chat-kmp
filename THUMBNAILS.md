@@ -92,9 +92,11 @@ These are agreed. Change one only with the evidence described in [Changing the t
 
 | Setting | What people expect | Photo | Video |
 |---|---|---|---|
-| **Standard** (default) | Looks good, quick to send, screenshots readable | 2048 px, WebP q60 | 720p |
-| **HD** | Stays sharp when zoomed | 4096 px, WebP q80 | 1080p |
+| **Standard** (Chat's default) | Looks good, quick to send, screenshots readable | 2048 px, WebP q60 | 720p |
+| **HD** (Moments' and Feed's default) | Stays sharp when zoomed | 4096 px, WebP q80 | 1080p |
 | **Original** | The exact file | The file, untouched | 1080p, as HD; in Photos only, the file untouched plus a 1080p copy for playback (see [Video](#video)) |
+
+**Per app.** Chat, Moments and Feed each have a photo setting and a video setting, on their pages in Settings → Apps (`UPLOADS.md` section 5); Photos has its own two ([Where each caller lands](#where-each-caller-lands)). Outside Photos a video setting is Standard or HD, since Original there is HD's 1080p.
 
 **Names.** Every screen uses exactly these names: chat, Moments, the share sheet, settings, badges and Photos. They're **Standard**, **HD** and **Original**, in every language, all from one place (`MediaQualityLabels.kt`). Descriptions quote this table's numbers, for example "Photos up to 2048 pixels". Change the table, and its names and descriptions change with it.
 
@@ -446,11 +448,11 @@ There's no HDR setting (decided 2026-11-16). Original already promises the exact
 **Video: HDR at Original only; Standard and HD are SDR.** HDR video is always 10-bit (HDR10, HLG, Dolby Vision), and 10-bit HEVC fails or shows wrong colours on many Android phones and some browsers, so the copy everyone plays has to be SDR.
 
 - **HDR is tone-mapped to SDR,** never just relabelled, which makes it look washed out.
-  - **Android (Media3):** tone-maps properly.
-  - **ffmpeg, so iOS, desktop and web for now:** only relabels. That's why an iPhone video sent from the iPhone app looks washed out; compressing natively on iOS fixes it.
+  - **Android (Media3) and iOS (AVFoundation):** tone-map properly.
+  - **ffmpeg, so desktop and web:** only relabels, which looks washed out.
 - **Chat and Moments videos are always SDR,** because they always transcode, Original included.
 - **Others do the same:** Immich keeps the original and transcodes HDR to an SDR H.264 copy to play. Ente's streams are 720p H.264.
-- **Test:** `Media3VideoCompressorTest.anHdrVideoComesOutAsSdrH264`.
+- **Tests:** `Media3VideoCompressorTest.anHdrVideoComesOutAsSdrH264`, `IosVideoCompressorTest.hdrComesOutAsEightBitSdr`.
 
 **Photos: HDR wherever the file is kept as it is.** An HDR photo (Android's Ultra HDR, iPhone HDR) is an ordinary SDR image plus a gain map, so it shows correctly everywhere, and an HDR screen brightens it. It has none of video's playback problem.
 
@@ -508,9 +510,11 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 | Caller | Rows |
 |---|---|
 | Photobase backup | Its photo setting (default Original) and its video setting (default HD), each Standard, HD or Original |
-| Chat photos, Moments, share sheet, view-once | The sender's setting |
+| Chat, share sheet, view-once | Chat's photo setting and video setting (default Standard, Standard) |
+| Moments posts and comments | Moments' photo setting and video setting (default HD, HD) |
+| Feed posts and comments | Feed's photo setting and video setting (default HD, HD) |
 | Group avatars and other incidental images through `MessageAttachmentBuilder` | Standard |
-| Stickers | The sender's setting for thumbnails; the file stays the final image, and no quality is recorded |
+| Stickers | Chat's photo setting for thumbnails; the file stays the final image, and no quality is recorded |
 | PDF previews, audio, Vault, contacts, video posters, saved stickers | Original's rows, as thumbnails only (Vault videos are HD) |
 | Link and location previews | Tiny only, made with `createTinyPreview` |
 | Profile avatars | Their own sizes and budgets, plus the shared tiny rule |
@@ -572,7 +576,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 **Original video is only for Photos** (decided by the team, 2026-11-14). An untouched video may not play on every client (an iPhone's HEVC, often 10-bit HDR) and has to download whole before it plays, so a sent video is always a transcode. A backup that isn't the original isn't a backup, so Photos at Original keeps the user's file and adds a copy to play; download, save and restore get the original (UPLOADS.md section 3.6). Vault videos are HD, with no setting.
 
-**Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata (`-map_metadata 0`), and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them (`-map_metadata -1`). The library never decides; each app does.
+**Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata, and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them. The library never decides; each app does.
 
 A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source's `moov` box, skipping the media (`MediaMetadataReader.videoLocation`, common code: Apple's ISO 6709 key and the `©xyz` atom Android writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
 
@@ -580,7 +584,7 @@ A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place
 
 Numbers per device: MEDIA_BENCHMARKS.md.
 
-Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS, desktop and web use ffmpeg; Android has none, so a Media3 failure fails the send. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend. Both take the sizes and bitrates from `VideoQualityTargets.kt`. Media3 differs from ffmpeg in a few ways:
+Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware decode, GL scaling, HDR tone-mapped to SDR, and the hardware H.264 encoder. iOS does the same with AVFoundation (next section); desktop and web use ffmpeg. Neither phone has ffmpeg, so a failure fails the send. `VideoCompressionService` is the one entry point, and `platformVideoCompressor()` picks the backend. Both take the sizes and bitrates from `VideoQualityTargets.kt`. Media3 differs from ffmpeg in a few ways:
 
 - **Bitrate.** A hardware encoder spends the whole bitrate it's given, where libx264 spends less on simple content. So Media3 asks for less when the source is smaller than the target, in proportion to its area, and never more than the source's own bitrate. Android also enforces a minimum quality: on hard content it raises the bitrate itself. A 3 s 1440p60 animation came out 20–40% over target, with libx264 about 16% under. Real camera footage lands on target with both.
 - **Portrait.** Media3 writes portrait frames rather than a rotation flag, because MPEG-TS has no rotation.
@@ -589,6 +593,17 @@ Android compresses with Media3 Transformer (`Media3VideoCompressor`): hardware d
 - **Audio.** Plain AAC-LC audio with up to two channels is copied rather than re-encoded. HE-AAC, xHE-AAC, surround and every other codec are re-encoded to AAC-LC at the quality's bitrate. Why:
 
 Android's AAC codecs are software and much slower than the hardware video path, so re-encoding the audio set the pace of every export. A copied track keeps the source's bitrate, about 2% of a file. **MEDIA_BENCHMARKS.md** has the measurements per device, this decision and when to reopen it, and how to re-measure.
+
+### iOS: AVFoundation, with the bitrate set
+
+iOS compresses with AVFoundation (`IosVideoCompressor`): an `AVAssetReader` whose video composition turns the frames upright, scales them and maps HDR to SDR (BT.709), and an `AVAssetWriter` with the hardware H.264 encoder at the bitrate Media3 asks for (`hardwareVideoBitrate`, shared). It follows Android's rules:
+
+- **Not an export session.** `AVAssetExportSession` has no bitrate setting: its presets encode 720p at about 8 Mbps, about 3× Standard's 2.5 Mbps (MEDIA_BENCHMARKS.md), so iPhone videos would be 3× Android's and cross the 5 MB HLS line sooner.
+- **Portrait.** Upright frames, no rotation flag. A rotation written by ffmpeg has no translation, so the frame is moved back onto the canvas; without that the picture is blank.
+- **Audio.** Plain AAC-LC with up to two channels is copied, as on Android; anything else (an iPhone's spatial-audio track isn't the first audio track, so it isn't read) is re-encoded to AAC-LC at the quality's bitrate.
+- **Location and capture time.** AVFoundation can't read a location ffmpeg or Android wrote, so a kept location is read by `MediaMetadataReader`; AVAssetWriter writes it, with the capture time, as 3GPP's `loci` and `date` boxes, which the shared reader also reads.
+- **HLS.** Our segmenter, as on Android.
+- **Formats it can't open** (MKV, WebM) are sent as files, not videos (UPLOADS.md 3.1).
 
 ## How others do it
 

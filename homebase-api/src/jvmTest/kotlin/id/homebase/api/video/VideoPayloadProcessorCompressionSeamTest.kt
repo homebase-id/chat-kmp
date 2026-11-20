@@ -145,6 +145,7 @@ class VideoPayloadProcessorCompressionSeamTest {
         override suspend fun getDurationMs(inputPath: String): Long = durationMs
         override suspend fun getFfmpegVersion(): String? = "test"
         override suspend fun probeVideo(inputPath: String): VideoTrackInfo? = null
+        override fun canRead(contentType: String): Boolean = true
     }
 
     @Test

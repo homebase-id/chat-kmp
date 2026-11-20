@@ -15,24 +15,19 @@ import platform.CoreMedia.CMTime
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSURL
 import platform.Foundation.NSValue
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 import kotlin.coroutines.resume
 
-/**
- * AVFoundation primary decoder. Hardware-accelerated, ships with iOS — handles all the codecs
- * the system can play. The companion [FFmpegKitVideoDecoder] picks up containers AVFoundation
- * refuses (some MKV / legacy codecs).
- */
+/** iOS's poster and trim-strip decoder: AVFoundation, hardware-accelerated, for every format the system plays. */
 @OptIn(ExperimentalForeignApi::class)
 internal class AvFoundationVideoDecoder : VideoDecoder {
 
     override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
-        if (!NSFileManager.defaultManager.fileExistsAtPath(videoPath)) return null
+        if (!NSFileManager.defaultManager.fileExistsAtPath(filePath(videoPath))) return null
 
-        val asset = AVURLAsset.URLAssetWithURL(NSURL.fileURLWithPath(videoPath), null)
+        val asset = AVURLAsset.URLAssetWithURL(fileUrl(videoPath), null)
         val generator = AVAssetImageGenerator(asset)
         generator.setAppliesPreferredTrackTransform(true)
         // Snap to nearest available frame (typically a keyframe) for speed.
@@ -58,9 +53,7 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         }
     }
 
-    // Primary decoder — TieredVideoDecoder only populates `skipMask` for fallbacks, so we
-    // ignore it on the iOS primary. AVAssetImageGenerator processes the whole request as one
-    // async batch; per-index skipping isn't a meaningful optimization here.
+    // AVAssetImageGenerator takes the whole batch at once; skipMask is ignored.
     override fun extractThumbnailStrip(
         videoPath: String,
         durationMs: Long,
@@ -69,9 +62,9 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         skipMask: BooleanArray?,
     ): Flow<IndexedFrame> = channelFlow {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
-        if (!NSFileManager.defaultManager.fileExistsAtPath(videoPath)) return@channelFlow
+        if (!NSFileManager.defaultManager.fileExistsAtPath(filePath(videoPath))) return@channelFlow
 
-        val asset = AVURLAsset.URLAssetWithURL(NSURL.fileURLWithPath(videoPath), null)
+        val asset = AVURLAsset.URLAssetWithURL(fileUrl(videoPath), null)
         val generator = AVAssetImageGenerator(asset)
         generator.setAppliesPreferredTrackTransform(true)
         generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))

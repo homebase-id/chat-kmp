@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.email.settings
 
+import id.homebase.core.ui.screens.settings.NavigationBarSwitchRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -7,12 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -36,10 +32,10 @@ import org.jetbrains.compose.resources.stringResource
 fun EmailSettingsScreen(
     viewModel: EmailSettingsViewModel,
     onBackClick: () -> Unit,
-    onOpenEmail: () -> Unit,
+    // Null when there's nothing to open: the page was opened from Email itself.
+    onOpenEmail: (() -> Unit)?,
     mailboxMode: MailboxMode?,
     onChangeMode: () -> Unit,
-    showOpenEmail: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     EmailSettingsUi(
@@ -47,11 +43,11 @@ fun EmailSettingsScreen(
         mailboxMode = mailboxMode,
         onChangeMode = onChangeMode,
         onAction = { action ->
-            if (action is EmailSettingsUiAction.OpenEmailClicked) onOpenEmail()
+            if (action is EmailSettingsUiAction.OpenEmailClicked) onOpenEmail?.invoke()
             else viewModel.onAction(action)
         },
         onBackClick = onBackClick,
-        showOpenEmail = showOpenEmail,
+        showOpenEmail = onOpenEmail != null,
     )
 }
 
@@ -80,13 +76,10 @@ fun EmailSettingsUi(
                 },
             )
         }
-        SettingsRow(
-            icon = Icons.Outlined.Visibility,
+        NavigationBarSwitchRow(
             title = stringResource(MR.string.email_settings_show_icon),
-            action = SettingsRowAction.Toggle(
-                checked = uiState.iconVisible,
-                onCheckedChange = { onAction(EmailSettingsUiAction.SetIconVisible(it)) },
-            ),
+            checked = uiState.iconVisible,
+            onCheckedChange = { onAction(EmailSettingsUiAction.SetIconVisible(it)) },
         )
         mailboxMode?.let { mode ->
             // Not a toggle: switching changes who can read the mail

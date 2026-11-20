@@ -44,6 +44,7 @@ sealed interface SettingsRowAction {
 
     data class Toggle(
         val checked: Boolean,
+        val enabled: Boolean = true,
         val onCheckedChange: (Boolean) -> Unit,
     ) : SettingsRowAction
 
@@ -109,6 +110,7 @@ fun SettingsRow(
                     is SettingsRowAction.Toggle -> Switch(
                         checked = action.checked,
                         onCheckedChange = null,
+                        enabled = action.enabled,
                     )
 
                     // Announced as the row's click label, like External.
@@ -134,6 +136,7 @@ fun SettingsRow(
         is SettingsRowAction.Toggle -> modifier.toggleable(
             value = action.checked,
             onValueChange = action.onCheckedChange,
+            enabled = action.enabled,
             role = Role.Switch,
         )
 

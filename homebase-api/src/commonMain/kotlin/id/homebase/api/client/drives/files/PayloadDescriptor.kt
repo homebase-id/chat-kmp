@@ -146,8 +146,9 @@ data class PayloadDescriptor(
 
     fun isImage(): Boolean = contentType?.startsWith("image/") == true
 
+    // A video its sender's platform couldn't open was sent as a file (UPLOADS.md 3.1).
     fun isVideo(): Boolean =
-        contentType?.startsWith("video/") == true || contentType == HLS_PLAYLIST_CONTENT_TYPE
+        (contentType?.startsWith("video/") == true || contentType == HLS_PLAYLIST_CONTENT_TYPE) && current?.kind != DescriptorContentV1.Kind.FILE
 
     fun isVisualMedia(): Boolean = isImage() || isVideo()
 

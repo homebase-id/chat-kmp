@@ -413,7 +413,7 @@
     <string name="moments_empty_action">Add a moment</string>
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Open Moments</string>
-    <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
+    <string name="moments_settings_show_icon">Show Moments in the navigation bar</string>
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
     <string name="moments_push_new_post">A moment has been shared with you...</string>
@@ -1216,14 +1216,14 @@
 
     <!-- Email setup — the add-on that turns email on for this identity and manages its
          keys. Not a mail reader: reading happens in Thunderbird-class clients. -->
-    <string name="email_label">Email setup</string>
+    <string name="email_label">Email</string>
     <string name="email_home_subtitle">Set up and manage your email</string>
     <string name="email_onboarding_title">Email on your own identity</string>
     <string name="email_onboarding_body_1">Set up an address that belongs to your Homebase identity, and keep the keys to it on your own drive.</string>
     <string name="email_onboarding_body_2">You read and write mail in the app you already use. This screen is where you set it up and manage your keys.</string>
     <string name="email_onboarding_setup">Set it up</string>
     <string name="email_onboarding_dismiss">Dismiss</string>
-    <string name="email_onboarding_dismiss_hint">Dismissing hides the icon — find Email setup again under Home.</string>
+    <string name="email_onboarding_dismiss_hint">Dismissing hides the icon — find Email again under Apps.</string>
     <string name="email_permission_dialog_title">Extend Permissions</string>
     <string name="email_permission_dialog_text">To set up email we need a drive to keep your mail keys and app passwords on.</string>
     <string name="email_permission_extend">Extend</string>
@@ -1237,9 +1237,9 @@
     <string name="email_checking">Checking with your server…</string>
     <string name="email_unreachable_title">Could not reach your server</string>
     <string name="email_unreachable_body">This is not the same as your server having no email — we simply did not get an answer.</string>
-    <string name="email_settings_section">Email setup</string>
-    <string name="email_settings_open">Open Email setup</string>
-    <string name="email_settings_show_icon">Show Email setup icon in bottom bar</string>
+    <string name="email_settings_section">Email</string>
+    <string name="email_settings_open">Open Email</string>
+    <string name="email_settings_show_icon">Show Email in the navigation bar</string>
     <string name="email_settings_biometrics">Biometrics protection</string>
     <string name="email_mode_row_title">Mailbox type</string>
     <string name="email_mode_encrypted">Encrypted</string>
@@ -1262,7 +1262,7 @@
     <string name="email_mode_switching">Switching…</string>
     <string name="email_mode_load_failed">Could not read your mailbox settings.</string>
     <string name="email_mode_failed">The switch did not complete. Try again.</string>
-    <string name="email_biometric_prompt_title">Unlock Email setup</string>
+    <string name="email_biometric_prompt_title">Unlock Email</string>
     <string name="email_biometric_prompt_subtitle">Authenticate to access your mail keys</string>
     <string name="settings_email_desc">Your address, keys and mail app passwords</string>
 
@@ -1287,7 +1287,7 @@
     <string name="email_setup_failed">Setup did not complete.</string>
     <string name="email_setup_stalled">That step reported success but nothing changed, so setup stopped rather than repeating it.</string>
     <string name="email_setup_retry">Try again</string>
-    <string name="email_setup_records_manual">Your DNS is not managed here, so the email records have to be added by hand. Once setup finishes, Email setup lists each one to add.</string>
+    <string name="email_setup_records_manual">Your DNS is not managed here, so the email records have to be added by hand. Once setup finishes, Email lists each one to add.</string>
     <string name="email_setup_done_title">Email is ready</string>
     <string name="email_home_address_label">Your address</string>
     <string name="email_home_status_incomplete">Setup is not finished</string>
@@ -1473,7 +1473,7 @@
     <string name="vault_welcome">Welcome to the vault</string>
     <string name="vault_settings_section">Vault</string>
     <string name="vault_settings_open">Open Vault</string>
-    <string name="vault_settings_show_icon">Show Vault icon in bottom bar</string>
+    <string name="vault_settings_show_icon">Show Vault in the navigation bar</string>
     <string name="vault_settings_biometrics">Biometrics protection</string>
     <string name="vault_settings_biometrics_unavailable">This device can't verify your identity, so the Vault opens unlocked.</string>
     <string name="vault_biometric_prompt_title">Unlock Vault</string>
@@ -1673,11 +1673,9 @@
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
     <!-- Media quality -->
-    <string name="settings_media">Media</string>
-    <string name="settings_media_desc">Quality and auto-saving</string>
-    <string name="settings_media_quality">Media quality</string>
+    <string name="settings_media">Camera</string>
+    <string name="settings_media_desc">Mirror front camera</string>
     <string name="settings_data_storage">Data and storage</string>
-    <string name="settings_media_quality_header">Quality for photos and videos you send</string>
     <string name="settings_media_quality_standard">Standard</string>
     <string name="settings_media_quality_footer">Whichever you choose, what you save to your device is the version that was sent.</string>
 
@@ -1687,7 +1685,6 @@
     <string name="settings_media_autosave_description">Photos and videos people send you are downloaded in the background and added to your album.</string>
     <string name="settings_media_autosave_unmetered">Only on Wi-Fi</string>
     <string name="settings_media_autosave_unmetered_description">Wait for an unmetered network instead of using mobile data.</string>
-    <string name="settings_media_camera_header">Camera</string>
     <string name="settings_media_mirror_front">Mirror front camera</string>
     <string name="settings_media_mirror_front_description">Save selfies and front-camera videos as they look in the preview.</string>
 
@@ -1703,9 +1700,7 @@
 
     <!-- Settings hub -->
     <string name="settings_category_general">General</string>
-    <string name="settings_section_preferences">Preferences</string>
     <string name="settings_section_apps">Apps</string>
-    <string name="settings_section_device">Device</string>
     <string name="settings_edit_profile">Edit profile</string>
     <string name="settings_security_setup_desc">Password and recovery key</string>
     <string name="settings_notifications_status_checking">Checking…</string>
@@ -1736,7 +1731,7 @@
     <string name="audio_sender_avatar_you">Voice note from you</string>
 
     <!-- Bottom navigation -->
-    <string name="nav_chats">Chats</string>
+    <string name="nav_chats">Chat</string>
     <string name="nav_feed">Feed</string>
     <string name="nav_moments">Moments</string>
     <string name="nav_calls">Calls</string>
@@ -1885,7 +1880,7 @@
     <string name="location_onboarding_setup">Set it up</string>
     <string name="location_onboarding_dismiss">Not now</string>
     <string name="location_settings_section">Location</string>
-    <string name="location_settings_show_icon">Show Location icon in bottom bar</string>
+    <string name="location_settings_show_icon">Show Location in the navigation bar</string>
     <string name="location_map_section">Map</string>
     <string name="location_map_none">No map</string>
     <string name="location_map_osm">Open maps</string>
@@ -2267,7 +2262,7 @@
 
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
-    <string name="contactbook_settings_show_icon">Show Contacts icon in bottom bar</string>
+    <string name="contactbook_settings_show_icon">Show Contacts in the navigation bar</string>
 
     <string name="contactbook_error_save">Couldn't save the contact.</string>
     <string name="contactbook_error_follow">Couldn't update the follow.</string>
@@ -3355,7 +3350,7 @@
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
     <string name="vault_chat_image_name">Chat image, %1$s</string>
-    <string name="email_locked_title">Mail setup is locked</string>
+    <string name="email_locked_title">Email is locked</string>
     <string name="email_locked_unlock">Unlock</string>
     <string name="email_make_private">Click to change your Email drive to true zero knowledge encryption</string>
     <string name="email_sign_in_again_title">Sign in again to open your email keys</string>
@@ -3481,6 +3476,12 @@
     <string name="photobase_onboarding_body_2">It runs when your phone allows it. Nothing is deleted from your Homebase when you delete it from your phone.</string>
     <string name="photobase_onboarding_setup">Set it up</string>
     <string name="photobase_onboarding_dismiss">Not now</string>
+    <string name="photobase_quality_confirm_title">Choose backup quality</string>
+    <string name="photobase_quality_confirm_body">Pick how your photos and videos are kept on your Homebase. Higher quality uses more storage.</string>
+    <string name="photobase_quality_confirm_change_later">You can change these later in Photos settings.</string>
+    <string name="photobase_quality_confirm_continue">Continue</string>
+    <string name="photobase_setup_finishing">Finishing setup…</string>
+    <string name="photobase_setup_finishing_cancel">Cancel</string>
     <string name="photobase_check_failed">Couldn't check whether Photos is set up. Check your connection and try again.</string>
     <string name="photobase_check_retry">Try again</string>
     <string name="photobase_home_subtitle">Your backed-up photos and videos</string>
@@ -3510,9 +3511,6 @@
     <string name="photobase_keep_open_done">Done</string>
     <string name="settings_media_quality_hd">HD</string>
     <string name="settings_media_quality_original">Original</string>
-    <string name="settings_media_quality_standard_description">Photos up to 2048 pixels and video at 720p. Looks good, sends quickly and keeps screenshots readable.</string>
-    <string name="settings_media_quality_hd_description">Photos up to 4096 pixels and video at 1080p. Stays sharp when zoomed.</string>
-    <string name="settings_media_quality_original_description">The exact photo file, with nothing compressed, and video at 1080p. Uses the most data.</string>
     <string name="cd_media_quality_choice">Media quality: %1$s. Tap to change.</string>
     <string name="cd_media_quality_hd_badge">Sent in HD</string>
     <string name="cd_media_quality_original_badge">Sent as the original file</string>
@@ -3522,4 +3520,24 @@
     <string name="feed_wide_see_all">See all</string>
     <string name="feed_wide_suggestions_empty">No suggestions yet</string>
     <string name="feed_wide_channels_empty">Channels you post to will show up here</string>
+    <!-- Settings → Apps: one page shape for every app -->
+    <string name="settings_chat_desc">Your conversations, and the photos and videos in them</string>
+    <string name="chat_settings_open">Open Chat</string>
+    <string name="chat_settings_show_icon">Show Chat in the navigation bar</string>
+    <string name="chat_settings_icon_always">Chat always stays in the navigation bar.</string>
+    <string name="feed_settings_open">Open Feed</string>
+    <string name="feed_settings_show_icon">Show Feed in the navigation bar</string>
+    <string name="filesync_settings_open">Open Drive</string>
+    <string name="photobase_settings_open">Open Photos</string>
+    <string name="photobase_settings_in_testing">Photos is still being tested. Turn it on in the Developer menu to try it.</string>
+    <string name="webdrop_settings_open">Open WebDrop</string>
+    <string name="location_settings_open">Open Location</string>
+    <string name="calls_settings_open">Open Calls</string>
+    <string name="settings_not_working">%1$s (not working)</string>
+    <string name="settings_send_photo_standard_desc">Up to 2048 pixels. Sends quickly and keeps screenshots readable.</string>
+    <string name="settings_send_photo_hd_desc">Up to 4096 pixels. Stays sharp when zoomed.</string>
+    <string name="settings_send_photo_original_desc">The exact photo file, with nothing compressed. Uses the most data.</string>
+    <string name="settings_send_video_standard_desc">720p. Sends quickly.</string>
+    <string name="settings_send_video_hd_desc">1080p. Stays sharp on big screens.</string>
+    <string name="settings_navigation_bar_switch_wide">On desktop and web the side bar shows every app; this chooses for the bottom bar.</string>
 </resources>

@@ -39,6 +39,7 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.feedLabeledDrive
+import id.homebase.core.settings.SendQualityApp
 import id.homebase.core.settings.UserPreferences
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.UploadOutcome
@@ -339,7 +340,7 @@ class PostCommentsService(
         val bundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOps,
-            mediaQuality = userPreferences.mediaQuality,
+            quality = userPreferences.sendQuality(SendQualityApp.Feed),
         ) { _, _ -> FeedProtocol.CommentMediaPayloadKey }
 
         val isLocalOnly = recipients.isEmpty()

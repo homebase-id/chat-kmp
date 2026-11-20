@@ -1,16 +1,12 @@
 package id.homebase.core.ui.screens.contactbook.settings
 
+import id.homebase.core.ui.screens.settings.NavigationBarSwitchRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.People
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -29,18 +25,18 @@ import org.jetbrains.compose.resources.stringResource
 fun ContactBookSettingsScreen(
     viewModel: ContactBookSettingsViewModel,
     onBackClick: () -> Unit,
-    onOpenContacts: () -> Unit,
-    showOpenContacts: Boolean = true,
+    // Null when there's nothing to open: the page was opened from Contacts itself.
+    onOpenContacts: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     ContactBookSettingsUi(
         uiState = uiState,
         onAction = { action ->
-            if (action is ContactBookSettingsUiAction.OpenContactsClicked) onOpenContacts()
+            if (action is ContactBookSettingsUiAction.OpenContactsClicked) onOpenContacts?.invoke()
             else viewModel.onAction(action)
         },
         onBackClick = onBackClick,
-        showOpenContacts = showOpenContacts,
+        showOpenContacts = onOpenContacts != null,
     )
 }
 
@@ -66,13 +62,10 @@ fun ContactBookSettingsUi(
                 },
             )
         }
-        SettingsRow(
-            icon = Icons.Outlined.Visibility,
+        NavigationBarSwitchRow(
             title = stringResource(MR.string.contactbook_settings_show_icon),
-            action = SettingsRowAction.Toggle(
-                checked = uiState.iconVisible,
-                onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
-            ),
+            checked = uiState.iconVisible,
+            onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
         )
         Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
     }

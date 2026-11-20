@@ -180,6 +180,8 @@ Filesync and WebDrop still store `application/octet-stream` payloads (they move 
 
 A photo library knows more than the bytes say: a file it calls a picture or a video is that kind (`k`) even when its type is missing or unknown.
 
+**A video the sending platform can't open is a file.** Its kind is `f`, not `v`, and it is sent as it is, with its own content type (`video/x-matroska`, `video/webm`, …): no transcode, no thumbnails. Today that is MKV and WebM on iOS, which AVFoundation can't read; Android, desktop and web read them and send a transcode as usual. The platform answers from the content type alone (`VideoProber.canRead`), so a failed read never turns a good video into a file. Readers show a payload by its `k`, so a `video/*` payload of kind `f` is a file to download, not a video to play. Until the current format is written (`DescriptorContentV1.WRITE`), `k` isn't sent, so readers still show such a payload as a video. Like any file, it goes out with its metadata as it is, whatever the app's policy.
+
 ### 3.2 Name
 
 `name = safeFileName(pickedName)`, or null when the picked name is blank. `safeFileName` (homebase-api `id.homebase.api.util`) is the one function for every file name the apps write to a disk or send. The builder, the save paths and the share paths all call it, so a name is cleaned the same way wherever it goes:
@@ -220,7 +222,7 @@ The builder decides it per app and records it on each image payload (`PayloadFil
 | AVIF, TIFF and other formats the scrubber doesn't handle, or a file it can't parse | nothing: sent as it is, with a warning in the log | nothing |
 | GIF | nothing (GIF has no standard location field) | nothing |
 | Final image (Standard, HD) | already has none | copy the source's metadata into it |
-| Video | `-map_metadata -1` (transcode or remux) | keep the container's metadata |
+| Video | drop the container's metadata in the transcode or remux | keep the container's metadata |
 | Audio, files | nothing | nothing |
 
 ### 3.5 Tiny and thumbnails
@@ -253,7 +255,7 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 
 - **The original names its copy** in `vd.pc`. A reader plays the copy, and downloads, saves and restores the original.
 - **The original is encrypted as it is** (an untouched video is never transcoded), and Photos has `UploadService` check it against the hash it took when it scanned the library, in the read that encrypts it (`MediaUploadSpec.contentHashes`). Its GPS location is read before that, from the `moov` box alone (`MediaMetadataReader`), and goes in the header.
-- **When no copy can be made** (ffmpeg can't transcode the file), the original is backed up alone, with no `vd.pc`: a backup that isn't the original isn't a backup.
+- **When no copy can be made** (the platform can't transcode the file), the original is backed up alone, with no `vd.pc`: a backup that isn't the original isn't a backup.
 - **`vcp_` and `pls_` payloads are never shown** as attachments of their own, like `pld_desc` (`PayloadDescriptor.isInternalDescriptor`).
 - **The copy is made in the encryption step** from the original, encrypted with the file's key and its own IV, and has its own descriptor content like any transcoded video.
 - The original isn't probed, so it has no `w`, `h` or duration; the copy has them.
@@ -276,9 +278,9 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 
 | App | `keyPrefix` | `quality` | `metadata` | `encrypted` | Transport |
 |---|---|---|---|---|---|
-| Chat | `chat_web` | user setting | STRIP | yes | `UploadService` |
-| Moments posts / comments | `mmt_` / `mmc_` (existing 4-digit index) | user setting | STRIP (GPS opt-in kept) | per audience | `UploadService` (a public one staged, not encrypted) |
-| Feed posts / comments | `pst_mdi_` / `cmmnt_md` | user setting | STRIP | per audience | `UploadService` (a public one staged, not encrypted) |
+| Chat | `chat_web` | its photo setting and video setting (defaults STANDARD, STANDARD) | STRIP | yes | `UploadService` |
+| Moments posts / comments | `mmt_` / `mmc_` (existing 4-digit index) | its photo setting and video setting (defaults HD, HD) | STRIP (GPS opt-in kept) | per audience | `UploadService` (a public one staged, not encrypted) |
+| Feed posts / comments | `pst_mdi_` / `cmmnt_md` | its photo setting and video setting (defaults HD, HD) | STRIP | per audience | `UploadService` (a public one staged, not encrypted) |
 | Stickers (saved) | `sticker_` | ORIGINAL | STRIP | yes | `UploadService` |
 | Photos | `photo_main`, `photo_live`, `video_main` (+ `vcp_0000` at Original) | its photo setting (default ORIGINAL) and video setting (default HD), each STANDARD, HD or ORIGINAL | KEEP | yes | `UploadService` (keeps its hashing, dedupe and `uniqueId`); photos on iOS: its request, sent by a background session |
 | Vault | `vlt_pg_` (existing 2-digit index) | ORIGINAL (photos), HD (videos) | KEEP | yes | `UploadService` |
@@ -286,6 +288,8 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 | WebDrop | existing | none | KEEP | link key | its own outbox path |
 | Contact photo | none | its own sizes | STRIP | yes | contacts image API |
 | Profile and card photos | none | its own sizes | STRIP | server-side | profile attribute API |
+
+Each app that sends media people pick has its own photo setting and video setting, on its page in Settings → Apps. A photo setting is STANDARD, HD or ORIGINAL; a video setting outside Photos is STANDARD or HD, because ORIGINAL there is HD's 1080p (`THUMBNAILS.md`, "The three settings"). The share sheet and view-once send with Chat's settings. Each app starts at its default; the single setting every app shared before (`media_quality`) isn't read.
 
 Filesync, WebDrop and the two photo APIs use the builder's rules but keep their transport:
 
@@ -317,7 +321,7 @@ Old files are never rewritten.
 - **Every uploader builds through the builder** or follows its rules (sections 4 and 5).
 - **`ImageFormatDetector` has real signatures** before the bytes decide a type: BMP needs its whole header, GIF its version, and an AVIF reads as `image/avif`, not HEIC.
 - **A file's app content is cut to fit once sealed** (a Vault note's preview).
-- **A video that isn't transcoded:** only Photos at Original keeps one, with a transcoded copy to play (section 3.6). Every other video is re-encoded (the compressor never returns its input), keeping or dropping its metadata as its app says: `-map_metadata 0` for Photos and Vault, `-1` for everyone else, on all four platforms.
+- **A video that isn't transcoded:** only Photos at Original keeps one, with a transcoded copy to play (section 3.6). Every other video is re-encoded (the compressor never returns its input), keeping or dropping its metadata as its app says: kept for Photos and Vault, dropped for everyone else, on all four platforms.
 
 **Later, not part of the switch: encrypt the tiny (#2416).** Today the server can see a 20 px preview of every image, video, sticker and PDF page, on zero-knowledge drives (Photos, Vault) too. It can't go in the sealed descriptor content: a tiny is up to 768 bytes and sealing takes it past the 1,024-byte limit. It needs its own home, one for all apps, for example encrypted with the payload's key in the `previewThumbnail` field itself, which both clients and the server's size check must then agree on.
   At the same time, decide whether the header keeps its own tiny (`appData.previewThumbnail`) beside each payload's. It duplicates the first payload's tiny on every file. In chat-kmp only a group conversation's avatar reads it, as a fallback; whether odin-js reads it is unchecked. It may only be needed for a file with no payloads.

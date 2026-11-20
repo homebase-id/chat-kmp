@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.image.SendQuality
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,7 +25,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.api.image.MediaQuality
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
@@ -43,7 +43,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun AttachmentEditorHost(
     data: FullScreenOverlay.AttachmentData,
-    mediaQuality: MediaQuality,
+    sendQuality: SendQuality,
     textFieldState: RichTextState,
     revealed: Boolean,
     currentPage: Int,
@@ -68,12 +68,8 @@ internal fun AttachmentEditorHost(
         onContentShown = onContentShown,
         onPageChanged = onPageChanged,
         onSaveFile = { onUiAction(SaveFile(it)) },
-        mediaQuality = mediaQuality,
-        onSetMediaQuality = {
-            onUiAction(
-                ConversationListUiAction.SetMediaQuality(it)
-            )
-        },
+        sendQuality = sendQuality,
+        onSetSendQuality = { onUiAction(ConversationListUiAction.SetSendQuality(it)) },
         centerImageInPage = true,
         addMoreEnabled = !viewOnce,
         onAddFile = onAddFile,

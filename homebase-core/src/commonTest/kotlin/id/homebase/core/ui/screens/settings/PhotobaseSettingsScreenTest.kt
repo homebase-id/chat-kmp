@@ -24,12 +24,14 @@ class PhotobaseSettingsScreenTest {
     private fun ComposeUiTest.page(
         onAction: (SettingsUiAction) -> Unit = {},
         backupExists: Boolean = false,
+        onOpenPhotos: (() -> Unit)? = null,
     ) = setContent {
         MaterialTheme {
             PhotobaseSettingsUi(
                 uiState = SettingsUiState(),
                 onAction = onAction,
                 onBack = {},
+                onOpenPhotos = onOpenPhotos,
                 intervalRow = if (backupExists) ({ PushIntervalRow(PhotobaseSettingsUiState(), {}) }) else null,
                 backupSection = if (backupExists) ({ Box(Modifier.testTag(BACKUP_TAG).size(10.dp)) }) else null,
             )
@@ -63,5 +65,20 @@ class PhotobaseSettingsScreenTest {
 
     private companion object {
         const val BACKUP_TAG = "backupSection"
+    }
+
+    @Test
+    fun theOpenRowOpensPhotos() = runComposeUiTest {
+        var opened = false
+        page(onOpenPhotos = { opened = true })
+        onNodeWithTag("photobaseOpenButton").performSemanticsAction(SemanticsActions.OnClick)
+        assertTrue(opened)
+    }
+
+    @Test
+    fun whileDarkThePageOnlySaysHowToTurnItOn() = runComposeUiTest {
+        setContent { MaterialTheme { PhotobaseInTestingUi(onBack = {}) } }
+        onNodeWithTag("photobaseInTesting").assertExists()
+        onNodeWithTag("photobaseIconToggle").assertDoesNotExist()
     }
 }

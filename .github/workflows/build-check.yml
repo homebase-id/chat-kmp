@@ -139,8 +139,9 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
-      # iOS simulator tests for homebase-api and the NSE preview in homebase-notifshared. homebase-common's can't link
-      # outside the app (Firebase), so its checks run in iosAppTests.
+      # iOS simulator tests for homebase-api (and the NSE preview in homebase-notifshared): the AVFoundation video
+      # compressor on real clips (IosVideoCompressorTest), and the full commonTest suite (sync/database/outbox/etc.).
+      # Not homebase-common's: they can't link outside the app (Firebase), so its checks run in iosAppTests.
       - name: Run iOS simulator tests
         if: ${{ matrix.name == 'iOS' }}
         run: ./gradlew --continue :homebase-api:iosSimulatorArm64Test :homebase-notifshared:iosSimulatorArm64Test

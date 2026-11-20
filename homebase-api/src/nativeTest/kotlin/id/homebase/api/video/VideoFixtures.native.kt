@@ -15,16 +15,7 @@ import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
 import platform.Foundation.writeToFile
 
-/**
- * iOS test fixture staging. Writes [SampleVideoFixture] bytes into NSCachesDirectory so the
- * decoder reads the same `sample.mp4` bytes every other platform reads, then ensures the
- * shared `FFmpegKitBridgeHolder` has a real test bridge wired in — see [TestFFmpegKitBridge].
- *
- * On the macOS-host CI run for `iosSimulatorArm64Test`, this materializes the bridge against
- * the bundled `FFmpegKit.xcframework` checked in at `homebase-api/libs/`. On Linux hosts the
- * iOS targets are skipped entirely (cross-compilation not supported), so this code only runs
- * where it can actually link.
- */
+/** iOS test fixture staging: writes [SampleVideoFixture] bytes into NSCachesDirectory, the same bytes every platform reads. */
 internal actual suspend fun stageSampleVideoForFfmpegTest(): String? =
     stageFixture(SampleVideoFixture.bytes, "mp4")
 
@@ -32,8 +23,6 @@ internal actual suspend fun stageSampleMovForFfmpegTest(): String? =
     stageFixture(SampleMovFixture.bytes, "mov")
 
 private fun stageFixture(bytes: ByteArray, ext: String): String? {
-    installTestBridgeIfNeeded()
-
     val cacheDir = cacheDir()
     val path = "$cacheDir/vidfixture_${NSUUID.UUID().UUIDString}.$ext"
 
@@ -53,12 +42,4 @@ internal actual suspend fun cleanupStagedSampleVideo(path: String) {
 private fun cacheDir(): String {
     val paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true)
     return paths.firstOrNull() as? String ?: NSTemporaryDirectory()
-}
-
-private var bridgeInstalled = false
-
-private fun installTestBridgeIfNeeded() {
-    if (bridgeInstalled) return
-    FFmpegKitBridgeHolder.setBridge(TestFFmpegKitBridge())
-    bridgeInstalled = true
 }

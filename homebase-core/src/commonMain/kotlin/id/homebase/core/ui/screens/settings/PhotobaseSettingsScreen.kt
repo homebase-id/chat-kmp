@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,13 +28,19 @@ import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.photobase.ui.BackupSettingsSection
 import id.homebase.photobase.ui.PhotobaseCheckingScreen
+import id.homebase.photobase.ui.PhotobaseFinishingScreen
 import id.homebase.photobase.ui.PhotobaseOnboardingScreen
+import id.homebase.photobase.ui.PhotobaseQualityConfirmScreen
 import id.homebase.photobase.ui.PhotobaseSettingsViewModel
+import id.homebase.photobase.ui.PhotobaseSetupLifecycle
+import id.homebase.photobase.ui.PhotobaseSetupStep
 import id.homebase.photobase.ui.PhotobaseSetupUiAction
 import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.photobase.ui.PushIntervalRow
 import id.homebase.resources.MR
 import id.homebase.resources.photobase_label
+import id.homebase.resources.photobase_settings_in_testing
+import id.homebase.resources.photobase_settings_open
 import id.homebase.resources.settings_photobase_icon_desc
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -46,10 +53,12 @@ internal fun PhotobaseSettingsScreen(
     onBack: () -> Unit,
     // Null where photo backup doesn't exist: desktop and web.
     backup: PhotoBackupLinks?,
+    // Null when the page was opened from Photos itself.
+    onOpenPhotos: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     if (backup == null) {
-        PhotobaseSettingsUi(uiState, viewModel::onAction, onBack, intervalRow = null, backupSection = null)
+        PhotobaseSettingsUi(uiState, viewModel::onAction, onBack, onOpenPhotos, intervalRow = null, backupSection = null)
     } else {
         PhotobaseSetupGate(onDismiss = onBack) {
             val photobaseViewModel: PhotobaseSettingsViewModel = koinViewModel()
@@ -58,6 +67,7 @@ internal fun PhotobaseSettingsScreen(
                 uiState = uiState,
                 onAction = viewModel::onAction,
                 onBack = onBack,
+                onOpenPhotos = onOpenPhotos,
                 intervalRow = { PushIntervalRow(photobaseUiState, photobaseViewModel::onAction) },
                 backupSection = {
                     BackupSettingsSection(
@@ -75,17 +85,22 @@ internal fun PhotobaseSettingsScreen(
 internal fun PhotobaseSetupGate(onDismiss: () -> Unit, installed: @Composable () -> Unit) {
     val viewModel: PhotobaseSetupViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    PhotobaseSetupLifecycle(viewModel)
     Crossfade(
-        targetState = uiState.installed,
+        targetState = uiState.step,
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-    ) { state ->
-        when (state) {
-            null -> PhotobaseCheckingScreen(
+    ) { step ->
+        when (step) {
+            PhotobaseSetupStep.Checking -> PhotobaseCheckingScreen(
                 failed = uiState.checkFailed,
                 onRetry = { viewModel.onAction(PhotobaseSetupUiAction.RetryCheck) },
             )
-            false -> PhotobaseOnboardingScreen(viewModel = viewModel, onDismiss = onDismiss)
-            true -> installed()
+            PhotobaseSetupStep.Onboarding -> PhotobaseOnboardingScreen(viewModel = viewModel, onDismiss = onDismiss)
+            PhotobaseSetupStep.Finishing -> PhotobaseFinishingScreen(
+                onCancel = { viewModel.onAction(PhotobaseSetupUiAction.FinishingCancelled) },
+            )
+            PhotobaseSetupStep.ConfirmQuality -> PhotobaseQualityConfirmScreen(viewModel = viewModel)
+            PhotobaseSetupStep.Installed -> installed()
         }
     }
 }
@@ -95,6 +110,7 @@ internal fun PhotobaseSettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     onBack: () -> Unit,
+    onOpenPhotos: (() -> Unit)?,
     intervalRow: (@Composable () -> Unit)?,
     backupSection: (@Composable () -> Unit)?,
 ) {
@@ -118,15 +134,22 @@ internal fun PhotobaseSettingsUi(
                     .clip(MaterialTheme.shapes.large),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                SettingsRow(
+                onOpenPhotos?.let { open ->
+                    SettingsRow(
+                        modifier = Modifier.testTag("photobaseOpenButton"),
+                        icon = Icons.Outlined.PhotoLibrary,
+                        title = stringResource(MR.string.photobase_settings_open),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(open),
+                    )
+                }
+                NavigationBarSwitchRow(
                     modifier = Modifier.testTag("photobaseIconToggle"),
-                    icon = Icons.Outlined.PhotoLibrary,
                     title = stringResource(MR.string.settings_photobase_icon_desc),
+                    checked = uiState.photobaseIconVisible,
+                    onCheckedChange = { onAction(SettingsUiAction.SetPhotobaseIconVisible(it)) },
+                    icon = Icons.Outlined.PhotoLibrary,
                     containerColor = rowColor,
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.photobaseIconVisible,
-                        onCheckedChange = { onAction(SettingsUiAction.SetPhotobaseIconVisible(it)) },
-                    ),
                 )
                 intervalRow?.invoke()
             }
@@ -134,5 +157,17 @@ internal fun PhotobaseSettingsUi(
                 Column(modifier = Modifier.widthIn(max = AppsContentMaxWidth).fillMaxWidth()) { section() }
             }
         }
+    }
+}
+
+@Composable
+internal fun PhotobaseInTestingUi(onBack: () -> Unit) {
+    SettingsDetailScaffold(title = stringResource(MR.string.photobase_label), onBack = onBack) {
+        Text(
+            text = stringResource(MR.string.photobase_settings_in_testing),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(16.dp).testTag("photobaseInTesting"),
+        )
     }
 }

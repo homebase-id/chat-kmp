@@ -1,9 +1,6 @@
 package id.homebase.api.video
 
-internal actual fun platformVideoDecoder(): VideoDecoder =
-    TieredVideoDecoder(
-        primary = AvFoundationVideoDecoder(),
-        fallback = FFmpegKitVideoDecoder(),
-    )
+internal actual fun platformVideoDecoder(): VideoDecoder = AvFoundationVideoDecoder()
 
-internal actual fun platformFfmpegDecoder(): VideoDecoder? = FFmpegKitVideoDecoder()
+// A video AVFoundation can't open is sent as a file (VideoProber.canRead), so it never needs a poster.
+internal actual fun platformFfmpegDecoder(): VideoDecoder? = null

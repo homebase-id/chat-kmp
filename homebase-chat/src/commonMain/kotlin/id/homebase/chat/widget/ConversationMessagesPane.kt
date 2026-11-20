@@ -349,7 +349,7 @@ fun ConversationMessagesPane(
                         } else {
                             AttachmentEditorHost(
                                 data = data,
-                                mediaQuality = uiState.mediaQuality,
+                                sendQuality = uiState.sendQuality,
                                 textFieldState = textFieldState,
                                 revealed = transition.currentState == EnterExitState.Visible,
                                 currentPage = currentGalleryPage,

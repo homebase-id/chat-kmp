@@ -1,5 +1,7 @@
 package id.homebase.feed.share
 
+import id.homebase.core.settings.sendQuality
+import id.homebase.core.settings.SendQualityApp
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -360,8 +362,8 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                 onAddFile = { fileLauncher.launch() },
                                 onAddImage = { galleryLauncher.launch() },
                                 onCameraClick = null,         // not available in share flow
-                                mediaQuality = prefState.mediaQuality,
-                                onSetMediaQuality = { userPreferences.mediaQuality = it },
+                                sendQuality = prefState.sendQuality(SendQualityApp.Chat),
+                                onSetSendQuality = { userPreferences.setSendQuality(SendQualityApp.Chat, it) },
                                 onRemoveFile = { attachmentId ->
                                     val updated = editorAttachments.filter { it.attachmentId != attachmentId }
                                     editorAttachments = updated

@@ -106,6 +106,14 @@ class MediaMetadataReaderTest {
         assertEquals(MediaLocation(55.6761, 12.5683, 14.2), location(video(appleMoov("+55.6761+012.5683+014.200/"))))
     }
 
+    // AVAssetWriter's MP4: 3GPP loci, the bytes it wrote for 59.9139, 10.7522.
+    @Test
+    fun a3gppLocationBoxIsRead() = runTest {
+        val loci = box("loci", be32(0), be16(0x55C4), byteArrayOf(0, 0), be32(0x000AC090), be32(0x003BE9F5), be32(0), "earth".encodeToByteArray(), byteArrayOf(0, 0))
+        val place = location(video(box("moov", box("udta", loci))))
+        assertTrue(place != null && kotlin.math.abs(place.latitude - 59.9139) < 1e-4 && kotlin.math.abs(place.longitude - 10.7522) < 1e-4, "location $place")
+    }
+
     @Test
     fun aVideoWithNoLocationHasNone() = runTest {
         assertNull(location(video(box("moov", box("udta")))))

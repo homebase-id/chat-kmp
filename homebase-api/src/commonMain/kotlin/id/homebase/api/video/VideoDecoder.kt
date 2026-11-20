@@ -29,8 +29,7 @@ data class IndexedFrame(
  * Implementations come in two flavours:
  * - "Primary" decoders use the OS-native pipeline (MediaCodec / AVFoundation /
  *   `<video>`+`<canvas>`). Hardware-accelerated and ships with the OS.
- * - "Fallback" decoders use ffmpeg (FFmpegKit on iOS, ffmpeg.wasm on web,
- *   ffmpeg subprocess on JVM). Heavier, broader codec coverage.
+ * - "Fallback" decoders use ffmpeg (ffmpeg.wasm on web, an ffmpeg subprocess on JVM). Heavier, broader codec coverage.
  *
  * [TieredVideoDecoder] composes a primary and an optional fallback into a single
  * [VideoDecoder] that runs the fallback only when the primary fails or produces

@@ -64,17 +64,23 @@ internal enum class SettingsCategory(
     val icon: ImageVector,
 ) {
     General(MR.string.settings_category_general, Icons.Outlined.Tune),
-    Account(MR.string.settings_account, Icons.Outlined.ManageAccounts),
+    Apps(MR.string.settings_section_apps, HomebaseIcons.Apps),
     Notifications(MR.string.settings_notifications, Icons.Outlined.Notifications),
+    Account(MR.string.settings_account, Icons.Outlined.ManageAccounts),
     Appearance(MR.string.settings_appearance, Icons.Outlined.Brightness6),
     Media(MR.string.settings_media, Icons.Outlined.PermMedia),
     Keyboard(MR.string.settings_keyboard, Icons.Outlined.Keyboard),
-    Apps(MR.string.settings_section_apps, HomebaseIcons.Apps),
     Storage(MR.string.settings_data_storage, Icons.Outlined.Storage),
     Help(MR.string.settings_help, Icons.AutoMirrored.Outlined.HelpOutline),
 }
 
-internal data class SettingsPaneTarget(val category: SettingsCategory, val appsPage: AppsPage? = null, val profileCard: Boolean = false)
+internal data class SettingsPaneTarget(
+    val category: SettingsCategory,
+    val appsPage: AppsPage? = null,
+    val profileCard: Boolean = false,
+    // Opened over [appsPage]'s own app, whose Open row would only lead back.
+    val fromApp: Boolean = false,
+)
 
 /**
  * Where the settings pane opens next, for a link from outside Settings (the storage-full banner's
@@ -83,8 +89,8 @@ internal data class SettingsPaneTarget(val category: SettingsCategory, val appsP
 internal object SettingsPaneRequest {
     private var pending: SettingsPaneTarget? = null
 
-    fun open(category: SettingsCategory, appsPage: AppsPage? = null) {
-        pending = SettingsPaneTarget(category, appsPage)
+    fun open(category: SettingsCategory, appsPage: AppsPage? = null, fromApp: Boolean = false) {
+        pending = SettingsPaneTarget(category, appsPage, fromApp = fromApp)
     }
 
     fun openProfileCard() {

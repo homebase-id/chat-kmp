@@ -128,4 +128,4 @@ private fun buildMetadata(props: NSDictionary): ImageMetadata {
 }
 
 // NSDictionary.objectForKey boxes a raw CFStringRef instead of bridging it, so every lookup would miss.
-private val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!
+internal val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!

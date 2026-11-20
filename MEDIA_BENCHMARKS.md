@@ -43,8 +43,8 @@ Full reads of the file per operation, with the code that ships. Header reads (du
 | Operation | Android | iOS | Desktop | Web |
 |---|---|---|---|---|
 | Before compressing a pick | 0 from the media library (read in place); **1** for any other picked or shared file (copied to the cache) | **1** from the Photos library (copied out first); 0 for a file | 0 | 0 |
-| Compress | **1** of the source (Media3) | **1** (ffmpeg) | **1** (ffmpeg) | **1** (ffmpeg.wasm) |
-| HLS, compressed 5 MB or more | **1** of the compressed file: cut, encrypt and both payload hashes in one pass | **1** (ffmpeg cuts and encrypts; no payload hash) | **1** (as iOS) | **1** (as iOS) |
+| Compress | **1** of the source (Media3) | **1** of the source (AVFoundation) | **1** (ffmpeg) | **1** (ffmpeg.wasm) |
+| HLS, compressed 5 MB or more | **1** of the compressed file: cut, encrypt and both payload hashes in one pass | **1**, as Android (our segmenter) | **1** (ffmpeg cuts and encrypts; no payload hash) | **1** (as desktop) |
 | Plain MP4, under 5 MB | **1** of the compressed file: encrypt and hash in one pass | **1** | **1** | **1** |
 | **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
 | Photos backup at Original | **1** (read once at hand-off) | | | |
@@ -181,6 +181,21 @@ Ours is a little smaller because it keeps parameter sets in the index rather tha
 
 Where the time goes without scaling, desktop: decoding 85 ms (done twice: palette, then encode), mapping colours 60–90 ms on one core, changed rectangles and LZW 317 ms.
 
+## iOS compression: AVFoundation
+
+**Not yet measured on an iPhone**; to do, with the inputs above, against ffmpeg in git history before 2026-11-19. Until then, these are the same AVFoundation calls run by a Swift prototype on a MacBook (Apple silicon, macOS), so they show the shape, not the phone's times.
+
+| Input | Setting | Export session (any size preset) | Reader/writer, as shipped | Measured |
+|---|---|---|---|---|
+| `landscape_1080p_gps.mp4`, 3 s | Standard | 1280×720, 3.07 MB, **8.0 Mbps** | 1280×720, 1.02 MB, **2.6 Mbps**, 0.64 s | 2026-11-19, Mac |
+| `portrait_1080p.mp4`, 3 s (rotation flag) | Standard | 720×1280 upright | 720×1280 upright, 1.02 MB, 2.6 Mbps, 0.62 s | 2026-11-19, Mac |
+| iPhone 1080p HEVC capture, portrait | Standard | | 720×1280 H.264 8-bit BT.709, 2.6 Mbps, 2.9 s | 2026-11-19, Mac |
+| iPhone 4K HEVC capture with spatial audio, portrait | Standard | | 720×1280 H.264 8-bit BT.709, 2.7 Mbps, 0.5 s | 2026-11-19, Mac |
+
+## App size without ffmpeg on iOS
+
+The FFmpegKit frameworks embedded in the app were 16.4 MB of arm64 binaries (18.0 MB with headers and plists, from `ffmpegkit-bundled.xcframework`'s `ios-arm64` slices). The IPA before and after is still to measure.
+
 ## Hashing: BLAKE3
 
 | Where | Ships | Speed | Kotlin port on the same | Measured |
@@ -274,6 +289,10 @@ The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixt
   - **Reopen** if 16–20 ms per video matters at library scale: what's left is the one open through the media process.
 - **Our own segmenter rather than ffmpeg's** (2026-11-16). It's faster with the hashes included, it reads the file once, and it never re-encodes portrait video. It must keep the same cuts and decoded frames as ffmpeg's; `HlsSegmenterTest.theSegmentsAndDecodedFramesMatchFfmpegsOwnHls` checks that.
 
+- **iOS compresses with an AVFoundation reader and writer, not an export session** (2026-11-19).
+  - **Why:** `AVAssetExportSession` has no bitrate setting. Its presets encoded Standard (720p) at about 8 Mbps, 3.2× the 2.5 Mbps target, on every size preset; iPhone videos would be 3× Android's and cross the 5 MB HLS line sooner. The reader/writer asks the hardware encoder for the same bitrate as Media3 (`hardwareVideoBitrate`) and lands on it.
+  - **Also learned:** the size presets don't override a video composition's `renderSize`, so they weren't the problem; a rotation written by ffmpeg has no translation and must be moved back onto the canvas, or the picture is blank; in an MP4, AVAssetWriter writes a kept location and capture time as 3GPP `loci` and `date` boxes, not Apple's keys.
+  - **Reopen** if Apple adds a bitrate setting to export sessions.
 ## History
 
 Where each measurement began, against now, and the changes that made the difference. The reasons behind them are in the decisions above.

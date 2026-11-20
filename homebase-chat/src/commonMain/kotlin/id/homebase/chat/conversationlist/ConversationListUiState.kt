@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.image.SendQuality
 import id.homebase.chat.widget.preview.FilePreviewKind
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Immutable
@@ -7,7 +8,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.AppCacheDirs
-import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ImageMetadata
@@ -92,7 +92,7 @@ data class MessageListUiState(
     val fullScreenOverlay: FullScreenOverlay? = null,
     val sendTo: SendToPicker? = null,
     val replyToMessage: MessageUiModel? = null,
-    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
+    val sendQuality: SendQuality = SendQuality.Standard,
     val battleTargetMessage: MessageUiModel? = null,
     val isSearchActive: Boolean = false,
     val searchQuery: String = "",
