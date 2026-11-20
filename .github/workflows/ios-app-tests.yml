@@ -115,7 +115,11 @@ jobs:
           JDK_21: ${{ env.JAVA_HOME }}
 
       # Not PhotoLibraryCheckTests: a simctl Photos grant never reached the app, so they could only fail here.
+      # The benchmarks run on the repo's iPhone clips to prove they work; their numbers only mean something on a phone.
       - name: Run iosAppTests
+        env:
+          TEST_RUNNER_MEDIA_BENCH: "1"
+          TEST_RUNNER_MEDIA_BENCH_DIR: ${{ github.workspace }}/homebase-api/src/nativeTest/test_videos
         run: |
           set -o pipefail
           xcodebuild test-without-building \
@@ -126,6 +130,7 @@ jobs:
             -derivedDataPath build/dd \
             -resultBundlePath build/iosAppTests.xcresult \
             -only-testing:iosAppTests/DisplayDecodeCheckTests \
+            -only-testing:iosAppTests/MediaBenchmarkTests \
             | tee build/xcodebuild-test.log | grep -E --line-buffered "Test Case|measured:|error:|failed|passed|\*\* TEST"
 
       - name: Upload test results

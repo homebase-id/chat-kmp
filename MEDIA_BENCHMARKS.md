@@ -12,6 +12,7 @@ How fast we resize images, compress and segment video, and hash, per device, so 
   - The comparisons against ffmpeg on Android (`benchmarkAgainstFfmpeg`, `benchmarkSegmenting`, `benchmarkSegmentingAsIs`, the ffmpeg legs of `benchmarkEndToEnd`, `GifShrinkBenchmark` and the remux) were removed with ffmpeg-kit; their numbers below stand, and the tests are in git history before ffmpeg left Android.
   - BLAKE3 speed: `id.homebase.api.crypto.Blake3NativeDeviceTest#throughput` with `-e hashBench true`.
   - A video's location and a photo's EXIF: `id.homebase.api.media.MediaMetadataReaderBenchmark` with `-e locationBench true`.
+- **iPhone:** `MediaBenchmarks`, run from Xcode; OPTIMIZE.md's "Media on an iPhone" says how. It prints one `measured:` line per run.
 - **Inputs:** the tests read every `.mp4`/`.mov` in the test app's `files/bench/` folder. On Android 14 and later, only the app itself can see that folder, so copy a file in with `adb push <file> /data/local/tmp/`, then `adb shell run-as id.homebase.api.test sh -c 'mkdir -p files/bench && cp /data/local/tmp/<file> files/bench/'`. Delete it afterwards: `adb shell run-as id.homebase.api.test rm -rf files/bench`. Uninstalling the test package also removes it.
 - **Fair runs:**
   - The phone must be cool: throttling moved one compress from 20 s to 45 s. The tests pause between runs, alternate which backend goes first, and log `thermal=` (0 means none).

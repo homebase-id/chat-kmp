@@ -25,13 +25,14 @@ import kotlin.time.Duration
 import kotlin.time.measureTimedValue
 
 
+/** A compressed video this size or more is sent as HLS segments, smaller as one MP4. */
+internal const val HLS_MIN_BYTES = 5L * 1024 * 1024
+
 class VideoPayloadProcessor(
     private val fileOperationsProvider: FileOperationsProvider,
     private val compressor: VideoCompressor = VideoCompressionService,
     private val probe: VideoProber = VideoCompressionService,
 ) {
-    private val FIVE_MB = 5L * 1024 * 1024
-
     suspend fun process(
         payload: PayloadFile,
         keyHeader: KeyHeader,
@@ -215,14 +216,14 @@ class VideoPayloadProcessor(
         /* ---------- PHASE 3: SIZE CHECK → HLS DECISION ---------- */
 
         val compressedSize = fileOperationsProvider.getFileSize(compressedPath)
-        val useHls = compressedSize >= FIVE_MB
+        val useHls = compressedSize >= HLS_MIN_BYTES
 
         Logger.i(tag = "VideoProcessing") {
             "compression finished in $compressElapsed: input=${inputSize}B → compressed=${compressedSize}B " +
                 "quality=$videoQuality trim=$trimStartMs..$trimEndMs skipped=${compressedPath == payload.filePath}"
         }
         Logger.i(tag = "VideoProcessing") {
-            "HLS decision: compressed=${compressedSize}B threshold=${FIVE_MB}B → " +
+            "HLS decision: compressed=${compressedSize}B threshold=${HLS_MIN_BYTES}B → " +
                 if (useHls) "SEGMENT (hls)" else "direct mp4"
         }
 

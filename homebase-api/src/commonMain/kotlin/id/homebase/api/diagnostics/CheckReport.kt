@@ -1,4 +1,4 @@
-package id.homebase.core.diagnostics
+package id.homebase.api.diagnostics
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

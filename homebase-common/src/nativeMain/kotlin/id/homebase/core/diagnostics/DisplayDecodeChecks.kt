@@ -17,20 +17,18 @@ import id.homebase.core.image.NativeImageDecoder
 import id.homebase.core.image.SkiaAnimatedImage
 import id.homebase.core.image.addNativeImageDecoders
 import id.homebase.core.image.encodedImageFetchResult
+import id.homebase.api.diagnostics.CheckReport
+import id.homebase.api.diagnostics.CheckRun
+import id.homebase.api.diagnostics.ImageIOEncoder
+import id.homebase.api.diagnostics.ImageIOEncoder.GIF
+import id.homebase.api.diagnostics.ImageIOEncoder.HEIC
+import id.homebase.api.diagnostics.ImageIOEncoder.JPEG
+import id.homebase.api.diagnostics.ImageIOEncoder.PNG
+import id.homebase.api.diagnostics.checkRun
+import id.homebase.api.diagnostics.launchChecks
 import id.homebase.api.foundation.toByteArray
 import id.homebase.api.platform.peakFootprintGrowth
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ptr
-import platform.CoreFoundation.CFDataCreateMutable
-import platform.CoreFoundation.CFDictionaryCreateMutable
-import platform.CoreFoundation.CFDictionarySetValue
-import platform.CoreFoundation.CFMutableDictionaryRef
-import platform.CoreFoundation.CFRelease
-import platform.CoreFoundation.CFStringCreateWithCString
-import platform.CoreFoundation.CFStringRef
-import platform.CoreFoundation.kCFStringEncodingUTF8
-import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
-import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGBitmapContextCreateImage
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
@@ -41,16 +39,7 @@ import platform.CoreGraphics.CGContextSetRGBFillColor
 import platform.CoreGraphics.CGImageRef
 import platform.CoreGraphics.CGImageRelease
 import platform.CoreGraphics.CGRectMake
-import platform.Foundation.CFBridgingRelease
-import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
-import platform.Foundation.NSNumber
-import platform.ImageIO.CGImageDestinationAddImage
-import platform.ImageIO.CGImageDestinationCreateWithData
-import platform.ImageIO.CGImageDestinationFinalize
-import platform.ImageIO.kCGImagePropertyGIFDelayTime
-import platform.ImageIO.kCGImagePropertyGIFDictionary
-import platform.ImageIO.kCGImagePropertyOrientation
 
 /** The on-screen decode of a Photos-library picture, measured in the app: a test binary can't link the app's frameworks. */
 object DisplayDecodeChecks {
@@ -71,7 +60,7 @@ object DisplayDecodeChecks {
             .build()
         val big = quadrants(8064, 6048)
         val photos = try {
-            listOf(JPEG, HEIC, PNG).associateWith { encode(it, listOf(big)) }
+            listOf(JPEG, HEIC, PNG).associateWith { ImageIOEncoder.encode(it, listOf(big)) }
         } finally {
             CGImageRelease(big)
         }
@@ -115,7 +104,7 @@ object DisplayDecodeChecks {
         try {
             for (type in listOf(JPEG, HEIC)) {
                 for ((orientation, expected) in UPRIGHT) {
-                    val image = display(loader, encode(type, listOf(source), orientation), 200)
+                    val image = display(loader, ImageIOEncoder.encode(type, listOf(source), orientation), 200)
                     val (w, h) = if (orientation >= 5) 150 to 200 else 200 to 150
                     val bitmap = (image as? BitmapImage)?.bitmap
                     if (bitmap == null || image.width != w || image.height != h) {
@@ -140,7 +129,7 @@ object DisplayDecodeChecks {
         val first = quadrants(40, 30)
         val second = quadrants(40, 30, Corner.entries.reversed())
         val gif = try {
-            encode(GIF, listOf(first, second))
+            ImageIOEncoder.encode(GIF, listOf(first, second))
         } finally {
             CGImageRelease(first)
             CGImageRelease(second)
@@ -204,46 +193,6 @@ object DisplayDecodeChecks {
         return checkNotNull(image) { "no ${width}x$height image" }
     }
 
-    private fun encode(type: String, images: List<CGImageRef>, orientation: Int = 1): NSData {
-        val data = checkNotNull(CFDataCreateMutable(null, 0)) { "no CFData" }
-        // Owned by Kotlin from here, so a failure below can't leak the buffer.
-        val encoded = CFBridgingRelease(data) as NSData
-        val uti = cfString(type)
-        val destination = CGImageDestinationCreateWithData(data, uti, images.size.toULong(), null)
-        CFRelease(uti)
-        checkNotNull(destination) { "ImageIO can't write $type on this simulator" }
-        val properties = cfDictionary()
-        if (orientation != 1) setNumber(properties, kCGImagePropertyOrientation, NSNumber(int = orientation))
-        if (type == GIF) {
-            val gif = cfDictionary()
-            setNumber(gif, kCGImagePropertyGIFDelayTime, NSNumber(double = 0.1))
-            CFDictionarySetValue(properties, kCGImagePropertyGIFDictionary, gif)
-            CFRelease(gif)
-        }
-        images.forEach { CGImageDestinationAddImage(destination, it, properties) }
-        val written = CGImageDestinationFinalize(destination)
-        CFRelease(properties)
-        CFRelease(destination)
-        check(written) { "ImageIO failed to write $type" }
-        return encoded
-    }
-
-    private fun cfString(value: String): CFStringRef =
-        checkNotNull(CFStringCreateWithCString(null, value, kCFStringEncodingUTF8)) { "no CFString" }
-
-    private fun cfDictionary(): CFMutableDictionaryRef =
-        checkNotNull(CFDictionaryCreateMutable(null, 0, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)) { "no CFDictionary" }
-
-    private fun setNumber(dictionary: CFMutableDictionaryRef, key: CFStringRef?, number: NSNumber) {
-        val value = CFBridgingRetain(number)
-        CFDictionarySetValue(dictionary, key, value)
-        CFRelease(value)
-    }
-
-    private const val JPEG = "public.jpeg"
-    private const val HEIC = "public.heic"
-    private const val PNG = "public.png"
-    private const val GIF = "com.compuserve.gif"
     private const val THUMB_PX = 480
     private const val MB = 1024L * 1024
     private const val FULL_BITMAP_MB = 8064L * 6048 * 4 / MB
