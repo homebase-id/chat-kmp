@@ -31,6 +31,7 @@ import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVURLAsset
@@ -225,6 +226,11 @@ class IosVideoCompressorTest {
 
     @Test
     fun cancellingStopsWithinASecondAndLeavesNothing() = runBlocking<Unit> {
+        // Repeated: cancelling the reader under a pump crashed about once in 12 runs.
+        repeat(15) { cancelOnce() }
+    }
+
+    private suspend fun cancelOnce() = coroutineScope {
         val work = fileOps.scratchDir(AppCacheDirs.MEDIA_WORK)
         val before = (NSFileManager.defaultManager.contentsOfDirectoryAtPath(work, null)?.size ?: 0)
         val started = CompletableDeferred<Unit>()
