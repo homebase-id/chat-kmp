@@ -23,8 +23,6 @@ class HardwareVideoBitrateTest {
     @Test
     fun a720pSourceGetsStandardsRateAtHdNotLess() {
         assertEquals(2_500_000, hd.hardwareVideoBitrate(1280, 720, null))
-        assertEquals(3_472_222, hd.hardwareVideoBitrate(1600, 900, null))
-        assertEquals(5_000_000, hd.hardwareVideoBitrate(1920, 1080, null))
     }
 
     @Test

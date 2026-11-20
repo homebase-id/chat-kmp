@@ -1,6 +1,6 @@
 package id.homebase.api.video
 
-import id.homebase.api.image.MediaQuality
+import id.homebase.api.image.SendQuality
 
 /**
  * The bitrate + dimension targets for a given [VideoQuality]. Single source of
@@ -49,13 +49,15 @@ internal fun Int.toEven(): Int = if (this and 1 == 0) this else this + 1
 /**
  * What a hardware encoder (Media3, AVFoundation) is asked for. It spends the whole bitrate it's given, where libx264
  * undershoots on simple content, so a source smaller than the target gets the bitrate in proportion to its area, and
- * no source gets more than its own. A setting a person can pick never gets less than a lower one does for the same
- * source: scaled by area, HD's 1080p rate falls below Standard's for a source between 720p and 1080p.
+ * no source gets more than its own. A setting a person picks never gets less than a lower one would: HD's bits per
+ * pixel are below Standard's, so area scaling alone gives a 720p source less at HD.
  */
 internal fun QualityTargets.hardwareVideoBitrate(srcW: Int, srcH: Int, srcBitrateBps: Int?): Int {
     val shortSide = minOf(srcW, srcH)
-    val lowerSettings = MediaQuality.entries.map { it.toVideoQuality().targets() }.filter { it.shortEdgePx < shortEdgePx }
-    val forSize = (lowerSettings.map { it.bitrateFor(shortSide) } + bitrateFor(shortSide)).max()
+    val forSize = SendQuality.VideoChoices.map { it.toVideoQuality().targets() }
+        .filter { it.shortEdgePx < shortEdgePx }
+        .plus(this)
+        .maxOf { it.bitrateFor(shortSide) }
     return srcBitrateBps?.let { minOf(forSize, it) } ?: forSize
 }
 
