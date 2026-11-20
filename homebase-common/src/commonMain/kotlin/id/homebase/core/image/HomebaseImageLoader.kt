@@ -204,6 +204,10 @@ class HomebaseImageLoader(
         }
     }
 
+    /** The bytes the image fetcher hands Coil for [data] at [targetSize]. */
+    suspend fun loadEncoded(data: HomebaseImageData, targetSize: ImageSize, crop: Boolean = false): CachedImage? =
+        if (data.loadFullPayload) loadFullPayload(data) else loadThumbnail(data, targetSize, crop = crop)
+
     suspend fun isFullPayloadCached(data: HomebaseImageData): Boolean =
         fullPayloadCache.contains(fullPayloadCacheKey(data))
 

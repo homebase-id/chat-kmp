@@ -1,6 +1,7 @@
 package id.homebase.api.image
 
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.util.ByteBuilder
 
 /**
  * Removes identity-bearing metadata from encoded image bytes without touching pixel data.
@@ -16,7 +17,8 @@ import id.homebase.api.lib.image.ImageFormatDetector
  *
  * Kept because they affect how the image decodes rather than who took it: JFIF (APP0),
  * ICC colour profiles (APP2) and the Adobe colour-transform marker (APP14). An HDR JPEG's
- * gain map is declared in its XMP, so that XMP is rebuilt with only the gain-map fields.
+ * gain map is declared in its XMP, so that XMP is rebuilt with only the gain-map fields. An iPhone HEIC's
+ * gain map keeps its own XMP's gain-map fields and the MakerNote's headroom; an ISO one is in its own item.
  *
  * Unknown or malformed input is returned unchanged — this must never be able to corrupt a
  * send. JPEG, PNG, WebP and HEIF/HEIC are handled; every other format passes through untouched.
@@ -258,17 +260,9 @@ object ImageMetadataScrubber {
         }
         if (readU16(b, tiff + 2, little) != 42) return null
         val ifd = tiff + readU32(b, tiff + 4, little)
-        if (ifd + 2 > until || ifd < tiff) return null
-        val count = readU16(b, ifd, little)
-        for (e in 0 until count) {
-            val entry = ifd + 2 + e * 12
-            if (entry + 12 > until) return null
-            if (readU16(b, entry, little) == 0x0112) {
-                val value = readU16(b, entry + 8, little)
-                return if (value in 1..8) value else null
-            }
-        }
-        return null
+        if (ifd < tiff) return null
+        val entry = tiffEntry(b, ifd, little, 0x0112, until) ?: return null
+        return readU16(b, entry + 8, little).takeIf { it in 1..8 }
     }
 
     /** A TIFF block whose entire IFD0 is a single Orientation tag — nothing identifying. */
@@ -471,8 +465,15 @@ object ImageMetadataScrubber {
         val items = heifMetadataItems(src) ?: return Outcome.Unparseable
         val out = src.copyOf()
         for (item in items) {
-            val exif = if (item.isExif) heifExifPayload(readHeifExifOrientation(src, item.ranges)) else ByteArray(0)
-            val replacement = if (exif.size <= item.ranges.sumOf { it.last - it.first + 1 }) exif else ByteArray(0)
+            val room = item.ranges.sumOf { it.last - it.first + 1 }
+            val replacement = if (item.isExif) {
+                val tiff = heifExifTiff(src, item.ranges)
+                val orientation = tiff?.let { readTiffOrientation(it, 0, it.size) } ?: 1
+                val withHeadroom = tiff?.let(::appleHeadroomTags)?.let { minimalExifTiff(orientation, it) }
+                listOfNotNull(withHeadroom, minimalExifTiff(orientation)).map(::heifExifPayload).firstOrNull { it.size <= room }
+            } else {
+                appleGainmapXmp(concat(src, item.ranges).decodeToString())?.takeIf { it.size <= room }
+            } ?: ByteArray(0)
             var k = 0
             for (range in item.ranges) for (at in range) {
                 out[at] = if (k < replacement.size) replacement[k] else if (item.isExif) 0 else 0x20
@@ -482,11 +483,100 @@ object ImageMetadataScrubber {
         return if (out.contentEquals(src)) Outcome.NothingToStrip else Outcome.Scrubbed(out)
     }
 
+    private val APPLE_GAINMAP_FIELDS = listOf("HDRGainMapVersion", "HDRGainMapHeadroom")
+    private const val MAX_NUMBER_LENGTH = 32
+
+    /** An iPhone gain map's XMP, rebuilt with only the fields that describe the map, or null when it isn't one. */
+    private fun appleGainmapXmp(xml: String): ByteArray? {
+        if (AppleHdrGainmap.NAMESPACE !in xml) return null
+        val fields = APPLE_GAINMAP_FIELDS.mapNotNull { name ->
+            xmpValues(xml, AppleHdrGainmap.NAMESPACE, name).firstOrNull()
+                ?.takeIf { it.length <= MAX_NUMBER_LENGTH && it.toDoubleOrNull()?.isFinite() == true }
+                ?.let { "<HDRGainMap:$name>$it</HDRGainMap:$name>" }
+        }
+        if (fields.isEmpty()) return null
+        return ("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
+            "<rdf:Description rdf:about=\"\" xmlns:HDRGainMap=\"${AppleHdrGainmap.NAMESPACE}\">${fields.joinToString("")}" +
+            "</rdf:Description></rdf:RDF></x:xmpmeta>").encodeToByteArray()
+    }
+
+    /** An Apple MakerNote's headroom tags 33 and 48, each as its big-endian SRATIONAL, or null without both. */
+    private class AppleHeadroomTags(val maker33: ByteArray, val maker48: ByteArray)
+
+    private fun appleHeadroomTags(tiff: ByteArray): AppleHeadroomTags? {
+        val little = when {
+            tiff.size < 8 -> return null
+            tiff[0] == 'I'.code.toByte() && tiff[1] == 'I'.code.toByte() -> true
+            tiff[0] == 'M'.code.toByte() && tiff[1] == 'M'.code.toByte() -> false
+            else -> return null
+        }
+        val exifIfd = tiffEntry(tiff, readU32(tiff, 4, little), little, 0x8769)?.let { readU32(tiff, it + 8, little) } ?: return null
+        val makerNote = tiffEntry(tiff, exifIfd, little, 0x927C) ?: return null
+        val start = readU32(tiff, makerNote + 8, little)
+        if (start < 0 || start + APPLE_MAKER_NOTE.size + 6 > tiff.size || !startsWith(tiff, start, tiff.size, APPLE_MAKER_NOTE)) return null
+        val mnLittle = tiff[start + 12] == 'I'.code.toByte()
+        fun srational(tag: Int): ByteArray? {
+            val entry = tiffEntry(tiff, start + 14, mnLittle, tag) ?: return null
+            if (readU16(tiff, entry + 2, mnLittle) != TIFF_SRATIONAL || readU32(tiff, entry + 4, mnLittle) != 1) return null
+            val at = start + readU32(tiff, entry + 8, mnLittle)
+            if (at < start || at + 8 > tiff.size) return null
+            return ByteBuilder(8).apply {
+                addU32(readU32(tiff, at, mnLittle).toLong() and 0xFFFFFFFFL)
+                addU32(readU32(tiff, at + 4, mnLittle).toLong() and 0xFFFFFFFFL)
+            }.take()
+        }
+        return AppleHeadroomTags(srational(0x21) ?: return null, srational(0x30) ?: return null)
+    }
+
+    private fun tiffEntry(b: ByteArray, ifd: Int, little: Boolean, tag: Int, until: Int = b.size): Int? {
+        if (ifd < 0 || ifd + 2 > until) return null
+        val count = readU16(b, ifd, little)
+        for (e in 0 until count) {
+            val entry = ifd + 2 + e * 12
+            if (entry + 12 > until) return null
+            if (readU16(b, entry, little) == tag) return entry
+        }
+        return null
+    }
+
+    private val APPLE_MAKER_NOTE = "Apple iOS\u0000".encodeToByteArray()
+
+    /** Orientation, and an Apple MakerNote holding only the headroom, which is how an iPhone's gain map is read. */
+    private fun minimalExifTiff(orientation: Int, headroom: AppleHeadroomTags): ByteArray {
+        val noteEntries = 2
+        val noteValuesAt = APPLE_MAKER_NOTE.size + 6 + noteEntries * 12 + 4
+        val note = ByteBuilder(noteValuesAt + 16).apply {
+            add(APPLE_MAKER_NOTE); addU16(1); add("MM".encodeToByteArray())
+            addU16(noteEntries)
+            addU16(0x21); addU16(TIFF_SRATIONAL); addU32(1); addU32(noteValuesAt.toLong())
+            addU16(0x30); addU16(TIFF_SRATIONAL); addU32(1); addU32(noteValuesAt + 8L)
+            addU32(0)
+            add(headroom.maker33); add(headroom.maker48)
+        }.take()
+        val exifIfdAt = 8 + 2 + 2 * 12 + 4
+        val noteAt = exifIfdAt + 2 + 12 + 4
+        return ByteBuilder(noteAt + note.size).apply {
+            add("MM".encodeToByteArray()); addU16(42); addU32(8)
+            addU16(2)
+            addU16(0x0112); addU16(3); addU32(1); addU16(orientation); addU16(0)
+            addU16(0x8769); addU16(4); addU32(1); addU32(exifIfdAt.toLong())
+            addU32(0)
+            addU16(1)
+            addU16(0x927C); addU16(7); addU32(note.size.toLong()); addU32(noteAt.toLong())
+            addU32(0)
+            add(note)
+        }.take().also { check(it.size == noteAt + note.size) }
+    }
+
+    private const val TIFF_SRATIONAL = 10
+
     /** An Exif or XMP item, by the file ranges its data occupies. */
     private class HeifMetadataItem(val isExif: Boolean, val ranges: List<IntRange>)
 
-    /** The file's Exif and XMP items, or null when its boxes can't be followed. */
-    private fun heifMetadataItems(src: ByteArray): List<HeifMetadataItem>? {
+    private class HeifItems(val items: Map<Long, HeifItem>, val locations: Map<Long, List<Extent>>, val idat: Long)
+
+    // [src] need only reach past the meta box, which comes before the image data.
+    private fun heifItems(src: ByteArray): HeifItems? {
         val meta = topLevelBox(src, "meta") ?: return null
         val items = HashMap<Long, HeifItem>()
         val locations = HashMap<Long, List<Extent>>()
@@ -501,20 +591,41 @@ object ImageMetadataScrubber {
             }
             i = box.end
         }
+        return HeifItems(items, locations, idatData)
+    }
+
+    // The file ranges of item [id]'s data, or null when they can't be followed.
+    private fun HeifItems.ranges(src: ByteArray, id: Long): List<IntRange>? = locations[id]?.map { extent ->
+        if (extent.inIdat && idat < 0) return null
+        val start = extent.offset + if (extent.inIdat) idat else 0
+        if (start < 0 || extent.length <= 0 || start + extent.length > src.size) return null
+        start.toInt() until (start + extent.length).toInt()
+    }
+
+    /** The file's Exif and XMP items, or null when its boxes can't be followed. */
+    private fun heifMetadataItems(src: ByteArray): List<HeifMetadataItem>? {
+        val heif = heifItems(src) ?: return null
         val found = mutableListOf<HeifMetadataItem>()
-        for ((id, item) in items) {
+        for ((id, item) in heif.items) {
             val isExif = item.type == "Exif"
             val isXmp = item.type == "mime" && item.contentType?.substringBefore(';')?.trim() == XMP_CONTENT_TYPE
             if (!isExif && !isXmp) continue
-            val extents = locations[id] ?: return null
-            found += HeifMetadataItem(isExif, extents.map { extent ->
-                if (extent.inIdat && idatData < 0) return null
-                val start = extent.offset + if (extent.inIdat) idatData else 0
-                if (start < 0 || extent.length <= 0 || start + extent.length > src.size) return null
-                start.toInt() until (start + extent.length).toInt()
-            })
+            found += HeifMetadataItem(isExif, heif.ranges(src, id) ?: return null)
         }
         return found
+    }
+
+    /**
+     * An HEIF's ISO 21496-1 gain-map metadata, from its `tmap` item: a version byte, then the same block a JPEG
+     * carries in APP2. Null without one. [heif] need only reach past its meta box.
+     */
+    internal fun heifToneMap(heif: ByteArray): GainmapMetadata? {
+        if (!ImageFormatDetector.isHeic(heif)) return null
+        val items = heifItems(heif) ?: return null
+        val id = items.items.entries.firstOrNull { it.value.type == "tmap" }?.key ?: return null
+        val data = concat(heif, items.ranges(heif, id) ?: return null)
+        if (data.isEmpty() || data[0] != 0.toByte()) return null
+        return IsoGainmapMetadata.decode(data.copyOfRange(1, data.size))
     }
 
     private fun concat(src: ByteArray, ranges: List<IntRange>): ByteArray {
@@ -640,12 +751,8 @@ object ImageMetadataScrubber {
         return true
     }
 
-    private fun readHeifExifOrientation(b: ByteArray, ranges: List<IntRange>): Int? =
-        heifExifTiff(b, ranges)?.let { readTiffOrientation(it, 0, it.size) }
-
     /** HEIF's Exif item: a 4-byte offset to the TIFF header, then the TIFF block. */
-    private fun heifExifPayload(orientation: Int?): ByteArray =
-        byteArrayOf(0, 0, 0, 0) + minimalExifTiff(orientation ?: 1)
+    private fun heifExifPayload(tiff: ByteArray): ByteArray = byteArrayOf(0, 0, 0, 0) + tiff
 
     private fun readUnsigned(b: ByteArray, at: Int, size: Int): Long = when (size) {
         0 -> 0L

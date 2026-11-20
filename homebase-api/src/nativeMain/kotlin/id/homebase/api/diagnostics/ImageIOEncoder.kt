@@ -24,6 +24,8 @@ import platform.ImageIO.CGImageDestinationCreateWithData
 import platform.ImageIO.CGImageDestinationFinalize
 import platform.ImageIO.kCGImagePropertyGIFDelayTime
 import platform.ImageIO.kCGImagePropertyGIFDictionary
+import platform.ImageIO.kCGImageDestinationEncodeRequest
+import platform.ImageIO.kCGImageDestinationEncodeToISOGainmap
 import platform.ImageIO.kCGImagePropertyOrientation
 
 /** Test photos written by ImageIO, as an iPhone writes them, for the on-device checks and benchmarks. */
@@ -33,8 +35,11 @@ object ImageIOEncoder {
     const val PNG = "public.png"
     const val GIF = "com.compuserve.gif"
 
-    /** [images] as one file of [type]; more than one image is a GIF's frames, 0.1 s each. [orientation] is EXIF's. */
-    fun encode(type: String, images: List<CGImageRef>, orientation: Int = 1): NSData {
+    /**
+     * [images] as one file of [type]; more than one image is a GIF's frames, 0.1 s each. [orientation] is EXIF's.
+     * With [isoGainmap], an HDR image is written as SDR with an ISO 21496-1 gain map.
+     */
+    fun encode(type: String, images: List<CGImageRef>, orientation: Int = 1, isoGainmap: Boolean = false): NSData {
         val data = checkNotNull(CFDataCreateMutable(null, 0)) { "no CFData" }
         // Owned by Kotlin from here, so a failure below can't leak the buffer.
         val encoded = CFBridgingRelease(data) as NSData
@@ -44,6 +49,7 @@ object ImageIOEncoder {
         checkNotNull(destination) { "ImageIO can't write $type here" }
         val properties = cfDictionary()
         if (orientation != 1) setNumber(properties, kCGImagePropertyOrientation, NSNumber(int = orientation))
+        if (isoGainmap) CFDictionarySetValue(properties, kCGImageDestinationEncodeRequest, kCGImageDestinationEncodeToISOGainmap)
         if (type == GIF) {
             val gif = cfDictionary()
             setNumber(gif, kCGImagePropertyGIFDelayTime, NSNumber(double = 0.1))

@@ -12,6 +12,8 @@ import coil3.request.maxBitmapSize
 import okio.FileSystem
 import okio.use
 import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.impl.use
@@ -51,7 +53,8 @@ class ImageIODecoder(
         } ?: return null
 
         val bitmap = Bitmap()
-        if (!bitmap.allocN32Pixels(outW, outH)) {
+        // In the decode's own colour space: an untagged bitmap would show P3 values as if they were sRGB.
+        if (!bitmap.allocPixels(ImageInfo.makeN32(outW, outH, ColorAlphaType.PREMUL, image.colorSpace))) {
             image.close()
             return null
         }

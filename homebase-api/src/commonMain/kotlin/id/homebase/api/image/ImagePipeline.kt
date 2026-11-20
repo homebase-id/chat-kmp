@@ -67,6 +67,8 @@ class RenderedImages(val displayedSize: ImageSize, val images: List<RenderedImag
  *   platform's memory budget forces more (iOS over 100 MP, never by less than 2×; Android over 50 MP).
  * - Both throw on bytes the platform can't read.
  * - [metadata] reads the file's EXIF without decoding pixels, or is null where the platform can't.
+ * - [auxiliaryGainmap] is the gain map an HEIC keeps as an auxiliary image (an iPhone's), upright as the image is;
+ *   null without one, and on every platform but iOS, where only ImageIO reads them.
  */
 internal interface ImageSource : AutoCloseable {
     val displayedSize: ImageSize
@@ -74,6 +76,8 @@ internal interface ImageSource : AutoCloseable {
     fun decode(minLongEdge: Int): PipelineBitmap
 
     fun metadata(): ImageMetadata?
+
+    fun auxiliaryGainmap(): HdrGainmap? = null
 }
 
 /**
@@ -143,6 +147,16 @@ internal class HdrGainmap(val image: ImageSource, val metadata: GainmapMetadata)
          */
         suspend fun of(header: ByteArray, readRange: suspend (LongRange) -> ByteArray): HdrGainmap? = try {
             find(header, readRange)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = "HdrGainmap", throwable = e) { "The gain map couldn't be read; the photo goes as SDR" }
+            null
+        }
+
+        /** [source]'s [ImageSource.auxiliaryGainmap], or null with a log line when it can't be read. */
+        fun auxiliaryOf(source: ImageSource): HdrGainmap? = try {
+            source.auxiliaryGainmap()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

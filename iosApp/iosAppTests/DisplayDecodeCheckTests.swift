@@ -11,4 +11,14 @@ final class DisplayDecodeCheckTests: XCTestCase {
         let failures = report?.failures ?? ["no report"]
         XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
     }
+
+    func testPhotosWithAGainMapShowInHdrInTheViewer() {
+        let done = expectation(description: "HDR viewer checks finished")
+        var report: CheckReport?
+        HdrViewerChecks.shared.runChecks { report = $0; done.fulfill() }
+        wait(for: [done], timeout: 300)
+        report?.measurements.forEach { print("measured: \($0)") }
+        let failures = report?.failures ?? ["no report"]
+        XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
+    }
 }
