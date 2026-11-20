@@ -450,7 +450,7 @@ There's no HDR setting (decided 2026-11-16). Original already promises the exact
 - **HDR is tone-mapped to SDR,** never just relabelled, which makes it look washed out.
   - **Android (Media3) and iOS (AVFoundation):** tone-map properly.
   - **ffmpeg, so desktop and web:** only relabels, which looks washed out.
-- **Chat and Moments videos are always SDR,** because they always transcode, Original included.
+- **Chat and Moments videos are always SDR,** Original included: a video goes out as it is only when it already is 8-bit SDR H.264 that meets the setting (see [Video](#video)), and everything else is transcoded.
 - **Others do the same:** Immich keeps the original and transcodes HDR to an SDR H.264 copy to play. Ente's streams are 720p H.264.
 - **Tests:** `Media3VideoCompressorTest.anHdrVideoComesOutAsSdrH264`, `IosVideoCompressorTest.hdrComesOutAsEightBitSdr`.
 
@@ -570,11 +570,19 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 | Setting | Video |
 |---|---|
-| Standard | 720p transcode |
-| HD | 1080p transcode |
+| Standard | 720p transcode, or the video as it is when it already meets Standard (below) |
+| HD | 1080p transcode, or the video as it is when it already meets HD (below) |
 | Original | 1080p transcode, as HD, in every app but Photos. In Photos, the file untouched plus a 1080p copy that the apps play |
 
-**Original video is only for Photos** (decided by the team, 2026-11-14). An untouched video may not play on every client (an iPhone's HEVC, often 10-bit HDR) and has to download whole before it plays, so a sent video is always a transcode. A backup that isn't the original isn't a backup, so Photos at Original keeps the user's file and adds a copy to play; download, save and restore get the original (UPLOADS.md section 3.6). Vault videos are HD, with no setting.
+**Original video is only for Photos** (decided by the team, 2026-11-14). An untouched video may not play on every client (an iPhone's HEVC, often 10-bit HDR) and has to download whole before it plays, so a sent video is always a transcode, unless it already is what the transcode would make (below). A backup that isn't the original isn't a backup, so Photos at Original keeps the user's file and adds a copy to play; download, save and restore get the original (UPLOADS.md section 3.6). Vault videos are HD, with no setting.
+
+**A video that already meets the setting is sent as it is, not re-encoded** (decided 2026-11-20). Re-encoding it would only cost time and quality: the 83 s 720p stand-in took 7 s on an iPhone 15 to come out the same size. It applies when the app strips metadata and the source is all of these:
+- H.264, 8-bit 4:2:0, SDR (the probe must say SDR; a probe that can't tell counts as HDR);
+- AAC-LC with at most two channels, or no audio;
+- upright, with no rotation flag, and not trimmed;
+- its short edge at or below the setting's (720 or 1080), and its video bitrate at or below the setting's target (2.5 or 5 Mbps).
+
+Its samples are then copied unchanged into a new MP4 with only the video and audio tracks (`Mp4Remux`, common code, every platform), so it carries no location, capture time or other metadata, and it goes on to HLS or a single MP4 by size, like a transcode. Anything else, or a remux that fails, is transcoded as before. Apps that keep metadata (Photos, Vault) always transcode, since the remux keeps none. HEVC, HDR and 10-bit never qualify, so what everyone plays stays H.264 SDR.
 
 **Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata, and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them. The library never decides; each app does.
 
