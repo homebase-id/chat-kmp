@@ -43,7 +43,7 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 
 | Device | iOS | Chip | Video codecs |
 |---|---|---|---|
-| iPhone 15 (iPhone15,4) | 27.2.1 | A16 Bionic | VideoToolbox hardware H.264 and HEVC; AAC copied |
+| iPhone 15 (iPhone15,4) | 27.2.1 | A16 Bionic | VideoToolbox hardware encoder via AVFoundation |
 
 ## How many times a file is read
 

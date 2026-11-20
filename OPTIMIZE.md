@@ -263,7 +263,7 @@ First real-iPhone run of `MediaBenchmarks`; all tables are in MEDIA_BENCHMARKS.m
 | Display: 48 MP JPEG full-size decode | peak +563 MB |
 | Display: 480 px thumbnail from 48 MP | JPEG +6 MB, HEIC +7 MB, PNG +1 MB |
 
-Not measured: a night shot, a panorama. One unexplained result, to look into: `stand_in_720p.mp4` (27 MB, 2.5 Mbps) compresses at Standard to 27430 kB (no shrink, sent as HLS) and at HD to 24566 kB, smaller than Standard, in both runs. The 1080p inputs behave. The Kotlin GIF codec takes about 10× the desktop JVM's time at the same step. THUMBNAILS.md's figures are not contradicted: its 48 MP HD peak for iOS (decoded at 4243×5657 on a guard of 24 MP, 949 MB) was a debug framework read from Xcode's gauge, not comparable with these footprints.
+Not measured: a night shot, a panorama. One unexplained result, to look into: `stand_in_720p.mp4` (27 MB, 2.5 Mbps) compresses at Standard to 27430 kB (no shrink, sent as HLS) and at HD to 24566 kB, smaller than Standard, in both runs. The 1080p inputs behave. The Kotlin GIF codec takes about 10× the desktop JVM's time at the same step. The #2365 table below (Xcode's gauge, debug framework, ±300 MB) isn't comparable with these footprints.
 
 ### 2026-11-11, native resizing on Android (#2301), Galaxy S23+ (SM-S916U, Android 17), synthetic fixtures
 
