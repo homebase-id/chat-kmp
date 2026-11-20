@@ -33,7 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.creationDate
 import platform.AVFoundation.dateValue
@@ -44,7 +43,6 @@ import platform.CoreGraphics.CGSizeMake
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSData
 import platform.Foundation.NSError
-import platform.Foundation.NSURL
 import platform.Foundation.NSFileManager
 import platform.Foundation.create
 import platform.UIKit.UIImage
@@ -148,10 +146,7 @@ class IosVideoCompressorTest {
 
     // What AVFoundation says when a poster comes back empty: the decoder's asynchronous call drops its error.
     private fun posterError(name: String, fullSize: Boolean): String = memScoped {
-        val generator = AVAssetImageGenerator(AVURLAsset.URLAssetWithURL(NSURL.fileURLWithPath(clip(name)), null))
-        generator.setAppliesPreferredTrackTransform(true)
-        generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
-        generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
+        val generator = sdrGenerator(clip(name)) ?: return "no video track"
         if (!fullSize) generator.setMaximumSize(CGSizeMake(640.0, 640.0))
         val error = alloc<ObjCObjectVar<NSError?>>()
         val image = generator.copyCGImageAtTime(CMTimeMake(100, 1000), null, error.ptr)

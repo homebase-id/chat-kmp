@@ -11,8 +11,6 @@ import id.homebase.api.media.MediaLocation
 import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.video.hls.HlsSegmenter
 import kotlin.coroutines.resume
-import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
@@ -30,7 +28,6 @@ import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.useContents
 import kotlinx.cinterop.value
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -41,7 +38,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
-import platform.AVFoundation.AVAsset
 import platform.AVFoundation.AVAssetReader
 import platform.AVFoundation.AVAssetReaderOutput
 import platform.AVFoundation.AVAssetReaderStatusFailed
@@ -60,9 +56,6 @@ import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.AVMetadataIdentifierQuickTimeMetadataLocationISO6709
 import platform.AVFoundation.AVMutableMetadataItem
-import platform.AVFoundation.AVMutableVideoComposition
-import platform.AVFoundation.AVMutableVideoCompositionInstruction
-import platform.AVFoundation.AVMutableVideoCompositionLayerInstruction
 import platform.AVFAudio.AVNumberOfChannelsKey
 import platform.AVFAudio.AVSampleRateKey
 import platform.AVFoundation.AVURLAsset
@@ -87,24 +80,13 @@ import platform.AVFoundation.creationDate
 import platform.AVFoundation.duration
 import platform.AVFoundation.estimatedDataRate
 import platform.AVFoundation.formatDescriptions
-import platform.AVFoundation.naturalSize
 import platform.AVFoundation.nominalFrameRate
-import platform.AVFoundation.preferredTransform
-import platform.AVFoundation.setColorPrimaries
-import platform.AVFoundation.setColorTransferFunction
-import platform.AVFoundation.setColorYCbCrMatrix
 import platform.AVFoundation.tracksWithMediaType
 import platform.CoreAudioTypes.kAudioFormatLinearPCM
 import platform.CoreAudioTypes.kAudioFormatMPEG4AAC
 import platform.CoreAudioTypes.kAudioChannelLayoutTag_Mono
 import platform.CoreAudioTypes.kAudioChannelLayoutTag_Stereo
 import platform.CoreFoundation.CFRelease
-import platform.CoreGraphics.CGAffineTransformConcat
-import platform.CoreGraphics.CGAffineTransformMakeScale
-import platform.CoreGraphics.CGAffineTransformMakeTranslation
-import platform.CoreGraphics.CGRectApplyAffineTransform
-import platform.CoreGraphics.CGRectMake
-import platform.CoreGraphics.CGSizeMake
 import platform.CoreMedia.CMAudioFormatDescriptionGetRichestDecodableFormat
 import platform.CoreMedia.CMAudioFormatDescriptionGetStreamBasicDescription
 import platform.CoreMedia.CMSampleBufferGetPresentationTimeStamp
@@ -175,7 +157,7 @@ internal object IosVideoCompressor : VideoCompressor {
         private val asset = AVURLAsset.URLAssetWithURL(fileUrl(input), null)
 
         suspend fun run(onProgress: VideoProgressListener?) = withContext(Dispatchers.IO) {
-            val video = asset.tracksWithMediaType(AVMediaTypeVideo).firstOrNull() as? AVAssetTrack ?: fail("no video track")
+            val video = asset.firstVideoTrack() ?: fail("no video track")
             val reader = errorOut { AVAssetReader(asset, it) } ?: fail("can't read")
             val writer = errorOut { AVAssetWriter(fileUrl(output), AVFileTypeMPEG4, it) } ?: fail("can't write")
             writer.shouldOptimizeForNetworkUse = false
@@ -258,7 +240,7 @@ internal object IosVideoCompressor : VideoCompressor {
             val (srcW, srcH) = track.uprightSize()
             val (width, height) = computeOutputDims(srcW, srcH, targets.shortEdgePx) ?: (srcW.toEven() to srcH.toEven())
             val fps = track.compositionFps()
-            val composition = uprightSdrComposition(asset, track, width, height)
+            val composition = uprightSdrComposition(asset, track, width, height, fps)
             val output = AVAssetReaderVideoCompositionOutput(listOf(track), mapOf<Any?, Any?>(kCVPixelBufferPixelFormatTypeKey.ns to kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)).apply {
                 videoComposition = composition
                 alwaysCopiesSampleData = false
@@ -364,41 +346,6 @@ internal object IosVideoCompressor : VideoCompressor {
 }
 
 private const val TAG = "IosVideoCompressor"
-private const val MAX_FPS = 60
-
-@OptIn(ExperimentalForeignApi::class)
-private fun AVAssetTrack.shownRect() =
-    naturalSize.useContents { CGRectApplyAffineTransform(CGRectMake(0.0, 0.0, width, height), preferredTransform) }
-
-@OptIn(ExperimentalForeignApi::class)
-internal fun AVAssetTrack.uprightSize(): Pair<Int, Int> = shownRect().useContents { abs(size.width).roundToInt() to abs(size.height).roundToInt() }
-
-internal fun AVAssetTrack.compositionFps(): Int = nominalFrameRate.roundToInt().takeIf { it > 0 }?.coerceAtMost(MAX_FPS) ?: 30
-
-/** [track] turned upright, scaled to [width]×[height] and mapped to BT.709 SDR. */
-@OptIn(ExperimentalForeignApi::class)
-internal fun uprightSdrComposition(asset: AVAsset, track: AVAssetTrack, width: Int, height: Int): AVMutableVideoComposition {
-    val (minX, minY, shownW, shownH) = track.shownRect().useContents { listOf(origin.x, origin.y, abs(size.width), abs(size.height)) }
-    // Transforms written by ffmpeg leave out the translation that brings the turned frame back onto the canvas.
-    val placed = CGAffineTransformConcat(
-        CGAffineTransformConcat(track.preferredTransform, CGAffineTransformMakeTranslation(-minX, -minY)),
-        CGAffineTransformMakeScale(width / shownW, height / shownH),
-    )
-    return AVMutableVideoComposition().apply {
-        setRenderSize(CGSizeMake(width.toDouble(), height.toDouble()))
-        setFrameDuration(CMTimeMake(1, track.compositionFps()))
-        setColorPrimaries(AVVideoColorPrimaries_ITU_R_709_2)
-        setColorTransferFunction(AVVideoTransferFunction_ITU_R_709_2)
-        setColorYCbCrMatrix(AVVideoYCbCrMatrix_ITU_R_709_2)
-        setInstructions(listOf(AVMutableVideoCompositionInstruction().apply {
-            setTimeRange(CMTimeRangeMake(CMTimeMake(0, 1), asset.duration))
-            setLayerInstructions(listOf(AVMutableVideoCompositionLayerInstruction.videoCompositionLayerInstructionWithAssetTrack(track).apply {
-                setTransform(placed, CMTimeMake(0, 1))
-            }))
-        }))
-    }
-}
-
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 private fun <T> errorOut(make: (CPointer<ObjCObjectVar<NSError?>>) -> T?): T? = memScoped {
     val error = alloc<ObjCObjectVar<NSError?>>()

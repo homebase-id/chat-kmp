@@ -150,13 +150,12 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
         val colors: IntArray, val transparent: Int, val disposal: Int, val delayCs: Int,
         val interlaced: Boolean, val dataStart: Int,
     ) {
+        private val lut = IntArray(256) { if (it < colors.size) colors[it] else 0 }
+
         fun draw(canvas: IntArray, pixels: ByteArray) {
             // A short frame leaves the rest of its rectangle as it was, as browsers and ffmpeg do.
             val decoded = lzwDecode(b, dataStart, w * h, pixels)
             if (decoded == 0) return
-            val lut = IntArray(256) { if (it < colors.size) colors[it] else 0 }
-            val transparent = transparent
-            val width = width
             val firstX = max(0, -left)
             val endX = min(w, width - left)
             var row = 0
@@ -303,8 +302,7 @@ private class LzwDecoder(private val b: ByteArray, private var block: Int, priva
         var old = -1
         var first = 0
         var oldAt = 0
-        // Each entry's string is already in [out], where it was first written, so it's copied from there. A code past
-        // the next free one leaves undefined entries, so until the next clear strings are walked onto a stack instead.
+        // Strings are copied from where they were first written in out; a code past next forces the stack walk until clear.
         var malformed = false
         while (outAt < pixels) {
             while (bits < codeSize) {
@@ -334,13 +332,11 @@ private class LzwDecoder(private val b: ByteArray, private var block: Int, priva
             }
             val codeAt = outAt
             if (code > next) malformed = true
+            val repeatsFirst = code >= next
+            var c = if (repeatsFirst) old else code
             if (malformed) {
                 var top = 0
-                var c = code
-                if (code >= next) {
-                    stack[top++] = first.toByte()
-                    c = old
-                }
+                if (repeatsFirst) stack[top++] = first.toByte()
                 while (c >= clear) {
                     if (c >= 4096 || top >= 4096) return outAt
                     stack[top++] = suffix[c]
@@ -350,8 +346,6 @@ private class LzwDecoder(private val b: ByteArray, private var block: Int, priva
                 stack[top++] = first.toByte()
                 while (top > 0 && outAt < pixels) out[outAt++] = stack[--top]
             } else {
-                val repeatsFirst = code == next
-                val c = if (repeatsFirst) old else code
                 if (c < clear) {
                     out[outAt++] = c.toByte()
                 } else {
@@ -436,18 +430,18 @@ private class Spans(source: Int, target: Int) {
     val weights: IntArray
 
     init {
-        val all = ArrayList<Int>()
+        fun from(o: Int) = o * source.toDouble() / target
         for (o in 0 until target) {
-            val from = o * source.toDouble() / target
-            val to = (o + 1) * source.toDouble() / target
-            val f = from.toInt()
-            val last = min(source - 1, kotlin.math.ceil(to).toInt() - 1)
-            first[o] = f
-            start[o] = all.size
-            for (k in 0..last - f) all += ((min(to, f + k + 1.0) - max(from, (f + k).toDouble())) * 256).roundToInt()
+            first[o] = from(o).toInt()
+            start[o + 1] = start[o] + min(source - 1, kotlin.math.ceil(from(o + 1)).toInt() - 1) - first[o] + 1
         }
-        start[target] = all.size
-        weights = all.toIntArray()
+        weights = IntArray(start[target])
+        for (o in 0 until target) {
+            val f = first[o]
+            for (k in 0 until start[o + 1] - start[o]) {
+                weights[start[o] + k] = ((min(from(o + 1), f + k + 1.0) - max(from(o), (f + k).toDouble())) * 256).roundToInt()
+            }
+        }
     }
 }
 

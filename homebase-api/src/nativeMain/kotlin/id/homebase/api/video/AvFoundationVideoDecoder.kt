@@ -9,10 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.AVFoundation.AVAssetImageGenerator
-import platform.AVFoundation.AVAssetTrack
-import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.AVURLAsset
-import platform.AVFoundation.tracksWithMediaType
 import platform.AVFoundation.valueWithCMTime
 import platform.CoreGraphics.CGSizeMake
 import platform.CoreMedia.CMTime
@@ -95,25 +92,26 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         }
     }
 
-    // Without a composition the generator fails PQ HDR10 with -12911 (on the simulator at least); a BT.709 one tone-maps it.
-    private fun sdrGenerator(videoPath: String): AVAssetImageGenerator? {
-        val asset = AVURLAsset.URLAssetWithURL(fileUrl(videoPath), null)
-        val track = asset.tracksWithMediaType(AVMediaTypeVideo).firstOrNull() as? AVAssetTrack ?: return null
-        val (width, height) = track.uprightSize()
-        return AVAssetImageGenerator(asset).apply {
-            videoComposition = uprightSdrComposition(asset, track, width, height)
-            // Snap to nearest available frame (typically a keyframe) for speed.
-            setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
-            setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
-        }
-    }
-
     companion object {
         private const val TAG = "AvFoundationVideoDecoder"
         private const val POSTER_MAX_PX = 640
         private const val POSTER_TARGET_MS = 100L
         private val POSTER_JPEG_QUALITY = VideoThumbnailQuality.POSTER_JPEG_QUALITY_0_TO_1
         private val STRIP_JPEG_QUALITY = VideoThumbnailQuality.STRIP_JPEG_QUALITY_0_TO_1
+    }
+}
+
+// Without a composition the generator fails PQ HDR10 with -12911 (on the simulator at least); a BT.709 one tone-maps it.
+@OptIn(ExperimentalForeignApi::class)
+internal fun sdrGenerator(videoPath: String): AVAssetImageGenerator? {
+    val asset = AVURLAsset.URLAssetWithURL(fileUrl(videoPath), null)
+    val track = asset.firstVideoTrack() ?: return null
+    val (width, height) = track.uprightSize()
+    return AVAssetImageGenerator(asset).apply {
+        videoComposition = uprightSdrComposition(asset, track, width, height, track.compositionFps())
+        // Snap to nearest available frame (typically a keyframe) for speed.
+        setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
+        setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
     }
 }
 
