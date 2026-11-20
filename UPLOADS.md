@@ -222,7 +222,7 @@ The builder decides it per app and records it on each image payload (`PayloadFil
 | AVIF, TIFF and other formats the scrubber doesn't handle, or a file it can't parse | nothing: sent as it is, with a warning in the log | nothing |
 | GIF | nothing (GIF has no standard location field) | nothing |
 | Final image (Standard, HD) | already has none | copy the source's metadata into it |
-| Video | drop the container's metadata in the transcode or remux | keep the container's metadata |
+| Video | drop the container's metadata in the transcode or remux | keep the container's metadata (on iOS, only its location and capture time) |
 | Audio, files | nothing | nothing |
 
 ### 3.5 Tiny and thumbnails
