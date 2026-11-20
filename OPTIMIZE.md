@@ -242,6 +242,29 @@ Small on Original was 14-20 KB across these fixtures, so a 1 GiB cache holds abo
 fixtures are small and already compressed, so real photos will probably cost more and hold fewer.
 Measure on a real library before trusting this.
 
+### 2026-11-20, 5a2c13b42 (ios-media-benchmarks), iPhone 15 (iPhone15,4, iOS 27.2.1, Xcode 27.2), release Kotlin framework (#2566)
+
+First real-iPhone run of `MediaBenchmarks`; all tables are in MEDIA_BENCHMARKS.md. Run 2, after the phone cooled; run 1 (same code) gave the same shape. Thermal state: 21 lines at 0, 61 at 1, none at 2, so even from cool the phone reaches 1 within a run. Two runs per video setting; GIF steps ran twice. `PhotoLibraryCheckTests` failed (#2569); `DisplayDecodeCheckTests` and `MediaBenchmarkTests` passed.
+
+| Case | Result |
+|---|---|
+| BLAKE3, Kotlin port, 256 MB | 43–45 MB/s |
+| Video, Standard, 1080p 10 s synthetic | 0.98 s end to end, MP4 3.3 MB |
+| Video, Standard, 1080p 83 s synthetic | 7.85 s, HLS 27.4 MB |
+| Video, HD, 1080p 83 s synthetic | 15.2 s, HLS 53.2 MB |
+| Video, iPhone SDR clip 65 s, Standard / HD | 12.95 s, 21.9 MB / 22.66 s, 42.2 MB |
+| Video, iPhone HDR clip 12.7 s, Standard / HD | 4.6–4.8 s, 4.4 MB / 6.1 s, 8.4 MB |
+| Video compress memory | footprint peak 140–157 MB (+1 to +5 MB), every input |
+| GIF 800×450, 300 frames, 512 px / 384 px / 384 px 64 colours 12 fps | 13.9–15.1 s / 11.8–12.6 s / 8.4–8.5 s |
+| GIF sticker 320×320, 30 frames | 0.33 s (228 kB), 0.30 s (148 kB at 64 colours, 12 fps) |
+| 12 MP generated photo, Standard / HD | JPEG 320 / 1274 ms, HEIC 325 / 1226 ms, footprint +96–138 MB |
+| 48 MP generated photo, Standard / HD | JPEG 378 / 1542 ms (+149 / +424 MB), HEIC 400 / 1277 ms (+110 / +287 MB) |
+| Real 48 MP HEIC, Standard / HD | 381–394 / 1429–1503 ms, +93–132 / +281–282 MB |
+| Display: 48 MP JPEG full-size decode | peak +563 MB |
+| Display: 480 px thumbnail from 48 MP | JPEG +6 MB, HEIC +7 MB, PNG +1 MB |
+
+Not measured: a night shot, a panorama. One unexplained result, to look into: `stand_in_720p.mp4` (27 MB, 2.5 Mbps) compresses at Standard to 27430 kB (no shrink, sent as HLS) and at HD to 24566 kB, smaller than Standard, in both runs. The 1080p inputs behave. The Kotlin GIF codec takes about 10× the desktop JVM's time at the same step. THUMBNAILS.md's figures are not contradicted: its 48 MP HD peak for iOS (decoded at 4243×5657 on a guard of 24 MP, 949 MB) was a debug framework read from Xcode's gauge, not comparable with these footprints.
+
 ### 2026-11-11, native resizing on Android (#2301), Galaxy S23+ (SM-S916U, Android 17), synthetic fixtures
 
 `ImagePipelinePerfBench`, median of 3 after one warm-up. Before is main at 209aaad45 (shared Kotlin
