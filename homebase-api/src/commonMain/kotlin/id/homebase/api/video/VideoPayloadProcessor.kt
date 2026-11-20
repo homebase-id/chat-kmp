@@ -14,15 +14,21 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.scratchDir
 import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.platform.beginBackgroundExecutionAssertion
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.isBlobUrl
+import id.homebase.api.video.hls.Mp4Movie
+import id.homebase.api.video.hls.Mp4Remux
+import kotlinx.coroutines.CancellationException
 import io.ktor.utils.io.core.toByteArray
 import okio.Path.Companion.toPath
 import kotlin.time.Duration
 import kotlin.time.measureTimedValue
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 
 /** A compressed video this size or more is sent as HLS segments, smaller as one MP4. */
@@ -128,7 +134,7 @@ class VideoPayloadProcessor(
             }
         }
 
-        /* ---------- PHASE 2: COMPRESS (ALWAYS) ---------- */
+        /* ---------- PHASE 2: COMPRESS, OR REMUX A VIDEO THAT ALREADY MEETS THE SETTING ---------- */
 
         onProgress?.invoke(
             VideoPayloadProgressPhase(
@@ -145,25 +151,22 @@ class VideoPayloadProcessor(
         // PhaseProgress emit — the same EventBus flood the upload path had. See
         // WholePercentProgressGate.
         val compressGate = WholePercentProgressGate().also { it.admit(0f) }
+        val compressProgress: VideoProgressListener = {
+            if (compressGate.admit(it * 100f) != null) {
+                onProgress?.invoke(VideoPayloadProgressPhase(payload.key, VideoProcessingPhase.COMPRESSING, it))
+            }
+        }
+        // Read by Kotlin, so not a web blob: handle, whose bytes stay in JS.
+        val mayGoAsIs = payload.stripMetadata && trimStartMs == null && trimEndMs == null && ffmpegInputPath == payload.filePath
         val (compressedPath, compressElapsed) =
             measureTimedValue {
-                compressor.compress(
+                (if (mayGoAsIs) remuxIfAlreadyMet(payload.filePath, videoQuality, compressProgress) else null) ?: compressor.compress(
                     inputPath = ffmpegInputPath,
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
                     quality = videoQuality,
                     keepMetadata = !payload.stripMetadata,
-                    onProgress = {
-                        if (compressGate.admit(it * 100f) != null) {
-                            onProgress?.invoke(
-                                VideoPayloadProgressPhase(
-                                    payload.key,
-                                    VideoProcessingPhase.COMPRESSING,
-                                    it
-                                )
-                            )
-                        }
-                    },
+                    onProgress = compressProgress,
                 )
             }
 
@@ -194,6 +197,32 @@ class VideoPayloadProcessor(
             if (compressedPath != payload.filePath) {
                 fileOperationsProvider.deleteTempFile(compressedPath)
             }
+        }
+    }
+
+    /**
+     * A remuxed copy of [path] when it already meets [quality] (THUMBNAILS.md, "Video"), else null: transcode it. The
+     * moov is checked before the probe, which on some platforms reads the whole file.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    private suspend fun remuxIfAlreadyMet(path: String, quality: VideoQuality, onProgress: VideoProgressListener): String? {
+        var output: String? = null
+        return try {
+            val movie = readMoov(fileOperationsProvider, path)?.let(Mp4Movie::parse) ?: return null
+            if (!meetsWithoutTranscode(movie, quality)) return null
+            val info = probe.probeVideo(path) ?: return null
+            if (!mightMeetWithoutTranscode(info, quality)) return null
+            output = "${fileOperationsProvider.scratchDir(AppCacheDirs.MEDIA_WORK)}/remuxed_${Uuid.random()}.mp4"
+            Mp4Remux.remux(fileOperationsProvider, path, movie, output, onProgress)
+            Logger.i(tag = "VideoProcessing") { "already meets $quality: remuxed, not transcoded" }
+            output
+        } catch (e: CancellationException) {
+            output?.let(fileOperationsProvider::deleteTempFile)
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = "VideoProcessing", throwable = e) { "remux failed; transcoding instead" }
+            output?.let(fileOperationsProvider::deleteTempFile)
+            null
         }
     }
 

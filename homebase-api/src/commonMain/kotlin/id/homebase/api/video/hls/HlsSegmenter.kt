@@ -95,51 +95,25 @@ internal object HlsSegmenter {
                 ts.writeTables()
                 val held = arrayOfNulls<ByteArray>(movie.samples.size)
                 var emitted = 0
-                var next = 0
-                var position = 0L
-                var pending: ByteArray? = null
-                var pendingFill = 0
                 val total = movie.samples.size
                 // Read ahead while this cuts, encrypts and writes.
-                fileOps.readFileAsFlow(inputPath, CHUNK).buffer(READ_AHEAD).collect { chunk ->
-                    var at = 0
-                    while (at < chunk.size && next < total) {
-                        val sample = movie.samples[next]
-                        if (pending == null) {
-                            val skip = sample.offset - (position + at)
-                            if (skip > 0) {
-                                at += minOf(skip, (chunk.size - at).toLong()).toInt()
-                                continue
-                            }
-                            pending = ByteArray(sample.size)
-                            pendingFill = 0
+                fileOps.readSamples(inputPath, movie.samples, READ_AHEAD) { next, bytes ->
+                    held[next] = bytes
+                    while (emitted < total && held[emitOrder[emitted]] != null) {
+                        val index = emitOrder[emitted++]
+                        val ready = movie.samples[index]
+                        // Segments start on a keyframe, as players seek to them.
+                        if (ready.track is Mp4Track.Avc && ready.isKey && (ready.pts90k - segmentStart) / 90_000.0 >= SEGMENT_SECONDS) {
+                            finish(ready.pts90k)
+                            segmentStart = ready.pts90k
+                            ts.writeTables()
                         }
-                        val buffer = pending!!
-                        val n = minOf(buffer.size - pendingFill, chunk.size - at)
-                        chunk.copyInto(buffer, pendingFill, at, at + n)
-                        pendingFill += n
-                        at += n
-                        if (pendingFill < buffer.size) continue
-                        held[next] = buffer
-                        pending = null
-                        next++
-                        while (emitted < total && held[emitOrder[emitted]] != null) {
-                            val index = emitOrder[emitted++]
-                            val ready = movie.samples[index]
-                            // Segments start on a keyframe, as players seek to them.
-                            if (ready.track is Mp4Track.Avc && ready.isKey && (ready.pts90k - segmentStart) / 90_000.0 >= SEGMENT_SECONDS) {
-                                finish(ready.pts90k)
-                                segmentStart = ready.pts90k
-                                ts.writeTables()
-                            }
-                            ts.write(ready, held[index]!!)
-                            held[index] = null
-                        }
-                        if (next % PROGRESS_EVERY == 0) onProgress?.invoke(next.toFloat() / total)
+                        ts.write(ready, held[index]!!)
+                        held[index] = null
                     }
-                    position += chunk.size
+                    if ((next + 1) % PROGRESS_EVERY == 0) onProgress?.invoke((next + 1).toFloat() / total)
                 }
-                check(next == total && emitted == total) { "the file ended after $next of $total samples" }
+                check(emitted == total) { "only $emitted of $total samples were due" }
                 finish(movie.end90k)
                 // Cut, encrypt and hash the plaintext off the IO thread, which writes and hashes the segment before.
             }.buffer(WRITE_AHEAD).flowOn(Dispatchers.Default).hashedBy(storedHasher))
@@ -205,6 +179,5 @@ internal object HlsSegmenter {
         return "${micros / 1_000_000}.${(micros % 1_000_000).toString().padStart(6, '0')}"
     }
 
-    private const val CHUNK = 256 * 1024
     private const val PROGRESS_EVERY = 200
 }

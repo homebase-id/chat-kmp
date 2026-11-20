@@ -52,7 +52,7 @@ Full reads of the file per operation, with the code that ships. Header reads (du
 | Operation | Android | iOS | Desktop | Web |
 |---|---|---|---|---|
 | Before compressing a pick | 0 from the media library (read in place); **1** for any other picked or shared file (copied to the cache) | **1** from the Photos library (copied out first); 0 for a file | 0 | 0 |
-| Compress | **1** of the source (Media3) | **1** of the source (AVFoundation) | **1** (ffmpeg) | **1** (ffmpeg.wasm) |
+| Compress | **1** of the source (Media3), or **1** to remux one that already meets the setting (THUMBNAILS.md, "Video") | **1** of the source (AVFoundation), or **1** to remux | **1** (ffmpeg), or **1** to remux | **1** (ffmpeg.wasm) |
 | HLS, compressed 5 MB or more | **1** of the compressed file: cut, encrypt and both payload hashes in one pass | **1**, as Android (our segmenter) | **1** (ffmpeg cuts and encrypts; no payload hash) | **1** (as desktop) |
 | Plain MP4, under 5 MB | **1** of the compressed file: encrypt and hash in one pass | **1** | **1** | **1** |
 | **A whole send** | **2** (3 for a non-media pick) | **2** (3 from the Photos library) | **2** | **2** |
