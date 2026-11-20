@@ -410,6 +410,14 @@ Still to measure, same three 48 MP photos:
 | iPhone 15, release framework, guard 100 MP | | |
 | 4 GB iPhone, release framework, guard 100 MP | | |
 
+One photo at a time, from `MediaBenchmarks` (iPhone 15 Plus, release framework, 2026-11-20, footprint peak;
+before `ce6f4e731`, after `836763240`; full lines on #2566). Generated 8000×6000 photos, no gain map:
+- **HD:** JPEG 1443 → 1286 ms and 1021 → 1112 MB; HEIC 1302 → 1395 ms and 820 → 1273 MB.
+- **Standard:** it decodes in full too (8000 → 2048 is under 4×). JPEG 590 → 1007 MB, HEIC 651 → 1222 MB, about 190 ms
+  slower.
+
+A single 48 MP photo peaks at about 1.0–1.4 GB. The three-at-once rows above are still to measure.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
