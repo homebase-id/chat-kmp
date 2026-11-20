@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.net.toUri
 import id.homebase.api.ActivityProvider
+import id.homebase.imageresize.NativeResize
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -32,8 +33,8 @@ internal class MmrVideoDecoder : VideoDecoder {
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireApplicationContext()
             when (val s = videoPath.toAndroidVideoSource()) {
-                is AndroidVideoSource.ContentUri -> tryForUri(context, s.uriString)
-                is AndroidVideoSource.Path -> tryForPath(s.path)
+                is AndroidVideoSource.ContentUri -> tryForUri(context, s.uriString, fullSize)
+                is AndroidVideoSource.Path -> tryForPath(s.path, fullSize)
             }
         }
 
@@ -105,13 +106,11 @@ internal class MmrVideoDecoder : VideoDecoder {
         }
     }.flowOn(Dispatchers.IO)
 
-    private fun tryForUri(context: android.content.Context, contentUri: String): ByteArray? {
+    private fun tryForUri(context: android.content.Context, contentUri: String, fullSize: Boolean): ByteArray? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, contentUri.toUri())
-            retriever.frameAtZero()?.let {
-                it.toJpegBytes(VideoThumbnailQuality.POSTER_JPEG_QUALITY_0_TO_100).also { _ -> it.recycle() }
-            }
+            retriever.posterJpeg(fullSize)
         } catch (e: Exception) {
             Log.d(TAG, "MMR(uri) failed for $contentUri: ${e.message}")
             null
@@ -120,15 +119,13 @@ internal class MmrVideoDecoder : VideoDecoder {
         }
     }
 
-    private fun tryForPath(filePath: String): ByteArray? {
+    private fun tryForPath(filePath: String, fullSize: Boolean): ByteArray? {
         val file = File(filePath)
         if (!file.exists()) return null
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(filePath)
-            retriever.frameAtZero()?.let {
-                it.toJpegBytes(VideoThumbnailQuality.POSTER_JPEG_QUALITY_0_TO_100).also { _ -> it.recycle() }
-            }
+            retriever.posterJpeg(fullSize)
         } catch (e: Exception) {
             Log.d(TAG, "MMR(path) failed for $filePath: ${e.message}")
             null
@@ -137,8 +134,36 @@ internal class MmrVideoDecoder : VideoDecoder {
         }
     }
 
+    private fun MediaMetadataRetriever.posterJpeg(fullSize: Boolean): ByteArray? {
+        val quality = VideoThumbnailQuality.posterJpegQuality0To100(fullSize)
+        val frame = frameAtZero() ?: return null
+        val poster = if (fullSize) frame.shrunkForUpload() else frame
+        return poster.toJpegBytes(quality).also { poster.recycle() }
+    }
+
     private fun MediaMetadataRetriever.frameAtZero(): Bitmap? =
         getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+
+    // getScaledFrameAtTime builds the full-size Bitmap too, then scales it bilinearly, so Lanczos here instead.
+    private fun Bitmap.shrunkForUpload(): Bitmap {
+        val longEdge = maxOf(width, height)
+        val target = VideoThumbnailQuality.fullPosterLongEdge(width, height)
+        if (target >= longEdge) return this
+        val out = Bitmap.createBitmap(
+            (width.toLong() * target / longEdge).toInt().coerceAtLeast(1),
+            (height.toLong() * target / longEdge).toInt().coerceAtLeast(1),
+            Bitmap.Config.ARGB_8888,
+        )
+        try {
+            NativeResize.lanczos(if (config == Bitmap.Config.ARGB_8888) this else copy(Bitmap.Config.ARGB_8888, false), out)
+        } catch (e: Throwable) {
+            out.recycle()
+            throw e
+        } finally {
+            recycle()
+        }
+        return out
+    }
 
     private fun Bitmap.toJpegBytes(quality: Int): ByteArray {
         val out = ByteArrayOutputStream()

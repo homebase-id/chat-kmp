@@ -117,7 +117,7 @@ For a before/after comparison, copy the bench into a worktree of the base commit
 
 `MediaBenchmarks` (homebase-api nativeMain), run from Xcode by `iosAppTests/MediaBenchmarkTests`, takes the iPhone's
 share of MEDIA_BENCHMARKS.md:
-- BLAKE3 (iOS runs the Kotlin port);
+- BLAKE3 (homebase-blake3's C, as on Android; the Kotlin port only if it fails its self-check);
 - the image pipeline on generated 12 and 48 MP JPEG and HEIC photos at Standard, HD and Original, as Android's
   `ImagePipelinePerfBench`;
 - for each file in the app's `Documents/bench`: a whole send of a video at Standard and HD, every shrink step of a
@@ -125,7 +125,7 @@ share of MEDIA_BENCHMARKS.md:
 
 Each line comes out as `measured: …`. The test is skipped unless `MEDIA_BENCH=1`. Use the release Kotlin framework
 (`iosApp Dev`'s default; don't pass `KOTLIN_FRAMEWORK_BUILD_TYPE=debug`), because an unoptimised build is several
-times slower at the Kotlin parts: BLAKE3, segmenting and the GIF codec.
+times slower at the Kotlin parts: segmenting and the GIF codec.
 
 ```bash
 # Once, so the app and its container exist: build and run iosApp on the iPhone from Xcode.
@@ -388,7 +388,7 @@ HD and every smaller output were unchanged. Cost, `ImagePipelinePerfBench`, medi
 
 Everything else (12 MP JPEG and HEIC, 48 MP HEIC, 48 MP JPEG at HD) was within noise. The highest
 peak in any case stays 231 MB (48 MP at HD), so a 48 MP JPEG now costs what a 48 MP HEIC always did.
-Over 24 MP the iOS memory guard still lets ImageIO halve (#2365). On an iPhone 15 (6 GB, iOS's 3072 MB
+The iOS memory guard was at 24 MP, which let ImageIO halve and, at HD, shrink 1.43× (#2365). On an iPhone 15 (6 GB, iOS's 3072 MB
 per-app limit, debug Kotlin framework, peaks from Xcode's memory gauge, so about ±300 MB), three 48 MP photos
 from the gallery strip:
 
@@ -400,7 +400,15 @@ from the gallery strip:
 
 The 2.75 GB, and a run with a 100 MP guard that got killed at the limit, were the gallery strip and the
 editor decoding each picture at full size for the screen (#2553), not the send. So full decodes look
-affordable on a 6 GB iPhone; #2365 decides the guard, with a 4 GB iPhone measured too.
+affordable on a 6 GB iPhone, and the guard is now 100 MP (#2365): a fixed pixel count rather than
+`os_proc_available_memory()`, so a photo's images don't depend on what else the phone is doing.
+
+Still to measure, same three 48 MP photos:
+
+| Build | Standard | HD |
+|---|---|---|
+| iPhone 15, release framework, guard 100 MP | | |
+| 4 GB iPhone, release framework, guard 100 MP | | |
 
 ## Findings
 

@@ -1,5 +1,6 @@
 package id.homebase.api.crypto
 
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -78,6 +79,19 @@ class IncrementalHasherTest {
             val data = input(v.length)
             for (piece in listOf(Int.MAX_VALUE, 1, 7, 64, 1024, 1025)) {
                 assertEquals(v.blake3, hashInPieces(Blake3Hasher(), data, piece), "length ${v.length}, piece $piece")
+            }
+        }
+    }
+
+    @Test
+    fun blake3HashesAsTheKotlinPortAcrossBlockChunkAndTreeBoundaries() {
+        val random = Random(2431)
+        for (length in listOf(0, 1, 63, 64, 65, 1023, 1024, 1025, 2048, 3072, 4096, 16 * 1024 + 7, 1024 * 1024 + 3)) {
+            val data = random.nextBytes(length)
+            val kotlin = PortableBlake3().apply { update(data) }.digest().toHexString()
+            for (piece in listOf(1, 7, 64, 1000, 64 * 1024, maxOf(1, length))) {
+                if (piece == 1 && length > 4096) continue
+                assertEquals(kotlin, hashInPieces(Blake3Hasher(), data, piece), "length $length, pieces of $piece")
             }
         }
     }

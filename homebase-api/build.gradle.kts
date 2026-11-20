@@ -126,6 +126,9 @@ kotlin {
             baseName = "homebase-api"
             isStatic = true
         }
+        iosTarget.compilations.getByName("main").cinterops.create("blake3") {
+            includeDirs(rootProject.file("homebase-blake3/src/main/cpp/blake3"))
+        }
     }
 
     // sqliter's sqlite3 symbols come from SQLCipher, never the system libsqlite3: the app gets
@@ -213,6 +216,10 @@ kotlin {
         val kotlinResamplerMain = create("kotlinResamplerMain") { dependsOn(skiaMain) }
         jvmMain.get().dependsOn(kotlinResamplerMain)
         wasmJsMain.get().dependsOn(kotlinResamplerMain)
+        // Android and iOS hash BLAKE3 with homebase-blake3's C; desktop and web with the Kotlin port.
+        val kotlinBlake3Main = create("kotlinBlake3Main") { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(kotlinBlake3Main)
+        wasmJsMain.get().dependsOn(kotlinBlake3Main)
 
         // ffmpeg is on desktop and web only; Android and iOS compress with the platform's own media APIs.
         val ffmpegMain = create("ffmpegMain") { dependsOn(commonMain.get()) }

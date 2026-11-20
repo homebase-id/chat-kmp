@@ -1,13 +1,26 @@
 package id.homebase.api.crypto
 
+import co.touchlab.kermit.Logger
+
 /**
  * BLAKE3, plain hashing mode with the default 32-byte output. Every platform uses this one class; where the
- * platform has a native BLAKE3 (Android) it runs that, else [PortableBlake3]. The output is the same either way.
+ * platform has a native BLAKE3 (Android and iOS, both homebase-blake3's C) it runs that, else [PortableBlake3].
+ * The output is the same either way.
  */
 class Blake3Hasher : IncrementalHasher by (platformBlake3Hasher() ?: PortableBlake3())
 
-/** Null where only [PortableBlake3] runs. */
+/** Null where only [PortableBlake3] runs, or where the native one failed [hashesAsThePort]. */
 internal expect fun platformBlake3Hasher(): IncrementalHasher?
+
+// A wrong hash fails every upload, and CI never runs Android's native code, so it must agree before it's used.
+internal fun hashesAsThePort(native: () -> IncrementalHasher): Boolean {
+    // Across BLAKE3's 1024-byte chunk boundary and its first tree merge.
+    val probe = ByteArray(2048 + 7) { (it % 251).toByte() }
+    val agrees = native().apply { update(probe, 3, probe.size - 3) }.digest()
+        .contentEquals(PortableBlake3().apply { update(probe, 3, probe.size - 3) }.digest())
+    if (!agrees) Logger.e(tag = "Blake3") { "native BLAKE3 disagrees with the Kotlin port; hashing in Kotlin" }
+    return agrees
+}
 
 /** BLAKE3 in Kotlin, ported from the official `reference_impl`. */
 internal class PortableBlake3 : IncrementalHasher {

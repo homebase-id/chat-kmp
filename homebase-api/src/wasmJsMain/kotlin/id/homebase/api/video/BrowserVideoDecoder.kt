@@ -32,7 +32,8 @@ internal class BrowserVideoDecoder : VideoDecoder {
     override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
         val handle = VideoUrlHandle.resolve(videoPath) ?: return null
         return try {
-            val out = extractPosterFrameJs(handle.url).await<JsString>().toString()
+            val quality = VideoThumbnailQuality.posterJpegQuality0To1(fullSize)
+            val out = extractPosterFrameJs(handle.url, fullSize, quality).await<JsString>().toString()
             if (out.isBlank()) null else Base64.decode(out)
         } finally {
             handle.release()
@@ -130,7 +131,8 @@ private fun revokeObjectUrlJs(url: String): Unit = js("{ URL.revokeObjectURL(url
  * Loads [url] into a hidden `<video>`, seeks slightly past 0, and returns the first frame as
  * base64 JPEG (or `""` on any failure). Does NOT revoke [url] — the caller owns its lifetime.
  */
-private fun extractPosterFrameJs(url: String): Promise<JsString> = js(
+// The long edge mirrors VideoThumbnailQuality.fullPosterLongEdge (4096, or 2160 on the short edge).
+private fun extractPosterFrameJs(url: String, fullSize: Boolean, quality: Double): Promise<JsString> = js(
     """{
         return new Promise(function (resolve) {
             var done = false;
@@ -150,10 +152,17 @@ private fun extractPosterFrameJs(url: String): Promise<JsString> = js(
                     try {
                         var w = video.videoWidth, h = video.videoHeight;
                         if (!w || !h) { finish(''); return; }
+                        if (fullSize) {
+                            var scale = Math.min(1, Math.max(4096 / Math.max(w, h), 2160 / Math.min(w, h)));
+                            w = Math.round(w * scale);
+                            h = Math.round(h * scale);
+                        }
                         var canvas = document.createElement('canvas');
                         canvas.width = w;
                         canvas.height = h;
-                        canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+                        var ctx = canvas.getContext('2d');
+                        ctx.imageSmoothingQuality = 'high';
+                        ctx.drawImage(video, 0, 0, w, h);
                         canvas.toBlob(function (blob) {
                             if (!blob) { finish(''); return; }
                             blob.arrayBuffer().then(function (buf) {
@@ -165,8 +174,7 @@ private fun extractPosterFrameJs(url: String): Promise<JsString> = js(
                                 }
                                 finish(btoa(s));
                             }, function () { finish(''); });
-                        // Quality literal must mirror VideoThumbnailQuality.POSTER_JPEG_QUALITY_0_TO_1.
-                        }, 'image/jpeg', 0.75);
+                        }, 'image/jpeg', quality);
                     } catch (e) { finish(''); }
                 }
 

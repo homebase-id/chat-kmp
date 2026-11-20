@@ -76,15 +76,14 @@ actual object FFmpegUtils {
      * because those are the two platforms whose thumbnail decoder is ffmpeg-backed. ffmpeg
      * low-level must never call back up into the `VideoSomething` services.
      */
-    suspend fun grabThumbnail(inputPath: String): String? =
+    suspend fun grabThumbnail(inputPath: String, fullSize: Boolean = false): String? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
                 Logger.w(tag = LOG_TAG) { "FFmpeg binaries not available for this platform" }
                 return@withContext null
             }
 
-            val uniqueId = getUniqueId(inputPath)
-            val outputPath = "${scratchDirPath}/thumb_$uniqueId.jpg"
+            val outputPath = "${scratchDirPath}/thumb_${UUID.randomUUID()}.jpg"
 
             val command =
                 listOf(
@@ -96,6 +95,10 @@ actual object FFmpegUtils {
                     "00:00:01.000",
                     "-vframes",
                     "1",
+                    "-vf",
+                    VideoThumbnailQuality.POSTER_FFMPEG_SCALE_FILTER,
+                    "-q:v",
+                    VideoThumbnailQuality.posterFfmpegQscale(fullSize).toString(),
                     outputPath
                 )
 
