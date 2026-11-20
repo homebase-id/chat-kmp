@@ -36,7 +36,11 @@ fun processFootprintBytes(): Long = memScoped {
 }
 
 /** [block]'s result, and how far the footprint rose above where it started while [block] ran (sampled every ms). */
-suspend fun <T> peakFootprintGrowth(block: suspend () -> T): Pair<T, Long> = coroutineScope {
+suspend fun <T> peakFootprintGrowth(block: suspend () -> T): Pair<T, Long> =
+    footprintDuring(block).let { (value, start, peak) -> value to peak - start }
+
+/** [block]'s result, the footprint it started from and the highest it reached while [block] ran (sampled every ms). */
+suspend fun <T> footprintDuring(block: suspend () -> T): Triple<T, Long, Long> = coroutineScope {
     GC.collect()
     val base = processFootprintBytes()
     var peak = base
@@ -48,5 +52,5 @@ suspend fun <T> peakFootprintGrowth(block: suspend () -> T): Pair<T, Long> = cor
     }
     val value = try { block() } finally { sampler.cancelAndJoin() }
     peak = maxOf(peak, processFootprintBytes())
-    value to peak - base
+    Triple(value, base, peak)
 }

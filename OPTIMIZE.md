@@ -113,20 +113,35 @@ adb shell cat /sdcard/Android/data/id.homebase.api.test/cache/image-bench.txt
 
 For a before/after comparison, copy the bench into a worktree of the base commit and run both APKs back to back, letting the phone cool in between.
 
-### Real photos on iOS
+### Media on an iPhone
 
-`IphonePhotoBench` (homebase-api nativeTest) renders a folder of real photos from their files at Standard, HD and
-Original, as the app does, and writes the time and peak physical-footprint growth of each to
-`results-<label>.md` in that folder. It's skipped unless pointed at a folder, so CI only compiles it. On a Mac, with
-the photos copied as original HEIC files:
+`MediaBenchmarks` (homebase-api nativeMain), run from Xcode by `iosAppTests/MediaBenchmarkTests`, takes the iPhone's
+share of MEDIA_BENCHMARKS.md:
+- BLAKE3 (iOS runs the Kotlin port);
+- the image pipeline on generated 12 and 48 MP JPEG and HEIC photos at Standard, HD and Original, as Android's
+  `ImagePipelinePerfBench`;
+- for each file in the app's `Documents/bench`: a whole send of a video at Standard and HD, every shrink step of a
+  GIF, and the image pipeline on a real photo.
+
+Each line comes out as `measured: …`. The test is skipped unless `MEDIA_BENCH=1`. Use the release Kotlin framework
+(`iosApp Dev`'s default; don't pass `KOTLIN_FRAMEWORK_BUILD_TYPE=debug`), because an unoptimised build is several
+times slower at the Kotlin parts: BLAKE3, segmenting and the GIF codec.
 
 ```bash
-./gradlew --stop
-SIMCTL_CHILD_IMAGE_BENCH_DIR="$HOME/image-bench" SIMCTL_CHILD_IMAGE_BENCH_LABEL=as-is \
-  ./gradlew :homebase-api:iosSimulatorArm64Test --tests 'id.homebase.api.image.IphonePhotoBench' --rerun
+# Once, so the app and its container exist: build and run iosApp on the iPhone from Xcode.
+xcrun devicectl list devices
+for f in ~/media-bench/*; do
+  xcrun devicectl device copy to --device <device id> --domain-type appDataContainer \
+    --domain-identifier id.homebase.feed.dev --source "$f" --destination "Documents/bench/$(basename "$f")"
+done
+TEST_RUNNER_MEDIA_BENCH=1 xcodebuild test -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
+  -destination 'id=<device UDID>' -only-testing:iosAppTests/MediaBenchmarkTests | grep 'measured:'
 ```
 
-The simulator's memory isn't an iPhone's limit; confirm on a device that the app isn't killed.
+The inputs are MEDIA_BENCHMARKS.md's (its "Inputs" table has the ffmpeg commands), `homebase-api/src/nativeTest/test_videos`, and
+the iPhone's own camera videos, GIFs and photos. Plug in, keep the screen on and let the phone cool between runs: each
+line ends with iOS's thermal state (0 is nominal). On the simulator (`TEST_RUNNER_MEDIA_BENCH_DIR` names a folder on
+the Mac), the numbers only prove the bench runs.
 
 ## Baselines
 

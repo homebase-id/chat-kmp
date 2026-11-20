@@ -81,5 +81,6 @@ callable com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConf
 
 // On-device checks the app-hosted tests run (iosAppTests)
 function id.homebase.core.diagnostics.PhotoLibraryChecks.runChecks
-callable id.homebase.core.diagnostics.CheckReport.*
+callable id.homebase.api.diagnostics.CheckReport.*
 function id.homebase.core.diagnostics.DisplayDecodeChecks.runChecks
+function id.homebase.api.diagnostics.MediaBenchmarks.runBenchmarks
