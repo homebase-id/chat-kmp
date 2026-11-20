@@ -229,6 +229,17 @@ A stand-in for the 7 MB GIF: 800×450, 300 frames, 9.6 MB (`ffmpeg -stream_loop 
 | Desktop JVM | 384 px, 64 colours, 12 fps | 0.96–1.24 s | **0.41–0.43 s** |
 | iOS simulator, K/N **debug** | 512 px, 128 colours | 7.6–8.1 s | — |
 
+On an iPhone 15 Plus (iOS 27.0.1, release framework, two runs per step, `MediaBenchmarks`). Before is `ce6f4e731`, after is `7f6ea150f`, with the Pixel 5's times for scale:
+
+| Step | iPhone before | iPhone after | Pixel 5 |
+|---|---|---|---|
+| 512 px, 128 colours | 16.0–17.0 s | **8.0–8.3 s** | 8.5–8.9 s |
+| 384 px, 128 colours | 12.4–12.5 s | **6.0–6.1 s** | 5.9–6.2 s |
+| 384 px, 64 colours, 12 fps | 8.9–9.0 s | **4.5 s** | 3.5–5.9 s |
+
+- **The run:** the after run was at thermal state 2, the before run at 1. Output sizes are the same.
+- **The gap:** the phone is still about 10× slower than the simulator for the same release build, so code generation alone doesn't explain it. It's still to profile on the phone.
+
 - **Where the time went** (the `sample` profiler on the release binary; single-thread stage timings for 300 frames): decoding about 55% of the CPU, and it's serial, twice per step (palette, then encode): 430 ms a pass on both runtimes, 300 ms of it LZW. Area scaling about 28% (790 ms on one thread). LZW encoding about 8%. The four-frame scaling and mapping does run on four threads on Kotlin/Native (GCD's default-QoS pool).
 - **What changed, in common Kotlin:** LZW decoding copies each table entry's string from where it was first written in the frame, instead of walking its prefix chain one dependent load per pixel (300 → 110 ms on the JVM, 135 ms on K/N), into one buffer reused across frames. Frames draw through a 256-entry colour table with the clipping worked out per row. The scaler sums each output pixel in locals from flat span arrays, not boxed `Span` objects and four `LongArray` rows (790 → 550 ms on one thread).
 - **What this doesn't explain:** release Kotlin/Native runs this codec at the JVM's speed on the simulator, so Kotlin/Native's code generation alone doesn't account for the 1.6–2.4× gap the iPhone 15 showed. An unoptimised framework is 6× slower here, about the size of the iPhone's gap to desktop. To do: profile `MediaBenchmarks` on an iPhone with Instruments, release framework, and fill in the iPhone rows above again.
