@@ -27,6 +27,10 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 | **HDR phone video, compressed** | The above after Media3 at Standard: 27 MB, 720p H.264 | `benchmarkSegmenting` makes it |
 | **Stand-in** | 27 MB, 83 s, 720×1280 H.264 at 2.5 Mbps with AAC; shaped like the above, so no one's video is needed | `ffmpeg -f lavfi -i testsrc2=size=720x1280:rate=30 -f lavfi -i sine=frequency=440:sample_rate=48000 -t 83 -c:v libx264 -preset veryfast -g 30 -b:v 2500k -maxrate 2500k -bufsize 5M -c:a aac -b:a 192k -movflags +faststart stand_in_720p.mp4` |
 | **Synthetic 1080p, 83 s** | 210 MB, 1080×1920 H.264 at 20 Mbps with AAC | as the stand-in, with `size=1080x1920`, `-b:v 20M -maxrate 20M -bufsize 40M` |
+| **iPhone HDR clip** | 21 MB, 12.7 s, 1080p HEVC HLG (HDR) from an iPhone's camera. Someone's own video, never checked in | — |
+| **iPhone SDR clip** | 138 MB, 65 s, 1080p HEVC SDR from an iPhone's camera. Someone's own video, never checked in | — |
+| **iPhone HEVC capture** | 36 MB iPhone HEVC capture (`homebase-api/src/nativeTest/test_videos/iphone_hevc.mov`) | — |
+| **iPhone spatial capture** | 13 MB, 4K HEVC with spatial audio (`iphone_spatial.mov`, same folder) | — |
 | **Synthetic 1080p, 10 s** | 25 MB, the same settings for 10 s; compresses to under 5 MB, so it's sent as an MP4, not HLS | as above, with `-t 10` |
 
 ## Devices
@@ -36,6 +40,10 @@ How fast we resize images, compress and segment video, and hash, per device, so 
 | Pixel 8 | 17 | Tensor G3 | `c2.exynos.*` hardware; AAC `c2.android.*` software |
 | Pixel 5 | 14 | Snapdragon 765G | Qualcomm hardware; AAC `c2.android.*` software. Also runs 32-bit apps |
 | Galaxy S23+ | 17 | Snapdragon 8 Gen 2 | |
+
+| Device | iOS | Chip | Video codecs |
+|---|---|---|---|
+| iPhone 15 (iPhone15,4) | 27.2.1 | A16 Bionic | VideoToolbox hardware encoder via AVFoundation |
 
 ## How many times a file is read
 
@@ -66,6 +74,24 @@ Full reads of the file per operation, with the code that ships. Header reads (du
 | Pixel 5 | Synthetic 1080p, 83 s | HD | HLS, 53.8 MB (ffmpeg 53.5 MB) | **26.8–27.3 s**: compress 25.8–26.2 s, HLS 0.96–1.06 s | 70.9–71.0 s: compress 69.3 s, HLS 1.6–1.7 s | 2026-11-16 |
 | Pixel 8 | Synthetic 1080p, 83 s | Standard | HLS, 27.9 MB (ffmpeg 27.4 MB) | **15.8–17.4 s**: compress 14.9–16.4 s, HLS 0.92–0.96 s | 41.5–41.9 s: compress 40.3 s, HLS 1.1–1.6 s | 2026-11-16 |
 | Pixel 8 | Synthetic 1080p, 83 s | HD | HLS, 53.8 MB (ffmpeg 53.5 MB) | **16.8–17.5 s**: compress 15.2–15.8 s, HLS 1.6–1.7 s | 65.6–68.2 s: compress 63.4–65.9 s, HLS 2.2–2.3 s | 2026-11-16 |
+| iPhone 15 | Synthetic 1080p, 10 s | Standard | MP4, 3.3 MB | **0.98–0.99 s**: compress 0.89–0.90 s, encrypt and hash 0.09 s | — | 2026-11-20 |
+| iPhone 15 | Synthetic 1080p, 10 s | HD | HLS, 6.4 MB | **2.0 s**: compress 1.70–1.71 s, HLS 0.29–0.30 s | — | 2026-11-20 |
+| iPhone 15 | Synthetic 1080p, 83 s | Standard | HLS, 27.4 MB | **7.85 s**: compress 7.03–7.04 s, HLS 0.81–0.82 s | — | 2026-11-20 |
+| iPhone 15 | Synthetic 1080p, 83 s | HD | HLS, 53.2 MB | **15.2 s**: compress 13.70 s, HLS 1.47–1.49 s | — | 2026-11-20 |
+| iPhone 15 | Stand-in | Standard | HLS, 27.4 MB (no shrink) | **7.77–7.79 s**: compress 6.95–6.96 s, HLS 0.82–0.83 s | — | 2026-11-20 |
+| iPhone 15 | Stand-in | HD | HLS, 24.6 MB | **7.66–7.73 s**: compress 6.93–6.95 s, HLS 0.73–0.77 s | — | 2026-11-20 |
+| iPhone 15 | iPhone HDR clip, 12.7 s | Standard | MP4, 4.4 MB | **4.62–4.80 s**: compress 4.50–4.68 s, encrypt and hash 0.12 s | — | 2026-11-20 |
+| iPhone 15 | iPhone HDR clip, 12.7 s | HD | HLS, 8.4 MB | **6.06–6.08 s**: compress 5.72–5.74 s, HLS 0.34 s | — | 2026-11-20 |
+| iPhone 15 | iPhone SDR clip, 65 s | Standard | HLS, 21.9 MB | **12.95–12.96 s**: compress 12.25–12.27 s, HLS 0.69–0.71 s | — | 2026-11-20 |
+| iPhone 15 | iPhone SDR clip, 65 s | HD | HLS, 42.2 MB | **22.66–22.67 s**: compress 21.43–21.44 s, HLS 1.23 s | — | 2026-11-20 |
+| iPhone 15 | iPhone HEVC capture, 36 MB | Standard | MP4, 5.2 MB | **5.42–5.52 s**: compress 5.27–5.37 s, encrypt and hash 0.15 s | — | 2026-11-20 |
+| iPhone 15 | iPhone HEVC capture, 36 MB | HD | HLS, 10.1 MB | **7.02–7.11 s**: compress 6.64–6.73 s, HLS 0.38 s | — | 2026-11-20 |
+| iPhone 15 | iPhone spatial capture, 13 MB | Standard | MP4, 0.8 MB | **0.74–0.83 s**: compress 0.71–0.81 s, encrypt and hash 0.03 s | — | 2026-11-20 |
+| iPhone 15 | iPhone spatial capture, 13 MB | HD | MP4, 1.6 MB | **0.85–0.87 s**: compress 0.77–0.79 s, encrypt and hash 0.07–0.08 s | — | 2026-11-20 |
+
+The iPhone 15 rows are AVFoundation's reader and writer with our segmenter (release Kotlin framework, two runs per setting, each pair within 1 s), measured with `MediaBenchmarks` on the phone; iOS no longer has ffmpeg, so there is no comparison column. The thermal state was 0 for 21 of 82 lines, 1 for 61 and never 2; the phone reaches 1 within a run even from cool. Compress memory (footprint peak) stays at 140–157 MB (+1 to +5 MB over idle) for every input, from 13 MB to 210 MB. Standard's 10 s clip lands on 3.3 MB, 2.6 Mbps, the target.
+
+**Unexplained: the stand-in compresses to the same size at Standard (27430 kB, sent as HLS) as the input (27 MB, 2.5 Mbps 720p), and HD (24566 kB) is smaller than Standard, in both runs.** Standard doesn't shrink it and HD is not larger. Not yet looked into; the 1080p inputs behave (HD is twice Standard).
 
 Compressing is almost all of a send. Our MP4 encrypt also takes both payload hashes: 0.14–0.27 s against ffmpeg's plain 0.12–0.17 s, and 0.40 s on a process's first send, which also loads the native BLAKE3 and checks it.
 
@@ -177,14 +203,21 @@ Ours is a little smaller because it keeps parameter sets in the index rather tha
 | Pixel 5 | video, 360×640, 120 frames, 2.8 MB | 512 px, 128 colours | **2.7–2.9 s** | 4.8–8.7 s | **1.27** / 1.55 MB | 2026-11-16 |
 | Pixel 5 | sticker, 480×480, 120 frames, 1.7 MB | 384 px, 128 colours | **2.7–3.3 s** | 3.7–3.8 s | **1.12** / 1.33 MB | 2026-11-16 |
 | Pixel 5 | the same | 480 px (no scaling), 128 colours | 2.4–2.6 s | **1.1–1.2 s** | 1.47 / 1.48 MB | 2026-11-16 |
+| iPhone 15 | 800×450, 300 frames, 7 MB | 512 px, 128 colours | 13.9–15.1 s | — | 2.78 / — MB | 2026-11-20 |
+| iPhone 15 | the same | 384 px, 128 colours | 11.8–12.6 s | — | 1.73 / — MB | 2026-11-20 |
+| iPhone 15 | the same | 384 px, 64 colours, 12 fps | 8.4–8.5 s | — | 0.61 / — MB | 2026-11-20 |
+| iPhone 15 | sticker, 320×320, 30 frames, 262 kB | 320 px (no scaling), 128 colours | 0.33–0.34 s | — | 0.23 / — MB | 2026-11-20 |
+| iPhone 15 | the same | 320 px, 64 colours, 12 fps | 0.29–0.30 s | — | 0.15 / — MB | 2026-11-20 |
 | Desktop JVM | 800×450, 300 frames | 512 px, 128 colours | **1.40–1.51 s** | 2.05 s (285 MB peak) | **2.79** / 3.32 MB | 2026-11-16 |
 | Desktop JVM | sticker 480×480 | 480 px (no scaling) | 0.51–0.56 s | **0.36–0.41 s** | 1.47 / 1.48 MB | 2026-11-16 |
+
+The iPhone 15 rows are the release Kotlin framework (`MediaBenchmarks`, two runs per step, four for the sticker's first step); the 800×450 GIF takes about 10× the desktop JVM's time at the same step. Output sizes match the Android and desktop ones.
 
 Where the time goes without scaling, desktop: decoding 85 ms (done twice: palette, then encode), mapping colours 60–90 ms on one core, changed rectangles and LZW 317 ms.
 
 ## iOS compression: AVFoundation
 
-**Not yet measured on an iPhone**; to do, with the inputs above, against ffmpeg in git history before 2026-11-19. Until then, these are the same AVFoundation calls run by a Swift prototype on a MacBook (Apple silicon, macOS), so they show the shape, not the phone's times.
+The iPhone 15 times and sizes are in the end-to-end table above (2026-11-20). Not yet compared against ffmpeg on the phone, which is in git history before 2026-11-19. The rows below are the same AVFoundation calls run by a Swift prototype on a MacBook (Apple silicon, macOS): they show export session against reader/writer, which the phone run didn't repeat, and not the phone's times.
 
 | Input | Setting | Export session (any size preset) | Reader/writer, as shipped | Measured |
 |---|---|---|---|---|
@@ -205,6 +238,7 @@ The FFmpegKit frameworks embedded in the app were 16.4 MB of arm64 binaries (18.
 | Pixel 5, 32-bit app | native C, NEON | **603 MB/s** | 36 MB/s | 2026-11-16 |
 | Pixel 8 | native C, NEON | **924 MB/s** | 52 MB/s | 2026-11-16 |
 | Desktop JVM | Kotlin port | 141 MB/s | — | 2026-11-16 |
+| iPhone 15, release framework | Kotlin port | 43–45 MB/s over 256 MB | — | 2026-11-20 |
 
 For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed with `adb install --abi armeabi-v7a`.
 
@@ -242,18 +276,31 @@ The Pixel 5 row's Android SDR figure, measured before 2026-11-17, is left out: `
 
 `ImagePipelinePerfBench`: `createMediaImages` on generated 12 MP (4000×3000) and 48 MP (8000×6000) photos, and the bare Lanczos step. Median of 3, with peak native memory. OPTIMIZE.md, "Image pipeline on an Android phone", says how to run it; with `run-as`, the results are in the test app's `cache/image-bench.txt`.
 
-| Case | Pixel 5 (2026-11-16) | Pixel 8 (2026-11-12) | S23+ (2026-11-11) | Peak native, Pixel 5 |
+| Case | Pixel 5 (2026-11-16) | Pixel 8 (2026-11-12) | S23+ (2026-11-11) | Peak native, Pixel 5 | iPhone 15 (2026-11-20) | Peak footprint growth, iPhone 15 |
+|---|---|---|---|---|---|---|
+| 12 MP JPEG, Standard | 866 ms | 771 ms | 592 ms | +58 MB | 320 ms | +138 MB |
+| 12 MP JPEG, HD | 2935 ms | 2437 ms | 1965 ms | +85 MB | 1274 ms | +136 MB |
+| 12 MP HEIC, Standard | 1691 ms | 1813 ms | 975 ms | +58 MB | 325 ms | +99 MB |
+| 12 MP HEIC, HD | 3718 ms | 3306 ms | 2388 ms | +87 MB | 1226 ms | +96 MB |
+| 48 MP JPEG, Standard | 1080 ms | 1001 ms | 719 ms | +58 MB | 378 ms | +149 MB |
+| 48 MP JPEG, HD | 3386 ms | 2852 ms | 2397 ms | +231 MB | 1542 ms | +424 MB |
+| 48 MP HEIC, Standard | 3279 ms | 4562 ms | 1695 ms | +241 MB | 400 ms | +110 MB |
+| 48 MP HEIC, HD | 5690 ms | 6353 ms | 3180 ms | +231 MB | 1277 ms | +287 MB |
+| Lanczos 4000×3000 → 2048×1536 | 596 ms | 203 ms | 99 ms | +12 MB | — | — |
+| Lanczos 2048×1536 → 1080×810 | 31 ms | 101 ms | 37 ms | +3 MB | — | — |
+
+The iPhone 15 columns: `MediaBenchmarks`, release Kotlin framework, median of 3, with the first run's growth of the app's memory footprint (Android's column is native memory only, so they don't compare exactly). Generated photos; the 48 MP rows ran at thermal 1. At Original, 12 MP took 327 ms (JPEG) and 370 ms (HEIC), 48 MP 402 ms and 413 ms, each +135–149 MB.
+
+**Real photos on the iPhone 15** (the owner's, HEIC unless noted; median of 3, thermal 1):
+
+| Photo | Standard | HD | Original | Peak footprint growth, Standard / HD |
 |---|---|---|---|---|
-| 12 MP JPEG, Standard | 866 ms | 771 ms | 592 ms | +58 MB |
-| 12 MP JPEG, HD | 2935 ms | 2437 ms | 1965 ms | +85 MB |
-| 12 MP HEIC, Standard | 1691 ms | 1813 ms | 975 ms | +58 MB |
-| 12 MP HEIC, HD | 3718 ms | 3306 ms | 2388 ms | +87 MB |
-| 48 MP JPEG, Standard | 1080 ms | 1001 ms | 719 ms | +58 MB |
-| 48 MP JPEG, HD | 3386 ms | 2852 ms | 2397 ms | +231 MB |
-| 48 MP HEIC, Standard | 3279 ms | 4562 ms | 1695 ms | +241 MB |
-| 48 MP HEIC, HD | 5690 ms | 6353 ms | 3180 ms | +231 MB |
-| Lanczos 4000×3000 → 2048×1536 | 596 ms | 203 ms | 99 ms | +12 MB |
-| Lanczos 2048×1536 → 1080×810 | 31 ms | 101 ms | 37 ms | +3 MB |
+| 8 MP JPEG (2160×3840) | 233 ms | 792 ms | 250 ms | +0 / +89 MB |
+| 12 MP (3024×4032), 5 photos | 285–452 ms | 942–1560 ms | 303–485 ms | +22–135 / +94 MB |
+| 24 MP (4284×5712), 1 photo | 328 ms | 1292 ms | 350 ms | +75 / +251 MB |
+| 48 MP (6048×8064), 3 photos | 381–394 ms | 1429–1503 ms | 407–419 ms | +93–132 / +281–282 MB |
+
+No night shot or panorama was measured. Display, from `DisplayDecodeCheckTests` (2026-11-20, run 1): a full-size decode of a 48 MP JPEG peaks at **+563 MB**; a 480 px thumbnail shown from a 48 MP photo is **+6 MB** (JPEG), **+7 MB** (HEIC) and **+1 MB** (PNG).
 
 The Pixel 8 and S23+ columns are from #2364 and OPTIMIZE.md. The 48 MP HEIC fixture is about 3–4× a real camera HEIC, which inflates its decode. #2364 also has real Pixel photos: about 1.1 s at Standard, 2.8 s at HD and 1.1 s at Original for 9 MP.
 
