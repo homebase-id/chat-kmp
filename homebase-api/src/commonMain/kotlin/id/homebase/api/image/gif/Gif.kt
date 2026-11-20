@@ -127,6 +127,7 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
 
     inner class Frames {
         private val canvas = IntArray(width * height)
+        private val pixels = ByteArray(width * height)
         private var index = 0
         private var dispose: (() -> Unit)? = null
 
@@ -134,7 +135,7 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
             val image = images[index++]
             dispose?.invoke()
             val saved = if (image.disposal == 3) canvas.copyOf() else null
-            image.draw(canvas)
+            image.draw(canvas, pixels)
             dispose = when (image.disposal) {
                 2 -> { { image.clear(canvas) } }
                 3 -> { { saved!!.copyInto(canvas) } }
@@ -149,9 +150,14 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
         val colors: IntArray, val transparent: Int, val disposal: Int, val delayCs: Int,
         val interlaced: Boolean, val dataStart: Int,
     ) {
-        fun draw(canvas: IntArray) {
+        private val lut = IntArray(256) { if (it < colors.size) colors[it] else 0 }
+
+        fun draw(canvas: IntArray, pixels: ByteArray) {
             // A short frame leaves the rest of its rectangle as it was, as browsers and ffmpeg do.
-            val pixels = lzwDecode(b, dataStart, w * h) ?: return
+            val decoded = lzwDecode(b, dataStart, w * h, pixels)
+            if (decoded == 0) return
+            val firstX = max(0, -left)
+            val endX = min(w, width - left)
             var row = 0
             for (pass in if (interlaced) INTERLACE else NO_INTERLACE) {
                 var y = pass.first
@@ -159,12 +165,11 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
                     val cy = top + y
                     if (cy in 0 until height) {
                         val from = row * w
-                        if (from >= pixels.size) return
-                        for (x in 0 until min(w, pixels.size - from)) {
-                            val cx = left + x
+                        if (from >= decoded) return
+                        val at = cy * width + left
+                        for (x in firstX until min(endX, decoded - from)) {
                             val p = pixels[from + x].toInt() and 0xFF
-                            if (p == transparent || cx !in 0 until width) continue
-                            canvas[cy * width + cx] = if (p < colors.size) colors[p] else 0
+                            if (p != transparent) canvas[at + x] = lut[p]
                         }
                     }
                     row++
@@ -257,9 +262,9 @@ internal class GifDecoder private constructor(private val b: ByteArray) {
     }
 }
 
-/** GIF's variable-length LZW, from the sub-blocks at [from] (the min code size byte); null on bad data. */
-private fun lzwDecode(b: ByteArray, from: Int, pixels: Int): ByteArray? =
-    if (from >= b.size || (b[from].toInt() and 0xFF) !in 1..11) null else LzwDecoder(b, from + 1, b[from].toInt() and 0xFF).decode(pixels)
+/** GIF's variable-length LZW, from the sub-blocks at [from] (the min code size byte), into [out]: how many pixels it decoded. */
+private fun lzwDecode(b: ByteArray, from: Int, pixels: Int, out: ByteArray): Int =
+    if (from >= b.size || (b[from].toInt() and 0xFF) !in 1..11) 0 else LzwDecoder(b, from + 1, b[from].toInt() and 0xFF).decode(pixels, out)
 
 // Fields, not captured locals: Kotlin boxes a local var a nested function changes, and that costs per byte on Android.
 private class LzwDecoder(private val b: ByteArray, private var block: Int, private val minCodeSize: Int) {
@@ -279,23 +284,30 @@ private class LzwDecoder(private val b: ByteArray, private var block: Int, priva
         return b[block++].toInt() and 0xFF
     }
 
-    fun decode(pixels: Int): ByteArray? {
+    fun decode(pixels: Int, out: ByteArray): Int {
         val clear = 1 shl minCodeSize
         val end = clear + 1
         val prefix = ShortArray(4096)
         val suffix = ByteArray(4096)
+        val length = ShortArray(4096)
+        val startAt = IntArray(4096)
         val stack = ByteArray(4097)
-        for (k in 0 until clear) suffix[k] = k.toByte()
-        val out = ByteArray(pixels)
+        for (k in 0 until clear) {
+            suffix[k] = k.toByte()
+            length[k] = 1
+        }
         var outAt = 0
         var codeSize = minCodeSize + 1
         var next = end + 1
         var old = -1
         var first = 0
+        var oldAt = 0
+        // Strings are copied from where they were first written in out; a code past next forces the stack walk until clear.
+        var malformed = false
         while (outAt < pixels) {
             while (bits < codeSize) {
                 val v = byte()
-                if (v < 0) return out.takeIf { outAt > 0 }?.copyOf(outAt)
+                if (v < 0) return outAt
                 acc = acc or (v shl bits)
                 bits += 8
             }
@@ -306,53 +318,66 @@ private class LzwDecoder(private val b: ByteArray, private var block: Int, priva
                 codeSize = minCodeSize + 1
                 next = end + 1
                 old = -1
+                malformed = false
                 continue
             }
-            if (code == end) return out.copyOf(outAt)
+            if (code == end) return outAt
             if (old == -1) {
-                if (code >= clear) return out.takeIf { outAt > 0 }?.copyOf(outAt)
+                if (code >= clear) return outAt
+                oldAt = outAt
                 out[outAt++] = code.toByte()
                 old = code
                 first = code
                 continue
             }
-            var top = 0
-            var c = code
-            if (code >= next) {
+            val codeAt = outAt
+            if (code > next) malformed = true
+            val repeatsFirst = code >= next
+            var c = if (repeatsFirst) old else code
+            if (malformed) {
+                var top = 0
+                if (repeatsFirst) stack[top++] = first.toByte()
+                while (c >= clear) {
+                    if (c >= 4096 || top >= 4096) return outAt
+                    stack[top++] = suffix[c]
+                    c = prefix[c].toInt()
+                }
+                first = suffix[c].toInt() and 0xFF
                 stack[top++] = first.toByte()
-                c = old
+                while (top > 0 && outAt < pixels) out[outAt++] = stack[--top]
+            } else {
+                if (c < clear) {
+                    out[outAt++] = c.toByte()
+                } else {
+                    val n = min(length[c].toInt(), pixels - outAt)
+                    out.copyInto(out, outAt, startAt[c], startAt[c] + n)
+                    outAt += n
+                }
+                first = out[codeAt].toInt() and 0xFF
+                if (repeatsFirst && outAt < pixels) out[outAt++] = first.toByte()
             }
-            while (c >= clear) {
-                if (c >= 4096 || top >= 4096) return out.takeIf { outAt > 0 }?.copyOf(outAt)
-                stack[top++] = suffix[c]
-                c = prefix[c].toInt()
-            }
-            first = suffix[c].toInt() and 0xFF
-            stack[top++] = first.toByte()
-            while (top > 0 && outAt < pixels) out[outAt++] = stack[--top]
             if (next < 4096) {
                 prefix[next] = old.toShort()
                 suffix[next] = first.toByte()
+                length[next] = (length[old] + 1).toShort()
+                startAt[next] = oldAt
                 next++
                 if (next == (1 shl codeSize) && codeSize < 12) codeSize++
             }
             old = code
+            oldAt = codeAt
         }
-        return out
+        return outAt
     }
 }
 
 /**
  * Area-average downscale of ARGB canvases where alpha is 0 or 255: a pixel is opaque when most of its area is.
- * In integers (coverage in 1/256ths), one output row at a time, so it holds a row of sums, not a frame.
+ * In integers (coverage in 1/256ths), one output pixel at a time.
  */
 internal class Scaler(private val sw: Int, private val sh: Int, private val dw: Int, private val dh: Int) {
-    private val xs = spans(sw, dw)
-    private val ys = spans(sh, dh)
-    private val r = LongArray(dw)
-    private val g = LongArray(dw)
-    private val b = LongArray(dw)
-    private val a = LongArray(dw)
+    private val xs = Spans(sw, dw)
+    private val ys = Spans(sh, dh)
     // Opaque when covered by at least half the output pixel's area, in 1/256ths squared.
     private val half = (sw.toLong() * sh * 256 * 256) / (2L * dw * dh)
 
@@ -360,45 +385,64 @@ internal class Scaler(private val sw: Int, private val sh: Int, private val dw: 
     fun scale(src: IntArray): IntArray {
         if (sw == dw && sh == dh) return src
         val out = IntArray(dw * dh)
+        val xFirst = xs.first
+        val xStart = xs.start
+        val xWeights = xs.weights
+        val yWeights = ys.weights
         for (oy in 0 until dh) {
-            r.fill(0); g.fill(0); b.fill(0); a.fill(0)
-            val yspan = ys[oy]
-            for (ky in yspan.weights.indices) {
-                val wy = yspan.weights[ky]
-                val from = (yspan.first + ky) * sw
-                for (ox in 0 until dw) {
-                    val span = xs[ox]
-                    for (k in span.weights.indices) {
-                        val p = src[from + span.first + k]
-                        if (p ushr 24 == 0) continue
-                        val w = (wy * span.weights[k]).toLong()
-                        r[ox] += w * ((p shr 16) and 0xFF)
-                        g[ox] += w * ((p shr 8) and 0xFF)
-                        b[ox] += w * (p and 0xFF)
-                        a[ox] += w
-                    }
-                }
-            }
+            val yFrom = ys.start[oy]
+            val yTo = ys.start[oy + 1]
+            val firstRow = ys.first[oy] * sw
             for (ox in 0 until dw) {
-                val area = a[ox]
-                if (area < half || area == 0L) continue
-                out[oy * dw + ox] = (0xFF shl 24) or (((r[ox] + area / 2) / area).toInt() shl 16) or
-                    (((g[ox] + area / 2) / area).toInt() shl 8) or ((b[ox] + area / 2) / area).toInt()
+                val xFrom = xStart[ox]
+                val xCount = xStart[ox + 1] - xFrom
+                var r = 0L
+                var g = 0L
+                var b = 0L
+                var a = 0L
+                var row = firstRow + xFirst[ox]
+                for (ky in yFrom until yTo) {
+                    val wy = yWeights[ky]
+                    for (k in 0 until xCount) {
+                        val p = src[row + k]
+                        if (p ushr 24 == 0) continue
+                        val w = (wy * xWeights[xFrom + k]).toLong()
+                        r += w * ((p shr 16) and 0xFF)
+                        g += w * ((p shr 8) and 0xFF)
+                        b += w * (p and 0xFF)
+                        a += w
+                    }
+                    row += sw
+                }
+                if (a < half || a == 0L) continue
+                out[oy * dw + ox] = (0xFF shl 24) or (((r + a / 2) / a).toInt() shl 16) or
+                    (((g + a / 2) / a).toInt() shl 8) or ((b + a / 2) / a).toInt()
             }
         }
         return out
     }
 }
 
-/** The source pixels one output pixel covers along an axis, and how much of each in 1/256ths of a pixel. */
-private class Span(val first: Int, val weights: IntArray)
+/** The source pixels output pixel o covers along an axis: from [first] o, weighted in 1/256ths by [weights] [start] o until [start] o+1. */
+private class Spans(source: Int, target: Int) {
+    val first = IntArray(target)
+    val start = IntArray(target + 1)
+    val weights: IntArray
 
-private fun spans(source: Int, target: Int): Array<Span> = Array(target) { o ->
-    val start = o * source.toDouble() / target
-    val end = (o + 1) * source.toDouble() / target
-    val first = start.toInt()
-    val last = min(source - 1, kotlin.math.ceil(end).toInt() - 1)
-    Span(first, IntArray(last - first + 1) { k -> ((min(end, first + k + 1.0) - max(start, (first + k).toDouble())) * 256).roundToInt() })
+    init {
+        fun from(o: Int) = o * source.toDouble() / target
+        for (o in 0 until target) {
+            first[o] = from(o).toInt()
+            start[o + 1] = start[o] + min(source - 1, kotlin.math.ceil(from(o + 1)).toInt() - 1) - first[o] + 1
+        }
+        weights = IntArray(start[target])
+        for (o in 0 until target) {
+            val f = first[o]
+            for (k in 0 until start[o + 1] - start[o]) {
+                weights[start[o] + k] = ((min(from(o + 1), f + k + 1.0) - max(from(o), (f + k).toDouble())) * 256).roundToInt()
+            }
+        }
+    }
 }
 
 /**

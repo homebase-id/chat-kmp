@@ -22,6 +22,7 @@ import kotlin.time.TimeSource
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
@@ -31,19 +32,23 @@ import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.creationDate
 import platform.AVFoundation.dateValue
+import platform.CoreFoundation.CFDataGetBytePtr
+import platform.CoreFoundation.CFDataGetLength
+import platform.CoreFoundation.CFRelease
 import platform.CoreGraphics.CGColorSpaceUsesITUR_2100TF
+import platform.CoreGraphics.CGDataProviderCopyData
+import platform.CoreGraphics.CGImageGetDataProvider
 import platform.CoreGraphics.CGImageGetColorSpace
 import platform.CoreGraphics.CGImageRelease
 import platform.CoreGraphics.CGSizeMake
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSData
 import platform.Foundation.NSError
-import platform.Foundation.NSURL
 import platform.Foundation.NSFileManager
 import platform.Foundation.create
 import platform.UIKit.UIImage
@@ -114,6 +119,7 @@ class IosVideoCompressorTest {
             "portrait_1080p.mp4" to ImageSize(1080, 1920),
             "iphone_hevc.mov" to ImageSize(1080, 1920),
             "iphone_spatial.mov" to ImageSize(2160, 3840),
+            "hdr10_720p_short.mp4" to ImageSize(720, 1280),
         )
         val failures = mutableListOf<String>()
         for ((name, size) in upright) {
@@ -134,12 +140,45 @@ class IosVideoCompressorTest {
         assertTrue(failures.isEmpty(), failures.joinToString("\n"))
     }
 
+    @Test
+    fun aTrimStripHasEveryFrameUprightForSdrAndPqHdr() = runBlocking<Unit> {
+        for (name in listOf("portrait_1080p.mp4", "hdr10_720p_short.mp4")) {
+            val frames = VideoThumbnailService.extractThumbnailStrip(clip(name), IosVideoProber.getDurationMs(clip(name)), 4, 96).toList()
+            assertEquals(4, frames.size, "$name: strip frames")
+            for (frame in frames) {
+                val size = assertNotNull(ImageHeaderParser.parse(frame.jpegBytes), name)
+                assertTrue(size.pixelHeight == 96 && size.pixelWidth < 96, "$name: a strip frame is $size")
+            }
+        }
+    }
+
+    // White video from 0.5 s to 2.5 s, audio to 3.5 s: the composition draws black where there's no picture.
+    @Test
+    fun postersAndStripsComeFromTheVideosPicturesWhenItStartsLateAndEndsEarly() = runBlocking<Unit> {
+        val name = "late_video_long_audio.mp4"
+        val poster = assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name), fullSize = true), "no poster")
+        assertTrue(brightness(poster) > 200, "the poster is ${brightness(poster)}, not the white picture")
+        val frames = VideoThumbnailService.extractThumbnailStrip(clip(name), IosVideoProber.getDurationMs(clip(name)), 4, 96).toList()
+        assertEquals((0 until 4).toList(), frames.map { it.index }.sorted(), "strip slots")
+        for (frame in frames) assertTrue(brightness(frame.jpegBytes) > 200, "strip frame ${frame.index} is ${brightness(frame.jpegBytes)}")
+    }
+
+    @OptIn(BetaInteropApi::class)
+    private fun brightness(jpeg: ByteArray): Int = jpeg.usePinned {
+        val image = checkNotNull(UIImage.imageWithData(NSData.create(bytes = it.addressOf(0), length = jpeg.size.toULong()))?.CGImage)
+        val data = CGDataProviderCopyData(CGImageGetDataProvider(image))
+        try {
+            val bytes = checkNotNull(CFDataGetBytePtr(data))
+            val length = CFDataGetLength(data).toInt()
+            (0 until length).sumOf { i -> bytes[i].toInt() } / length
+        } finally {
+            CFRelease(data)
+        }
+    }
+
     // What AVFoundation says when a poster comes back empty: the decoder's asynchronous call drops its error.
     private fun posterError(name: String, fullSize: Boolean): String = memScoped {
-        val generator = AVAssetImageGenerator(AVURLAsset.URLAssetWithURL(NSURL.fileURLWithPath(clip(name)), null))
-        generator.setAppliesPreferredTrackTransform(true)
-        generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
-        generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
+        val generator = sdrGenerator(clip(name))?.first ?: return "no video track"
         val maxPx = if (fullSize) VideoThumbnailQuality.FULL_POSTER_LONG_EDGE_PX.toDouble() else 640.0
         generator.setMaximumSize(CGSizeMake(maxPx, maxPx))
         val error = alloc<ObjCObjectVar<NSError?>>()

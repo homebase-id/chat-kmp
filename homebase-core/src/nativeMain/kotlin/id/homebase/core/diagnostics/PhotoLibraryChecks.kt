@@ -8,6 +8,7 @@ import id.homebase.api.diagnostics.launchChecks
 import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.file.withResolvedFile
+import id.homebase.api.foundation.toByteArray
 import id.homebase.core.image.CG_BGRA_PREMUL_BITMAP_INFO
 import id.homebase.photobase.backup.BackupMediaType
 import id.homebase.photobase.backup.IosDeviceChangeSource
@@ -34,6 +35,7 @@ import platform.Photos.PHAdjustmentData
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetChangeRequest
 import platform.Photos.PHAssetCreationRequest
+import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceTypePhoto
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusNotDetermined
@@ -79,7 +81,7 @@ object PhotoLibraryChecks {
 
         verify("a picked photo resolves to its original bytes, and the copy is deleted") {
             val copy = fileOps.withResolvedFile("ph://$plainId") { path ->
-                require(NSData.dataWithContentsOfFile(path)?.isEqualToData(original) == true) { "the copy at $path isn't the original's bytes" }
+                requireOriginal(path, original, plainId, "the copy at $path")
                 path
             }
             require(!NSFileManager.defaultManager.fileExistsAtPath(copy)) { "the copy at $copy is still there" }
@@ -97,7 +99,7 @@ object PhotoLibraryChecks {
         verify("Photos backup exports the original's bytes") {
             val part = backup.export(plainId, BackupMediaType.Image).parts.single()
             try {
-                require(NSData.dataWithContentsOfFile(part.path)?.isEqualToData(original) == true) { "the export isn't the original's bytes" }
+                requireOriginal(part.path, original, plainId, "the export")
                 require(part.contentType == "image/jpeg") { "exported as ${part.contentType}" }
             } finally {
                 fileOps.deleteTempFile(part.path)
@@ -114,6 +116,26 @@ object PhotoLibraryChecks {
         }
     }
 
+    // Says how a copy differs, so a failure on a phone shows the cause: a different resource, a re-encode or a short write.
+    private fun requireOriginal(path: String, original: NSData, assetId: String, what: String) {
+        val copy = NSData.dataWithContentsOfFile(path)
+        if (copy?.isEqualToData(original) == true) return
+        val difference = copy?.toByteArray()?.let { bytes ->
+            val expected = original.toByteArray()
+            val firstDifferent = bytes.indices.firstOrNull { it >= expected.size || bytes[it] != expected[it] } ?: bytes.size
+            "${bytes.size} B against the original's ${expected.size} B, first different at byte $firstDifferent"
+        } ?: "unreadable"
+        throw IllegalArgumentException("$what isn't the original's bytes: $difference; the asset's resources: ${resources(assetId)}")
+    }
+
+    private fun resources(assetId: String): String {
+        val asset = asset(assetId) ?: return "the asset is gone"
+        return PHAssetResource.assetResourcesForAsset(asset).filterIsInstance<PHAssetResource>()
+            .joinToString(prefix = "[", postfix = "]") { "type ${it.type} ${it.uniformTypeIdentifier} ${it.originalFilename}" }
+    }
+
+    private fun asset(id: String) = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(id), null).firstObject as? PHAsset
+
     private suspend fun addPhoto(data: NSData): String {
         var id: String? = null
         performChanges {
@@ -125,7 +147,7 @@ object PhotoLibraryChecks {
     }
 
     private suspend fun edit(id: String, rendered: NSData) {
-        val asset = checkNotNull(PHAsset.fetchAssetsWithLocalIdentifiers(listOf(id), null).firstObject as? PHAsset) { "photo $id not found" }
+        val asset = checkNotNull(asset(id)) { "photo $id not found" }
         val input = suspendCancellableCoroutine<PHContentEditingInput> { continuation ->
             asset.requestContentEditingInputWithOptions(null) { input, _ ->
                 if (input != null) continuation.resume(input) else continuation.resumeWithException(IllegalStateException("no editing input for $id"))
