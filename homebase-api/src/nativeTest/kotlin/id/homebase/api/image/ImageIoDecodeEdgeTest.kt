@@ -13,7 +13,8 @@ class ImageIoDecodeEdgeTest {
 
     @Test
     fun imageIoHalvesWhereTheOutputIsAQuarterOfThePhotoOrLess() {
-        assertEquals(4096, imageIoDecodeEdge(ImageSize(8064, 6048), 2048))
+        assertEquals(2160, imageIoDecodeEdge(ImageSize(8064, 6048), 1080))
+        assertEquals(8064, imageIoDecodeEdge(ImageSize(8064, 6048), 2048))
     }
 
     @Test
