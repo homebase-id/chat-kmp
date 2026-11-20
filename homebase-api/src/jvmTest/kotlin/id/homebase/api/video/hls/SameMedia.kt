@@ -9,6 +9,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+/** The test resource `/hls/[name]`, copied into [dir]. */
+internal fun hlsFixture(dir: File, name: String): File =
+    File(dir, name).apply { Mp4Movie::class.java.getResourceAsStream("/hls/$name")!!.use { i -> outputStream().use { i.copyTo(it) } } }
+
 /**
  * [out] holds [source]'s own media: the index after the samples, every sample byte for byte with its timing and key flag,
  * and, with an ffmpeg on the machine, the same decoded frames, audio packets and A/V offset.

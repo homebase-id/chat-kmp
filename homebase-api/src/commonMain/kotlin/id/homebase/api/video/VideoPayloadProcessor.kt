@@ -152,14 +152,10 @@ class VideoPayloadProcessor(
         // WholePercentProgressGate.
         val compressGate = WholePercentProgressGate().also { it.admit(0f) }
         // Read by Kotlin, so not a web blob: handle, whose bytes stay in JS.
-        val asIs = if (payload.stripMetadata && trimStartMs == null && trimEndMs == null && ffmpegInputPath == payload.filePath) {
-            remuxIfAlreadyMet(payload.filePath, videoQuality)
-        } else {
-            null
-        }
+        val mayGoAsIs = payload.stripMetadata && trimStartMs == null && trimEndMs == null && ffmpegInputPath == payload.filePath
         val (compressedPath, compressElapsed) =
             measureTimedValue {
-                asIs ?: compressor.compress(
+                (if (mayGoAsIs) asIsIfAlreadyMet(payload.filePath, inputSize, videoQuality) else null) ?: compressor.compress(
                     inputPath = ffmpegInputPath,
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
@@ -209,24 +205,29 @@ class VideoPayloadProcessor(
         }
     }
 
-    /** A remuxed copy of [path] when it already meets [quality] (THUMBNAILS.md, "Video"), else null: transcode it. */
+    /**
+     * [path] itself, or a remuxed copy of it, when it already meets [quality] (THUMBNAILS.md, "Video"); null when it has
+     * to be transcoded.
+     */
     @OptIn(ExperimentalUuidApi::class)
-    private suspend fun remuxIfAlreadyMet(path: String, quality: VideoQuality): String? {
+    private suspend fun asIsIfAlreadyMet(path: String, size: Long, quality: VideoQuality): String? {
         var output: String? = null
         return try {
-            val isHdr = probe.probeVideo(path)?.isHdr
-            if (isHdr != false) return null
+            val info = probe.probeVideo(path) ?: return null
+            if (!mightMeetWithoutTranscode(info, quality)) return null
             val movie = readMoov(fileOperationsProvider, path)?.let(Mp4Movie::parse) ?: return null
-            if (!meetsWithoutTranscode(movie, isHdr, quality)) return null
+            if (!meetsWithoutTranscode(movie, quality)) return null
+            Logger.i(tag = "VideoProcessing") { "already meets $quality: sent as it is, without a transcode" }
+            // HLS segments carry no metadata, so a video big enough to be segmented needs no stripped copy.
+            if (size >= HLS_MIN_BYTES) return path
             output = "${fileOperationsProvider.scratchDir(AppCacheDirs.MEDIA_WORK)}/remuxed_${Uuid.random()}.mp4"
             Mp4Remux.remux(fileOperationsProvider, path, movie, output)
-            Logger.i(tag = "VideoProcessing") { "already meets $quality: sent as it is, remuxed without its metadata" }
             output
         } catch (e: CancellationException) {
             output?.let(fileOperationsProvider::deleteTempFile)
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = "VideoProcessing", throwable = e) { "remux failed; transcoding instead" }
+            Logger.w(tag = "VideoProcessing", throwable = e) { "sending as it is failed; transcoding instead" }
             output?.let(fileOperationsProvider::deleteTempFile)
             null
         }

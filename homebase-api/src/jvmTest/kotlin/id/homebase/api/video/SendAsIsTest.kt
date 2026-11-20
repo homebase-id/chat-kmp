@@ -6,12 +6,12 @@ import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.video.hls.Mp4Movie
 import id.homebase.api.video.hls.Mp4Sample
 import id.homebase.api.video.hls.Mp4Track
+import id.homebase.api.video.hls.hlsFixture
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import okio.FileSystem
@@ -24,59 +24,53 @@ import org.junit.Test
 class SendAsIsTest {
     private val cache = Files.createTempDirectory("sendasis").toFile()
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath)
-    private val source = File(cache, "moov_first.mp4").apply {
-        SendAsIsTest::class.java.getResourceAsStream("/hls/moov_first.mp4")!!.use { i -> outputStream().use { i.copyTo(it) } }
-    }
+    private val source = hlsFixture(cache, "moov_first.mp4")
 
     private suspend fun movie() = assertNotNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, source.absolutePath))))
 
+    private fun Mp4Movie.with(video: Mp4Track.Avc = this.video, audio: Mp4Track.Aac? = this.audio, samples: List<Mp4Sample> = this.samples) =
+        Mp4Movie(video, audio, samples, start90k, end90k)
+
     @Test
     fun aSmallSdrH264WithAacLcMeetsEverySetting() = runTest {
-        for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) assertTrue(meetsWithoutTranscode(movie(), isHdr = false, quality), "$quality")
+        for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) assertTrue(meetsWithoutTranscode(movie(), quality), "$quality")
     }
 
     @Test
-    fun hdrOrAProbeThatCantTellIsTranscoded() = runTest {
-        assertFalse(meetsWithoutTranscode(movie(), isHdr = true, VideoQuality.STANDARD))
-        assertFalse(meetsWithoutTranscode(movie(), isHdr = null, VideoQuality.STANDARD))
+    fun hdrAProbeThatCantTellOrALargerFrameIsNoCandidate() {
+        assertTrue(mightMeetWithoutTranscode(VideoTrackInfo("h264", 1280, 720, 8, isHdr = false), VideoQuality.STANDARD))
+        assertTrue(mightMeetWithoutTranscode(VideoTrackInfo("h264", 0, 0, 8, isHdr = false), VideoQuality.STANDARD), "size unknown: the moov decides")
+        assertFalse(mightMeetWithoutTranscode(VideoTrackInfo("h264", 1280, 720, 8, isHdr = true), VideoQuality.STANDARD))
+        assertFalse(mightMeetWithoutTranscode(VideoTrackInfo("h264", 1280, 720, 8, isHdr = null), VideoQuality.STANDARD))
+        assertFalse(mightMeetWithoutTranscode(VideoTrackInfo("h264", 1920, 1080, 8, isHdr = false), VideoQuality.STANDARD))
     }
 
     @Test
-    fun aBitrateOverTheSettingsTargetIsTranscoded() = runTest {
+    fun aBitrateOverWhatTheEncoderWouldAskForIsTranscoded() = runTest {
+        // About 50 kbps; a 320x180 transcode would ask for 156 kbps at Standard and 139 kbps at HD.
         val movie = movie()
-        // The same frames, each 60 times the size: about 3 Mbps, over Standard's 2.5 and under HD's 5.
-        val heavy = Mp4Movie(
-            movie.video, movie.audio,
-            movie.samples.map { if (it.track is Mp4Track.Avc) Mp4Sample(it.track, it.offset, it.size * 60, it.dts90k, it.pts90k, it.isKey) else it },
-            movie.start90k, movie.end90k,
-        )
-        assertFalse(meetsWithoutTranscode(heavy, isHdr = false, VideoQuality.STANDARD))
-        assertTrue(meetsWithoutTranscode(heavy, isHdr = false, VideoQuality.HIGH))
+        fun scaled(factor: Int) = movie.with(samples = movie.samples.map {
+            if (it.track is Mp4Track.Avc) Mp4Sample(it.track, it.offset, it.size * factor, it.dts90k, it.pts90k, it.isKey) else it
+        })
+        for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) {
+            assertTrue(meetsWithoutTranscode(scaled(2), quality), "$quality at about 100 kbps")
+            assertFalse(meetsWithoutTranscode(scaled(4), quality), "$quality at about 200 kbps")
+        }
     }
 
     @Test
     fun audioOtherThanStereoAacLcIsTranscoded() = runTest {
         val movie = movie()
         val aac = assertNotNull(movie.audio)
-        for (audio in listOf(Mp4Track.Aac(0, aac.sampleRateIndex, 1), Mp4Track.Aac(1, aac.sampleRateIndex, 6))) {
-            assertFalse(meetsWithoutTranscode(Mp4Movie(movie.video, audio, movie.samples, movie.start90k, movie.end90k), isHdr = false, VideoQuality.STANDARD))
-        }
-        assertTrue(meetsWithoutTranscode(Mp4Movie(movie.video, null, movie.samples, movie.start90k, movie.end90k), isHdr = false, VideoQuality.STANDARD), "no audio")
+        assertFalse(meetsWithoutTranscode(movie.with(audio = Mp4Track.Aac(0, aac.sampleRateIndex, 1)), VideoQuality.STANDARD), "AAC Main")
+        assertFalse(meetsWithoutTranscode(movie.with(audio = Mp4Track.Aac(1, aac.sampleRateIndex, 6)), VideoQuality.STANDARD), "5.1")
+        assertTrue(meetsWithoutTranscode(movie.with(audio = null), VideoQuality.STANDARD), "no audio")
     }
 
     @Test
     fun nalLengthsOtherThanFourBytesAreTranscoded() = runTest {
         val movie = movie()
-        val video = Mp4Track.Avc(2, movie.video.sps, movie.video.pps)
-        assertFalse(meetsWithoutTranscode(Mp4Movie(video, movie.audio, movie.samples, movie.start90k, movie.end90k), isHdr = false, VideoQuality.STANDARD))
-    }
-
-    @Test
-    fun aRotatedVideoIsNeverAMovieToSendAsIs() = runTest {
-        val rotated = File(cache, "rotated.mp4").apply {
-            SendAsIsTest::class.java.getResourceAsStream("/hls/rotated.mp4")!!.use { i -> outputStream().use { i.copyTo(it) } }
-        }
-        assertNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, rotated.absolutePath))))
+        assertFalse(meetsWithoutTranscode(movie.with(video = Mp4Track.Avc(2, movie.video.sps, movie.video.pps)), VideoQuality.STANDARD))
     }
 
     @Test

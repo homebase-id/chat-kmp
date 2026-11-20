@@ -23,7 +23,7 @@ class Mp4RemuxTest {
     fun aVideoWithItsIndexLastToo() = runTest { check("moov_last.mp4") }
 
     private suspend fun check(name: String) {
-        val source = File(cache, name).apply { Mp4RemuxTest::class.java.getResourceAsStream("/hls/$name")!!.use { i -> outputStream().use { i.copyTo(it) } } }
+        val source = hlsFixture(cache, name)
         val movie = assertNotNull(Mp4Movie.parse(assertNotNull(readMoov(fileOps, source.absolutePath))))
         val out = File(cache, "$name.out.mp4")
         Mp4Remux.remux(fileOps, source.absolutePath, movie, out.absolutePath)

@@ -4,14 +4,16 @@ import id.homebase.api.video.hls.Mp4Movie
 import id.homebase.api.video.hls.Mp4Track
 import id.homebase.api.video.hls.readSps
 
-/**
- * Whether [movie] already is what [quality]'s transcode would make (THUMBNAILS.md, "Video"), so it can be sent as it
- * is: 8-bit 4:2:0 SDR H.264 with 4-byte NAL lengths, AAC-LC in at most two channels or no audio, and within the
- * setting's short edge and video bitrate. [Mp4Movie] itself only holds an upright H.264 and AAC file. [isHdr] is the
- * probe's answer; one that can't tell counts as HDR.
- */
-internal fun meetsWithoutTranscode(movie: Mp4Movie, isHdr: Boolean?, quality: VideoQuality): Boolean {
-    if (isHdr != false || movie.video.nalLengthSize != 4) return false
+/** Whether the probe leaves [info] a candidate for [meetsWithoutTranscode]: not HDR, and no larger than the setting. A probe that can't tell counts as HDR. */
+internal fun mightMeetWithoutTranscode(info: VideoTrackInfo, quality: VideoQuality): Boolean {
+    if (info.isHdr != false) return false
+    val shortEdge = minOf(info.widthPx, info.heightPx)
+    return shortEdge == 0 || shortEdge <= quality.targets().shortEdgePx
+}
+
+/** Whether [movie] already is what [quality]'s transcode would make, so it can be sent as it is (THUMBNAILS.md, "Video"). */
+internal fun meetsWithoutTranscode(movie: Mp4Movie, quality: VideoQuality): Boolean {
+    if (movie.video.nalLengthSize != 4) return false
     val sps = movie.video.sps.firstOrNull()?.let(::readSps) ?: return false
     if (sps.bitDepthLuma != 8 || sps.bitDepthChroma != 8 || sps.chromaFormat != 1) return false
     val audio = movie.audio
@@ -21,7 +23,7 @@ internal fun meetsWithoutTranscode(movie: Mp4Movie, isHdr: Boolean?, quality: Vi
     val seconds = (movie.end90k - movie.start90k) / 90_000.0
     if (seconds <= 0) return false
     val videoBits = movie.samples.filter { it.track is Mp4Track.Avc }.sumOf { it.size.toLong() } * 8
-    return videoBits / seconds <= targets.videoBitrateBps
+    return videoBits / seconds <= targets.hardwareVideoBitrate(sps.width, sps.height, null)
 }
 
 // ADTS's profile field: the audio object type less one.

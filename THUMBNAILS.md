@@ -580,9 +580,9 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 - H.264, 8-bit 4:2:0, SDR (the probe must say SDR; a probe that can't tell counts as HDR);
 - AAC-LC with at most two channels, or no audio;
 - upright, with no rotation flag, and not trimmed;
-- its short edge at or below the setting's (720 or 1080), and its video bitrate at or below the setting's target (2.5 or 5 Mbps).
+- its short edge at or below the setting's (720 or 1080), and its video bitrate at or below what the setting's encoder would ask for it (`hardwareVideoBitrate`: 2.5 or 5 Mbps, less for a smaller frame).
 
-Its samples are then copied unchanged into a new MP4 with only the video and audio tracks (`Mp4Remux`, common code, every platform), so it carries no location, capture time or other metadata, and it goes on to HLS or a single MP4 by size, like a transcode. Anything else, or a remux that fails, is transcoded as before. Apps that keep metadata (Photos, Vault) always transcode, since the remux keeps none. HEVC, HDR and 10-bit never qualify, so what everyone plays stays H.264 SDR.
+Under 5 MB it goes as a single MP4: its samples are copied unchanged into a new MP4 with only the video and audio tracks (`Mp4Remux`, common code, every platform), so it carries no location, capture time or other metadata. At 5 MB or more it's segmented to HLS straight from the source, since the segments carry no metadata either. Anything else, or a remux that fails, is transcoded as before. Apps that keep metadata (Photos, Vault) always transcode, since the remux keeps none. HEVC, HDR and 10-bit never qualify, so what everyone plays stays H.264 SDR.
 
 **Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata, and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them. The library never decides; each app does.
 

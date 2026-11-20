@@ -2,7 +2,6 @@ package id.homebase.api.video.hls
 
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.ByteBuilder
-import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
 
 /**
@@ -28,44 +27,3 @@ internal object Mp4Remux {
         fileOps.overwrite(outputPath, SampleTable.MDAT_HEADER_AT, table.mdatHeader())
     }
 }
-
-/** Each of [samples], which are in file order, with its bytes, from one read of the file. */
-internal suspend fun FileOperationsProvider.readSamples(
-    path: String,
-    samples: List<Mp4Sample>,
-    readAhead: Int = 0,
-    onSample: suspend (index: Int, bytes: ByteArray) -> Unit,
-) {
-    var next = 0
-    var position = 0L
-    var pending: ByteArray? = null
-    var pendingFill = 0
-    val chunks = readFileAsFlow(path, READ_CHUNK).let { if (readAhead > 0) it.buffer(readAhead) else it }
-    chunks.collect { chunk ->
-        var at = 0
-        while (at < chunk.size && next < samples.size) {
-            val sample = samples[next]
-            if (pending == null) {
-                val skip = sample.offset - (position + at)
-                if (skip > 0) {
-                    at += minOf(skip, (chunk.size - at).toLong()).toInt()
-                    continue
-                }
-                pending = ByteArray(sample.size)
-                pendingFill = 0
-            }
-            val buffer = pending!!
-            val n = minOf(buffer.size - pendingFill, chunk.size - at)
-            chunk.copyInto(buffer, pendingFill, at, at + n)
-            pendingFill += n
-            at += n
-            if (pendingFill < buffer.size) continue
-            pending = null
-            onSample(next++, buffer)
-        }
-        position += chunk.size
-    }
-    check(next == samples.size) { "the file ended after $next of ${samples.size} samples" }
-}
-
-private const val READ_CHUNK = 256 * 1024
