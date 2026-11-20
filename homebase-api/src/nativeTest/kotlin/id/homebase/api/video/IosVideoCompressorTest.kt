@@ -20,6 +20,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.TimeSource
 import kotlinx.cinterop.BetaInteropApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
@@ -27,12 +32,18 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.creationDate
 import platform.AVFoundation.dateValue
 import platform.CoreGraphics.CGColorSpaceUsesITUR_2100TF
 import platform.CoreGraphics.CGImageGetColorSpace
+import platform.CoreGraphics.CGImageRelease
+import platform.CoreGraphics.CGSizeMake
+import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSData
+import platform.Foundation.NSError
+import platform.Foundation.NSURL
 import platform.Foundation.NSFileManager
 import platform.Foundation.create
 import platform.UIKit.UIImage
@@ -102,14 +113,39 @@ class IosVideoCompressorTest {
             "iphone_spatial.mov" to ImageSize(2160, 3840),
             "hdr10_720p_short.mp4" to ImageSize(1280, 720),
         )
+        val failures = mutableListOf<String>()
         for ((name, size) in upright) {
-            val full = assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name), fullSize = true), name)
-            assertEquals(size, ImageHeaderParser.parse(full), "$name: an upload's thumbnails are made from the full frame")
-            assertFalse(usesHdrTransfer(full), "$name: the poster is SDR")
-            val previewBytes = assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name)), name)
-            val preview = assertNotNull(ImageHeaderParser.parse(previewBytes), name)
-            val edge = maxOf(preview.pixelWidth, preview.pixelHeight)
-            assertTrue(edge >= 640 && edge < maxOf(size.pixelWidth, size.pixelHeight), "$name: a preview is $edge px")
+            val full = VideoThumbnailService.extractPosterFrame(clip(name), fullSize = true)
+            when {
+                full == null -> failures += "$name: no full-size poster (${posterError(name, fullSize = true)})"
+                ImageHeaderParser.parse(full) != size -> failures += "$name: full-size poster ${ImageHeaderParser.parse(full)}, the video is $size"
+                usesHdrTransfer(full) -> failures += "$name: the full-size poster isn't SDR"
+            }
+            val preview = VideoThumbnailService.extractPosterFrame(clip(name))?.let(ImageHeaderParser::parse)
+            val edge = preview?.let { maxOf(it.pixelWidth, it.pixelHeight) }
+            if (edge == null) {
+                failures += "$name: no preview (${posterError(name, fullSize = false)})"
+            } else if (edge < 640 || edge >= maxOf(size.pixelWidth, size.pixelHeight)) {
+                failures += "$name: a preview is $edge px"
+            }
+        }
+        assertTrue(failures.isEmpty(), failures.joinToString("\n"))
+    }
+
+    // What AVFoundation says when a poster comes back empty: the decoder's asynchronous call drops its error.
+    private fun posterError(name: String, fullSize: Boolean): String = memScoped {
+        val generator = AVAssetImageGenerator(AVURLAsset.URLAssetWithURL(NSURL.fileURLWithPath(clip(name)), null))
+        generator.setAppliesPreferredTrackTransform(true)
+        generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
+        generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
+        if (!fullSize) generator.setMaximumSize(CGSizeMake(640.0, 640.0))
+        val error = alloc<ObjCObjectVar<NSError?>>()
+        val image = generator.copyCGImageAtTime(CMTimeMake(100, 1000), null, error.ptr)
+        if (image != null) {
+            CGImageRelease(image)
+            "the synchronous call gave an image"
+        } else {
+            "${error.value?.domain} ${error.value?.code}: ${error.value?.localizedDescription}; ${error.value?.userInfo}"
         }
     }
 

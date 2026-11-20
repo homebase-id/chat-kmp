@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.foundation.toByteArray
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -40,7 +41,8 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         val target = NSValue.valueWithCMTime(CMTimeMake(POSTER_TARGET_MS, 1000))
 
         return suspendCancellableCoroutine { cont ->
-            generator.generateCGImagesAsynchronouslyForTimes(listOf(target)) { _, image, _, _, _ ->
+            generator.generateCGImagesAsynchronouslyForTimes(listOf(target)) { _, image, _, _, error ->
+                if (image == null) Logger.w(tag = TAG) { "no poster for $videoPath (fullSize=$fullSize): ${error?.localizedDescription}" }
                 val bytes = image?.let {
                     val ui = UIImage.imageWithCGImage(it)
                     UIImageJPEGRepresentation(ui, POSTER_JPEG_QUALITY)?.toByteArray()
@@ -100,6 +102,7 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
     }
 
     companion object {
+        private const val TAG = "AvFoundationVideoDecoder"
         private const val POSTER_MAX_PX = 640
         private const val POSTER_TARGET_MS = 100L
         private val POSTER_JPEG_QUALITY = VideoThumbnailQuality.POSTER_JPEG_QUALITY_0_TO_1
