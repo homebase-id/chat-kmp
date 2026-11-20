@@ -9,7 +9,7 @@ import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.api.foundation.toByteArray
-import id.homebase.api.image.ImageFormatDetector
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.image.MediaImages
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.createMediaImages
@@ -45,6 +45,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.thermalState
 import platform.UIKit.UIDevice
 import platform.posix.getenv
 import platform.posix.uname
@@ -184,7 +185,7 @@ object MediaBenchmarks {
         info.machine.toKString()
     }
 
-    private fun thermal() = "thermal ${NSProcessInfo.processInfo.thermalState}"
+    private fun thermal() = "thermal ${NSProcessInfo.processInfo.thermalState.value}"
 
     // Smooth gradients, hard-edged blocks and sensor-like noise, so the files compress like photos (as on Android).
     private fun photoLike(width: Int, height: Int): CGImageRef {
