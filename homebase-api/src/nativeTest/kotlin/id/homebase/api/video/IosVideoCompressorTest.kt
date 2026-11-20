@@ -5,6 +5,8 @@ package id.homebase.api.video
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.scratchDir
+import id.homebase.api.image.ImageHeaderParser
+import id.homebase.api.image.ImageSize
 import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.video.hls.HlsSegmenter
 import id.homebase.api.video.hls.Mp4Movie
@@ -17,19 +19,38 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.TimeSource
+import kotlinx.cinterop.BetaInteropApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.toKString
+import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.creationDate
 import platform.AVFoundation.dateValue
+import platform.CoreGraphics.CGColorSpaceUsesITUR_2100TF
+import platform.CoreGraphics.CGImageGetColorSpace
+import platform.CoreGraphics.CGImageRelease
+import platform.CoreGraphics.CGSizeMake
+import platform.CoreMedia.CMTimeMake
+import platform.Foundation.NSData
+import platform.Foundation.NSError
+import platform.Foundation.NSURL
 import platform.Foundation.NSFileManager
+import platform.Foundation.create
+import platform.UIKit.UIImage
 import platform.Foundation.timeIntervalSince1970
 import platform.posix.getenv
 
-/** [IosVideoCompressor] on the simulator's AVFoundation, with the clips Android's `Media3VideoCompressorTest` uses. */
+/** [IosVideoCompressor] and the poster decoder on the simulator's AVFoundation, with the clips Android's `Media3VideoCompressorTest` uses. */
 class IosVideoCompressorTest {
     private companion object {
         const val CAPTURED_AT = 1_767_323_045L // 2026-01-02T03:04:05Z, the fixture's capture time
@@ -81,6 +102,58 @@ class IosVideoCompressorTest {
             val segmented = assertNotNull(HlsSegmenter.segmentAndEncrypt(fileOps, out, KeyHeader.newRandom16()))
             fileOps.deleteTempFile(segmented.playlistPath.substringBeforeLast('/'))
         }
+    }
+
+    @Test
+    fun anUploadsPosterIsTheUprightSdrFrameAtTheVideosOwnSizeAndAPreviewIsSmaller() = runBlocking<Unit> {
+        // iphone_hevc.mov is an iPhone's HDR (HLG, 10-bit) capture, so its poster must come out SDR.
+        val upright = listOf(
+            "landscape_1080p_gps.mp4" to ImageSize(1920, 1080),
+            "portrait_1080p.mp4" to ImageSize(1080, 1920),
+            "iphone_hevc.mov" to ImageSize(1080, 1920),
+            "iphone_spatial.mov" to ImageSize(2160, 3840),
+        )
+        val failures = mutableListOf<String>()
+        for ((name, size) in upright) {
+            val full = VideoThumbnailService.extractPosterFrame(clip(name), fullSize = true)
+            when {
+                full == null -> failures += "$name: no full-size poster (${posterError(name, fullSize = true)})"
+                ImageHeaderParser.parse(full) != size -> failures += "$name: full-size poster ${ImageHeaderParser.parse(full)}, the video is $size"
+                usesHdrTransfer(full) -> failures += "$name: the full-size poster isn't SDR"
+            }
+            val preview = VideoThumbnailService.extractPosterFrame(clip(name))?.let(ImageHeaderParser::parse)
+            val edge = preview?.let { maxOf(it.pixelWidth, it.pixelHeight) }
+            if (edge == null) {
+                failures += "$name: no preview (${posterError(name, fullSize = false)})"
+            } else if (edge < 640 || edge >= maxOf(size.pixelWidth, size.pixelHeight)) {
+                failures += "$name: a preview is $edge px"
+            }
+        }
+        assertTrue(failures.isEmpty(), failures.joinToString("\n"))
+    }
+
+    // What AVFoundation says when a poster comes back empty: the decoder's asynchronous call drops its error.
+    private fun posterError(name: String, fullSize: Boolean): String = memScoped {
+        val generator = AVAssetImageGenerator(AVURLAsset.URLAssetWithURL(NSURL.fileURLWithPath(clip(name)), null))
+        generator.setAppliesPreferredTrackTransform(true)
+        generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
+        generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
+        if (!fullSize) generator.setMaximumSize(CGSizeMake(640.0, 640.0))
+        val error = alloc<ObjCObjectVar<NSError?>>()
+        val image = generator.copyCGImageAtTime(CMTimeMake(100, 1000), null, error.ptr)
+        if (image != null) {
+            CGImageRelease(image)
+            "the synchronous call gave an image"
+        } else {
+            "${error.value?.domain} ${error.value?.code}: ${error.value?.localizedDescription}; ${error.value?.userInfo}"
+        }
+    }
+
+    @OptIn(BetaInteropApi::class)
+    private fun usesHdrTransfer(jpeg: ByteArray): Boolean = jpeg.usePinned {
+        val data = NSData.create(bytes = it.addressOf(0), length = jpeg.size.toULong())
+        val image = checkNotNull(UIImage.imageWithData(data)?.CGImage) { "the poster isn't an image" }
+        CGColorSpaceUsesITUR_2100TF(CGImageGetColorSpace(image))
     }
 
     // Portrait 1080p and 4K HEVC from iPhones; the 4K one also has a spatial-audio track and metadata tracks.
