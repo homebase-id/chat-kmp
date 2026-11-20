@@ -39,9 +39,17 @@ private const val MAX_SAMPLES = 10_000_000
 
 /**
  * An H.264 + AAC MP4's samples in file order, from its moov alone. Null for anything else.
- * [start90k] is the first video frame's presentation time, [end90k] where the movie ends.
+ * [start90k] is the first video frame's presentation time, [end90k] where the movie ends. [trimmedByEdits] when an edit
+ * list shows less than a track holds: a player skips those samples, a copy of every sample wouldn't.
  */
-internal class Mp4Movie(val video: Mp4Track.Avc, val audio: Mp4Track.Aac?, val samples: List<Mp4Sample>, val start90k: Long, val end90k: Long) {
+internal class Mp4Movie(
+    val video: Mp4Track.Avc,
+    val audio: Mp4Track.Aac?,
+    val samples: List<Mp4Sample>,
+    val start90k: Long,
+    val end90k: Long,
+    val trimmedByEdits: Boolean = false,
+) {
     companion object {
         fun parse(moov: ByteArray): Mp4Movie? {
             val samples = mutableListOf<Mp4Sample>()
@@ -49,6 +57,7 @@ internal class Mp4Movie(val video: Mp4Track.Avc, val audio: Mp4Track.Aac?, val s
             var video: Mp4Track.Avc? = null
             var audio: Mp4Track.Aac? = null
             var start90k = 0L
+            var trimmed = false
             val boxes = mp4Boxes(moov, 0, moov.size)
             val mvhd = boxes.firstOrNull { it.type == "mvhd" } ?: return null
             val movieTimescale = if (moov[mvhd.start].toInt() == 1) u32(moov, mvhd.start + 20) else u32(moov, mvhd.start + 12)
@@ -67,13 +76,14 @@ internal class Mp4Movie(val video: Mp4Track.Avc, val audio: Mp4Track.Aac?, val s
                     is Mp4Track.Aac -> if (audio == null) audio = track.track else continue
                 }
                 samples += track.samples
+                trimmed = trimmed || track.trimmed
                 end90k = maxOf(end90k, track.end90k)
             }
             samples.sortBy { it.offset }
-            return Mp4Movie(video ?: return null, audio, samples, start90k, end90k)
+            return Mp4Movie(video ?: return null, audio, samples, start90k, end90k, trimmed)
         }
 
-        private class Track(val track: Mp4Track, val samples: List<Mp4Sample>, val end90k: Long)
+        private class Track(val track: Mp4Track, val samples: List<Mp4Sample>, val end90k: Long, val trimmed: Boolean = false)
 
         // Null for a track that is neither H.264 nor AAC.
         private fun parseTrack(b: ByteArray, trak: Mp4Box, movieTimescale: Int): Track? {
@@ -106,7 +116,8 @@ internal class Mp4Movie(val video: Mp4Track.Avc, val audio: Mp4Track.Aac?, val s
                 )
             }
             if (samples.isEmpty()) return Track(track, samples, 0)
-            return Track(track, samples, samples.maxOf { it.pts90k } + ticks(lastDuration(b, stts)))
+            val mediaTicks = decodeTimes.last() + lastDuration(b, stts)
+            return Track(track, samples, samples.maxOf { it.pts90k } + ticks(lastDuration(b, stts)), editsTrim(b, trak, timescale, movieTimescale, mediaTicks))
         }
 
         private fun sampleEntry(b: ByteArray, stsd: Mp4Box): Mp4Track? {
@@ -290,6 +301,23 @@ internal class Mp4Movie(val video: Mp4Track.Avc, val audio: Mp4Track.Aac?, val s
             return delay * timescale / movieTimescale
         }
 
+        // More than one shown edit, or one that ends before the media does (beyond a tenth of a second's rounding).
+        private fun editsTrim(b: ByteArray, trak: Mp4Box, timescale: Int, movieTimescale: Int, mediaTicks: Long): Boolean {
+            val elst = child(b, trak, "edts")?.let { child(b, it, "elst") } ?: return false
+            val version = b[elst.start].toInt()
+            val entrySize = if (version == 1) 20 else 12
+            val shown = (0 until (fits(b, elst, entrySize) ?: return true)).mapNotNull { i ->
+                val at = elst.start + 8 + i * entrySize
+                val duration = if (version == 1) readU64(b, at) else u32(b, at).toLong() and 0xFFFFFFFFL
+                val mediaTime = if (version == 1) readU64(b, at + 8) else u32(b, at + 4).toLong()
+                if (mediaTime == -1L) null else duration to mediaTime
+            }
+            if (shown.size != 1) return shown.size > 1
+            val (duration, mediaTime) = shown.single()
+            val remaining = (mediaTicks - mediaTime) * movieTimescale / timescale
+            return duration < remaining - movieTimescale / 10
+        }
+
         private fun handlerType(b: ByteArray, trak: Mp4Box): String? {
             val hdlr = child(b, trak, "mdia")?.let { child(b, it, "hdlr") } ?: return null
             return if (hdlr.start + 12 <= hdlr.end) fourCc(b, hdlr.start + 8) else null
@@ -331,6 +359,7 @@ internal suspend fun FileOperationsProvider.readSamples(
                     at += minOf(skip, (chunk.size - at).toLong()).toInt()
                     continue
                 }
+                check(skip == 0L) { "sample $next starts inside the one before it" }
                 pending = ByteArray(sample.size)
                 pendingFill = 0
             }

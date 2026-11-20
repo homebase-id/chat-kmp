@@ -151,27 +151,22 @@ class VideoPayloadProcessor(
         // PhaseProgress emit — the same EventBus flood the upload path had. See
         // WholePercentProgressGate.
         val compressGate = WholePercentProgressGate().also { it.admit(0f) }
+        val compressProgress: VideoProgressListener = {
+            if (compressGate.admit(it * 100f) != null) {
+                onProgress?.invoke(VideoPayloadProgressPhase(payload.key, VideoProcessingPhase.COMPRESSING, it))
+            }
+        }
         // Read by Kotlin, so not a web blob: handle, whose bytes stay in JS.
         val mayGoAsIs = payload.stripMetadata && trimStartMs == null && trimEndMs == null && ffmpegInputPath == payload.filePath
         val (compressedPath, compressElapsed) =
             measureTimedValue {
-                (if (mayGoAsIs) asIsIfAlreadyMet(payload.filePath, inputSize, videoQuality) else null) ?: compressor.compress(
+                (if (mayGoAsIs) remuxIfAlreadyMet(payload.filePath, videoQuality, compressProgress) else null) ?: compressor.compress(
                     inputPath = ffmpegInputPath,
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
                     quality = videoQuality,
                     keepMetadata = !payload.stripMetadata,
-                    onProgress = {
-                        if (compressGate.admit(it * 100f) != null) {
-                            onProgress?.invoke(
-                                VideoPayloadProgressPhase(
-                                    payload.key,
-                                    VideoProcessingPhase.COMPRESSING,
-                                    it
-                                )
-                            )
-                        }
-                    },
+                    onProgress = compressProgress,
                 )
             }
 
@@ -206,28 +201,26 @@ class VideoPayloadProcessor(
     }
 
     /**
-     * [path] itself, or a remuxed copy of it, when it already meets [quality] (THUMBNAILS.md, "Video"); null when it has
-     * to be transcoded.
+     * A remuxed copy of [path] when it already meets [quality] (THUMBNAILS.md, "Video"), else null: transcode it. The
+     * moov is checked before the probe, which on some platforms reads the whole file.
      */
     @OptIn(ExperimentalUuidApi::class)
-    private suspend fun asIsIfAlreadyMet(path: String, size: Long, quality: VideoQuality): String? {
+    private suspend fun remuxIfAlreadyMet(path: String, quality: VideoQuality, onProgress: VideoProgressListener): String? {
         var output: String? = null
         return try {
-            val info = probe.probeVideo(path) ?: return null
-            if (!mightMeetWithoutTranscode(info, quality)) return null
             val movie = readMoov(fileOperationsProvider, path)?.let(Mp4Movie::parse) ?: return null
             if (!meetsWithoutTranscode(movie, quality)) return null
-            Logger.i(tag = "VideoProcessing") { "already meets $quality: sent as it is, without a transcode" }
-            // HLS segments carry no metadata, so a video big enough to be segmented needs no stripped copy.
-            if (size >= HLS_MIN_BYTES) return path
+            val info = probe.probeVideo(path) ?: return null
+            if (!mightMeetWithoutTranscode(info, quality)) return null
             output = "${fileOperationsProvider.scratchDir(AppCacheDirs.MEDIA_WORK)}/remuxed_${Uuid.random()}.mp4"
-            Mp4Remux.remux(fileOperationsProvider, path, movie, output)
+            Mp4Remux.remux(fileOperationsProvider, path, movie, output, onProgress)
+            Logger.i(tag = "VideoProcessing") { "already meets $quality: remuxed, not transcoded" }
             output
         } catch (e: CancellationException) {
             output?.let(fileOperationsProvider::deleteTempFile)
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = "VideoProcessing", throwable = e) { "sending as it is failed; transcoding instead" }
+            Logger.w(tag = "VideoProcessing", throwable = e) { "remux failed; transcoding instead" }
             output?.let(fileOperationsProvider::deleteTempFile)
             null
         }

@@ -579,10 +579,10 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 **A video that already meets the setting is sent as it is, not re-encoded** (decided 2026-11-20). Re-encoding it would only cost time and quality: the 83 s 720p stand-in took 7 s on an iPhone 15 to come out the same size. It applies when the app strips metadata and the source is all of these:
 - H.264, 8-bit 4:2:0, SDR (the probe must say SDR; a probe that can't tell counts as HDR);
 - AAC-LC with at most two channels, or no audio;
-- upright, with no rotation flag, and not trimmed;
+- upright, with no rotation flag, and not trimmed, by the app or by an edit list in the file;
 - its short edge at or below the setting's (720 or 1080), and its video bitrate at or below what the setting's encoder would ask for it (`hardwareVideoBitrate`: 2.5 or 5 Mbps, less for a smaller frame).
 
-Under 5 MB it goes as a single MP4: its samples are copied unchanged into a new MP4 with only the video and audio tracks (`Mp4Remux`, common code, every platform), so it carries no location, capture time or other metadata. At 5 MB or more it's segmented to HLS straight from the source, since the segments carry no metadata either. Anything else, or a remux that fails, is transcoded as before. Apps that keep metadata (Photos, Vault) always transcode, since the remux keeps none. HEVC, HDR and 10-bit never qualify, so what everyone plays stays H.264 SDR.
+Its samples are then copied into a new MP4 with only the video and audio tracks (`Mp4Remux`, common code, every platform), without the H.264 SEI messages some cameras put GPS in, so it carries no location, capture time or other metadata; it goes on to HLS or a single MP4 by size, like a transcode. Anything else, or a remux that fails, is transcoded as before. Apps that keep metadata (Photos, Vault) always transcode, since the remux keeps none. HEVC, HDR and 10-bit never qualify, so what everyone plays stays H.264 SDR.
 
 **Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and other metadata, and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them. The library never decides; each app does.
 

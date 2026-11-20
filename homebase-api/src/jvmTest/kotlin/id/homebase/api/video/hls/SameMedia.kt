@@ -40,7 +40,7 @@ internal suspend fun assertSameMedia(fileOps: FileOperationsProvider, source: Fi
 }
 
 /** With an ffmpeg on the machine: every decoded frame and every audio packet the same as the source's. */
-private fun decodesInFfmpeg(source: File, out: File) {
+internal fun decodesInFfmpeg(source: File, out: File) {
     if (runCatching { ProcessBuilder("ffmpeg", "-version").start().waitFor() != 0 }.getOrDefault(true)) return
     fun md5(file: File, vararg args: String) = ProcessBuilder("ffmpeg", "-v", "error", "-i", file.absolutePath, *args, "-f", "framemd5", "-")
         .redirectErrorStream(true).start().inputStream.bufferedReader().readText()
