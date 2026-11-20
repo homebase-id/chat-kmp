@@ -202,10 +202,11 @@ internal object IosVideoCompressor : VideoCompressor {
                 }
             }
             // A sample appended to a writer that's failed or cancelled raises, so the pumps stop before the writer goes.
+            // The reader is cancelled only once they have: cancelling it under a pump's copyNextSampleBuffer crashes.
             suspend fun stopPumps() {
                 stop.store(true)
-                reader.cancelReading()
                 if (withTimeoutOrNull(5.seconds) { drained.await() } == null) Logger.w(tag = TAG) { "pumps didn't stop" }
+                reader.cancelReading()
             }
             try {
                 select<Unit> {
