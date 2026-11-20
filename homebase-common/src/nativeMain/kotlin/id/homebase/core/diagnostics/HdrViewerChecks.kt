@@ -37,6 +37,7 @@ import platform.CoreGraphics.kCGBitmapByteOrder32Big
 import platform.CoreGraphics.kCGBitmapFloatComponents
 import platform.CoreGraphics.kCGColorSpaceExtendedLinearDisplayP3
 import platform.CoreGraphics.kCGColorSpaceSRGB
+import platform.Foundation.NSProcessInfo
 import kotlin.math.max
 
 /** What the full-screen viewers draw in HDR on iOS, measured in the app as [DisplayDecodeChecks] is. */
@@ -47,6 +48,20 @@ object HdrViewerChecks {
     }
 
     suspend fun run(): CheckReport = checkRun {
+        verify("an SDR photo isn't") {
+            val sdr = sdrImage(WIDTH, HEIGHT)
+            val bytes = try {
+                ImageIOEncoder.encode(JPEG, listOf(sdr)).toByteArray()
+            } finally {
+                CGImageRelease(sdr)
+            }
+            check(decodeHdrPhoto(bytes, SHOWN_PX) == null) { "an SDR JPEG decoded as HDR" }
+        }
+        // The simulator's ImageIO writes no gain maps (JPEG or HEIC fail to finalize), so these need a phone.
+        if (NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null) {
+            measured("photos with a gain map: skipped, the simulator can't write them")
+            return@checkRun
+        }
         val hdr = hdrImage(WIDTH, HEIGHT)
         val withGainmap = try {
             listOf(JPEG, HEIC).associateWith { encodeWithGainmap(it, hdr) }
@@ -64,15 +79,6 @@ object HdrViewerChecks {
         verify("the decode is never larger than the photo") {
             val photo = checkNotNull(decodeHdrPhoto(withGainmap.getValue(JPEG), WIDTH * 4)) { "no HDR decode" }
             check(photo.width == WIDTH && photo.height == HEIGHT) { "decoded at ${photo.width}x${photo.height}, the photo is ${WIDTH}x$HEIGHT" }
-        }
-        verify("an SDR photo isn't") {
-            val sdr = sdrImage(WIDTH, HEIGHT)
-            val bytes = try {
-                ImageIOEncoder.encode(JPEG, listOf(sdr)).toByteArray()
-            } finally {
-                CGImageRelease(sdr)
-            }
-            check(decodeHdrPhoto(bytes, SHOWN_PX) == null) { "an SDR JPEG decoded as HDR" }
         }
     }
 
