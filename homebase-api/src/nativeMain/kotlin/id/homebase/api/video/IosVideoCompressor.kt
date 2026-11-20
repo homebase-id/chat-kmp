@@ -223,10 +223,11 @@ internal object IosVideoCompressor : VideoCompressor {
                 }
             }
             // A sample appended to a writer that's failed or cancelled raises, so the pumps stop before the writer goes.
+            // cancelReading during a pump's copyNextSampleBuffer frees the compositor under it (SIGSEGV), so drain first.
             suspend fun stopPumps() {
                 stop.store(true)
-                reader.cancelReading()
                 if (withTimeoutOrNull(5.seconds) { drained.await() } == null) Logger.w(tag = TAG) { "pumps didn't stop" }
+                reader.cancelReading()
             }
             try {
                 select<Unit> {
