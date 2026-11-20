@@ -79,9 +79,10 @@ object PhotoLibraryChecks {
         val plainId = addPhoto(original)
         val editedId = addPhoto(original).also { edit(it, jpeg(EDITED_W, EDITED_H)) }
 
-        verify("a picked photo resolves to its original bytes, and the copy is deleted") {
+        var sent: ByteArray? = null
+        verify("a picked photo resolves to its original, and the copy is deleted") {
             val copy = fileOps.withResolvedFile("ph://$plainId") { path ->
-                requireOriginal(path, original, plainId, "the copy at $path")
+                sent = requireOriginal(path, original, plainId, "the copy")
                 path
             }
             require(!NSFileManager.defaultManager.fileExistsAtPath(copy)) { "the copy at $copy is still there" }
@@ -96,11 +97,12 @@ object PhotoLibraryChecks {
             val outcome = runCatching { fileOps.resolveToFilePath(MISSING) }
             require(outcome.exceptionOrNull() is SourceUnavailableException) { "got ${outcome.getOrNull() ?: outcome.exceptionOrNull()}" }
         }
-        verify("Photos backup exports the original's bytes") {
+        verify("Photos backup exports the original, the same bytes a send gets") {
             val part = backup.export(plainId, BackupMediaType.Image).parts.single()
             try {
-                requireOriginal(part.path, original, plainId, "the export")
+                val exported = requireOriginal(part.path, original, plainId, "the export")
                 require(part.contentType == "image/jpeg") { "exported as ${part.contentType}" }
+                sent?.let { require(it.contentEquals(exported)) { "the export (${exported.size} B) and a send's copy (${it.size} B) differ" } }
             } finally {
                 fileOps.deleteTempFile(part.path)
             }
@@ -116,17 +118,44 @@ object PhotoLibraryChecks {
         }
     }
 
-    // Says how a copy differs, so a failure on a phone shows the cause: a different resource, a re-encode or a short write.
-    private fun requireOriginal(path: String, original: NSData, assetId: String, what: String) {
-        val copy = NSData.dataWithContentsOfFile(path)
-        if (copy?.isEqualToData(original) == true) return
-        val difference = copy?.toByteArray()?.let { bytes ->
-            val expected = original.toByteArray()
-            val firstDifferent = bytes.indices.firstOrNull { it >= expected.size || bytes[it] != expected[it] } ?: bytes.size
-            "${bytes.size} B against the original's ${expected.size} B, first different at byte $firstDifferent"
-        } ?: "unreadable"
-        throw IllegalArgumentException("$what isn't the original's bytes: $difference; the asset's resources: ${resources(assetId)}")
+    // A phone's Photos rewrites a photo's EXIF as it saves it, so the stored original matches what was added only
+    // EXIF aside; anything else differing is a re-encode or another resource.
+    private fun requireOriginal(path: String, original: NSData, assetId: String, what: String): ByteArray {
+        val bytes = checkNotNull(NSData.dataWithContentsOfFile(path)?.toByteArray()) { "$what is unreadable" }
+        val expected = original.toByteArray()
+        if (withoutExif(bytes).contentEquals(withoutExif(expected))) return bytes
+        throw IllegalArgumentException(
+            "$what isn't the original: ${bytes.size} B against the original's ${expected.size} B; " +
+                "segments ${jpegSegments(bytes)} against ${jpegSegments(expected)}; the asset's resources: ${resources(assetId)}",
+        )
     }
+
+    private fun withoutExif(b: ByteArray): ByteArray {
+        var at = 2
+        while (at + 4 <= b.size && b[at] == 0xFF.toByte()) {
+            val marker = b[at + 1].toInt() and 0xFF
+            if (marker == 0xDA) break
+            val end = at + 2 + (((b[at + 2].toInt() and 0xFF) shl 8) or (b[at + 3].toInt() and 0xFF))
+            if (marker == 0xE1 && b.copyOfRange(at + 4, minOf(at + 8, b.size)).decodeToString() == "Exif") {
+                return b.copyOfRange(0, at) + b.copyOfRange(minOf(end, b.size), b.size)
+            }
+            at = end
+        }
+        return b
+    }
+
+    // A JPEG's segments up to its scan, as marker and length, e.g. "E1 Exif 1147": where two files part.
+    private fun jpegSegments(b: ByteArray): String = buildList {
+        var at = 2
+        while (at + 4 <= b.size && b[at] == 0xFF.toByte() && size < 12) {
+            val marker = b[at + 1].toInt() and 0xFF
+            val length = ((b[at + 2].toInt() and 0xFF) shl 8) or (b[at + 3].toInt() and 0xFF)
+            val name = b.copyOfRange(at + 4, minOf(at + 8, b.size)).decodeToString().filter { it.isLetterOrDigit() }
+            add("${marker.toString(16).uppercase()} $name $length")
+            if (marker == 0xDA) break
+            at += 2 + length
+        }
+    }.joinToString(prefix = "[", postfix = "]")
 
     private fun resources(assetId: String): String {
         val asset = asset(assetId) ?: return "the asset is gone"
