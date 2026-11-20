@@ -33,7 +33,7 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         // Snap to nearest available frame (typically a keyframe) for speed.
         generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
         generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
-        generator.setMaximumSize(CGSizeMake(POSTER_MAX_PX.toDouble(), POSTER_MAX_PX.toDouble()))
+        if (!fullSize) generator.setMaximumSize(CGSizeMake(POSTER_MAX_PX.toDouble(), POSTER_MAX_PX.toDouble()))
 
         // Aim slightly past 0 to dodge the all-black opening frame some captures have — same
         // heuristic the web <video> decoder uses.

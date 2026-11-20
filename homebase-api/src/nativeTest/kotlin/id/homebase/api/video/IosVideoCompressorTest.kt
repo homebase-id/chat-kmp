@@ -5,6 +5,8 @@ package id.homebase.api.video
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.scratchDir
+import id.homebase.api.image.ImageHeaderParser
+import id.homebase.api.image.ImageSize
 import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.video.hls.HlsSegmenter
 import id.homebase.api.video.hls.Mp4Movie
@@ -80,6 +82,16 @@ class IosVideoCompressorTest {
             assertTrue(fileOps.getFileSize(out) > 200_000, "portrait output ${fileOps.getFileSize(out)} B looks blank")
             val segmented = assertNotNull(HlsSegmenter.segmentAndEncrypt(fileOps, out, KeyHeader.newRandom16()))
             fileOps.deleteTempFile(segmented.playlistPath.substringBeforeLast('/'))
+        }
+    }
+
+    @Test
+    fun anUploadsPosterIsTheFrameAtTheVideosOwnSizeAndAPreviewStaysSmall() = runBlocking<Unit> {
+        for ((name, upright) in listOf("landscape_1080p_gps.mp4" to ImageSize(1920, 1080), "portrait_1080p.mp4" to ImageSize(1080, 1920))) {
+            val full = assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name), fullSize = true), name)
+            assertEquals(upright, ImageHeaderParser.parse(full), "$name: an upload's thumbnails are made from the full frame")
+            val preview = assertNotNull(ImageHeaderParser.parse(assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name)), name)), name)
+            assertEquals(640, maxOf(preview.pixelWidth, preview.pixelHeight), "$name: a preview stays at 640 px")
         }
     }
 
