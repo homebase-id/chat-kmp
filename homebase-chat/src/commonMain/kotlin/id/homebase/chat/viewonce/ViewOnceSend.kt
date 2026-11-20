@@ -3,6 +3,7 @@ package id.homebase.chat.viewonce
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.image.SendQuality
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
@@ -17,7 +18,7 @@ import kotlin.uuid.Uuid
 fun viewOnceKindOf(attachment: AttachmentInput): String? = when {
     attachment.forceSticker -> null
     attachment.contentType.startsWith("image/") -> ViewOnceDescriptor.KIND_IMAGE
-    attachment.contentType.startsWith("video/") -> ViewOnceDescriptor.KIND_VIDEO
+    VideoCompressionService.canRead(attachment.contentType) -> ViewOnceDescriptor.KIND_VIDEO
     else -> null
 }
 

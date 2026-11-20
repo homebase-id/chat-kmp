@@ -14,6 +14,7 @@ import id.homebase.api.image.MediaQuality
 import id.homebase.api.util.codePointCount
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.VideoQuality
 import id.homebase.api.video.toVideoQuality
 
@@ -76,10 +77,11 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer? = null,
+        canReadVideo: (contentType: String) -> Boolean = VideoCompressionService::canRead,
         payloadKey: (index: Int) -> String,
     ): PayloadBundle {
         val built = sources.mapIndexed { index, source ->
-            buildOne(source, index, payloadKey(index), options, fileOps, pdfPageRenderer)
+            buildOne(source, index, payloadKey(index), options, fileOps, pdfPageRenderer, canReadVideo)
         }
         return PayloadBundle(
             payloads = built.flatMap { listOfNotNull(it.payload.copy(previewThumbnail = it.thumbs?.preview), it.playableCopy) },
@@ -95,6 +97,7 @@ object UserUploadBuilder {
         options: UploadOptions,
         fileOps: FileOperationsProvider,
         pdfPageRenderer: PdfPageRenderer?,
+        canReadVideo: (contentType: String) -> Boolean,
     ): Built {
         val knownImage = source.sticker || source.libraryKind == LibraryKind.IMAGE
         require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || knownImage)) {
@@ -124,9 +127,11 @@ object UserUploadBuilder {
                 source.waveformPath?.let { UploadImages.generate(it, key, fileOps) },
             )
             else -> {
+                // A library video always opens; a picked one the platform can't open is sent as a file (UPLOADS.md 3.1).
                 val kind = when {
                     source.appContent != null -> DescriptorContentV1.Kind.APP
-                    contentType.startsWith("video/") || source.libraryKind == LibraryKind.VIDEO -> DescriptorContentV1.Kind.VIDEO
+                    source.libraryKind == LibraryKind.VIDEO -> DescriptorContentV1.Kind.VIDEO
+                    canReadVideo(contentType) -> DescriptorContentV1.Kind.VIDEO
                     else -> DescriptorContentV1.Kind.FILE
                 }
                 val isVideo = kind == DescriptorContentV1.Kind.VIDEO
@@ -153,7 +158,7 @@ object UserUploadBuilder {
                     inputBlobUrl = source.inputBlobUrl,
                     videoQuality = options.videoQuality,
                     stripMetadata = options.metadata == MetadataPolicy.STRIP,
-                    skipVideoProcessing = original != null,
+                    skipVideoProcessing = original != null || kind == DescriptorContentV1.Kind.FILE,
                 )
                 Built(
                     payload,

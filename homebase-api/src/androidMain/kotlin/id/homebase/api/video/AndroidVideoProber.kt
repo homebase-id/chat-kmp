@@ -35,6 +35,9 @@ internal object AndroidVideoProber : VideoProber {
 
     override suspend fun getFfmpegVersion(): String? = null
 
+    // Media3 reads MP4, MOV, MKV, WebM and AVI.
+    override fun canRead(contentType: String): Boolean = contentType.startsWith("video/")
+
     // Bit depth and HDR stay null when the track doesn't say: that is "unknown", not 8-bit SDR.
     override suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
         val extractor = MediaExtractor()

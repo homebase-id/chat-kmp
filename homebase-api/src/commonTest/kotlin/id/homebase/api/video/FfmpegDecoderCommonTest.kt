@@ -9,12 +9,12 @@ import kotlin.test.assertTrue
 
 /**
  * One generic test for the ffmpeg backend that runs on every test target. Each platform's
- * `platformFfmpegDecoder()` actual returns its real ffmpeg decoder (FFmpegKit / subprocess /
- * ffmpeg.wasm) or null when none exists (Android — see [AndroidVideoDecoderFactory]).
+ * `platformFfmpegDecoder()` actual returns its real ffmpeg decoder (subprocess /
+ * ffmpeg.wasm) or null when none exists (Android and iOS).
  *
  * Skip semantics: a null [VideoThumbnailService.ffmpegDecoderForTest] OR a null
  * [stageSampleVideoForFfmpegTest] both cause the test to exit early and pass green — that's
- * how Android (no ffmpeg backend) and iOS / Web (no fixture wired up yet) report "nothing
+ * how Android and iOS (no ffmpeg backend) and Web (no fixture wired up yet) report "nothing
  * meaningful to assert on this target."
  */
 class FfmpegDecoderCommonTest {

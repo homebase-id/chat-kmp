@@ -11,6 +11,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.video.SegmentedVideo
 import id.homebase.api.video.VideoProgressListener
 import id.homebase.api.video.readMoov
+import co.touchlab.kermit.Logger
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.uuid.ExperimentalUuidApi
@@ -28,10 +29,34 @@ import kotlinx.coroutines.flow.flowOn
  * taken from the same pass. Null when the file isn't an MP4 of H.264 and AAC.
  */
 internal object HlsSegmenter {
+    private const val TAG = "HlsSegmenter"
     private const val SEGMENT_SECONDS = 6.0
     private const val READ_AHEAD = 4
     private const val WRITE_AHEAD = 1
     private const val MAX_HELD_BACK_BYTES = 32L * 1024 * 1024
+
+    /** [segmentAndEncrypt] as a platform's [id.homebase.api.video.VideoCompressor] runs it: failures logged, progress ending at 1. */
+    suspend fun segmentForUpload(
+        fileOps: FileOperationsProvider,
+        inputPath: String,
+        keyHeader: KeyHeader,
+        onProgress: VideoProgressListener?,
+    ): SegmentedVideo? {
+        val segmented = try {
+            segmentAndEncrypt(fileOps, inputPath, keyHeader, onProgress)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(tag = TAG, throwable = e) { "HLS segmenting failed" }
+            throw e
+        }
+        if (segmented == null) {
+            Logger.e(tag = TAG) { "HLS segmenting: $inputPath isn't an MP4 of H.264 and AAC" }
+            return null
+        }
+        onProgress?.invoke(1f)
+        return segmented
+    }
 
     @OptIn(ExperimentalUuidApi::class)
     suspend fun segmentAndEncrypt(

@@ -30,22 +30,17 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * Singleton entry point for video compression, segmentation, and metadata probes
  * — the symmetric counterpart to [VideoThumbnailService] on the thumbnail side.
  *
- * Consumers see one generic shape ([VideoCompressor] + [VideoProber]) instead of
- * the low-level [FFmpegUtils] `expect object`. The compressor is per platform
- * ([platformVideoCompressor]): Android compresses with Media3, everything else with
- * [FFmpegVideoCompressor]; probes go to [platformVideoProber].
- *
- * `FFmpegUtils` remains the low-level backend and still owns the thumbnail-grab
- * helper (`grabThumbnail`) and the actuals' internal probes.
+ * Consumers see one generic shape ([VideoCompressor] + [VideoProber]). Each platform picks its own
+ * ([platformVideoCompressor], [platformVideoProber]): Media3 on Android, AVFoundation on iOS, ffmpeg on
+ * desktop and web.
  *
  * **Concurrency: one heavy op at a time — enforced here.** The backend is NOT safe for
  * concurrent heavy operations:
  * - **Web (ffmpeg.wasm):** a single shared ffmpeg instance with fixed MEMFS scratch
  *   names (`input.mp4`, `index.m3u8`, …) — two simultaneous `compress`/`segment*` calls
  *   clobber each other's files.
- * - **iOS (FFmpegKit):** a job's coroutine-cancellation tears down its own session; if two
- *   heavy jobs overlap, the bookkeeping and scratch dirs (`compressed_<id>.mp4`,
- *   `hls_<id>/`) can collide.
+ * - **iOS (AVFoundation):** two exports at once compete for the hardware codecs. A cancelled export
+ *   counts until it has stopped.
  * - **Android (Media3):** two exports at once compete for the hardware codecs. A cancelled export
  *   counts until its codecs are released.
  * - **JVM:** parallel transcodes just thrash CPU/memory for no throughput gain.
@@ -57,10 +52,8 @@ class VideoWorkYieldedException : Exception("gave way to video work someone is w
  * cancelled unblocks the queue cleanly). The cheap probes ([getDurationMs],
  * [getFfmpegVersion]) are unguarded — they're fine to call freely.
  *
- * Note: this mutex serializes heavy compress/segment ops against *each other*. It does NOT
- * cover [VideoThumbnailService]'s FFmpegKit sessions, which may still run concurrently —
- * those are isolated via per-session cancel on iOS, so a compress/segment cancel never tears
- * a thumbnail session down (and vice versa).
+ * Note: this mutex serializes heavy compress/segment ops against *each other*, not against
+ * [VideoThumbnailService]'s decodes, which may still run concurrently.
  */
 object VideoCompressionService : VideoCompressor, VideoProber {
 
@@ -68,7 +61,7 @@ object VideoCompressionService : VideoCompressor, VideoProber {
     internal var compressor: VideoCompressor = platformVideoCompressor()
     internal var probe: VideoProber = platformVideoProber()
 
-    /** Serializes the heavy ffmpeg ops so two never run on the shared backend at once. */
+    /** Serializes the heavy ops so two never run on the shared backend at once. */
     private val heavyOpLock = Mutex()
 
     private val waitingForeground = atomic(0)
@@ -160,10 +153,10 @@ object VideoCompressionService : VideoCompressor, VideoProber {
     /** Cheap metadata probe — unguarded (no heavy-op lock), mirrors [getDurationMs]. */
     override suspend fun probeVideo(inputPath: String): VideoTrackInfo? =
         probe.probeVideo(inputPath)
+
+    override fun canRead(contentType: String): Boolean = probe.canRead(contentType)
 }
 
-/** ffmpeg everywhere, except where the platform's own media APIs do the work: Android compresses with Media3. */
 internal expect fun platformVideoCompressor(): VideoCompressor
 
-/** ffmpeg everywhere but Android, which reads headers with its own extractor. */
 internal expect fun platformVideoProber(): VideoProber

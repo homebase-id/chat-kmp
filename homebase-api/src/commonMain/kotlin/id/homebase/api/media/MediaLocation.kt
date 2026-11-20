@@ -2,6 +2,21 @@ package id.homebase.api.media
 
 /** Where a photo or video was taken, in degrees and metres, as its camera recorded it. */
 data class MediaLocation(val latitude: Double, val longitude: Double, val altitude: Double? = null) {
+    /** The point as [parse] reads it, to four decimals: "+59.9139+010.7522/". */
+    fun toIso6709(): String = buildString {
+        append(coordinate(latitude, 2))
+        append(coordinate(longitude, 3))
+        altitude?.let { append(coordinate(it, 1)) }
+        append('/')
+    }
+
+    private fun coordinate(value: Double, wholeDigits: Int): String {
+        val tenThousandths = kotlin.math.round(kotlin.math.abs(value) * 10_000).toLong()
+        val whole = (tenThousandths / 10_000).toString().padStart(wholeDigits, '0')
+        val fraction = (tenThousandths % 10_000).toString().padStart(4, '0')
+        return (if (value < 0 && tenThousandths != 0L) "-" else "+") + whole + "." + fraction
+    }
+
     companion object {
         private val ISO_6709 = Regex("""^([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)?""")
 

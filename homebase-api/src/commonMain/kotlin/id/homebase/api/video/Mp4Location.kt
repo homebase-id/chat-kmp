@@ -12,12 +12,27 @@ internal fun locationInMoov(moov: ByteArray): MediaLocation? {
     val top = mp4Boxes(moov, 0, moov.size)
     top.firstOrNull { it.type == "meta" }?.let { metadataKeyLocation(moov, it) }?.let { return it }
     val udta = top.firstOrNull { it.type == "udta" } ?: return null
-    val xyz = mp4Boxes(moov, udta.start, udta.end).firstOrNull { it.type == "©xyz" } ?: return null
+    val inUdta = mp4Boxes(moov, udta.start, udta.end)
+    inUdta.firstOrNull { it.type == "loci" }?.let { return loci(moov, it) }
+    val xyz = inUdta.firstOrNull { it.type == "©xyz" } ?: return null
     // A 16-bit text length and a 16-bit language code, then the text.
     if (xyz.start + 4 > xyz.end) return null
     val length = readU16(moov, xyz.start, little = false)
     val textEnd = minOf(xyz.start + 4 + length, xyz.end)
     return MediaLocation.parse(moov.decodeToString(xyz.start + 4, textEnd))
+}
+
+// 3GPP's, which AVAssetWriter writes in an MP4: version and flags, language, a name ending in 0, a role byte, then
+// longitude, latitude and altitude in 16.16 fixed point.
+private fun loci(b: ByteArray, box: Mp4Box): MediaLocation? {
+    var i = box.start + 6
+    while (i < box.end && b[i] != 0.toByte()) i++
+    val at = i + 2
+    if (at + 12 > box.end) return null
+    fun fixed(o: Int) = readU32(b, o, little = false) / 65536.0
+    val latitude = fixed(at + 4).takeIf { it in -90.0..90.0 } ?: return null
+    val longitude = fixed(at).takeIf { it in -180.0..180.0 } ?: return null
+    return MediaLocation(latitude, longitude, fixed(at + 8))
 }
 
 // QuickTime metadata: `keys` names each entry, and `ilst` holds the values under 1-based key indexes.

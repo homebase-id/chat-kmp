@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
  * | Platform | Pipeline                                                                              |
  * |----------|---------------------------------------------------------------------------------------|
  * | Android  | `loadThumbnail` / `MediaMetadataRetriever` for posters; `MediaCodec` → MMR for strips |
- * | iOS      | `AVAssetImageGenerator` first, FFmpegKit fallback                                     |
+ * | iOS      | `AVAssetImageGenerator`                                                               |
  * | Desktop  | `ffmpeg` subprocess (no OS-native decoder available)                                  |
  * | Web      | `<video>`+`<canvas>` first, ffmpeg.wasm fallback                                      |
  *
@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.Flow
  * filesystem path. On Web it is an okio path into the in-memory FakeFileSystem the upload
  * pipeline materializes browser-picked bytes into. The contract stays a `String` (not a
  * `PlatformFile`) because the okio web case isn't expressible as a FileKit `PlatformFile` — and
- * because the rest of the video pipeline (`FFmpegUtils.*`) is already string-based.
+ * because the rest of the video pipeline is already string-based.
  *
  * Returns JPEG bytes so callers don't need to dance through a temp file plus delete. The strip
  * is a [Flow] so the UI fills progressively.
@@ -32,9 +32,7 @@ object VideoThumbnailService : VideoDecoder {
      * primary, so a test can pass an ordinary video and exercise the ffmpeg code path without
      * needing to find a codec the native primary refuses.
      *
-     * Per platform: JVM → `ffmpeg` subprocess; iOS → FFmpegKit; Web → ffmpeg.wasm;
-     * Android → `null` (this codebase has no ffmpeg on Android — its fallback is the native
-     * MediaMetadataRetriever).
+     * Per platform: JVM → `ffmpeg` subprocess; Web → ffmpeg.wasm; Android and iOS → `null` (no ffmpeg).
      *
      * Don't reach for this in production code — go through the regular [extractPosterFrame] /
      * [extractThumbnailStrip] tier-runner, which picks the right decoder for the platform.

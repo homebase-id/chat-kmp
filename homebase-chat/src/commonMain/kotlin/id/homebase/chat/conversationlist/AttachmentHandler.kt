@@ -4,6 +4,7 @@ import id.homebase.api.file.contentTypeFromBytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.video.VideoCompressionService
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
@@ -147,7 +148,7 @@ internal class AttachmentHandler(
                     // AttachmentUploadResolve.materializeForUpload.
                     val it = picked.materializeForUpload(fileOperationsProvider)
                     when {
-                        ct.startsWith("video/") -> AttachmentPendingFile.FileVideo(
+                        VideoCompressionService.canRead(ct) -> AttachmentPendingFile.FileVideo(
                             Uuid.generateV7(),
                             it,
                             thumbnailBytes = null,
