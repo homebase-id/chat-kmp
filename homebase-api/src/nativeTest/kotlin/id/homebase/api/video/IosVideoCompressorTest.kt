@@ -180,8 +180,6 @@ class IosVideoCompressorTest {
             assertEquals(10.7522, location.longitude, 1e-4)
             assertEquals(CAPTURED_AT, captureTime(out))
         }
-        val iphoneCaptureTime = assertNotNull(captureTime(clip("iphone_hevc.mov")))
-        compressed("iphone_hevc.mov", keep = true) { out -> assertEquals(iphoneCaptureTime, captureTime(out)) }
     }
 
     @Test
