@@ -180,7 +180,8 @@ class IosVideoCompressorTest {
     // What AVFoundation says when a poster comes back empty: the decoder's asynchronous call drops its error.
     private fun posterError(name: String, fullSize: Boolean): String = memScoped {
         val generator = sdrGenerator(clip(name))?.first ?: return "no video track"
-        if (!fullSize) generator.setMaximumSize(CGSizeMake(640.0, 640.0))
+        val maxPx = if (fullSize) VideoThumbnailQuality.FULL_POSTER_LONG_EDGE_PX.toDouble() else 640.0
+        generator.setMaximumSize(CGSizeMake(maxPx, maxPx))
         val error = alloc<ObjCObjectVar<NSError?>>()
         val image = generator.copyCGImageAtTime(CMTimeMake(100, 1000), null, error.ptr)
         if (image != null) {

@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.foundation.toByteArray
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.channels.awaitClose
@@ -11,8 +12,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import platform.AVFoundation.AVAsset
 import platform.AVFoundation.AVAssetImageGenerator
+import platform.AVFoundation.AVAssetTrack
+import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.AVURLAsset
+import platform.AVFoundation.naturalSize
+import platform.AVFoundation.tracksWithMediaType
 import platform.AVFoundation.valueWithCMTime
 import platform.CoreGraphics.CGSizeMake
 import platform.CoreMedia.CMTime
@@ -33,7 +39,8 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         if (!NSFileManager.defaultManager.fileExistsAtPath(filePath(videoPath))) return null
 
         val (generator, shownMs) = withContext(Dispatchers.IO) { sdrGenerator(videoPath) } ?: return null
-        if (!fullSize) generator.setMaximumSize(CGSizeMake(POSTER_MAX_PX.toDouble(), POSTER_MAX_PX.toDouble()))
+        val maxPx = if (fullSize) fullPosterLongEdge(generator.asset) else POSTER_MAX_PX
+        generator.setMaximumSize(CGSizeMake(maxPx.toDouble(), maxPx.toDouble()))
 
         // Aim slightly past the first picture to dodge the all-black opening frame some captures have — same
         // heuristic the web <video> decoder uses.
@@ -44,7 +51,7 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
                 if (image == null) Logger.w(tag = TAG) { "no poster for $videoPath (fullSize=$fullSize): ${error?.localizedDescription}" }
                 val bytes = image?.let {
                     val ui = UIImage.imageWithCGImage(it)
-                    UIImageJPEGRepresentation(ui, POSTER_JPEG_QUALITY)?.toByteArray()
+                    UIImageJPEGRepresentation(ui, VideoThumbnailQuality.posterJpegQuality0To1(fullSize))?.toByteArray()
                 }
                 if (cont.isActive) cont.resume(bytes)
             }
@@ -95,11 +102,17 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         }
     }
 
+    // naturalSize is before the track's rotation, which doesn't change either edge's length.
+    private fun fullPosterLongEdge(asset: AVAsset): Int {
+        val track = asset.tracksWithMediaType(AVMediaTypeVideo).firstOrNull() as? AVAssetTrack
+            ?: return VideoThumbnailQuality.FULL_POSTER_LONG_EDGE_PX
+        return track.naturalSize.useContents { VideoThumbnailQuality.fullPosterLongEdge(width.toInt(), height.toInt()) }
+    }
+
     companion object {
         private const val TAG = "AvFoundationVideoDecoder"
         private const val POSTER_MAX_PX = 640
         private const val POSTER_TARGET_MS = 100L
-        private val POSTER_JPEG_QUALITY = VideoThumbnailQuality.POSTER_JPEG_QUALITY_0_TO_1
         private val STRIP_JPEG_QUALITY = VideoThumbnailQuality.STRIP_JPEG_QUALITY_0_TO_1
     }
 }

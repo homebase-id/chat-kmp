@@ -64,7 +64,7 @@ class RenderedImages(val displayedSize: ImageSize, val images: List<RenderedImag
  * - [decode] decodes at most once per source, upright, with a long edge of at least
  *   `min(minLongEdge, displayedSize's long edge)`. A decoder's own shrink is a block average, so it only shrinks
  *   while it leaves at least [HALVE_WHILE_AT_LEAST] times [minLongEdge] for Lanczos (libvips' rule), except where a
- *   platform's memory budget forces more (iOS over 24 MP, Android over 50 MP).
+ *   platform's memory budget forces more (iOS over 100 MP, never by less than 2×; Android over 50 MP).
  * - Both throw on bytes the platform can't read.
  * - [metadata] reads the file's EXIF without decoding pixels, or is null where the platform can't.
  */

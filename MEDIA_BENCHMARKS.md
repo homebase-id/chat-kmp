@@ -267,7 +267,7 @@ The FFmpegKit frameworks embedded in the app were 16.4 MB of arm64 binaries (18.
 | Pixel 5, 32-bit app | native C, NEON | **603 MB/s** | 36 MB/s | 2026-11-16 |
 | Pixel 8 | native C, NEON | **924 MB/s** | 52 MB/s | 2026-11-16 |
 | Desktop JVM | Kotlin port | 141 MB/s | — | 2026-11-16 |
-| iPhone 15, release framework | Kotlin port | 43–45 MB/s over 256 MB | — | 2026-11-20 |
+| iPhone 15 Plus, release framework | native C, NEON (homebase-blake3's sources, through cinterop) | **1511–1805 MB/s** over 256 MB; MP4 encrypt of a 5 MB send 140 → 52 ms, HLS of a 10 MB send 383 → 100 ms | 48–49 MB/s over 256 MB (iPhone 15: 43–45) | 2026-11-20 |
 
 For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed with `adb install --abi armeabi-v7a`.
 
@@ -283,6 +283,22 @@ For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed wi
 | 2 | HD | 2268×4032 | 614 kB | 1073 kB (+75%) | 1185–1199 / 169–171 ms | 2026-11-16 |
 
 Same quality number for both (60 at Standard, 80 at HD); a JPEG at the same number is not the same picture quality as WebP, which this doesn't measure. For scale: Signal's Ultra HDR copy of a Pixel 8 photo in #2390 was 243 kB at 900×1600. The JPEG encodes 2–7× faster than WebP here.
+
+### iPhone: the whole photo pipeline with HDR
+
+`MediaBenchmarks` on an iPhone 15 Plus (iOS 27.0.1, release framework). Before: `main` `ce6f4e731`, which sends an iPhone's HDR photo as SDR. After: `836763240`, with #2522 (Ultra HDR from an iPhone HEIC) and #2365 (48 MP decoded in full). Real HEIF Max photos with ISO and Apple gain maps, median of 3, footprint peak. Full lines on #2566.
+
+| Photo | Setting | Before (SDR) | After (Ultra HDR) | Measured |
+|---|---|---|---|---|
+| 48 MP, 5 photos | HD | 1157–1588 ms, 479–561 MB | 2930–3145 ms, 1038–1098 MB | 2026-11-20 |
+| 48 MP, 5 photos | Original | 355–480 ms | 2667–2787 ms | 2026-11-20 |
+| 48 MP, 5 photos | Standard (stays SDR) | 338–464 ms | 473–622 ms | 2026-11-20 |
+| 24 MP, 2 photos | HD | 1313–1339 ms | 1792–1802 ms | 2026-11-20 |
+| 24 MP, 2 photos | Original | 377–392 ms | 1487–1496 ms | 2026-11-20 |
+
+- **Cost:** keeping HDR costs about 1.1–2.3 s per photo at HD and Original. Where it goes (the auxiliary map read, the pixel copy, the extra JPEG round trip) is still to profile.
+- **Standard:** it gets slower only from the full decode.
+- **Thermal:** the after run reached thermal state 2 from the last 48 MP photo's Original onward.
 
 ### The shared writer against Android's encoder
 

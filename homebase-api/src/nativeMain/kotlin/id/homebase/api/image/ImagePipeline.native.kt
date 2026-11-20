@@ -92,16 +92,7 @@ private class ImageIoSource(
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
             ?: throw IllegalStateException("Couldn't create decode options")
-        // ImageIO's shrink is a block average that leaves Lanczos at least 2x; only the memory guard forces less.
-        val longEdge = max(displayedSize.pixelWidth, displayedSize.pixelHeight)
-        val guard = memoryGuardScale(displayedSize, minLongEdge)
-        val coarse = when {
-            longEdge >= minLongEdge.toLong() * HALVE_WHILE_AT_LEAST -> minLongEdge * 2
-            guard != null && longEdge >= minLongEdge.toLong() * 2 -> longEdge / 2
-            else -> longEdge
-        }
-        val coarseEdge = guard?.let { minOf(coarse, ceil(longEdge * it).toInt()) } ?: coarse
-        val maxSize = CFBridgingRetain(NSNumber(int = coarseEdge))
+        val maxSize = CFBridgingRetain(NSNumber(int = imageIoDecodeEdge(displayedSize, minLongEdge)))
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
         CFDictionarySetValue(options, kCGImageSourceShouldCacheImmediately, kCFBooleanTrue)
@@ -234,8 +225,24 @@ private fun cfInt(dict: CFDictionaryRef, key: CFStringRef?): Int? = memScoped {
     if (CFNumberGetValue(number, kCFNumberIntType, out.ptr)) out.value else null
 }
 
-// About 96 MB of pixels. A 12 MP photo stays a full, clean decode; a 48 MP one doesn't.
-private const val FULL_DECODE_PIXEL_LIMIT = 24_000_000L
+// About 400 MB of pixels: a 48 MP photo decodes in full.
+private const val FULL_DECODE_PIXEL_LIMIT = 100_000_000L
+
+/**
+ * The long edge to ask ImageIO for. Its shrink is a block average, so it leaves Lanczos at least the last 2x; the
+ * memory guard only shrinks a decode over [FULL_DECODE_PIXEL_LIMIT], and only where that's still a 2x step.
+ */
+internal fun imageIoDecodeEdge(size: ImageSize, minLongEdge: Int): Int {
+    val longEdge = max(size.pixelWidth, size.pixelHeight)
+    val guard = memoryGuardScale(size, minLongEdge)
+    val coarse = when {
+        longEdge >= minLongEdge.toLong() * HALVE_WHILE_AT_LEAST -> minLongEdge * 2
+        guard != null && longEdge >= minLongEdge.toLong() * 2 -> longEdge / 2
+        else -> longEdge
+    }
+    val guarded = guard?.let { ceil(longEdge * it).toInt() }
+    return if (guarded != null && guarded <= longEdge / 2) minOf(coarse, guarded) else coarse
+}
 
 /**
  * How far to shrink a decode that would otherwise pass [FULL_DECODE_PIXEL_LIMIT], or null to leave
