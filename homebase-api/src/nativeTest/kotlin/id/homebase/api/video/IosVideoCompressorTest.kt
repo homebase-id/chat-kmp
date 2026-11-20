@@ -31,7 +31,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.timeIntervalSince1970
 import platform.posix.getenv
 
-/** [IosVideoCompressor] on the simulator's AVFoundation, with the clips Android's `Media3VideoCompressorTest` uses. */
+/** [IosVideoCompressor] and the poster decoder on the simulator's AVFoundation, with the clips Android's `Media3VideoCompressorTest` uses. */
 class IosVideoCompressorTest {
     private companion object {
         const val CAPTURED_AT = 1_767_323_045L // 2026-01-02T03:04:05Z, the fixture's capture time
@@ -90,7 +90,8 @@ class IosVideoCompressorTest {
         for ((name, upright) in listOf("landscape_1080p_gps.mp4" to ImageSize(1920, 1080), "portrait_1080p.mp4" to ImageSize(1080, 1920))) {
             val full = assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name), fullSize = true), name)
             assertEquals(upright, ImageHeaderParser.parse(full), "$name: an upload's thumbnails are made from the full frame")
-            val preview = assertNotNull(ImageHeaderParser.parse(assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name)), name)), name)
+            val previewBytes = assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name)), name)
+            val preview = assertNotNull(ImageHeaderParser.parse(previewBytes), name)
             assertEquals(640, maxOf(preview.pixelWidth, preview.pixelHeight), "$name: a preview stays at 640 px")
         }
     }
