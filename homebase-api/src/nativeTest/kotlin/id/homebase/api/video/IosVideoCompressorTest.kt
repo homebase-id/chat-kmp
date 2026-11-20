@@ -50,12 +50,10 @@ import platform.UIKit.UIImage
 import platform.Foundation.timeIntervalSince1970
 import platform.posix.getenv
 
+private const val CAPTURED_AT = 1_767_323_045L // 2026-01-02T03:04:05Z, the fixture's capture time
+
 /** [IosVideoCompressor] and the poster decoder on the simulator's AVFoundation, with the clips Android's `Media3VideoCompressorTest` uses. */
 class IosVideoCompressorTest {
-    private companion object {
-        const val CAPTURED_AT = 1_767_323_045L // 2026-01-02T03:04:05Z, the fixture's capture time
-    }
-
     private val fileOps = IosVideoCompressor.fileOps
     private val clips = checkNotNull(getenv("TEST_VIDEOS")?.toKString()) { "TEST_VIDEOS isn't set: run through Gradle" }
 
@@ -80,6 +78,9 @@ class IosVideoCompressorTest {
 
     private suspend fun movie(path: String) = readMoov(fileOps, path)?.let(Mp4Movie::parse)
 
+    private fun captureTime(path: String) =
+        AVURLAsset.URLAssetWithURL(fileUrl(path), null).creationDate?.dateValue?.timeIntervalSince1970?.toLong()
+
     @Test
     fun aLandscape1080pVideoComesOutAt720pH264WithoutItsLocation() = runBlocking<Unit> {
         compressed("landscape_1080p_gps.mp4") { out ->
@@ -88,6 +89,7 @@ class IosVideoCompressorTest {
             assertEquals(1280 to 720, info.widthPx to info.heightPx)
             assertTrue(abs(IosVideoProber.getDurationMs(out) - 3_000) < 200, "duration ${IosVideoProber.getDurationMs(out)}")
             assertNull(MediaMetadataReader(fileOps).videoLocation(out), "a stripped video must not carry its location")
+            assertNotEquals(CAPTURED_AT, captureTime(out), "a stripped video must not carry its capture time")
         }
     }
 
@@ -174,16 +176,13 @@ class IosVideoCompressorTest {
     fun keepingMetadataKeepsTheLocationAndCaptureTime() = runBlocking<Unit> {
         compressed("landscape_1080p_gps.mp4", keep = true) { out ->
             val location = assertNotNull(MediaMetadataReader(fileOps).videoLocation(out))
-            assertTrue(abs(location.latitude - 59.9139) < 1e-4 && abs(location.longitude - 10.7522) < 1e-4, "location $location")
+            assertEquals(59.9139, location.latitude, 1e-4)
+            assertEquals(10.7522, location.longitude, 1e-4)
             assertEquals(CAPTURED_AT, captureTime(out))
         }
-        compressed("landscape_1080p_gps.mp4") { out ->
-            assertNotEquals(CAPTURED_AT, captureTime(out), "a stripped video must not carry its capture time")
-        }
+        val iphoneCaptureTime = assertNotNull(captureTime(clip("iphone_hevc.mov")))
+        compressed("iphone_hevc.mov", keep = true) { out -> assertEquals(iphoneCaptureTime, captureTime(out)) }
     }
-
-    private fun captureTime(path: String) =
-        AVURLAsset.URLAssetWithURL(fileUrl(path), null).creationDate?.dateValue?.timeIntervalSince1970?.toLong()
 
     @Test
     fun eachQualitySettingGivesItsSizeAndAboutItsBitrate() = runBlocking<Unit> {

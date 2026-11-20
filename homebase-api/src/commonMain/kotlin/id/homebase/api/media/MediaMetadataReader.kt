@@ -12,9 +12,9 @@ internal const val TAG = "MediaMetadata"
 
 /**
  * What a photo or video file says about itself, read the same way on every platform: an image's EXIF, and the
- * location a camera recorded in an MP4 or QuickTime video (Apple's ISO 6709 key, or the `©xyz` atom Android
- * writes). Only the parts that hold it are read: an image's header where the platform allows, a video's box
- * headers and its `moov`, never the media.
+ * location a camera recorded in an MP4 or QuickTime video (Apple's ISO 6709 key, the `©xyz` atom Android writes, or
+ * the 3GPP `loci` box AVAssetWriter writes). Only the parts that hold it are read: an image's header where the
+ * platform allows, a video's box headers and its `moov`, never the media.
  *
  * Null, or empty, when the file has none, can't be read or isn't a format this knows; only cancellation and errors
  * such as running out of memory are thrown.
