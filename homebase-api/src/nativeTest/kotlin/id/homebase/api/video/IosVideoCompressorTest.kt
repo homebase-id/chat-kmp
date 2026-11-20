@@ -31,6 +31,7 @@ import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVURLAsset
@@ -112,6 +113,7 @@ class IosVideoCompressorTest {
             "portrait_1080p.mp4" to ImageSize(1080, 1920),
             "iphone_hevc.mov" to ImageSize(1080, 1920),
             "iphone_spatial.mov" to ImageSize(2160, 3840),
+            "hdr10_720p_short.mp4" to ImageSize(720, 1280),
         )
         val failures = mutableListOf<String>()
         for ((name, size) in upright) {
@@ -130,6 +132,18 @@ class IosVideoCompressorTest {
             }
         }
         assertTrue(failures.isEmpty(), failures.joinToString("\n"))
+    }
+
+    @Test
+    fun aTrimStripHasEveryFrameUprightForSdrAndPqHdr() = runBlocking<Unit> {
+        for (name in listOf("portrait_1080p.mp4", "hdr10_720p_short.mp4")) {
+            val frames = VideoThumbnailService.extractThumbnailStrip(clip(name), IosVideoProber.getDurationMs(clip(name)), 4, 96).toList()
+            assertEquals(4, frames.size, "$name: strip frames")
+            for (frame in frames) {
+                val size = assertNotNull(ImageHeaderParser.parse(frame.jpegBytes), name)
+                assertTrue(size.pixelHeight == 96 && size.pixelWidth < 96, "$name: a strip frame is $size")
+            }
+        }
     }
 
     // What AVFoundation says when a poster comes back empty: the decoder's asynchronous call drops its error.

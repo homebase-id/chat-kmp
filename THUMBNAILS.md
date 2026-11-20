@@ -611,6 +611,7 @@ iOS compresses with AVFoundation (`IosVideoCompressor`): an `AVAssetReader` whos
 - **Audio.** Plain AAC-LC with up to two channels is copied, as on Android; anything else (an iPhone's spatial-audio track isn't the first audio track, so it isn't read) is re-encoded to AAC-LC at the quality's bitrate.
 - **Location and capture time.** AVFoundation can't read a location ffmpeg or Android wrote, so a kept location is read by `MediaMetadataReader`; AVAssetWriter writes it, with the capture time, as 3GPP's `loci` and `date` boxes, which the shared reader also reads.
 - **HLS.** Our segmenter, as on Android.
+- **Posters and trim strips** (`AvFoundationVideoDecoder`) come from `AVAssetImageGenerator` through the same upright BT.709 composition, so they are SDR too. Without it the generator can't decode PQ HDR10 (`-11821`/`-12911` on the simulator), where the composition tone-maps it. Tests: `IosVideoCompressorTest`'s poster and strip tests, `hdr10_720p_short.mp4` included.
 - **Formats it can't open** (MKV, WebM) are sent as files, not videos (UPLOADS.md 3.1).
 
 ## How others do it

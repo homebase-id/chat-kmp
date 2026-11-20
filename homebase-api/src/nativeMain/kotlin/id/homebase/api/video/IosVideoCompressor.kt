@@ -41,6 +41,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
+import platform.AVFoundation.AVAsset
 import platform.AVFoundation.AVAssetReader
 import platform.AVFoundation.AVAssetReaderOutput
 import platform.AVFoundation.AVAssetReaderStatusFailed
@@ -125,7 +126,6 @@ internal actual fun platformVideoCompressor(): VideoCompressor = IosVideoCompres
 /** AVFoundation's reader and writer, not an export session, whose presets can't set a bitrate; our segmenter cuts HLS. */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, ExperimentalUuidApi::class, ExperimentalAtomicApi::class)
 internal object IosVideoCompressor : VideoCompressor {
-    private const val MAX_FPS = 60
     private const val KEYFRAME_SECONDS = 2
     internal val fileOps by lazy { IOSFileOperationsProvider() }
 
@@ -255,30 +255,10 @@ internal object IosVideoCompressor : VideoCompressor {
 
         // The composition turns the frames upright (an HLS stream has no rotation flag), scales them, and maps HDR to SDR.
         private fun videoPump(writer: AVAssetWriter, track: AVAssetTrack, onTime: (Double) -> Unit): Pump {
-            val shown = track.naturalSize.useContents { CGRectApplyAffineTransform(CGRectMake(0.0, 0.0, width, height), track.preferredTransform) }
-            val (minX, minY, shownW, shownH) = shown.useContents { listOf(origin.x, origin.y, abs(size.width), abs(size.height)) }
-            val srcW = shownW.roundToInt()
-            val srcH = shownH.roundToInt()
+            val (srcW, srcH) = track.uprightSize()
             val (width, height) = computeOutputDims(srcW, srcH, targets.shortEdgePx) ?: (srcW.toEven() to srcH.toEven())
-            // Transforms written by ffmpeg leave out the translation that brings the turned frame back onto the canvas.
-            val placed = CGAffineTransformConcat(
-                CGAffineTransformConcat(track.preferredTransform, CGAffineTransformMakeTranslation(-minX, -minY)),
-                CGAffineTransformMakeScale(width / shownW, height / shownH),
-            )
-            val fps = track.nominalFrameRate.roundToInt().takeIf { it > 0 }?.coerceAtMost(MAX_FPS) ?: 30
-            val composition = AVMutableVideoComposition().apply {
-                setRenderSize(CGSizeMake(width.toDouble(), height.toDouble()))
-                setFrameDuration(CMTimeMake(1, fps))
-                setColorPrimaries(AVVideoColorPrimaries_ITU_R_709_2)
-                setColorTransferFunction(AVVideoTransferFunction_ITU_R_709_2)
-                setColorYCbCrMatrix(AVVideoYCbCrMatrix_ITU_R_709_2)
-                setInstructions(listOf(AVMutableVideoCompositionInstruction().apply {
-                    setTimeRange(CMTimeRangeMake(CMTimeMake(0, 1), asset.duration))
-                    setLayerInstructions(listOf(AVMutableVideoCompositionLayerInstruction.videoCompositionLayerInstructionWithAssetTrack(track).apply {
-                        setTransform(placed, CMTimeMake(0, 1))
-                    }))
-                }))
-            }
+            val fps = track.compositionFps()
+            val composition = uprightSdrComposition(asset, track, width, height)
             val output = AVAssetReaderVideoCompositionOutput(listOf(track), mapOf<Any?, Any?>(kCVPixelBufferPixelFormatTypeKey.ns to kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)).apply {
                 videoComposition = composition
                 alwaysCopiesSampleData = false
@@ -384,6 +364,40 @@ internal object IosVideoCompressor : VideoCompressor {
 }
 
 private const val TAG = "IosVideoCompressor"
+private const val MAX_FPS = 60
+
+@OptIn(ExperimentalForeignApi::class)
+private fun AVAssetTrack.shownRect() =
+    naturalSize.useContents { CGRectApplyAffineTransform(CGRectMake(0.0, 0.0, width, height), preferredTransform) }
+
+@OptIn(ExperimentalForeignApi::class)
+internal fun AVAssetTrack.uprightSize(): Pair<Int, Int> = shownRect().useContents { abs(size.width).roundToInt() to abs(size.height).roundToInt() }
+
+internal fun AVAssetTrack.compositionFps(): Int = nominalFrameRate.roundToInt().takeIf { it > 0 }?.coerceAtMost(MAX_FPS) ?: 30
+
+/** [track] turned upright, scaled to [width]×[height] and mapped to BT.709 SDR. */
+@OptIn(ExperimentalForeignApi::class)
+internal fun uprightSdrComposition(asset: AVAsset, track: AVAssetTrack, width: Int, height: Int): AVMutableVideoComposition {
+    val (minX, minY, shownW, shownH) = track.shownRect().useContents { listOf(origin.x, origin.y, abs(size.width), abs(size.height)) }
+    // Transforms written by ffmpeg leave out the translation that brings the turned frame back onto the canvas.
+    val placed = CGAffineTransformConcat(
+        CGAffineTransformConcat(track.preferredTransform, CGAffineTransformMakeTranslation(-minX, -minY)),
+        CGAffineTransformMakeScale(width / shownW, height / shownH),
+    )
+    return AVMutableVideoComposition().apply {
+        setRenderSize(CGSizeMake(width.toDouble(), height.toDouble()))
+        setFrameDuration(CMTimeMake(1, track.compositionFps()))
+        setColorPrimaries(AVVideoColorPrimaries_ITU_R_709_2)
+        setColorTransferFunction(AVVideoTransferFunction_ITU_R_709_2)
+        setColorYCbCrMatrix(AVVideoYCbCrMatrix_ITU_R_709_2)
+        setInstructions(listOf(AVMutableVideoCompositionInstruction().apply {
+            setTimeRange(CMTimeRangeMake(CMTimeMake(0, 1), asset.duration))
+            setLayerInstructions(listOf(AVMutableVideoCompositionLayerInstruction.videoCompositionLayerInstructionWithAssetTrack(track).apply {
+                setTransform(placed, CMTimeMake(0, 1))
+            }))
+        }))
+    }
+}
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 private fun <T> errorOut(make: (CPointer<ObjCObjectVar<NSError?>>) -> T?): T? = memScoped {

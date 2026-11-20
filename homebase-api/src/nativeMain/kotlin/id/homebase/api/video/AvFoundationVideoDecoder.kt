@@ -9,7 +9,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.AVFoundation.AVAssetImageGenerator
+import platform.AVFoundation.AVAssetTrack
+import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.AVURLAsset
+import platform.AVFoundation.tracksWithMediaType
 import platform.AVFoundation.valueWithCMTime
 import platform.CoreGraphics.CGSizeMake
 import platform.CoreMedia.CMTime
@@ -28,12 +31,7 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
     override suspend fun extractPosterFrame(videoPath: String, fullSize: Boolean): ByteArray? {
         if (!NSFileManager.defaultManager.fileExistsAtPath(filePath(videoPath))) return null
 
-        val asset = AVURLAsset.URLAssetWithURL(fileUrl(videoPath), null)
-        val generator = AVAssetImageGenerator(asset)
-        generator.setAppliesPreferredTrackTransform(true)
-        // Snap to nearest available frame (typically a keyframe) for speed.
-        generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
-        generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
+        val generator = sdrGenerator(videoPath) ?: return null
         if (!fullSize) generator.setMaximumSize(CGSizeMake(POSTER_MAX_PX.toDouble(), POSTER_MAX_PX.toDouble()))
 
         // Aim slightly past 0 to dodge the all-black opening frame some captures have — same
@@ -66,11 +64,7 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
         if (frameCount <= 0 || durationMs <= 0L) return@channelFlow
         if (!NSFileManager.defaultManager.fileExistsAtPath(filePath(videoPath))) return@channelFlow
 
-        val asset = AVURLAsset.URLAssetWithURL(fileUrl(videoPath), null)
-        val generator = AVAssetImageGenerator(asset)
-        generator.setAppliesPreferredTrackTransform(true)
-        generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
-        generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
+        val generator = sdrGenerator(videoPath) ?: return@channelFlow
         generator.setMaximumSize(CGSizeMake(0.0, targetHeightPx.toDouble()))
 
         val timescale = 1000
@@ -98,6 +92,19 @@ internal class AvFoundationVideoDecoder : VideoDecoder {
 
         awaitClose {
             generator.cancelAllCGImageGeneration()
+        }
+    }
+
+    // Without a composition the generator fails PQ HDR10 with -12911 (on the simulator at least); a BT.709 one tone-maps it.
+    private fun sdrGenerator(videoPath: String): AVAssetImageGenerator? {
+        val asset = AVURLAsset.URLAssetWithURL(fileUrl(videoPath), null)
+        val track = asset.tracksWithMediaType(AVMediaTypeVideo).firstOrNull() as? AVAssetTrack ?: return null
+        val (width, height) = track.uprightSize()
+        return AVAssetImageGenerator(asset).apply {
+            videoComposition = uprightSdrComposition(asset, track, width, height)
+            // Snap to nearest available frame (typically a keyframe) for speed.
+            setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
+            setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
         }
     }
 
