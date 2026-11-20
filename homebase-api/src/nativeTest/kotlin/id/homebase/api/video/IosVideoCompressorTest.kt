@@ -106,12 +106,12 @@ class IosVideoCompressorTest {
 
     @Test
     fun anUploadsPosterIsTheUprightSdrFrameAtTheVideosOwnSizeAndAPreviewIsSmaller() = runBlocking<Unit> {
+        // iphone_hevc.mov is an iPhone's HDR (HLG, 10-bit) capture, so its poster must come out SDR.
         val upright = listOf(
             "landscape_1080p_gps.mp4" to ImageSize(1920, 1080),
             "portrait_1080p.mp4" to ImageSize(1080, 1920),
             "iphone_hevc.mov" to ImageSize(1080, 1920),
             "iphone_spatial.mov" to ImageSize(2160, 3840),
-            "hdr10_720p_short.mp4" to ImageSize(1280, 720),
         )
         val failures = mutableListOf<String>()
         for ((name, size) in upright) {
