@@ -215,6 +215,35 @@ The iPhone 15 rows are the release Kotlin framework (`MediaBenchmarks`, two runs
 
 Where the time goes without scaling, desktop: decoding 85 ms (done twice: palette, then encode), mapping colours 60–90 ms on one core, changed rectangles and LZW 317 ms.
 
+### GIF codec speed-up (2026-11-20, #2575): simulator and JVM, not phones
+
+A stand-in for the 7 MB GIF: 800×450, 300 frames, 9.6 MB (`ffmpeg -stream_loop 3 -i landscape_1440p.mp4 -t 10 -vf "fps=30,scale=800:450:flags=lanczos,gblur=sigma=10,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" -loop 0 bench.gif`, from `androidDeviceTest/assets/test_videos`). Each step re-encoded four times on `Dispatchers.Default`, on an M3 Pro Mac: the desktop JVM, and a **release** Kotlin/Native test binary on the iOS 27.2 simulator (arm64 code built as for an iPhone, run on the Mac's CPU). The output bytes are the same before and after, and the same on both.
+
+| Runtime | Step | Before | After |
+|---|---|---|---|
+| iOS simulator, K/N release | 512 px, 128 colours | 1.23–1.32 s | **0.72–0.77 s** |
+| iOS simulator, K/N release | 384 px, 128 colours | 0.99–1.04 s | **0.66–0.83 s** |
+| iOS simulator, K/N release | 384 px, 64 colours, 12 fps | 0.90–0.98 s | **0.53 s** |
+| Desktop JVM | 512 px, 128 colours | 1.20–1.31 s (1.58 s cold) | **0.64–0.66 s** (0.85 s cold) |
+| Desktop JVM | 384 px, 128 colours | 0.97–1.38 s | **0.46–0.47 s** |
+| Desktop JVM | 384 px, 64 colours, 12 fps | 0.96–1.24 s | **0.41–0.43 s** |
+| iOS simulator, K/N **debug** | 512 px, 128 colours | 7.6–8.1 s | — |
+
+On an iPhone 15 Plus (iOS 27.0.1, release framework, two runs per step, `MediaBenchmarks`). Before is `ce6f4e731`, after is `7f6ea150f`, with the Pixel 5's times for scale:
+
+| Step | iPhone before | iPhone after | Pixel 5 |
+|---|---|---|---|
+| 512 px, 128 colours | 16.0–17.0 s | **8.0–8.3 s** | 8.5–8.9 s |
+| 384 px, 128 colours | 12.4–12.5 s | **6.0–6.1 s** | 5.9–6.2 s |
+| 384 px, 64 colours, 12 fps | 8.9–9.0 s | **4.5 s** | 3.5–5.9 s |
+
+- **The run:** the after run was at thermal state 2, the before run at 1. Output sizes are the same.
+- **The gap:** the phone is still about 10× slower than the simulator for the same release build, so code generation alone doesn't explain it. It's still to profile on the phone.
+
+- **Where the time went** (the `sample` profiler on the release binary; single-thread stage timings for 300 frames): decoding about 55% of the CPU, and it's serial, twice per step (palette, then encode): 430 ms a pass on both runtimes, 300 ms of it LZW. Area scaling about 28% (790 ms on one thread). LZW encoding about 8%. The four-frame scaling and mapping does run on four threads on Kotlin/Native (GCD's default-QoS pool).
+- **What changed, in common Kotlin:** LZW decoding copies each table entry's string from where it was first written in the frame, instead of walking its prefix chain one dependent load per pixel (300 → 110 ms on the JVM, 135 ms on K/N), into one buffer reused across frames. Frames draw through a 256-entry colour table with the clipping worked out per row. The scaler sums each output pixel in locals from flat span arrays, not boxed `Span` objects and four `LongArray` rows (790 → 550 ms on one thread).
+- **What this doesn't explain:** release Kotlin/Native runs this codec at the JVM's speed on the simulator, so Kotlin/Native's code generation alone doesn't account for the 1.6–2.4× gap the iPhone 15 showed. An unoptimised framework is 6× slower here, about the size of the iPhone's gap to desktop. To do: profile `MediaBenchmarks` on an iPhone with Instruments, release framework, and fill in the iPhone rows above again.
+
 ## iOS compression: AVFoundation
 
 The iPhone 15 times and sizes are in the end-to-end table above (2026-11-20). Not yet compared against ffmpeg on the phone, which is in git history before 2026-11-19. The rows below are the same AVFoundation calls run by a Swift prototype on a MacBook (Apple silicon, macOS): they show export session against reader/writer, which the phone run didn't repeat, and not the phone's times.

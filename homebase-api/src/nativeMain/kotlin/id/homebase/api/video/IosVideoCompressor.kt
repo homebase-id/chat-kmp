@@ -7,12 +7,9 @@ import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.api.file.scratchDir
 import id.homebase.api.image.ns
 import id.homebase.api.image.writeLe32
-import id.homebase.api.media.MediaLocation
 import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.video.hls.HlsSegmenter
 import kotlin.coroutines.resume
-import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
@@ -30,7 +27,6 @@ import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.useContents
 import kotlinx.cinterop.value
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -59,9 +55,6 @@ import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.AVMetadataIdentifierQuickTimeMetadataLocationISO6709
 import platform.AVFoundation.AVMutableMetadataItem
-import platform.AVFoundation.AVMutableVideoComposition
-import platform.AVFoundation.AVMutableVideoCompositionInstruction
-import platform.AVFoundation.AVMutableVideoCompositionLayerInstruction
 import platform.AVFAudio.AVNumberOfChannelsKey
 import platform.AVFAudio.AVSampleRateKey
 import platform.AVFoundation.AVURLAsset
@@ -86,24 +79,13 @@ import platform.AVFoundation.creationDate
 import platform.AVFoundation.duration
 import platform.AVFoundation.estimatedDataRate
 import platform.AVFoundation.formatDescriptions
-import platform.AVFoundation.naturalSize
 import platform.AVFoundation.nominalFrameRate
-import platform.AVFoundation.preferredTransform
-import platform.AVFoundation.setColorPrimaries
-import platform.AVFoundation.setColorTransferFunction
-import platform.AVFoundation.setColorYCbCrMatrix
 import platform.AVFoundation.tracksWithMediaType
 import platform.CoreAudioTypes.kAudioFormatLinearPCM
 import platform.CoreAudioTypes.kAudioFormatMPEG4AAC
 import platform.CoreAudioTypes.kAudioChannelLayoutTag_Mono
 import platform.CoreAudioTypes.kAudioChannelLayoutTag_Stereo
 import platform.CoreFoundation.CFRelease
-import platform.CoreGraphics.CGAffineTransformConcat
-import platform.CoreGraphics.CGAffineTransformMakeScale
-import platform.CoreGraphics.CGAffineTransformMakeTranslation
-import platform.CoreGraphics.CGRectApplyAffineTransform
-import platform.CoreGraphics.CGRectMake
-import platform.CoreGraphics.CGSizeMake
 import platform.CoreMedia.CMAudioFormatDescriptionGetRichestDecodableFormat
 import platform.CoreMedia.CMAudioFormatDescriptionGetStreamBasicDescription
 import platform.CoreMedia.CMSampleBufferGetPresentationTimeStamp
@@ -125,7 +107,6 @@ internal actual fun platformVideoCompressor(): VideoCompressor = IosVideoCompres
 /** AVFoundation's reader and writer, not an export session, whose presets can't set a bitrate; our segmenter cuts HLS. */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, ExperimentalUuidApi::class, ExperimentalAtomicApi::class)
 internal object IosVideoCompressor : VideoCompressor {
-    private const val MAX_FPS = 60
     private const val KEYFRAME_SECONDS = 2
     internal val fileOps by lazy { IOSFileOperationsProvider() }
 
@@ -143,11 +124,9 @@ internal object IosVideoCompressor : VideoCompressor {
             "${fileOps.scratchDir(AppCacheDirs.MEDIA_WORK)}/compressed_${Uuid.random()}.mp4"
         }
         val trim = if (trimStartMs != null && trimEndMs != null) trimStartMs to trimEndMs else null
-        // AVFoundation can't see a location ffmpeg or Android wrote, so the shared reader finds it.
-        val location = if (keepMetadata) MediaMetadataReader(fileOps).videoLocation(input) else null
         val started = TimeSource.Monotonic.markNow()
         try {
-            Export(input, output, quality.targets(), trim, keepMetadata, location).run(onProgress)
+            Export(input, output, quality.targets(), trim, keepMetadata).run(onProgress)
         } catch (e: Exception) {
             fileOps.deleteTempFile(output)
             if (e is CancellationException || e is VideoCompressionFailedException) throw e
@@ -170,12 +149,11 @@ internal object IosVideoCompressor : VideoCompressor {
         private val targets: QualityTargets,
         private val trim: Pair<Long, Long>?,
         private val keepMetadata: Boolean,
-        private val location: MediaLocation?,
     ) {
         private val asset = AVURLAsset.URLAssetWithURL(fileUrl(input), null)
 
         suspend fun run(onProgress: VideoProgressListener?) = withContext(Dispatchers.IO) {
-            val video = asset.tracksWithMediaType(AVMediaTypeVideo).firstOrNull() as? AVAssetTrack ?: fail("no video track")
+            val video = asset.firstVideoTrack() ?: fail("no video track")
             val reader = errorOut { AVAssetReader(asset, it) } ?: fail("can't read")
             val writer = errorOut { AVAssetWriter(fileUrl(output), AVFileTypeMPEG4, it) } ?: fail("can't write")
             writer.shouldOptimizeForNetworkUse = false
@@ -198,7 +176,8 @@ internal object IosVideoCompressor : VideoCompressor {
             // In an MP4 these become 3GPP's loci and date boxes.
             if (keepMetadata) {
                 writer.metadata = listOfNotNull(
-                    location?.let { place ->
+                    // AVFoundation can't see a location ffmpeg or Android wrote, so the shared reader finds it.
+                    MediaMetadataReader(fileOps).videoLocation(input)?.let { place ->
                         AVMutableMetadataItem().apply {
                             setIdentifier(AVMetadataIdentifierQuickTimeMetadataLocationISO6709)
                             setValue(NSString.create(string = place.toIso6709()))
@@ -223,7 +202,7 @@ internal object IosVideoCompressor : VideoCompressor {
                 }
             }
             // A sample appended to a writer that's failed or cancelled raises, so the pumps stop before the writer goes.
-            // cancelReading during a pump's copyNextSampleBuffer frees the compositor under it (SIGSEGV), so drain first.
+            // The reader is cancelled only once they have: cancelling it under a pump's copyNextSampleBuffer crashes.
             suspend fun stopPumps() {
                 stop.store(true)
                 if (withTimeoutOrNull(5.seconds) { drained.await() } == null) Logger.w(tag = TAG) { "pumps didn't stop" }
@@ -256,30 +235,10 @@ internal object IosVideoCompressor : VideoCompressor {
 
         // The composition turns the frames upright (an HLS stream has no rotation flag), scales them, and maps HDR to SDR.
         private fun videoPump(writer: AVAssetWriter, track: AVAssetTrack, onTime: (Double) -> Unit): Pump {
-            val shown = track.naturalSize.useContents { CGRectApplyAffineTransform(CGRectMake(0.0, 0.0, width, height), track.preferredTransform) }
-            val (minX, minY, shownW, shownH) = shown.useContents { listOf(origin.x, origin.y, abs(size.width), abs(size.height)) }
-            val srcW = shownW.roundToInt()
-            val srcH = shownH.roundToInt()
+            val (srcW, srcH) = track.uprightSize()
             val (width, height) = computeOutputDims(srcW, srcH, targets.shortEdgePx) ?: (srcW.toEven() to srcH.toEven())
-            // Transforms written by ffmpeg leave out the translation that brings the turned frame back onto the canvas.
-            val placed = CGAffineTransformConcat(
-                CGAffineTransformConcat(track.preferredTransform, CGAffineTransformMakeTranslation(-minX, -minY)),
-                CGAffineTransformMakeScale(width / shownW, height / shownH),
-            )
-            val fps = track.nominalFrameRate.roundToInt().takeIf { it > 0 }?.coerceAtMost(MAX_FPS) ?: 30
-            val composition = AVMutableVideoComposition().apply {
-                setRenderSize(CGSizeMake(width.toDouble(), height.toDouble()))
-                setFrameDuration(CMTimeMake(1, fps))
-                setColorPrimaries(AVVideoColorPrimaries_ITU_R_709_2)
-                setColorTransferFunction(AVVideoTransferFunction_ITU_R_709_2)
-                setColorYCbCrMatrix(AVVideoYCbCrMatrix_ITU_R_709_2)
-                setInstructions(listOf(AVMutableVideoCompositionInstruction().apply {
-                    setTimeRange(CMTimeRangeMake(CMTimeMake(0, 1), asset.duration))
-                    setLayerInstructions(listOf(AVMutableVideoCompositionLayerInstruction.videoCompositionLayerInstructionWithAssetTrack(track).apply {
-                        setTransform(placed, CMTimeMake(0, 1))
-                    }))
-                }))
-            }
+            val fps = track.compositionFps()
+            val composition = uprightSdrComposition(asset, track, width, height, fps)
             val output = AVAssetReaderVideoCompositionOutput(listOf(track), mapOf<Any?, Any?>(kCVPixelBufferPixelFormatTypeKey.ns to kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)).apply {
                 videoComposition = composition
                 alwaysCopiesSampleData = false
@@ -385,7 +344,6 @@ internal object IosVideoCompressor : VideoCompressor {
 }
 
 private const val TAG = "IosVideoCompressor"
-
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 private fun <T> errorOut(make: (CPointer<ObjCObjectVar<NSError?>>) -> T?): T? = memScoped {
     val error = alloc<ObjCObjectVar<NSError?>>()

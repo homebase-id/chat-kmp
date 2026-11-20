@@ -22,6 +22,7 @@ import kotlin.time.TimeSource
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
@@ -31,31 +32,34 @@ import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.creationDate
 import platform.AVFoundation.dateValue
+import platform.CoreFoundation.CFDataGetBytePtr
+import platform.CoreFoundation.CFDataGetLength
+import platform.CoreFoundation.CFRelease
 import platform.CoreGraphics.CGColorSpaceUsesITUR_2100TF
+import platform.CoreGraphics.CGDataProviderCopyData
+import platform.CoreGraphics.CGImageGetDataProvider
 import platform.CoreGraphics.CGImageGetColorSpace
 import platform.CoreGraphics.CGImageRelease
 import platform.CoreGraphics.CGSizeMake
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSData
 import platform.Foundation.NSError
-import platform.Foundation.NSURL
 import platform.Foundation.NSFileManager
 import platform.Foundation.create
 import platform.UIKit.UIImage
 import platform.Foundation.timeIntervalSince1970
 import platform.posix.getenv
 
+private const val CAPTURED_AT = 1_767_323_045L // 2026-01-02T03:04:05Z, the fixture's capture time
+
 /** [IosVideoCompressor] and the poster decoder on the simulator's AVFoundation, with the clips Android's `Media3VideoCompressorTest` uses. */
 class IosVideoCompressorTest {
-    private companion object {
-        const val CAPTURED_AT = 1_767_323_045L // 2026-01-02T03:04:05Z, the fixture's capture time
-    }
-
     private val fileOps = IosVideoCompressor.fileOps
     private val clips = checkNotNull(getenv("TEST_VIDEOS")?.toKString()) { "TEST_VIDEOS isn't set: run through Gradle" }
 
@@ -80,6 +84,9 @@ class IosVideoCompressorTest {
 
     private suspend fun movie(path: String) = readMoov(fileOps, path)?.let(Mp4Movie::parse)
 
+    private fun captureTime(path: String) =
+        AVURLAsset.URLAssetWithURL(fileUrl(path), null).creationDate?.dateValue?.timeIntervalSince1970?.toLong()
+
     @Test
     fun aLandscape1080pVideoComesOutAt720pH264WithoutItsLocation() = runBlocking<Unit> {
         compressed("landscape_1080p_gps.mp4") { out ->
@@ -88,6 +95,7 @@ class IosVideoCompressorTest {
             assertEquals(1280 to 720, info.widthPx to info.heightPx)
             assertTrue(abs(IosVideoProber.getDurationMs(out) - 3_000) < 200, "duration ${IosVideoProber.getDurationMs(out)}")
             assertNull(MediaMetadataReader(fileOps).videoLocation(out), "a stripped video must not carry its location")
+            assertNotEquals(CAPTURED_AT, captureTime(out), "a stripped video must not carry its capture time")
         }
     }
 
@@ -112,6 +120,7 @@ class IosVideoCompressorTest {
             "portrait_1080p.mp4" to ImageSize(1080, 1920),
             "iphone_hevc.mov" to ImageSize(1080, 1920),
             "iphone_spatial.mov" to ImageSize(2160, 3840),
+            "hdr10_720p_short.mp4" to ImageSize(720, 1280),
         )
         val failures = mutableListOf<String>()
         for ((name, size) in upright) {
@@ -132,12 +141,45 @@ class IosVideoCompressorTest {
         assertTrue(failures.isEmpty(), failures.joinToString("\n"))
     }
 
+    @Test
+    fun aTrimStripHasEveryFrameUprightForSdrAndPqHdr() = runBlocking<Unit> {
+        for (name in listOf("portrait_1080p.mp4", "hdr10_720p_short.mp4")) {
+            val frames = VideoThumbnailService.extractThumbnailStrip(clip(name), IosVideoProber.getDurationMs(clip(name)), 4, 96).toList()
+            assertEquals(4, frames.size, "$name: strip frames")
+            for (frame in frames) {
+                val size = assertNotNull(ImageHeaderParser.parse(frame.jpegBytes), name)
+                assertTrue(size.pixelHeight == 96 && size.pixelWidth < 96, "$name: a strip frame is $size")
+            }
+        }
+    }
+
+    // White video from 0.5 s to 2.5 s, audio to 3.5 s: the composition draws black where there's no picture.
+    @Test
+    fun postersAndStripsComeFromTheVideosPicturesWhenItStartsLateAndEndsEarly() = runBlocking<Unit> {
+        val name = "late_video_long_audio.mp4"
+        val poster = assertNotNull(VideoThumbnailService.extractPosterFrame(clip(name), fullSize = true), "no poster")
+        assertTrue(brightness(poster) > 200, "the poster is ${brightness(poster)}, not the white picture")
+        val frames = VideoThumbnailService.extractThumbnailStrip(clip(name), IosVideoProber.getDurationMs(clip(name)), 4, 96).toList()
+        assertEquals((0 until 4).toList(), frames.map { it.index }.sorted(), "strip slots")
+        for (frame in frames) assertTrue(brightness(frame.jpegBytes) > 200, "strip frame ${frame.index} is ${brightness(frame.jpegBytes)}")
+    }
+
+    @OptIn(BetaInteropApi::class)
+    private fun brightness(jpeg: ByteArray): Int = jpeg.usePinned {
+        val image = checkNotNull(UIImage.imageWithData(NSData.create(bytes = it.addressOf(0), length = jpeg.size.toULong()))?.CGImage)
+        val data = CGDataProviderCopyData(CGImageGetDataProvider(image))
+        try {
+            val bytes = checkNotNull(CFDataGetBytePtr(data))
+            val length = CFDataGetLength(data).toInt()
+            (0 until length).sumOf { i -> bytes[i].toInt() } / length
+        } finally {
+            CFRelease(data)
+        }
+    }
+
     // What AVFoundation says when a poster comes back empty: the decoder's asynchronous call drops its error.
     private fun posterError(name: String, fullSize: Boolean): String = memScoped {
-        val generator = AVAssetImageGenerator(AVURLAsset.URLAssetWithURL(NSURL.fileURLWithPath(clip(name)), null))
-        generator.setAppliesPreferredTrackTransform(true)
-        generator.setRequestedTimeToleranceBefore(CMTimeMake(Long.MAX_VALUE, 1))
-        generator.setRequestedTimeToleranceAfter(CMTimeMake(Long.MAX_VALUE, 1))
+        val generator = sdrGenerator(clip(name))?.first ?: return "no video track"
         val maxPx = if (fullSize) VideoThumbnailQuality.FULL_POSTER_LONG_EDGE_PX.toDouble() else 640.0
         generator.setMaximumSize(CGSizeMake(maxPx, maxPx))
         val error = alloc<ObjCObjectVar<NSError?>>()
@@ -175,16 +217,11 @@ class IosVideoCompressorTest {
     fun keepingMetadataKeepsTheLocationAndCaptureTime() = runBlocking<Unit> {
         compressed("landscape_1080p_gps.mp4", keep = true) { out ->
             val location = assertNotNull(MediaMetadataReader(fileOps).videoLocation(out))
-            assertTrue(abs(location.latitude - 59.9139) < 1e-4 && abs(location.longitude - 10.7522) < 1e-4, "location $location")
+            assertEquals(59.9139, location.latitude, 1e-4)
+            assertEquals(10.7522, location.longitude, 1e-4)
             assertEquals(CAPTURED_AT, captureTime(out))
         }
-        compressed("landscape_1080p_gps.mp4") { out ->
-            assertNotEquals(CAPTURED_AT, captureTime(out), "a stripped video must not carry its capture time")
-        }
     }
-
-    private fun captureTime(path: String) =
-        AVURLAsset.URLAssetWithURL(fileUrl(path), null).creationDate?.dateValue?.timeIntervalSince1970?.toLong()
 
     @Test
     fun eachQualitySettingGivesItsSizeAndAboutItsBitrate() = runBlocking<Unit> {
@@ -229,6 +266,11 @@ class IosVideoCompressorTest {
 
     @Test
     fun cancellingStopsWithinASecondAndLeavesNothing() = runBlocking<Unit> {
+        // Repeated: cancelling the reader under a pump crashed about once in 12 runs.
+        repeat(15) { cancelOnce() }
+    }
+
+    private suspend fun cancelOnce() = coroutineScope {
         val work = fileOps.scratchDir(AppCacheDirs.MEDIA_WORK)
         val before = (NSFileManager.defaultManager.contentsOfDirectoryAtPath(work, null)?.size ?: 0)
         val started = CompletableDeferred<Unit>()

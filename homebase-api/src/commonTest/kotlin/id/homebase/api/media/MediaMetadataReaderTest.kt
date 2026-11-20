@@ -6,6 +6,7 @@ import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.image.ImageMetadata
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -109,9 +110,32 @@ class MediaMetadataReaderTest {
     // AVAssetWriter's MP4: 3GPP loci, the bytes it wrote for 59.9139, 10.7522.
     @Test
     fun a3gppLocationBoxIsRead() = runTest {
-        val loci = box("loci", be32(0), be16(0x55C4), byteArrayOf(0, 0), be32(0x000AC090), be32(0x003BE9F5), be32(0), "earth".encodeToByteArray(), byteArrayOf(0, 0))
-        val place = location(video(box("moov", box("udta", loci))))
-        assertTrue(place != null && kotlin.math.abs(place.latitude - 59.9139) < 1e-4 && kotlin.math.abs(place.longitude - 10.7522) < 1e-4, "location $place")
+        val loci = box(
+            "loci",
+            be32(0), be16(0x55C4), byteArrayOf(0, 0),
+            be32(0x000AC090), be32(0x003BE9F5), be32(0),
+            "earth".encodeToByteArray(), byteArrayOf(0, 0),
+        )
+        val place = assertNotNull(location(video(box("moov", box("udta", loci)))))
+        assertEquals(59.9139, place.latitude, 1e-4)
+        assertEquals(10.7522, place.longitude, 1e-4)
+    }
+
+    @Test
+    fun a3gppLocationWithAUtf16NameIsRead() = runTest {
+        val name = byteArrayOf(0xFE.toByte(), 0xFF.toByte(), 0, 'H'.code.toByte(), 0, 'i'.code.toByte(), 0, 0)
+        val loci = box("loci", be32(0), be16(0x55C4), name, byteArrayOf(0), be32(0x000AC090), be32(0x003BE9F5), be32(0))
+        val place = assertNotNull(location(video(box("moov", box("udta", loci)))))
+        assertEquals(59.9139, place.latitude, 1e-4)
+        assertEquals(10.7522, place.longitude, 1e-4)
+    }
+
+    @Test
+    fun aTruncated3gppLocationFallsBackToAndroidsAtom() = runTest {
+        val text = "+55.6761+012.5683/".encodeToByteArray()
+        val xyz = box("©xyz", be16(text.size), be16(0x15C7), text)
+        val place = location(video(box("moov", box("udta", box("loci", be32(0), be16(0x55C4)), xyz))))
+        assertEquals(MediaLocation(55.6761, 12.5683, null), place)
     }
 
     @Test
