@@ -6,6 +6,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import platform.AVFoundation.AVAsset
 import platform.AVFoundation.AVAssetTrack
+import platform.AVFoundation.AVAssetTrackSegment
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.AVMutableVideoComposition
 import platform.AVFoundation.AVMutableVideoCompositionInstruction
@@ -17,6 +18,7 @@ import platform.AVFoundation.duration
 import platform.AVFoundation.naturalSize
 import platform.AVFoundation.nominalFrameRate
 import platform.AVFoundation.preferredTransform
+import platform.AVFoundation.segments
 import platform.AVFoundation.setColorPrimaries
 import platform.AVFoundation.setColorTransferFunction
 import platform.AVFoundation.setColorYCbCrMatrix
@@ -27,12 +29,26 @@ import platform.CoreGraphics.CGAffineTransformMakeTranslation
 import platform.CoreGraphics.CGRectApplyAffineTransform
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
+import platform.CoreMedia.CMTime
 import platform.CoreMedia.CMTimeMake
 import platform.CoreMedia.CMTimeRangeMake
 
 private const val MAX_FPS = 60
 
 internal fun AVAsset.firstVideoTrack(): AVAssetTrack? = tracksWithMediaType(AVMediaTypeVideo).firstOrNull() as? AVAssetTrack
+
+/** The milliseconds the track has pictures for: a composition draws black outside them, such as an empty edit before a late start. */
+@OptIn(ExperimentalForeignApi::class)
+internal fun AVAssetTrack.shownMs(): LongRange? {
+    val shown = segments.filterIsInstance<AVAssetTrackSegment>().filterNot { it.isEmpty() }.map { segment ->
+        segment.timeMapping.useContents { target.start.ms() to target.start.ms() + target.duration.ms() }
+    }
+    val first = shown.minOfOrNull { it.first } ?: return null
+    val end = shown.maxOf { it.second }
+    return if (end > first) first until end else null
+}
+
+private fun CMTime.ms() = value * 1000 / timescale
 
 @OptIn(ExperimentalForeignApi::class)
 private fun AVAssetTrack.shownRect() =
