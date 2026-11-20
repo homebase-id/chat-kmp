@@ -1,6 +1,6 @@
 name: iOS app tests
 
-# The app-hosted XCTests (iosAppTests): what needs a real app on a simulator, such as the Photos library.
+# The app-hosted XCTests (iosAppTests): checks that need the real app on a simulator.
 # A full app build, so it runs only when iOS code changes, and nightly on main.
 on:
   pull_request:
@@ -114,20 +114,7 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
-      # Installed first, then granted: a grant for an app that isn't installed yet didn't reach it.
-      - name: Install the app and give it full Photos access
-        run: |
-          app=$(find build/dd/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
-          xcrun simctl install "$SIM_UDID" "$app"
-          xcrun simctl privacy "$SIM_UDID" grant photos id.homebase.feed.dev
-          # The grant was in TCC.db yet the app still read "not determined": reboot so the privacy daemons reread it.
-          xcrun simctl shutdown "$SIM_UDID"
-          xcrun simctl boot "$SIM_UDID"
-          xcrun simctl bootstatus "$SIM_UDID" -b
-          sqlite3 ~/Library/Developer/CoreSimulator/Devices/$SIM_UDID/data/Library/TCC/TCC.db \
-            "select * from access where client like '%homebase%'" || true
-          xcrun simctl get_app_container "$SIM_UDID" id.homebase.feed.dev
-
+      # Not PhotoLibraryCheckTests: a simctl Photos grant never reached the app, so they could only fail here.
       - name: Run iosAppTests
         run: |
           set -o pipefail
