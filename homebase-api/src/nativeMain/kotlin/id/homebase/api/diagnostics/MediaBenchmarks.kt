@@ -65,7 +65,8 @@ object MediaBenchmarks {
     suspend fun run(): CheckReport = checkRun {
         val dir = benchDir()
         val inputs = NSFileManager.defaultManager.contentsOfDirectoryAtPath(dir, null).orEmpty().map { it as String }.sorted()
-        measured("${machine()}, iOS ${UIDevice.currentDevice.systemVersion}, ${inputs.size} files in $dir")
+        record("${machine()}, iOS ${UIDevice.currentDevice.systemVersion}, ${inputs.size} files in $dir")
+        if (inputs.isEmpty()) fail("no videos, GIFs or photos in $dir: copy them there first")
         verify("BLAKE3") { blake3() }
         verify("generated photos") { generatedPhotos() }
         for (name in inputs) {
@@ -84,15 +85,15 @@ object MediaBenchmarks {
         val speeds = List(3) {
             val started = TimeSource.Monotonic.markNow()
             val hasher = Blake3Hasher()
-            repeat(HASH_MB) { hasher.update(chunk) }
+            repeat(hashMb) { hasher.update(chunk) }
             hasher.digest()
-            (HASH_MB / started.elapsedNow().toDouble(DurationUnit.SECONDS)).toInt()
+            (hashMb / started.elapsedNow().toDouble(DurationUnit.SECONDS)).toInt()
         }
-        measured("BLAKE3, the Kotlin port iOS runs: ${speeds.min()}–${speeds.max()} MB/s over $HASH_MB MB")
+        record("BLAKE3, the Kotlin port iOS runs: ${speeds.min()}–${speeds.max()} MB/s over $hashMb MB")
     }
 
     private suspend fun CheckRun.generatedPhotos() {
-        for ((width, height) in listOf(4000 to 3000, 8000 to 6000)) {
+        for ((width, height) in photoSizes) {
             val pixels = photoLike(width, height)
             val files = try {
                 listOf(ImageIOEncoder.JPEG, ImageIOEncoder.HEIC).associateWith { ImageIOEncoder.encode(it, listOf(pixels)).toByteArray() }
@@ -101,20 +102,20 @@ object MediaBenchmarks {
             }
             for ((type, bytes) in files) {
                 val label = "generated ${width}x$height ${type.substringAfter('.').uppercase()} (${bytes.size / 1024} KB)"
-                for (setting in MediaQuality.entries) pipeline("$label $setting") { createMediaImages(bytes, "bench", setting) }
+                for (setting in MediaQuality.entries) pipeline("$label $setting") { createMediaImages(bytes, "bench", setting, hdr = true) }
             }
         }
     }
 
     private suspend fun CheckRun.photo(name: String, path: String) {
         for (setting in MediaQuality.entries) {
-            pipeline("$name $setting") { createMediaImages(path, fileOps, "bench", setting) }
+            pipeline("$name $setting") { createMediaImages(path, fileOps, "bench", setting, hdr = true) }
         }
     }
 
-    // The footprint from the first run: later runs reuse the pages the allocator kept, and would read as no growth.
+    // The absolute peak, not growth: once earlier steps leave the allocator's pages behind, growth reads low.
     private suspend fun CheckRun.pipeline(label: String, render: suspend () -> MediaImages) {
-        val (images, start, peak) = footprintDuring { render() }
+        val (images, _, peak) = footprintDuring { render() }
         val times = List(runs) {
             val started = TimeSource.Monotonic.markNow()
             render()
@@ -122,9 +123,9 @@ object MediaBenchmarks {
         }.sorted()
         val outputs = images.thumbnails.map { "${it.pixelWidth}x${it.pixelHeight}" } +
             listOfNotNull(images.finalImage?.let { "${it.width}x${it.height} final" })
-        measured(
+        record(
             "$label: ${images.displayedSize.pixelWidth}x${images.displayedSize.pixelHeight} -> ${outputs.joinToString()}; " +
-                "median ${times[runs / 2]} ms of $runs; first run's footprint peak ${peak / MB} MB (+${(peak - start) / MB} MB); ${thermal()}",
+                "median ${times[runs / 2]} ms of $runs; footprint peak ${peak / MB} MB; ${thermal()}",
         )
     }
 
@@ -133,7 +134,7 @@ object MediaBenchmarks {
         for (quality in listOf(VideoQuality.STANDARD, VideoQuality.HIGH)) repeat(repeats) {
             delay(coolDownMs)
             val key = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
-            val (timed, start, peak) = footprintDuring {
+            val (timed, _, peak) = footprintDuring {
                 val started = TimeSource.Monotonic.markNow()
                 IosVideoCompressor.compress(path, quality = quality) to started.elapsedNow().inWholeMilliseconds
             }
@@ -147,13 +148,16 @@ object MediaBenchmarks {
                     NSFileManager.defaultManager.removeItemAtPath(segmented.segmentsPath.substringBeforeLast('/'), null)
                 } else {
                     val out = "$compressed.encrypted"
-                    fileOps.encryptWithPayloadHash(compressed, out, key, PayloadHashAlgorithm.Blake3)
-                    fileOps.deleteTempFile(out)
+                    try {
+                        fileOps.encryptWithPayloadHash(compressed, out, key, PayloadHashAlgorithm.Blake3)
+                    } finally {
+                        fileOps.deleteTempFile(out)
+                    }
                 }
                 val encryptMs = encrypted.elapsedNow().inWholeMilliseconds
-                measured(
+                record(
                     "$name ($sizeMb MB) $quality: ${compressMs + encryptMs} ms end to end (compress $compressMs ms to ${bytes / 1000} kB, " +
-                        "${if (hls) "HLS" else "MP4 encrypt"} $encryptMs ms); compress footprint peak ${peak / MB} MB (+${(peak - start) / MB} MB); ${thermal()}",
+                        "${if (hls) "HLS" else "MP4 encrypt"} $encryptMs ms); compress footprint peak ${peak / MB} MB; ${thermal()}",
                 )
             } finally {
                 fileOps.deleteTempFile(compressed)
@@ -168,7 +172,7 @@ object MediaBenchmarks {
             delay(gifPauseMs)
             val started = TimeSource.Monotonic.markNow()
             val out = reencodeGif(bytes, step.width, step.height, step.colors, step.fps)
-            measured(
+            record(
                 "$name ${gif.width}x${gif.height}, ${gif.frameCount} frames, ${bytes.size / 1000} kB -> $step: " +
                     "${started.elapsedNow().inWholeMilliseconds} ms, ${out?.size?.div(1000)} kB; ${thermal()}",
             )
@@ -183,6 +187,12 @@ object MediaBenchmarks {
         val info = alloc<utsname>()
         uname(info.ptr)
         info.machine.toKString()
+    }
+
+    // Printed as it's taken too: a long phone run must not lose every number to one timeout.
+    private fun CheckRun.record(line: String) {
+        measured(line)
+        println("measured: $line")
     }
 
     private fun thermal() = "thermal ${NSProcessInfo.processInfo.thermalState.value}"
@@ -225,7 +235,8 @@ object MediaBenchmarks {
     private val repeats = if (simulator) 1 else 2
     private val coolDownMs = if (simulator) 0L else 30_000L
     private val gifPauseMs = if (simulator) 0L else 2_000L
+    private val hashMb = if (simulator) 16 else 256
+    private val photoSizes = if (simulator) listOf(4000 to 3000) else listOf(4000 to 3000, 8000 to 6000)
 
     private const val MB = 1024L * 1024
-    private const val HASH_MB = 256
 }

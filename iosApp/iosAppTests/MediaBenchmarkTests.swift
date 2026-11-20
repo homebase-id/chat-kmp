@@ -7,8 +7,7 @@ final class MediaBenchmarkTests: XCTestCase {
         let done = expectation(description: "media benchmarks finished")
         var report: CheckReport?
         MediaBenchmarks.shared.runBenchmarks { report = $0; done.fulfill() }
-        wait(for: [done], timeout: 3600)
-        report?.measurements.forEach { print("measured: \($0)") }
+        wait(for: [done], timeout: 4 * 3600)
         let failures = report?.failures ?? ["no report"]
         XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
     }
