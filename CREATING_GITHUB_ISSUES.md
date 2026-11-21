@@ -27,7 +27,10 @@ that the real issue can be discovered.
   - Michael Seifert → `Seifert69`
   - Bishwajeet Prahi → `2002Bishwajeet` (heard as "Bishwa", and autocorrected to "Bushes")
 - **Labels in use:** `bug`, `enhancement`, `documentation`, `question`,
-  `help wanted`, `good first issue`, `duplicate`, `invalid`, `wontfix`
+  `help wanted`, `good first issue`, `duplicate`, `invalid`, `wontfix`, `post-merge`
+- **After a merge:** an issue about something a merged PR got wrong starts with
+  "Found after #<PR>" and gets `post-merge`. A fix that didn't hold reopens its issue
+  ("Still broken on <platform>: …") instead of a new one (CLAUDE.md, "Filing issues").
 
 ---
 
