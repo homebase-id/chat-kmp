@@ -318,7 +318,7 @@ Use a stack only when:
 - The work spans `homebase-api` → `homebase-chat`/`homebase-common` → `homebase-core` and the
   upper layers can't compile without the lower ones.
 
-Otherwise open one normal PR. Two independent bugfixes are two PRs, not a stack.
+Otherwise open one normal PR.
 
 Rules:
 
@@ -331,14 +331,39 @@ Rules:
 
 ## Opening a PR
 
+One PR solves one problem. Unrelated fixes are separate PRs, however small; no "Small fixes: …"
+grab-bags. If the title needs "and" or a list to say what the PR does, it is probably two PRs.
+Two issues share a PR only when the same change fixes both.
+
 When you open a PR, before handing it over:
 
 - **Platforms.** If the diff touches platform code, the description says which of the four
-  platforms were verified and how. CI alone covers JVM, plus iOS/WASM for `homebase-api` only.
+  platforms were verified and how (the `Verified` line below). CI alone covers JVM, plus
+  iOS/WASM for `homebase-api` only.
 - **Evidence.** A bug fix's description states what proved the root cause (log, trace, failing
   test), and for a platform-specific bug, whether the platform principles held.
 - **Watch CI to green**, and read the silent-revert check's summary: it never fails the build,
   so its warnings are only seen if someone looks.
+- **PR facts.** End the description with this block, one line each, before the attribution
+  lines. The weekly team data reads it.
+
+  ```
+  Type: feature | fix | refactor | speed-up | docs | tests
+  Part of: #<tracking issue>
+  Fixes a problem from: #<merged PR>
+  Verified: <per platform: device (which), simulator or emulator, desktop, web, or compiled only>
+  ```
+
+  Leave out `Part of` when there is no tracking issue, and `Fixes a problem from` unless the PR
+  fixes something a merged PR got wrong. `Verified` names what actually ran: a UI change says
+  whether it ran on a phone and on desktop.
+
+## Filing issues
+
+- An issue about something a merged PR got wrong starts with "Found after #<PR>" and gets the
+  `post-merge` label.
+- When a fix doesn't hold, reopen its issue with "Still broken on <platform>: …" instead of
+  filing a new one.
 
 ## Comments
 
