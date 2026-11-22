@@ -31,6 +31,12 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.video.FFmpegBinaryManager
+import id.homebase.api.video.SegmentedVideo
+import id.homebase.api.video.VideoCompressionFailedException
+import id.homebase.api.video.VideoCompressor
+import id.homebase.api.video.VideoProber
+import id.homebase.api.video.VideoProgressListener
+import id.homebase.api.video.VideoTrackInfo
 import id.homebase.api.video.VideoPayloadProcessor
 import id.homebase.api.video.VideoQuality
 import id.homebase.core.photobase.PhotobaseProtocol
@@ -95,11 +101,12 @@ class OutboxBackupUploaderTest {
     private fun digest(bytes: ByteArray) = Blake3Hasher().apply { update(bytes) }.digest()
 
     @OptIn(ExperimentalStdlibApi::class)
-    private suspend fun rowFor(id: String, mediaType: BackupMediaType, vararg parts: ByteArray): Pair<id.homebase.api.sync.database.DeviceBackupAsset, Uuid> {
+    private suspend fun rowFor(id: String, mediaType: BackupMediaType, vararg parts: ByteArray, failedBefore: Int = 0): Pair<id.homebase.api.sync.database.DeviceBackupAsset, Uuid> {
         val ledger = BackupLedger(db.deviceBackup) { 1000 }
         ledger.apply(fullListing(asset(id, createdAtMs = 12345, mediaType = mediaType)), null)
         val hashed = HashedAsset(parts.map { digest(it) })
         ledger.markHashed(id, hashed.contentHash, hashed.uniqueId, 10)
+        repeat(failedBefore) { ledger.recordFailure(ledger.row(id)!!, "before") }
         return ledger.row(id)!! to hashed.uniqueId
     }
 
@@ -537,13 +544,14 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun anIphoneLivePhotoWhoseVideoCantBeCopiedKeepsItAtOriginalAndIsAStillOtherwise() = runTest {
+    fun anIphoneLivePhotoWhoseVideoCantBeCopiedKeepsItAtOriginalAndIsAStillOnItsLastAttemptOtherwise() = runTest {
         assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
         for ((n, quality) in listOf(MediaQuality.ORIGINAL, MediaQuality.STANDARD).withIndex()) {
             val still = "still $n".encodeToByteArray()
             // Bytes no ffmpeg can transcode.
             val motion = ByteArray(4096) { (it * 31 + n).toByte() }
-            val (row, uniqueId) = rowFor("a$n", BackupMediaType.LivePhoto, still, motion)
+            val lastAttempt = if (quality == MediaQuality.ORIGINAL) 0 else BackupLedger.MAX_ATTEMPTS - 1
+            val (row, uniqueId) = rowFor("a$n", BackupMediaType.LivePhoto, still, motion, failedBefore = lastAttempt)
             val uploader = backgroundScope.uploader(livePhoto(still, motion), photoQuality = quality)
 
             assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
@@ -562,6 +570,26 @@ class OutboxBackupUploaderTest {
             }
             request.payloads.forEach { File(it.filePath).delete() }
         }
+    }
+
+    @Test
+    fun anIphoneLivePhotoAtOriginalIsHashedAsItsEncryptedWithAnIvPerPayload() = runTest {
+        val still = "still".encodeToByteArray()
+        val motion = "motion".encodeToByteArray()
+        val (row, uniqueId) = rowFor("a", BackupMediaType.LivePhoto, still, motion)
+        val encryption = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps, CopyingCompressor, NoProbe), EventBus())
+        val uploader = backgroundScope.uploader(livePhoto(still, motion), encryption, photoQuality = MediaQuality.ORIGINAL)
+
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+
+        val request = queuedRequest(uniqueId).second
+        assertEquals(listOf(PhotobaseProtocol.ImagePayloadKey, PhotobaseProtocol.LivePhotoVideoPayloadKey, "vcp_0001"), request.payloads.map { it.key })
+        val ivs = request.payloads.map { it.iv!!.toList() }
+        assertEquals(ivs.size, ivs.toSet().size, "each payload has its own IV")
+        val live = request.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey)
+        assertContentEquals(digest(motion), live.hash!!.plaintextContentHash(KeyHeader(live.iv!!, request.keyHeader.aesKey)), "the paired video, checked as it's encrypted")
+        assertContentEquals(digest(still), request.payload(PhotobaseProtocol.ImagePayloadKey).let { it.hash!!.plaintextContentHash(KeyHeader(it.iv!!, request.keyHeader.aesKey)) })
+        request.payloads.forEach { File(it.filePath).delete() }
     }
 
     private fun motionPhotoPart(clip: ByteArray, name: String = "PXL.MP.jpg") =
@@ -610,13 +638,19 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun anAndroidMotionPhotoWhoseClipCantBeTranscodedGoesAsAStill() = runTest {
+    fun aMotionPhotoWhoseClipFailsToTranscodeIsRetriedAndOnlyItsLastAttemptGoesAsAStill() = runTest {
         assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
         val part = motionPhotoPart(fakeMp4(5000))
         val bytes = File(part.path).readBytes()
-        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
-        val uploader = backgroundScope.uploader(listOf(part), photoQuality = MediaQuality.ORIGINAL)
         val tempsBefore = uploadTemps()
+        val (early, earlyId) = rowFor("early", BackupMediaType.Image, bytes, failedBefore = BackupLedger.MAX_ATTEMPTS - 2)
+        assertFailsWith<VideoCompressionFailedException>("a failure the run backs off and retries") {
+            backgroundScope.uploader(listOf(part), photoQuality = MediaQuality.ORIGINAL).handOff(early, earlyId)
+        }
+        assertNull(db.outbox.selectByDriveAndUnique(PhotobaseProtocol.DriveAlias, earlyId))
+
+        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes, failedBefore = BackupLedger.MAX_ATTEMPTS - 1)
+        val uploader = backgroundScope.uploader(listOf(part), photoQuality = MediaQuality.ORIGINAL)
 
         assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
 
@@ -778,6 +812,21 @@ private fun motionPhoto(jpeg: ByteArray, clip: ByteArray): ByteArray {
 private fun fakeMp4(size: Int) = ByteArray(size) { (it * 13).toByte() }.also {
     byteArrayOf(0, 0, 0, 24).copyInto(it)
     "ftypisom".encodeToByteArray().copyInto(it, 4)
+}
+
+/** A transcode that copies its input, so the encryption step runs with no ffmpeg. */
+private object CopyingCompressor : VideoCompressor {
+    override suspend fun compress(inputPath: String, onProgress: VideoProgressListener?, trimStartMs: Long?, trimEndMs: Long?, quality: VideoQuality, keepMetadata: Boolean): String =
+        File.createTempFile("copy", ".mp4").also { File(inputPath).copyTo(it, overwrite = true) }.path
+
+    override suspend fun segmentAndEncrypt(inputPath: String, keyHeader: KeyHeader, onProgress: VideoProgressListener?): SegmentedVideo? = null
+}
+
+private object NoProbe : VideoProber {
+    override suspend fun getDurationMs(inputPath: String) = 0L
+    override suspend fun getFfmpegVersion(): String? = null
+    override suspend fun probeVideo(inputPath: String): VideoTrackInfo? = null
+    override fun canRead(contentType: String) = true
 }
 
 private class PreviewingEncryptor : PayloadBundleEncryptor {

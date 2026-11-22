@@ -10,7 +10,6 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.file.CONTENT_TYPE_MP4
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.ImageMetadataScrubber
 import co.touchlab.kermit.Logger
 import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.media.MotionPhoto
@@ -118,9 +117,11 @@ class BackupRequestBuilder(
             return try {
                 send(spec(bundle, PhotobaseProtocol.LivePhotoDataType))
             } catch (e: VideoCompressionFailedException) {
-                Logger.w(tag = TAG, throwable = e) { "no clip for $uniqueId to play" }
                 // A backup that isn't the original isn't a backup: at Original an iPhone's paired video stays, as it is.
                 if (clip.pairedPart != null && !clip.untouched && quality == MediaQuality.ORIGINAL) return attempt(clip.copy(untouched = true))
+                // Retried like any failure, so only a clip that never transcodes costs the motion; the still is kept.
+                if (row.attempts + 1 < BackupLedger.MAX_ATTEMPTS) throw e
+                Logger.w(tag = TAG, throwable = e) { "no clip for $uniqueId after ${row.attempts + 1} attempts; backing up the still" }
                 send(spec(bundle.withOnly(PhotobaseProtocol.ImagePayloadKey), PhotobaseProtocol.ImageDataType))
             }
         }
@@ -138,13 +139,10 @@ class BackupRequestBuilder(
     /** [pairedPart]: the exported part an iPhone's clip is; null for a clip cut from the file. [untouched]: no copy to play. */
     private data class Clip(val path: String, val contentType: String, val pairedPart: Int? = null, val untouched: Boolean = false)
 
+    // Only JPEG motion photos so far; a HEIC one's XMP can lie past the header (THUMBNAILS.md, "Not settled").
     private suspend fun cutClip(primary: ExportedPart): Clip? {
-        if (primary.contentType !in ImageMetadataScrubber.BLOCK_FORMATS) return null
-        val path = timed(BackupStage.Thumbnails) {
-            runCatching { MotionPhoto.extractClip(primary.path, fileOps) }
-                .onFailure { Logger.w(tag = TAG, throwable = it) { "couldn't read the clip of ${primary.path}" } }
-                .getOrNull()
-        } ?: return null
+        if (primary.contentType != "image/jpeg") return null
+        val path = timed(BackupStage.Thumbnails) { MotionPhoto.extractClip(primary.path, fileOps) } ?: return null
         return Clip(path, CONTENT_TYPE_MP4)
     }
 

@@ -82,6 +82,5 @@ internal fun xmpValues(xml: String, namespace: String, name: String): List<Strin
             .map { (it.groupValues[2].ifEmpty { it.groupValues[3] }).trim() }
     }
 
-/** The prefixes [xml] binds to [namespace]. */
 internal fun xmpPrefixes(xml: String, namespace: String): Set<String> =
     Regex("""xmlns:([\w.-]+)\s*=\s*["']${Regex.escape(namespace)}["']""").findAll(xml).map { it.groupValues[1] }.toSet()

@@ -23,14 +23,19 @@ object MotionPhoto {
     suspend fun extractClip(path: String, fileOps: FileOperationsProvider): String? = fileOps.openRanges(path).use { ranges ->
         val range = clipRange(path, ranges) ?: return null
         val out = fileOps.createUploadTempPath("motion", ".mp4")
-        fileOps.writeStream(out, flow {
-            var at = range.first
-            while (at <= range.last) {
-                val length = minOf(CHUNK.toLong(), range.last - at + 1).toInt()
-                emit(ranges.read(at, length))
-                at += length
-            }
-        })
+        try {
+            fileOps.writeStream(out, flow {
+                var at = range.first
+                while (at <= range.last) {
+                    val length = minOf(CHUNK.toLong(), range.last - at + 1).toInt()
+                    emit(ranges.read(at, length))
+                    at += length
+                }
+            })
+        } catch (e: Throwable) {
+            fileOps.deleteTempFile(out)
+            throw e
+        }
         out
     }
 
@@ -52,7 +57,7 @@ object MotionPhoto {
     internal class Tail(val clip: Long, val fromEnd: Long)
 
     internal fun tailOf(xml: String): Tail? {
-        if (xmpValues(xml, CAMERA, "MotionPhoto").firstOrNull() == "1") return directoryTail(xml)
+        if (xmpValues(xml, CAMERA, "MotionPhoto").firstOrNull() == "1") directoryTail(xml)?.let { return it }
         if (xmpValues(xml, CAMERA, "MicroVideo").firstOrNull() == "1") {
             val offset = xmpValues(xml, CAMERA, "MicroVideoOffset").firstOrNull()?.toLongOrNull()?.takeIf { it > 0 } ?: return null
             return Tail(offset, offset)

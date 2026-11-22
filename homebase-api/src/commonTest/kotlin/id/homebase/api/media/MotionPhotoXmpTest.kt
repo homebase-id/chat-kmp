@@ -40,6 +40,12 @@ class MotionPhotoXmpTest {
     }
 
     @Test
+    fun aMotionPhotoWithNoDirectoryFallsBackToItsMicroVideoOffset() {
+        val xml = """<rdf:Description xmlns:GCamera="http://ns.google.com/photos/1.0/camera/" GCamera:MotionPhoto="1" GCamera:MicroVideo="1" GCamera:MicroVideoOffset="900"/>"""
+        assertEquals(900L to 900L, tail(xml))
+    }
+
+    @Test
     fun aPhotoThatIsntAMotionPhotoHasNoClip() {
         assertNull(tail("""<rdf:Description xmlns:hdrgm="http://ns.adobe.com/hdr-gain-map/1.0/" hdrgm:Version="1.0"/>"""))
         assertNull(tail(pixelXmp(gainmap = 165_718, clip = 3_134_455).replace("GCamera:MotionPhoto=\"1\"", "GCamera:MotionPhoto=\"0\"")), "motion turned off")
