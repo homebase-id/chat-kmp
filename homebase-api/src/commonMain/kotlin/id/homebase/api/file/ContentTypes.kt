@@ -19,16 +19,35 @@ fun isUntyped(contentType: String?): Boolean = contentType.isNullOrBlank() || co
 fun contentTypeFromBytes(header: ByteArray): String = ImageFormatDetector.detectFormat(header)
 
 /** [contentTypeFromBytes] for the file at [path]; [OCTET_STREAM] when it can't be read. */
-suspend fun contentTypeOfFile(path: String, fileOps: FileOperationsProvider): String {
-    val header = try {
-        fileOps.readFileHeaderBytes(path)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Logger.w(tag = "ContentTypes", throwable = e) { "Couldn't read $path to check its type" }
-        return OCTET_STREAM
+suspend fun contentTypeOfFile(path: String, fileOps: FileOperationsProvider): String =
+    headerOf(path, fileOps)?.let(::contentTypeFromBytes) ?: OCTET_STREAM
+
+/**
+ * A video's container type from its `ftyp` brand, for a file a photo library calls a video but gives no type:
+ * [OCTET_STREAM] when it isn't an ISO media file, or is a HEIF or AVIF image.
+ */
+fun videoContentTypeFromBytes(header: ByteArray): String {
+    if (header.size < 12 || header.decodeToString(4, 8) != "ftyp") return OCTET_STREAM
+    return when (header.decodeToString(8, 12)) {
+        "qt  " -> "video/quicktime"
+        in IMAGE_BRANDS -> OCTET_STREAM
+        else -> CONTENT_TYPE_MP4
     }
-    return contentTypeFromBytes(header)
+}
+
+/** [videoContentTypeFromBytes] for the file at [path]; [OCTET_STREAM] when it can't be read. */
+suspend fun videoContentTypeOfFile(path: String, fileOps: FileOperationsProvider): String =
+    headerOf(path, fileOps)?.let(::videoContentTypeFromBytes) ?: OCTET_STREAM
+
+private val IMAGE_BRANDS = setOf("heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1", "avif", "avis")
+
+private suspend fun headerOf(path: String, fileOps: FileOperationsProvider): ByteArray? = try {
+    fileOps.readFileHeaderBytes(path)
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Logger.w(tag = "ContentTypes", throwable = e) { "Couldn't read $path to check its type" }
+    null
 }
 
 fun detectContentTypeFromExtensionOrHint(nameOrPath: String?): String {

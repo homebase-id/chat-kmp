@@ -157,7 +157,7 @@ class VideoPayloadProcessor(
             }
         }
         // Read by Kotlin, so not a web blob: handle, whose bytes stay in JS.
-        val mayGoAsIs = (payload.stripMetadata || payload.photoClip) && trimStartMs == null && trimEndMs == null && ffmpegInputPath == payload.filePath
+        val mayGoAsIs = payload.stripMetadata && trimStartMs == null && trimEndMs == null && ffmpegInputPath == payload.filePath
         val (compressedPath, compressElapsed) =
             measureTimedValue {
                 (if (mayGoAsIs) remuxIfAlreadyMet(payload.filePath, videoQuality, compressProgress) else null) ?: compressor.compress(

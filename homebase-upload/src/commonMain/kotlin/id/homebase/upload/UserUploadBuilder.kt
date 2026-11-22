@@ -4,6 +4,7 @@ import id.homebase.api.HomebaseProtocol
 import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.file.isUntyped
 import id.homebase.api.file.contentTypeOfFile
+import id.homebase.api.file.videoContentTypeOfFile
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DescriptorContentSeal
 import id.homebase.api.client.drives.files.DescriptorContentV1
@@ -105,8 +106,13 @@ object UserUploadBuilder {
         require(source.appContent == null || !(source.contentType.startsWith("image/") || source.contentType.startsWith("audio/") || knownImage)) {
             "appContent is for files; an image or audio payload would drop it"
         }
-        // The bytes decide an untyped file's type with the current format only.
-        val contentType = if (options.currentFormat && isUntyped(source.contentType) && source.libraryKind == null) contentTypeOfFile(source.path, fileOps) else source.contentType
+        // The bytes decide an untyped file's type with the current format only; a library image's decode names its own.
+        val contentType = when {
+            !options.currentFormat || !isUntyped(source.contentType) -> source.contentType
+            source.libraryKind == null -> contentTypeOfFile(source.path, fileOps)
+            source.libraryKind == LibraryKind.VIDEO -> videoContentTypeOfFile(source.path, fileOps)
+            else -> source.contentType
+        }
         val name = source.pickedName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
         val oldName = source.pickedName?.let { safeFileName(it) }
         fun descriptor(current: () -> DescriptorContentV1, old: () -> String?) =
@@ -159,14 +165,22 @@ object UserUploadBuilder {
                     trimEndMs = source.trimEndMs,
                     inputBlobUrl = source.inputBlobUrl,
                     videoQuality = options.videoQuality,
-                    stripMetadata = options.metadata == MetadataPolicy.STRIP,
+                    // A photo's clip has no metadata of its own to keep: its still carries the location and time.
+                    stripMetadata = options.metadata == MetadataPolicy.STRIP || (source.photoClip && original == null),
                     skipVideoProcessing = original != null || kind == DescriptorContentV1.Kind.FILE,
                     photoClip = source.photoClip,
                 )
                 Built(
                     payload,
                     pdfPageRenderer?.takeIf { contentType == "application/pdf" }?.let { UploadImages.fromPdf(source.path, key, it) },
-                    copyKey?.let { payload.copy(key = it, descriptorContent = DescriptorContentV1(kind = kind).encode(), skipVideoProcessing = false) },
+                    copyKey?.let {
+                        payload.copy(
+                            key = it,
+                            descriptorContent = DescriptorContentV1(kind = kind).encode(),
+                            skipVideoProcessing = false,
+                            stripMetadata = payload.stripMetadata || source.photoClip,
+                        )
+                    },
                 )
             }
         }

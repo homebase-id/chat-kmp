@@ -29,6 +29,18 @@ class ContentTypesTest {
         )
     }
 
+    private fun isoFile(brand: String) = byteArrayOf(0, 0, 0, 24) + "ftyp$brand".encodeToByteArray() + ByteArray(12)
+
+    @Test
+    fun aVideoTheLibraryGaveNoTypeIsTypedByItsContainersBrand() {
+        assertEquals("video/quicktime", videoContentTypeFromBytes(isoFile("qt  ")))
+        assertEquals("video/mp4", videoContentTypeFromBytes(isoFile("isom")))
+        assertEquals("video/mp4", videoContentTypeFromBytes(isoFile("mp42")))
+        assertEquals("application/octet-stream", videoContentTypeFromBytes(isoFile("heic")), "a HEIF image isn't a video")
+        assertEquals("application/octet-stream", videoContentTypeFromBytes("not a video at all".encodeToByteArray()))
+        assertEquals("application/octet-stream", videoContentTypeFromBytes(ByteArray(4)))
+    }
+
     @Test
     fun returnsOctetStreamWhenNothingIsResolvable() {
         assertEquals(

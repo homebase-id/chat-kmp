@@ -255,6 +255,28 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
+    fun aPairedVideoTheLibraryGaveNoTypeIsTypedByItsBytesSoItsCopyIsATranscode() = runTest {
+        val still = "still".encodeToByteArray()
+        val motion = byteArrayOf(0, 0, 0, 20) + "ftypqt  ".encodeToByteArray() + ByteArray(64) { it.toByte() }
+        val (row, uniqueId) = rowFor("a", BackupMediaType.LivePhoto, still, motion)
+        val uploader = backgroundScope.uploader(
+            listOf(
+                ExportedPart(ExportedPartRole.Primary, file("s.heic", still), "image/heic", false),
+                ExportedPart(ExportedPartRole.PairedVideo, file("m.mov", motion), "application/octet-stream", false),
+            ),
+            PreviewingEncryptor(),
+        )
+
+        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+
+        val request = queuedRequest(uniqueId).second
+        assertEquals("video/quicktime", request.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey).contentType)
+        val copy = request.payload("vcp_0001")
+        assertEquals("video/quicktime", copy.contentType, "so the encryption step transcodes it")
+        assertFalse(copy.skipVideoProcessing)
+    }
+
+    @Test
     fun aPhotosOwnBytesDecideItsType() = runTest {
         val bytes = jpeg(64, 48)
         val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
@@ -508,7 +530,8 @@ class OutboxBackupUploaderTest {
         assertEquals("vcp_0001", described.video?.playableCopyKey)
         val copy = request.payload("vcp_0001")
         assertEquals(VideoQuality.HIGH, copy.videoQuality, "the copy plays at 1080p, whatever the video setting")
-        assertFalse(copy.stripMetadata)
+        assertTrue(copy.stripMetadata, "the still carries the location and time, so a clip that meets the setting can be remuxed")
+        assertFalse(live.stripMetadata, "the user's file is kept as it is")
         assertTrue(live.photoClip && copy.photoClip, "the still's thumbnails stand for the clip")
     }
 
@@ -529,6 +552,7 @@ class OutboxBackupUploaderTest {
             assertFalse(live.skipVideoProcessing, "${quality.first}: a transcode")
             assertEquals(quality.second, live.videoQuality, "${quality.first}: the clip follows the photo setting")
             assertTrue(live.photoClip)
+            assertTrue(live.stripMetadata, "a clip carries no metadata of its own")
             assertNull(request.opened(live)?.original)
         }
     }
@@ -619,6 +643,7 @@ class OutboxBackupUploaderTest {
             assertFalse(live.skipVideoProcessing, "${quality.first}: the clip is a transcode")
             assertEquals(quality.second, live.videoQuality)
             assertTrue(live.photoClip)
+            assertTrue(live.stripMetadata, "a clip carries no metadata of its own")
             assertNull(request.opened(live)?.original)
         }
         assertEquals(tempsBefore, uploadTemps(), "the cut clips are gone once queued")
@@ -706,7 +731,7 @@ class OutboxBackupUploaderTest {
             val live = request.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey)
             val sent = KeyHeader(live.iv!!, request.keyHeader.aesKey).decrypt(File(live.filePath).readBytes())
             assertFalse(sent.contentEquals(clip), "$phone: a transcode")
-            assertEquals(filmedAt, locationOf(sent), "$phone: Photos keeps where the clip was filmed")
+            assertNull(locationOf(sent), "$phone: the clip keeps no metadata of its own; the still carries where it was taken")
             assertNull(live.previewThumbnail, "$phone: no tiny")
             assertTrue(request.thumbnails.none { it.key == live.key }, "$phone: no thumbnails")
             assertTrue(request.thumbnails.any { it.key == PhotobaseProtocol.ImagePayloadKey }, "$phone: the still's stand for it")

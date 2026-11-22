@@ -33,21 +33,6 @@ class SendAsIsTest {
     }
 
     @Test
-    fun aPhotosClipThatMeetsTheSettingIsRemuxedThoughItsAppKeepsMetadata() = runTest {
-        val compressor = RecordingCompressor(source.absolutePath)
-        val result = VideoPayloadProcessor(fileOps, compressor, SdrProbe).process(
-            payload = PayloadFile(key = "photo_live", filePath = source.absolutePath, stripMetadata = false, photoClip = true),
-            keyHeader = KeyHeader.newRandom16(),
-            onProgress = null,
-            descriptorContentPayloadKey = "descriptor",
-            playlistPayloadKey = "pls_0001",
-            videoQuality = VideoQuality.STANDARD,
-        )
-        assertEquals(0, compressor.calls, "the still carries the location and time")
-        assertEquals("video/mp4", result.videoMetadata.mimeType)
-    }
-
-    @Test
     fun aSendThatKeepsMetadataOrTrimsStillTranscodes() = runTest {
         for ((payload, trim) in listOf(
             PayloadFile(key = "vid", filePath = source.absolutePath, stripMetadata = false) to (null to null),
