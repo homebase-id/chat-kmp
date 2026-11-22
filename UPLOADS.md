@@ -178,7 +178,7 @@ Decided in one place, `ContentTypes.kt` in homebase-api: the extension table, th
 
 Filesync and WebDrop still store `application/octet-stream` payloads (they move bytes), but record the detected type in their own content.
 
-A photo library knows more than the bytes say: a file it calls a picture or a video is that kind (`k`) even when its type is missing or unknown.
+A photo library knows more than the bytes say: a file it calls a picture or a video is that kind (`k`) even when its type is missing or unknown. A video it gives no type takes one from its container's `ftyp` brand (`videoContentTypeOfFile`), so its transcode or playable copy is made as for any video.
 
 **A video the sending platform can't open is a file.** Its kind is `f`, not `v`, and it is sent as it is, with its own content type (`video/x-matroska`, `video/webm`, …): no transcode, no thumbnails. Today that is MKV and WebM on iOS, which AVFoundation can't read; Android, desktop and web read them and send a transcode as usual. The platform answers from the content type alone (`VideoProber.canRead`), so a failed read never turns a good video into a file. Readers show a payload by its `k`, so a `video/*` payload of kind `f` is a file to download, not a video to play. Until the current format is written (`DescriptorContentV1.WRITE`), `k` isn't sent, so readers still show such a payload as a video. Like any file, it goes out with its metadata as it is, whatever the app's policy.
 
@@ -222,14 +222,14 @@ The builder decides it per app and records it on each image payload (`PayloadFil
 | AVIF, TIFF and other formats the scrubber doesn't handle, or a file it can't parse | nothing: sent as it is, with a warning in the log | nothing |
 | GIF | nothing (GIF has no standard location field) | nothing |
 | Final image (Standard, HD) | already has none | copy the source's metadata into it |
-| Video | drop the container's metadata in the transcode or remux | keep the container's metadata (on iOS, only its location and capture time) |
+| Video | drop the container's metadata in the transcode or remux | keep the container's metadata (on iOS, only its location and capture time); a Live or motion photo's clip keeps none of its own, as its still carries it (section 3.7) |
 | Audio, files | nothing | nothing |
 
 ### 3.5 Tiny and thumbnails
 
 | Item | Rule |
 |---|---|
-| Who gets them | Every `image`, `video`, `sticker` and PDF `file`. Not `audio` or other files. Link and location previews keep their tiny-only previews |
+| Who gets them | Every `image`, `video`, `sticker` and PDF `file`. Not `audio` or other files, nor a Live or motion photo's clip, whose still's stand for it (section 3.7). Link and location previews keep their tiny-only previews |
 | Sizes | `THUMBNAILS.md`, for the app's quality |
 | Tiny location | Plain, in the payload's `previewThumbnail` and the header's `appData.previewThumbnail` (the smallest tiny), encrypted file or not. 20 px leaks nothing meaningful. A video's tiny is made while it is processed, so it is on the payload only |
 | Thumbnails | Encrypted with the payload, as today |
@@ -261,6 +261,31 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 - The original isn't probed, so it has no `w`, `h` or duration; the copy has them.
 - A video with no `vd.pc` is played as it is, as before.
 
+### 3.7 Live and motion photos
+
+A Live Photo (iPhone) or a motion photo (Android) is one HomebaseFile of data type 3 (`PhotobaseProtocol.LivePhotoDataType`) on both phones: the still as `photo_main`, the clip as `photo_live`. The clip follows the photo setting and is played as SDR H.264 in every setting; THUMBNAILS.md, "Live and motion photos", has its size and why.
+
+```
+Standard or HD, both phones
+photo_main   the re-encoded still                   {"v":1,"k":"i","o":0,"w":...,"h":...,"q":"hd"}
+photo_live   the clip, SDR H.264                    {"v":1,"k":"v","o":0,"w":...,"h":...,"vd":{...}}
+
+Original, iPhone
+photo_main   the still, untouched                   {"v":1,"k":"i","o":1,"q":"org"}
+photo_live   the paired video, untouched            {"v":1,"k":"v","o":1,"vd":{"pc":"vcp_0001"}}
+vcp_0001     the clip to play, SDR H.264            {"v":1,"k":"v","o":0,"w":...,"h":...,"vd":{...}}
+
+Original, Android
+photo_main   the file, untouched, its clip inside   {"v":1,"k":"i","o":1,"q":"org"}
+photo_live   the clip to play, SDR H.264            {"v":1,"k":"v","o":0,"w":...,"h":...,"vd":{...}}
+```
+
+- **A reader plays `photo_live`'s copy when it names one (`vd.pc`), otherwise `photo_live` itself,** as for any video (section 3.6). Download, save and restore get the untouched parts: both on an iPhone, the file on Android.
+- **Android's clip is cut from the file** (the byte range its XMP names) and transcoded, so at Original the untouched file is the only untouched copy and nothing is stored twice.
+- **Hashes and `uniqueId` don't change.** The id comes from both parts on an iPhone and from the one file on Android. An untouched part is checked against its scan hash as it's encrypted; a transcoded clip's source is checked by a read of its own, as a re-encoded still's is (section 4).
+- **When no clip can be made,** the photo goes without a clip to play: as a still, data type 1, or, an iPhone's at Original, with its paired video untouched and no `vd.pc`, as data type 3, as an Original video does (section 3.6). An Android file at Original still holds its clip. A clip the platform can't transcode is first retried like any failed backup, so only the photo's last attempt goes without it; one whose transcode stopped the app twice isn't tried again. Either way the clip costs the motion, never the photo.
+- **Older backups aren't rewritten.** An Android motion photo backed up before this is data type 1 and shows as a still.
+
 ## 4. The builder
 
 `UserUploadBuilder.build(sources, options, fileOps, pdfPageRenderer, payloadKey)` in `homebase-upload` (`UserUploadBuilder.kt`). An `UploadSource` is one file as the app has it (path, the platform's type, the picked name, whether the user made it a sticker, audio length and waveform, video trim, and for a photo library what the library says it is: `libraryKind`, and `untouched` for a video nothing will transcode); `UploadOptions` holds the app's quality, metadata policy and the format switch. It returns a `PayloadBundle`: payloads with descriptor content filled in, thumbnails and tinies.
@@ -270,7 +295,7 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 - The upload providers seal the descriptor content of every encrypted upload they send when the switch is on (section 7); the outbox and the optimistic local copy stay readable. An app that writes the current format ahead of the switch asks for the seal on its spec (`MediaUploadSpec.sealDescriptorContent`), which reaches the create request; updates follow the switch.
 - Chat's `MessageAttachmentBuilder` is an adapter onto it, so chat, Moments, the feed and Vault documents already build through it.
 - Vault (Original, metadata kept, its note preview as app content) and saved stickers build through it too.
-- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder; their EXIF comes from `MediaMetadataReader`, like a video's location. `UploadService` encrypts them, as it does videos: Photos' spec asks for a payload hash on each part encrypted as it is, and names the hash each untouched part must have, so the check happens in the same read as the encryption and a part that changed since the scan isn't sent (`ContentChangedException`, from `prepare`). A re-encoded part's source is checked by a read of its own. The service then builds and queues the request, and asks the provider to seal. On iOS a photo goes to a URLSession background session instead of the Outbox (iOS gives an upload started in the background low priority): `UploadService.prepare` builds the same request, and the prepared upload is discarded once its body is written. A photo's own bytes decide its content type, the library's type only when they name none. At Original each part is the user's file (`o: 1`), a Live Photo's paired video included; at Standard or HD a photo or video is a re-encode that keeps the source's metadata. The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS, a video's included, read from the source because an HLS stream can't hold it.
+- **Photos writes the current format already,** ahead of the switch: nothing but this app has ever read the Photos drive, and its older backups aren't kept readable. Photos and Live Photos build through the builder; their EXIF comes from `MediaMetadataReader`, like a video's location. `UploadService` encrypts them, as it does videos: Photos' spec asks for a payload hash on each part encrypted as it is, and names the hash each untouched part must have, so the check happens in the same read as the encryption and a part that changed since the scan isn't sent (`ContentChangedException`, from `prepare`). A re-encoded part's source is checked by a read of its own. The service then builds and queues the request, and asks the provider to seal. On iOS a photo goes to a URLSession background session instead of the Outbox (iOS gives an upload started in the background low priority): `UploadService.prepare` builds the same request, and the prepared upload is discarded once its body is written. A photo's own bytes decide its content type, the library's type only when they name none. At Original each part is the user's file (`o: 1`), a Live Photo's paired video included; at Standard or HD a photo or video is a re-encode that keeps the source's metadata. A Live or motion photo's clip is always played as a copy (section 3.7). The name and pixel size live only in the descriptor content, and the tiny is plain in `previewThumbnail` like every other app's (section 3.5); `PhotoContent`, the file's encrypted header content, keeps only what has no other home: GPS, a video's included, read from the source because an HLS stream can't hold it.
 - Link and location previews take their descriptor from `appDescriptor` (layer 7). Public (unencrypted) posts and comments go through `UploadService` too: it stages their payloads unencrypted (`stageBundle`) instead of encrypting them.
 - **Who deletes an upload's files.** `UploadService.upload` is `prepare` (encrypt or stage, build the request) then `queue` (seed the cache, enqueue, write the optimistic row). The files a request sends belong to the upload from the call on, payloads handed over already encrypted (`isPreEncrypted`) included: once an Outbox row takes them the Outbox deletes them after the send (all of them, even a file a successor under the same key reuses: #2535), and after the drop, a replace or a cancel, keeping any file a row still queued under the same key lists, and otherwise the service deletes them, a video's HLS folder included, on a refused enqueue, a failure or a cancelled call. `updateFile` follows the same rule. A `PreparedUpload` is queued once; `discard()` after that leaves the row's files alone. A payload handed over encrypted needs its IV and an encrypted upload; otherwise it's refused and deleted. The enqueue itself isn't cancellable, since a cancelled insert may have committed. The person's own files are never in a request: it carries encrypted or staged copies.
 
@@ -282,7 +307,7 @@ pls_0001     the copy's playlist (named by the copy's place in the file, 1)
 | Moments posts / comments | `mmt_` / `mmc_` (existing 4-digit index) | its photo setting and video setting (defaults HD, HD) | STRIP (GPS opt-in kept) | per audience | `UploadService` (a public one staged, not encrypted) |
 | Feed posts / comments | `pst_mdi_` / `cmmnt_md` | its photo setting and video setting (defaults HD, HD) | STRIP | per audience | `UploadService` (a public one staged, not encrypted) |
 | Stickers (saved) | `sticker_` | ORIGINAL | STRIP | yes | `UploadService` |
-| Photos | `photo_main`, `photo_live`, `video_main` (+ `vcp_0000` at Original) | its photo setting (default ORIGINAL) and video setting (default HD), each STANDARD, HD or ORIGINAL | KEEP | yes | `UploadService` (keeps its hashing, dedupe and `uniqueId`); photos on iOS: its request, sent by a background session |
+| Photos | `photo_main`, `photo_live`, `video_main` (+ `vcp_0000` for a video, or `vcp_0001` for an iPhone Live Photo, at Original) | its photo setting (default ORIGINAL) and video setting (default HD), each STANDARD, HD or ORIGINAL | KEEP | yes | `UploadService` (keeps its hashing, dedupe and `uniqueId`); photos on iOS: its request, sent by a background session |
 | Vault | `vlt_pg_` (existing 2-digit index) | ORIGINAL (photos), HD (videos) | KEEP | yes | `UploadService` |
 | Filesync | `sync_data` | none (bytes unchanged) | KEEP | yes | its own direct upload |
 | WebDrop | existing | none | KEEP | link key | its own outbox path |
@@ -356,6 +381,7 @@ Old files are never rewritten.
 | **F** | An HLS playlist is always its own payload (`pls_`), so descriptor content always fits. |
 | **G** | An image the scrubber doesn't handle (AVIF, TIFF) goes out as it is, with a warning in the log: re-encoding it would need a decoder for those formats on every platform, and phones rarely send them (2026-11-18; the earlier plan to re-encode them to WebP was never built). GIFs aren't stripped. |
 | **H** | The odin-js half is done by the web side, not in this change: the feed is updated in the same release; Community is standalone and unaffected. |
+| **I** | Live and motion photos share one format on both phones (section 3.7): data type 3, the still plus a `photo_live` clip played as SDR H.264, the motion kept in every setting (2026-11-22). |
 
 ## 10. Today, for reference
 

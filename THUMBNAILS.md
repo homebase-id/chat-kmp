@@ -35,11 +35,12 @@ How chat-kmp turns a photo into the images people see. Read this before changing
 19. [Showing the images](#showing-the-images)
 20. [Wire format and older clients](#wire-format-and-older-clients)
 21. [Video](#video)
-22. [How others do it](#how-others-do-it)
-23. [Testing](#testing)
-24. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
-25. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
-26. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
+22. [Live and motion photos](#live-and-motion-photos)
+23. [How others do it](#how-others-do-it)
+24. [Testing](#testing)
+25. [Decisions we made, and the alternatives we rejected](#decisions-we-made-and-the-alternatives-we-rejected)
+26. [To do, and what isn't settled](#to-do-and-what-isnt-settled)
+27. [Appendix: the 1.5 rule on real cameras](#appendix-the-15-rule-on-real-cameras)
 
 ## The goal
 
@@ -84,6 +85,7 @@ These are agreed. Change one only with the evidence described in [Changing the t
 - **Pixels:** decode once, scale from largest to smallest, halve while the image is at least 4× too big, then a Lanczos-class resampler for the last 2–4×. On phones the decoder may reduce first, but only while it leaves Lanczos the last 2× (rule 2 under [How to resize well](#how-to-resize-well)).
 - **Colour:** keep wide-gamut colour, and put no colour profile on sRGB images or the tiny.
 - **HDR:** videos keep it at Original only, because only the untouched file can be HDR and still play everywhere. Photos keep it wherever the file is kept as it is; a re-encoded photo is WebP, which has no gain map. See [HDR](#hdr).
+- **Live and motion photos:** the motion is kept in every setting, as an SDR clip sized like any video (720p, 1080p). See [Live and motion photos](#live-and-motion-photos).
 - **Metadata:** the calling app decides whether a final image or video keeps its location and other metadata, through a required keep-or-strip parameter. The library never decides. Thumbnails never carry metadata.
 - **Display:** every view shows the smallest image that covers the area it's drawn in, allowing 10% of stretch (40% for grid tiles), and never loads an untouched file in place of a thumbnail. See [Showing the images](#showing-the-images).
 - **Wire codes:** Standard records nothing, HD records `"hd"`, and Original records `"high"`.
@@ -450,6 +452,7 @@ There's no HDR setting (decided 2026-11-16). Original already promises the exact
 - **HDR is tone-mapped to SDR,** never just relabelled, which makes it look washed out.
   - **Android (Media3) and iOS (AVFoundation):** tone-map properly.
   - **ffmpeg, so desktop and web:** only relabels, which looks washed out.
+- **A Live or motion photo's clip is SDR in every setting,** Original included: the untouched clip is kept for restore, and the viewer plays an SDR copy (see [Live and motion photos](#live-and-motion-photos)).
 - **Chat and Moments videos are always SDR,** Original included: a video goes out as it is only when it already is 8-bit SDR H.264 that meets the setting (see [Video](#video)), and everything else is transcoded.
 - **Others do the same:** Immich keeps the original and transcodes HDR to an SDR H.264 copy to play. Ente's streams are 720p H.264.
 - **Tests:** `Media3VideoCompressorTest.anHdrVideoComesOutAsSdrH264`, `IosVideoCompressorTest.hdrComesOutAsEightBitSdr`.
@@ -509,7 +512,7 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 
 | Caller | Rows |
 |---|---|
-| Photobase backup | Its photo setting (default Original) and its video setting (default HD), each Standard, HD or Original |
+| Photobase backup | Its photo setting (default Original) and its video setting (default HD), each Standard, HD or Original. A Live or motion photo's clip follows the photo setting |
 | Chat, share sheet, view-once | Chat's photo setting and video setting (default Standard, Standard) |
 | Moments posts and comments | Moments' photo setting and video setting (default HD, HD) |
 | Feed posts and comments | Feed's photo setting and video setting (default HD, HD) |
@@ -582,13 +585,13 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 - upright, with no rotation flag, and not trimmed, by the app or by an edit list in the file;
 - its short edge at or below the setting's (720 or 1080), and its video bitrate at or below what the setting's encoder would ask for it (`hardwareVideoBitrate`: 2.5 or 5 Mbps, less for a smaller frame).
 
-Its samples are then copied into a new MP4 with only the video and audio tracks (`Mp4Remux`, common code, every platform), without the H.264 SEI messages some cameras put GPS in, so it carries no location, capture time or other metadata; it goes on to HLS or a single MP4 by size, like a transcode. Anything else, or a remux that fails, is transcoded as before. Apps that keep metadata (Photos, Vault) always transcode, since the remux keeps none. HEVC, HDR and 10-bit never qualify, so what everyone plays stays H.264 SDR.
+Its samples are then copied into a new MP4 with only the video and audio tracks (`Mp4Remux`, common code, every platform), without the H.264 SEI messages some cameras put GPS in, so it carries no location, capture time or other metadata; it goes on to HLS or a single MP4 by size, like a transcode. Anything else, or a remux that fails, is transcoded as before. Apps that keep metadata (Photos, Vault) always transcode, since the remux keeps none. A Live or motion photo's clip keeps no metadata of its own, so it can be remuxed ([Live and motion photos](#live-and-motion-photos)). HEVC, HDR and 10-bit never qualify, so what everyone plays stays H.264 SDR.
 
 **A video's thumbnails come from one poster frame** (`VideoDecoder.extractPosterFrame(fullSize = true)`), at the video's own size but at most twice Original's largest row: 4096 px on the long edge, or more on a frame so wide that the row's 1080 px short edge needs it (`VideoThumbnailQuality.fullPosterLongEdge`), so Lanczos still makes the last 2× ("Decode once"). An 8K frame is otherwise about 130 MB again when the thumbnails decode it. AVFoundation shrinks it as it decodes (its maximum size); ffmpeg uses its Lanczos `scale`; Android's retriever can only give the full frame (`getScaledFrameAtTime` makes the full-size bitmap too, then scales bilinearly), so the shared native Lanczos shrinks it; the browser's canvas draws it with `imageSmoothingQuality = 'high'`. It's then a JPEG at 95, well above the rows' 76–80, so the thumbnails carry a much smaller first round of loss than q75's; it isn't lossless. `UploadPosterSizeTest` checks a 5K video's poster on iOS and web, `FFmpegPipelineCoverageJvmTest` (homebase-chat, which has ffmpeg) on the JVM, and `Media3VideoCompressorTest` on an Android phone.
 
 **Metadata is the caller's choice, as for images.** The video path takes the same keep-or-strip policy. With `Keep` (Photos, Vault), a re-encode copies the source's location, capture time and, except on iOS, its other metadata, and Photos' untouched original keeps all of it. With `Strip` (everyone else), a re-encode drops them. The library never decides; each app does.
 
-A transcode of 5 MB or more is sent as HLS, whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source's `moov` box, skipping the media (`MediaMetadataReader.videoLocation`, common code: Apple's ISO 6709 key, the `©xyz` atom Android writes and the 3GPP `loci` box AVAssetWriter writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
+A transcode of 5 MB or more is sent as HLS (never a Live or motion photo's clip, which is always one MP4), whose MPEG-TS segments have no place for an mp4's location or capture time. So Photos also reads the location from the source's `moov` box, skipping the media (`MediaMetadataReader.videoLocation`, common code: Apple's ISO 6709 key, the `©xyz` atom Android writes and the 3GPP `loci` box AVAssetWriter writes) and keeps it in the file's own content, `PhotoContent`, as for a photo's GPS; the capture time is the file's `userDate`. Vault has no such place yet, so its HLS videos lose their location.
 
 ### Android: Media3, and why AAC audio is copied
 
@@ -615,6 +618,24 @@ iOS compresses with AVFoundation (`IosVideoCompressor`): an `AVAssetReader` whos
 - **HLS.** Our segmenter, as on Android.
 - **Posters and trim strips** (`AvFoundationVideoDecoder`) come from `AVAssetImageGenerator` through the same upright BT.709 composition, so they are SDR too. Without it the generator can't decode PQ HDR10 (`-11821`/`-12911` on the simulator), where the composition tone-maps it. The composition draws black where the track has no picture (an empty edit before a late start, audio that outlasts the video), so the times asked for stay inside the track's pictures. Tests: `IosVideoCompressorTest`'s poster and strip tests, `hdr10_720p_short.mp4` and `late_video_long_audio.mp4` included.
 - **Formats it can't open** (MKV, WebM) are sent as files, not videos (UPLOADS.md 3.1).
+
+## Live and motion photos
+
+A Live Photo (iPhone) and a motion photo (Android) are a still plus a clip of a few seconds. Decided 2026-11-22; the stored format is UPLOADS.md section 3.7.
+
+- **The motion is kept in every setting, with no setting of its own.** Standard and HD mean "smaller", not "turn my Live Photo into a still", and iOS already kept the clip at both. Someone who wants stills turns motion off in the camera. A toggle comes only if storage becomes a complaint.
+- **The clip follows the photo setting,** not the video setting: it's part of the photo.
+- **Only the largest image moves.** The clip stands in for the largest thumbnail; the final image and every thumbnail stay stills.
+- **The clip is sized like any video:** 720p at Standard, 1080p at HD and Original, by the short edge and never upscaled (`VideoQualityTargets`; see [Video](#video)). One rule for every video, so the clip needs no sizing of its own.
+- **The clip everyone plays is SDR H.264, in every setting.** The phone's own compressor makes it (`Media3VideoCompressor`, `IosVideoCompressor`) at the photo setting's video quality (HD's at Original), tone-mapping HDR as for any video ([HDR](#hdr)).
+- **The clip keeps no metadata of its own,** transcoded or remuxed: the still carries the location and time. So a clip that already meets the setting ([Video](#video)) is remuxed, not transcoded, though Photos keeps metadata. The untouched paired video an iPhone keeps at Original is the user's file and keeps everything.
+- **The clip is always one MP4, never HLS.** It's part of a photo, a few seconds long, not a video to stream.
+- **A clip transcode is guarded like a video's:** one at a time with videos, and counted, so a clip that stopped the app twice isn't tried again and the photo goes without a clip to play, as when it can't be transcoded (UPLOADS.md section 3.7); a later resend tries it again. A photo whose clip would wait for a video being prepared gives way and comes back after it, with no attempt counted. At Original the untouched clip is kept as well, for restore: an iPhone's paired video as its own payload, and an Android clip inside the untouched file, so nothing is stored twice.
+- **The clip has no thumbnails or tiny of its own.** The still's stand for it.
+- **The still keeps its HDR,** as any photo does: the final image at HD, the largest thumbnail at Original. So an SDR clip can end on an HDR still, and the viewer cross-fades from the clip's last frame to the still.
+- **Android's clip is cut from the file.** A motion photo is a JPEG with an MP4 appended. Its XMP says so (`Camera:MotionPhoto="1"`), and a `Container:Directory` item with `Item:Semantic="MotionPhoto"` gives the clip's length, counted from the end of the file; older Pixels write `MicroVideo="1"` and `MicroVideoOffset` instead. The clip is read from that byte range and transcoded. The still at Standard and HD is re-encoded without the XMP ([Metadata](#metadata)), so it no longer claims a clip.
+- **The viewer plays the clip once when the photo opens,** then cross-fades to the still. Grid tiles stay still.
+- **On the web,** the H.264 clip plays. Where a clip can't play, the viewer shows the largest thumbnail.
 
 ## How others do it
 
@@ -722,11 +743,14 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 | Keep metadata? | The calling app decides, through a required parameter | Stripping everywhere loses an owner's own library data. Keeping it everywhere leaks a sender's location. Only the app knows which case it is. |
 | Colour profile on sRGB images? | None | 456 bytes per image for no visible gain, and over half the tiny's budget. |
 | Byte cap on the final photo? | None, like every other app | It would cost detailed photos their quality. |
+| Live and motion photos at Standard and HD? | Keep the motion, as a clip sized like any video (720p, 1080p) | Dropping it: people expect their photo to move, and iOS already kept it. A toggle: the camera already has the switch. Sizing the clip by the image rows: a second sizing rule for video, for almost no difference. |
+| Which clip plays at Original? | An SDR H.264 copy; the untouched clip is kept for restore | Playing the untouched clip: 10-bit HDR HEVC fails on many Android phones and some browsers, the reason every played video is SDR. |
 
 ## To do, and what isn't settled
 
 ### Not built yet
 
+- **Live and motion photos:** the clip at every setting, Android's cut from the file, and playback in the viewer ([Live and motion photos](#live-and-motion-photos)). Today Android backs up a motion photo as a plain image, so Standard and HD lose its clip, and the gallery shows only stills.
 - **Every upload records its final image's size and whether it's the user's original** (#911). Every app builds through the shared builder and records it. Photos writes the UPLOADS.md format; everything else still writes the legacy form until `DescriptorContentV1.WRITE` flips (#2521).
 - **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
 
@@ -749,6 +773,7 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 - **GIFs in Photos' grid.** Give GIFs still thumbnails from the first frame, so the grid doesn't download whole GIFs, while bubbles keep playing the file? Older clients would ignore the thumbnails and still play the file, so it's safe.
 - **Animated WebP in bubbles.** It shows still today. Animating it needs a descriptor flag, because its type is the same `image/webp` as a still image.
 - **A source no bigger than the smallest thumbnail** (a 320×240 photo, a small sticker or screenshot). Every row clamps to the source, so the plan keeps one 320×240 thumbnail and, at Standard and HD, a 320×240 final image, which is usually dropped for the source because re-encoding saves less than a quarter. The payload and its thumbnail are then the same picture at the same size: one extra encode, and a few tens of KB stored and sent twice. Dropping the thumbnail needs the display rule changed with it: views never load an untouched file in place of a thumbnail, so with no thumbnail they would stop at the tiny. Options: make no thumbnail when the payload is no larger than the smallest row, and let views load such a payload directly; or keep the duplicate. `ThumbnailLadderTest` pins whichever we pick.
+- **Live and motion photos:** whether the clip plays with sound; HEIC motion photos, whose XMP can lie past the header the clip is found from, so they back up as stills until one is checked on a phone; and Samsung's older motion photos, which may carry the clip in Samsung's own trailer rather than the XMP directory (check on a Samsung phone).
 - **Linear-light resampling.** Not used; see [How to resize well](#how-to-resize-well). Revisit only if a real-photo test shows a visible gain.
 
 ## Appendix: the 1.5 rule on real cameras
