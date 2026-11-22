@@ -74,6 +74,11 @@ internal val SQLITE_CONNECTION_PRAGMA_STATEMENTS: List<String> =
  */
 internal const val SQLITE_WRITER_JOURNAL_SIZE_LIMIT = 4_194_304
 
+/**
+ * Opens the app's one SQLite database where the platform keeps it, under the rules on [createDriver]: the app's database
+ * directory on Android (`Context.getDatabasePath`), `<app data>/database/` on desktop, `<Application Support>/databases/` on
+ * iOS (kept out of iCloud backups), and in memory through sql.js on web.
+ */
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
 expect class DatabaseDriverFactory {
     /**

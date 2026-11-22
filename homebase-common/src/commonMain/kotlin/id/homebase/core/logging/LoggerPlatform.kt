@@ -40,6 +40,12 @@ internal expect fun listHomebaseLogFiles(logDirectory: Path): List<Path>
  */
 internal expect fun deleteHomebaseLogFiles(logDirectory: Path): Boolean
 
+/**
+ * Opens every file [listHomebaseLogFiles] lists, in name order, hands [block] one sequence of lines per file, and closes them
+ * all when [block] returns or throws. A file rolled away between the listing and the open is left out. Blocking file I/O.
+ * Web has no disk: [block] gets an empty list.
+ */
 internal expect fun <T> useHomebaseLogLines(logDirectory: Path, block: (List<Sequence<String>>) -> T): T
 
+/** Writes [text] to [file], replacing it. True when written, false on any failure; it never throws. Web has no disk: false. */
 internal expect fun writeLogExport(file: Path, text: String): Boolean

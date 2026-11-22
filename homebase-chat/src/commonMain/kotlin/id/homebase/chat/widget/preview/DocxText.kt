@@ -2,6 +2,7 @@ package id.homebase.chat.widget.preview
 
 internal const val DOCX_XML_LIMIT_BYTES = 4L shl 20
 
+/** Whether [readDocxDocumentXml] can open a docx here: true on Android, desktop and iOS (okio's zip reader), false on web. */
 internal expect val docxPreviewAvailable: Boolean
 
 /** The bytes of the archive's word/document.xml, at most [DOCX_XML_LIMIT_BYTES] + 1 of them; throws when the file is not a docx. */
