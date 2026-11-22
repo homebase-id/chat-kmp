@@ -1,4 +1,4 @@
-# Photobase: background backup and simple gallery — plan (chat-kmp)
+# Photos sync: background library sync and simple gallery — plan (chat-kmp)
 
 Status: **Built, unproven on devices** (see `PHOTOBASE_OVERNIGHT_REPORT.md`). Date: 2026-11-04.
 
@@ -26,11 +26,10 @@ AGPL — this plan uses their *behaviour* only; no code is to be copied.
 | App | Photobase add-on with its own newly minted `appId`; `PHOTO_APP_ID` is removed |
 | Module | `homebase-photobase` |
 | Photo IDs | `uniqueId` calculated from the BLAKE3 content hash, not keyed (§3.2) |
-| Photo quality | Full quality; compression options are v2 |
+| Photo quality | Photos and videos each Standard, HD or Original, defaulting to Original and HD (THUMBNAILS.md, "Where each caller lands") |
 | Videos | Handled the way chat-kmp does today (HLS), including re-encoding rotated videos; reconsidered in v2 |
 | Edited photos | Saved as a separate photo; reconsidered in v2 |
-| Live Photos | One Homebase file with two payloads; the gallery shows the still; playback is v2 |
-| Motion photos | Uploaded as the original single file; playback is v2 |
+| Live and motion photos | One Homebase file on both phones: the still plus a clip, played as SDR H.264, the motion kept in every setting; the viewer plays it once when the photo opens (THUMBNAILS.md, "Live and motion photos"; UPLOADS.md 3.7; 2026-11-22) |
 | Gallery platforms | All four, read-only; backup runs on Android and iOS only |
 | Backup wake-ups | The app schedules recurring silent pushes through odin-core, with an adjustable interval (§6.2) |
 | Sending uploads | The ledger feeds one shared Outbox, with one upload slot reserved for chat (§3.4) |
@@ -170,7 +169,7 @@ reuses what chat-kmp already has:
 
 **`uniqueId` comes from the content hash.** It's derived from the plaintext BLAKE3 digest of the
 original bytes, so the same bytes produce the same id on every device. For a Live Photo it's
-derived from both parts. Video is hashed from the original file, before HLS.
+derived from both parts; an Android motion photo is one file, so its id comes from that file. Video is hashed from the original file, before HLS.
 - Accepted tradeoff: the calculation is public, so anyone who can read the drive's `uniqueId`s can
   check whether the user holds a known photo.
 - The scheme must be fixed before Phase 1 ships: changing it later re-hashes and re-uploads
@@ -244,6 +243,9 @@ backup outbox, because it would duplicate `OutboxSync`'s retry, storage-full and
 - **Viewer:** `FullScreenMediaViewer` as is, plus chat-kmp's video player. It lives in
   `homebase-chat` and is keyed by `messageId`, so `homebase-photobase` depends on `homebase-chat` and
   passes file IDs as message IDs. Untangle this before lifting Photobase out of chat-kmp.
+- **Live and motion photos:** the viewer plays the clip once when the photo opens, then cross-fades
+  to the still; on the web, where a clip can't play, it shows the largest thumbnail (THUMBNAILS.md,
+  "Live and motion photos").
 
 ---
 
@@ -524,10 +526,10 @@ and for "N items keep failing".
 ### v2
 - [x] Measure BLAKE3 speed on real phones and replace the port with a fast implementation if needed (Android, native; `MEDIA_BENCHMARKS.md`)
 - [ ] Resume huge videos mid-upload (client and odin-core)
-- [ ] Compression options
+- [x] Compression options (Standard, HD and Original, 2026-11-14)
 - [ ] Storage management
 - [ ] Consider how to handle edited photos
-- [ ] Live Photo and motion photo playback
+- [ ] Live Photo and motion photo playback (designed 2026-11-22: THUMBNAILS.md, "Live and motion photos")
 - [ ] Reconsider how videos are stored, including rotated-video quality and offering the original file
 - [ ] Reconsider syncing the Photos drive to the device instead of querying the server
 
