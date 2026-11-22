@@ -267,9 +267,7 @@ class OutboxBackupUploaderTest {
         fun le32(v: Int) = ByteArray(4) { (v ushr (8 * it)).toByte() }
         val marker = "GPS-7749".encodeToByteArray()
         val tiff = "II".encodeToByteArray() + le16(42) + le32(8) + le16(1) + le16(0x010F) + le16(2) + le32(marker.size) + le32(26) + le32(0) + marker
-        val payload = "Exif".encodeToByteArray() + byteArrayOf(0, 0) + tiff
-        val app1 = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), ((payload.size + 2) shr 8).toByte(), (payload.size + 2).toByte()) + payload
-        return plain.copyOfRange(0, 2) + app1 + plain.copyOfRange(2, plain.size)
+        return withApp1(plain, "Exif".encodeToByteArray() + byteArrayOf(0, 0) + tiff)
     }
 
     @Test
@@ -539,26 +537,6 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun aLivePhotosClipIsATranscodeWithNoThumbnailsOfItsOwn() = runTest {
-        assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
-        val still = jpeg(400, 300)
-        val motion = File(geotaggedClip()).readBytes()
-        val (row, uniqueId) = rowFor("a", BackupMediaType.LivePhoto, still, motion)
-        val uploader = backgroundScope.uploader(livePhoto(still, motion), photoQuality = MediaQuality.STANDARD)
-
-        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
-
-        val request = queuedRequest(uniqueId).second
-        val live = request.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey)
-        assertFalse(KeyHeader(live.iv!!, request.keyHeader.aesKey).decrypt(File(live.filePath).readBytes()).contentEquals(motion), "a transcode")
-        assertNull(live.previewThumbnail, "no tiny")
-        assertTrue(request.thumbnails.none { it.key == live.key }, "no thumbnails")
-        assertTrue(request.thumbnails.any { it.key == PhotobaseProtocol.ImagePayloadKey }, "the still's stand for it")
-        assertNotNull(request.metadata.appData.previewThumbnail, "the file's tiny is the still's")
-        request.payloads.forEach { File(it.filePath).delete() }
-    }
-
-    @Test
     fun anIphoneLivePhotoWhoseVideoCantBeCopiedKeepsItAtOriginalAndIsAStillOtherwise() = runTest {
         assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
         for ((n, quality) in listOf(MediaQuality.ORIGINAL, MediaQuality.STANDARD).withIndex()) {
@@ -575,6 +553,7 @@ class OutboxBackupUploaderTest {
                 assertEquals(PhotobaseProtocol.LivePhotoDataType, request.metadata.appData.dataType)
                 assertEquals(listOf(PhotobaseProtocol.ImagePayloadKey, PhotobaseProtocol.LivePhotoVideoPayloadKey), request.payloads.map { it.key })
                 val live = request.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey)
+                assertNotEquals(request.payload(PhotobaseProtocol.ImagePayloadKey).iv!!.toList(), live.iv!!.toList(), "each payload has its own IV")
                 assertContentEquals(digest(motion), live.hash!!.plaintextContentHash(KeyHeader(live.iv!!, request.keyHeader.aesKey)), "the user's file, checked as it's encrypted")
                 assertEquals(DescriptorContentV1(kind = DescriptorContentV1.Kind.VIDEO, original = 1), request.opened(live), "no copy to name: it plays as it is")
             } else {
@@ -650,24 +629,30 @@ class OutboxBackupUploaderTest {
     }
 
     @Test
-    fun anAndroidMotionPhotosClipIsATranscodeWithNoThumbnailsOfItsOwn() = runTest {
+    fun theClipOfALiveOrMotionPhotoIsATranscodeWithNoThumbnailsOfItsOwn() = runTest {
         assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
         val clip = File(geotaggedClip()).readBytes()
-        val part = motionPhotoPart(clip)
-        val (row, uniqueId) = rowFor("a", BackupMediaType.Image, File(part.path).readBytes())
-        val uploader = backgroundScope.uploader(listOf(part), photoQuality = MediaQuality.HD)
+        val iphone = jpeg(400, 300).let { still -> livePhoto(still, clip) to listOf(still, clip) }
+        val android = motionPhotoPart(clip).let { listOf(it) to listOf(File(it.path).readBytes()) }
+        for ((n, export) in listOf("iPhone" to iphone, "Android" to android).withIndex()) {
+            val (phone, parts) = export
+            val (row, uniqueId) = rowFor("a$n", if (n == 0) BackupMediaType.LivePhoto else BackupMediaType.Image, *parts.second.toTypedArray())
+            val uploader = backgroundScope.uploader(parts.first, photoQuality = MediaQuality.HD)
 
-        assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
+            assertEquals(HandOffResult.Queued, uploader.handOff(row, uniqueId))
 
-        val request = queuedRequest(uniqueId).second
-        assertEquals(PhotobaseProtocol.LivePhotoDataType, request.metadata.appData.dataType)
-        val live = request.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey)
-        val sent = KeyHeader(live.iv!!, request.keyHeader.aesKey).decrypt(File(live.filePath).readBytes())
-        assertFalse(sent.contentEquals(clip), "a transcode")
-        assertEquals(filmedAt, locationOf(sent), "Photos keeps where the clip was filmed")
-        assertNull(live.previewThumbnail)
-        assertTrue(request.thumbnails.none { it.key == live.key })
-        request.payloads.forEach { File(it.filePath).delete() }
+            val request = queuedRequest(uniqueId).second
+            assertEquals(PhotobaseProtocol.LivePhotoDataType, request.metadata.appData.dataType, phone)
+            val live = request.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey)
+            val sent = KeyHeader(live.iv!!, request.keyHeader.aesKey).decrypt(File(live.filePath).readBytes())
+            assertFalse(sent.contentEquals(clip), "$phone: a transcode")
+            assertEquals(filmedAt, locationOf(sent), "$phone: Photos keeps where the clip was filmed")
+            assertNull(live.previewThumbnail, "$phone: no tiny")
+            assertTrue(request.thumbnails.none { it.key == live.key }, "$phone: no thumbnails")
+            assertTrue(request.thumbnails.any { it.key == PhotobaseProtocol.ImagePayloadKey }, "$phone: the still's stand for it")
+            assertNotNull(request.metadata.appData.previewThumbnail, "$phone: the file's tiny is the still's")
+            request.payloads.forEach { File(it.filePath).delete() }
+        }
     }
 
     @Test
@@ -772,6 +757,13 @@ private object NeverSends : OutboxUploader {
     override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) = error("the Outbox is offline in these tests")
 }
 
+/** [jpeg] with an APP1 segment holding [payload] right after its SOI. */
+private fun withApp1(jpeg: ByteArray, payload: ByteArray): ByteArray {
+    val length = payload.size + 2
+    val app1 = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (length shr 8).toByte(), length.toByte()) + payload
+    return jpeg.copyOfRange(0, 2) + app1 + jpeg.copyOfRange(2, jpeg.size)
+}
+
 /** [jpeg] as a Pixel writes a motion photo: its XMP after the SOI declaring [clip], which is appended. */
 private fun motionPhoto(jpeg: ByteArray, clip: ByteArray): ByteArray {
     val xml = """<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">""" +
@@ -780,10 +772,7 @@ private fun motionPhoto(jpeg: ByteArray, clip: ByteArray): ByteArray {
         """<rdf:li rdf:parseType="Resource"><Container:Item Item:Mime="image/jpeg" Item:Semantic="Primary"/></rdf:li>""" +
         """<rdf:li rdf:parseType="Resource"><Container:Item Item:Mime="video/mp4" Item:Semantic="MotionPhoto" Item:Length="${clip.size}" Item:Padding="0"/></rdf:li>""" +
         """</rdf:Seq></Container:Directory></rdf:Description></rdf:RDF></x:xmpmeta>"""
-    val payload = "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray() + xml.encodeToByteArray()
-    val length = payload.size + 2
-    val app1 = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (length shr 8).toByte(), length.toByte()) + payload
-    return jpeg.copyOfRange(0, 2) + app1 + jpeg.copyOfRange(2, jpeg.size) + clip
+    return withApp1(jpeg, "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray() + xml.encodeToByteArray()) + clip
 }
 
 private fun fakeMp4(size: Int) = ByteArray(size) { (it * 13).toByte() }.also {

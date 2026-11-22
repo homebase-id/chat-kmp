@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class MotionPhotoXmpTest {
-    private fun tail(xml: String) = MotionPhoto.tailBytes(xml)?.let { it.clip to it.fromEnd }
+    private fun tail(xml: String) = MotionPhoto.tailOf(xml)?.let { it.clip to it.fromEnd }
 
     @Test
     fun aPixelMotionPhotoWithAGainMapGivesTheClipAtTheEnd() {

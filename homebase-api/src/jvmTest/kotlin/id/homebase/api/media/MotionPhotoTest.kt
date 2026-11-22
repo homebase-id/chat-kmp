@@ -1,6 +1,9 @@
 package id.homebase.api.media
 
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.image.MARKER_APP1
+import id.homebase.api.image.XMP_JPEG_HEADER
+import id.homebase.api.image.jpegSegment
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -26,25 +29,18 @@ class MotionPhotoTest {
     private fun file(name: String, bytes: ByteArray) = File(workDir, name).apply { writeBytes(bytes) }.path
 
     @Test
-    fun theClipIsCutFromTheEndOfAPixelMotionPhoto() = runTest {
-        val clip = fakeMp4(5000)
-        val gainmap = ByteArray(777) { 7 }
-        val path = file("PXL.MP.jpg", motionPhoto(jpeg(), pixelXmp(gainmap.size.toLong(), clip.size.toLong()), gainmap + clip))
+    fun theClipIsCutWholeFromTheEndOfAPixelMotionPhoto() = runTest {
+        // With a gain map before it, and one longer than a single read.
+        for ((gainmap, size) in listOf(ByteArray(777) { 7 } to 5000, ByteArray(0) to 700_000)) {
+            val clip = fakeMp4(size)
+            val xml = pixelXmp(gainmap.size.toLong().takeIf { it > 0 }, clip.size.toLong())
+            val path = file("PXL$size.MP.jpg", motionPhoto(jpeg(), xml, gainmap + clip))
 
-        val out = assertNotNull(MotionPhoto.extractClip(path, fileOps))
+            val out = File(assertNotNull(MotionPhoto.extractClip(path, fileOps)))
 
-        assertContentEquals(clip, File(out).readBytes())
-        File(out).delete()
-    }
-
-    @Test
-    fun aClipLongerThanOneReadIsCopiedWhole() = runTest {
-        val clip = fakeMp4(700_000)
-        val path = file("PXL.MP.jpg", motionPhoto(jpeg(), pixelXmp(null, clip.size.toLong()), clip))
-
-        val out = File(assertNotNull(MotionPhoto.extractClip(path, fileOps)))
-        assertContentEquals(clip, out.readBytes())
-        out.delete()
+            assertContentEquals(clip, out.readBytes())
+            out.delete()
+        }
     }
 
     @Test
@@ -74,12 +70,8 @@ class MotionPhotoTest {
 }
 
 /** [jpeg] with [xml] as its XMP, right after its SOI, and [tail] appended, as a camera writes a motion photo. */
-internal fun motionPhoto(jpeg: ByteArray, xml: String, tail: ByteArray): ByteArray {
-    val payload = "http://ns.adobe.com/xap/1.0/\u0000".encodeToByteArray() + xml.encodeToByteArray()
-    val length = payload.size + 2
-    val app1 = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (length shr 8).toByte(), length.toByte()) + payload
-    return jpeg.copyOfRange(0, 2) + app1 + jpeg.copyOfRange(2, jpeg.size) + tail
-}
+internal fun motionPhoto(jpeg: ByteArray, xml: String, tail: ByteArray): ByteArray =
+    jpeg.copyOfRange(0, 2) + jpegSegment(MARKER_APP1, XMP_JPEG_HEADER + xml.encodeToByteArray()) + jpeg.copyOfRange(2, jpeg.size) + tail
 
 internal fun fakeMp4(size: Int) = ByteArray(size) { (it * 13).toByte() }.also {
     byteArrayOf(0, 0, 0, 24).copyInto(it)
