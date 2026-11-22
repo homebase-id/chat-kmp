@@ -529,12 +529,9 @@ class PhotoBackupRun(
         try {
             guarded(row) {
                 if (isVideo) {
-                    // One at a time, so a process death points at the video being transcoded and no other.
-                    videoPrepare.withLock {
-                        crashGuarded(row, uniqueId, held = { ledger.markCrashedPreparing(row.deviceAssetId) }) { handOff(row, uniqueId) }
-                    }
+                    crashGuarded(row, uniqueId) { handOff(row, uniqueId, Unguarded) } ?: ledger.markCrashedPreparing(row.deviceAssetId)
                 } else {
-                    handOff(row, uniqueId) { transcode -> videoPrepare.withLock { crashGuarded(row, uniqueId, held = { null }, transcode) } }
+                    handOff(row, uniqueId) { crashGuarded(row, uniqueId, it) }
                 }
             }
         } finally {
@@ -542,36 +539,38 @@ class PhotoBackupRun(
         }
     }
 
-    /** [held] instead of [block] once [MAX_UNFINISHED_PREPARES] earlier tries never ended. */
-    private suspend fun <T> crashGuarded(row: DeviceBackupAsset, uniqueId: Uuid, held: suspend () -> T, block: suspend () -> T): T = coroutineScope {
-        val unfinished = ledger.unfinishedPrepares(uniqueId)
-        if (unfinished >= MAX_UNFINISHED_PREPARES) {
-            Logger.w(tag = TAG) { "asset ${row.deviceAssetId}: $unfinished prepares never ended" }
-            return@coroutineScope held()
-        }
-        ledger.prepareStarting(uniqueId)
-        // Ended on cancel, not on return: a cancelled ffmpeg can take 30 s to stop, and the app being killed then is no crash.
-        val ended = launch(start = CoroutineStart.UNDISPATCHED) {
-            try {
-                awaitCancellation()
-            } finally {
-                withContext(NonCancellable) {
-                    try {
-                        ledger.prepareEnded(uniqueId)
-                    } catch (e: Exception) {
-                        Logger.w(tag = TAG, throwable = e) { "couldn't clear the prepare count of ${row.deviceAssetId}" }
+    // One at a time, so a process death points at the transcode that ran and no other. Null once earlier tries never ended.
+    private suspend fun <T : Any> crashGuarded(row: DeviceBackupAsset, uniqueId: Uuid, block: suspend () -> T): T? = videoPrepare.withLock {
+        coroutineScope {
+            val unfinished = ledger.unfinishedPrepares(uniqueId)
+            if (unfinished >= MAX_UNFINISHED_PREPARES) {
+                Logger.w(tag = TAG) { "asset ${row.deviceAssetId}: $unfinished prepares never ended" }
+                return@coroutineScope null
+            }
+            ledger.prepareStarting(uniqueId)
+            // Ended on cancel, not on return: a cancelled ffmpeg can take 30 s to stop, and the app being killed then is no crash.
+            val ended = launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) {
+                        try {
+                            ledger.prepareEnded(uniqueId)
+                        } catch (e: Exception) {
+                            Logger.w(tag = TAG, throwable = e) { "couldn't clear the prepare count of ${row.deviceAssetId}" }
+                        }
                     }
                 }
             }
-        }
-        try {
-            block()
-        } finally {
-            ended.cancel()
+            try {
+                block()
+            } finally {
+                ended.cancel()
+            }
         }
     }
 
-    private suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard = { it() }) {
+    private suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard) {
         val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId, transcoding) }
         // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
         withContext(NonCancellable) {

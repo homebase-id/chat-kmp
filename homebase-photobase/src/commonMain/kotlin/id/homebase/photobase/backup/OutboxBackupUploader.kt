@@ -21,8 +21,6 @@ import id.homebase.upload.UploadService
 import id.homebase.upload.UploadSource
 import id.homebase.upload.UserUploadBuilder
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 class BackupEnqueueFailedException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -39,7 +37,6 @@ class OutboxBackupUploader(
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : BackupUploader {
 
-    private val videoProcessing = Mutex()
     private val metadataReader = MediaMetadataReader(fileOps)
 
     override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard): HandOffResult {
@@ -47,7 +44,7 @@ class OutboxBackupUploader(
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
             return if (mediaType == BackupMediaType.Video) {
-                videoProcessing.withLock { handOffVideo(row, uniqueId, exported, digestsOf(row).single()) }
+                handOffVideo(row, uniqueId, exported, digestsOf(row).single())
             } else {
                 requests.build(row, uniqueId, exported, transcoding) { send(it) }
             }

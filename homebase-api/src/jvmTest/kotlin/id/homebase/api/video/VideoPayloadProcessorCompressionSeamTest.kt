@@ -327,7 +327,7 @@ class VideoPayloadProcessorCompressionSeamTest {
     fun aPhotosClipIsOneMp4WithNoPosterHoweverLarge() = runTest {
         val inputPath = "$cacheDir/input.mp4"
         val compressedPath = "$cacheDir/compressed.mp4"
-        val store = mutableMapOf(inputPath to ByteArray(1024), compressedPath to ByteArray(6 * 1024 * 1024))
+        val store = mutableMapOf(inputPath to ByteArray(1024), compressedPath to ByteArray(HLS_MIN_BYTES.toInt() + 1))
         val compressor = FakeVideoCompressor(compressedPath = compressedPath, segmented = SegmentedVideo("unused", "unused"))
         val processor = VideoPayloadProcessor(FakeFileOperationsProvider(store), compressor, FakeVideoProbe(3_000L))
 

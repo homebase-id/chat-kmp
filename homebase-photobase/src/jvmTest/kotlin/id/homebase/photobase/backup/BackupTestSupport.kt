@@ -81,7 +81,7 @@ internal class FakeUploader(
     var handOffGate: CompletableDeferred<Unit>? = null
     var markedBackground = false
     /** Rows whose hand-off goes through the run's guard, as a Live or motion photo's clip transcode does. */
-    var transcodes: (DeviceBackupAsset) -> Boolean = { false }
+    var transcodes = false
     var duringTranscode: suspend (DeviceBackupAsset) -> Unit = {}
     /** Rows the guard held back: their clip had stopped the app before. */
     val clipsHeld = mutableListOf<String>()
@@ -92,8 +92,10 @@ internal class FakeUploader(
         handedOff += row.deviceAssetId
         handOffGate?.let { gate -> withContext(NonCancellable) { gate.await() } }
         markedBackground = currentCoroutineContext()[id.homebase.api.video.BackgroundVideoWork.Key] != null
-        val outcome = if (!transcodes(row)) result(row) else {
+        val outcome = if (transcodes) {
             transcoding { duringTranscode(row); result(row) } ?: HandOffResult.Queued.also { clipsHeld += row.deviceAssetId }
+        } else {
+            result(row)
         }
         if (outcome == HandOffResult.Queued && sendsComplete && answersBeforeReturning) {
             eventBus.emit(BackendEvent.OutboxEvent.ItemStarted(PhotobaseProtocol.DriveAlias, uniqueId))

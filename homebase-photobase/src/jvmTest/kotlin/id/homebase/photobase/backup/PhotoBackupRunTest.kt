@@ -519,7 +519,7 @@ class PhotoBackupRunTest {
     fun aPhotosClipTranscodeIsCountedWhileItRuns() = runTest {
         source.next = fullListing(asset("live", mediaType = BackupMediaType.LivePhoto))
         val uploader = uploader()
-        uploader.transcodes = { true }
+        uploader.transcodes = true
         var counted = -1L
         uploader.duringTranscode = { counted = ledger.unfinishedPrepares(idOf(it.deviceAssetId)) }
         val (run, _) = newRun(uploader)
@@ -535,10 +535,9 @@ class PhotoBackupRunTest {
     @Test
     fun aPhotoWhoseClipEndedTheAppTwiceIsBackedUpWithoutIt() = runTest {
         source.next = fullListing(asset("live", mediaType = BackupMediaType.LivePhoto), asset("motion"))
-        repeat(2) { ledger.prepareStarting(idOf("live")) }
-        repeat(2) { ledger.prepareStarting(idOf("motion")) }
+        for (id in listOf("live", "motion")) repeat(2) { ledger.prepareStarting(idOf(id)) }
         val uploader = uploader()
-        uploader.transcodes = { true }
+        uploader.transcodes = true
         val (run, _) = newRun(uploader)
 
         run.run(request())

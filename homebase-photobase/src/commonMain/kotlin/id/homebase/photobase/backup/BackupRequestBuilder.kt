@@ -58,7 +58,7 @@ class BackupRequestBuilder(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
         exported: ExportedAsset,
-        transcoding: TranscodeGuard = { it() },
+        transcoding: TranscodeGuard,
         send: suspend (MediaUploadSpec) -> HandOffResult,
     ): HandOffResult {
         val digests = digestsOf(row)
@@ -78,7 +78,7 @@ class BackupRequestBuilder(
                     // An Android clip needs no copy kept: the untouched file holds it.
                     options().copy(
                         videoQuality = quality.toVideoQuality(),
-                        originalVideo = clip?.pairedPart != null && !clip.untouched && quality == MediaQuality.ORIGINAL,
+                        originalVideo = clip?.keepsPairedVideo(quality) == true && !clip.untouched,
                     ),
                     fileOps,
                 ) { if (it == 0) PhotobaseProtocol.ImagePayloadKey else PhotobaseProtocol.LivePhotoVideoPayloadKey }
@@ -118,16 +118,13 @@ class BackupRequestBuilder(
             if (clip.untouched) return send(spec(bundle, PhotobaseProtocol.LivePhotoDataType))
             // A backup that isn't the original isn't a backup: at Original an iPhone's paired video stays, as it is.
             suspend fun withNoClipToPlay(): HandOffResult =
-                if (clip.pairedPart != null && quality == MediaQuality.ORIGINAL) attempt(clip.copy(untouched = true))
+                if (clip.keepsPairedVideo(quality)) attempt(clip.copy(untouched = true))
                 else send(spec(bundle.withOnly(PhotobaseProtocol.ImagePayloadKey), PhotobaseProtocol.ImageDataType))
             return try {
-                transcoding { send(spec(bundle, PhotobaseProtocol.LivePhotoDataType)) } ?: run {
-                    Logger.w(tag = TAG) { "the clip of $uniqueId stopped the app before; backing up without it" }
-                    withNoClipToPlay()
-                }
+                transcoding { send(spec(bundle, PhotobaseProtocol.LivePhotoDataType)) } ?: withNoClipToPlay()
             } catch (e: VideoCompressionFailedException) {
                 // Retried like any failure, so only a clip that never transcodes costs the motion; the still is kept.
-                if (!(clip.pairedPart != null && quality == MediaQuality.ORIGINAL) && row.attempts + 1 < BackupLedger.MAX_ATTEMPTS) throw e
+                if (!clip.keepsPairedVideo(quality) && row.attempts + 1 < BackupLedger.MAX_ATTEMPTS) throw e
                 Logger.w(tag = TAG, throwable = e) { "no clip to play for $uniqueId after ${row.attempts + 1} attempts" }
                 withNoClipToPlay()
             }
@@ -144,7 +141,9 @@ class BackupRequestBuilder(
     }
 
     /** [pairedPart]: the exported part an iPhone's clip is; null for a clip cut from the file. [untouched]: no copy to play. */
-    private data class Clip(val path: String, val contentType: String, val pairedPart: Int? = null, val untouched: Boolean = false)
+    private data class Clip(val path: String, val contentType: String, val pairedPart: Int? = null, val untouched: Boolean = false) {
+        fun keepsPairedVideo(quality: MediaQuality) = pairedPart != null && quality == MediaQuality.ORIGINAL
+    }
 
     // Only JPEG motion photos so far; a HEIC one's XMP can lie past the header (THUMBNAILS.md, "Not settled").
     private suspend fun cutClip(primary: ExportedPart): Clip? {
