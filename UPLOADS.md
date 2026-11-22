@@ -283,7 +283,7 @@ photo_live   the clip to play, SDR H.264            {"v":1,"k":"v","o":0,"w":...
 - **A reader plays `photo_live`'s copy when it names one (`vd.pc`), otherwise `photo_live` itself,** as for any video (section 3.6). Download, save and restore get the untouched parts: both on an iPhone, the file on Android.
 - **Android's clip is cut from the file** (the byte range its XMP names) and transcoded, so at Original the untouched file is the only untouched copy and nothing is stored twice.
 - **Hashes and `uniqueId` don't change.** The id comes from both parts on an iPhone and from the one file on Android. An untouched part is checked against its scan hash as it's encrypted; a transcoded clip's source is checked by a read of its own, as a re-encoded still's is (section 4).
-- **When no clip can be made** (the platform can't transcode it, or the cut fails), the photo goes as a still, data type 1, except an iPhone's at Original: it keeps its paired video untouched, with no `vd.pc`, as data type 3. An Android file at Original still holds its clip.
+- **When no clip can be made** (the platform can't transcode it), the photo is retried like any failed backup, and only its last attempt goes as a still, data type 1: a clip that never transcodes costs the motion, never the photo. An iPhone's at Original keeps its paired video untouched instead, with no `vd.pc`, as data type 3, as an Original video does (section 3.6). An Android file at Original still holds its clip.
 - **Older backups aren't rewritten.** An Android motion photo backed up before this is data type 1 and shows as a still.
 
 ## 4. The builder
