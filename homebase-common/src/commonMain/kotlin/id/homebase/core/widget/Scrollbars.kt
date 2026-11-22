@@ -14,8 +14,10 @@ import androidx.compose.ui.Modifier
 @Composable
 expect fun BoxScope.HomebaseVerticalScrollbar(modifier: Modifier, state: LazyGridState)
 
+/** [HomebaseVerticalScrollbar] for a lazy list: drawn on desktop only. */
 @Composable
 expect fun BoxScope.HomebaseVerticalScrollbar(modifier: Modifier, state: LazyListState)
 
+/** [HomebaseVerticalScrollbar] for a scrolling column: drawn on desktop only. */
 @Composable
 expect fun BoxScope.HomebaseVerticalScrollbar(modifier: Modifier, state: ScrollState)

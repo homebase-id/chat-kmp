@@ -321,4 +321,32 @@ class ArchitectureTest {
                 .all { c.text.contains("addCloseable(${it.name})") || c.text.contains("${it.name}.close()") }
         }
     }
+
+    @Test
+    fun `Every expect declaration states the contract all four platforms meet`() {
+        val production = Konsist.scopeFromProduction()
+        val documentedTypes = (production.classes() + production.interfaces() + production.objects())
+            .filter { it.hasKDoc }
+            .map { it.name }
+            .toSet()
+        class Expect(val name: String, val path: String, val documented: Boolean)
+        val expects = production.functions().filter { it.hasExpectModifier }.map { f ->
+            // A factory's contract is the type it returns.
+            Expect(f.name, f.containingFile.path, f.hasKDoc || f.returnType?.name?.removeSuffix("?") in documentedTypes)
+        } + production.properties().filter { it.hasExpectModifier }.map { Expect(it.name, it.containingFile.path, it.hasKDoc) } +
+            production.classes().filter { it.hasExpectModifier }.map { Expect(it.name, it.containingFile.path, it.hasKDoc) } +
+            production.interfaces().filter { it.hasExpectModifier }.map { Expect(it.name, it.containingFile.path, it.hasKDoc) } +
+            // Konsist reads no modifiers on an object.
+            production.objects().filter { Regex("""\bexpect\s+object\b""").containsMatchIn(it.text) }
+                .map { Expect(it.name, it.containingFile.path, it.hasKDoc) }
+        // A renamed modifier API must fail loudly rather than turn this rule vacuously green.
+        assertTrue(expects.size > 100, "found only ${expects.size} expect declarations")
+
+        val missing = expects.filterNot { it.documented }.map { "${it.path.substringAfter("/src/")}: ${it.name}" }
+        assertTrue(
+            missing.isEmpty(),
+            "These expect declarations have no KDoc stating what every platform's actual must do " +
+                "(CLAUDE.md, \"Platform-specific code\": one contract):\n" + missing.joinToString("\n"),
+        )
+    }
 }
