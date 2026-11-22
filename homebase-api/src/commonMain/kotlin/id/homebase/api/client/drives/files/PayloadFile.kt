@@ -38,6 +38,8 @@ data class PayloadFile(
     val skipVideoProcessing: Boolean = false,
     /** False when the app keeps the picture's or video's metadata. */
     val stripMetadata: Boolean = true,
+    /** Video-only: false for a video with no poster, thumbnails or tiny of its own, such as a Live Photo's clip. */
+    val poster: Boolean = true,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

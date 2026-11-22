@@ -118,7 +118,7 @@ class VideoPayloadProcessor(
         // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
         // native-first decode per platform), so no temp-file round-trip to read+delete.
         val (posterBytes, posterElapsed) =
-            measureTimedValue { VideoThumbnailService.extractPosterFrame(ffmpegInputPath, fullSize = true) }
+            measureTimedValue { if (payload.poster) VideoThumbnailService.extractPosterFrame(ffmpegInputPath, fullSize = true) else null }
         Logger.i(tag = "VideoProcessing") {
             "poster done in ${posterElapsed.inWholeMilliseconds}ms (bytes=${posterBytes?.size})"
         }

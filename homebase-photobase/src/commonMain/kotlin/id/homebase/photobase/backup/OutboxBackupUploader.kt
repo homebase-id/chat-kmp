@@ -12,6 +12,7 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.upload.ContentChangedException
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.upload.ContentHashes
 import id.homebase.upload.LibraryKind
 import id.homebase.upload.MediaUploadSpec
@@ -49,7 +50,7 @@ class OutboxBackupUploader(
             return if (mediaType == BackupMediaType.Video) {
                 videoProcessing.withLock { handOffVideo(row, uniqueId, exported, digestsOf(row).single()) }
             } else {
-                handOffOriginal(row, uniqueId, mediaType, exported)
+                requests.build(row, uniqueId, exported) { send(it) }
             }
         } finally {
             exported.deleteTemporaryParts(fileOps)
@@ -65,8 +66,14 @@ class OutboxBackupUploader(
         repeat(BULK_STREAMS) { outboxSync.send(force = true) }
     }
 
-    /** What [handOff] would queue, for a transport of the platform's own; null when a file changed since it was hashed. */
-    suspend fun prepare(spec: MediaUploadSpec): PreparedUpload? = try {
+    /**
+     * What [handOff] would queue, for a transport of the platform's own; null when a file changed since it was hashed.
+     * One transcode at a time, so a Live Photo's clip waits for a video, as videos wait for each other.
+     */
+    suspend fun prepare(spec: MediaUploadSpec): PreparedUpload? =
+        if (spec.bundle?.payloads.orEmpty().any { it.transcodes() }) videoProcessing.withLock { prepareHoldingVideoLock(spec) } else prepareHoldingVideoLock(spec)
+
+    private suspend fun prepareHoldingVideoLock(spec: MediaUploadSpec): PreparedUpload? = try {
         timed(BackupStage.Encrypt) { uploadService.prepare(spec, scope) }
     } catch (_: ContentChangedException) {
         null
@@ -75,17 +82,11 @@ class OutboxBackupUploader(
         throw BackupEnqueueFailedException("a file to send is gone: ${e.path}", e)
     }
 
-    private suspend fun send(spec: MediaUploadSpec): HandOffResult {
-        val prepared = prepare(spec) ?: return HandOffResult.ChangedUnderUs
+    private suspend fun send(spec: MediaUploadSpec, holdingVideoLock: Boolean = false): HandOffResult {
+        val prepared = (if (holdingVideoLock) prepareHoldingVideoLock(spec) else prepare(spec)) ?: return HandOffResult.ChangedUnderUs
         return handedOff(timed(BackupStage.Enqueue) { uploadService.queue(prepared) })
     }
 
-    private suspend fun handOffOriginal(
-        row: DeviceBackupAsset,
-        uniqueId: Uuid,
-        mediaType: BackupMediaType,
-        exported: ExportedAsset,
-    ): HandOffResult = requests.build(row, uniqueId, mediaType, exported) { send(it) }
 
     // The source is checked against its hash by a read of its own for a transcode, and by the encrypt pass for an
     // untouched original. Its location goes in the header, as an HLS stream has no place for it.
@@ -124,7 +125,7 @@ class OutboxBackupUploader(
             fileOps,
         ) { PhotobaseProtocol.VideoPayloadKey }
         val expected = if (untouched || options.originalVideo) mapOf(PhotobaseProtocol.VideoPayloadKey to expectedDigest) else emptyMap()
-        return send(photoSpec(photosDriveId, uniqueId, bundle, metadata, ContentHashes(PayloadHashAlgorithm.Blake3, expected)))
+        return send(photoSpec(photosDriveId, uniqueId, bundle, metadata, ContentHashes(PayloadHashAlgorithm.Blake3, expected)), holdingVideoLock = true)
     }
 
     private fun handedOff(outcome: UploadOutcome): HandOffResult = when (outcome) {
@@ -139,3 +140,5 @@ class OutboxBackupUploader(
         const val TAG = "PhotoBackup"
     }
 }
+
+private fun PayloadFile.transcodes() = contentType.startsWith("video/") && !skipVideoProcessing

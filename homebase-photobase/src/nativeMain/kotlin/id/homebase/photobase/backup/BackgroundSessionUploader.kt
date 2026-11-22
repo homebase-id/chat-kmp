@@ -46,7 +46,7 @@ class BackgroundSessionUploader(
 
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
-            return requests.build(row, uniqueId, mediaType, exported) { spec ->
+            return requests.build(row, uniqueId, exported) { spec ->
                 val upload = outbox.prepare(spec) ?: return@build HandOffResult.ChangedUnderUs
                 HandOffResult.Sending(send(bridge, upload, uniqueId))
             }
