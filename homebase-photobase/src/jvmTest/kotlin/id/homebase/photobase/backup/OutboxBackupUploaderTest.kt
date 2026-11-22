@@ -509,7 +509,7 @@ class OutboxBackupUploaderTest {
         val copy = request.payload("vcp_0001")
         assertEquals(VideoQuality.HIGH, copy.videoQuality, "the copy plays at 1080p, whatever the video setting")
         assertFalse(copy.stripMetadata)
-        assertFalse(live.poster || copy.poster, "the still's thumbnails stand for the clip")
+        assertTrue(live.photoClip && copy.photoClip, "the still's thumbnails stand for the clip")
     }
 
     @Test
@@ -528,7 +528,7 @@ class OutboxBackupUploaderTest {
             val live = request.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey)
             assertFalse(live.skipVideoProcessing, "${quality.first}: a transcode")
             assertEquals(quality.second, live.videoQuality, "${quality.first}: the clip follows the photo setting")
-            assertFalse(live.poster)
+            assertTrue(live.photoClip)
             assertNull(request.opened(live)?.original)
         }
     }
@@ -618,10 +618,36 @@ class OutboxBackupUploaderTest {
             assertEquals("video/mp4", live.contentType)
             assertFalse(live.skipVideoProcessing, "${quality.first}: the clip is a transcode")
             assertEquals(quality.second, live.videoQuality)
-            assertFalse(live.poster)
+            assertTrue(live.photoClip)
             assertNull(request.opened(live)?.original)
         }
         assertEquals(tempsBefore, uploadTemps(), "the cut clips are gone once queued")
+    }
+
+    @Test
+    fun aClipThatStoppedTheAppBeforeIsLeftOutAndAnIphonesKeptAsItIsAtOriginal() = runTest {
+        for ((n, quality) in listOf(MediaQuality.HD, MediaQuality.ORIGINAL).withIndex()) {
+            val android = motionPhotoPart(fakeMp4(5000 + n), "held$n.MP.jpg")
+            val (motionRow, motionId) = rowFor("m$n", BackupMediaType.Image, File(android.path).readBytes())
+            assertEquals(HandOffResult.Queued, backgroundScope.uploader(listOf(android), PreviewingEncryptor(), photoQuality = quality).handOff(motionRow, motionId) { null })
+            val stillOnly = queuedRequest(motionId).second
+            assertEquals(PhotobaseProtocol.ImageDataType, stillOnly.metadata.appData.dataType, "$quality: an Android motion photo goes as its still")
+            assertEquals(listOf(PhotobaseProtocol.ImagePayloadKey), stillOnly.payloads.map { it.key })
+
+            val still = "still $n".encodeToByteArray()
+            val motion = "motion $n".encodeToByteArray()
+            val (liveRow, liveId) = rowFor("l$n", BackupMediaType.LivePhoto, still, motion)
+            assertEquals(HandOffResult.Queued, backgroundScope.uploader(livePhoto(still, motion), PreviewingEncryptor(), photoQuality = quality).handOff(liveRow, liveId) { null })
+            val live = queuedRequest(liveId).second
+            if (quality == MediaQuality.ORIGINAL) {
+                assertEquals(PhotobaseProtocol.LivePhotoDataType, live.metadata.appData.dataType)
+                assertEquals(listOf(PhotobaseProtocol.ImagePayloadKey, PhotobaseProtocol.LivePhotoVideoPayloadKey), live.payloads.map { it.key }, "the paired video kept, with no copy")
+                assertTrue(live.payload(PhotobaseProtocol.LivePhotoVideoPayloadKey).skipVideoProcessing)
+            } else {
+                assertEquals(PhotobaseProtocol.ImageDataType, live.metadata.appData.dataType)
+                assertEquals(listOf(PhotobaseProtocol.ImagePayloadKey), live.payloads.map { it.key })
+            }
+        }
     }
 
     @Test

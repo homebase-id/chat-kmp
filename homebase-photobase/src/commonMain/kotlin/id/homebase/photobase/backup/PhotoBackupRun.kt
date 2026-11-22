@@ -530,9 +530,11 @@ class PhotoBackupRun(
             guarded(row) {
                 if (isVideo) {
                     // One at a time, so a process death points at the video being transcoded and no other.
-                    videoPrepare.withLock { crashGuarded(row, uniqueId) { handOff(row, uniqueId) } }
+                    videoPrepare.withLock {
+                        crashGuarded(row, uniqueId, held = { ledger.markCrashedPreparing(row.deviceAssetId) }) { handOff(row, uniqueId) }
+                    }
                 } else {
-                    handOff(row, uniqueId)
+                    handOff(row, uniqueId) { transcode -> videoPrepare.withLock { crashGuarded(row, uniqueId, held = { null }, transcode) } }
                 }
             }
         } finally {
@@ -540,12 +542,12 @@ class PhotoBackupRun(
         }
     }
 
-    private suspend fun crashGuarded(row: DeviceBackupAsset, uniqueId: Uuid, block: suspend () -> Unit) = coroutineScope {
+    /** [held] instead of [block] once [MAX_UNFINISHED_PREPARES] earlier tries never ended. */
+    private suspend fun <T> crashGuarded(row: DeviceBackupAsset, uniqueId: Uuid, held: suspend () -> T, block: suspend () -> T): T = coroutineScope {
         val unfinished = ledger.unfinishedPrepares(uniqueId)
         if (unfinished >= MAX_UNFINISHED_PREPARES) {
-            Logger.w(tag = TAG) { "asset ${row.deviceAssetId}: $unfinished prepares never ended; holding it for Retry" }
-            ledger.markCrashedPreparing(row.deviceAssetId)
-            return@coroutineScope
+            Logger.w(tag = TAG) { "asset ${row.deviceAssetId}: $unfinished prepares never ended" }
+            return@coroutineScope held()
         }
         ledger.prepareStarting(uniqueId)
         // Ended on cancel, not on return: a cancelled ffmpeg can take 30 s to stop, and the app being killed then is no crash.
@@ -569,8 +571,8 @@ class PhotoBackupRun(
         }
     }
 
-    private suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid) {
-        val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
+    private suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard = { it() }) {
+        val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId, transcoding) }
         // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
         withContext(NonCancellable) {
             when (handedOff) {

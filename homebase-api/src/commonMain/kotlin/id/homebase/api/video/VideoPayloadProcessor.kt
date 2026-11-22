@@ -118,7 +118,7 @@ class VideoPayloadProcessor(
         // Poster frame via the thumbnail seam — returns JPEG bytes directly (tiered
         // native-first decode per platform), so no temp-file round-trip to read+delete.
         val (posterBytes, posterElapsed) =
-            measureTimedValue { if (payload.poster) VideoThumbnailService.extractPosterFrame(ffmpegInputPath, fullSize = true) else null }
+            measureTimedValue { if (payload.photoClip) null else VideoThumbnailService.extractPosterFrame(ffmpegInputPath, fullSize = true) }
         Logger.i(tag = "VideoProcessing") {
             "poster done in ${posterElapsed.inWholeMilliseconds}ms (bytes=${posterBytes?.size})"
         }
@@ -157,7 +157,7 @@ class VideoPayloadProcessor(
             }
         }
         // Read by Kotlin, so not a web blob: handle, whose bytes stay in JS.
-        val mayGoAsIs = payload.stripMetadata && trimStartMs == null && trimEndMs == null && ffmpegInputPath == payload.filePath
+        val mayGoAsIs = (payload.stripMetadata || payload.photoClip) && trimStartMs == null && trimEndMs == null && ffmpegInputPath == payload.filePath
         val (compressedPath, compressElapsed) =
             measureTimedValue {
                 (if (mayGoAsIs) remuxIfAlreadyMet(payload.filePath, videoQuality, compressProgress) else null) ?: compressor.compress(
@@ -245,7 +245,7 @@ class VideoPayloadProcessor(
         /* ---------- PHASE 3: SIZE CHECK → HLS DECISION ---------- */
 
         val compressedSize = fileOperationsProvider.getFileSize(compressedPath)
-        val useHls = compressedSize >= HLS_MIN_BYTES
+        val useHls = !payload.photoClip && compressedSize >= HLS_MIN_BYTES
 
         Logger.i(tag = "VideoProcessing") {
             "compression finished in $compressElapsed: input=${inputSize}B → compressed=${compressedSize}B " +

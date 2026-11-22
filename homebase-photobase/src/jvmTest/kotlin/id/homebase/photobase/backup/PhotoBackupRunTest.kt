@@ -516,6 +516,40 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aPhotosClipTranscodeIsCountedWhileItRuns() = runTest {
+        source.next = fullListing(asset("live", mediaType = BackupMediaType.LivePhoto))
+        val uploader = uploader()
+        uploader.transcodes = { true }
+        var counted = -1L
+        uploader.duringTranscode = { counted = ledger.unfinishedPrepares(idOf(it.deviceAssetId)) }
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(1L, counted, "a process death during the clip's transcode counts against the photo")
+        assertEquals(0L, ledger.unfinishedPrepares(idOf("live")))
+        assertEquals(BackupState.Done.code, state("live"))
+    }
+
+    @Test
+    fun aPhotoWhoseClipEndedTheAppTwiceIsBackedUpWithoutIt() = runTest {
+        source.next = fullListing(asset("live", mediaType = BackupMediaType.LivePhoto), asset("motion"))
+        repeat(2) { ledger.prepareStarting(idOf("live")) }
+        repeat(2) { ledger.prepareStarting(idOf("motion")) }
+        val uploader = uploader()
+        uploader.transcodes = { true }
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(setOf("live", "motion"), uploader.clipsHeld.toSet(), "an Android motion photo is known only once its file is read")
+        assertEquals(BackupState.Done.code, state("live"), "the photo isn't lost with its clip")
+        assertEquals(BackupState.Done.code, state("motion"))
+    }
+
+    @Test
     fun aVideoWaitingForAnotherIsNotCountedWhenTheAppEnds() = runTest {
         source.next = fullListing(asset("a", mediaType = BackupMediaType.Video), asset("b", mediaType = BackupMediaType.Video))
         val uploader = uploader()

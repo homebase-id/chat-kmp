@@ -39,14 +39,14 @@ class BackgroundSessionUploader(
 
     override val maxHandedOff: Int get() = SESSION_BATCH
 
-    override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
+    override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard): HandOffResult {
         val mediaType = BackupMediaType.ofCode(row.mediaType)
         val bridge = BackgroundUploadBridgeHolder.bridge
-        if (bridge == null || mediaType == BackupMediaType.Video) return outbox.handOff(row, uniqueId)
+        if (bridge == null || mediaType == BackupMediaType.Video) return outbox.handOff(row, uniqueId, transcoding)
 
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
-            return requests.build(row, uniqueId, exported) { spec ->
+            return requests.build(row, uniqueId, exported, transcoding) { spec ->
                 val upload = outbox.prepare(spec) ?: return@build HandOffResult.ChangedUnderUs
                 HandOffResult.Sending(send(bridge, upload, uniqueId))
             }

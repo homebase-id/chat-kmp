@@ -13,6 +13,12 @@ sealed interface HandOffResult {
     data object ChangedUnderUs : HandOffResult
 }
 
+/**
+ * Runs a Live or motion photo's clip transcode as the run guards a video's: one at a time, counted so a clip that keeps
+ * killing the app stops being tried. Null: it already did, so the photo goes without a clip to play.
+ */
+typealias TranscodeGuard = suspend (transcode: suspend () -> HandOffResult) -> HandOffResult?
+
 /** How many rows may wait on the Outbox at once: each is an encrypted copy on disk. */
 const val MAX_OUTBOX_HANDED_OFF = 6
 
@@ -27,7 +33,7 @@ interface BackupUploader {
     /** How many rows may be with this uploader unsettled at once. */
     val maxHandedOff: Int get() = MAX_OUTBOX_HANDED_OFF
 
-    suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult
+    suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard = { it() }): HandOffResult
 
     /** Whether something is still going to send this row. False sends the row back through dedupe. */
     suspend fun stillSending(rows: Map<DeviceBackupAsset, Uuid>): Set<Uuid>

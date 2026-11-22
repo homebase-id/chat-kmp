@@ -35,8 +35,8 @@ data class UploadSource(
     val libraryKind: LibraryKind? = null,
     /** Video: nothing will transcode it, so what is sent is the user's own file. */
     val untouched: Boolean = false,
-    /** Video: false when it gets no poster, thumbnails or tiny, as a Live Photo's clip, whose still's stand for it. */
-    val poster: Boolean = true,
+    /** Video: the motion of a Live or motion photo ([PayloadFile.photoClip]). */
+    val photoClip: Boolean = false,
     val waveformPath: String? = null,
     val audioLengthSeconds: Int? = null,
     val trimStartMs: Long? = null,
@@ -161,7 +161,7 @@ object UserUploadBuilder {
                     videoQuality = options.videoQuality,
                     stripMetadata = options.metadata == MetadataPolicy.STRIP,
                     skipVideoProcessing = original != null || kind == DescriptorContentV1.Kind.FILE,
-                    poster = source.poster,
+                    photoClip = source.photoClip,
                 )
                 Built(
                     payload,

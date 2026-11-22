@@ -42,14 +42,14 @@ class OutboxBackupUploader(
     private val videoProcessing = Mutex()
     private val metadataReader = MediaMetadataReader(fileOps)
 
-    override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
+    override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard): HandOffResult {
         val mediaType = BackupMediaType.ofCode(row.mediaType)
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
             return if (mediaType == BackupMediaType.Video) {
                 videoProcessing.withLock { handOffVideo(row, uniqueId, exported, digestsOf(row).single()) }
             } else {
-                requests.build(row, uniqueId, exported) { send(it) }
+                requests.build(row, uniqueId, exported, transcoding) { send(it) }
             }
         } finally {
             exported.deleteTemporaryParts(fileOps)

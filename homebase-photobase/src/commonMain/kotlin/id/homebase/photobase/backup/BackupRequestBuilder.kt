@@ -52,12 +52,13 @@ class BackupRequestBuilder(
     /**
      * [send] gets the photo's upload, with each part the builder left as it is checked against its hash as it's
      * encrypted. [HandOffResult.ChangedUnderUs], without calling [send], when a re-encoded part's source no longer matches.
-     * A Live or motion photo's clip goes as `photo_live` (UPLOADS.md section 3.7).
+     * A Live or motion photo's clip goes as `photo_live` (UPLOADS.md section 3.7), its transcode run through [transcoding].
      */
     suspend fun build(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
         exported: ExportedAsset,
+        transcoding: TranscodeGuard = { it() },
         send: suspend (MediaUploadSpec) -> HandOffResult,
     ): HandOffResult {
         val digests = digestsOf(row)
@@ -72,7 +73,7 @@ class BackupRequestBuilder(
                 UserUploadBuilder.build(
                     listOfNotNull(
                         UploadSource(primary.path, primary.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE),
-                        clip?.let { UploadSource(it.path, it.contentType, libraryKind = LibraryKind.VIDEO, untouched = it.untouched, poster = false) },
+                        clip?.let { UploadSource(it.path, it.contentType, libraryKind = LibraryKind.VIDEO, untouched = it.untouched, photoClip = true) },
                     ),
                     // An Android clip needs no copy kept: the untouched file holds it.
                     options().copy(
@@ -114,15 +115,21 @@ class BackupRequestBuilder(
                 ContentHashes(PayloadHashAlgorithm.Blake3, expected.filterKeys { key -> payloads.payloads.any { it.key == key } }),
             )
             if (clip == null) return send(spec(bundle, PhotobaseProtocol.ImageDataType))
+            if (clip.untouched) return send(spec(bundle, PhotobaseProtocol.LivePhotoDataType))
+            // A backup that isn't the original isn't a backup: at Original an iPhone's paired video stays, as it is.
+            suspend fun withNoClipToPlay(): HandOffResult =
+                if (clip.pairedPart != null && quality == MediaQuality.ORIGINAL) attempt(clip.copy(untouched = true))
+                else send(spec(bundle.withOnly(PhotobaseProtocol.ImagePayloadKey), PhotobaseProtocol.ImageDataType))
             return try {
-                send(spec(bundle, PhotobaseProtocol.LivePhotoDataType))
+                transcoding { send(spec(bundle, PhotobaseProtocol.LivePhotoDataType)) } ?: run {
+                    Logger.w(tag = TAG) { "the clip of $uniqueId stopped the app before; backing up without it" }
+                    withNoClipToPlay()
+                }
             } catch (e: VideoCompressionFailedException) {
-                // A backup that isn't the original isn't a backup: at Original an iPhone's paired video stays, as it is.
-                if (clip.pairedPart != null && !clip.untouched && quality == MediaQuality.ORIGINAL) return attempt(clip.copy(untouched = true))
                 // Retried like any failure, so only a clip that never transcodes costs the motion; the still is kept.
-                if (row.attempts + 1 < BackupLedger.MAX_ATTEMPTS) throw e
-                Logger.w(tag = TAG, throwable = e) { "no clip for $uniqueId after ${row.attempts + 1} attempts; backing up the still" }
-                send(spec(bundle.withOnly(PhotobaseProtocol.ImagePayloadKey), PhotobaseProtocol.ImageDataType))
+                if (!(clip.pairedPart != null && quality == MediaQuality.ORIGINAL) && row.attempts + 1 < BackupLedger.MAX_ATTEMPTS) throw e
+                Logger.w(tag = TAG, throwable = e) { "no clip to play for $uniqueId after ${row.attempts + 1} attempts" }
+                withNoClipToPlay()
             }
         }
 

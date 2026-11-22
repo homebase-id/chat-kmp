@@ -80,14 +80,21 @@ internal class FakeUploader(
     /** Holds every hand-off until completed, like a long transcode; one that ignores cancel, like a stuck ffmpeg. */
     var handOffGate: CompletableDeferred<Unit>? = null
     var markedBackground = false
+    /** Rows whose hand-off goes through the run's guard, as a Live or motion photo's clip transcode does. */
+    var transcodes: (DeviceBackupAsset) -> Boolean = { false }
+    var duringTranscode: suspend (DeviceBackupAsset) -> Unit = {}
+    /** Rows the guard held back: their clip had stopped the app before. */
+    val clipsHeld = mutableListOf<String>()
     override var outlivesProcess = false
     override var maxHandedOff = 6
 
-    override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
+    override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard): HandOffResult {
         handedOff += row.deviceAssetId
         handOffGate?.let { gate -> withContext(NonCancellable) { gate.await() } }
         markedBackground = currentCoroutineContext()[id.homebase.api.video.BackgroundVideoWork.Key] != null
-        val outcome = result(row)
+        val outcome = if (!transcodes(row)) result(row) else {
+            transcoding { duringTranscode(row); result(row) } ?: HandOffResult.Queued.also { clipsHeld += row.deviceAssetId }
+        }
         if (outcome == HandOffResult.Queued && sendsComplete && answersBeforeReturning) {
             eventBus.emit(BackendEvent.OutboxEvent.ItemStarted(PhotobaseProtocol.DriveAlias, uniqueId))
             eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotobaseProtocol.DriveAlias, uniqueId))
