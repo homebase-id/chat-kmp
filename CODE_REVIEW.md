@@ -13,7 +13,7 @@ each in CLAUDE.md under the section named, and reported like a bug when broken:
   `wasmJsMain` and the like) that isn't behind one common contract whose KDoc states the behaviour all four
   platforms must match; an `actual` copied from another platform; platform behaviour tested only by
   `jvmTest` or a fake.
-- **"User uploads", THUMBNAILS.md and UPLOADS.md:** code that goes against them, a second builder, detector,
+- **The "User uploads" paragraph (under "Debugging & root cause"), THUMBNAILS.md and UPLOADS.md:** code that goes against them, a second builder, detector,
   name rule or sealing step, or a new entry on an `ArchitectureTest` allowlist.
 - **"Comments", "UI & Design Quality", "Compose & Flow gotchas", "Strings & Unicode" and "Phone numbers &
   email addresses in the UI".**
