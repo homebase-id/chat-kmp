@@ -331,7 +331,7 @@ Rules:
 
 ## Simplify, then code review
 
-Before opening a PR that changes code, run both passes, always in this order, each started with exactly
+Before opening a PR that changes real code, run both passes, always in this order, each started with exactly
 this prompt (`<target>` is the branch, the PR or the commit range):
 
 ```
@@ -341,7 +341,10 @@ this prompt (`<target>` is the branch, the PR or the commit range):
 
 Read [`SIMPLIFY.md`](SIMPLIFY.md) and [`CODE_REVIEW.md`](CODE_REVIEW.md) before their passes: what each
 looks for, what it may fix, and its commit. Each pass ends in a commit of its own with its counts, even one
-that changes nothing; the weekly team data reads them. Only a docs-only PR skips both, and says so in one line.
+that changes nothing; the weekly team data reads them.
+
+A PR changes real code when `scripts/pass-stats.py origin/main...HEAD` reports more than `+0 -0`. One that
+only changes docs, tests or comments skips both passes, and its description says so in one line.
 
 ## Opening a PR
 
