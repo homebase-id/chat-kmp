@@ -12,9 +12,9 @@ those are the review's.
 In this repo, in particular:
 
 - **A helper that already exists.** The one place for each job is named in CLAUDE.md: content types
-  (`ContentTypes.kt`), file names (`safeFileName`), the upload builder, the metadata reader and stripper
-  ("User uploads"), user text (`truncateToCodePoints`, `initials`: "Strings & Unicode"), scroll indices
-  ("Compose & Flow gotchas").
+  (`ContentTypes.kt`), file names (`safeFileName`), the upload builder ("User uploads"), user text
+  (`truncateToCodePoints`, `initials`: "Strings & Unicode"), scroll indices ("Compose & Flow gotchas"). Reading
+  and stripping metadata is `MediaMetadataReader` and `MediaMetadataStripper` (UPLOADS.md, section 3.4).
 - **Platform code that could be shared.** One implementation where possible, in a shared source set
   (CLAUDE.md, "Platform-specific code"); never an `actual` copied from another platform.
 - **Comments.** The diff's comments follow CLAUDE.md, "Comments": none by default, at most one terse why.
@@ -58,6 +58,7 @@ Code-Lines: <scripts/pass-stats.py>
 
 - **`Found`** counts each distinct finding once, however many agents reported it. **`Fixed`** counts the ones
   fixed; every other one is in the body with its reason.
-- **`Code-Lines`** is measured, never counted by hand: run `scripts/pass-stats.py` on the staged changes just
-  before committing and paste its line.
+- **`Code-Lines`** is measured, never counted by hand: stage the fixes, run `scripts/pass-stats.py`, paste its
+  line, and commit with a plain `git commit` (no `-a`, no paths), so the commit holds exactly what was measured.
+  `scripts/pass-stats.py HEAD` gives the same line afterwards.
 - **The PR description** repeats the counts, with what was fixed and what was skipped.
