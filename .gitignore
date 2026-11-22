@@ -54,3 +54,5 @@ gradle/local-repo/id/homebase/libs/ffmpeg-kit/1.0/ffmpeg-kit-1.0.aar.*.bak
 /.argent/
 # Editor-local config (mcp.json etc.)
 /.vscode/
+
+__pycache__/
