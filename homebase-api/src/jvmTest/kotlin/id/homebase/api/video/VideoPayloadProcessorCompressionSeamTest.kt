@@ -324,6 +324,29 @@ class VideoPayloadProcessorCompressionSeamTest {
     }
 
     @Test
+    fun aPhotosClipIsOneMp4WithNoPosterHoweverLarge() = runTest {
+        val inputPath = "$cacheDir/input.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val store = mutableMapOf(inputPath to ByteArray(1024), compressedPath to ByteArray(HLS_MIN_BYTES.toInt() + 1))
+        val compressor = FakeVideoCompressor(compressedPath = compressedPath, segmented = SegmentedVideo("unused", "unused"))
+        val processor = VideoPayloadProcessor(FakeFileOperationsProvider(store), compressor, FakeVideoProbe(3_000L))
+
+        val result = processor.process(
+            payload = PayloadFile(key = "photo_live", filePath = inputPath, stripMetadata = false, photoClip = true),
+            keyHeader = KeyHeader.newRandom16(),
+            onProgress = null,
+            descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0001",
+        )
+
+        assertFalse(compressor.segmentAndEncryptCalled, "a motion photo is never HLS")
+        assertFalse(result.videoMetadata.isSegmented)
+        assertEquals("video/mp4", result.payloads.single().contentType)
+        assertTrue(result.thumbnails.isEmpty(), "no poster: the still's thumbnails stand for it")
+        assertNull(result.payloads.single().previewThumbnail)
+    }
+
+    @Test
     fun aCurrentFormatVideoWritesItsPlaylistAsAPayloadThePlayerCanRead() = runTest {
         val inputPath = "$cacheDir/input.mp4"
         val compressedPath = "$cacheDir/compressed.mp4"

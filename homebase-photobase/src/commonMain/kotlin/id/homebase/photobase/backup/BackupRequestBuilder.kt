@@ -8,13 +8,16 @@ import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.file.CONTENT_TYPE_MP4
 import id.homebase.api.file.FileOperationsProvider
+import co.touchlab.kermit.Logger
 import id.homebase.api.media.MediaMetadataReader
+import id.homebase.api.media.MotionPhoto
+import id.homebase.api.video.VideoCompressionFailedException
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.OUTBOX_BULK_PRIORITY
-import id.homebase.api.video.VideoQuality
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.upload.ContentHashes
 import id.homebase.upload.LibraryKind
@@ -49,58 +52,112 @@ class BackupRequestBuilder(
     /**
      * [send] gets the photo's upload, with each part the builder left as it is checked against its hash as it's
      * encrypted. [HandOffResult.ChangedUnderUs], without calling [send], when a re-encoded part's source no longer matches.
+     * A Live or motion photo's clip goes as `photo_live` (UPLOADS.md section 3.7), its transcode run through [transcoding].
      */
     suspend fun build(
         row: DeviceBackupAsset,
         uniqueId: Uuid,
-        mediaType: BackupMediaType,
         exported: ExportedAsset,
+        transcoding: TranscodeGuard,
         send: suspend (MediaUploadSpec) -> HandOffResult,
     ): HandOffResult {
         val digests = digestsOf(row)
         require(exported.parts.size == digests.size) { "${exported.parts.size} parts against ${digests.size} digests" }
-        val reencoded = mutableListOf<String>()
-        try {
+        val primaryIndex = exported.parts.indexOfFirst { it.role == ExportedPartRole.Primary }.also { require(it >= 0) { "no primary part" } }
+        val primary = exported.parts[primaryIndex]
+        val quality = settings().photoQuality
+        val temps = mutableListOf<String>()
+
+        suspend fun attempt(clip: Clip?): HandOffResult {
             val bundle = timed(BackupStage.Thumbnails) {
                 UserUploadBuilder.build(
-                    exported.parts.map { part ->
-                        if (part.role == ExportedPartRole.PairedVideo) {
-                            UploadSource(part.path, part.contentType, libraryKind = LibraryKind.VIDEO, untouched = true)
-                        } else {
-                            UploadSource(part.path, part.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE)
-                        }
-                    },
-                    // A Live Photo's video is sent as it is; it never gets a copy.
-                    options().copy(originalVideo = false),
+                    listOfNotNull(
+                        UploadSource(primary.path, primary.contentType, pickedName = exported.fileName, libraryKind = LibraryKind.IMAGE),
+                        clip?.let { UploadSource(it.path, it.contentType, libraryKind = LibraryKind.VIDEO, untouched = it.untouched, photoClip = true) },
+                    ),
+                    // An Android clip needs no copy kept: the untouched file holds it.
+                    options().copy(
+                        videoQuality = quality.toVideoQuality(),
+                        originalVideo = clip?.keepsPairedVideo(quality) == true && !clip.untouched,
+                    ),
                     fileOps,
-                ) { keyFor(exported.parts[it].role) }
+                ) { if (it == 0) PhotobaseProtocol.ImagePayloadKey else PhotobaseProtocol.LivePhotoVideoPayloadKey }
             }
             val expected = mutableMapOf<String, ByteArray>()
-            for ((index, built) in bundle.payloads.withIndex()) {
-                val part = exported.parts[index]
-                if (built.filePath == part.path) {
-                    expected[built.key] = digests[index]
-                } else {
-                    reencoded += built.filePath
-                    if (!hasher.matches(exported, part, digests[index])) return HandOffResult.ChangedUnderUs
+            val still = bundle.payloads.single { it.key == PhotobaseProtocol.ImagePayloadKey }
+            if (still.filePath == primary.path) {
+                expected[still.key] = digests[primaryIndex]
+            } else {
+                temps += still.filePath
+                if (!hasher.matches(exported, primary, digests[primaryIndex])) return HandOffResult.ChangedUnderUs
+            }
+            // An Android clip comes from the primary, checked above or as it's encrypted.
+            clip?.pairedPart?.let { part ->
+                val live = bundle.payloads.single { it.key == PhotobaseProtocol.LivePhotoVideoPayloadKey }
+                if (live.skipVideoProcessing) {
+                    expected[live.key] = digests[part]
+                } else if (!hasher.matches(exported, exported.parts[part], digests[part])) {
+                    return HandOffResult.ChangedUnderUs
                 }
             }
-            val exif = timed(BackupStage.Thumbnails) { exported.parts.firstOrNull { it.role == ExportedPartRole.Primary }?.let { metadataReader.image(it.path) } }
-            val metadata = photoMetadata(
+            val exif = timed(BackupStage.Thumbnails) { metadataReader.image(primary.path) }
+            fun spec(payloads: PayloadBundle, dataType: Int) = photoSpec(
+                photosDriveId,
                 uniqueId,
-                if (mediaType == BackupMediaType.LivePhoto) PhotobaseProtocol.LivePhotoDataType else PhotobaseProtocol.ImageDataType,
-                captureTimeMs(exif, row.createdAt),
-                PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
-                bundle.previewThumbs.firstOrNull(),
+                payloads,
+                photoMetadata(
+                    uniqueId,
+                    dataType,
+                    captureTimeMs(exif, row.createdAt),
+                    PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
+                    payloads.previewThumbs.firstOrNull(),
+                ),
+                ContentHashes(PayloadHashAlgorithm.Blake3, expected.filterKeys { key -> payloads.payloads.any { it.key == key } }),
             )
-            return send(photoSpec(photosDriveId, uniqueId, bundle, metadata, ContentHashes(PayloadHashAlgorithm.Blake3, expected)))
+            if (clip == null) return send(spec(bundle, PhotobaseProtocol.ImageDataType))
+            if (clip.untouched) return send(spec(bundle, PhotobaseProtocol.LivePhotoDataType))
+            // A backup that isn't the original isn't a backup: at Original an iPhone's paired video stays, as it is.
+            suspend fun withNoClipToPlay(): HandOffResult =
+                if (clip.keepsPairedVideo(quality)) attempt(clip.copy(untouched = true))
+                else send(spec(bundle.withOnly(PhotobaseProtocol.ImagePayloadKey), PhotobaseProtocol.ImageDataType))
+            return try {
+                transcoding { send(spec(bundle, PhotobaseProtocol.LivePhotoDataType)) } ?: withNoClipToPlay()
+            } catch (e: VideoCompressionFailedException) {
+                // Retried like any failure, so only a clip that never transcodes costs the motion; the still is kept.
+                if (!clip.keepsPairedVideo(quality) && row.attempts + 1 < BackupLedger.MAX_ATTEMPTS) throw e
+                Logger.w(tag = TAG, throwable = e) { "no clip to play for $uniqueId after ${row.attempts + 1} attempts" }
+                withNoClipToPlay()
+            }
+        }
+
+        try {
+            val paired = exported.parts.withIndex().firstOrNull { it.value.role == ExportedPartRole.PairedVideo }
+            val clip = paired?.let { (index, part) -> Clip(part.path, part.contentType, pairedPart = index) }
+                ?: cutClip(primary)?.also { temps += it.path }
+            return attempt(clip)
         } finally {
-            reencoded.forEach { runCatching { fileOps.deleteTempFile(it) } }
+            temps.forEach { runCatching { fileOps.deleteTempFile(it) } }
         }
     }
 
-    private fun keyFor(role: ExportedPartRole) =
-        if (role == ExportedPartRole.PairedVideo) PhotobaseProtocol.LivePhotoVideoPayloadKey else PhotobaseProtocol.ImagePayloadKey
+    /** [pairedPart]: the exported part an iPhone's clip is; null for a clip cut from the file. [untouched]: no copy to play. */
+    private data class Clip(val path: String, val contentType: String, val pairedPart: Int? = null, val untouched: Boolean = false) {
+        fun keepsPairedVideo(quality: MediaQuality) = pairedPart != null && quality == MediaQuality.ORIGINAL
+    }
+
+    // Only JPEG motion photos so far; a HEIC one's XMP can lie past the header (THUMBNAILS.md, "Not settled").
+    private suspend fun cutClip(primary: ExportedPart): Clip? {
+        if (primary.contentType != "image/jpeg") return null
+        val path = timed(BackupStage.Thumbnails) { MotionPhoto.extractClip(primary.path, fileOps) } ?: return null
+        return Clip(path, CONTENT_TYPE_MP4)
+    }
+
+    private fun PayloadBundle.withOnly(key: String) =
+        copy(payloads = payloads.filter { it.key == key }, thumbnails = thumbnails.filter { it.key == key })
+
+    private companion object {
+        const val TAG = "BackupRequestBuilder"
+    }
 }
 
 @OptIn(ExperimentalStdlibApi::class)

@@ -21,8 +21,6 @@ import id.homebase.upload.UploadService
 import id.homebase.upload.UploadSource
 import id.homebase.upload.UserUploadBuilder
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 class BackupEnqueueFailedException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -39,17 +37,16 @@ class OutboxBackupUploader(
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : BackupUploader {
 
-    private val videoProcessing = Mutex()
     private val metadataReader = MediaMetadataReader(fileOps)
 
-    override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
+    override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid, transcoding: TranscodeGuard): HandOffResult {
         val mediaType = BackupMediaType.ofCode(row.mediaType)
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
             return if (mediaType == BackupMediaType.Video) {
-                videoProcessing.withLock { handOffVideo(row, uniqueId, exported, digestsOf(row).single()) }
+                handOffVideo(row, uniqueId, exported, digestsOf(row).single())
             } else {
-                handOffOriginal(row, uniqueId, mediaType, exported)
+                requests.build(row, uniqueId, exported, transcoding) { send(it) }
             }
         } finally {
             exported.deleteTemporaryParts(fileOps)
@@ -79,13 +76,6 @@ class OutboxBackupUploader(
         val prepared = prepare(spec) ?: return HandOffResult.ChangedUnderUs
         return handedOff(timed(BackupStage.Enqueue) { uploadService.queue(prepared) })
     }
-
-    private suspend fun handOffOriginal(
-        row: DeviceBackupAsset,
-        uniqueId: Uuid,
-        mediaType: BackupMediaType,
-        exported: ExportedAsset,
-    ): HandOffResult = requests.build(row, uniqueId, mediaType, exported) { send(it) }
 
     // The source is checked against its hash by a read of its own for a transcode, and by the encrypt pass for an
     // untouched original. Its location goes in the header, as an HLS stream has no place for it.

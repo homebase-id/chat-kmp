@@ -76,10 +76,11 @@ internal object AppleToneMapXmp {
  * Every value of the property [name] in [namespace], under whatever prefix the XMP binds it to, written as an
  * attribute or as a simple element.
  */
-internal fun xmpValues(xml: String, namespace: String, name: String): List<String> {
-    val prefixes = Regex("""xmlns:([\w.-]+)\s*=\s*["']${Regex.escape(namespace)}["']""").findAll(xml).map { it.groupValues[1] }.toSet()
-    return prefixes.flatMap { prefix ->
+internal fun xmpValues(xml: String, namespace: String, name: String): List<String> =
+    xmpPrefixes(xml, namespace).flatMap { prefix ->
         Regex("""(?<![/\w.-])${Regex.escape(prefix)}:$name\s*(=\s*["']([^"']*)["']|>([^<]*)<)""").findAll(xml)
             .map { (it.groupValues[2].ifEmpty { it.groupValues[3] }).trim() }
     }
-}
+
+internal fun xmpPrefixes(xml: String, namespace: String): Set<String> =
+    Regex("""xmlns:([\w.-]+)\s*=\s*["']${Regex.escape(namespace)}["']""").findAll(xml).map { it.groupValues[1] }.toSet()

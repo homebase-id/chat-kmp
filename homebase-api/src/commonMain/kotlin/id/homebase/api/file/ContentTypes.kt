@@ -19,16 +19,51 @@ fun isUntyped(contentType: String?): Boolean = contentType.isNullOrBlank() || co
 fun contentTypeFromBytes(header: ByteArray): String = ImageFormatDetector.detectFormat(header)
 
 /** [contentTypeFromBytes] for the file at [path]; [OCTET_STREAM] when it can't be read. */
-suspend fun contentTypeOfFile(path: String, fileOps: FileOperationsProvider): String {
-    val header = try {
-        fileOps.readFileHeaderBytes(path)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Logger.w(tag = "ContentTypes", throwable = e) { "Couldn't read $path to check its type" }
-        return OCTET_STREAM
+suspend fun contentTypeOfFile(path: String, fileOps: FileOperationsProvider): String =
+    headerOf(path, fileOps)?.let(::contentTypeFromBytes) ?: OCTET_STREAM
+
+/**
+ * A video's container type, for a file a photo library calls a video but gives no type: by the `ftyp` brand of an ISO
+ * media file, QuickTime when its first boxes have none. [OCTET_STREAM] for anything else, a HEIF or AVIF image included.
+ */
+fun videoContentTypeFromBytes(header: ByteArray): String {
+    if (ImageFormatDetector.isImageContainer(header)) return OCTET_STREAM
+    var at = 0
+    while (at + 8 <= header.size) {
+        when (header.decodeToString(at + 4, at + 8)) {
+            "ftyp" -> {
+                if (at + 12 > header.size) return OCTET_STREAM
+                val brand = header.decodeToString(at + 8, at + 12)
+                return when {
+                    brand == "qt  " -> "video/quicktime"
+                    brand.startsWith("3gp") -> "video/3gpp"
+                    brand.startsWith("3g2") -> "video/3gpp2"
+                    else -> CONTENT_TYPE_MP4
+                }
+            }
+            "moov", "mdat" -> return "video/quicktime"
+            "wide", "free", "skip", "pnot", "uuid" -> Unit
+            else -> return OCTET_STREAM
+        }
+        val size = ((header[at].toInt() and 0xFF) shl 24) or ((header[at + 1].toInt() and 0xFF) shl 16) or
+            ((header[at + 2].toInt() and 0xFF) shl 8) or (header[at + 3].toInt() and 0xFF)
+        if (size < 8) return OCTET_STREAM
+        at += size
     }
-    return contentTypeFromBytes(header)
+    return OCTET_STREAM
+}
+
+/** [videoContentTypeFromBytes] for the file at [path]; [OCTET_STREAM] when it can't be read. */
+suspend fun videoContentTypeOfFile(path: String, fileOps: FileOperationsProvider): String =
+    headerOf(path, fileOps)?.let(::videoContentTypeFromBytes) ?: OCTET_STREAM
+
+private suspend fun headerOf(path: String, fileOps: FileOperationsProvider): ByteArray? = try {
+    fileOps.readFileHeaderBytes(path)
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Logger.w(tag = "ContentTypes", throwable = e) { "Couldn't read $path to check its type" }
+    null
 }
 
 fun detectContentTypeFromExtensionOrHint(nameOrPath: String?): String {

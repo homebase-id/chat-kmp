@@ -57,6 +57,9 @@ object ImageFormatDetector {
 
     private fun isAvif(b: ByteArray): Boolean = ftypBrands(b)?.any { it in AVIF_BRANDS } == true
 
+    /** An ISO media file that names an image brand, major or compatible: HEIF, AVIF or MIAF, so not a video. */
+    internal fun isImageContainer(b: ByteArray): Boolean = ftypBrands(b)?.any { it in AVIF_BRANDS || it in HEIC_BRANDS || it == "miaf" } == true
+
     // The major brand and the compatible brands of an ISOBMFF file's ftyp box; null when it has none.
     private fun ftypBrands(b: ByteArray): List<String>? {
         if (b.size < 12 || b.decodeToString(4, 8) != "ftyp") return null
