@@ -531,7 +531,14 @@ class PhotoBackupRun(
                 if (isVideo) {
                     crashGuarded(row, uniqueId) { handOff(row, uniqueId, Unguarded) } ?: ledger.markCrashedPreparing(row.deviceAssetId)
                 } else {
-                    handOff(row, uniqueId) { crashGuarded(row, uniqueId, it) }
+                    var clipHeld = false
+                    handOff(row, uniqueId) { transcode ->
+                        // A clip doesn't wait out a video's whole hand-off: the photo comes back once the video is done.
+                        if (videoPrepare.isLocked) throw VideoWorkYieldedException()
+                        crashGuarded(row, uniqueId, transcode).also { clipHeld = it == null }
+                    }
+                    // Queued without its clip: a later resend tries the clip again.
+                    if (clipHeld) ledger.prepareEnded(uniqueId)
                 }
             }
         } finally {

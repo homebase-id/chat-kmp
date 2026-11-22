@@ -63,6 +63,9 @@ internal class FakeProbe(
     override fun photoLocationsWithheld() = locationsWithheld
 }
 
+/** A hand-off with nothing to guard, as the run passes for a video or a test that has no clip. */
+internal suspend fun BackupUploader.handOff(row: DeviceBackupAsset, uniqueId: Uuid) = handOff(row, uniqueId, Unguarded)
+
 /** Answers like the real Outbox would: through the event bus, after [sendTime] of virtual time. */
 internal class FakeUploader(
     private val eventBus: EventBus,
@@ -82,6 +85,7 @@ internal class FakeUploader(
     var markedBackground = false
     /** Rows whose hand-off goes through the run's guard, as a Live or motion photo's clip transcode does. */
     var transcodes = false
+    var beforeTranscode: suspend (DeviceBackupAsset) -> Unit = {}
     var duringTranscode: suspend (DeviceBackupAsset) -> Unit = {}
     /** Rows the guard held back: their clip had stopped the app before. */
     val clipsHeld = mutableListOf<String>()
@@ -93,6 +97,7 @@ internal class FakeUploader(
         handOffGate?.let { gate -> withContext(NonCancellable) { gate.await() } }
         markedBackground = currentCoroutineContext()[id.homebase.api.video.BackgroundVideoWork.Key] != null
         val outcome = if (transcodes) {
+            beforeTranscode(row)
             transcoding { duringTranscode(row); result(row) } ?: HandOffResult.Queued.also { clipsHeld += row.deviceAssetId }
         } else {
             result(row)

@@ -546,6 +546,34 @@ class PhotoBackupRunTest {
         assertEquals(setOf("live", "motion"), uploader.clipsHeld.toSet(), "an Android motion photo is known only once its file is read")
         assertEquals(BackupState.Done.code, state("live"), "the photo isn't lost with its clip")
         assertEquals(BackupState.Done.code, state("motion"))
+        assertEquals(0L, ledger.unfinishedPrepares(idOf("live")), "a later resend tries the clip again")
+    }
+
+    @Test
+    fun aPhotosClipGivesWayToAVideoBeingPreparedWithoutCountingAnAttempt() = runTest {
+        source.next = fullListing(asset("video", mediaType = BackupMediaType.Video), asset("live", mediaType = BackupMediaType.LivePhoto))
+        val uploader = uploader()
+        uploader.transcodes = true
+        val video = CompletableDeferred<Unit>()
+        // The photo's still takes long enough to make that the other worker is on the video by then.
+        uploader.beforeTranscode = { if (it.deviceAssetId == "live") delay(1.seconds) }
+        uploader.duringTranscode = { if (it.deviceAssetId == "video") video.await() }
+        val (run, _) = newRun(uploader)
+
+        val first = backgroundScope.launch { run.run(request(trigger = BackupTrigger.Foreground)) }
+        advanceTimeBy(2.seconds)
+        assertEquals(setOf("video", "live"), uploader.handedOff.toSet(), "the other worker took the photo")
+        assertEquals(0L, ledger.row("live")!!.attempts, "giving way is no failure")
+        assertTrue(uploader.clipsHeld.isEmpty())
+        assertEquals(0L, ledger.unfinishedPrepares(idOf("live")))
+
+        video.complete(Unit)
+        first.join()
+        now += 2.minutes.inWholeMilliseconds
+        run.run(request(trigger = BackupTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(BackupState.Done.code, state("video"))
+        assertEquals(BackupState.Done.code, state("live"), "it comes back once the video is done")
     }
 
     @Test
