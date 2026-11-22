@@ -178,7 +178,7 @@ Decided in one place, `ContentTypes.kt` in homebase-api: the extension table, th
 
 Filesync and WebDrop still store `application/octet-stream` payloads (they move bytes), but record the detected type in their own content.
 
-A photo library knows more than the bytes say: a file it calls a picture or a video is that kind (`k`) even when its type is missing or unknown.
+A photo library knows more than the bytes say: a file it calls a picture or a video is that kind (`k`) even when its type is missing or unknown. A video it gives no type takes one from its container's `ftyp` brand (`videoContentTypeOfFile`), so its transcode or playable copy is made as for any video.
 
 **A video the sending platform can't open is a file.** Its kind is `f`, not `v`, and it is sent as it is, with its own content type (`video/x-matroska`, `video/webm`, …): no transcode, no thumbnails. Today that is MKV and WebM on iOS, which AVFoundation can't read; Android, desktop and web read them and send a transcode as usual. The platform answers from the content type alone (`VideoProber.canRead`), so a failed read never turns a good video into a file. Readers show a payload by its `k`, so a `video/*` payload of kind `f` is a file to download, not a video to play. Until the current format is written (`DescriptorContentV1.WRITE`), `k` isn't sent, so readers still show such a payload as a video. Like any file, it goes out with its metadata as it is, whatever the app's policy.
 
@@ -222,7 +222,7 @@ The builder decides it per app and records it on each image payload (`PayloadFil
 | AVIF, TIFF and other formats the scrubber doesn't handle, or a file it can't parse | nothing: sent as it is, with a warning in the log | nothing |
 | GIF | nothing (GIF has no standard location field) | nothing |
 | Final image (Standard, HD) | already has none | copy the source's metadata into it |
-| Video | drop the container's metadata in the transcode or remux | keep the container's metadata (on iOS, only its location and capture time) |
+| Video | drop the container's metadata in the transcode or remux | keep the container's metadata (on iOS, only its location and capture time); a Live or motion photo's clip keeps none of its own, as its still carries it (section 3.7) |
 | Audio, files | nothing | nothing |
 
 ### 3.5 Tiny and thumbnails
