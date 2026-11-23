@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -176,73 +177,57 @@ fun FullScreenMediaViewer(
             }
 
             val localContext by localAttachmentStore.collectContext(data.messageId, payload.key)
+            val motion = rememberMotionState(data, data.motionClips[payload.key], isSettled && isFocused)
+            val resolved = resolveMediaPageSource(localContext, payload.iv != null, payloadIv, data.isEncrypted)
+            val source = when (resolved) {
+                is MediaPageSource.LocalFile -> remember(resolved.path) {
+                    SubSamplingImageSource.LocalFile(filePath = resolved.path)
+                }
+                is MediaPageSource.Remote -> remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn) {
+                    val imageData = HomebaseImageData.from(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        descriptor = payload,
+                        loadFullPayload = true,
+                        isEncrypted = resolved.iv != null,
+                        keyHeader = resolved.iv
+                            ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
+                            ?: KeyHeader.empty(),
+                        remoteOdinId = data.remoteOdinId,
+                        globalTransitId = data.globalTransitId,
+                    )
+                    SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
+                }
+                MediaPageSource.Pending, MediaPageSource.Unavailable -> null
+            }
 
-            when (
-                val resolved = resolveMediaPageSource(
-                    localContext,
-                    payload.iv != null,
-                    payloadIv,
-                    data.isEncrypted,
+            when {
+                // A local file and the server's copy are separate viewers: an upload finishing remounts it.
+                source != null -> key(source is SubSamplingImageSource.LocalFile) { ZoomableSubSamplingImage(
+                    source = source,
+                    modifier = Modifier.stopsMotionOnTouch(motion),
+                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
+                    onTap = { showUI = !showUI },
+                    sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
+                    animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
+                    sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
+                    showsHdr = isSettled && isFocused && motion?.shown != true,
+                    underPhoto = motion?.takeIf { it.mounted }?.let { m -> { placed -> MotionClipUnderPhoto(m, placed) } },
+                    photoAlpha = { 1f - (motion?.alpha?.value ?: 0f) },
+                ) }
+
+                // Payload not uploaded yet (no iv): show a spinner like the
+                // vault viewer, not a failure — and keep it tappable.
+                resolved == MediaPageSource.Pending -> MediaPendingOverlay(onTap = { showUI = !showUI })
+
+                // iv present but undecodable (corrupt): keep the page
+                // tappable so the user can still toggle the chrome (and reach
+                // the back button) instead of a blank, unresponsive page.
+                else -> MediaUnavailablePlaceholder(
+                    message = stringResource(MR.string.chat_image_unavailable),
+                    icon = Icons.Default.BrokenImage,
+                    onTap = { showUI = !showUI },
                 )
-            ) {
-                is MediaPageSource.LocalFile -> {
-                    val source = remember(resolved.path) {
-                        SubSamplingImageSource.LocalFile(filePath = resolved.path)
-                    }
-                    ZoomableSubSamplingImage(
-                        source = source,
-                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                        onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                        showsHdr = isSettled,
-                    )
-                }
-
-                is MediaPageSource.Remote -> {
-                    val source = remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn) {
-                        val imageData = HomebaseImageData.from(
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            descriptor = payload,
-                            loadFullPayload = true,
-                            isEncrypted = resolved.iv != null,
-                            keyHeader = resolved.iv
-                                ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
-                                ?: KeyHeader.empty(),
-                            remoteOdinId = data.remoteOdinId,
-                            globalTransitId = data.globalTransitId,
-                        )
-                        SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
-                    }
-                    ZoomableSubSamplingImage(
-                        source = source,
-                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                        onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                        showsHdr = isSettled,
-                    )
-                }
-
-                MediaPageSource.Pending -> {
-                    // Payload not uploaded yet (no iv): show a spinner like the
-                    // vault viewer, not a failure — and keep it tappable.
-                    MediaPendingOverlay(onTap = { showUI = !showUI })
-                }
-
-                MediaPageSource.Unavailable -> {
-                    // iv present but undecodable (corrupt): keep the page
-                    // tappable so the user can still toggle the chrome (and reach
-                    // the back button) instead of a blank, unresponsive page.
-                    MediaUnavailablePlaceholder(
-                        message = stringResource(MR.string.chat_image_unavailable),
-                        icon = Icons.Default.BrokenImage,
-                        onTap = { showUI = !showUI },
-                    )
-                }
             }
         }
 

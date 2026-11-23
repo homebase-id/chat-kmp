@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -236,14 +237,7 @@ class PhotoGalleryViewModel(
 
 internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
     if (payload.isVideo()) {
-        FullScreenOverlay.VideoPlayerData(
-            fileId = fileId,
-            driveId = driveId,
-            payloadKey = shown.key,
-            // The player decrypts with exactly this header, and each payload has its own IV.
-            keyHeader = shown.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
-            payload = shown,
-        )
+        player(shown)
     } else {
         FullScreenOverlay.ViewMessageData(
             messageId = fileId,
@@ -255,5 +249,15 @@ internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
             payloads = listOf(payload),
             keyHeader = keyHeader,
             selectedPayloadKey = payload.key,
+            motionClips = motion?.let { mapOf(payload.key to it) }.orEmpty(),
         )
     }
+
+private fun PhotoGalleryItem.player(video: PayloadDescriptor) = FullScreenOverlay.VideoPlayerData(
+    fileId = fileId,
+    driveId = driveId,
+    payloadKey = video.key,
+    // The player decrypts with exactly this header, and each payload has its own IV.
+    keyHeader = video.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
+    payload = video,
+)

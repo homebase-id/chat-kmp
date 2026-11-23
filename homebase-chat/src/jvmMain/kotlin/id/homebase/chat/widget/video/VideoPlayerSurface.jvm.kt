@@ -668,3 +668,5 @@ private fun formatMs(ms: Long): String {
 }
 
 actual val nativeVideoControlsOwnTopCorners: Boolean = false
+
+actual val playsMotionClips: Boolean = false
