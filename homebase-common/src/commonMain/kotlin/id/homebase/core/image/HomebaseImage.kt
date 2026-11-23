@@ -45,7 +45,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.error
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject
@@ -237,7 +236,7 @@ private fun rememberPreview(bytes: Base64Bytes?, imageLoader: ImageLoader): Prev
     val context = LocalPlatformContext.current
     return remember(bytes, context, imageLoader) {
         val request = previewRequest(context, bytes)
-        val warmed = imageLoader.memoryCache?.get(MemoryCache.Key(request.memoryCacheKey!!))?.image?.asPainter(context)
+        val warmed = imageLoader.cachedPreview(request)?.asPainter(context)
         PreviewPainter(warmed ?: decodeUnwarmed(bytes, request, imageLoader))
     }
 }
@@ -250,7 +249,7 @@ private fun decodeUnwarmed(bytes: Base64Bytes, request: ImageRequest, imageLoade
     tinyPreviewMisses++
     Logger.i(tag = "HomebaseImage") { "Tiny preview not warmed, decoded on the main thread (miss $tinyPreviewMisses)" }
     imageLoader.enqueue(request)
-    return runCatching { BitmapPainter(bytes.bytes.decodeToImageBitmap()) }.getOrNull()
+    return bytes.decodeImageBitmap()?.let(::BitmapPainter)
 }
 
 // Not a RememberObserver, so Coil drawing it as a placeholder never restarts the tiny's load.
