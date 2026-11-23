@@ -215,7 +215,7 @@ private fun ArticleCardBody(
         PostMedia(
             post = post,
             onMediaClick = { onClick() },
-            onDoubleTapLike = {},
+            onDoubleTapLike = null,
             sharedTransitionScope = null,
             animatedVisibilityScope = null,
             modifier = modifier,
@@ -456,7 +456,7 @@ private fun PostLinkPreview(
 private fun PostMedia(
     post: FeedPostItem,
     onMediaClick: (index: Int) -> Unit,
-    onDoubleTapLike: () -> Unit,
+    onDoubleTapLike: (() -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     modifier: Modifier = Modifier,
@@ -491,9 +491,11 @@ private fun PostMedia(
                 val index = mediaPayloads.indexOf(payload).coerceAtLeast(0)
                 onMediaClick(index)
             },
-            onDoubleTap = {
-                burstTick++
-                onDoubleTapLike()
+            onDoubleTap = onDoubleTapLike?.let { like ->
+                {
+                    burstTick++
+                    like()
+                }
             },
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
