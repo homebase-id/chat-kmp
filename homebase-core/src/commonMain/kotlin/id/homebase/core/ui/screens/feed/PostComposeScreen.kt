@@ -92,13 +92,10 @@ import id.homebase.core.feed.services.PostAudience
 import id.homebase.api.file.contentType
 import id.homebase.core.ui.navigation.LocalPaneCloseGuard
 import id.homebase.core.util.rememberCameraManager
+import id.homebase.core.widget.DiscardChangesDialog
 import id.homebase.core.widget.ScreenBackHandler
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.composer_discard_confirm
-import id.homebase.resources.composer_discard_keep
-import id.homebase.resources.composer_discard_message
-import id.homebase.resources.composer_discard_title
 import id.homebase.resources.done
 import id.homebase.resources.feed_compose_add_media
 import id.homebase.resources.feed_compose_attachment_image
@@ -187,38 +184,31 @@ internal fun PostComposeContent(
 ) {
     var circlesDialogOpen by remember { mutableStateOf(false) }
     var discardConfirmOpen by remember { mutableStateOf(false) }
-    // A send runs in the ViewModel's scope, so leaving mid-send would cancel it.
-    val closeTakenOver = state.isPosting || state.hasDraft
-    val requestClose: () -> Unit = {
+    val takeOverClose: () -> Boolean = {
         when {
-            state.isPosting -> Unit
-            state.hasDraft -> discardConfirmOpen = true
-            else -> onClose()
+            // A send runs in the ViewModel's scope, so leaving mid-send would cancel it.
+            state.isPosting -> true
+            state.hasDraft -> {
+                discardConfirmOpen = true
+                true
+            }
+            else -> false
         }
     }
-    val currentCloseTakenOver by rememberUpdatedState(closeTakenOver)
-    val currentRequestClose by rememberUpdatedState(requestClose)
+    val currentTakeOverClose by rememberUpdatedState(takeOverClose)
     val paneCloseGuard = LocalPaneCloseGuard.current
     DisposableEffect(paneCloseGuard) {
-        paneCloseGuard?.value = { currentCloseTakenOver.also { if (it) currentRequestClose() } }
+        paneCloseGuard?.value = { currentTakeOverClose() }
         onDispose { paneCloseGuard?.value = { false } }
     }
-    ScreenBackHandler(enabled = closeTakenOver, onBack = requestClose)
+    ScreenBackHandler(enabled = state.isPosting || state.hasDraft) { takeOverClose() }
 
     if (discardConfirmOpen) {
-        val keepEditing: () -> Unit = { discardConfirmOpen = false }
-        AlertDialog(
-            onDismissRequest = keepEditing,
-            title = { Text(stringResource(MR.string.composer_discard_title)) },
-            text = { Text(stringResource(MR.string.composer_discard_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    discardConfirmOpen = false
-                    onClose()
-                }) { Text(stringResource(MR.string.composer_discard_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = keepEditing) { Text(stringResource(MR.string.composer_discard_keep)) }
+        DiscardChangesDialog(
+            onKeepEditing = { discardConfirmOpen = false },
+            onDiscard = {
+                discardConfirmOpen = false
+                onClose()
             },
         )
     }
@@ -235,7 +225,7 @@ internal fun PostComposeContent(
                     title = { Text(stringResource(MR.string.feed_compose_title)) },
                     navigationIcon = {
                         IconButton(
-                            onClick = requestClose,
+                            onClick = { if (!takeOverClose()) onClose() },
                             enabled = !state.isPosting,
                             shapes = IconButtonDefaults.shapes(),
                         ) {

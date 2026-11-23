@@ -9,7 +9,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +50,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.noRippleClickable
 import kotlinx.coroutines.flow.first
 
 /** False while a floating pane's enter animation runs: a pane is a dialog entry, RESUMED before its own animation ends. */
@@ -160,7 +160,7 @@ internal fun FloatingPaneContainer(
     }
     val motion = MaterialTheme.motionScheme
     val backdrop = if (confirmsClose) {
-        Modifier.fillMaxSize().clickable(interactionSource = null, indication = null, onClick = requestDismiss)
+        Modifier.fillMaxSize().noRippleClickable(requestDismiss)
     } else {
         Modifier
     }
