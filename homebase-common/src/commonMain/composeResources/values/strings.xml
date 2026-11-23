@@ -752,6 +752,8 @@
     <!-- Conversation message -->
     <string name="chat_message_info">Message info</string>
     <string name="chat_message_reply">Reply</string>
+    <string name="chat_reply_quote_photo_position">Photo %1$d of %2$d</string>
+    <string name="chat_reply_quote_video_position">Video %1$d of %2$d</string>
     <string name="chat_message_forward">Forward</string>
     <string name="chat_message_forwarded">Message forwarded</string>
     <string name="chat_message_copy">Copy</string>
