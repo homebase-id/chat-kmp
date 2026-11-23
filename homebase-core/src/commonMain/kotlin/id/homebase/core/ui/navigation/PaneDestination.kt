@@ -10,6 +10,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,6 +44,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavBackStackEntry
@@ -50,7 +53,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
-import id.homebase.core.util.noRippleClickable
 import kotlinx.coroutines.flow.first
 
 /** False while a floating pane's enter animation runs: a pane is a dialog entry, RESUMED before its own animation ends. */
@@ -81,8 +83,8 @@ private const val PaneHeightFraction = 0.9f
  * [paneContent] defaults to [content]; pass it only when the floating form needs a different
  * layout (as settings does, which turns its list of sub-pages into a sidebar).
  *
- * [confirmsClose] routes the outside click through [LocalPaneCloseGuard] too, which the dialog
- * layer's own outside-click dismissal would bypass.
+ * [confirmsClose] routes the outside click and every Escape through [LocalPaneCloseGuard] too,
+ * which the dialog layer's own dismissal would bypass.
  *
  * Every stacked pane adds a platform scrim (`Color.Black` @ 0.6, not settable from commonMain), so
  * a pane that can reach itself must replace rather than push — otherwise repeated drill-down walks
@@ -100,6 +102,7 @@ internal inline fun <reified T : Any> NavGraphBuilder.paneDestination(
     if (isDesktopOrWeb()) {
         dialog<T>(
             dialogProperties = DialogProperties(
+                dismissOnBackPress = !confirmsClose,
                 dismissOnClickOutside = !confirmsClose,
                 usePlatformDefaultWidth = false,
             ),
@@ -159,12 +162,11 @@ internal fun FloatingPaneContainer(
         currentOnDismiss()
     }
     val motion = MaterialTheme.motionScheme
-    val backdrop = if (confirmsClose) {
-        Modifier.fillMaxSize().noRippleClickable(requestDismiss)
-    } else {
-        Modifier
-    }
-    Box(backdrop, contentAlignment = Alignment.Center) {
+    Box(if (confirmsClose) Modifier.fillMaxSize() else Modifier, contentAlignment = Alignment.Center) {
+        // A sibling behind the Surface, not its parent: the Surface then blocks taps inside it, and no focus stop is added.
+        if (confirmsClose) {
+            Spacer(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { requestDismiss() } })
+        }
         AnimatedVisibility(
             visibleState = appear,
             enter = if (windowExpanded) {

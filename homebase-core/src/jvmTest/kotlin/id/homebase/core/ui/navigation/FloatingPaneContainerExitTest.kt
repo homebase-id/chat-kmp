@@ -122,4 +122,16 @@ class FloatingPaneContainerExitTest {
 
             assertEquals(1, dismissals)
         }
+
+    @Test
+    fun `a click inside a pane that confirms close leaves it open`() =
+        runSkikoComposeUiTest(size = desktop) {
+            var dismissals = 0
+            showPane(confirmsClose = true) { dismissals++ }
+
+            onRoot().performTouchInput { click(center) }
+            waitForIdle()
+
+            assertEquals(0, dismissals)
+        }
 }
