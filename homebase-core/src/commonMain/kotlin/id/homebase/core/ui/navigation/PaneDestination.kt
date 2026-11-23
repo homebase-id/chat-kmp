@@ -1,6 +1,7 @@
 package id.homebase.core.ui.navigation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.MutableTransitionState
@@ -42,6 +43,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
@@ -82,6 +84,8 @@ private const val PaneHeightFraction = 0.9f
 internal inline fun <reified T : Any> NavGraphBuilder.paneDestination(
     noinline onDismiss: () -> Unit,
     noinline paneContent: (@Composable () -> Unit)? = null,
+    noinline enterTransition: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition?)? = null,
+    noinline popExitTransition: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition?)? = null,
     noinline content: @Composable () -> Unit,
 ) {
     if (isDesktopOrWeb()) {
@@ -93,7 +97,7 @@ internal inline fun <reified T : Any> NavGraphBuilder.paneDestination(
             )
         }
     } else {
-        composable<T> { CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) { content() } }
+        composable<T>(enterTransition = enterTransition, popExitTransition = popExitTransition) { CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) { content() } }
     }
 }
 
