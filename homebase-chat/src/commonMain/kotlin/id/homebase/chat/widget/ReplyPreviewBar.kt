@@ -69,6 +69,7 @@ fun ReplyPreviewBar(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     accentColor: Color = MaterialTheme.colorScheme.primary,
+    payloadKey: String? = null,
 ) {
     val currentOdinId = LocalCurrentOdinId.current
     val quotesProtectedMedia = message.messageContent.isProtectedMedia()
@@ -76,8 +77,9 @@ fun ReplyPreviewBar(
         message.replyQuoteConversationMediaPayloads()
     }
 
-    val firstPayload = mediaPayloads.firstOrNull()
-    val hasMultiplePayloads = mediaPayloads.size > 1
+    val quoted = remember(message, payloadKey) { message.quotedGalleryItem(payloadKey) }
+    val firstPayload = quoted?.payload ?: mediaPayloads.firstOrNull()
+    val hasMultiplePayloads = quoted == null && mediaPayloads.size > 1
 
     val isVisualMedia = remember(firstPayload) { firstPayload?.isVisualMedia() == true }
 
@@ -108,7 +110,9 @@ fun ReplyPreviewBar(
         viewOnceOpened = true,
     )
 
-    val previewText = contentLabel?.text ?: replyBarText.trim().truncateToCodePoints(80)
+    val position = quoted?.positionText()
+    val quoteText = replyBarText.trim().truncateToCodePoints(80)
+    val previewText = if (position != null) quotedItemText(position, quoteText) else contentLabel?.text ?: quoteText
 
     val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
     val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
@@ -156,7 +160,7 @@ fun ReplyPreviewBar(
                 )
                 Spacer(modifier = Modifier.height(1.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    contentLabel?.icon?.let { icon ->
+                    contentLabel?.icon?.takeIf { position == null }?.let { icon ->
                         Icon(
                             imageVector = icon,
                             contentDescription = null,

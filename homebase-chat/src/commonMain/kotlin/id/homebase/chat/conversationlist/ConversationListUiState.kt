@@ -92,6 +92,7 @@ data class MessageListUiState(
     val fullScreenOverlay: FullScreenOverlay? = null,
     val sendTo: SendToPicker? = null,
     val replyToMessage: MessageUiModel? = null,
+    val replyToPayloadKey: String? = null,
     val sendQuality: SendQuality = SendQuality.Standard,
     val battleTargetMessage: MessageUiModel? = null,
     val isSearchActive: Boolean = false,
