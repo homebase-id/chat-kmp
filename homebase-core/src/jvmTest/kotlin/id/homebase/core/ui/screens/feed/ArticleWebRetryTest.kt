@@ -15,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
@@ -52,8 +53,10 @@ class ArticleWebRetryTest {
         advanceUntilIdle()
         val url = assertNotNull(viewModel.uiState.value.url)
 
+        viewModel.onPageStarted()
         viewModel.onPageError("net::ERR_INTERNET_DISCONNECTED")
         assertEquals("net::ERR_INTERNET_DISCONNECTED", viewModel.uiState.value.error)
+        assertFalse(viewModel.uiState.value.isLoading)
 
         viewModel.load(post, isSystemDark = false)
         advanceUntilIdle()

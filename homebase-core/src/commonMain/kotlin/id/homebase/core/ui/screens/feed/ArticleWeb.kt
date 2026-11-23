@@ -5,9 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,6 +55,7 @@ internal data class ArticleWebUiState(
     val url: String? = null,
     val injectionScript: String? = null,
     val error: String? = null,
+    val isLoading: Boolean = false,
 )
 
 class ArticleWebViewModel(
@@ -67,9 +65,12 @@ class ArticleWebViewModel(
     private val _uiState = MutableStateFlow(ArticleWebUiState())
     internal val uiState: StateFlow<ArticleWebUiState> = _uiState.asStateFlow()
 
-    internal fun onPageError(message: String) {
-        _uiState.update { it.copy(error = message) }
-    }
+    internal fun onPageStarted() = _uiState.update { it.copy(isLoading = true) }
+
+    internal fun onPageFinished() = _uiState.update { it.copy(isLoading = false) }
+
+    internal fun onPageError(message: String) =
+        _uiState.update { it.copy(isLoading = false, error = message) }
 
     internal fun load(post: FeedPostItem, isSystemDark: Boolean) {
         viewModelScope.launch {
@@ -126,7 +127,6 @@ internal fun ArticleWebContent(
         return
     }
 
-    var isLoading by remember(url) { mutableStateOf(false) }
     val error = state.error
     Box(modifier.fillMaxSize()) {
         when {
@@ -137,17 +137,14 @@ internal fun ArticleWebContent(
             url != null -> FeedWebView(
                 url = url,
                 injectionScript = state.injectionScript,
-                isLoading = isLoading,
+                isLoading = state.isLoading,
                 minDisplayMs = 0,
                 identityHosts = setOfNotNull(post.authorOdinId?.domainName?.lowercase()),
                 onAction = { action ->
                     when (action) {
-                        FeedUiAction.PageStarted -> isLoading = true
-                        FeedUiAction.PageFinished -> isLoading = false
-                        is FeedUiAction.PageError -> {
-                            isLoading = false
-                            viewModel.onPageError(action.message)
-                        }
+                        FeedUiAction.PageStarted -> viewModel.onPageStarted()
+                        FeedUiAction.PageFinished -> viewModel.onPageFinished()
+                        is FeedUiAction.PageError -> viewModel.onPageError(action.message)
                         FeedUiAction.RetryClicked -> Unit
                     }
                 },
