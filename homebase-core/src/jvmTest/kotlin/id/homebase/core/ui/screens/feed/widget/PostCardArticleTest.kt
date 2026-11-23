@@ -3,9 +3,13 @@ package id.homebase.core.ui.screens.feed.widget
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
@@ -17,7 +21,9 @@ import coil3.request.ErrorResult
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
@@ -30,12 +36,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalTestApi::class)
+// The image fetch fails in tests; HomebaseImage then draws this preview, which carries the content description.
+private const val OnePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
+@OptIn(ExperimentalTestApi::class, ExperimentalEncodingApi::class)
 class PostCardArticleTest {
 
     private val scope = CoroutineScope(SupervisorJob())
@@ -90,7 +101,15 @@ class PostCardArticleTest {
         commentCount = 0,
         isEncrypted = false,
         acl = null,
-        articleHeader = if (hasHeader) PayloadDescriptor(key = FeedProtocol.mediaPayloadKey(0)) else null,
+        articleHeader = if (hasHeader) {
+            PayloadDescriptor(
+                key = FeedProtocol.mediaPayloadKey(0),
+                contentType = "image/png",
+                previewThumbnail = ThumbnailDescriptor(1, 1, "image/png", Base64Bytes(Base64.decode(OnePixelPng))),
+            )
+        } else {
+            null
+        },
         articleSummary = "The abstract",
     )
 
@@ -132,6 +151,24 @@ class PostCardArticleTest {
         render(post(hasHeader = true)) {
             onNodeWithText("The title").assertIsDisplayed()
             onNodeWithText("The abstract").assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun articleHeader_isCroppedToTwoByOne() {
+        render(post(hasHeader = true)) {
+            val bounds = onNodeWithContentDescription("Image attachment", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            assertEquals(2f, bounds.width / bounds.height, 0.01f)
+        }
+    }
+
+    @Test
+    fun articleCard_announcesItselfAsAnArticle() {
+        render(post()) {
+            val card = onNodeWithText("The title").fetchSemanticsNode().config
+            assertEquals("Open article", card[SemanticsActions.OnClick].label)
+            assertEquals(Role.Button, card[SemanticsProperties.Role])
         }
     }
 

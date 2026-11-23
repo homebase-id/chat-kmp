@@ -72,6 +72,11 @@ import kotlin.time.Instant
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_encrypted
 import id.homebase.resources.feed_view_all_comments
+import id.homebase.resources.feed_open_article
+import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.layout.aspectRatio
 import org.jetbrains.compose.resources.stringResource
 
 private const val DOUBLE_TAP_EMOJI = "❤️"
@@ -172,7 +177,6 @@ fun PostCard(
 
             PostMedia(
                 post = post,
-                mediaPayloads = post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) },
                 onMediaClick = onMediaClick,
                 onDoubleTapLike = { if (DOUBLE_TAP_EMOJI !in post.ownReactions) onToggleReaction(DOUBLE_TAP_EMOJI) },
                 sharedTransitionScope = sharedTransitionScope,
@@ -208,17 +212,29 @@ private fun ArticleCardBody(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.clickable(onClick = onClick).padding(bottom = 8.dp)) {
+    Column(
+        modifier = modifier
+            .clickable(onClickLabel = stringResource(MR.string.feed_open_article), role = Role.Button, onClick = onClick)
+            .padding(bottom = 8.dp),
+    ) {
         post.articleHeader?.let { header ->
-            PostMedia(
-                post = post,
-                mediaPayloads = listOf(header),
-                onMediaClick = { onClick() },
-                onDoubleTapLike = null,
+            val source = post.mediaSource()
+            MomentMediaItem(
+                payload = header,
+                fileId = post.fileId,
+                driveId = source.driveId,
+                previewThumbnail = post.previewThumbnail,
+                keyHeader = post.keyHeader,
+                isEncrypted = post.isEncrypted,
+                modifier = Modifier.fillMaxWidth().aspectRatio(2f),
+                shape = RectangleShape,
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                messageId = post.id,
+                remoteOdinId = source.remoteOdinId,
+                globalTransitId = source.globalTransitId,
             )
+            Spacer(Modifier.height(8.dp))
         }
         if (post.caption.isNotBlank()) {
             Text(
@@ -462,28 +478,35 @@ private fun PostLinkPreview(
     )
 }
 
+private class PostMediaSource(val driveId: Uuid, val remoteOdinId: OdinId?, val globalTransitId: Uuid?)
+
 // A followed identity's media lives on the author's drive, so a received post (non-null senderOdinId) reads
-// over peer by globalTransitId from the author's channel drive; our own posts stay on the local driveId.
+// over peer by globalTransitId from the author's CHANNEL drive (post.channelId), not the local feed drive; our
+// own posts stay on the local driveId.
+private fun FeedPostItem.mediaSource(): PostMediaSource {
+    val channelDriveAlias = runCatching { Uuid.parse(channelId) }.getOrNull()
+    val sender = senderOdinId
+    val gtid = globalTransitId
+    return if (sender != null && gtid != null && channelDriveAlias != null) {
+        PostMediaSource(channelDriveAlias, sender, gtid)
+    } else {
+        PostMediaSource(driveId, null, null)
+    }
+}
+
 @Composable
 private fun PostMedia(
     post: FeedPostItem,
-    mediaPayloads: List<PayloadDescriptor>,
     onMediaClick: (index: Int) -> Unit,
-    onDoubleTapLike: (() -> Unit)?,
+    onDoubleTapLike: () -> Unit,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     modifier: Modifier = Modifier,
 ) {
-    // The peer read targets the author's CHANNEL drive (post.channelId), NOT the local feed drive.
-    val peerGtid = post.globalTransitId
-    val channelDriveAlias = runCatching { Uuid.parse(post.channelId) }.getOrNull()
-    val isPeerMedia = post.senderOdinId != null && peerGtid != null && channelDriveAlias != null
-
+    val mediaPayloads: List<PayloadDescriptor> =
+        post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
     if (mediaPayloads.isEmpty()) return
-
-    val mediaDriveId = channelDriveAlias?.takeIf { isPeerMedia } ?: post.driveId
-    val mediaRemoteOdinId = post.senderOdinId?.takeIf { isPeerMedia }
-    val mediaGlobalTransitId = peerGtid?.takeIf { isPeerMedia }
+    val source = post.mediaSource()
 
     var burstTick by remember { mutableIntStateOf(0) }
 
@@ -491,7 +514,7 @@ private fun PostMedia(
         MomentMediaGallery(
             payloads = mediaPayloads,
             fileId = post.fileId,
-            driveId = mediaDriveId,
+            driveId = source.driveId,
             previewThumbnail = post.previewThumbnail,
             keyHeader = post.keyHeader,
             isEncrypted = post.isEncrypted,
@@ -500,19 +523,17 @@ private fun PostMedia(
                 val index = mediaPayloads.indexOf(payload).coerceAtLeast(0)
                 onMediaClick(index)
             },
-            onDoubleTap = onDoubleTapLike?.let { like ->
-                {
-                    burstTick++
-                    like()
-                }
+            onDoubleTap = {
+                burstTick++
+                onDoubleTapLike()
             },
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
             messageId = post.id,
             downloadingFiles = emptySet(),
             minAspect = FeedMinMediaAspect,
-            remoteOdinId = mediaRemoteOdinId,
-            globalTransitId = mediaGlobalTransitId,
+            remoteOdinId = source.remoteOdinId,
+            globalTransitId = source.globalTransitId,
         )
         DoubleTapHeartBurst(tick = burstTick)
     }
