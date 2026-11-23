@@ -1278,6 +1278,8 @@
     <string name="settings_calls_beta_desc">Eksperimentel og kan gå ned. Genstart appen for at anvende.</string>
     <string name="contactbook_tab_calls">Opkald</string>
     <string name="calls_empty_find_contact">Find en at ringe til</string>
+    <string name="calls_new_call">Nyt opkald</string>
+    <string name="calls_open_contact">Åbn kontakt</string>
     <string name="nav_calls">Opkald</string>
     <string name="calls_home_subtitle">Din historik over tale- og videoopkald</string>
     <string name="filesync_label">Drive</string>

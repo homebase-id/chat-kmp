@@ -1737,6 +1737,8 @@
     <string name="nav_calls">Calls</string>
     <string name="contactbook_tab_calls">Calls</string>
     <string name="calls_empty_find_contact">Find someone to call</string>
+    <string name="calls_new_call">New call</string>
+    <string name="calls_open_contact">Open contact</string>
     <string name="calls_empty_title">No calls yet</string>
     <string name="calls_empty_body">Voice and video calls you make or receive will show up here.</string>
     <string name="calls_menu_open_chat">Open chat</string>

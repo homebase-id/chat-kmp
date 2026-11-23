@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -25,7 +26,6 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Badge
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
@@ -47,6 +47,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -77,7 +80,8 @@ import id.homebase.resources.calls_menu_open_chat
 import id.homebase.resources.chat_error_delete_message_me
 import id.homebase.resources.calls_empty_body
 import id.homebase.resources.calls_empty_find_contact
-import id.homebase.resources.contactbook_tab_calls
+import id.homebase.resources.calls_home_subtitle
+import id.homebase.resources.calls_open_contact
 import id.homebase.resources.calls_kind_video
 import id.homebase.resources.calls_kind_voice
 import id.homebase.resources.calls_empty_title
@@ -132,18 +136,6 @@ fun CallsTab(
 }
 
 @Composable
-fun CallsTabLabel(missedCount: Int) {
-    // Stacked: beside the label, Beta plus a count overflow a quarter of a phone's width.
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(MR.string.contactbook_tab_calls), maxLines = 1)
-            if (missedCount > 0) Badge { Text(missedCount.toString()) }
-        }
-        CallBetaBadge()
-    }
-}
-
-@Composable
 fun CallsContent(
     state: CallsUiState,
     onAction: (CallsAction) -> Unit,
@@ -153,11 +145,14 @@ fun CallsContent(
     avatar: @Composable (CallRowUi) -> Unit = { row -> CallRowAvatar(row) },
 ) {
     var pendingDelete by remember { mutableStateOf<CallRowUi?>(null) }
-    Box(modifier.fillMaxSize()) {
-        if (state.isEmpty) {
-            EmptyCalls(onFindContact)
-        } else {
-            CallList(state, onAction, listState, avatar, onDelete = { pendingDelete = it })
+    Column(modifier.fillMaxSize()) {
+        BetaHeader()
+        Box(Modifier.weight(1f)) {
+            if (state.isEmpty) {
+                EmptyCalls(onFindContact)
+            } else {
+                CallList(state, onAction, listState, avatar, onDelete = { pendingDelete = it })
+            }
         }
     }
     pendingDelete?.let { row ->
@@ -172,6 +167,24 @@ fun CallsContent(
                 }) { Text(stringResource(MR.string.delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text(stringResource(MR.string.cancel)) } },
+        )
+    }
+}
+
+@Composable
+private fun BetaHeader() {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CallBetaBadge()
+        Text(
+            stringResource(MR.string.calls_home_subtitle),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -235,6 +248,7 @@ private fun CallRow(
     val kind = stringResource(if (entry.video) MR.string.calls_kind_video else MR.string.calls_kind_voice)
     val title = stringResource(visual.title.stringRes())
     val withKind = stringResource(MR.string.call_event_duration, title, kind)
+    val openContact = stringResource(MR.string.calls_open_contact)
     val subtitle = if (entry.outcome == CallOutcome.Completed && entry.durationSeconds > 0) {
         stringResource(MR.string.call_event_duration, withKind, formatHms(entry.durationSeconds * 1000, padMinutes = true))
     } else withKind
@@ -250,7 +264,14 @@ private fun CallRow(
                 .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.clip(CircleShape).clickable { onAction(CallsAction.OpenContact(entry.peer)) }) { avatar(row) }
+            Box(
+                Modifier
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clip(CircleShape)
+                    .semantics { contentDescription = openContact }
+                    .clickable(onClickLabel = openContact, role = Role.Button) { onAction(CallsAction.OpenContact(entry.peer)) },
+                contentAlignment = Alignment.Center,
+            ) { avatar(row) }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

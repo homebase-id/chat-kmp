@@ -15,7 +15,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.longClick
@@ -27,6 +27,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import id.homebase.api.common.OdinId
 import id.homebase.chat.calling.CallLogDirection
 import id.homebase.chat.calling.CallOutcome
@@ -206,10 +208,16 @@ class CallsScreenScreenshotTest {
     }
 
     @Test
-    fun tappingAnAvatarSendsOpenContact() = runDesktopComposeUiTest(411, 900) {
+    fun avatarIsALabelledTargetAndTheRowStillOpensTheChat() = runDesktopComposeUiTest(411, 900) {
         val actions = mutableListOf<CallsAction>()
         show(mixed, actions = actions)
-        onAllNodes(hasText("S")).onFirst().performClick()
+        val avatar = onAllNodes(hasContentDescription("Open contact")).onFirst()
+        val bounds = avatar.getUnclippedBoundsInRoot()
+        assertTrue(bounds.width.value >= 48f && bounds.height.value >= 48f, "avatar target is $bounds")
+        avatar.performClick()
         assertTrue(actions.single() is CallsAction.OpenContact)
+        onNodeWithText("Samwise Gamgee").performClick()
+        assertTrue(actions.last() is CallsAction.OpenChat)
+        onNodeWithText("Beta").assertExists()
     }
 }

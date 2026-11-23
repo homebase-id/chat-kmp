@@ -156,7 +156,6 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.chat.calling.CallLabScreen
 import id.homebase.chat.calling.history.CallsTab
-import id.homebase.chat.calling.history.CallsTabLabel
 import id.homebase.chat.calling.rememberPeerCallStarter
 import id.homebase.chat.services.calling.CallService
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -1279,7 +1278,7 @@ fun AppNavHost(
                                         onboardingComplete = contactBookOnboardingComplete,
                                         calls = if (callsAvailable) {
                                             CallsTabSlot(
-                                                label = { CallsTabLabel(callsMissedCount) },
+                                                missedCount = callsMissedCount,
                                                 content = { callsSnackbarHostState ->
                                                     CallsTab(
                                                         viewModel = koinViewModel(),
