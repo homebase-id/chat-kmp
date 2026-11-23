@@ -139,12 +139,9 @@ internal object IosVideoCompressor : VideoCompressor {
 
     override suspend fun segmentAndEncrypt(
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? = HlsSegmenter.segmentForUpload(fileOps, filePath(inputPath), keyHeader, onProgress)
-
-    override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo? =
-        HlsSegmenter.segmentForUpload(fileOps, filePath(inputPath), null, onProgress)
 
     private class Export(
         private val input: String,

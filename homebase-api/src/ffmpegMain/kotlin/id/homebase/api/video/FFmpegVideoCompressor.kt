@@ -34,15 +34,10 @@ internal object FFmpegVideoCompressor : VideoCompressor {
 
     override suspend fun segmentAndEncrypt(
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? =
         FFmpegUtils.segmentAndEncryptVideo(inputPath, keyHeader, onProgress?.clampedToUnit())
-            ?.let { (playlist, segments) -> SegmentedVideo(playlist, segments) }
-            ?.also { onProgress?.invoke(1f) }
-
-    override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo? =
-        FFmpegUtils.segmentAndEncryptVideo(inputPath, null, onProgress?.clampedToUnit())
             ?.let { (playlist, segments) -> SegmentedVideo(playlist, segments) }
             ?.also { onProgress?.invoke(1f) }
 

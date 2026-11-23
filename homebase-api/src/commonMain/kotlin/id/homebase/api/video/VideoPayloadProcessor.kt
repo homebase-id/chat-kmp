@@ -34,12 +34,12 @@ import kotlin.uuid.Uuid
 /** A compressed video this size or more is sent as HLS segments, smaller as one MP4. */
 internal const val HLS_MIN_BYTES = 5L * 1024 * 1024
 
-/** A null `keyHeader` processes the same way for an unencrypted upload: every file comes out in the clear, in outbox staging. */
 class VideoPayloadProcessor(
     private val fileOperationsProvider: FileOperationsProvider,
     private val compressor: VideoCompressor = VideoCompressionService,
     private val probe: VideoProber = VideoCompressionService,
 ) {
+    /** A null [keyHeader] is an unencrypted upload: every file comes out in the clear, in outbox staging. */
     suspend fun process(
         payload: PayloadFile,
         keyHeader: KeyHeader?,
@@ -273,8 +273,7 @@ class VideoPayloadProcessor(
                                 )
                             }
                         }
-                        (if (keyHeader != null) compressor.segmentAndEncrypt(compressedPath, keyHeader, onSegmentProgress)
-                        else compressor.segment(compressedPath, onSegmentProgress)) ?: run {
+                        compressor.segmentAndEncrypt(compressedPath, keyHeader, onSegmentProgress) ?: run {
                             Logger.e(tag = "VideoProcessing") {
                                 "segmentAndEncrypt returned null (HLS path) — " +
                                     "compressed=${compressedSize}B quality=$videoQuality " +

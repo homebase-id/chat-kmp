@@ -110,7 +110,7 @@ class VideoPayloadProcessorCompressionSeamTest {
         var compressQuality: VideoQuality? = null
         var compressTrim: Pair<Long?, Long?>? = null
         var segmentAndEncryptCalled = false
-        var segmentCalled = false
+        var segmentKey: KeyHeader? = null
 
         override suspend fun compress(
             inputPath: String,
@@ -130,18 +130,14 @@ class VideoPayloadProcessorCompressionSeamTest {
 
         override suspend fun segmentAndEncrypt(
             inputPath: String,
-            keyHeader: KeyHeader,
+            keyHeader: KeyHeader?,
             onProgress: VideoProgressListener?,
         ): SegmentedVideo? {
             segmentAndEncryptCalled = true
+            segmentKey = keyHeader
             if (segmentReturnsNull) return null
             // Simulate a chunky ffmpeg stream: ~1000 sub-percent ticks across 0f..1f.
             for (i in 0..1000) onProgress?.invoke(i / 1000f)
-            return segmented
-        }
-
-        override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo? {
-            segmentCalled = true
             return segmented
         }
     }
@@ -580,8 +576,8 @@ class VideoPayloadProcessorCompressionSeamTest {
             playlistPayloadKey = "pls_0000",
         )
 
-        assertTrue(compressor.segmentCalled)
-        assertFalse(compressor.segmentAndEncryptCalled, "no key to encrypt with")
+        assertTrue(compressor.segmentAndEncryptCalled)
+        assertNull(compressor.segmentKey, "no key to encrypt with")
         assertTrue(result.videoMetadata.isSegmented)
         assertEquals(playlistText, result.videoMetadata.hlsPlaylist)
         val video = result.payloads.single { it.key == "pst_mdi0" }

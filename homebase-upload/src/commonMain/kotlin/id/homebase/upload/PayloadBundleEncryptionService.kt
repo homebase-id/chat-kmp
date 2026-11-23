@@ -18,7 +18,6 @@ import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
-import id.homebase.api.video.VideoPayloadProgressPhase
 import id.homebase.api.video.VideoPayloadProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -35,14 +34,7 @@ class PayloadBundleEncryptionService(
 ) : PayloadBundleEncryptor {
     private val stripper = MediaMetadataStripper(fileOps)
 
-    override suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle = stage(bundle, null)
-
-    override suspend fun stageBundle(bundle: PayloadBundle?, uniqueId: Uuid, scope: CoroutineScope): PayloadBundle =
-        stage(bundle) { phase ->
-            scope.launch { eventBus.emit(phase.toEvent(uniqueId)) }
-        }
-
-    private suspend fun stage(bundle: PayloadBundle?, onProgress: ((VideoPayloadProgressPhase) -> Unit)?): PayloadBundle {
+    override suspend fun stageBundle(uniqueId: Uuid, bundle: PayloadBundle?, scope: CoroutineScope): PayloadBundle {
         if (bundle == null) return EMPTY_BUNDLE
         requireSources(bundle)
         val staged = mutableListOf<PayloadFile>()
@@ -52,17 +44,7 @@ class PayloadBundleEncryptionService(
             // Always a copy: the outbox deletes a row's payload files once sent, and the source may be the person's own.
             for ((index, payload) in bundle.payloads.withIndex()) {
                 if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
-                    val result = videoProcessor.process(
-                        payload = payload,
-                        keyHeader = null,
-                        onProgress = onProgress,
-                        descriptorContentPayloadKey = HomebaseProtocol.payloadDescriptorKey(index),
-                        playlistPayloadKey = HomebaseProtocol.playlistPayloadKey(index),
-                        trimStartMs = payload.trimStartMs,
-                        trimEndMs = payload.trimEndMs,
-                        inputBlobUrl = payload.inputBlobUrl,
-                        videoQuality = payload.videoQuality,
-                    )
+                    val result = processVideo(uniqueId, payload, index, null, scope)
                     staged += result.payloads
                     thumbnails += result.thumbnails
                     processed += payload.key
@@ -132,23 +114,7 @@ class PayloadBundleEncryptionService(
                     newPayloads += payload
                     newThumbnails += bundle.thumbnails.filter { it.key == payload.key }.map { it.copy(thumbnailBytes = encryptBytes(it.thumbnailBytes, keyHeader)) }
                 } else if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
-
-                    val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
-                        scope.launch { eventBus.emit(phase.toEvent(uniqueId)) }
-                    }
-
-                    val result = videoProcessor.process(
-                        payload = payload,
-                        keyHeader = keyHeader,
-                        onProgress = progress,
-                        descriptorContentPayloadKey = HomebaseProtocol.payloadDescriptorKey(index),
-                        playlistPayloadKey = HomebaseProtocol.playlistPayloadKey(index),
-                        trimStartMs = payload.trimStartMs,
-                        trimEndMs = payload.trimEndMs,
-                        inputBlobUrl = payload.inputBlobUrl,
-                        videoQuality = payload.videoQuality,
-                    )
-
+                    val result = processVideo(uniqueId, payload, index, keyHeader, scope)
                     newPayloads += result.payloads
                     newThumbnails += result.thumbnails
                 } else {
@@ -184,12 +150,29 @@ class PayloadBundleEncryptionService(
         )
     }
 
-    private fun VideoPayloadProgressPhase.toEvent(uniqueId: Uuid) = BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(
-        uniqueId = uniqueId,
-        payloadKey = payloadKey,
-        phase = phase,
-        progress = progress,
-    )
+    private suspend fun processVideo(uniqueId: Uuid, payload: PayloadFile, index: Int, keyHeader: KeyHeader?, scope: CoroutineScope) =
+        videoProcessor.process(
+            payload = payload,
+            keyHeader = keyHeader,
+            onProgress = { phase ->
+                scope.launch {
+                    eventBus.emit(
+                        BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(
+                            uniqueId = uniqueId,
+                            payloadKey = phase.payloadKey,
+                            phase = phase.phase,
+                            progress = phase.progress,
+                        )
+                    )
+                }
+            },
+            descriptorContentPayloadKey = HomebaseProtocol.payloadDescriptorKey(index),
+            playlistPayloadKey = HomebaseProtocol.playlistPayloadKey(index),
+            trimStartMs = payload.trimStartMs,
+            trimEndMs = payload.trimEndMs,
+            inputBlobUrl = payload.inputBlobUrl,
+            videoQuality = payload.videoQuality,
+        )
 
     private class Encrypted(val path: String, val hash: PayloadHash?)
 

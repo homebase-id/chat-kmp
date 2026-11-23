@@ -143,10 +143,10 @@ fun PostComposeScreen(
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (files.isNullOrEmpty()) return@rememberFilePickerLauncher
-        viewModel.addAttachments(files.map { it.toPendingMedia(it.contentType()) })
+        viewModel.addAttachments(files.map { it.toPendingMedia() })
     }
     val cameraLauncher = rememberCameraManager(CameraModes.PhotoAndVideo) { file ->
-        file?.let { viewModel.addAttachments(listOf(it.toPendingMedia(it.contentType()))) }
+        file?.let { viewModel.addAttachments(listOf(it.toPendingMedia())) }
     }
 
     PostComposeContent(
@@ -666,6 +666,8 @@ private fun CirclesDialog(
     )
 }
 
-internal fun PlatformFile.toPendingMedia(contentType: String): AttachmentPendingFile =
-    if (contentType.startsWith("video/")) AttachmentPendingFile.FileVideo(Uuid.generateV7(), this)
-    else AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = contentType)
+internal fun PlatformFile.toPendingMedia(): AttachmentPendingFile {
+    val type = contentType()
+    return if (type.startsWith("video/")) AttachmentPendingFile.FileVideo(Uuid.generateV7(), this)
+    else AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = type)
+}

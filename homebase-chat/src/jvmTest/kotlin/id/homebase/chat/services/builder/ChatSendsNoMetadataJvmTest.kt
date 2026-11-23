@@ -93,7 +93,7 @@ class ChatSendsNoMetadataJvmTest {
         val source = file("public.jpg", geotaggedJpeg(5000, 3000))
         for (quality in MediaQuality.entries) {
             val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(source, "image/jpeg"), fileOps, "chat_web0", SendQuality(quality, quality))
-            val staged = publicStager.stageBundle(bundle)
+            val staged = publicStager.stageBundle(Uuid.random(), bundle, this)
             assertNull(ImageMetadataScrubber.readBlocks(File(staged.payloads.single().filePath).readBytes()), "$quality: a public photo goes out without EXIF")
         }
     }
@@ -106,7 +106,7 @@ class ChatSendsNoMetadataJvmTest {
         ffmpeg(FFmpegBinaryManager.ffmpegPath(), "-y", "-i", sample, "-c", "copy", "-metadata", "location=$filmedAt", clip)
         val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(clip, "video/quicktime"), fileOps, "chat_web0", SendQuality.Standard)
 
-        val video = publicStager.stageBundle(bundle).payloads.first { it.key == "chat_web0" }
+        val video = publicStager.stageBundle(Uuid.random(), bundle, this).payloads.first { it.key == "chat_web0" }
 
         assertFalse(video.isPreEncrypted)
         assertNull(video.iv)

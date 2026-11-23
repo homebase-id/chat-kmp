@@ -9,17 +9,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class PostComposePickedMediaTest {
-    private val file = PlatformFile(File("picked"))
+    private fun picked(name: String) = PlatformFile(File(name))
 
     @Test
     fun aVideoPickOrCaptureBecomesAVideoAttachment() {
-        assertIs<AttachmentPendingFile.FileVideo>(file.toPendingMedia("video/mp4"))
-        assertIs<AttachmentPendingFile.FileVideo>(file.toPendingMedia("video/quicktime"))
+        assertIs<AttachmentPendingFile.FileVideo>(picked("picked.mp4").toPendingMedia())
+        assertIs<AttachmentPendingFile.FileVideo>(picked("picked.mov").toPendingMedia())
     }
 
     @Test
     fun aPhotoStaysAnImageAttachmentWithItsContentType() {
-        val image = assertIs<AttachmentPendingFile.FileImage>(file.toPendingMedia("image/heic"))
+        val image = assertIs<AttachmentPendingFile.FileImage>(picked("picked.heic").toPendingMedia())
         assertEquals("image/heic", image.sourceContentType)
     }
 }

@@ -22,11 +22,12 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 
 /**
- * Cuts an H.264 + AAC MP4 into HLS, encrypted unless [segmentAndEncrypt] gets no key, in one read of the file, as ffmpeg's
+ * Cuts an H.264 + AAC MP4 into HLS in one read of the file, as ffmpeg's
  * `-hls_flags single_file -hls_key_info_file` does: one `index.ts` whose byte ranges are segments
  * of about [SEGMENT_SECONDS], each AES-128-CBC encrypted on its own under the payload's key and IV,
  * and an `index.m3u8` addressing them. The payload hash (odin-core docs/payload-hashes.md) is
- * taken from the same pass. Null when the file isn't an MP4 of H.264 and AAC.
+ * taken from the same pass. With no key the segments stay in the clear and there is no hash.
+ * Null when the file isn't an MP4 of H.264 and AAC.
  */
 internal object HlsSegmenter {
     private const val TAG = "HlsSegmenter"
@@ -73,8 +74,8 @@ internal object HlsSegmenter {
         val dir = "${AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.HLS)}/${AppCacheDirs.HLS_DIR_PREFIX}${Uuid.random()}"
         val segmentsPath = "$dir/index.ts"
         val playlistPath = "$dir/index.m3u8"
-        val storedHasher = PayloadHashAlgorithm.Blake3.newHasher()
-        val contentHasher = PayloadHashAlgorithm.Blake3.newHasher()
+        val storedHasher = keyHeader?.let { PayloadHashAlgorithm.Blake3.newHasher() }
+        val contentHasher = keyHeader?.let { PayloadHashAlgorithm.Blake3.newHasher() }
         val segments = mutableListOf<Segment>()
 
         try {
@@ -85,7 +86,7 @@ internal object HlsSegmenter {
                 suspend fun finish(end90k: Long) {
                     val plain = ts.drain()
                     if (plain.isEmpty()) return
-                    contentHasher.update(plain)
+                    contentHasher?.update(plain)
                     val cipher = if (keyHeader != null) AesCbc.encrypt(plain, keyHeader.aesKey, keyHeader.iv) else plain
                     segments += Segment((end90k - segmentStart) / 90_000.0, cipher.size.toLong(), written)
                     written += cipher.size
@@ -127,7 +128,7 @@ internal object HlsSegmenter {
         return SegmentedVideo(
             playlistPath = playlistPath,
             segmentsPath = segmentsPath,
-            hash = keyHeader?.let { encryptedPayloadHash(PayloadHashAlgorithm.Blake3, storedHasher.digest(), contentHasher.digest(), it) },
+            hash = keyHeader?.let { encryptedPayloadHash(PayloadHashAlgorithm.Blake3, storedHasher!!.digest(), contentHasher!!.digest(), it) },
         )
     }
 

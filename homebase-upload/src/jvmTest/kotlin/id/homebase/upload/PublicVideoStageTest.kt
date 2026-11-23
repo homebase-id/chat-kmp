@@ -43,8 +43,8 @@ class PublicVideoStageTest {
             return files.writeBytesToTempFile(compressed, "compressed_", ".mp4")
         }
 
-        override suspend fun segmentAndEncrypt(inputPath: String, keyHeader: KeyHeader, onProgress: VideoProgressListener?): SegmentedVideo? =
-            error("a public video has no key")
+        override suspend fun segmentAndEncrypt(inputPath: String, keyHeader: KeyHeader?, onProgress: VideoProgressListener?): SegmentedVideo? =
+            error("a 4 KB video is never segmented")
     }
 
     private val prober = object : VideoProber {
@@ -72,7 +72,7 @@ class PublicVideoStageTest {
             previewThumbs = emptyList(),
         )
 
-        val staged = service.stageBundle(bundle, Uuid.random(), this)
+        val staged = service.stageBundle(Uuid.random(), bundle, this)
 
         assertEquals(VideoQuality.HIGH, compressor.quality, "compressed to the app's setting, never sent raw")
         val sentVideo = staged.payloads.single { it.key == "pst_mdi0" }
@@ -106,6 +106,7 @@ class PublicVideoStageTest {
 
         assertFailsWith<IllegalStateException> {
             failing.stageBundle(
+                Uuid.random(),
                 PayloadBundle(
                     payloads = listOf(
                         PayloadFile(key = "pst_mdi1", filePath = photo, contentType = "image/png"),
@@ -114,7 +115,6 @@ class PublicVideoStageTest {
                     thumbnails = emptyList(),
                     previewThumbs = emptyList(),
                 ),
-                Uuid.random(),
                 this,
             )
         }

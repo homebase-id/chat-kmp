@@ -101,10 +101,11 @@ class PostComposeViewModel(
 
     private fun loadPoster(video: AttachmentPendingFile.FileVideo) {
         viewModelScope.launch {
-            // Web reads the picked File through a blob: URL; a native PlatformFile's string is its path.
             val url = video.file.toPlayableUrl()
             val poster = try {
-                runCatching { VideoThumbnailService.extractPosterFrame(url) }.getOrNull()
+                VideoThumbnailService.extractPosterFrame(url)
+            } catch (_: Exception) {
+                null
             } finally {
                 revokePlayableUrl(url)
             } ?: return@launch
