@@ -100,8 +100,8 @@ fun CirclesTabContent(
                                 )
                             },
                         ) {
-                                Text(stringResource(MR.string.enroll_banner, candidateCount))
-                            }
+                            Text(stringResource(MR.string.enroll_banner, candidateCount))
+                        }
                     }
                 }
                 item(key = "new-circle") { NewCircleRow(onClick = onNewCircle) }

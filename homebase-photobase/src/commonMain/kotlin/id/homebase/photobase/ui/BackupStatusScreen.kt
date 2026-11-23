@@ -257,7 +257,7 @@ private fun FailureSection(status: BackupStatus, onRetry: () -> Unit) {
                 Text(status.failedCount.toString(), style = MaterialTheme.typography.titleMedium)
             }
             for (failure in status.failures) {
-                ListItem( supportingContent = { Text(failure.deviceAssetId) }) { Text(failure.reason) }
+                ListItem(supportingContent = { Text(failure.deviceAssetId) }) { Text(failure.reason) }
             }
             Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("backupStatusRetry")) {
                 Text(stringResource(MR.string.photobase_status_retry))

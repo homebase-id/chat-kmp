@@ -273,10 +273,10 @@ private fun LibraryAccessRow(access: LibraryAccess, onChanged: () -> Unit) {
             }
         },
     ) {
-            Text(
-                stringResource(if (access == LibraryAccess.None) MR.string.photobase_library_none else MR.string.photobase_library_limited),
-            )
-        }
+        Text(
+            stringResource(if (access == LibraryAccess.None) MR.string.photobase_library_none else MR.string.photobase_library_limited),
+        )
+    }
 }
 
 @Composable

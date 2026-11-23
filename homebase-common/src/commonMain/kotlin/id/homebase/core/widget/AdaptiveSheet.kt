@@ -159,7 +159,7 @@ fun AdaptiveSheet(
         val canDismiss = rememberUpdatedState(dismissible)
         val sheetState = rememberBottomSheetState(
             initialValue = SheetValue.Hidden,
-            enabledValues = if (expandFully) setOf(SheetValue.Hidden, SheetValue.Expanded) else setOf(SheetValue.Hidden, SheetValue.PartiallyExpanded, SheetValue.Expanded),
+            enabledValues = if (expandFully) setOf(SheetValue.Hidden, SheetValue.Expanded) else SheetValue.entries.toSet(),
             confirmValueChange = remember {
                 { it != SheetValue.Hidden || canDismiss.value || dismissing.value }
             },
