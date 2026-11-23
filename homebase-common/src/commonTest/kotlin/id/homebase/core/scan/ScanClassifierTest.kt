@@ -31,6 +31,11 @@ class ScanClassifierTest {
     }
 
     @Test
+    fun idKeywordsWinOverALuhnValidDocumentNumber() {
+        assertEquals(ScannedDocumentType.IdCard, classifyCardText("Driving Licence 4111 1111 1111 1111"))
+    }
+
+    @Test
     fun noText_isGenericCard() {
         assertEquals(ScannedDocumentType.Card, classifyCardText(""))
     }

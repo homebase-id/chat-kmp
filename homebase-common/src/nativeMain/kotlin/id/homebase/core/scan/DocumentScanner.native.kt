@@ -31,7 +31,7 @@ private class IosDocumentScanner(
     // VNDocumentCameraViewController.delegate is weak; without this the delegate is collected and the result is lost.
     private var delegate: VNDocumentCameraViewControllerDelegateProtocol? = null
 
-    override fun launch() {
+    override fun launch(onNotStarted: () -> Unit) {
         presentWhenMainWindowIsKey { presenter ->
             val scanner = VNDocumentCameraViewController()
             val finish = object : NSObject(), VNDocumentCameraViewControllerDelegateProtocol {

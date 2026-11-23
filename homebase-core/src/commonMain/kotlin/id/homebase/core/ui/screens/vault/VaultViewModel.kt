@@ -655,15 +655,23 @@ class VaultViewModel(
     }
 
     private fun handleAddScannedPages(action: VaultUiAction.AddScannedPages) {
+        val appendTo = action.appendTo
+        val sectionId = action.sectionId
+        if (appendTo == null && sectionId == null) return
         viewModelScope.launch {
-            val type = withContext(Dispatchers.Default) { classifyScan(action.pages) }
-            val files = action.pages.map { platformFileFromPath(fileOperationsProvider.writeBytesToTempFile(it, "vault_scan_", ".jpg")) }
-            val appendTo = action.appendTo
-            val sectionId = action.sectionId
-            if (appendTo != null) {
-                onAction(VaultUiAction.AppendPages(appendTo, files))
-            } else if (sectionId != null) {
-                onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes())))
+            try {
+                val files = action.pages.map { platformFileFromPath(fileOperationsProvider.writeBytesToTempFile(it, "vault_scan_", ".jpg")) }
+                if (appendTo != null) {
+                    onAction(VaultUiAction.AppendPages(appendTo, files))
+                } else if (sectionId != null) {
+                    val type = withContext(Dispatchers.Default) { classifyScan(action.pages) }
+                    onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes())))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "Saving scanned pages failed" }
+                _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(getString(MR.string.vault_scan_type_document))))
             }
         }
     }

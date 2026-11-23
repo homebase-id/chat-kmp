@@ -39,15 +39,12 @@ internal fun luhnValid(digits: String): Boolean {
 }
 
 internal fun classifyCardText(text: String): ScannedDocumentType {
+    if (idKeywords.containsMatchIn(text)) return ScannedDocumentType.IdCard
     val hasCardNumber = digitRun.findAll(text).any { match ->
         val digits = match.value.filter { it.isDigit() }
         digits.length in MIN_CARD_DIGITS..MAX_CARD_DIGITS && luhnValid(digits)
     }
-    return when {
-        hasCardNumber -> ScannedDocumentType.PaymentCard
-        idKeywords.containsMatchIn(text) -> ScannedDocumentType.IdCard
-        else -> ScannedDocumentType.Card
-    }
+    return if (hasCardNumber) ScannedDocumentType.PaymentCard else ScannedDocumentType.Card
 }
 
 /** A scan is a card only when every page is card-shaped; text recognition then runs in memory on those pages alone. */

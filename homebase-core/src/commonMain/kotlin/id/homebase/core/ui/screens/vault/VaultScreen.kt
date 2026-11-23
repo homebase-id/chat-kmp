@@ -631,7 +631,7 @@ fun VaultScreen(
             }
             VaultPickerAction.Scan -> {
                 isPickerActive = true
-                documentScanner?.launch()
+                documentScanner?.launch { isPickerActive = false }
             }
             VaultPickerAction.Note -> {
                 activeSectionForEntry?.let { section ->

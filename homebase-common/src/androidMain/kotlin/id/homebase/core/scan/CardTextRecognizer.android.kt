@@ -30,14 +30,18 @@ actual suspend fun recognizeCardText(jpeg: ByteArray): String? = withContext(Dis
             return@withContext null
         }
         val bitmap = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return@withContext null
-        suspendCancellableCoroutine<String?> { cont ->
-            recognizer.process(InputImage.fromBitmap(bitmap, 0))
-                .addOnSuccessListener { if (cont.isActive) cont.resume(it.text) }
-                .addOnFailureListener { e ->
-                    Logger.w(TAG) { "text recognition failed: ${e::class.simpleName}" }
-                    if (cont.isActive) cont.resume(null)
-                }
-        }.also { bitmap.recycle() }
+        try {
+            suspendCancellableCoroutine<String?> { cont ->
+                recognizer.process(InputImage.fromBitmap(bitmap, 0))
+                    .addOnSuccessListener { if (cont.isActive) cont.resume(it.text.takeIf(String::isNotBlank)) }
+                    .addOnFailureListener { e ->
+                        Logger.w(TAG) { "text recognition failed: ${e::class.simpleName}" }
+                        if (cont.isActive) cont.resume(null)
+                    }
+            }
+        } finally {
+            bitmap.recycle()
+        }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {

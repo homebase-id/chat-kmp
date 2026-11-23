@@ -41,4 +41,5 @@ actual suspend fun recognizeCardText(jpeg: ByteArray): String? = withContext(Dis
         .filterIsInstance<VNRecognizedTextObservation>()
         .mapNotNull { it.topCandidates(1u).firstOrNull() }
         .joinToString("\n") { (it as VNRecognizedText).string }
+        .takeIf(String::isNotBlank)
 }
