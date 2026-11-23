@@ -83,8 +83,8 @@ private const val PaneHeightFraction = 0.9f
  * [paneContent] defaults to [content]; pass it only when the floating form needs a different
  * layout (as settings does, which turns its list of sub-pages into a sidebar).
  *
- * [confirmsClose] routes the outside click and every Escape through [LocalPaneCloseGuard] too,
- * which the dialog layer's own dismissal would bypass.
+ * Escape always asks [LocalPaneCloseGuard] first; [confirmsClose] turns off the dialog layer's own
+ * dismissal, which would bypass it, so the outside click asks too.
  *
  * Every stacked pane adds a platform scrim (`Color.Black` @ 0.6, not settable from commonMain), so
  * a pane that can reach itself must replace rather than push — otherwise repeated drill-down walks

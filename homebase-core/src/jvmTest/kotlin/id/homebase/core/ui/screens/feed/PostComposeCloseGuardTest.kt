@@ -2,18 +2,27 @@ package id.homebase.core.ui.screens.feed
 
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.navigationevent.NavigationEventInput
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import id.homebase.core.ui.navigation.FloatingPaneContainer
 import id.homebase.core.ui.theme.HomebaseTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,7 +34,11 @@ class PostComposeCloseGuardTest {
         fun press() = dispatchOnBackCompleted()
     }
 
-    private fun ComposeUiTest.show(state: PostComposeUiState, onClose: () -> Unit) = setContent {
+    private fun ComposeUiTest.show(
+        state: PostComposeUiState,
+        inPane: Boolean = false,
+        onClose: () -> Unit,
+    ) = setContent {
         @Suppress("DEPRECATION")
         val dispatcher = LocalNavigationEventDispatcherOwner.current!!.navigationEventDispatcher
         DisposableEffect(dispatcher) {
@@ -33,7 +46,7 @@ class PostComposeCloseGuardTest {
             onDispose { dispatcher.removeInput(systemBack) }
         }
         HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
-            Surface {
+            val composer: @Composable () -> Unit = {
                 PostComposeContent(
                     state = state,
                     snackbarHostState = remember { SnackbarHostState() },
@@ -47,6 +60,13 @@ class PostComposeCloseGuardTest {
                     onPickPublic = {},
                     onPickCircles = {},
                 )
+            }
+            Surface {
+                if (inPane) {
+                    FloatingPaneContainer(onDismiss = onClose, paneContent = composer, content = composer, confirmsClose = true)
+                } else {
+                    composer()
+                }
             }
         }
     }
@@ -91,7 +111,7 @@ class PostComposeCloseGuardTest {
         var closes = 0
         show(PostComposeUiState(caption = "Second breakfast", isPosting = true)) { closes++ }
 
-        pressBack()
+        systemBack.press()
         waitForIdle()
 
         assertEquals(0, closes)
@@ -109,4 +129,23 @@ class PostComposeCloseGuardTest {
         onNodeWithText("Discard changes?").assertExists()
         assertEquals(0, closes)
     }
+
+    @Test
+    fun `escape and an outside click on the floating composer ask before discarding`() =
+        runDesktopComposeUiTest(1280, 820) {
+            var closes = 0
+            show(PostComposeUiState(caption = "Second breakfast"), inPane = true) { closes++ }
+
+            onNodeWithText("New post").performKeyInput { pressKey(Key.Escape) }
+            waitForIdle()
+            onNodeWithText("Discard changes?").assertExists()
+            assertEquals(0, closes)
+
+            onNodeWithText("Keep editing").performClick()
+            waitForIdle()
+            onAllNodes(isRoot())[0].performTouchInput { click(Offset(5f, 5f)) }
+            waitForIdle()
+            onNodeWithText("Discard changes?").assertExists()
+            assertEquals(0, closes)
+        }
 }
