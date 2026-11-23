@@ -91,6 +91,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -2199,8 +2200,11 @@ private fun CommentsPanelContent(
     // LazyColumn clamps it to the last item, so this stays correct regardless of
     // how many header items precede the comments.
     val commentCount = uiState.comments.size
+    var lastCommentCount by remember { mutableIntStateOf(0) }
     LaunchedEffect(commentCount) {
-        if (commentCount > 0) listState.scrollToItem(Int.MAX_VALUE)
+        // request, not scrollToItem: a forced remeasure here can land inside a pending composition on iOS
+        if (commentCount > lastCommentCount) listState.requestScrollToItem(Int.MAX_VALUE)
+        lastCommentCount = commentCount
     }
     Column(modifier = modifier) {
         // Single scroll container for the whole panel body: the description,
