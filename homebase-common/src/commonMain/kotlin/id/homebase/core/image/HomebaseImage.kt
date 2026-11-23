@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
@@ -176,7 +175,7 @@ fun HomebaseImage(
 
     Box(boxModifier, contentAlignment = alignment, propagateMinConstraints = true) {
         // Under the image: Coil may already draw a photo from memory on this first frame.
-        if (placeholder != null && (deferred || !showsStandIn) && preview?.image == null && !drawsImage.value) placeholder()
+        if (placeholder != null && (deferred || !showsStandIn) && (preview == null || preview.failed) && !drawsImage.value) placeholder()
         if (deferred) {
             preview?.let { Image(it, contentDescription, Modifier.fillMaxSize(), alignment, contentScale, colorFilter = colorFilter) }
         } else {
@@ -239,7 +238,10 @@ private fun rememberPreview(bytes: Base64Bytes?, imageLoader: ImageLoader): Prev
         PreviewPainter(imageLoader.memoryCache?.get(MemoryCache.Key(request.memoryCacheKey!!))?.image?.asPainter(context))
     }
     LaunchedEffect(preview) {
-        if (preview.image == null) preview.image = imageLoader.execute(request).image?.asPainter(context)
+        if (preview.image == null) {
+            preview.image = imageLoader.execute(request).image?.asPainter(context)
+            preview.failed = preview.image == null
+        }
     }
     return preview
 }
@@ -251,15 +253,13 @@ internal fun previewRequest(context: PlatformContext, bytes: Base64Bytes): Image
 private class PreviewPainter(image: Painter?) : Painter() {
     var image: Painter? by mutableStateOf(image)
     var hidden: Boolean by mutableStateOf(false)
-    private var alpha = DefaultAlpha
+    var failed: Boolean by mutableStateOf(false)
     private var colorFilter: ColorFilter? = null
 
     override val intrinsicSize: Size get() = image?.intrinsicSize ?: Size.Unspecified
 
-    override fun applyAlpha(alpha: Float): Boolean {
-        this.alpha = alpha
-        return true
-    }
+    // Stays opaque while Coil's crossfade fades it out, so the image doesn't dim as the sharp one fades in.
+    override fun applyAlpha(alpha: Float): Boolean = true
 
     override fun applyColorFilter(colorFilter: ColorFilter?): Boolean {
         this.colorFilter = colorFilter
@@ -267,7 +267,7 @@ private class PreviewPainter(image: Painter?) : Painter() {
     }
 
     override fun DrawScope.onDraw() {
-        if (!hidden) image?.run { draw(size, alpha, colorFilter) }
+        if (!hidden) image?.run { draw(size, colorFilter = colorFilter) }
     }
 }
 

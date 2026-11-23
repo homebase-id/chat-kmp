@@ -231,6 +231,13 @@ class HomebaseImageTinyFirstTest {
     }
 
     @Test
+    fun aTinyStillDecodingShowsNoPlaceholder() = runSkikoComposeUiTest {
+        mainClock.autoAdvance = false
+        show(neverLoads, photo(tiny()))
+        onNodeWithTag("empty").assertDoesNotExist()
+    }
+
+    @Test
     fun withoutATinyThePlaceholderShows() = runSkikoComposeUiTest {
         mainClock.autoAdvance = false
         show(neverLoads, photo(tiny = null))
