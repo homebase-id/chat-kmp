@@ -6,7 +6,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import id.homebase.photobase.backup.BackupPauseReason
 import id.homebase.photobase.backup.BackupStatus
 import id.homebase.photobase.ui.BackupIndicatorButton

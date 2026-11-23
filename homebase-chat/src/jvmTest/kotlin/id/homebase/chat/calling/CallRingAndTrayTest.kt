@@ -28,7 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.core.ui.theme.HomebaseTheme

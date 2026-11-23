@@ -5,7 +5,7 @@ import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import coil3.ImageLoader
 import coil3.PlatformContext
 import id.homebase.api.client.eventbus.EventBus

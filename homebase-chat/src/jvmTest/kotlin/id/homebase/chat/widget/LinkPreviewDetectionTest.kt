@@ -9,7 +9,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.russhwolf.settings.PreferencesSettings
 import id.homebase.api.client.auth.CredentialsManager

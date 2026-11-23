@@ -6,7 +6,7 @@ import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import id.homebase.core.settings.Language
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.test.setTestLocale

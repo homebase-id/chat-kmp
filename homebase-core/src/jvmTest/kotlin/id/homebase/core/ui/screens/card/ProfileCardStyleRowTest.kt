@@ -10,7 +10,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import id.homebase.core.ui.theme.HomebaseTheme
 import java.io.File

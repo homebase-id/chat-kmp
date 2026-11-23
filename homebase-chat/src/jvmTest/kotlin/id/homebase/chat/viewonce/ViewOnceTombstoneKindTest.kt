@@ -1,7 +1,7 @@
 package id.homebase.chat.viewonce
 
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.MainIndexMetaHelpers

@@ -11,7 +11,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.russhwolf.settings.PreferencesSettings
 import id.homebase.api.client.auth.CredentialsManager

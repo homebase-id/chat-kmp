@@ -3,7 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.gallery.GalleryImage
