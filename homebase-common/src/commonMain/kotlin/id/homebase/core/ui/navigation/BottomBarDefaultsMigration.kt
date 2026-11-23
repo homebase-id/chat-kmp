@@ -30,7 +30,7 @@ object BottomBarDefaultsMigration {
 
     /** Synchronous: the stored value, else what the migration decides (or will decide) for this DB. */
     fun iconVisible(keyValue: KeyValueWrapper, key: Uuid): Boolean {
-        keyValue.selectByKeyBootstrapSync(key) { _, data -> data }?.takeIf { it.isNotEmpty() }?.let { return it[0].toInt() != 0 }
+        readFlag(keyValue, key)?.let { return it }
         if (isDone(keyValue)) return false
         return isExistingInstall(keyValue)
     }

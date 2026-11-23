@@ -3,13 +3,11 @@ package id.homebase.core.ui.navigation
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
-import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.MailOutline
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.ui.screens.email.EmailScreen
@@ -288,7 +286,6 @@ import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesSc
 import id.homebase.resources.chat_contact_card_saved_body
 import id.homebase.resources.chat_contact_card_saved_open
 import id.homebase.resources.contactbook_label
-import id.homebase.resources.nav_calls
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_apps
