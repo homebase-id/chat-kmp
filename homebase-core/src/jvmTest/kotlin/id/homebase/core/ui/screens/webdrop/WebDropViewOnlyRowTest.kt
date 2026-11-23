@@ -4,7 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.ui.screens.webdrop.components.WebDropComposeSheet
 import kotlin.test.Test

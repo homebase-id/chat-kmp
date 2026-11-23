@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import id.homebase.chat.services.SeedableConversationLookup
 import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallSession

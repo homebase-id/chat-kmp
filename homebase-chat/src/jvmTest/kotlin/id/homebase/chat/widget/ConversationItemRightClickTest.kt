@@ -6,7 +6,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.rightClick
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel

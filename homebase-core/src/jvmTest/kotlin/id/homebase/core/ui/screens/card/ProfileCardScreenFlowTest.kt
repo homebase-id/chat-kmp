@@ -24,7 +24,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.common.OdinId

@@ -13,7 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.widget.ProvideOpenOverlays
 import id.homebase.core.ui.theme.HomebaseTheme

@@ -8,7 +8,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.SendQuality
 import id.homebase.core.test.setTestLocale

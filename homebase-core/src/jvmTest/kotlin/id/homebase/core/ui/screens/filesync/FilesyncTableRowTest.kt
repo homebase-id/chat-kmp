@@ -15,7 +15,7 @@ import androidx.compose.ui.test.performMultiModalInput
 import androidx.compose.ui.test.rightClick
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid

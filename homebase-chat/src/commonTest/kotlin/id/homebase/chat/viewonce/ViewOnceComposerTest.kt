@@ -20,7 +20,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.chat.widget.ATTACHMENT_CAPTION_FIELD_TAG
 import id.homebase.chat.widget.InMemorySettings

@@ -27,7 +27,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runSkikoComposeUiTest
+import androidx.compose.ui.test.v2.runSkikoComposeUiTest
 import androidx.navigationevent.NavigationEventInput
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.runBlocking

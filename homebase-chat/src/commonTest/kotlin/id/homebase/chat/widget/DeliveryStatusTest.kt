@@ -3,7 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import id.homebase.chat.services.ChatDeliveryStatus
 import kotlin.test.Test
 import kotlin.time.Clock

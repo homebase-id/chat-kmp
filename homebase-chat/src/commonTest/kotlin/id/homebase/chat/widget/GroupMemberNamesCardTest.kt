@@ -3,7 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.v2.runComposeUiTest
 import id.homebase.core.test.setTestLocale
 import kotlinx.collections.immutable.persistentListOf
 import kotlin.test.Test

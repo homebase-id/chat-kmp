@@ -13,7 +13,7 @@ import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.runSkikoComposeUiTest
+import androidx.compose.ui.test.v2.runSkikoComposeUiTest
 import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInput
 import kotlin.test.Test
