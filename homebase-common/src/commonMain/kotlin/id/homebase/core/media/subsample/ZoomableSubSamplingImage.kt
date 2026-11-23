@@ -27,6 +27,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -91,6 +96,12 @@ fun ZoomableSubSamplingImage(
     heroContentAspect: Float? = null,
     /** Full-screen viewers set this on the page in view, so a photo with a gain map is shown in HDR. */
     showsHdr: Boolean = false,
+    /**
+     * Drawn under the photo, such as a Live Photo's clip, with a modifier that places it where the photo is displayed. The
+     * photo stays on top so it keeps every gesture, and [photoAlpha] uncovers what's under it.
+     */
+    underPhoto: (@Composable (placed: Modifier) -> Unit)? = null,
+    photoAlpha: () -> Float = { 1f },
 ) {
     val coilImageLoader: ImageLoader = koinInject()
     val homebaseImageLoader: HomebaseImageLoader = koinInject()
@@ -190,6 +201,9 @@ fun ZoomableSubSamplingImage(
         // So the bridge is the sharp tile, not the ~20px embedded blur, and there
         // is no low-res-to-sharp jump. A local file is already the original on
         // disk, so the image below loads it directly with no intermediate fetch.
+        val displayedRect = { zoomState.zoomable.contentDisplayRectF }
+        // The displayed rect is empty until the photo has loaded.
+        if (imageLoaded) underPhoto?.invoke(Modifier.placedAt(displayedRect))
         if (showPlaceholder && source is SubSamplingImageSource.Remote) {
             val imageData = source.imageData
             val thumbnailData = remember(imageData) {
@@ -200,14 +214,14 @@ fun ZoomableSubSamplingImage(
                 stepUpToPayload = false,
                 contentDescription = null,
                 contentScale = contentScale,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = photoAlpha() },
             )
         }
         CoilZoomAsyncImage(
             model = model,
             contentDescription = contentDescription,
             imageLoader = coilImageLoader,
-            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (isRemote) sharpAlpha.value else 1f },
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = (if (isRemote) sharpAlpha.value else 1f) * photoAlpha() },
             contentScale = contentScale,
             zoomState = zoomState,
             scrollBar = null,
@@ -243,7 +257,7 @@ fun ZoomableSubSamplingImage(
             active = showsHdr && imageLoaded && settled,
             encoded = encodedPhoto,
             path = localPhoto,
-            displayedRect = { zoomState.zoomable.contentDisplayRectF },
+            displayedRect = displayedRect,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -453,3 +467,14 @@ private fun Modifier.passiveDoubleTap(onDoubleTap: () -> Unit): Modifier = point
         if (waitForUpOrCancellation(PointerEventPass.Initial) != null) onDoubleTap()
     }
 }
+
+// Fills the container and places the child at the rect, which outgrows the container once zoomed.
+private fun Modifier.placedAt(rect: () -> Rect): Modifier = clipToBounds().layout { measurable, constraints ->
+    val r = rect()
+    val size = { side: Float -> side.roundToInt().coerceIn(0, MAX_PLACED_SIDE) }
+    val placeable = measurable.measure(Constraints.fixed(size(r.width), size(r.height)))
+    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(r.left.roundToInt(), r.top.roundToInt()) }
+}
+
+// Constraints can't hold two sides both above this.
+private const val MAX_PLACED_SIDE = 32_766
