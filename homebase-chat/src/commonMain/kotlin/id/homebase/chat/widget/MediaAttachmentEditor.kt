@@ -240,11 +240,6 @@ fun MediaAttachmentEditor(
         onPageChanged(pagerState.currentPage)
     }
 
-    LaunchedEffect(attachments.size) {
-        if (currentPage < attachments.size) {
-            pagerState.scrollToPage(currentPage)
-        }
-    }
     val scope = rememberCoroutineScope()
 
     // Per-video ephemeral state, persists across page swipes within this editor
