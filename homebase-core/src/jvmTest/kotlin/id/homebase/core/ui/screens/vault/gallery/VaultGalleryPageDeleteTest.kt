@@ -19,36 +19,24 @@ import kotlin.test.assertEquals
 class VaultGalleryPageDeleteTest {
 
     @Test
-    fun deletingTheLastPageLandsOnTheNewLastPage() = runComposeUiTest {
-        var pages by mutableStateOf(listOf("Page A", "Page B", "Page C"))
-        lateinit var pagerState: PagerState
-        setContent {
-            pagerState = rememberPagerState(initialPage = 2) { pages.size }
-            MediaPager(pageCount = pages.size, state = pagerState) { page -> Text(pages[page]) }
-        }
-        onNodeWithText("Page C").assertIsDisplayed()
-
-        pages = pages.dropLast(1)
-        waitForIdle()
-
-        assertEquals(1, pagerState.currentPage)
-        onNodeWithText("Page B").assertIsDisplayed()
-    }
+    fun deletingTheLastPageLandsOnTheNewLastPage() = assertDeleteLandsOn(initialPage = 2, deleted = "Page C", expected = "Page B")
 
     @Test
-    fun deletingAMiddlePageShowsThePageAfterIt() = runComposeUiTest {
+    fun deletingAMiddlePageShowsThePageAfterIt() = assertDeleteLandsOn(initialPage = 1, deleted = "Page B", expected = "Page C")
+
+    private fun assertDeleteLandsOn(initialPage: Int, deleted: String, expected: String) = runComposeUiTest {
         var pages by mutableStateOf(listOf("Page A", "Page B", "Page C"))
         lateinit var pagerState: PagerState
         setContent {
-            pagerState = rememberPagerState(initialPage = 1) { pages.size }
+            pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
             MediaPager(pageCount = pages.size, state = pagerState) { page -> Text(pages[page]) }
         }
-        onNodeWithText("Page B").assertIsDisplayed()
+        onNodeWithText(deleted).assertIsDisplayed()
 
-        pages = pages - "Page B"
+        pages = pages - deleted
         waitForIdle()
 
         assertEquals(1, pagerState.currentPage)
-        onNodeWithText("Page C").assertIsDisplayed()
+        onNodeWithText(expected).assertIsDisplayed()
     }
 }
