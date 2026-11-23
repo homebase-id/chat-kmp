@@ -233,8 +233,7 @@ class DriveQueryProvider(
             } catch (e: FileDecryptionException.WrongDriveKey) {
                 if (!skipUnreadable) throw e
                 skipped += serverFile to e
-                // A deletion needs no key, and skipping it would leave the file showing here.
-                if (serverFile.fileState == FileState.Deleted) serverFile.asDeletedWithoutContent() else null
+                null
             }
         }
         if (skipped.isNotEmpty()) {
@@ -319,7 +318,7 @@ data class ServerFileWithRawMetadata(
     val fileMetadata: JsonObject, // This is the key difference - keep it as JsonObject
     // Over peer the broker returns serverMetadata=null (it's the owner's private server-side
     // bookkeeping; a member doesn't receive it). Nullable + default so the peer query decodes —
-    // createServerFileWithSafeMetadata substitutes an empty ServerMetadata() downstream.
+    // serverFileWithSafeMetadata substitutes an empty ServerMetadata() downstream.
     val serverMetadata: ServerMetadata? = null,
     val priority: Int = 0,
     val fileByteCount: Long = 0,

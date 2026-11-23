@@ -387,12 +387,12 @@ class ZkDriveFilesTest {
     private fun offlineQueries() = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
 
     /** A vault file as the server returns it, its key header locked with [lockedWith]. */
-    private suspend fun vaultFile(name: String, lockedWith: ByteArray = driveKey, state: String = "active", version: Int = 1): String {
+    private suspend fun vaultFile(name: String, lockedWith: ByteArray = driveKey, version: Int = 1): String {
         val fileKey = KeyHeader.newRandom16()
         val keyHeader = EncryptedKeyHeader.encryptKeyHeaderAes(fileKey, fileKey.iv, SecureByteArray(lockedWith.copyOf()))
         return """
             {
-              "fileId": "${Uuid.random()}", "driveId": "$vault", "fileState": "$state", "fileSystemType": "standard",
+              "fileId": "${Uuid.random()}", "driveId": "$vault", "fileState": "active", "fileSystemType": "standard",
               "sharedSecretEncryptedKeyHeader": { "encryptionVersion": $version, "type": "zkDrive", "iv": "${Base64.encode(keyHeader.iv)}", "encryptedAesKey": "${Base64.encode(keyHeader.encryptedAesKey)}" },
               "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 1, "content": "${Base64.encode(fileKey.encryptDataAes(name.encodeToByteArray()))}" } },
               "serverMetadata": {}
@@ -412,13 +412,6 @@ class ZkDriveFilesTest {
         assertFailsWith<FileDecryptionException>("any other query still fails") {
             offlineQueries().mapQueryBatchResponse("""{"searchResults":[$stray]}""", SecureByteArray(sharedSecret))
         }
-    }
-
-    @Test
-    fun aDeletionItCantOpenStillReachesTheIndex() = runTest {
-        unlockVault()
-        val deleted = synced(vaultFile("stray", lockedWith = ByteArrayUtil.getRndByteArray(16), state = "deleted")).searchResults.single()
-        assertEquals(FileState.Deleted, deleted.fileState, "skipped, the file would stay showing here")
     }
 
     @Test

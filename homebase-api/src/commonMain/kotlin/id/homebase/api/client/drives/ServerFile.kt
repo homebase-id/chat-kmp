@@ -83,34 +83,20 @@ data class ServerFile(
             resolvedMetadata = fileMetadata
         }
 
-        return toHomebaseFile(resolvedKeyHeader, resolvedMetadata, serverFileIsEncrypted)
+        return HomebaseFile(
+            fileId = fileId,
+            driveId = driveId,
+            serverFileIsEncrypted = serverFileIsEncrypted,
+            fileState = fileState,
+            fileSystemType = fileSystemType,
+            keyHeader = resolvedKeyHeader,
+            fileMetadata = resolvedMetadata,
+            serverMetadata = serverMetadata,
+            priority = priority,
+            fileByteCount = fileByteCount,
+            shares = shares,
+        )
     }
-
-    /** A deleted file whose key this device can't open: its plain fields, so the deletion still reaches the local index. */
-    internal fun asDeletedWithoutContent(): HomebaseFile = toHomebaseFile(
-        KeyHeader.empty(),
-        fileMetadata.copy(
-            appData = fileMetadata.appData.copy(content = null),
-            localAppData = null,
-            payloads = fileMetadata.payloads?.map { it.copy(descriptorContent = null) },
-            isEncrypted = false,
-        ),
-        encrypted = false,
-    )
-
-    private fun toHomebaseFile(keyHeader: KeyHeader, metadata: FileMetadata, encrypted: Boolean) = HomebaseFile(
-        fileId = fileId,
-        driveId = driveId,
-        serverFileIsEncrypted = encrypted,
-        fileState = fileState,
-        fileSystemType = fileSystemType,
-        keyHeader = keyHeader,
-        fileMetadata = metadata,
-        serverMetadata = serverMetadata,
-        priority = priority,
-        fileByteCount = fileByteCount,
-        shares = shares,
-    )
 }
 
 /**
@@ -138,12 +124,14 @@ private suspend fun EncryptedKeyHeader.openWithDriveKey(driveId: Uuid): KeyHeade
     val driveKey = SecureByteArray(rawKey)
     // Only a well-formed header and key that still don't decrypt mean another key; a format this version can't
     // read, a damaged header or a damaged key fail as before.
-    val wellFormed = encryptionVersion == 1 && iv.size == 16 && encryptedAesKey.isNotEmpty() &&
-        encryptedAesKey.size % 16 == 0 && rawKey.size in AES_KEY_SIZES
+    val wellFormed = encryptionVersion == 1 && iv.size == 16 && encryptedAesKey.size == LOCKED_KEY_HEADER_BYTES &&
+        rawKey.size in AES_KEY_SIZES
     if (!wellFormed) return decryptAesToKeyHeader(driveKey)
     return try {
         decryptAesToKeyHeader(driveKey)
     } catch (e: CancellationException) {
+        throw e
+    } catch (e: Error) {
         throw e
     } catch (e: Throwable) {
         // Throwable: on the web a rejected decrypt arrives as a bare Throwable.
@@ -152,6 +140,9 @@ private suspend fun EncryptedKeyHeader.openWithDriveKey(driveId: Uuid): KeyHeade
 }
 
 private val AES_KEY_SIZES = setOf(16, 24, 32)
+
+// A 16-byte IV and a 16-byte key, padded to the next AES block.
+private const val LOCKED_KEY_HEADER_BYTES = 48
 
 /**
  * The key a key header doesn't carry: a comment's file's, or a shared file's, unlocked from its [shares]' row. Null
