@@ -596,6 +596,8 @@ class VaultViewModel(
                     pendingItem.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
                 )
                 _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(firstName)))
+            } finally {
+                if (action.deleteSources) deleteSources(fileData, files)
             }
         }
     }
@@ -694,16 +696,21 @@ class VaultViewModel(
         vaultStream.updateOptimisticEntry(optimisticEntry)
 
         viewModelScope.launch {
-            val uploadData = action.newFiles.mapIndexed { index, file -> file.uploadCopy() to contentTypes[index] }
-            val success = vaultUploaderService.appendPages(
-                file = action.file,
-                newFiles = uploadData,
-                scope = viewModelScope,
-            )
-            if (!success) {
-                deleteCopies(uploadData, action.newFiles)
-                vaultStream.updateOptimisticEntry(action.file)
-                _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
+            var uploadData: List<Pair<String, String>> = emptyList()
+            try {
+                uploadData = action.newFiles.mapIndexed { index, file -> file.uploadCopy() to contentTypes[index] }
+                val success = vaultUploaderService.appendPages(
+                    file = action.file,
+                    newFiles = uploadData,
+                    scope = viewModelScope,
+                )
+                if (!success) {
+                    deleteCopies(uploadData, action.newFiles)
+                    vaultStream.updateOptimisticEntry(action.file)
+                    _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
+                }
+            } finally {
+                if (action.deleteSources) deleteSources(uploadData, action.newFiles)
             }
         }
     }
@@ -715,6 +722,12 @@ class VaultViewModel(
     // On native toString() is the picked path, readable while the picker's grant is live; on web nothing previews.
     private fun previewPicked(entryId: Uuid, payloadKey: String, file: PlatformFile) =
         localAttachmentStore.put(entryId, payloadKey, LocalAttachmentContext.Image(localFilePath = file.toString(), aspectRatio = null))
+
+    // Plaintext scan copies must not outlive the save: the upload has encrypted the bytes by the time it returns.
+    private fun deleteSources(uploads: List<Pair<String, String>>, picked: List<PlatformFile>) {
+        (uploads.map { it.first } + picked.map { it.toString() }).distinct()
+            .forEach { runCatching { fileOperationsProvider.deleteTempFile(it) } }
+    }
 
     // A file already in the app's cache is uploaded as it is, not copied: it isn't ours to delete here.
     private fun deleteCopies(uploads: List<Pair<String, String>>, picked: List<PlatformFile>) {
@@ -807,7 +820,7 @@ class VaultViewModel(
         val appendTo = editor.appendTo
         val sectionId = editor.sectionId
         if (appendTo != null) {
-            onAction(VaultUiAction.AppendPages(appendTo, files))
+            onAction(VaultUiAction.AppendPages(appendTo, files, deleteSources = editor.isScan))
         } else if (sectionId != null && editor.isScan && action.entryName.isNullOrBlank()) {
             viewModelScope.launch {
                 val type = try {
@@ -818,10 +831,10 @@ class VaultViewModel(
                     Logger.w(e, TAG) { "Classifying scanned pages failed" }
                     ScannedDocumentType.Document
                 }
-                onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes())))
+                onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes()), deleteSources = true))
             }
         } else if (sectionId != null) {
-            onAction(VaultUiAction.AddEntryToSection(sectionId, files, action.entryName))
+            onAction(VaultUiAction.AddEntryToSection(sectionId, files, action.entryName, deleteSources = editor.isScan))
         }
     }
 

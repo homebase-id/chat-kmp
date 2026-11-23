@@ -8,7 +8,7 @@ import kotlin.math.min
 enum class ScannedDocumentType { PaymentCard, IdCard, Card, Document }
 
 private const val ID1_ASPECT_RATIO = 85.60 / 53.98
-internal const val CARD_ASPECT_TOLERANCE = 0.08
+internal const val CARD_ASPECT_TOLERANCE = 0.12
 
 private const val MIN_CARD_DIGITS = 13
 private const val MAX_CARD_DIGITS = 19

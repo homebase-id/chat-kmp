@@ -78,6 +78,8 @@ sealed interface VaultUiAction {
         val files: List<PlatformFile>,
         /** Optional user-supplied entry name; falls back to the first file's name when blank/null. */
         val entryName: String? = null,
+        /** Delete [files] and their upload copies once the upload has taken their bytes, on success or failure. */
+        val deleteSources: Boolean = false,
     ) : VaultUiAction
 
     /** Pages from the platform scanner: staged in the editor like picked images. */
@@ -90,6 +92,7 @@ sealed interface VaultUiAction {
     data class AppendPages(
         val file: VaultEntry,
         val newFiles: List<PlatformFile>,
+        val deleteSources: Boolean = false,
     ) : VaultUiAction
 
     // region Add-pictures editor

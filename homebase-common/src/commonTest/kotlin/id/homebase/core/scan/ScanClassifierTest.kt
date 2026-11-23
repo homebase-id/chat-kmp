@@ -44,7 +44,9 @@ class ScanClassifierTest {
     fun cardShape_usesLongOverShortSideWithinTolerance() {
         assertTrue(isCardShaped(1600, 1009))
         assertTrue(isCardShaped(1009, 1600))
-        assertFalse(isCardShaped(1600, 1131))
+        assertTrue(isCardShaped(1500, 1000))
+        assertFalse(isCardShaped(2970, 2100))
+        assertFalse(isCardShaped(2200, 1700))
         assertFalse(isCardShaped(0, 0))
     }
 }

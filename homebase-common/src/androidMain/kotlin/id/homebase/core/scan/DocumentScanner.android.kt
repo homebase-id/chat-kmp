@@ -21,6 +21,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private const val TAG = "DocumentScanner"
 
@@ -38,7 +39,10 @@ actual fun rememberDocumentScanner(onPages: (List<ByteArray>) -> Unit): Document
         scope.launch {
             val pages = try {
                 withContext(Dispatchers.IO) {
-                    uris.map { uri -> context.contentResolver.openInputStream(uri)!!.use { it.readBytes() } }
+                    uris.map { uri ->
+                        context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                            .also { runCatching { uri.path?.let(::File)?.delete() } }
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
