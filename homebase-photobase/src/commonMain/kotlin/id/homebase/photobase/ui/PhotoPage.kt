@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,10 +23,7 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.video.VideoPlayerSurface
 
-/**
- * One opening of a Live or motion photo: its clip plays once, shows from its first frame, and hands back to the still when it
- * ends, fails or the photo is touched (THUMBNAILS.md, "Live and motion photos").
- */
+/** One opening of a Live or motion photo (THUMBNAILS.md, "Live and motion photos"). */
 internal class MotionPlayback(play: Boolean) {
     var playing by mutableStateOf(play)
         private set
@@ -42,21 +40,17 @@ internal class MotionPlayback(play: Boolean) {
     }
 }
 
-/**
- * The still, as any photo, with its clip played once over it, muted and without controls, each time the page settles, as
- * Apple's Photos and Google Photos do. The clip fills the still's frame and fades back to it.
- */
 @Composable
-internal fun MotionPhotoPage(
+internal fun PhotoPage(
     still: FullScreenOverlay.ViewMessageData,
-    clip: FullScreenOverlay.VideoPlayerData,
-    stillAspectRatio: Float,
+    motion: MotionClip?,
     settled: Boolean,
     showUIState: MutableState<Boolean>,
     onDismiss: () -> Unit,
 ) {
-    val playback = remember(clip.fileId, settled) { MotionPlayback(play = settled) }
-    val alpha by animateFloatAsState(if (playback.visible) 1f else 0f, tween(MOTION_FADE_MS), label = "motion")
+    val playback = remember(settled) { MotionPlayback(play = settled && motion != null) }
+    val alpha = animateFloatAsState(if (playback.visible) 1f else 0f, tween(MOTION_FADE_MS), label = "motion")
+    val shown by remember(playback) { derivedStateOf { playback.playing || alpha.value > 0f } }
     Box(
         Modifier
             .fillMaxSize()
@@ -77,18 +71,16 @@ internal fun MotionPhotoPage(
             isFocused = settled,
             showsHdr = !playback.playing,
         )
-        if (playback.playing || alpha > 0f) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                VideoPlayerSurface(
-                    data = clip,
-                    modifier = Modifier.aspectRatio(stillAspectRatio).graphicsLayer { this.alpha = alpha },
-                    muted = true,
-                    useNativeControls = false,
-                    onFirstFrame = playback::onFirstFrame,
-                    onEnded = playback::stop,
-                    onError = { playback.stop() },
-                )
-            }
+        if (motion != null && shown) {
+            VideoPlayerSurface(
+                data = motion.player,
+                modifier = Modifier.align(Alignment.Center).aspectRatio(motion.aspectRatio).graphicsLayer { this.alpha = alpha.value },
+                muted = true,
+                useNativeControls = false,
+                onFirstFrame = playback::onFirstFrame,
+                onEnded = playback::stop,
+                onError = { playback.stop() },
+            )
         }
     }
 }

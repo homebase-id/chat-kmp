@@ -70,7 +70,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.core.HomebaseConstants
 import id.homebase.chat.conversationlist.FullScreenOverlay
-import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -201,21 +200,8 @@ private fun GalleryViewer(
     ) { page ->
         val item = items[page]
         val settled = page == pagerState.settledPage
-        val clip = remember(item) { item.motionPlayer() }
-        val stillAspectRatio = remember(item) { item.stillAspectRatio() }
         when (val viewer = remember(item) { item.toViewer() }) {
-            is FullScreenOverlay.ViewMessageData -> if (clip != null && stillAspectRatio != null) {
-                MotionPhotoPage(viewer, clip, stillAspectRatio, settled, showUI, close)
-            } else {
-                FullScreenMediaViewer(
-                    data = viewer,
-                    onDismiss = close,
-                    sharedTransitionScope = null,
-                    animatedVisibilityScope = null,
-                    showUIState = showUI,
-                    isFocused = settled,
-                )
-            }
+            is FullScreenOverlay.ViewMessageData -> PhotoPage(viewer, remember(item) { item.motionClip() }, settled, showUI, close)
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {
                 FullScreenVideoPlayer(data = viewer, onDismiss = close)

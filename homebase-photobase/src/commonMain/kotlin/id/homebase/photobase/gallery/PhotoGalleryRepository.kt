@@ -26,7 +26,7 @@ data class PhotoGalleryItem(
     val payload: PayloadDescriptor,
     /** An untouched original video's copy to play (UPLOADS.md section 3.6). */
     val playableCopy: PayloadDescriptor? = null,
-    /** A Live or motion photo's clip to play when it opens: `photo_live`'s copy, or `photo_live` itself (UPLOADS.md 3.7). */
+    /** A Live or motion photo's clip to play (UPLOADS.md section 3.7). */
     val motion: PayloadDescriptor? = null,
 ) {
     /** What the gallery shows and plays. */
@@ -95,9 +95,7 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         capturedAtMs = appData.userDate ?: fileMetadata.created.milliseconds,
         keyHeader = keyHeader,
         payload = payload,
-        playableCopy = payload.takeIf { it.isVideo() }?.playableCopyOf(payloads),
-        motion = live?.let { it.playableCopyOf(payloads) ?: it },
+        playableCopy = payload.takeIf { it.isVideo() }?.playableCopyIn(payloads),
+        motion = live?.let { it.playableCopyIn(payloads) ?: it },
     )
 }
-
-private fun PayloadDescriptor.playableCopyOf(payloads: List<PayloadDescriptor>) = playableCopyKey()?.let { copy -> payloads.firstOrNull { it.key == copy } }

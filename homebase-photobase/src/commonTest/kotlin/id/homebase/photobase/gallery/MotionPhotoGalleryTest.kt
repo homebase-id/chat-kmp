@@ -6,8 +6,7 @@ import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.ui.MotionPlayback
-import id.homebase.photobase.ui.motionPlayer
-import id.homebase.photobase.ui.stillAspectRatio
+import id.homebase.photobase.ui.motionClip
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -62,20 +61,21 @@ class MotionPhotoGalleryTest {
     fun aPlainPhotoHasNoClip() {
         val photo = item(still)
         assertNull(photo.motion)
-        assertNull(photo.motionPlayer())
+        assertNull(photo.motionClip())
     }
 
     @Test
     fun theClipIsDecryptedWithItsOwnIv() {
-        val player = assertNotNull(item(still, clip(PhotobaseProtocol.LivePhotoVideoPayloadKey, original = 0)).motionPlayer())
+        val player = assertNotNull(item(still, clip(PhotobaseProtocol.LivePhotoVideoPayloadKey, original = 0)).motionClip()).player
         assertEquals(PhotobaseProtocol.LivePhotoVideoPayloadKey, player.payloadKey)
         assertContentEquals(ByteArray(16) { 7 }, player.keyHeader.iv)
     }
 
     @Test
     fun theClipFillsTheStillsFrame() {
-        assertEquals(4f / 3f, item(still).stillAspectRatio())
-        assertNull(item(still.copy(thumbnails = null)).stillAspectRatio(), "without a size to go by, no clip is laid over it")
+        val live = clip(PhotobaseProtocol.LivePhotoVideoPayloadKey, original = 0)
+        assertEquals(4f / 3f, item(still, live).motionClip()?.aspectRatio)
+        assertNull(item(still.copy(thumbnails = null), live).motionClip(), "without a size to go by, no clip is laid over it")
     }
 
     @Test

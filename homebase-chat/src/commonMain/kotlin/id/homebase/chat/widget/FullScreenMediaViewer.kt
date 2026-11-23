@@ -113,7 +113,7 @@ fun FullScreenMediaViewer(
     showUIState: MutableState<Boolean> = remember { mutableStateOf(true) },
     // False for a neighbouring page a host composes off screen: it mustn't take the keyboard.
     isFocused: Boolean = true,
-    // False while something plays over the photo, such as a Live Photo's clip: HDR returns when it's done.
+    // False while an SDR clip plays over the photo.
     showsHdr: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()

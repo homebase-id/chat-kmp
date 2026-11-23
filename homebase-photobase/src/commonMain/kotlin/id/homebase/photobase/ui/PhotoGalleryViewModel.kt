@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -252,14 +253,14 @@ internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
         )
     }
 
-/** The Live or motion photo's clip, played over its still when it opens; null for any other photo. */
-internal fun PhotoGalleryItem.motionPlayer(): FullScreenOverlay.VideoPlayerData? = motion?.let(::player)
+/** A Live or motion photo's clip, and the width over height of the still it plays over. */
+internal class MotionClip(val player: FullScreenOverlay.VideoPlayerData, val aspectRatio: Float)
 
-/** The still's width over its height, from its largest thumbnail; null when it has none to go by. */
-internal fun PhotoGalleryItem.stillAspectRatio(): Float? = payload.thumbnails.orEmpty()
-    .filter { (it.pixelWidth ?: 0) > 0 && (it.pixelHeight ?: 0) > 0 }
-    .maxByOrNull { it.pixelWidth!!.toLong() * it.pixelHeight!! }
-    ?.let { it.pixelWidth!!.toFloat() / it.pixelHeight!! }
+internal fun PhotoGalleryItem.motionClip(): MotionClip? {
+    val clip = motion ?: return null
+    val still = thumbSizesFrom(payload.thumbnails).maxByOrNull { it.pixelCount } ?: return null
+    return MotionClip(player(clip), still.pixelWidth.toFloat() / still.pixelHeight)
+}
 
 private fun PhotoGalleryItem.player(video: PayloadDescriptor) = FullScreenOverlay.VideoPlayerData(
     fileId = fileId,
