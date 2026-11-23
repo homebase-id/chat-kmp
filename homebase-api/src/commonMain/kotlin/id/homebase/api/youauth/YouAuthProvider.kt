@@ -102,11 +102,13 @@ class YouAuthProvider(
         base64ExchangedSecretDigest: String
     ): YouAuthTokenResponse {
 
+        val tokenUrl = "$baseApiUrl/api/v2/youauth/token"
         val response =
-            httpClient.post("$baseApiUrl/api/v2/youauth/token") {
+            httpClient.post(tokenUrl) {
                 contentType(ContentType.Application.Json)
                 setBody(mapOf("secret_digest" to base64ExchangedSecretDigest))
             }
+        Logger.d(tag = TAG) { "Token exchange: $tokenUrl -> ${response.status.value}" }
 
         if (response.status.value != 200) {
             error("Token exchange failed: ${response.status.value}")

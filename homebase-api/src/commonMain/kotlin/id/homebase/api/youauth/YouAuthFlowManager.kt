@@ -307,9 +307,11 @@ class YouAuthFlowManager(
                     zkAppKey = true
                 )
 
-            // Build authorization URL
+            val authorizeEndpoint = "https://$identity/api/v2/youauth/authorize"
+            // The query holds the CSRF state, so only the endpoint is logged
+            Logger.d(tag = TAG) { "Authorize: $authorizeEndpoint" }
             val authorizeUrl =
-                UriBuilder("https://$identity/api/v2/youauth/authorize")
+                UriBuilder(authorizeEndpoint)
                     .apply { query = authRequest.toQueryString() }
                     .toString()
 
