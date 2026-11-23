@@ -62,7 +62,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -149,8 +148,6 @@ fun VaultScreen(
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val vaultListState = rememberLazyListState()
-    var savedScrollIndex by remember { mutableIntStateOf(0) }
-    var savedScrollOffset by remember { mutableIntStateOf(0) }
 
     // Per-section horizontal scroll positions, hoisted ABOVE the AnimatedContent
     // (grid <-> gallery) so they survive the grid being disposed while the
@@ -162,20 +159,8 @@ fun VaultScreen(
     // deleted sections are harmless (sections are few).
     val sectionRowStates = remember { mutableMapOf<Uuid, LazyListState>() }
 
-    LaunchedEffect(uiState.fullScreenOverlay) {
-        if (uiState.fullScreenOverlay != null) {
-            savedScrollIndex = vaultListState.firstVisibleItemIndex
-            savedScrollOffset = vaultListState.firstVisibleItemScrollOffset
-        } else if (savedScrollIndex > 0 || savedScrollOffset > 0) {
-            vaultListState.scrollToItem(savedScrollIndex, savedScrollOffset)
-        }
-    }
-
     LaunchedEffect(scrollToTop) {
         if (scrollToTop) {
-            // Clear the saved position too, or closing the gallery would scroll back down.
-            savedScrollIndex = 0
-            savedScrollOffset = 0
             vaultListState.animateScrollToItem(0)
             onScrollToTopHandled()
         }
