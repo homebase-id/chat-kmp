@@ -58,6 +58,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -175,7 +176,8 @@ internal class MediaDownloadHandler(
             sendEvent(ShowErrorMessage(MR.string.chat_error_copy_image))
             return
         }
-        scope.launch {
+        // Undispatched: the web clipboard write must start inside the click (Safari).
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
             val copied = chatMessageActionService.copyImagePayloadToClipboard(message.fileId, payload, message.keyHeader)
             sendEvent(
                 if (copied) ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)

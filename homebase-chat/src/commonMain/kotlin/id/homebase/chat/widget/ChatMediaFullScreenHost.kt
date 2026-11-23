@@ -57,6 +57,7 @@ import id.homebase.resources.vault_saved
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 
@@ -252,7 +253,7 @@ private fun SharedMediaViewer(
             }
         } else null,
         onCopyImage = if (canCopyImageToClipboard) { _, _ ->
-            scope.launch {
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 val copied = actionService.copyImagePayloadToClipboard(item.fileId, item.payload, item.keyHeader)
                 snackbarHostState.showSnackbar(
                     TranslationUtil.getString(if (copied) MR.string.chat_image_copied else MR.string.chat_error_copy_image)
