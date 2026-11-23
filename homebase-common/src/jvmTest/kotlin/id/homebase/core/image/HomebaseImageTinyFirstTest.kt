@@ -76,12 +76,14 @@ class HomebaseImageTinyFirstTest {
         return ImageFetchResult(bitmap.asImage(), isSampled = false, dataSource = DataSource.NETWORK)
     }
 
-    private fun tiny(): EmbeddedThumb {
+    private fun png(color: Color): ByteArray {
         val surface = Surface.makeRasterN32Premul(20, 15)
-        surface.canvas.clear(tinyColor.toArgb())
-        val png = surface.makeImageSnapshot().encodeToData(EncodedImageFormat.PNG)!!.bytes
-        return EmbeddedThumb(pixelWidth = 20, pixelHeight = 15, contentType = "image/png", content = Base64Bytes(png))
+        surface.canvas.clear(color.toArgb())
+        return surface.makeImageSnapshot().encodeToData(EncodedImageFormat.PNG)!!.bytes
     }
+
+    private fun tiny() =
+        EmbeddedThumb(pixelWidth = 20, pixelHeight = 15, contentType = "image/png", content = Base64Bytes(png(tinyColor)))
 
     private fun photo(tiny: EmbeddedThumb?) = HomebaseImageData(
         driveId = Uuid.random(),
@@ -125,6 +127,8 @@ class HomebaseImageTinyFirstTest {
         }
     }
 
+    private fun ComposeUiTest.awaitCentre(color: Color) = waitUntil(timeoutMillis = 5_000) { centre().isNear(color) }
+
     private fun ComposeUiTest.centre(): Color =
         onNodeWithTag("photo").captureToImage().toPixelMap().let { it[it.width / 2, it.height / 2] }
 
@@ -132,7 +136,7 @@ class HomebaseImageTinyFirstTest {
     fun theTinyIsDecodedOffTheMainThreadAndDrawnWhileTheThumbnailLoads() = runSkikoComposeUiTest {
         var compositionThread: Thread? = null
         show(neverLoads, photo(tiny()), onComposed = { compositionThread = Thread.currentThread() })
-        waitUntil(timeoutMillis = 5_000) { centre().isNear(tinyColor) }
+        awaitCentre(tinyColor)
         assertEquals(1, decodeThreads.size, "the tiny should decode once, through Coil")
         assertTrue(decodeThreads.none { it == compositionThread }, "the tiny decoded on the composition thread")
         onNodeWithTag("empty").assertDoesNotExist()
@@ -152,7 +156,7 @@ class HomebaseImageTinyFirstTest {
     @Test
     fun theThumbnailReplacesTheTiny() = runSkikoComposeUiTest {
         show(loader { solid(thumbColor) }, photo(tiny()))
-        waitUntil(timeoutMillis = 5_000) { centre().isNear(thumbColor) }
+        awaitCentre(thumbColor)
         onNodeWithTag("error").assertDoesNotExist()
     }
 
@@ -160,13 +164,13 @@ class HomebaseImageTinyFirstTest {
     fun aFailedThumbnailKeepsTheTinyUnderTheError() = runSkikoComposeUiTest {
         show(loader { error("offline") }, photo(tiny()))
         waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag("error")).fetchSemanticsNodes().isNotEmpty() }
-        waitUntil(timeoutMillis = 5_000) { centre().isNear(tinyColor) }
+        awaitCentre(tinyColor)
     }
 
     @Test
     fun theFinalImageReplacesTheThumbnailAfterTheStepUp() = runSkikoComposeUiTest {
         show(loader { if (it.loadFullPayload) solid(fullColor) else solid(thumbColor) }, steppingUpPhoto())
-        waitUntil(timeoutMillis = 5_000) { centre().isNear(fullColor) }
+        awaitCentre(fullColor)
     }
 
     @Test
@@ -204,7 +208,7 @@ class HomebaseImageTinyFirstTest {
     fun aDeferredViewShowsTheTinyAndFetchesNothing() = runSkikoComposeUiTest {
         var fetches = 0
         show(loader { fetches++; solid(thumbColor) }, photo(tiny()), deferLoad = true)
-        waitUntil(timeoutMillis = 5_000) { centre().isNear(tinyColor) }
+        awaitCentre(tinyColor)
         waitForIdle()
         assertEquals(0, fetches)
     }
@@ -212,17 +216,15 @@ class HomebaseImageTinyFirstTest {
     @Test
     fun theSendersOwnFileStandsInWhileTheSentCopyLoads() = runSkikoComposeUiTest {
         val file = File.createTempFile("stand-in", ".png").apply { deleteOnExit() }
-        val surface = Surface.makeRasterN32Premul(20, 15)
-        surface.canvas.clear(fullColor.toArgb())
-        file.writeBytes(surface.makeImageSnapshot().encodeToData(EncodedImageFormat.PNG)!!.bytes)
+        file.writeBytes(png(fullColor))
         show(neverLoads, photo(tiny()), standIn = file.absolutePath)
-        waitUntil(timeoutMillis = 5_000) { centre().isNear(fullColor) }
+        awaitCentre(fullColor)
     }
 
     @Test
     fun anUnreadableStandInGivesWayToTheTiny() = runSkikoComposeUiTest {
         show(neverLoads, photo(tiny()), standIn = "/nonexistent/stand-in.png")
-        waitUntil(timeoutMillis = 5_000) { centre().isNear(tinyColor) }
+        awaitCentre(tinyColor)
     }
 
     @Test

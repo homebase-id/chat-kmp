@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalEncodingApi::class)
-
 package id.homebase.core.image
 
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -50,7 +48,6 @@ import kotlinx.coroutines.flow.first
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Progressive image component for Homebase drives.
@@ -165,12 +162,10 @@ fun HomebaseImage(
 
     Box(boxModifier, contentAlignment = alignment, propagateMinConstraints = true) {
         if (deferred) {
-            if (preview != null) {
-                Image(preview, contentDescription, Modifier.fillMaxSize(), alignment, contentScale, colorFilter = colorFilter)
-            }
+            preview?.let { Image(it, contentDescription, Modifier.fillMaxSize(), alignment, contentScale, colorFilter = colorFilter) }
         } else {
-            if (showsStandIn) {
-                LocalFileImage(standIn!!, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
+            if (standIn != null && !standInFailed) {
+                LocalFileImage(standIn, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
             }
             AsyncImage(
                 model = model,
