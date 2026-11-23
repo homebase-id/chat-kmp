@@ -72,6 +72,8 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private const val TAG = "VaultViewModel"
+private const val SCAN_TEMP_PREFIX = "vault_scan_"
+private const val EDIT_TEMP_PREFIX = "vault_edit_"
 
 class VaultViewModel(
     private val vaultPreferences: VaultPreferences,
@@ -662,7 +664,7 @@ class VaultViewModel(
         if (action.appendTo == null && action.sectionId == null) return
         viewModelScope.launch {
             try {
-                val files = action.pages.map { platformFileFromPath(fileOperationsProvider.writeBytesToTempFile(it, "vault_scan_", ".jpg")) }
+                val files = action.pages.map { platformFileFromPath(fileOperationsProvider.writeBytesToTempFile(it, SCAN_TEMP_PREFIX, ".jpg")) }
                 onAction(VaultUiAction.OpenAddEditor(files, action.sectionId, action.appendTo, isScan = true))
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -726,7 +728,7 @@ class VaultViewModel(
     // Plaintext scan copies must not outlive the save: the upload has encrypted the bytes by the time it returns.
     private fun deleteSources(uploads: List<Pair<String, String>>, picked: List<PlatformFile>) {
         (uploads.map { it.first } + picked.map { it.toString() }).distinct()
-            .forEach { runCatching { fileOperationsProvider.deleteTempFile(it) } }
+            .forEach(::deleteOwnTemp)
     }
 
     // A file already in the app's cache is uploaded as it is, not copied: it isn't ours to delete here.
@@ -765,7 +767,13 @@ class VaultViewModel(
         _pendingEditor.update { cur -> cur?.copy(attachments = cur.attachments + newAttachments) }
     }
 
-    private fun deleteScanTemp(file: PlatformFile) = runCatching { fileOperationsProvider.deleteTempFile(file.toString()) }
+    // Only files this flow wrote: a picker can hand back a person's own file, which must never be deleted.
+    private fun deleteOwnTemp(path: String) {
+        val name = path.substringAfterLast('/')
+        if (name.startsWith(SCAN_TEMP_PREFIX) || name.startsWith(EDIT_TEMP_PREFIX)) runCatching { fileOperationsProvider.deleteTempFile(path) }
+    }
+
+    private fun deleteScanTemp(file: PlatformFile) = deleteOwnTemp(file.toString())
 
     private fun handleRemoveFromEditor(action: VaultUiAction.RemoveFromEditor) {
         _pendingEditor.value?.takeIf { it.isScan }?.attachments
@@ -787,7 +795,7 @@ class VaultViewModel(
             tool = action.tool,
             readSource = { attachment.file.readBytes() },
         ) { editedBytes ->
-            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, EDIT_TEMP_PREFIX, ".jpg")
             val replaced = AttachmentPendingFile.FileImage(
                 id = action.attachmentId,
                 file = platformFileFromPath(tempPath),
@@ -826,6 +834,7 @@ class VaultViewModel(
                 val type = try {
                     withContext(Dispatchers.Default) { classifyScan(files.map { it.readBytes() }) }
                 } catch (e: kotlinx.coroutines.CancellationException) {
+                    deleteSources(emptyList(), files)
                     throw e
                 } catch (e: Exception) {
                     Logger.w(e, TAG) { "Classifying scanned pages failed" }
@@ -852,7 +861,7 @@ class VaultViewModel(
                 fileOperationsProvider.readFileBytes(path)
             },
         ) { editedBytes ->
-            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, EDIT_TEMP_PREFIX, ".jpg")
             // Refresh the gallery thumbnail immediately from the edited local file
             // while the outbox replace propagates.
             localAttachmentStore.put(

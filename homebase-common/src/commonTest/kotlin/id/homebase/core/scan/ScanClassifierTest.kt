@@ -45,6 +45,8 @@ class ScanClassifierTest {
         assertTrue(isCardShaped(1600, 1009))
         assertTrue(isCardShaped(1009, 1600))
         assertTrue(isCardShaped(1500, 1000))
+        assertTrue(isCardShaped(1700, 1000))
+        assertFalse(isCardShaped(1720, 1000))
         assertFalse(isCardShaped(2970, 2100))
         assertFalse(isCardShaped(2200, 1700))
         assertFalse(isCardShaped(0, 0))
