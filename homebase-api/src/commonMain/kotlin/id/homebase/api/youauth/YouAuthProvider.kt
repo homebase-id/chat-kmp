@@ -36,7 +36,6 @@ class YouAuthProvider(
 ) {
 
     private val baseApiUrl: String = identity.domainName.toHttpsBaseUrl()
-    private val ownerApiUrl: String = identity.domainName.toHttpsBaseUrl()
 
     companion object {
         private const val TAG = "YouAuthProvider"
@@ -104,7 +103,7 @@ class YouAuthProvider(
     ): YouAuthTokenResponse {
 
         val response =
-            httpClient.post("$ownerApiUrl/api/v2/youauth/token") {
+            httpClient.post("$baseApiUrl/api/v2/youauth/token") {
                 contentType(ContentType.Application.Json)
                 setBody(mapOf("secret_digest" to base64ExchangedSecretDigest))
             }
