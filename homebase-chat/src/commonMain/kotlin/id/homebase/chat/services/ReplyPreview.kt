@@ -20,4 +20,5 @@ data class ReplyPreview(
     // text/media replies and for replies sent by clients that pre-date
     // this field — consumers fall back to default rendering in that case.
     val context: JsonElement? = null,
+    val payloadKey: String? = null, // the one gallery item quoted; null quotes the whole message
 ) // Tiny tiny thumb, can be even smaller than tinyThumb even a 1px color

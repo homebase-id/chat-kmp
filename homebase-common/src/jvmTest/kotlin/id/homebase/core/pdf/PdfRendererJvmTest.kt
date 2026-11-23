@@ -169,7 +169,7 @@ class PdfThumbnailGeneratorJvmTest {
     }
 
     @Test
-    fun generatePdfThumbnail_validPdf_returnsJpegBytesAndPageCount() {
+    fun generatePdfThumbnail_validPdf_returnsJpegBytesAndPageCount() = runTest {
         val pdfBytes = createTestPdfBytes(3)
         val result = generatePdfThumbnail(pdfBytes, 320)
         assertNotNull(result)
@@ -183,14 +183,14 @@ class PdfThumbnailGeneratorJvmTest {
     }
 
     @Test
-    fun generatePdfThumbnail_invalidBytes_returnsNull() {
+    fun generatePdfThumbnail_invalidBytes_returnsNull() = runTest {
         val garbage = "this is not a pdf".toByteArray()
         val result = generatePdfThumbnail(garbage, 320)
         assertNull(result)
     }
 
     @Test
-    fun generatePdfThumbnail_singlePage_returnsPageCountOne() {
+    fun generatePdfThumbnail_singlePage_returnsPageCountOne() = runTest {
         val pdfBytes = createTestPdfBytes(1)
         val result = generatePdfThumbnail(pdfBytes, 320)
         assertNotNull(result)
@@ -218,7 +218,7 @@ class PdfThumbnailGeneratorJvmTest {
     }
 
     @Test
-    fun generatePdfThumbnail_emptyByteArray_returnsNull() {
+    fun generatePdfThumbnail_emptyByteArray_returnsNull() = runTest {
         val result = generatePdfThumbnail(ByteArray(0), 320)
         assertNull(result)
     }

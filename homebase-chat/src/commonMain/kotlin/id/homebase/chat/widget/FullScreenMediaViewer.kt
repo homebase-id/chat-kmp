@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
@@ -77,6 +78,7 @@ import id.homebase.core.settings.label
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
 import id.homebase.resources.chat_message_image_attachment
+import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import id.homebase.resources.share
@@ -105,6 +107,7 @@ fun FullScreenMediaViewer(
     onSaveToVault: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     onCopyImage: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     onDelete: ((messageId: Uuid) -> Unit)? = null,
+    onReply: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     onDismiss: () -> Unit,
     onNavigateToMessage: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope?,
@@ -281,6 +284,14 @@ fun FullScreenMediaViewer(
 
                 },
                 actions = {
+                    if (onReply != null) {
+                        IconButton(onClick = { onReply(data.messageId, currentPayloadKey) }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Reply,
+                                contentDescription = stringResource(MR.string.chat_message_reply),
+                            )
+                        }
+                    }
                     // Offer "Save sticker" only when the current payload is a real
                     // transparent sticker (descriptor ImageFile(isSticker = true)),
                     // never on an ordinary photo.
