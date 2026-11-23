@@ -130,13 +130,6 @@ fun VaultGalleryScreen(
         pageCount = { pages.size },
     )
 
-    // When a page is deleted, keep the pager on the nearest valid page
-    LaunchedEffect(pages.size) {
-        if (pagerState.currentPage >= pages.size && pages.isNotEmpty()) {
-            pagerState.scrollToPage(pages.size - 1)
-        }
-    }
-
     // Hoisted so the top bar title reflects live edits
     var labelText by remember(file.label) { mutableStateOf(file.label ?: "") }
 
