@@ -64,6 +64,7 @@ data class CallsUiState(
 sealed interface CallsAction {
     data class CallBack(val entry: CallHistoryEntry, val video: Boolean) : CallsAction
     data class OpenChat(val conversationId: Uuid, val messageId: Uuid? = null) : CallsAction
+    data class OpenContact(val peer: OdinId) : CallsAction
     data class Delete(val messageId: Uuid) : CallsAction
     data object TabOpened : CallsAction
     data object LoadMore : CallsAction
@@ -72,6 +73,7 @@ sealed interface CallsAction {
 sealed interface CallsEvent {
     data class StartCall(val peer: OdinId, val video: Boolean) : CallsEvent
     data class OpenConversation(val conversationId: Uuid, val messageId: Uuid? = null) : CallsEvent
+    data class OpenContact(val peer: OdinId) : CallsEvent
     data class DeleteFailed(val reason: String?) : CallsEvent
 }
 
@@ -123,6 +125,7 @@ class CallsViewModel(
                 _events.tryEmit(CallsEvent.StartCall(action.entry.peer, action.video))
             }
             is CallsAction.OpenChat -> _events.tryEmit(CallsEvent.OpenConversation(action.conversationId, action.messageId))
+            is CallsAction.OpenContact -> _events.tryEmit(CallsEvent.OpenContact(action.peer))
             is CallsAction.Delete -> viewModelScope.launch {
                 try {
                     deleter.delete(action.messageId, deleteForEveryone = false)

@@ -148,14 +148,6 @@ sealed class Route {
     data object Vault : Route()
 
     @Serializable
-    @SerialName("calls")
-    data object Calls : Route()
-
-    @Serializable
-    @SerialName("new_call")
-    data object NewCall : Route()
-
-    @Serializable
     @SerialName("webdrop")
     data object WebDrop : Route()
 

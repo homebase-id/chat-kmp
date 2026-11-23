@@ -19,9 +19,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class TopLevelRoutesTest {
-    private fun routes(callsAvailable: Boolean, callsIconVisible: Boolean) = topLevelRoutesFor(
-        callsAvailable = callsAvailable,
-        callsIconVisible = callsIconVisible,
+    private fun routes() = topLevelRoutesFor(
         momentsVisible = true,
         vaultVisible = false,
         locationVisible = false,
@@ -33,49 +31,39 @@ class TopLevelRoutesTest {
     )
 
     @Test
-    fun callsSitsWhereSettingsListsItWhenAvailableAndVisible() {
-        val routes = routes(callsAvailable = true, callsIconVisible = true)
-        assertEquals(listOf(Route.ChatList, Route.Feed, Route.Moments, Route.Calls, Route.Home), routes.map { it.route })
+    fun theBarHasNoCallsEntry() {
+        assertEquals(listOf(Route.ChatList, Route.Feed, Route.Moments, Route.Home), routes().map { it.route })
     }
 
     @Test
     fun aWideRailShowsEveryAvailableAppWhateverTheSwitches() {
-        fun rail(photobaseAvailable: Boolean, emailAvailable: Boolean, callsAvailable: Boolean) = topLevelRoutesFor(
-            callsAvailable = callsAvailable, callsIconVisible = false, momentsVisible = false, vaultVisible = false,
+        fun rail(photobaseAvailable: Boolean, emailAvailable: Boolean) = topLevelRoutesFor(
+            momentsVisible = false, vaultVisible = false,
             locationVisible = false, contactBookVisible = false, emailVisible = false,
             filesyncVisible = false, photobaseVisible = false, feedVisible = false,
             everyApp = true, photobaseAvailable = photobaseAvailable, emailAvailable = emailAvailable,
         ).map { it.route }
-        assertEquals(AppsPage.entries.map { it.appRoute }.filter { it != Route.WebDrop } + Route.Home, rail(true, true, true))
-        assertEquals(listOf(Route.Photobase, Route.Email, Route.Calls).toSet(), (rail(true, true, true) - rail(false, false, false).toSet()).toSet())
+        assertEquals(AppsPage.entries.map { it.appRoute }.filter { it != Route.WebDrop }.distinct() + Route.Home, rail(true, true))
+        assertEquals(listOf(Route.Photobase, Route.Email).toSet(), (rail(true, true) - rail(false, false).toSet()).toSet())
     }
 
     @Test
     fun theBarRunsInTheOrderOfSettingsAppsThenApps() {
         val every = topLevelRoutesFor(
-            callsAvailable = true, callsIconVisible = true, momentsVisible = true, vaultVisible = true,
+            momentsVisible = true, vaultVisible = true,
             locationVisible = true, contactBookVisible = true, emailVisible = true,
             filesyncVisible = true, photobaseVisible = true, feedVisible = true,
             everyApp = false,
             photobaseAvailable = true,
             emailAvailable = true,
         ).map { it.route }
-        val settingsOrder = AppsPage.entries.map { it.appRoute }.filter { it in every }
+        val settingsOrder = AppsPage.entries.map { it.appRoute }.distinct().filter { it in every }
         assertEquals(settingsOrder + Route.Home, every)
-    }
-
-    @Test
-    fun callsIsAbsentWhereCallingIsUnavailableOrTheIconIsHidden() {
-        assertFalse(TopLevelRoute.Calls in routes(callsAvailable = false, callsIconVisible = true))
-        assertFalse(TopLevelRoute.Calls in routes(callsAvailable = true, callsIconVisible = false))
-        assertTrue(TopLevelRoute.Chat in routes(callsAvailable = false, callsIconVisible = false))
     }
 
     @Test
     fun feedFollowsItsSwitchWhileChatAndAppsAlwaysStay() {
         val routes = topLevelRoutesFor(
-            callsAvailable = false,
-            callsIconVisible = false,
             momentsVisible = false,
             vaultVisible = false,
             locationVisible = false,
@@ -98,7 +86,6 @@ class TopLevelRoutesTest {
             nav = rememberNavController()
             NavHost(nav, startDestination = Route.ChatList) {
                 composable<Route.ChatList> { Text("") }
-                composable<Route.Calls> { Text("") }
                 composable<Route.Feed> { Text("") }
                 composable<Route.Moments> { Text("") }
                 composable<Route.Vault> { Text("") }
@@ -111,8 +98,6 @@ class TopLevelRoutesTest {
             }
         }
         val all = topLevelRoutesFor(
-            callsAvailable = true,
-            callsIconVisible = true,
             momentsVisible = true,
             vaultVisible = true,
             locationVisible = true,
@@ -133,7 +118,7 @@ class TopLevelRoutesTest {
 
     @Test
     fun theLastTabIsAppsWithTheAppsIcon() {
-        val last = routes(callsAvailable = true, callsIconVisible = true).last()
+        val last = routes().last()
         assertEquals(TopLevelRoute.Apps, last)
         assertEquals(Route.Home, last.route)
         assertEquals(MR.string.nav_apps, last.labelRes)
