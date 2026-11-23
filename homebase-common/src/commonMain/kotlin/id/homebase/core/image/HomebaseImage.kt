@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -20,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -112,21 +112,25 @@ fun HomebaseImage(
     val displaySize = remember(imageData) { mutableStateOf<ImageSize?>(null) }
     val mayStepUp = stepUpToPayload && imageData.mayStepUp
     val thumbnailKey = remember(imageData) { HomebaseImageKeyer.thumbnailCacheKey(imageData) }
-    val model = remember(imageData, platformContext, steppedUp) {
+    // Fading in over a placeholder or stand-in that is removed at once would flash blank.
+    val crossfade = preview != null && standIn == null
+    val model = remember(imageData, platformContext, steppedUp, crossfade) {
         ImageRequest.Builder(platformContext)
             .data(if (steppedUp) imageData.copy(loadFullPayload = true) else imageData)
             .apply { if (!imageData.isPending) placeholderMemoryCacheKey(thumbnailKey) }
-            .crossfade(true)
+            .crossfade(crossfade)
             .build()
     }
-    // Read only in draw, Coil's callbacks and the step-up effect, so a load moving on doesn't recompose the image.
+    // Composition reads it only through the two flags below, so a load moving on doesn't recompose the image.
     val loadState = remember(imageData) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
     val lastSharpPainter = remember(imageData) { mutableStateOf<Painter?>(null) }
-    val drawsImage by remember(loadState, preview) {
+    val drawsImage = remember(loadState, preview) {
         derivedStateOf { loadState.value.painter.let { it != null && it !== preview } }
     }
     // A failure with a sharp image still on screen, such as a failed step-up, shows no error.
-    val failed by remember(loadState) { derivedStateOf { loadState.value is AsyncImagePainter.State.Error && !drawsImage } }
+    val failed = remember(loadState, drawsImage) {
+        derivedStateOf { loadState.value is AsyncImagePainter.State.Error && !drawsImage.value }
+    }
 
     // A stand-in that can't be read (a swept temp file, a lapsed picker grant) gives way to the preview and error icon.
     var standInFailed by remember(standIn) { mutableStateOf(false) }
@@ -145,7 +149,7 @@ fun HomebaseImage(
             // scrolling away cancels this before it fires.
             if (loader?.isFullPayloadCached(full) != true) delay(STEP_UP_SETTLE_MILLIS)
             steppedUp = true
-            snapshotFlow { loadState.value is AsyncImagePainter.State.Error }.first { it }
+            snapshotFlow { (loadState.value as? AsyncImagePainter.State.Error)?.result?.request?.data == full }.first { it }
             loader?.markStepUpFailed(full)
             steppedUp = false
         }
@@ -161,10 +165,12 @@ fun HomebaseImage(
     ).let { if (mayStepUp) it.onSizeChanged { size -> displaySize.value = ImageSize(size.width, size.height) } else it }
 
     Box(boxModifier, contentAlignment = alignment, propagateMinConstraints = true) {
+        // Under the image: Coil may already draw a photo from memory on this first frame.
+        if (placeholder != null && !showsStandIn && preview?.image == null && !drawsImage.value) placeholder()
         if (deferred) {
             preview?.let { Image(it, contentDescription, Modifier.fillMaxSize(), alignment, contentScale, colorFilter = colorFilter) }
         } else {
-            if (standIn != null && !standInFailed) {
+            if (standIn != null && !standInFailed && !drawsImage.value) {
                 LocalFileImage(standIn, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
             }
             AsyncImage(
@@ -195,8 +201,7 @@ fun HomebaseImage(
                 colorFilter = colorFilter,
             )
         }
-        if (placeholder != null && !showsStandIn && preview?.image == null && !drawsImage) placeholder()
-        if (!showsStandIn && failed) {
+        if (!showsStandIn && failed.value) {
             Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
                 if (error != null) {
                     error.invoke()
@@ -205,7 +210,7 @@ fun HomebaseImage(
                     Icon(
                         imageVector = HomebaseIcons.Warning,
                         contentDescription = stringResource(MR.string.error),
-                        tint = Color.Gray,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(24.dp)
                     )
                 }

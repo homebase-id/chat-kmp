@@ -1,6 +1,8 @@
 package id.homebase.core.image
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.SideEffect
@@ -52,6 +54,7 @@ class HomebaseImageTinyFirstTest {
     private val tinyColor = Color(0xFF3366CC)
     private val thumbColor = Color(0xFFCC3333)
     private val fullColor = Color(0xFF33CC33)
+    private val placeholderColor = Color(0xFF000000)
 
     private val decodeThreads: MutableList<Thread> = Collections.synchronizedList(mutableListOf())
     private val fullFetches: MutableList<HomebaseImageData> = Collections.synchronizedList(mutableListOf())
@@ -117,7 +120,7 @@ class HomebaseImageTinyFirstTest {
                     HomebaseImage(
                         imageData = data,
                         modifier = Modifier.size(100.dp).testTag("photo"),
-                        placeholder = { Box(Modifier.testTag("empty")) },
+                        placeholder = { Box(Modifier.fillMaxSize().background(placeholderColor).testTag("empty")) },
                         error = { Box(Modifier.testTag("error")) },
                         deferLoad = deferLoad,
                         standIn = standIn,
