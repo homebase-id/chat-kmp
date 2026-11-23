@@ -202,7 +202,6 @@ fun PostCard(
     }
 }
 
-// Matches the web feed's ArticleTeaser.
 @Composable
 private fun ArticleCardBody(
     post: FeedPostItem,

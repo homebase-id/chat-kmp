@@ -25,10 +25,12 @@ import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
@@ -36,11 +38,13 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalTestApi::class)
 class PostCardArticleTest {
 
+    private val scope = CoroutineScope(SupervisorJob())
+
     private val koin = koinApplication {
         modules(
             module {
                 single { AvatarResolver(MutableStateFlow(emptyList())) }
-                single { LocalAttachmentContextStore(EventBus(), CoroutineScope(SupervisorJob())) }
+                single { LocalAttachmentContextStore(EventBus(), scope) }
                 single {
                     ImageLoader.Builder(PlatformContext.INSTANCE)
                         .components {
@@ -50,6 +54,12 @@ class PostCardArticleTest {
                 }
             },
         )
+    }
+
+    @AfterTest
+    fun tearDown() {
+        koin.close()
+        scope.cancel()
     }
 
     private fun post(
