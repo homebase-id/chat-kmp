@@ -14,7 +14,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.file.extensionForMimeType
+import id.homebase.api.file.extensionForContentType
 import id.homebase.api.video.playableContentType
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
@@ -136,7 +136,7 @@ class ChatMediaAutoSaveService(
 
     private suspend fun saveOne(file: HomebaseFile, payload: PayloadDescriptor) {
         val iv = payload.iv ?: return
-        val extension = payload.playableContentType?.let { extensionForMimeType(it) } ?: "bin"
+        val extension = extensionForContentType(payload.playableContentType)
         val name = "homebase_${file.fileId}_${payload.key}.$extension"
 
         try {

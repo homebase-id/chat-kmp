@@ -9,6 +9,7 @@ import id.homebase.api.file.scratchDir
 import id.homebase.api.video.playableContentType
 import id.homebase.api.video.playableFileName
 import id.homebase.api.video.writePlayable
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -152,7 +153,7 @@ suspend fun AlbumSaver.saveReceived(
     fileId: Uuid,
     payload: PayloadDescriptor,
     keyHeader: KeyHeader,
-    name: String = saveFileName(payload.playableFileName(payload.filename()), payload.key, payload.playableContentType),
+    name: String = saveFileName(payload.playableFileName(payload.filename()), payload.playableContentType, Clock.System.now().toEpochMilliseconds()),
     asked: Boolean = true,
 ): AlbumSaveResult {
     val scratch = "${fileOps.scratchDir(AppCacheDirs.DOWNLOADS)}/${Uuid.random().toString().take(8)}_$name"
