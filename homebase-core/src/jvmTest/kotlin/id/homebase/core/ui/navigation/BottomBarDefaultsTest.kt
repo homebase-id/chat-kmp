@@ -2,7 +2,6 @@ package id.homebase.core.ui.navigation
 
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.core.calling.CallsPreferences
 import kotlin.uuid.Uuid
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.email.EmailPreferences
@@ -117,7 +116,7 @@ class BottomBarDefaultsTest {
     }
 
     private val callsIconKey = Uuid.parse("00000000-0000-0000-0000-0000000a0c01")
-    private val callsEnabledKey = CallsPreferences.ENABLED_KEY
+    private val callsEnabledKey = Uuid.parse("00000000-0000-0000-0000-0000000a0c03")
 
     private suspend fun DatabaseManager.store(key: Uuid, value: Boolean) =
         keyValue.upsertValue(key, byteArrayOf(if (value) 1 else 0))

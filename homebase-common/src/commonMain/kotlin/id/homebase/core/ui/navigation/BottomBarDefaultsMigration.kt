@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.KeyValueWrapper
-import id.homebase.core.calling.CallsPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.email.EmailPreferences
 import id.homebase.core.vault.VaultPreferences
@@ -24,6 +23,7 @@ import kotlin.uuid.Uuid
 object BottomBarDefaultsMigration {
     val DONE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0d01")
     val CONTACTS_DONE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0d02")
+    private val RETIRED_CALLS_ENABLED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0c03")
     private val RETIRED_CALLS_ICON_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0c01")
     private val pinnedVisible = listOf(VaultPreferences.ICON_VISIBLE_KEY, EmailPreferences.ICON_VISIBLE_KEY)
     private val writeLock = Mutex()
@@ -69,7 +69,7 @@ object BottomBarDefaultsMigration {
         val state = runCatching {
             val stored = readFlag(keyValue, ContactBookPreferences.ICON_VISIBLE_KEY)
             val done = keyValue.selectByKeyBootstrapSync(CONTACTS_DONE_KEY) != null
-            val callsWasVisible = readFlag(keyValue, CallsPreferences.ENABLED_KEY) == true &&
+            val callsWasVisible = readFlag(keyValue, RETIRED_CALLS_ENABLED_KEY) == true &&
                 readFlag(keyValue, RETIRED_CALLS_ICON_KEY) != false
             ContactsResolution(visible = stored ?: true, restore = !done && stored == false && callsWasVisible, done = done)
         }.getOrDefault(ContactsResolution(visible = true, restore = false, done = true))
