@@ -2478,6 +2478,7 @@
     <string name="photobase_settings_open">Åbn Photos</string>
     <string name="photobase_settings_in_testing">Photos er stadig under test. Slå det til i Udviklermenu for at prøve det.</string>
     <string name="webdrop_settings_open">Åbn WebDrop</string>
+    <string name="calls_settings_open">Åbn Opkald</string>
     <string name="location_settings_open">Åbn Lokation</string>
     <string name="settings_not_working">%1$s (virker ikke endnu)</string>
     <string name="settings_media">Kamera</string>

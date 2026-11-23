@@ -739,6 +739,7 @@ fun AppNavHost(
     val appsPageLinks = AppsPageLinks(
         onOpenApp = { page -> navController.openApp(page.appRoute, tabRoutes) },
         onOpenEmailModeSwitch = { navController.navigate(Route.EmailModeSwitch) },
+        callsAvailable = callsAvailable,
         photobaseAvailable = photobaseAvailable,
         photoBackup = photoBackupLinks,
         locationViewModel = locationViewModel,

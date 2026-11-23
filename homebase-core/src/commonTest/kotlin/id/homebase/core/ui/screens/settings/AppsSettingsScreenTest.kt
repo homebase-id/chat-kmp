@@ -46,13 +46,13 @@ class AppsSettingsScreenTest {
     }
 
     @Test
-    fun allTenRowsAreThereInOrder() = runComposeUiTest {
+    fun allElevenRowsAreThereInOrder() = runComposeUiTest {
         apps()
         assertEquals(
             listOf(
                 "chatSettingsButton", "photobaseSettingsButton", "filesyncSettingsButton", "emailSettingsButton",
                 "feedSettingsButton", "vaultSettingsButton", "locationSettingsButton", "momentsSettingsButton",
-                "contactBookSettingsButton", "webDropButton",
+                "callsSettingsButton", "contactBookSettingsButton", "webDropButton",
             ),
             AppsSettingsRowTags,
         )
@@ -108,7 +108,7 @@ class AppsSettingsScreenTest {
     }
 
     @Test
-    fun theTenNavigationRowsOpenTheirPages() = runComposeUiTest {
+    fun theElevenNavigationRowsOpenTheirPages() = runComposeUiTest {
         apps()
         listOf(
             "chatSettingsButton" to "Chat",
@@ -121,11 +121,12 @@ class AppsSettingsScreenTest {
             "webDropButton" to "WebDrop",
             "locationSettingsButton" to "Location",
             "contactBookSettingsButton" to "Contacts",
+            "callsSettingsButton" to "Calls",
         ).forEach { (tag, route) ->
             tap(tag)
             assertEquals(route, fired.last(), tag)
         }
-        assertEquals(10, fired.size)
+        assertEquals(11, fired.size)
     }
 
     @Test
@@ -144,16 +145,17 @@ class AppsSettingsScreenTest {
                     0 -> ChatSettingsUi(ChatSettingsUiState(), {}, onBack = {}, onOpenChat = { fired += "open chat" })
                     1 -> FeedSettingsUi(FeedSettingsUiState(), {}, {}, onOpenFeed = { fired += "open feed" })
                     2 -> FilesyncSettingsUi(FilesyncSettingsUiState(), {}, {}, onOpenDrive = { fired += "open drive" })
-                    else -> WebDropSettingsUi(onBack = {}, onOpenWebDrop = { fired += "open webdrop" })
+                    3 -> WebDropSettingsUi(onBack = {}, onOpenWebDrop = { fired += "open webdrop" })
+                    else -> CallsSettingsUi(onBack = {}, onOpenCalls = { fired += "open calls" })
                 }
             }
         }
-        listOf("chatOpenButton", "feedOpenButton", "filesyncOpenButton", "webDropOpenButton").forEachIndexed { i, tag ->
+        listOf("chatOpenButton", "feedOpenButton", "filesyncOpenButton", "webDropOpenButton", "callsOpenButton").forEachIndexed { i, tag ->
             page = i
             waitForIdle()
             tap(tag)
         }
-        assertEquals(listOf("open chat", "open feed", "open drive", "open webdrop"), fired)
+        assertEquals(listOf("open chat", "open feed", "open drive", "open webdrop", "open calls"), fired)
     }
 
     @Test

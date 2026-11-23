@@ -18,7 +18,7 @@ import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import org.koin.compose.viewmodel.koinViewModel
 
 internal enum class AppsPage {
-    Chat, Photobase, Filesync, Email, Feed, Vault, Location, Moments, Contacts, WebDrop;
+    Chat, Photobase, Filesync, Email, Feed, Vault, Location, Moments, Calls, Contacts, WebDrop;
 
     companion object {
         /** The page of the app whose screen [destination] is, if it's one's main screen. */
@@ -43,6 +43,7 @@ internal val AppsPage.appRoute: Route
         AppsPage.Vault -> Route.Vault
         AppsPage.Location -> Route.Location
         AppsPage.Moments -> Route.Moments
+        AppsPage.Calls -> Route.Calls
         AppsPage.Contacts -> Route.ContactBook
         AppsPage.WebDrop -> Route.WebDrop
     }
@@ -50,6 +51,8 @@ internal val AppsPage.appRoute: Route
 internal class AppsPageLinks(
     val onOpenApp: (AppsPage) -> Unit,
     val onOpenEmailModeSwitch: () -> Unit,
+    /** False while calls are unavailable: there's nothing to open. */
+    val callsAvailable: Boolean,
     /** False while Photobase is dark-launched off. */
     val photobaseAvailable: Boolean,
     val photoBackup: PhotoBackupLinks?,
@@ -71,7 +74,7 @@ internal fun AppsPageContent(
     settingsOwner: ViewModelStoreOwner = checkNotNull(LocalViewModelStoreOwner.current),
 ) {
     val open: (() -> Unit)? = { links.onOpenApp(page) }
-        .takeIf { !openedFromApp }
+        .takeIf { !openedFromApp && (page != AppsPage.Calls || links.callsAvailable) }
     when (page) {
         AppsPage.Chat -> ChatSettingsScreen(viewModel = koinViewModel(), onBack = onBack, onOpenChat = open)
 
@@ -112,6 +115,8 @@ internal fun AppsPageContent(
             onNavigateBack = onBack,
             onOpenLocation = open,
         )
+
+        AppsPage.Calls -> CallsSettingsUi(onBack = onBack, onOpenCalls = open)
 
         AppsPage.Photobase -> if (links.photobaseAvailable) {
             PhotobaseSettingsScreen(

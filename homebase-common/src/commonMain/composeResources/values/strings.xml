@@ -3529,6 +3529,7 @@
     <string name="photobase_settings_open">Open Photos</string>
     <string name="photobase_settings_in_testing">Photos is still being tested. Turn it on in the Developer menu to try it.</string>
     <string name="webdrop_settings_open">Open WebDrop</string>
+    <string name="calls_settings_open">Open Calls</string>
     <string name="location_settings_open">Open Location</string>
     <string name="settings_not_working">%1$s (not working)</string>
     <string name="settings_send_photo_standard_desc">Up to 2048 pixels. Sends quickly and keeps screenshots readable.</string>
