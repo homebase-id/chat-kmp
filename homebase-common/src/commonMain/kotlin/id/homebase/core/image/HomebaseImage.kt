@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
@@ -254,12 +255,15 @@ private class PreviewPainter(image: Painter?) : Painter() {
     var image: Painter? by mutableStateOf(image)
     var hidden: Boolean by mutableStateOf(false)
     var failed: Boolean by mutableStateOf(false)
+    private var alpha = DefaultAlpha
     private var colorFilter: ColorFilter? = null
 
     override val intrinsicSize: Size get() = image?.intrinsicSize ?: Size.Unspecified
 
-    // Stays opaque while Coil's crossfade fades it out, so the image doesn't dim as the sharp one fades in.
-    override fun applyAlpha(alpha: Float): Boolean = true
+    override fun applyAlpha(alpha: Float): Boolean {
+        this.alpha = alpha
+        return true
+    }
 
     override fun applyColorFilter(colorFilter: ColorFilter?): Boolean {
         this.colorFilter = colorFilter
@@ -267,7 +271,7 @@ private class PreviewPainter(image: Painter?) : Painter() {
     }
 
     override fun DrawScope.onDraw() {
-        if (!hidden) image?.run { draw(size, colorFilter = colorFilter) }
+        if (!hidden) image?.run { draw(size, alpha, colorFilter) }
     }
 }
 
