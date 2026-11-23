@@ -407,7 +407,7 @@ internal class MessageActionsHandler(
                             )
                         )
                     }
-                } else if (target != null && target.quotedGalleryItem(action.payloadKey) != null) {
+                } else if (target?.quotedGalleryItem(action.payloadKey) != null) {
                     dispatch(ConversationListUiAction.MediaClicked(target, action.payloadKey!!))
                 } else {
                     dispatch(ConversationListUiAction.ScrollToMessageId(action.messageId))

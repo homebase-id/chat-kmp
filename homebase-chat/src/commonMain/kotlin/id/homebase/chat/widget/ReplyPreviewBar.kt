@@ -111,11 +111,8 @@ fun ReplyPreviewBar(
     )
 
     val position = quoted?.positionText()
-    val previewText = if (position != null) {
-        quotedItemText(position, replyBarText.trim().truncateToCodePoints(80))
-    } else {
-        contentLabel?.text ?: replyBarText.trim().truncateToCodePoints(80)
-    }
+    val quoteText = replyBarText.trim().truncateToCodePoints(80)
+    val previewText = if (position != null) quotedItemText(position, quoteText) else contentLabel?.text ?: quoteText
 
     val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
     val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
