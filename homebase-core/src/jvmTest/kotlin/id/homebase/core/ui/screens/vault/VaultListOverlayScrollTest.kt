@@ -64,8 +64,10 @@ class VaultListOverlayScrollTest {
         }
 
         onNode(hasScrollToIndexAction()).performScrollToIndex(10)
+        runOnIdle { listState.dispatchRawDelta(40f) }
         waitForIdle()
         val topSection = sections[listState.firstVisibleItemIndex].sectionId
+        val topOffset = listState.firstVisibleItemScrollOffset
 
         overlayOpen = true
         waitForIdle()
@@ -75,5 +77,6 @@ class VaultListOverlayScrollTest {
         waitForIdle()
 
         assertEquals(topSection, sections[listState.firstVisibleItemIndex].sectionId)
+        assertEquals(topOffset, listState.firstVisibleItemScrollOffset)
     }
 }
