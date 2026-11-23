@@ -64,7 +64,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.Videocam
+import id.homebase.resources.call_button_video
+import id.homebase.resources.call_button_voice
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -194,6 +199,7 @@ fun ContactDetailScreen(
     onOpenConversation: (Uuid) -> Unit,
     onSeeAllMedia: (conversationId: String) -> Unit,
     onOpenContact: (uniqueId: String, odinId: String?) -> Unit,
+    onStartCall: ((odinId: String, video: Boolean) -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -299,6 +305,7 @@ fun ContactDetailScreen(
                     snackbarHostState = snackbarHostState,
                     onAction = viewModel::onAction,
                     onAvatarClick = { fullScreenAvatar = it },
+                    onStartCall = onStartCall,
                     onConnect = {
                         uiState.entry?.odinId?.let { domain ->
                             runCatching { OdinId(domain) }.getOrNull()?.let {
@@ -411,6 +418,7 @@ private fun ContactDetailContent(
     onAction: (ContactDetailAction) -> Unit,
     onAvatarClick: (SubSamplingImageSource) -> Unit,
     onConnect: () -> Unit,
+    onStartCall: ((odinId: String, video: Boolean) -> Unit)?,
     currentTab: ContactDetailTab,
     onSelectTab: (ContactDetailTab) -> Unit,
     detailsExpanded: Boolean,
@@ -491,6 +499,7 @@ private fun ContactDetailContent(
                                 onAction = onAction,
                                 onAvatarClick = onAvatarClick,
                                 onConnect = onConnect,
+                                onStartCall = onStartCall,
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
                             )
@@ -765,6 +774,7 @@ private fun DetailHeader(
     onAction: (ContactDetailAction) -> Unit,
     onAvatarClick: (SubSamplingImageSource) -> Unit,
     onConnect: () -> Unit,
+    onStartCall: ((odinId: String, video: Boolean) -> Unit)?,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -934,6 +944,15 @@ private fun DetailHeader(
                             Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(stringResource(MR.string.contactbook_detail_cancel_request))
+                        }
+                    }
+                    if (onStartCall != null && connected && uiState.hasOdinId && !uiState.isSelf) {
+                        val odinId = entry.odinId.orEmpty()
+                        FilledTonalIconButton(onClick = { onStartCall(odinId, false) }) {
+                            Icon(Icons.Outlined.Call, contentDescription = stringResource(MR.string.call_button_voice))
+                        }
+                        FilledTonalIconButton(onClick = { onStartCall(odinId, true) }) {
+                            Icon(Icons.Outlined.Videocam, contentDescription = stringResource(MR.string.call_button_video))
                         }
                     }
                     if (isFollowing != null) {

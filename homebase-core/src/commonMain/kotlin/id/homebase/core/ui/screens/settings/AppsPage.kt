@@ -23,7 +23,7 @@ internal enum class AppsPage {
     companion object {
         /** The page of the app whose screen [destination] is, if it's one's main screen. */
         fun of(destination: NavDestination?): AppsPage? =
-            destination?.let { d -> entries.firstOrNull { d.hasRoute(it.appRoute::class) } }
+            destination?.let { d -> entries.firstOrNull { it != Calls && d.hasRoute(it.appRoute::class) } }
     }
 }
 
@@ -43,7 +43,7 @@ internal val AppsPage.appRoute: Route
         AppsPage.Vault -> Route.Vault
         AppsPage.Location -> Route.Location
         AppsPage.Moments -> Route.Moments
-        AppsPage.Calls -> Route.Calls
+        AppsPage.Calls -> Route.ContactBook
         AppsPage.Contacts -> Route.ContactBook
         AppsPage.WebDrop -> Route.WebDrop
     }

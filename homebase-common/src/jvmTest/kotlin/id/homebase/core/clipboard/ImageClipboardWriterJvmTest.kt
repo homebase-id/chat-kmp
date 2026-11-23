@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class ImageClipboardWriterJvmTest {
 
@@ -43,5 +44,21 @@ class ImageClipboardWriterJvmTest {
         assertEquals(6 to 4, image.width to image.height)
         assertEquals(0xFF0000, image.getRGB(0, 0) and 0xFFFFFF)
         assertEquals(0x0000FF, image.getRGB(5, 3) and 0xFFFFFF)
+    }
+
+    @Test
+    fun aSecondCopyReplacesTheFirst() {
+        val clipboard = Clipboard("test")
+        writePngToClipboard(clipboard, encoded("png"))
+        val second = BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB).apply { setRGB(0, 0, 0x00FF00) }
+        writePngToClipboard(clipboard, ByteArrayOutputStream().also { ImageIO.write(second, "png", it) }.toByteArray())
+
+        val image = ImageIO.read(ByteArrayInputStream(assertNotNull(readImageFromClipboard(clipboard))))
+        assertEquals(2 to 2, image.width to image.height)
+    }
+
+    @Test
+    fun theDesktopAlwaysOffersImageCopy() {
+        assertTrue(canCopyImageToClipboard)
     }
 }

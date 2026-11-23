@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.common.util.formatBytes
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.util.formateDateTime
 import id.homebase.resources.MR
 import id.homebase.resources.image_info_date
@@ -56,9 +57,7 @@ fun ImageInfoOverlay(
 
     // Best-effort resolution: the largest thumbnail we have. Not the original
     // image's true pixel size, hence the "(approx.)" label on the string.
-    val largestThumb = payload.thumbnails
-        ?.filter { (it.pixelWidth ?: 0) > 0 && (it.pixelHeight ?: 0) > 0 }
-        ?.maxByOrNull { (it.pixelWidth ?: 0) * (it.pixelHeight ?: 0) }
+    val largestThumb = thumbSizesFrom(payload.thumbnails).maxByOrNull { it.pixelCount }
     val dimensionsVal = largestThumb?.let { "${it.pixelWidth}×${it.pixelHeight}" }
 
     val lines = buildList {

@@ -32,7 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
@@ -790,7 +790,7 @@ fun ConversationListUi(
     onNewConversationPaneDismissed: () -> Unit = {},
     onComposerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
-    val windowAdaptiveInfo = currentWindowAdaptiveInfo()
+    val windowAdaptiveInfo = currentWindowAdaptiveInfoV2()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
     val isExpanded = isExpandedLayout()
     val scaffoldDirective = defaultDirective.copy(

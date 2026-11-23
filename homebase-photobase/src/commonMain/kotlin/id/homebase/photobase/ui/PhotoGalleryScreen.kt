@@ -208,7 +208,8 @@ private fun GalleryViewer(
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 showUIState = showUI,
-                isFocused = settled,
+                // A native video view can't follow the open and close flight, so a Live photo's clip waits for it to end.
+                isFocused = settled && !animatedVisibilityScope.transition.isRunning,
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {
