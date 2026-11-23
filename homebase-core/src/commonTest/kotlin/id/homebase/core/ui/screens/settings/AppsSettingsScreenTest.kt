@@ -161,5 +161,4 @@ class AppsSettingsScreenTest {
         setContent { MaterialTheme { ChatSettingsUi(ChatSettingsUiState(), {}, onBack = {}, onOpenChat = {}) } }
         onNodeWithTag("chatIconToggle").assertIsOn().assertIsNotEnabled()
     }
-
 }
