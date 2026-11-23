@@ -80,6 +80,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.widget.MediaAttachmentEditor
 import id.homebase.core.ui.screens.vault.auth.VaultBiometricGate
 import id.homebase.core.ui.screens.vault.components.VaultAddSectionControl
+import id.homebase.core.scan.rememberDocumentScanner
 import id.homebase.core.ui.screens.vault.components.VaultAddEntrySheet
 import id.homebase.core.ui.screens.vault.components.VaultNewSectionSheet
 import id.homebase.core.ui.screens.vault.gallery.VaultGalleryScreen
@@ -319,6 +320,17 @@ fun VaultScreen(
                 }
             }
         }
+    }
+
+    val documentScanner = rememberDocumentScanner { pages ->
+        viewModel.onAction(
+            VaultUiAction.AddScannedPages(
+                pages = pages,
+                sectionId = activeSectionForEntry?.sectionId,
+                appendTo = fileForAppend,
+            )
+        )
+        fileForAppend = null
     }
 
     VaultBiometricGate(
@@ -617,6 +629,10 @@ fun VaultScreen(
                 isPickerActive = true
                 documentPicker.launch()
             }
+            VaultPickerAction.Scan -> {
+                isPickerActive = true
+                documentScanner?.launch()
+            }
             VaultPickerAction.Note -> {
                 activeSectionForEntry?.let { section ->
                     onNavigateToNoteEditor(section.sectionId.toString(), null)
@@ -644,6 +660,10 @@ fun VaultScreen(
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.File
             },
+            onScanDocument = {
+                showImageAddSheet = false
+                pendingPickerAction = VaultPickerAction.Scan
+            }.takeIf { documentScanner != null },
             // A note is its own entry in a section, so it can't be appended to an existing entry.
             onAddNote = {
                 showImageAddSheet = false
@@ -728,7 +748,7 @@ fun VaultScreen(
 
 }
 
-private enum class VaultPickerAction { Camera, Gallery, File, Note }
+private enum class VaultPickerAction { Camera, Gallery, File, Scan, Note }
 
 @Composable
 private fun resolveVaultError(error: VaultError): String = when (error) {

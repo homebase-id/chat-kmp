@@ -198,6 +198,9 @@ kotlin {
             // PendingIntent updates) + app-foreground observation.
             implementation(libs.play.services.location)
             implementation(libs.androidx.lifecycle.process)
+            // Unbundled: Google Play services holds the scanner and the Latin text model, so ~0 APK cost.
+            implementation(libs.mlkit.document.scanner)
+            implementation(libs.mlkit.text.recognition)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)

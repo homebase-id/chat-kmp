@@ -36,6 +36,15 @@ import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
 import id.homebase.api.file.contentType
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.scan.ScannedDocumentType
+import id.homebase.core.scan.classifyScan
+import id.homebase.resources.MR
+import id.homebase.resources.vault_scan_type_card
+import id.homebase.resources.vault_scan_type_document
+import id.homebase.resources.vault_scan_type_id_card
+import id.homebase.resources.vault_scan_type_payment_card
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveState
@@ -347,6 +356,7 @@ class VaultViewModel(
             is VaultUiAction.MoveSectionUp -> handleMoveSectionUp(action.section)
             is VaultUiAction.MoveSectionDown -> handleMoveSectionDown(action.section)
             is VaultUiAction.AddEntryToSection -> handleAddEntryToSection(action)
+            is VaultUiAction.AddScannedPages -> handleAddScannedPages(action)
             is VaultUiAction.AppendPages -> handleAppendPages(action)
             is VaultUiAction.OpenAddEditor -> handleOpenAddEditor(action)
             is VaultUiAction.AddToEditor -> handleAddToEditor(action)
@@ -642,6 +652,27 @@ class VaultViewModel(
             val success = vaultService.deleteEntry(action.file.uniqueId, action.file.fileId)
             if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.DeleteFileFailed(action.file.fileName)))
         }
+    }
+
+    private fun handleAddScannedPages(action: VaultUiAction.AddScannedPages) {
+        viewModelScope.launch {
+            val type = withContext(Dispatchers.Default) { classifyScan(action.pages) }
+            val files = action.pages.map { platformFileFromPath(fileOperationsProvider.writeBytesToTempFile(it, "vault_scan_", ".jpg")) }
+            val appendTo = action.appendTo
+            val sectionId = action.sectionId
+            if (appendTo != null) {
+                onAction(VaultUiAction.AppendPages(appendTo, files))
+            } else if (sectionId != null) {
+                onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes())))
+            }
+        }
+    }
+
+    private fun ScannedDocumentType.labelRes(): StringResource = when (this) {
+        ScannedDocumentType.PaymentCard -> MR.string.vault_scan_type_payment_card
+        ScannedDocumentType.IdCard -> MR.string.vault_scan_type_id_card
+        ScannedDocumentType.Card -> MR.string.vault_scan_type_card
+        ScannedDocumentType.Document -> MR.string.vault_scan_type_document
     }
 
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {

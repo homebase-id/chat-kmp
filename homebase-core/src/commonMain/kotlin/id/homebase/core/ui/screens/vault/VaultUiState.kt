@@ -78,6 +78,13 @@ sealed interface VaultUiAction {
         val entryName: String? = null,
     ) : VaultUiAction
 
+    /** Pages from the platform scanner: named by what they turn out to be (card, ID, document), then added or appended. */
+    data class AddScannedPages(
+        val pages: List<ByteArray>,
+        val sectionId: Uuid?,
+        val appendTo: VaultEntry?,
+    ) : VaultUiAction
+
     data class AppendPages(
         val file: VaultEntry,
         val newFiles: List<PlatformFile>,
