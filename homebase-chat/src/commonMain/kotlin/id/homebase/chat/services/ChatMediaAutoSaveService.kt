@@ -142,7 +142,7 @@ class ChatMediaAutoSaveService(
         try {
             val saved = albumSaver.saveReceived(
                 driveFileProvider, fileOperationsProvider, chatDrive, file.fileId, payload, KeyHeader(iv.bytes, file.keyHeader.aesKey),
-                name = name, asked = false,
+                file.fileMetadata.appData.userDate ?: file.fileMetadata.created.milliseconds, name = name, asked = false,
             )
             val location = when (saved) {
                 is AlbumSaveResult.Saved -> saved.location

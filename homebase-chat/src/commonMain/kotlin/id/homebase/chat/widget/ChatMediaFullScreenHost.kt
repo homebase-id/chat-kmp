@@ -289,6 +289,7 @@ fun rememberSharedMediaSaver(
                     val iv = item.payload.iv?.bytes ?: return@launch
                     val saved = albumSaver.saveReceived(
                         driveFileProvider, fileOps, driveId, item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey),
+                        item.date.toEpochMilliseconds(),
                     )
                     when (saved) {
                         is AlbumSaveResult.Saved -> snackbarHostState.showSavedTo(saved.location)

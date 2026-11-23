@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.extensionForContentType
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -56,5 +57,13 @@ class SaveFileNameTest {
             val name = saveFileName(raw, "image/png", at, utc)
             assertTrue(name.none { it == '/' || it == '\\' || it == ':' } && name != "." && name != "..", "$raw -> $name")
         }
+    }
+
+    @Test
+    fun aNamelessReceivedPayloadIsNamedFromTheMessageDateOnEverySavePath() {
+        val payload = PayloadDescriptor(key = "chat_img0", contentType = "image/jpeg")
+        val viaVaultAndConversationMedia = saveFileName(payload.filename(), payload.contentType, at, utc)
+        assertEquals(viaVaultAndConversationMedia, payload.receivedSaveName(at, utc))
+        assertEquals("Homebase_20261123_103530.jpg", payload.receivedSaveName(at, utc))
     }
 }

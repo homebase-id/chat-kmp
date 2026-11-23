@@ -222,6 +222,7 @@ internal class MediaDownloadHandler(
                     albumSaver.saveReceived(
                         driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, message.fileId, payload,
                         KeyHeader(payloadIv, message.keyHeader.aesKey),
+                        message.userDate.toEpochMilliseconds(),
                     )
                 }
                 report(saved, if (payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
@@ -246,11 +247,13 @@ internal class MediaDownloadHandler(
         val fileKey = "${action.fileId}_${action.payloadKey}"
         messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles + fileKey) }
 
+        val dateMs = messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
+            .firstOrNull { it.message.fileId == action.fileId }?.message?.userDate?.toEpochMilliseconds() ?: Clock.System.now().toEpochMilliseconds()
         scope.launch {
             try {
                 val saved = withContext(ioDispatcher) {
                     albumSaver.saveReceived(
-                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader,
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader, dateMs,
                     )
                 }
                 report(saved, if (action.payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
