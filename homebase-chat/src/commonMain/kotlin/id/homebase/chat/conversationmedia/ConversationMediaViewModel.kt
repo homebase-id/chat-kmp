@@ -154,7 +154,7 @@ class ConversationMediaViewModel(
             try {
                 val payloadIv = (item.payload.iv
                         ?: throw IllegalStateException("encrypted payload requires key header")).bytes
-                val name = saveFileName(item.payload.filename(), item.payload.key, item.payload.contentType)
+                val name = saveFileName(item.payload.filename(), item.payload.contentType, item.date.toEpochMilliseconds())
                 val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$name"
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(

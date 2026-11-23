@@ -12,6 +12,7 @@ import id.homebase.api.video.writePlayable
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.TimeZone
 
 /**
  * Where a platform keeps what people save: its photo album, or the nearest thing it has. Each platform says only where a
@@ -141,6 +142,10 @@ private suspend fun AlbumSaver.targetOrRefusal(name: String, asked: Boolean): Al
 
 internal const val COPY_CHUNK = 256 * 1024
 
+/** The name a received payload is saved under: the sender's, else dated [dateMs], the message's date, never the save time. */
+fun PayloadDescriptor.receivedSaveName(dateMs: Long, zone: TimeZone = TimeZone.currentSystemDefault()): String =
+    saveFileName(playableFileName(filename()), playableContentType, dateMs, zone)
+
 /**
  * A received payload saved through [saveWritten], named [name], as a file people can open ([writePlayable]): an HLS
  * video becomes an `.mp4`. The one save path for media people receive.
@@ -152,7 +157,8 @@ suspend fun AlbumSaver.saveReceived(
     fileId: Uuid,
     payload: PayloadDescriptor,
     keyHeader: KeyHeader,
-    name: String = saveFileName(payload.playableFileName(payload.filename()), payload.key, payload.playableContentType),
+    dateMs: Long,
+    name: String = payload.receivedSaveName(dateMs),
     asked: Boolean = true,
 ): AlbumSaveResult {
     val scratch = "${fileOps.scratchDir(AppCacheDirs.DOWNLOADS)}/${Uuid.random().toString().take(8)}_$name"

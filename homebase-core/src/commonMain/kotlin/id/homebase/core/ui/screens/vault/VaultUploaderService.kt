@@ -31,7 +31,7 @@ import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
 import id.homebase.api.file.CONTENT_TYPE_MARKDOWN
-import id.homebase.api.file.extensionForMimeType
+import id.homebase.api.file.extensionForContentType
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope
@@ -308,9 +308,7 @@ class VaultUploaderService(
             }
 
             val ct = payloadDescriptor?.contentType ?: file.contentType
-            val extension = extensionForMimeType(ct.substringBefore(';').trim().lowercase())
-                ?: file.fileName.substringAfterLast('.', "").takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
-                ?: ct.substringAfter("/", "bin")
+            val extension = extensionForContentType(ct)
             val destination = ExportDestination.UploadTemp("share_", ".$extension")
             val path = if (payloadDescriptor != null) {
                 payloadDownloadService.exportPlayable(file.driveId, file.fileId, payloadDescriptor, keyHeader, destination)
