@@ -17,7 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.ui.backhandler.BackHandler
+import id.homebase.core.widget.ScreenBackHandler
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Delete
@@ -132,7 +132,7 @@ fun VaultNoteEditorScreen(
         }
     }
 
-    BackHandler(enabled = uiState.isEditing) {
+    ScreenBackHandler(enabled = uiState.isEditing) {
         handleEditClose()
     }
 

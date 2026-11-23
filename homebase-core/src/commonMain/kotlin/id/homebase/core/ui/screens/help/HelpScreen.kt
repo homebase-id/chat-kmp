@@ -313,11 +313,10 @@ private fun HelpInfoRow(
 ) {
     ListItem(
         modifier = modifier,
-        headlineContent = { Text(text = title) },
         supportingContent = supportingText?.let { { Text(text = it) } },
         leadingContent = {
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(24.dp))
         },
         trailingContent = trailing,
-    )
+    ) { Text(text = title) }
 }

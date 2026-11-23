@@ -32,7 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
+import id.homebase.core.widget.ScreenBackHandler
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.resources.MR
@@ -63,7 +63,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     FilesyncEventsEffect(viewModel.events, snackbarHostState, onPreviewGone = {})
 
     val selecting = uiState.selection.ids.isNotEmpty()
-    BackHandler(enabled = selecting) { viewModel.onAction(FilesyncTrashAction.ClearSelection) }
+    ScreenBackHandler(enabled = selecting) { viewModel.onAction(FilesyncTrashAction.ClearSelection) }
 
     var askDelete by remember { mutableStateOf<Set<Uuid>?>(null) }
     var askEmpty by remember { mutableStateOf(false) }

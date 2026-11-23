@@ -311,6 +311,5 @@ fun NewCircleRow(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Bo
     ListItem(
         modifier = modifier.clickable(enabled = enabled, onClick = onClick),
         leadingContent = { Icon(Icons.Outlined.Add, contentDescription = null) },
-        headlineContent = { Text(stringResource(MR.string.circle_new)) },
-    )
+    ) { Text(stringResource(MR.string.circle_new)) }
 }

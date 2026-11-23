@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.foundation.text.input.maxLengthReject
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -242,7 +242,7 @@ fun CreateConversationGroupUi(
                     modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
                         .focusRequester(focusRequester),
                     state = groupNameTextState,
-                    inputTransformation = InputTransformation.maxLength(100),
+                    inputTransformation = InputTransformation.maxLengthReject(100),
                     placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
                 )
             }

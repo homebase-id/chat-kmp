@@ -328,10 +328,9 @@ internal fun AddAttributeSheet(
                             iconSize = 22.dp,
                         )
                     },
-                    headlineContent = { Text(stringResource(spec.labelRes)) },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     modifier = Modifier.fillMaxWidth().clickable { dismiss { onPick(spec) } }.padding(horizontal = 8.dp),
-                )
+                ) { Text(stringResource(spec.labelRes)) }
             }
         }
     }

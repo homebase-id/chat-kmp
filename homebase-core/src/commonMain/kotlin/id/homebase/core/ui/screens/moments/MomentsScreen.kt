@@ -72,7 +72,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -571,7 +571,7 @@ private fun MomentsFeedList(
     // the shrunk band linger over the feed for the whole slide before snapping
     // away. Hiding it the moment the swipe-down settles toward Hidden restores
     // the full-size feed in parallel with the slide instead.
-    val commentsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val commentsSheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))
     // Which moment (if any) has its "who reacted" roster open. Null = closed.
     // Opened by long-pressing a reaction toggle on a feed card.
     var reactionsMomentId by remember { mutableStateOf<Uuid?>(null) }
@@ -974,7 +974,7 @@ private fun MomentPostCard(
     // to lift this to the VM (it's pure presentation, no cross-screen
     // implications, no need to survive process death).
     var failedSheetOpen by remember { mutableStateOf(false) }
-    val failedSheetState = rememberModalBottomSheetState()
+    val failedSheetState = rememberBottomSheetState(SheetValue.Hidden)
 
     val selectionMotion = MaterialTheme.motionScheme
     val selectionRing by animateColorAsState(

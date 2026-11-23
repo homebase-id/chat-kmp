@@ -89,9 +89,6 @@ fun CirclesTabContent(
                             leadingContent = {
                                 Icon(Icons.Outlined.PersonAdd, contentDescription = null)
                             },
-                            headlineContent = {
-                                Text(stringResource(MR.string.enroll_banner, candidateCount))
-                            },
                             supportingContent = {
                                 Text(stringResource(MR.string.enroll_banner_action))
                             },
@@ -102,7 +99,9 @@ fun CirclesTabContent(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             },
-                        )
+                        ) {
+                                Text(stringResource(MR.string.enroll_banner, candidateCount))
+                            }
                     }
                 }
                 item(key = "new-circle") { NewCircleRow(onClick = onNewCircle) }
@@ -125,7 +124,6 @@ fun CirclesTabContent(
                                 )
                             }
                         },
-                        headlineContent = { Text(circle.circle.name) },
                         supportingContent = when {
                             circle.circle.disabled -> {
                                 { Text(stringResource(MR.string.contactbook_circle_disabled)) }
@@ -150,7 +148,7 @@ fun CirclesTabContent(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
-                    )
+                    ) { Text(circle.circle.name) }
                 }
             }
         }

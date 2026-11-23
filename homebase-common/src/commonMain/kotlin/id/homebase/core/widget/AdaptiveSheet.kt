@@ -23,7 +23,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
@@ -157,8 +157,9 @@ fun AdaptiveSheet(
         // only thing that stops it, and it gates our own hide() too. Kept identity-stable — the
         // sheet state is keyed on this lambda.
         val canDismiss = rememberUpdatedState(dismissible)
-        val sheetState = rememberModalBottomSheetState(
-            skipPartiallyExpanded = expandFully,
+        val sheetState = rememberBottomSheetState(
+            initialValue = SheetValue.Hidden,
+            enabledValues = if (expandFully) setOf(SheetValue.Hidden, SheetValue.Expanded) else setOf(SheetValue.Hidden, SheetValue.PartiallyExpanded, SheetValue.Expanded),
             confirmValueChange = remember {
                 { it != SheetValue.Hidden || canDismiss.value || dismissing.value }
             },

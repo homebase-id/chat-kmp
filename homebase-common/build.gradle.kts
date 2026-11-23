@@ -126,6 +126,8 @@ kotlin {
 
         commonMain.dependencies {
             api(project(":homebase-api"))
+            implementation(libs.androidx.navigationevent)
+            implementation(libs.androidx.navigationevent.compose)
             api(project(":homebase-notifshared"))
 
             implementation(libs.atomicfu)

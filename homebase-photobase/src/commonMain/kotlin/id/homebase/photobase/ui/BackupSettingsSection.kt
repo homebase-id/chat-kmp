@@ -197,7 +197,6 @@ fun BackupSettingsSection(
     }
     uiState.batteryGuidance?.let { guidance ->
         ListItem(
-            headlineContent = { Text(stringResource(MR.string.photobase_battery_title)) },
             supportingContent = {
                 Column {
                     Text(stringResource(MR.string.photobase_battery_body))
@@ -210,7 +209,7 @@ fun BackupSettingsSection(
                     }
                 }
             },
-        )
+        ) { Text(stringResource(MR.string.photobase_battery_title)) }
     }
     Text(
         text = stringResource(MR.string.photobase_backup_guidance),
@@ -249,11 +248,10 @@ private fun BackUpNowDialog(onDismiss: () -> Unit, onStart: (recheckDrive: Boole
         title = { Text(stringResource(MR.string.photobase_backup_now)) },
         text = {
             ListItem(
-                headlineContent = { Text(stringResource(MR.string.photobase_refresh_status)) },
                 supportingContent = { Text(stringResource(MR.string.photobase_refresh_status_desc)) },
                 trailingContent = { Switch(checked = recheckDrive, onCheckedChange = null) },
                 modifier = Modifier.toggleable(value = recheckDrive, role = Role.Switch) { recheckDrive = it },
-            )
+            ) { Text(stringResource(MR.string.photobase_refresh_status)) }
         },
         confirmButton = {
             TextButton(onClick = { onStart(recheckDrive) }) { Text(stringResource(MR.string.photobase_backup_now_start)) }
@@ -269,27 +267,25 @@ private fun LibraryAccessRow(access: LibraryAccess, onChanged: () -> Unit) {
     if (access == LibraryAccess.Full) return
     val requester = rememberBackupLibraryAccess(onChanged)
     ListItem(
-        headlineContent = {
-            Text(
-                stringResource(if (access == LibraryAccess.None) MR.string.photobase_library_none else MR.string.photobase_library_limited),
-            )
-        },
         supportingContent = {
             Button(onClick = requester) {
                 Text(stringResource(if (access == LibraryAccess.None) MR.string.photobase_library_allow else MR.string.photobase_library_allow_all))
             }
         },
-    )
+    ) {
+            Text(
+                stringResource(if (access == LibraryAccess.None) MR.string.photobase_library_none else MR.string.photobase_library_limited),
+            )
+        }
 }
 
 @Composable
 private fun PhotoLocationRow(onAllow: () -> Unit) {
     ListItem(
-        headlineContent = { Text(stringResource(MR.string.photobase_location_withheld)) },
         supportingContent = {
             Button(onClick = onAllow) { Text(stringResource(MR.string.photobase_location_allow)) }
         },
-    )
+    ) { Text(stringResource(MR.string.photobase_location_withheld)) }
 }
 
 @Composable
@@ -314,18 +310,16 @@ private fun AlbumsDialog(uiState: BackupSettingsUiState, onDismiss: () -> Unit, 
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 ListItem(
                     modifier = Modifier.selectable(selected = selected.isEmpty(), role = Role.Checkbox) { selected = emptySet() },
-                    headlineContent = { Text(stringResource(MR.string.photobase_backup_albums_default)) },
                     leadingContent = { Checkbox(checked = selected.isEmpty(), onCheckedChange = null) },
-                )
+                ) { Text(stringResource(MR.string.photobase_backup_albums_default)) }
                 for (album in uiState.albums) {
                     val isSelected = album.id in selected
                     ListItem(
                         modifier = Modifier.selectable(selected = isSelected, role = Role.Checkbox) {
                             selected = if (isSelected) selected - album.id else selected + album.id
                         },
-                        headlineContent = { Text(album.name) },
                         leadingContent = { Checkbox(checked = isSelected, onCheckedChange = null) },
-                    )
+                    ) { Text(album.name) }
                 }
             }
         },

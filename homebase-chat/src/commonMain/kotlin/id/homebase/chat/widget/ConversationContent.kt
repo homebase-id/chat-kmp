@@ -73,7 +73,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -1849,7 +1850,7 @@ fun ConversationContentSheets(
         }
 
         is MessageListUiSheet.ForwardMessage -> {
-            val sheetState = rememberModalBottomSheetState()
+            val sheetState = rememberBottomSheetState(SheetValue.Hidden)
             val scope = rememberCoroutineScope()
 
             val filteredRecipients = remember(sheet.searchTextState.text) {
@@ -1940,7 +1941,7 @@ private fun PinnedMessagesSheet(
     pinnedMessages: ImmutableList<MessageUiModel>,
     onUiAction: (ConversationListUiAction) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberBottomSheetState(SheetValue.Hidden)
     ModalBottomSheet(
         onDismissRequest = { onUiAction(ConversationListUiAction.DismissSheet) },
         sheetState = sheetState,
@@ -2019,7 +2020,7 @@ fun ConnectIdentitiesSheet(
     onDismiss: () -> Unit,
     onConnect: (OdinId) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberBottomSheetState(SheetValue.Hidden)
     val scrollState = rememberScrollState()
 
     ModalBottomSheet(
