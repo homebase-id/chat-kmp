@@ -144,7 +144,10 @@ internal fun ArticleWebContent(
                     when (action) {
                         FeedUiAction.PageStarted -> isLoading = true
                         FeedUiAction.PageFinished -> isLoading = false
-                        is FeedUiAction.PageError -> viewModel.onPageError(action.message)
+                        is FeedUiAction.PageError -> {
+                            isLoading = false
+                            viewModel.onPageError(action.message)
+                        }
                         FeedUiAction.RetryClicked -> Unit
                     }
                 },
