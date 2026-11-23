@@ -25,6 +25,6 @@ internal fun NavController.openApp(route: Route, tabs: List<Route>) {
         switchTab(route, tabs)
         return
     }
-    while (currentBackStackEntry?.destination is FloatingWindow && popBackStack()) Unit
+    while (currentBackStackEntry?.destination is FloatingWindow && popBackStack()) { }
     navigate(route) { launchSingleTop = true }
 }

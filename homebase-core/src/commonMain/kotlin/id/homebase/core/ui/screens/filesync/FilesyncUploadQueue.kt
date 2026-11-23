@@ -21,6 +21,7 @@ import io.github.vinceglb.filekit.size
 import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -54,7 +55,9 @@ class FilesyncUploadQueue(
 
     // Everything one identity started; cancelled and joined at sign-out before its state is cleared.
     @Volatile
-    private var work = SupervisorJob(scope.coroutineContext.job)
+    private var work = newWork()
+
+    private fun newWork() = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext.job))
 
     private val _uploads = MutableStateFlow<List<FilesyncUpload>>(emptyList())
     val uploads: StateFlow<List<FilesyncUpload>> = _uploads.asStateFlow()
@@ -87,7 +90,7 @@ class FilesyncUploadQueue(
 
     /** Each file is queued as soon as it's ready, so the first upload doesn't wait for the whole pick to be copied; the result is how many were queued, once every file has been copied. */
     fun add(parentId: Uuid, files: List<PlatformFile>, peer: FilesyncPeerTarget? = null): Deferred<Int> =
-        scope.async(work) {
+        work.async {
             var queued = 0
             for (file in files) {
                 val picked = try {
@@ -131,7 +134,7 @@ class FilesyncUploadQueue(
     }
 
     fun createFolder(parentId: Uuid, requestedName: String) {
-        scope.launch(work) {
+        work.launch {
             reporting(FilesyncError.FolderFailed, "creating a folder in $parentId") {
                 // Listed fresh: a folder isn't part of an upload batch.
                 val name = namingLock.withLock {
@@ -147,8 +150,8 @@ class FilesyncUploadQueue(
 
     /** Drops every upload at sign-out: they belong to the identity that picked them. */
     private suspend fun reset() {
-        work.cancelAndJoin()
-        work = SupervisorJob(scope.coroutineContext.job)
+        work.coroutineContext.job.cancelAndJoin()
+        work = newWork()
         _uploads.value.forEach { if (it.file.ownedCopy) repository.discard(it.file.path) }
         _uploads.value = emptyList()
         peerTargets.value = emptyMap()
@@ -160,7 +163,7 @@ class FilesyncUploadQueue(
 
     private fun startWorker() {
         val queue = pending
-        scope.launch(work) {
+        work.launch {
             for (id in queue) {
                 val upload = _uploads.value.firstOrNull { it.id == id } ?: continue
                 reporting(FilesyncError.UploadFailed, "upload $id", onFailure = { updateUpload(id) { it.copy(failed = true, progress = null) } }) {

@@ -47,7 +47,7 @@ data class ContactCardReview(
     }
 
     fun toggle(index: Int): ContactCardReview = fields.getOrNull(index)
-        ?.let { copy(fields = fields.set(index, it.copy(selected = !it.selected))) }
+        ?.let { copy(fields = fields.replacingAt(index, it.copy(selected = !it.selected))) }
         ?: this
 
     // Null when the review never offered the field, so a value it doesn't model — an odinId that

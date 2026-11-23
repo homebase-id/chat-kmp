@@ -624,7 +624,7 @@ internal fun ProfileCardEditorContent(
                     }
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         // Occluded by the opaque column above it: the host only has to be attached for the snapshot.
-                        if (capturing && host != null && !isDesktopOrWeb()) {
+                        if (capturing && !isDesktopOrWeb()) {
                             CardHostView(
                                 host = host,
                                 modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),

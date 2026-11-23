@@ -416,8 +416,6 @@ internal fun FeedTimelineList(
             verticalArrangement = Arrangement.spacedBy(feedPostGap(wide)),
         ) {
             items(uiState.posts, key = { it.id.toString() }) { post ->
-                // Read `channels` so the row recomposes when definitions arrive.
-                channels
                 val author = post.originalAuthor ?: post.senderOdinId
                 // The full PostDetail screen is reserved for long-form Articles; a tweet/media post stays inline.
                 val isArticle = post.type == PostType.Article
@@ -430,7 +428,7 @@ internal fun FeedTimelineList(
                     modifier = Modifier.animateItem().feedPostCard(wide),
                     post = post,
                     displayName = displayName,
-                    channelName = channelNameFor(post.channelId),
+                    channelName = remember(channels, post.channelId) { channelNameFor(post.channelId) },
                     isPublic = isPublicChannel(post.channelId),
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
                     // ponytail: post composer disabled for now. PostCard hides the repost button + overflow Edit

@@ -74,7 +74,7 @@ internal fun CardOverview(
     val fontScale = LocalDensity.current.fontScale
     Box(modifier) {
         // Occluded by the opaque grid: the host only has to be attached for the snapshot. Desktop and web export the still from the page.
-        if (capturing && host != null && !isDesktopOrWeb()) {
+        if (capturing && !isDesktopOrWeb()) {
             CardHostView(
                 host = host,
                 modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
