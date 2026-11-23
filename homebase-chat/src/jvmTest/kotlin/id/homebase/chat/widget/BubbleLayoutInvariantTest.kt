@@ -279,6 +279,7 @@ class BubbleLayoutInvariantTest {
                 onLongClick = {},
                 onMediaClick = {},
                 onClickMessageId = {},
+                onClickReply = {},
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 downloadingFiles = emptySet(),
@@ -952,6 +953,7 @@ class BubbleLayoutInvariantTest {
                         onMarkAsRead = {},
                         onMediaClick = {},
                         onClickMessageId = {},
+                        onClickReply = {},
                         downloadingFiles = emptySet(),
                     )
                 }

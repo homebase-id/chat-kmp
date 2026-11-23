@@ -16,9 +16,28 @@ plugins {
     alias(libs.plugins.buildConfigPlugin) apply false
 }
 
+// Robolectric would otherwise download these at test time into ~/.m2, outside Gradle's cache; one per SDK level the tests run on (34, 36).
+// One configuration each: same module with two versions would be conflict-resolved down to one jar.
+val robolectricAndroidAll = listOf("14-robolectric-10818077-i7", "16-robolectric-13921718-i7").map { version ->
+    configurations.create("robolectricAndroidAll${version.substringBefore('-')}").also {
+        dependencies.add(it.name, "org.robolectric:android-all-instrumented:$version")
+    }
+}
+val robolectricJarsDir = layout.buildDirectory.dir("robolectric-android-all")
+val syncRobolectricJars by tasks.registering(Sync::class) {
+    robolectricAndroidAll.forEach { from(it) }
+    into(robolectricJarsDir)
+}
+
 subprojects {
     tasks.withType<Test>().configureEach {
         systemProperty("homebase.secureStorage", "file")
+    }
+
+    tasks.withType<Test>().matching { it.name == "testAndroidHostTest" || it.name.endsWith("UnitTest") }.configureEach {
+        dependsOn(syncRobolectricJars)
+        systemProperty("robolectric.offline", "true")
+        systemProperty("robolectric.dependency.dir", robolectricJarsDir.get().asFile.path)
     }
 
     configurations.all {

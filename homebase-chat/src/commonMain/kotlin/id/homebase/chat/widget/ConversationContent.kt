@@ -1645,6 +1645,7 @@ fun ConversationContent(
 
                         UnifiedInputBubble(
                             replyToMessage = uiState.replyToMessage,
+                            replyToPayloadKey = uiState.replyToPayloadKey,
                             onDismissReply = {
                                 onUiAction(ConversationListUiAction.CancelReplyToMessage)
                             },

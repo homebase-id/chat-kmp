@@ -385,6 +385,7 @@ class ViewOnceShotsTest {
                         onLongClick = {},
                         onMediaClick = {},
                         onClickMessageId = {},
+                        onClickReply = {},
                         sharedTransitionScope = null,
                         animatedVisibilityScope = null,
                         downloadingFiles = emptySet(),

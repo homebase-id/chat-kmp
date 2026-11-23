@@ -190,7 +190,7 @@ sealed interface ConversationListUiAction {
     data class IntroduceEveryone(val conversationId: Uuid) : ConversationListUiAction
     data class ShowContactInfo(val odinId: String) : ConversationListUiAction
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
-    data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
+    data class ReplyToMessage(val message: MessageUiModel, val payloadKey: String? = null) : ConversationListUiAction
     data class BattleDiceRoll(val message: MessageUiModel) : ConversationListUiAction
     data object CancelBattleDiceRoll : ConversationListUiAction
     data class ForwardMessage(val message: MessageUiModel) : ConversationListUiAction
@@ -268,7 +268,7 @@ sealed interface ConversationListUiAction {
      * surface: a typed-content target like an Event opens its detail dialog,
      * everything else falls back to [ScrollToMessageId].
      */
-    data class OpenReplyTarget(val messageId: Uuid) : ConversationListUiAction
+    data class OpenReplyTarget(val messageId: Uuid, val payloadKey: String? = null) : ConversationListUiAction
 
     /** Dismiss the host-level Event detail dialog opened from a reply target. */
     data object DismissEventDetailFromReply : ConversationListUiAction

@@ -42,6 +42,7 @@ import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.chat.services.renderer.toMessageDataType
+import id.homebase.chat.widget.quotedGalleryItem
 import id.homebase.chat.widget.replyQuoteConversationMediaPayloads
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.time.UnixTimeUtc
@@ -269,6 +270,7 @@ internal class MessageActionsHandler(
                 replyToMessage(
                     conversationId = action.conversationId,
                     replyTo = replyTo,
+                    replyToPayloadKey = messagesUiState.value.replyToPayloadKey,
                     content = content,
                     payloadRenderers = action.payloadRenderers,
                 )
@@ -299,7 +301,8 @@ internal class MessageActionsHandler(
                         it.copy(
                             isEditingMessageId = action.messageId,
                             isEditingVersionTag = action.versionTag,
-                            replyToMessage = null
+                            replyToMessage = null,
+                            replyToPayloadKey = null,
                         )
                     }
                     messageInputTextState.applyMarkDownContent(message.content)
@@ -404,6 +407,8 @@ internal class MessageActionsHandler(
                             )
                         )
                     }
+                } else if (target?.quotedGalleryItem(action.payloadKey) != null) {
+                    dispatch(ConversationListUiAction.MediaClicked(target, action.payloadKey!!))
                 } else {
                     dispatch(ConversationListUiAction.ScrollToMessageId(action.messageId))
                 }
@@ -610,6 +615,7 @@ internal class MessageActionsHandler(
             content = action.message.trimEnd(),
             files = action.attachments,
             replyTo = replyTo,
+            replyToPayloadKey = messagesUiState.value.replyToPayloadKey.takeIf { replyTo != null },
             viewOnce = action.viewOnce,
         )
         // Input is cleared inside addMessageWithFiles after
@@ -617,7 +623,7 @@ internal class MessageActionsHandler(
     }
 
     fun handleReplyToMessage(action: ConversationListUiAction.ReplyToMessage) {
-        messagesUiState.update { it.copy(replyToMessage = action.message) }
+        messagesUiState.update { it.copy(replyToMessage = action.message, replyToPayloadKey = action.payloadKey) }
     }
 
     fun handleBattleDiceRoll(action: ConversationListUiAction.BattleDiceRoll) {
@@ -736,7 +742,7 @@ internal class MessageActionsHandler(
                         attachmentCount = attachments.size,
                         sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
                     ) { messageId, targetId ->
-                        bundleAndSend(messageId, targetId, text, readable, replyTo = null, sentAt = sentAt, viewOnce = picker.viewOnce)
+                        bundleAndSend(messageId, targetId, text, readable, replyTo = null, replyToPayloadKey = null, sentAt = sentAt, viewOnce = picker.viewOnce)
                     }
                 }
                 if (opened == null) sendEvent(ShowInfoMessage(MR.string.chat_send_to_sent))
@@ -761,7 +767,7 @@ internal class MessageActionsHandler(
     }
 
     fun handleCancelReplyToMessage() {
-        messagesUiState.update { it.copy(replyToMessage = null) }
+        messagesUiState.update { it.copy(replyToMessage = null, replyToPayloadKey = null) }
     }
 
     fun handleShowReactionDetails(action: ConversationListUiAction.ShowReactionDetails) {
@@ -856,6 +862,7 @@ internal class MessageActionsHandler(
         content: String,
         files: List<AttachmentPendingFile>,
         replyTo: MessageUiModel? = null,
+        replyToPayloadKey: String? = null,
         // Slow work that runs under the "Preparing…" placeholder instead of delaying it.
         prepare: suspend (List<AttachmentInput>) -> List<AttachmentInput> = { it },
         viewOnce: Boolean = false,
@@ -931,7 +938,7 @@ internal class MessageActionsHandler(
                 text = if (viewOnce) "" else content,
                 attachmentCount = files.size,
                 sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
-                replyPreview = replyTo?.toReplyPreview(),
+                replyPreview = replyTo?.toReplyPreview(replyToPayloadKey),
             )
 
             // Register the placeholder, register upload progress, clear the
@@ -942,6 +949,7 @@ internal class MessageActionsHandler(
                     fullScreenOverlay = null,
                     isSendingMessage = false,
                     replyToMessage = if (replyTo != null) null else state.replyToMessage,
+                    replyToPayloadKey = if (replyTo != null) null else state.replyToPayloadKey,
                     // Closing fullScreenOverlay remounts ConversationContent with the
                     // placeholder already present, so its layout-growth auto-follow can't
                     // see growth. This token tells the freshly-mounted list to follow our
@@ -966,7 +974,7 @@ internal class MessageActionsHandler(
                             }
                         }
                         fileOperationsProvider.withReadableImages(prepared) { readable ->
-                            bundleAndSend(newMessageId, conversationId, content, readable, replyTo, sentAt, viewOnce)
+                            bundleAndSend(newMessageId, conversationId, content, readable, replyTo, replyToPayloadKey, sentAt, viewOnce)
                         }
                     }
                     jumpToLatestAfterOwnSend(conversationId)
@@ -981,7 +989,10 @@ internal class MessageActionsHandler(
                         tag = TAG
                     ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
                     messagesUiState.update { state ->
-                        state.copy(replyToMessage = replyTo ?: state.replyToMessage)
+                        state.copy(
+                            replyToMessage = replyTo ?: state.replyToMessage,
+                            replyToPayloadKey = if (replyTo != null) replyToPayloadKey else state.replyToPayloadKey,
+                        )
                     }
                     sendEvent(
                         // Fail soft: a disposable pre-encryption source was swept/evicted (or its
@@ -1103,7 +1114,7 @@ internal class MessageActionsHandler(
                     sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
                 ) { messageId, targetId ->
                     pendingMessageId = messageId
-                    bundleAndSend(messageId, targetId, text, attachments, replyTo = null, sentAt = sentAt, viewOnce = false)
+                    bundleAndSend(messageId, targetId, text, attachments, replyTo = null, replyToPayloadKey = null, sentAt = sentAt, viewOnce = false)
                 }
             }
         } catch (e: CancellationException) {
@@ -1143,6 +1154,7 @@ internal class MessageActionsHandler(
         content: String,
         attachments: List<AttachmentInput>,
         replyTo: MessageUiModel?,
+        replyToPayloadKey: String?,
         sentAt: UnixTimeUtc,
         viewOnce: Boolean,
     ) {
@@ -1155,7 +1167,7 @@ internal class MessageActionsHandler(
             conversationId = conversationId,
             text = content,
             attachments = attachments,
-            replyTo = replyTo?.toReplyPreview(),
+            replyTo = replyTo?.toReplyPreview(replyToPayloadKey),
             sentAt = sentAt,
             fileOperationsProvider = fileOperationsProvider,
             quality = userPreferences.sendQuality(SendQualityApp.Chat),
@@ -1295,6 +1307,7 @@ internal class MessageActionsHandler(
     private fun replyToMessage(
         conversationId: Uuid,
         replyTo: MessageUiModel,
+        replyToPayloadKey: String?,
         content: String,
         payloadRenderers: List<PayloadRenderer> = emptyList(),
     ) {
@@ -1315,7 +1328,7 @@ internal class MessageActionsHandler(
                     chatMessageSenderService.replyToMessage(
                         messageUniqueId = newMessageId,
                         conversationId = conversationId,
-                        replyTo = replyTo.toReplyPreview(),
+                        replyTo = replyTo.toReplyPreview(replyToPayloadKey),
                         messageText = content,
                         previousMessageUniqueId = null,
                         payloadBundle = payloadBundle,
@@ -1323,7 +1336,7 @@ internal class MessageActionsHandler(
                     )
                 }
                 clearComposerDraft(conversationId)
-                messagesUiState.update { it.copy(replyToMessage = null) }
+                messagesUiState.update { it.copy(replyToMessage = null, replyToPayloadKey = null) }
                 jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
@@ -1361,18 +1374,22 @@ internal class MessageActionsHandler(
     }
 }
 
-internal fun MessageUiModel.toReplyPreview(): ReplyPreview {
+internal fun MessageUiModel.toReplyPreview(payloadKey: String? = null): ReplyPreview {
     val viewOnce = messageContent as? MessageContent.ViewOnce
+    val item = quotedGalleryItem(payloadKey)?.payload
     return ReplyPreview(
         replyUniqueId = id,
         authorOdinId = originalAuthor?.domainName ?: "null",
         // The kind word only: a view-once descriptor carries the caption and its media must never be quoted.
         // Trim before truncate: leading newlines would otherwise render as a bare "…" in the quote.
         message = viewOnce?.displayLabel ?: content.trim().truncateToCodePoints(80),
-        previewThumbnail = previewThumbnail.takeIf {
-            replyQuoteConversationMediaPayloads().firstOrNull()?.isVisualMedia() == true
+        previewThumbnail = if (item != null) {
+            item.takeIf { it.isVisualMedia() }?.previewThumbnail?.toEmbeddedThumb()
+        } else {
+            previewThumbnail.takeIf { replyQuoteConversationMediaPayloads().firstOrNull()?.isVisualMedia() == true }
         },
         context = (messageContent as? MessageContent.Event)?.descriptor
             ?.let { ReplyContext.event(it.startUtcMs) },
+        payloadKey = item?.key,
     )
 }

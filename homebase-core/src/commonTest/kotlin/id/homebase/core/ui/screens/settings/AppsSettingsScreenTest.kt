@@ -18,9 +18,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsUi
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsUiAction
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsUiState
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsUi
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsUiAction
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsUiState
@@ -92,8 +89,7 @@ class AppsSettingsScreenTest {
             MaterialTheme {
                 when (page) {
                     0 -> FeedSettingsUi(FeedSettingsUiState(useNativeFeed = true), { seen += it }, {})
-                    1 -> FilesyncSettingsUi(FilesyncSettingsUiState(iconVisible = true), { seen += it }, {})
-                    else -> CallsSettingsUi(CallsSettingsUiState(enabled = false), { seen += it }, {})
+                    else -> FilesyncSettingsUi(FilesyncSettingsUiState(iconVisible = true), { seen += it }, {})
                 }
             }
         }
@@ -101,14 +97,11 @@ class AppsSettingsScreenTest {
         tap("feedIconToggle")
         page = 1
         tap("filesyncIconToggle")
-        page = 2
-        tap("callsBetaToggle")
         assertEquals(
             listOf(
                 FeedSettingsUiAction.SetUseNativeFeed(false),
                 FeedSettingsUiAction.SetIconVisible(false),
                 FilesyncSettingsUiAction.SetIconVisible(false),
-                CallsSettingsUiAction.SetEnabled(true),
             ),
             seen,
         )
@@ -153,7 +146,7 @@ class AppsSettingsScreenTest {
                     1 -> FeedSettingsUi(FeedSettingsUiState(), {}, {}, onOpenFeed = { fired += "open feed" })
                     2 -> FilesyncSettingsUi(FilesyncSettingsUiState(), {}, {}, onOpenDrive = { fired += "open drive" })
                     3 -> WebDropSettingsUi(onBack = {}, onOpenWebDrop = { fired += "open webdrop" })
-                    else -> CallsSettingsUi(CallsSettingsUiState(enabled = true), {}, {}, onOpenCalls = { fired += "open calls" })
+                    else -> CallsSettingsUi(onBack = {}, onOpenCalls = { fired += "open calls" })
                 }
             }
         }
@@ -169,11 +162,5 @@ class AppsSettingsScreenTest {
     fun chatCantLeaveTheNavigationBar() = runComposeUiTest {
         setContent { MaterialTheme { ChatSettingsUi(ChatSettingsUiState(), {}, onBack = {}, onOpenChat = {}) } }
         onNodeWithTag("chatIconToggle").assertIsOn().assertIsNotEnabled()
-    }
-
-    @Test
-    fun callsOffHaveNothingToOpen() = runComposeUiTest {
-        setContent { MaterialTheme { CallsSettingsUi(CallsSettingsUiState(enabled = false), {}, {}, onOpenCalls = null) } }
-        onNodeWithTag("callsOpenButton").assertDoesNotExist()
     }
 }
