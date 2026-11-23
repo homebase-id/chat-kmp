@@ -79,3 +79,45 @@ class RingbackToneTest {
         assertEquals(44 + 8_000 * 6 * 2, wav.size)
     }
 }
+
+class JvmRingbackToneTest {
+    private class FakeClip(val failOnLoop: Boolean) {
+        @Volatile var closed = false
+        val clip: javax.sound.sampled.Clip = java.lang.reflect.Proxy.newProxyInstance(
+            javax.sound.sampled.Clip::class.java.classLoader,
+            arrayOf(javax.sound.sampled.Clip::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "loop" -> if (failOnLoop) error("loop failed")
+                "close" -> closed = true
+            }
+            when (method.returnType) {
+                Boolean::class.javaPrimitiveType -> false
+                Int::class.javaPrimitiveType -> 0
+                Long::class.javaPrimitiveType -> 0L
+                else -> null
+            }
+        } as javax.sound.sampled.Clip
+    }
+
+    @Test
+    fun clipThatFailsToLoopIsClosed() {
+        val fake = FakeClip(failOnLoop = true)
+        JvmRingbackTone { fake.clip }.start()
+        kotlin.test.assertTrue(fake.closed)
+    }
+
+    @Test
+    fun concurrentStartsCreateOneClip() {
+        val created = java.util.concurrent.atomic.AtomicInteger()
+        val tone = JvmRingbackTone {
+            created.incrementAndGet()
+            Thread.sleep(20)
+            FakeClip(failOnLoop = false).clip
+        }
+        val threads = List(8) { Thread { tone.start() } }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        assertEquals(1, created.get())
+    }
+}
