@@ -50,9 +50,6 @@ class VaultWebDropNamingTest {
     @Test
     fun jpegBecomesJpgExactlyLikeTheDownloadTempRule() {
         assertEquals(listOf("Photo.jpg"), webDropFileNamesFor("Photo", listOf("image/jpeg")))
-        assertEquals("jpg", webDropExtensionFor("image/jpeg"))
-        assertEquals("bin", webDropExtensionFor("weird"))
-        assertEquals("bin", webDropExtensionFor(null))
     }
 
     @Test

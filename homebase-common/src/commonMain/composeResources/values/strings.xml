@@ -3345,13 +3345,10 @@
     <string name="filesync_make_private">Click to change your Filesync drive to true zero knowledge encryption</string>
     <string name="filesync_sign_in_again_title">Sign in again to open your files</string>
     <string name="filesync_sign_in_again_body">Drive is now private, and this device needs one more sign-in to get its key. Nothing on this device is deleted.</string>
-    <string name="settings_calls_beta">Voice and video calls (beta)</string>
-    <string name="settings_calls_beta_desc">Experimental and may crash. Restart the app to apply.</string>
     <string name="settings_filesync_icon_desc">Show Drive in the navigation bar</string>
     <string name="vault_save_to">Save to Vault</string>
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
-    <string name="vault_chat_image_name">Chat image, %1$s</string>
     <string name="email_locked_title">Email is locked</string>
     <string name="email_locked_unlock">Unlock</string>
     <string name="email_make_private">Click to change your Email drive to true zero knowledge encryption</string>
@@ -3533,8 +3530,8 @@
     <string name="photobase_settings_open">Open Photos</string>
     <string name="photobase_settings_in_testing">Photos is still being tested. Turn it on in the Developer menu to try it.</string>
     <string name="webdrop_settings_open">Open WebDrop</string>
-    <string name="location_settings_open">Open Location</string>
     <string name="calls_settings_open">Open Calls</string>
+    <string name="location_settings_open">Open Location</string>
     <string name="settings_not_working">%1$s (not working)</string>
     <string name="settings_send_photo_standard_desc">Up to 2048 pixels. Sends quickly and keeps screenshots readable.</string>
     <string name="settings_send_photo_hd_desc">Up to 4096 pixels. Stays sharp when zoomed.</string>
