@@ -1,7 +1,7 @@
 package id.homebase.core.ui.navigation
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.MutableTransitionState
@@ -97,7 +97,9 @@ internal inline fun <reified T : Any> NavGraphBuilder.paneDestination(
             )
         }
     } else {
-        composable<T>(enterTransition = enterTransition, popExitTransition = popExitTransition) { CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) { content() } }
+        composable<T>(enterTransition = enterTransition, popExitTransition = popExitTransition) {
+            CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) { content() }
+        }
     }
 }
 
