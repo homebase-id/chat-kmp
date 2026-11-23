@@ -23,9 +23,10 @@
   function renderFirstPage(bytes, maxWidth) {
     return lib().then(function (pdfjs) {
       var task = pdfjs.getDocument({ data: bytes, isEvalSupported: false });
+      // Destroying the task, not only the document, also ends its worker when loading fails.
       return task.promise.then(function (doc) {
         var pageCount = doc.numPages;
-        if (pageCount < 1) return doc.destroy().then(function () { return null; });
+        if (pageCount < 1) return null;
         return doc.getPage(1).then(function (page) {
           var base = page.getViewport({ scale: 1 });
           var viewport = page.getViewport({ scale: maxWidth / base.width });
@@ -44,8 +45,8 @@
           }).then(function (buf) {
             return { jpeg: new Uint8Array(buf), pageCount: pageCount };
           });
-        }).finally(function () { return doc.destroy(); });
-      });
+        });
+      }).finally(function () { return task.destroy(); });
     });
   }
 
