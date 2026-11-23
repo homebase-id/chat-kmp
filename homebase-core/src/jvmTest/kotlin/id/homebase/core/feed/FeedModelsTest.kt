@@ -115,8 +115,12 @@ class FeedModelsTest {
         ),
     ).toFeedPostItem()!!
 
-    private fun articleSummary(type: PostType = PostType.Article, abstract: String? = null, body: String? = null) =
-        article(type = type, abstract = abstract, body = body).articleSummary
+    private val richBody = """[
+        {"type":"h1","children":[{"text":"Heading"}]},
+        {"type":"paragraph","children":[{"text":"First "},{"text":"para","bold":true}]},
+        {"type":"blockquote","children":[{"text":"Quoted"}]},
+        {"type":"ul","children":[{"type":"li","children":[{"text":"Apples"}]},{"type":"li","children":[{"text":"Pears"}]}]}
+    ]"""
 
     @Test
     fun articleHeader_isTheOwnImagePayload() {
@@ -135,27 +139,20 @@ class FeedModelsTest {
         assertNull(article(type = PostType.Media, primaryMediaFile = hero).articleHeader)
     }
 
-    private val richBody = """[
-        {"type":"h1","children":[{"text":"Heading"}]},
-        {"type":"paragraph","children":[{"text":"First "},{"text":"para","bold":true}]},
-        {"type":"blockquote","children":[{"text":"Quoted"}]},
-        {"type":"ul","children":[{"type":"li","children":[{"text":"Apples"}]},{"type":"li","children":[{"text":"Pears"}]}]}
-    ]"""
-
     @Test
     fun articleSummary_prefersTheAbstract() {
-        assertEquals("The abstract", articleSummary(abstract = "  The abstract ", body = richBody))
+        assertEquals("The abstract", article(abstract = "  The abstract ", body = richBody).articleSummary)
     }
 
     @Test
     fun articleSummary_withoutAbstract_isTheBodyOpeningWithoutHeadingsOrQuotes() {
-        assertEquals("First para Apples Pears", articleSummary(abstract = " ", body = richBody))
+        assertEquals("First para Apples Pears", article(abstract = " ", body = richBody).articleSummary)
     }
 
     @Test
     fun articleSummary_nullWhenNothingToShowOrNotAnArticle() {
-        assertNull(articleSummary())
-        assertNull(articleSummary(type = PostType.Media, abstract = "The abstract"))
+        assertNull(article().articleSummary)
+        assertNull(article(type = PostType.Media, abstract = "The abstract").articleSummary)
     }
 
     @Test

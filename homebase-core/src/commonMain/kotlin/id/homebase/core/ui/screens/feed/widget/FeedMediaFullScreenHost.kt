@@ -19,7 +19,6 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import kotlin.time.Instant
-import kotlin.uuid.Uuid
 
 // A SharedTransitionLayout + AnimatedContent that SWAPS the screen for the viewer, which is what supplies the
 // scopes the shared chat viewers require. Because the swap disposes [content], any scroll state that must
@@ -74,8 +73,6 @@ internal fun FeedMediaFullScreenHost(
     }
 }
 
-// Drive resolution mirrors PostMedia: a received post (senderOdinId + globalTransitId + a parseable channel
-// alias) points at the author's channel drive over peer; our own posts stay local on [FeedPostItem.driveId].
 internal fun feedMediaOverlay(
     post: FeedPostItem,
     index: Int,
@@ -85,22 +82,18 @@ internal fun feedMediaOverlay(
         .filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
     val payload = mediaPayloads.getOrNull(index) ?: return null
 
-    val channelDriveAlias = runCatching { Uuid.parse(post.channelId) }.getOrNull()
-    val isPeerMedia = post.senderOdinId != null &&
-        post.globalTransitId != null &&
-        channelDriveAlias != null
-    val driveId = channelDriveAlias?.takeIf { isPeerMedia } ?: post.driveId
+    val source = post.mediaSource()
 
     return if (payload.isVideo()) {
         FullScreenOverlay.VideoPlayerData(
             fileId = post.fileId,
-            driveId = driveId,
+            driveId = source.driveId,
             payloadKey = payload.key,
             keyHeader = post.keyHeader,
             payload = payload,
             isEncrypted = post.isEncrypted,
-            remoteOdinId = post.senderOdinId?.takeIf { isPeerMedia },
-            globalTransitId = post.globalTransitId?.takeIf { isPeerMedia },
+            remoteOdinId = source.remoteOdinId,
+            globalTransitId = source.globalTransitId,
         )
     } else {
         FullScreenOverlay.ViewMessageData(
@@ -109,13 +102,13 @@ internal fun feedMediaOverlay(
             userDate = Instant.fromEpochMilliseconds(post.userDateMs),
             content = post.caption,
             fileId = post.fileId,
-            driveId = driveId,
+            driveId = source.driveId,
             payloads = mediaPayloads,
             keyHeader = post.keyHeader,
             selectedPayloadKey = payload.key,
             isEncrypted = post.isEncrypted,
-            remoteOdinId = post.senderOdinId?.takeIf { isPeerMedia },
-            globalTransitId = post.globalTransitId?.takeIf { isPeerMedia },
+            remoteOdinId = source.remoteOdinId,
+            globalTransitId = source.globalTransitId,
         )
     }
 }

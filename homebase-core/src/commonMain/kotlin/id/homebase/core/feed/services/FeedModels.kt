@@ -166,10 +166,12 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     )
 }
 
+private val primaryMediaKinds = setOf("image", "video")
+
 // Media on another file would need that file's own payload descriptor, so only this file's payloads count.
 internal fun HomebaseFile.ownPrimaryMedia(content: PostContent): PayloadDescriptor? {
     val media = content.primaryMediaFile ?: return null
-    if (media.type.substringBefore('/').lowercase() !in setOf("image", "video")) return null
+    if (media.type.substringBefore('/').lowercase() !in primaryMediaKinds) return null
     val mediaFileId = media.fileId?.ifBlank { null }
     if (mediaFileId != null && !mediaFileId.replace("-", "").equals(fileId.toHexString(), ignoreCase = true)) {
         return null

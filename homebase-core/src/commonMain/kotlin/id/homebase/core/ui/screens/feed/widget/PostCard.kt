@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,7 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -50,6 +53,7 @@ import id.homebase.core.feed.services.authorOdinId
 import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
 import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
+import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.ui.screens.moments.widget.feedMediaMaxHeight
 import id.homebase.core.util.formatTimestamp
@@ -71,12 +75,8 @@ import kotlin.uuid.Uuid
 import kotlin.time.Instant
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_encrypted
-import id.homebase.resources.feed_view_all_comments
 import id.homebase.resources.feed_open_article
-import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.foundation.layout.aspectRatio
+import id.homebase.resources.feed_view_all_comments
 import org.jetbrains.compose.resources.stringResource
 
 private const val DOUBLE_TAP_EMOJI = "❤️"
@@ -478,12 +478,11 @@ private fun PostLinkPreview(
     )
 }
 
-private class PostMediaSource(val driveId: Uuid, val remoteOdinId: OdinId?, val globalTransitId: Uuid?)
+internal class PostMediaSource(val driveId: Uuid, val remoteOdinId: OdinId?, val globalTransitId: Uuid?)
 
-// A followed identity's media lives on the author's drive, so a received post (non-null senderOdinId) reads
-// over peer by globalTransitId from the author's CHANNEL drive (post.channelId), not the local feed drive; our
-// own posts stay on the local driveId.
-private fun FeedPostItem.mediaSource(): PostMediaSource {
+// A followed identity's media lives on the author's channel drive, so a received post (non-null senderOdinId)
+// reads over peer by globalTransitId; our own posts stay on the local driveId.
+internal fun FeedPostItem.mediaSource(): PostMediaSource {
     val channelDriveAlias = runCatching { Uuid.parse(channelId) }.getOrNull()
     val sender = senderOdinId
     val gtid = globalTransitId
