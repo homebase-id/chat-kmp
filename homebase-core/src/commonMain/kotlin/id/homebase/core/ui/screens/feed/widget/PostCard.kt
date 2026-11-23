@@ -45,6 +45,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
+import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.authorOdinId
 import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
@@ -134,42 +135,50 @@ fun PostCard(
             )
         }
 
-        // Drop a caption that is nothing but the URL the link card already shows; a URL embedded in real
-        // caption text is kept — we don't silently edit the author's words.
-        val hasLinkCard = post.payloads.any { it.key == FeedProtocol.LinksPayloadKey }
-        val captionIsLoneUrl = post.caption.trim().let { c ->
-            c.startsWith("http", ignoreCase = true) && c.none { it.isWhitespace() }
-        }
-        if (post.caption.isNotBlank() && !(hasLinkCard && captionIsLoneUrl)) {
-            PostBody(
-                caption = post.caption,
-                onExpandFetchFullText = onExpandFetchFullText,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        if (post.type == PostType.Article) {
+            ArticleCardBody(
+                post = post,
+                onClick = onPostClick,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
-        }
+        } else {
+            // Drop a caption that is nothing but the URL the link card already shows; a URL embedded in real
+            // caption text is kept — we don't silently edit the author's words.
+            val hasLinkCard = post.payloads.any { it.key == FeedProtocol.LinksPayloadKey }
+            val captionIsLoneUrl = post.caption.trim().let { c ->
+                c.startsWith("http", ignoreCase = true) && c.none { it.isWhitespace() }
+            }
+            if (post.caption.isNotBlank() && !(hasLinkCard && captionIsLoneUrl)) {
+                PostBody(
+                    caption = post.caption,
+                    onExpandFetchFullText = onExpandFetchFullText,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
 
-        post.embeddedPost?.let { embedded ->
-            QuotedPost(
-                embedded = embedded,
-                authorName = embeddedAuthorName,
+            post.embeddedPost?.let { embedded ->
+                QuotedPost(
+                    embedded = embedded,
+                    authorName = embeddedAuthorName,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+
+            // Mutually exclusive with media: the sender saves one or the other.
+            PostLinkPreview(
+                post = post,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
+
+            PostMedia(
+                post = post,
+                onMediaClick = onMediaClick,
+                onDoubleTapLike = { if (DOUBLE_TAP_EMOJI !in post.ownReactions) onToggleReaction(DOUBLE_TAP_EMOJI) },
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
         }
-
-        // Mutually exclusive with media: the sender saves one or the other.
-        PostLinkPreview(
-            post = post,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-
-        PostMedia(
-            post = post,
-            onMediaClick = onMediaClick,
-            onDoubleTapLike = { if (DOUBLE_TAP_EMOJI !in post.ownReactions) onToggleReaction(DOUBLE_TAP_EMOJI) },
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope,
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        )
 
         PostInteracts(
             reactionSummary = post.reactionPreview,
@@ -188,6 +197,36 @@ fun PostCard(
             summary = post.reactionPreview,
             onViewAll = onOpenComments,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
+        )
+    }
+}
+
+internal fun FeedPostItem.articleHeaderPayload(): PayloadDescriptor? =
+    articleHeaderKey?.let { key -> payloads.firstOrNull { it.key == key } }
+
+// The web feed's article card: the header image alone, else just the title; the whole card opens the article.
+@Composable
+private fun ArticleCardBody(
+    post: FeedPostItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (post.articleHeaderPayload() != null) {
+        PostMedia(
+            post = post,
+            onMediaClick = { onClick() },
+            onDoubleTapLike = {},
+            sharedTransitionScope = null,
+            animatedVisibilityScope = null,
+            modifier = modifier,
+        )
+    } else if (post.caption.isNotBlank()) {
+        Text(
+            text = post.caption,
+            style = MaterialTheme.typography.titleLarge,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier.clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         )
     }
 }
@@ -423,7 +462,8 @@ private fun PostMedia(
     modifier: Modifier = Modifier,
 ) {
     val mediaPayloads: List<PayloadDescriptor> =
-        post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
+        if (post.type == PostType.Article) listOfNotNull(post.articleHeaderPayload())
+        else post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
 
     // The peer read targets the author's CHANNEL drive (post.channelId), NOT the local feed drive.
     val peerGtid = post.globalTransitId

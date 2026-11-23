@@ -43,6 +43,8 @@ data class FeedPostItem(
     val commentCount: Int,
     val isEncrypted: Boolean,
     val acl: AccessControlList?,
+    /** An article's header image payload key; null when it has none or the image is another file's. */
+    val articleHeaderKey: String? = null,
 )
 
 // originalAuthor is set on the author's own copy; a post aggregated onto someone else's feed drive carries
@@ -158,6 +160,9 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         commentCount = fileMetadata.reactionPreview?.totalCommentCount ?: 0,
         isEncrypted = serverFileIsEncrypted,
         acl = serverMetadata.accessControlList,
+        articleHeaderKey = content?.primaryMediaFile
+            ?.takeIf { it.fileId == null }?.fileKey?.takeIf { it.isNotBlank() }
+            ?: content?.primaryMediaKey?.takeIf { it.isNotBlank() },
     )
 }
 
