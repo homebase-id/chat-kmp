@@ -752,6 +752,8 @@
     <!-- Conversation message -->
     <string name="chat_message_info">Message info</string>
     <string name="chat_message_reply">Reply</string>
+    <string name="chat_reply_quote_photo_position">Photo %1$d of %2$d</string>
+    <string name="chat_reply_quote_video_position">Video %1$d of %2$d</string>
     <string name="chat_message_forward">Forward</string>
     <string name="chat_message_forwarded">Message forwarded</string>
     <string name="chat_message_copy">Copy</string>
@@ -1735,19 +1737,19 @@
     <string name="nav_feed">Feed</string>
     <string name="nav_moments">Moments</string>
     <string name="nav_calls">Calls</string>
-    <string name="calls_title">Calls</string>
+    <string name="contactbook_tab_calls">Calls</string>
+    <string name="calls_empty_find_contact">Find someone to call</string>
+    <string name="calls_new_call">New call</string>
+    <string name="calls_open_contact">Open contact</string>
     <string name="calls_empty_title">No calls yet</string>
     <string name="calls_empty_body">Voice and video calls you make or receive will show up here.</string>
     <string name="calls_menu_open_chat">Open chat</string>
     <string name="calls_menu_delete">Delete from history</string>
     <string name="calls_delete_confirm_title">Delete from history</string>
     <string name="calls_delete_confirm_body">Delete this call from your history? It is removed from this chat on your devices; %1$s keeps theirs.</string>
-    <string name="calls_show_in_nav">Show in navigation bar</string>
     <string name="calls_more_options">More options</string>
     <string name="calls_home_subtitle">Your voice and video call history</string>
-    <string name="calls_new_call">New call</string>
     <string name="calls_missed_badge_cd">Missed calls</string>
-    <string name="calls_contact_not_connected">Not connected</string>
     <string name="calls_kind_voice">Voice</string>
     <string name="calls_kind_video">Video</string>
     <string name="nav_apps">Apps</string>
@@ -3343,13 +3345,10 @@
     <string name="filesync_make_private">Click to change your Filesync drive to true zero knowledge encryption</string>
     <string name="filesync_sign_in_again_title">Sign in again to open your files</string>
     <string name="filesync_sign_in_again_body">Drive is now private, and this device needs one more sign-in to get its key. Nothing on this device is deleted.</string>
-    <string name="settings_calls_beta">Voice and video calls (beta)</string>
-    <string name="settings_calls_beta_desc">Experimental and may crash. Restart the app to apply.</string>
     <string name="settings_filesync_icon_desc">Show Drive in the navigation bar</string>
     <string name="vault_save_to">Save to Vault</string>
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
-    <string name="vault_chat_image_name">Chat image, %1$s</string>
     <string name="email_locked_title">Email is locked</string>
     <string name="email_locked_unlock">Unlock</string>
     <string name="email_make_private">Click to change your Email drive to true zero knowledge encryption</string>
@@ -3531,8 +3530,8 @@
     <string name="photobase_settings_open">Open Photos</string>
     <string name="photobase_settings_in_testing">Photos is still being tested. Turn it on in the Developer menu to try it.</string>
     <string name="webdrop_settings_open">Open WebDrop</string>
-    <string name="location_settings_open">Open Location</string>
     <string name="calls_settings_open">Open Calls</string>
+    <string name="location_settings_open">Open Location</string>
     <string name="settings_not_working">%1$s (not working)</string>
     <string name="settings_send_photo_standard_desc">Up to 2048 pixels. Sends quickly and keeps screenshots readable.</string>
     <string name="settings_send_photo_hd_desc">Up to 4096 pixels. Stays sharp when zoomed.</string>

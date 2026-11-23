@@ -1,6 +1,8 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.clipboard.canCopyImageToClipboard
 import id.homebase.api.video.playableContentType
+import id.homebase.api.video.playableFileName
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -39,7 +41,7 @@ import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.util.AlbumSaveResult
 import id.homebase.core.util.AlbumSaver
-import id.homebase.core.util.formatMediumDate
+import id.homebase.core.util.saveFileName
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.saveReceived
 import id.homebase.core.util.showSaveFailed
@@ -50,12 +52,12 @@ import id.homebase.resources.chat_error_copy_image
 import id.homebase.resources.chat_image_copied
 import id.homebase.resources.error_unknown
 import id.homebase.resources.file_share_failed
-import id.homebase.resources.vault_chat_image_name
 import id.homebase.resources.vault_save_failed
 import id.homebase.resources.vault_saved
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 
@@ -238,7 +240,7 @@ private fun SharedMediaViewer(
                     path != null && vaultFileSaver.save(
                         path,
                         contentType!!,
-                        TranslationUtil.getString(MR.string.vault_chat_image_name, formatMediumDate(item.date)),
+                        saveFileName(item.payload.playableFileName(item.payload.filename()), contentType, item.date.toEpochMilliseconds()),
                     )
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
@@ -250,14 +252,14 @@ private fun SharedMediaViewer(
                 )
             }
         } else null,
-        onCopyImage = { _, _ ->
-            scope.launch {
+        onCopyImage = if (canCopyImageToClipboard) { _, _ ->
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 val copied = actionService.copyImagePayloadToClipboard(item.fileId, item.payload, item.keyHeader)
                 snackbarHostState.showSnackbar(
                     TranslationUtil.getString(if (copied) MR.string.chat_image_copied else MR.string.chat_error_copy_image)
                 )
             }
-        },
+        } else null,
         onDelete = { onDismiss() },
         onDismiss = onDismiss,
         onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },
@@ -289,6 +291,7 @@ fun rememberSharedMediaSaver(
                     val iv = item.payload.iv?.bytes ?: return@launch
                     val saved = albumSaver.saveReceived(
                         driveFileProvider, fileOps, driveId, item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey),
+                        item.date.toEpochMilliseconds(),
                     )
                     when (saved) {
                         is AlbumSaveResult.Saved -> snackbarHostState.showSavedTo(saved.location)

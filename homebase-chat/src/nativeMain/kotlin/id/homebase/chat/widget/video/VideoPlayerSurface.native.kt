@@ -20,7 +20,6 @@ import androidx.compose.ui.viewinterop.UIKitViewController
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
-import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.driveAccess
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.video.VideoPreloader
@@ -257,10 +256,7 @@ actual fun VideoPlayerSurface(
                 // no output route — AVPlayer then decodes fine but never starts, posting
                 // FailedToPlayToEndTime(-66637) at t=0.
                 AudioSession.ensurePlaybackCapable()
-                val videoData = VideoPlayerData(
-                    data.fileId, data.driveId, data.payloadKey, data.keyHeader,
-                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, data.scratchSub, contentType = data.payload.contentType,
-                )
+                val videoData = data.toVideoData()
                 val videoAccess =
                     videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
                 when (val content = resolveVideoContent(videoData, videoAccess, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
@@ -731,3 +727,5 @@ private fun kickAssetMetadataLoad(asset: AVURLAsset, fileId: String) {
 }
 
 actual val nativeVideoControlsOwnTopCorners: Boolean = true
+
+actual val playsMotionClips: Boolean = true

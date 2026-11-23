@@ -18,6 +18,7 @@ import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.dice.canBattle
+import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.MessageContent
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -83,7 +84,8 @@ fun MessageItem(
     val onMessageInfo =
         remember(message) { { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) } }
     val onReply =
-        if (policy.allowReply) remember(message) { { onUiAction(ConversationListUiAction.ReplyToMessage(message)) } } else null
+        if (policy.allowReply) remember(message) { { payloadKey: String? -> onUiAction(ConversationListUiAction.ReplyToMessage(message, payloadKey)) } } else null
+    val onSwipeReply = remember(onReply) { onReply?.let { reply -> { reply(null) } } }
     // Battle is dice-roll-specific. Show only when the message is a valid dice
     // roll AND the chain has room AND the current user isn't already in it.
     val battleDescriptor = (message.messageContent as? MessageContent.DiceRoll)?.descriptor
@@ -110,6 +112,8 @@ fun MessageItem(
     // through to ScrollToMessageId.
     val onClickMessageId =
         remember(message.id) { { messageId: Uuid -> onUiAction(ConversationListUiAction.OpenReplyTarget(messageId)) } }
+    val onClickReply =
+        remember(message.id) { { reply: ReplyPreview -> onUiAction(ConversationListUiAction.OpenReplyTarget(reply.replyUniqueId, reply.payloadKey)) } }
     val onMediaClick = remember(message) {
         { payload: PayloadDescriptor ->
             onUiAction(
@@ -200,7 +204,7 @@ fun MessageItem(
 
         SwipeableMessageWrapper(
             enabled = supportsTouchGestures() && !message.isDeleted,
-            onSwipeRight = onReply,
+            onSwipeRight = onSwipeReply,
             onSwipeLeft = onMessageInfo,
         ) {
             SentMessageBubble(
@@ -221,6 +225,7 @@ fun MessageItem(
                 onTogglePin = onTogglePin,
                 onMediaClick = onMediaClick,
                 onClickMessageId = onClickMessageId,
+                onClickReply = onClickReply,
                 onRequestDecryptedFile = onDecryptFile,
                 onAddReaction = onAddReaction,
                 onShowReactions = onShowReactions,
@@ -263,7 +268,7 @@ fun MessageItem(
 
         SwipeableMessageWrapper(
             enabled = supportsTouchGestures() && !message.isDeleted,
-            onSwipeRight = onReply,
+            onSwipeRight = onSwipeReply,
             onSwipeLeft = onMessageInfo,
         ) {
             ReceivedMessageBubble(
@@ -286,6 +291,7 @@ fun MessageItem(
                 onShowReactions = onShowReactions,
                 onMediaClick = onMediaClick,
                 onClickMessageId = onClickMessageId,
+                onClickReply = onClickReply,
                 onRequestDecryptedFile = onDecryptFile,
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedTransitionScope = sharedTransitionScope,

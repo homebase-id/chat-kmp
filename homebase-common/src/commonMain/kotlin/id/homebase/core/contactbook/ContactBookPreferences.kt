@@ -1,6 +1,8 @@
 package id.homebase.core.contactbook
 
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.core.ui.navigation.BottomBarDefaultsMigration
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,19 +19,22 @@ import kotlin.uuid.Uuid
  *
  * UUID namespace: `0a04xx` (claimed by Contact Book — see ADDING_ADDON_APPS.md).
  */
-class ContactBookPreferences(private val databaseManager: DatabaseManager) {
+class ContactBookPreferences(
+    private val databaseManager: DatabaseManager,
+    private val migrationScope: CoroutineScope? = null,
+) {
 
     private val keyValue get() = databaseManager.keyValue
 
     private val _onboardingComplete = MutableStateFlow(readBoolean(ONBOARDING_KEY, default = false))
     val onboardingComplete: StateFlow<Boolean> = _onboardingComplete.asStateFlow()
 
-    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
+    private val _iconVisible = MutableStateFlow(BottomBarDefaultsMigration.resolveContactBookIconVisible(databaseManager, migrationScope))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
     fun reset() {
         _onboardingComplete.value = readBoolean(ONBOARDING_KEY, default = false)
-        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
+        _iconVisible.value = BottomBarDefaultsMigration.resolveContactBookIconVisible(databaseManager, migrationScope)
     }
 
     suspend fun setOnboardingComplete(value: Boolean) {

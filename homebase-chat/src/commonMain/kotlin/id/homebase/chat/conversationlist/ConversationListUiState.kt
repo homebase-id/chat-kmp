@@ -92,6 +92,7 @@ data class MessageListUiState(
     val fullScreenOverlay: FullScreenOverlay? = null,
     val sendTo: SendToPicker? = null,
     val replyToMessage: MessageUiModel? = null,
+    val replyToPayloadKey: String? = null,
     val sendQuality: SendQuality = SendQuality.Standard,
     val battleTargetMessage: MessageUiModel? = null,
     val isSearchActive: Boolean = false,
@@ -355,6 +356,8 @@ sealed interface FullScreenOverlay {
         /** Set with [globalTransitId] to read the payloads over peer; both null for local media. */
         val remoteOdinId: OdinId? = null,
         val globalTransitId: Uuid? = null,
+        /** A Live or motion photo's clip payload, by its still's payload key: played when the photo opens. */
+        val motionClips: Map<String, PayloadDescriptor> = emptyMap(),
     ) : FullScreenOverlay.MediaViewer
 
     data class AttachmentData(

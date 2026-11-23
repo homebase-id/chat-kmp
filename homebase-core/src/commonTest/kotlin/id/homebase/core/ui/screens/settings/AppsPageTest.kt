@@ -113,14 +113,18 @@ class AppsPageTest {
                 composable<Route.ChatList> { Text("") }
                 composable<Route.Moments> { Text("") }
                 composable<Route.WebDrop> { Text("") }
+                composable<Route.ContactBook> { Text("") }
             }
         }
         assertEquals(null, AppsPage.of(nav.currentDestination))
-        listOf(Route.ChatList to AppsPage.Chat, Route.Moments to AppsPage.Moments, Route.WebDrop to AppsPage.WebDrop).forEach { (route, page) ->
+        listOf(Route.ChatList to AppsPage.Chat, Route.Moments to AppsPage.Moments, Route.WebDrop to AppsPage.WebDrop, Route.ContactBook to AppsPage.Contacts).forEach { (route, page) ->
             runOnIdle { nav.navigate(route) }
             waitForIdle()
             assertEquals(page, AppsPage.of(nav.currentDestination))
         }
-        assertEquals(AppsPage.entries.size, AppsPage.entries.map { it.appRoute }.toSet().size)
+        // Calls lives inside Contacts, so only Contacts owns that route.
+        val owned = AppsPage.entries.filter { it != AppsPage.Calls }
+        assertEquals(owned.size, owned.map { it.appRoute }.toSet().size)
+        assertEquals(Route.ContactBook, AppsPage.Calls.appRoute)
     }
 }

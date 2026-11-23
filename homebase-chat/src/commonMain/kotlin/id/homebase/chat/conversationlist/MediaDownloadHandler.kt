@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import id.homebase.api.video.isHlsVideo
 import id.homebase.api.video.playableContentType
+import id.homebase.api.video.playableFileName
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -12,6 +13,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.FileTooLargeForMemoryException
 import id.homebase.api.file.extensionForContentType
 import id.homebase.chat.agentui.agentUiImagePayloads
+import id.homebase.chat.data.isImage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.FileSaved
 import id.homebase.chat.conversationlist.ConversationListUiEvent.OfferRefusedSave
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
@@ -32,7 +34,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.AlbumSaveResult
 import id.homebase.core.util.AlbumSaver
-import id.homebase.core.util.formatMediumDate
+import id.homebase.core.util.saveFileName
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.saveReceived
 import id.homebase.core.vault.VaultFileSaver
@@ -48,7 +50,6 @@ import id.homebase.resources.chat_error_media_click
 import id.homebase.resources.chat_error_share
 import id.homebase.resources.chat_image_copied
 import id.homebase.resources.contactbook_self_you
-import id.homebase.resources.vault_chat_image_name
 import id.homebase.resources.vault_save_failed
 import id.homebase.resources.vault_saved
 import io.github.vinceglb.filekit.name
@@ -58,6 +59,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -151,7 +153,7 @@ internal class MediaDownloadHandler(
                 tempPath != null && saver.save(
                     tempPath,
                     contentType,
-                    TranslationUtil.getString(MR.string.vault_chat_image_name, formatMediumDate(message.userDate)),
+                    saveFileName(payload.playableFileName(payload.filename()), contentType, message.userDate.toEpochMilliseconds()),
                 )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -169,11 +171,26 @@ internal class MediaDownloadHandler(
     }
 
     fun handleCopyImage(action: ConversationListUiAction.CopyImage) {
-        val message = messagesUiState.value.messageById(action.messageId)
-            ?.takeIf { it.canCopyImage(action.payloadKey) } ?: return
-        val payload = message.payloads?.find { it.key == action.payloadKey } ?: return
-        scope.launch {
-            val copied = chatMessageActionService.copyImagePayloadToClipboard(message.fileId, payload, message.keyHeader)
+        val state = messagesUiState.value
+        val loaded = state.messageById(action.messageId)
+        val viewer = (state.fullScreenOverlay as? FullScreenOverlay.ViewMessageData)?.takeIf { it.messageId == action.messageId }
+        val source = when {
+            loaded != null ->
+                if (loaded.canCopyImage(action.payloadKey)) {
+                    loaded.payloads?.find { it.key == action.payloadKey }?.let { Triple(loaded.fileId, it, loaded.keyHeader) }
+                } else null
+            viewer != null ->
+                viewer.payloads.find { it.key == action.payloadKey && it.isImage }?.let { Triple(viewer.fileId, it, viewer.keyHeader) }
+            else -> null
+        }
+        if (source == null) {
+            sendEvent(ShowErrorMessage(MR.string.chat_error_copy_image))
+            return
+        }
+        val (fileId, payload, keyHeader) = source
+        // Undispatched: the web clipboard write must start inside the click (Safari).
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val copied = chatMessageActionService.copyImagePayloadToClipboard(fileId, payload, keyHeader)
             sendEvent(
                 if (copied) ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)
                 else ShowErrorMessage(MR.string.chat_error_copy_image)
@@ -222,6 +239,7 @@ internal class MediaDownloadHandler(
                     albumSaver.saveReceived(
                         driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, message.fileId, payload,
                         KeyHeader(payloadIv, message.keyHeader.aesKey),
+                        message.userDate.toEpochMilliseconds(),
                     )
                 }
                 report(saved, if (payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
@@ -246,11 +264,13 @@ internal class MediaDownloadHandler(
         val fileKey = "${action.fileId}_${action.payloadKey}"
         messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles + fileKey) }
 
+        val dateMs = messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
+            .firstOrNull { it.message.fileId == action.fileId }?.message?.userDate?.toEpochMilliseconds() ?: Clock.System.now().toEpochMilliseconds()
         scope.launch {
             try {
                 val saved = withContext(ioDispatcher) {
                     albumSaver.saveReceived(
-                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader,
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader, dateMs,
                     )
                 }
                 report(saved, if (action.payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
@@ -297,7 +317,7 @@ internal class MediaDownloadHandler(
                     )).bytes
 
                 val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/" +
-                    decryptedCopyName(message.fileId, action.payloadKey, payload.filename(), payload.contentType)
+                    decryptedCopyName(message.fileId, action.payloadKey, payload.contentType)
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(
                     driveId = chatTargetDrive.alias,
@@ -384,7 +404,7 @@ internal class MediaDownloadHandler(
             ?.message
             ?.takeIf { it.messageContent is MessageContent.ViewOnce }
             ?: return
-        messagesUiState.update { it.copy(replyToMessage = message) }
+        messagesUiState.update { it.copy(replyToMessage = message, replyToPayloadKey = null) }
     }
 
     fun handleViewOnceScreenshot(action: ConversationListUiAction.ViewOnceScreenshot) {

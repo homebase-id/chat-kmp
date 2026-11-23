@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.copyInLargeChunks
+import id.homebase.api.file.extensionForContentType
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.splitExtension
 import java.io.File
@@ -83,7 +84,7 @@ object SharedContentExtractor {
             val mimeType = contentResolver.getType(uri) ?: fallbackMimeType
             val sentName = rawName?.takeIf { it.isNotBlank() }?.let { safeFileName(it) }
             val (stem, ownExtension) = splitExtension(sentName ?: "share")
-            val extension = ownExtension.removePrefix(".").ifEmpty { mimeTypeToExtension(mimeType) }
+            val extension = ownExtension.removePrefix(".").ifEmpty { extensionForContentType(mimeType) }
             // The timestamp leads, so a long name's cut can't drop it.
             val uniqueName = safeFileName("${System.currentTimeMillis()}_$stem", extension = extension)
             val tempFile = File(tempDir, uniqueName)
@@ -114,23 +115,6 @@ object SharedContentExtractor {
             }
         } catch (_: Exception) {
             null
-        }
-    }
-
-    private fun mimeTypeToExtension(mimeType: String): String {
-        return when {
-            mimeType.startsWith("image/jpeg") -> "jpg"
-            mimeType.startsWith("image/png") -> "png"
-            mimeType.startsWith("image/webp") -> "webp"
-            mimeType.startsWith("image/gif") -> "gif"
-            mimeType.startsWith("image/heic") || mimeType.startsWith("image/heif") -> "heic"
-            mimeType.startsWith("video/mp4") -> "mp4"
-            mimeType.startsWith("video/") -> "mp4"
-            mimeType.startsWith("audio/") -> "m4a"
-            mimeType.startsWith("application/pdf") -> "pdf"
-            mimeType.startsWith("text/vcard") || mimeType.startsWith("text/x-vcard") -> "vcf"
-            mimeType.startsWith("text/") -> "txt"
-            else -> "bin"
         }
     }
 }

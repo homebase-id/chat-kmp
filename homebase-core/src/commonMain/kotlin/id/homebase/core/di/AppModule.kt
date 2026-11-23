@@ -58,7 +58,6 @@ import id.homebase.chat.conversationmedia.ConversationMediaViewModel
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
-import id.homebase.chat.calling.history.NewCallViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
@@ -305,7 +304,6 @@ import id.homebase.core.ui.screens.moments.MomentComposeViewModel
 import id.homebase.core.ui.screens.moments.MomentDetailViewModel
 import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsViewModel
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsViewModel
 import id.homebase.core.ui.screens.settings.ChatSettingsViewModel
 import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsViewModel
@@ -442,7 +440,7 @@ val appModule = module {
     // Contact Book add-on (contact manager). Reads from the mandatory Contacts
     // drive; writes through the api-layer ContactsProvider. No optional-drive
     // activation — the drive is always mounted.
-    single { ContactBookPreferences(get()) }
+    single { ContactBookPreferences(get(), migrationScope = get()) }
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
     // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
@@ -485,14 +483,13 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
-    // One CallController per identity behind CallService; a null engineFactory (unsupported platform, or off in
-    // Settings, read once so a restart applies it) hides every call entry point. The fake engine/loopback live only in the Call lab.
+    // One CallController per identity behind CallService; a null engineFactory (unsupported platform) hides every call entry point. The fake engine/loopback live only in the Call lab.
     single {
         CallService(
             credentialsManager = get(),
             eventBus = get(),
             relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push, wakeCause = null) },
-            engineFactory = platformCallEngineFactory().takeIf { get<CallsPreferences>().enabled.value },
+            engineFactory = platformCallEngineFactory(),
             iceServers = CallIceServerSource({ peer -> get<IceServersProvider>().iceServers(peer) }, get<StunUrlStore>().urls)::forCall,
             scope = get(),
             onCallActiveChanged = { active ->
@@ -1257,15 +1254,6 @@ val appModule = module {
             deleter = CallLogDeleter { id, forEveryone -> get<ChatMessageActionService>().deleteMessage(id, forEveryone) },
         )
     }
-    viewModel {
-        val calls = get<CallService>()
-        NewCallViewModel(
-            contacts = get<ContactService>().contacts,
-            self = get<OwnerSessionRepository>().user,
-            session = calls,
-            callsAvailable = calls.available,
-        )
-    }
     viewModelOf(::HomeViewModel)
     viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
     // Manual `viewModel { ... }` rather than viewModelOf because the constructor
@@ -1343,7 +1331,6 @@ val appModule = module {
     viewModelOf(::FeedSettingsViewModel)
     viewModelOf(::ChatSettingsViewModel)
     viewModelOf(::FilesyncSettingsViewModel)
-    viewModelOf(::CallsSettingsViewModel)
     viewModel(LocationPermissionQualifier) {
         ExtendPermissionViewModel(get(), get(), get(), getLocationPermissionExtensionConfig())
     }

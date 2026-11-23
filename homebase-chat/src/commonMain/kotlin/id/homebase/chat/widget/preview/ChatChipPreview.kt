@@ -1,7 +1,7 @@
 package id.homebase.chat.widget.preview
 
 import id.homebase.core.pdf.pdfPageViewerAvailable
-import id.homebase.api.file.extensionForMimeType
+import id.homebase.api.file.extensionForContentType
 import id.homebase.core.util.isWeb
 import kotlin.uuid.Uuid
 
@@ -15,11 +15,6 @@ internal fun chatChipPreviewKind(
 ): FilePreviewKind? =
     filePreviewKind(contentType, name, sizeBytes, web, pdfAvailable)?.takeIf { it == FilePreviewKind.Pdf || it == FilePreviewKind.Text || it == FilePreviewKind.Markdown }
 
-/** A name for the decrypted copy that is unique to the payload and safe in a URI; the sender's name only lends its extension. */
-internal fun decryptedCopyName(fileId: Uuid, payloadKey: String, senderName: String?, contentType: String?): String {
-    fun String.safeExt() = takeIf { it.isNotEmpty() && it.length <= 10 && it.all(Char::isLetterOrDigit) }
-    val ext = senderName?.substringAfterLast('.', "")?.safeExt()
-        ?: contentType?.let { extensionForMimeType(it) ?: it.substringAfter('/', "").safeExt() }
-        ?: "bin"
-    return "preview_${fileId}_${payloadKey.map { if (it.isLetterOrDigit() || it == '_' || it == '-') it else '_' }.joinToString("")}.$ext"
-}
+/** A name for the decrypted copy that is unique to the payload and safe in a URI; the extension is the bytes' own. */
+internal fun decryptedCopyName(fileId: Uuid, payloadKey: String, contentType: String?): String =
+    "preview_${fileId}_${payloadKey.map { if (it.isLetterOrDigit() || it == '_' || it == '-') it else '_' }.joinToString("")}.${extensionForContentType(contentType)}"

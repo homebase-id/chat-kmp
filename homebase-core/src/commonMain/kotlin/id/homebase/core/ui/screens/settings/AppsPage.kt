@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import id.homebase.api.client.mail.MailboxMode
 import id.homebase.core.ui.navigation.Route
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsScreen
@@ -24,7 +23,7 @@ internal enum class AppsPage {
     companion object {
         /** The page of the app whose screen [destination] is, if it's one's main screen. */
         fun of(destination: NavDestination?): AppsPage? =
-            destination?.let { d -> entries.firstOrNull { d.hasRoute(it.appRoute::class) } }
+            destination?.let { d -> entries.firstOrNull { it != Calls && d.hasRoute(it.appRoute::class) } }
     }
 }
 
@@ -44,7 +43,7 @@ internal val AppsPage.appRoute: Route
         AppsPage.Vault -> Route.Vault
         AppsPage.Location -> Route.Location
         AppsPage.Moments -> Route.Moments
-        AppsPage.Calls -> Route.Calls
+        AppsPage.Calls -> Route.ContactBook
         AppsPage.Contacts -> Route.ContactBook
         AppsPage.WebDrop -> Route.WebDrop
     }
@@ -52,7 +51,7 @@ internal val AppsPage.appRoute: Route
 internal class AppsPageLinks(
     val onOpenApp: (AppsPage) -> Unit,
     val onOpenEmailModeSwitch: () -> Unit,
-    /** False while calls are off: there's nothing to open. */
+    /** False while calls are unavailable: there's nothing to open. */
     val callsAvailable: Boolean,
     /** False while Photobase is dark-launched off. */
     val photobaseAvailable: Boolean,
@@ -117,7 +116,7 @@ internal fun AppsPageContent(
             onOpenLocation = open,
         )
 
-        AppsPage.Calls -> CallsSettingsScreen(viewModel = koinViewModel(), onBackClick = onBack, onOpenCalls = open)
+        AppsPage.Calls -> CallsSettingsUi(onBack = onBack, onOpenCalls = open)
 
         AppsPage.Photobase -> if (links.photobaseAvailable) {
             PhotobaseSettingsScreen(

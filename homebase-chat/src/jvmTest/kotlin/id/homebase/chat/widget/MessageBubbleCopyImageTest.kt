@@ -11,6 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -118,6 +123,7 @@ class MessageBubbleCopyImageTest {
         onMarkAsRead = {},
         onMediaClick = {},
         onClickMessageId = {},
+        onClickReply = {},
         downloadingFiles = emptySet(),
         onCopyImage = onCopyImage,
     )
@@ -187,6 +193,44 @@ class MessageBubbleCopyImageTest {
         onRoot().performKeyInput { withKeyDown(Key.MetaLeft) { pressKey(Key.C) } }
         onRoot().performKeyInput { pressKey(Key.C) }
         assertEquals(listOf("chat_img1", "chat_img1"), copied)
+    }
+
+    @Test
+    fun ctrlOrCmdCStillCopiesAfterTheMenuWasOpenedAndDismissed() = runComposeUiTest {
+        val copied = mutableListOf<String>()
+        show {
+            SharedTransitionLayout {
+                AnimatedVisibility(visible = true) {
+                    FullScreenMediaViewer(
+                        data = FullScreenOverlay.ViewMessageData(
+                            messageId = Uuid.random(),
+                            title = "Alice",
+                            userDate = Instant.fromEpochMilliseconds(0),
+                            content = "",
+                            fileId = Uuid.random(),
+                            driveId = Uuid.random(),
+                            payloads = listOf(
+                                payload("chat_img0", "image/jpeg", uploaded = false),
+                                payload("chat_img1", "image/jpeg", uploaded = false),
+                            ),
+                            keyHeader = KeyHeader.empty(),
+                            selectedPayloadKey = "chat_img1",
+                        ),
+                        onCopyImage = { _, key -> copied += key },
+                        onDismiss = {},
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        animatedVisibilityScope = this,
+                    )
+                }
+            }
+        }
+        onNodeWithContentDescription("Conversation options").performClick()
+        onNodeWithText("Copy image").assertExists()
+        onAllNodes(isRoot()).onLast().performMouseInput { click(Offset(900f, 700f)) }
+        waitForIdle()
+        onNodeWithText("Copy image").assertDoesNotExist()
+        onRoot().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.C) } }
+        assertEquals(listOf("chat_img1"), copied)
     }
 
     @Test

@@ -34,7 +34,7 @@ class CallsNavBadgeScreenshotTest {
     private fun ComposeUiTest.bottomBar(badge: Boolean, dark: Boolean = false) = setContent {
         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
             ShortNavigationBar {
-                listOf(TopLevelRoute.Chat, TopLevelRoute.Calls, TopLevelRoute.Feed).forEach { route ->
+                listOf(TopLevelRoute.Chat, TopLevelRoute.ContactBook, TopLevelRoute.Feed).forEach { route ->
                     ShortNavigationBarItem(
                         icon = { TopLevelNavIcon(route, showMomentsBadge = false, showCallsBadge = badge) },
                         label = { Text("x") },
@@ -50,7 +50,7 @@ class CallsNavBadgeScreenshotTest {
         HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
             NavigationRail {
                 Column {
-                    listOf(TopLevelRoute.Chat, TopLevelRoute.Calls, TopLevelRoute.Feed).forEach { route ->
+                    listOf(TopLevelRoute.Chat, TopLevelRoute.ContactBook, TopLevelRoute.Feed).forEach { route ->
                         RailItem(route, selected = route == TopLevelRoute.Chat, showMomentsBadge = false, showCallsBadge = badge, showEmailBadge = false, showLocationBadge = false, onClick = {})
                     }
                 }
