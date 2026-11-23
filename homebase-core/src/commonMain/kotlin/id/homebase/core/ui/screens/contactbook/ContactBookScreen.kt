@@ -425,15 +425,15 @@ fun ContactBookScreen(
 
 @Composable
 internal fun ContactBookFab(shown: ContactTab, onboarding: Boolean, onAdd: () -> Unit, onNewCall: () -> Unit) {
-    val enterFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-    val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    val enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec())
+    val exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec())
     // Composing a brand-new connection request to any Homebase ID doesn't need its own
     // FAB entry point — Add Contact already offers "Send connection request" once an
     // entered ID resolves to someone not yet connected.
     AnimatedVisibility(
         visible = (shown == ContactTab.KNOWN || shown == ContactTab.NEW) && !onboarding,
-        enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(enterFade),
-        exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(exitFade),
+        enter = enter,
+        exit = exit,
     ) {
         FloatingActionButton(onClick = onAdd) {
             Icon(
@@ -444,8 +444,8 @@ internal fun ContactBookFab(shown: ContactTab, onboarding: Boolean, onAdd: () ->
     }
     AnimatedVisibility(
         visible = shown == ContactTab.CALLS,
-        enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(enterFade),
-        exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(exitFade),
+        enter = enter,
+        exit = exit,
     ) {
         FloatingActionButton(onClick = onNewCall) {
             Icon(

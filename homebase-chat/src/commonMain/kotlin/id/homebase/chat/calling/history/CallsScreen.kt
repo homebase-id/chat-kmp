@@ -269,7 +269,7 @@ private fun CallRow(
                     .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                     .clip(CircleShape)
                     .semantics { contentDescription = openContact }
-                    .clickable(onClickLabel = openContact, role = Role.Button) { onAction(CallsAction.OpenContact(entry.peer)) },
+                    .clickable(role = Role.Button) { onAction(CallsAction.OpenContact(entry.peer)) },
                 contentAlignment = Alignment.Center,
             ) { avatar(row) }
             Spacer(Modifier.width(16.dp))
