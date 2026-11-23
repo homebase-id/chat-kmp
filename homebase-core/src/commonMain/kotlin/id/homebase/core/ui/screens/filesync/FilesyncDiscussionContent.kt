@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.foundation.text.input.maxLengthReject
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
@@ -171,7 +171,7 @@ private fun CommentField(draft: TextFieldState, sending: Boolean, onSend: () -> 
             .composerKeyHandler(enterSendsMessage = rememberEnterSendsMessage(), onSend = { if (canSend) onSend() }),
         enabled = !sending,
         placeholder = { Text(stringResource(MR.string.filesync_comment_hint)) },
-        inputTransformation = InputTransformation.maxLength(COMMENT_MAX_CHARS),
+        inputTransformation = InputTransformation.maxLengthReject(COMMENT_MAX_CHARS),
         lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 1, maxHeightInLines = 5),
         trailingIcon = {
             IconButton(onClick = onSend, enabled = canSend) {

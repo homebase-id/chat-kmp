@@ -412,7 +412,6 @@ private fun SendToRecipientRow(recipient: RecipientModel, youLabel: String, sele
                 if (selected) avatar.copy(containerColor = colors.surfaceContainerLowest, contentColor = colors.onSecondaryContainer) else avatar,
             )
         },
-        headlineContent = { Text(recipient.label(youLabel), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = supporting?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         trailingContent = {
             AnimatedContent(targetState = selected, transitionSpec = { markIn togetherWith markOut }) { checked ->
@@ -423,7 +422,7 @@ private fun SendToRecipientRow(recipient: RecipientModel, youLabel: String, sele
                 }
             }
         },
-    )
+    ) { Text(recipient.label(youLabel), maxLines = 1, overflow = TextOverflow.Ellipsis) }
 }
 
 @Composable

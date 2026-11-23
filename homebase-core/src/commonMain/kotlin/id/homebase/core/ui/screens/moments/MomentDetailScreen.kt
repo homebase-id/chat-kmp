@@ -86,7 +86,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -143,6 +143,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
 import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
 import id.homebase.core.util.showSaveFailed
 import id.homebase.core.util.showSavedTo
+import id.homebase.core.widget.rememberExpandedSheetState
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
@@ -672,7 +673,7 @@ internal fun DetailContent(
 
     // Lifted out of [CommentsSheet] so the media-shrink animation can track the
     // sheet's *target* state instead of the post-dismissal callback.
-    val commentsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val commentsSheetState = rememberExpandedSheetState()
 
     // Drives the media shrink. `onDismissRequest` only fires once the sheet has
     // finished sliding off-screen, so keying the shrink off `showCommentsSheet`
@@ -1003,7 +1004,7 @@ internal fun ReactionsBottomSheet(
     reactions: List<MomentReactionUiModel>,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberBottomSheetState(SheetValue.Hidden)
     // Selected emoji filter. `null` means "All". Reset when the underlying
     // reactor list changes shape (e.g. a refetch dropped the active emoji)
     // so the user doesn't end up on an empty filter tab.
@@ -2115,7 +2116,7 @@ private fun CommentsSheet(
     // Lifted in by the detail screen so it can observe the sheet's target state
     // and re-expand the shrunk media in parallel with the slide-down. Defaults
     // to a locally-remembered state for callers that don't need that coupling.
-    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    sheetState: SheetState = rememberExpandedSheetState(),
 ) {
     // Swiping the (now fully-scrollable) body should only ever scroll it — never
     // dismiss the sheet. ModalBottomSheet otherwise hands the leftover downward
@@ -2479,7 +2480,7 @@ internal fun MomentCommentsSheet(
     // Lifted in by the timeline feed list so it can observe the sheet's target
     // state and drop the shrunk media band in parallel with the slide-down.
     // Defaults to a locally-remembered state for any other caller.
-    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    sheetState: SheetState = rememberExpandedSheetState(),
 ) {
     CommentsSheet(
         uiState = uiState,

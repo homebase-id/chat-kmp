@@ -412,12 +412,11 @@ private fun ReviewChoiceCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         ListItem(
-            headlineContent = { Text(title) },
             supportingContent = { Text(description) },
             leadingContent = { Icon(imageVector = icon, contentDescription = null) },
             trailingContent = trailing,
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        )
+        ) { Text(title) }
     }
 }
 
@@ -539,7 +538,6 @@ private fun CircleToggleRow(
             onValueChange = { onToggle() },
             role = Role.Switch,
         ),
-        headlineContent = { Text(circle.name) },
         // Already-added outranks the blurb: it explains the inert switch, which is the more
         // pressing question. Otherwise the circle's own description, falling back to its size --
         // "4 members" is a poor description but a fair hint at what a circle is for.
@@ -563,5 +561,5 @@ private fun CircleToggleRow(
             }
         },
         trailingContent = { Switch(checked = checked, onCheckedChange = null, enabled = !locked) },
-    )
+    ) { Text(circle.name) }
 }

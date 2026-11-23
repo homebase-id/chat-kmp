@@ -45,7 +45,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
+import id.homebase.core.widget.ScreenBackHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -112,7 +112,7 @@ private fun ShareContactPickerUi(
     onUiAction: (ShareContactPickerUiAction) -> Unit,
 ) {
     val review = uiState.review
-    BackHandler(enabled = review != null) {
+    ScreenBackHandler(enabled = review != null) {
         onUiAction(ShareContactPickerUiAction.BackClicked)
     }
     if (review == null) {
