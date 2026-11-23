@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +32,7 @@ import id.homebase.resources.vault_add_note
 import id.homebase.resources.vault_choose_file
 import id.homebase.resources.vault_image_choose_gallery
 import id.homebase.resources.vault_image_take_photo
+import id.homebase.resources.vault_scan_document
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +42,7 @@ fun VaultAddEntrySheet(
     onTakePhoto: () -> Unit,
     onChooseGallery: () -> Unit,
     onChooseFile: () -> Unit,
+    onScanDocument: (() -> Unit)?,
     onAddNote: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
@@ -70,6 +73,13 @@ fun VaultAddEntrySheet(
                 label = stringResource(MR.string.vault_image_choose_gallery),
                 onClick = onChooseGallery,
             )
+            if (onScanDocument != null) {
+                SheetActionRow(
+                    icon = Icons.Outlined.DocumentScanner,
+                    label = stringResource(MR.string.vault_scan_document),
+                    onClick = onScanDocument,
+                )
+            }
             SheetActionRow(
                 icon = Icons.Outlined.Description,
                 label = stringResource(MR.string.vault_choose_file),
