@@ -2034,6 +2034,7 @@ class ConversationListViewModel(
                 scrollPosition = null,
                 isLoadingMessages = true,
                 replyToMessage = null,
+                replyToPayloadKey = null,
                 // Drop the previous conversation's pinned bar on a real switch so it
                 // doesn't flash stale pins before the new conversation's collector emits.
                 pinnedMessages = if (isNewSelection) persistentListOf() else base.pinnedMessages,

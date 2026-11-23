@@ -14,7 +14,7 @@ private class AndroidRingbackTone : RingbackTone {
         if (track != null) return
         val wav = ringbackWav()
         val pcm = wav.size - 44
-        track = runCatching {
+        val built = runCatching {
             AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
@@ -32,12 +32,14 @@ private class AndroidRingbackTone : RingbackTone {
                 .setTransferMode(AudioTrack.MODE_STATIC)
                 .setBufferSizeInBytes(pcm)
                 .build()
-                .apply {
-                    write(wav, 44, pcm)
-                    setLoopPoints(0, pcm / 2, -1)
-                    play()
-                }
-        }.getOrNull()
+        }.getOrNull() ?: return
+        track = runCatching {
+            built.apply {
+                write(wav, 44, pcm)
+                setLoopPoints(0, pcm / 2, -1)
+                play()
+            }
+        }.onFailure { built.release() }.getOrNull()
     }
 
     @Synchronized

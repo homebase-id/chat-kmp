@@ -61,6 +61,7 @@ private enum class BubbleFabAction { Confirm, Send, Attach }
 @Composable
 fun UnifiedInputBubble(
     replyToMessage: MessageUiModel?,
+    replyToPayloadKey: String? = null,
     onDismissReply: () -> Unit,
     editExistingMode: Boolean,
     showSendButton: Boolean,
@@ -120,14 +121,14 @@ fun UnifiedInputBubble(
         ) {
             Column {
                 // Reply preview — height reveal matching Signal's ValueAnimator
-                val replyTransition = updateTransition(replyToMessage, label = "replyPreview")
+                val replyTransition = updateTransition(replyToMessage?.let { it to replyToPayloadKey }, label = "replyPreview")
                 replyTransition.AnimatedVisibility(
                     visible = { it != null },
                     enter = expandVertically(MaterialTheme.motionScheme.fastSpatialSpec()),
                     exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()),
                 ) {
                     // Exiting, the target is already null; shrink the reply that was showing.
-                    (replyTransition.targetState ?: replyTransition.currentState)?.let { reply ->
+                    (replyTransition.targetState ?: replyTransition.currentState)?.let { (reply, replyKey) ->
                         val odinColor = getOdinIdColor(
                             reply.originalAuthor?.domainName ?: "",
                         )
@@ -136,6 +137,7 @@ fun UnifiedInputBubble(
                             if (isDark) odinColor.darkTheme else odinColor.lightTheme
                         ReplyPreviewBar(
                             message = reply,
+                            payloadKey = replyKey,
                             onDismiss = onDismissReply,
                             modifier = Modifier.padding(6.dp),
                             accentColor = resolvedAccent,

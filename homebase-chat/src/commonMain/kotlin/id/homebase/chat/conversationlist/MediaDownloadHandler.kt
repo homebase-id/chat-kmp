@@ -401,7 +401,7 @@ internal class MediaDownloadHandler(
             ?.message
             ?.takeIf { it.messageContent is MessageContent.ViewOnce }
             ?: return
-        messagesUiState.update { it.copy(replyToMessage = message) }
+        messagesUiState.update { it.copy(replyToMessage = message, replyToPayloadKey = null) }
     }
 
     fun handleViewOnceScreenshot(action: ConversationListUiAction.ViewOnceScreenshot) {

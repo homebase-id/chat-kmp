@@ -33,7 +33,7 @@ import platform.Foundation.NSURL
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 
-actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult? {
+actual suspend fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult? {
     return try {
         val nsUrl = NSURL.fileURLWithPath(filePath)
         val accessed = nsUrl.startAccessingSecurityScopedResource()
@@ -60,7 +60,7 @@ actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThu
     }
 }
 
-actual fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult? {
+actual suspend fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult? {
     return try {
         bytes.usePinned { pinned ->
             val provider = CGDataProviderCreateWithData(

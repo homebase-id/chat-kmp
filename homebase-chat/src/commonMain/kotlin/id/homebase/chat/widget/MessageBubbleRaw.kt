@@ -79,6 +79,7 @@ import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
@@ -176,6 +177,7 @@ fun MessageBubbleRaw(
     onMediaLongClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaSecondaryPress: ((PayloadDescriptor) -> Unit)? = null,
     onClickMessageId: (Uuid) -> Unit,
+    onClickReply: (ReplyPreview) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     liveControls: LiveLocationBubbleControls? = null,
     sharedTransitionScope: SharedTransitionScope?,
@@ -782,7 +784,7 @@ fun MessageBubbleRaw(
                         InlineReplyPreview(
                             replyPreview = reply,
                             sentByYou = sentByYou,
-                            onClick = { onClickMessageId(reply.replyUniqueId) },
+                            onClick = { onClickReply(reply) },
                             replyMessage = replyMessages[reply.replyUniqueId],
                             driveId = chatTargetDrive.alias,
                         )
@@ -865,7 +867,7 @@ fun MessageBubbleRaw(
                         InlineReplyPreview(
                             replyPreview = reply,
                             sentByYou = sentByYou,
-                            onClick = { onClickMessageId(reply.replyUniqueId) },
+                            onClick = { onClickReply(reply) },
                             replyMessage = replyMessages[reply.replyUniqueId],
                             driveId = chatTargetDrive.alias,
                         )
@@ -981,7 +983,7 @@ fun MessageBubbleRaw(
                                 InlineReplyPreview(
                                     replyPreview = reply,
                                     sentByYou = sentByYou,
-                                    onClick = { onClickMessageId(reply.replyUniqueId) },
+                                    onClick = { onClickReply(reply) },
                                     replyMessage = replyMessages[reply.replyUniqueId],
                                     driveId = chatTargetDrive.alias,
                                 )

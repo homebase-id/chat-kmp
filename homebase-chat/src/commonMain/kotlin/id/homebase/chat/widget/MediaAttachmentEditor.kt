@@ -922,7 +922,7 @@ fun secondaryChromeExit(): ExitTransition =
  * First-page preview for a PDF attachment in the composer: renders page 1 to a
  * bitmap ([generatePdfThumbnail]) off the main thread and shows it. Falls back to
  * the generic file icon while rendering, or when the PDF can't be rendered
- * (e.g. web, where the renderer returns null).
+ * (a password-protected or damaged PDF).
  */
 @Composable
 private fun PdfAttachmentPreview(

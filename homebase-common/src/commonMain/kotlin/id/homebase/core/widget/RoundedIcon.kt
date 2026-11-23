@@ -26,7 +26,7 @@ fun RoundedIcon(
     modifier: Modifier = Modifier,
     imageVector: ImageVector,
     size: Dp = 48.dp,
-    onClick: () -> Unit = {},
+    onClick: (() -> Unit)? = null,
     contentDescription: String? = null,
     tint: Color = LocalContentColor.current,
 ) {
@@ -34,9 +34,7 @@ fun RoundedIcon(
         modifier = modifier.size(size)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable {
-                onClick()
-            },
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -53,7 +51,7 @@ fun RoundedIconFromFile(
     modifier: Modifier = Modifier,
     path: String,
     size: Dp = 48.dp,
-    onClick: () -> Unit = {},
+    onClick: (() -> Unit)? = null,
     contentDescription: String? = null,
 ) {
     val imageLoader: ImageLoader = koinInject()
@@ -64,9 +62,7 @@ fun RoundedIconFromFile(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .clickable {
-                onClick()
-            },
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         contentScale = ContentScale.Crop
     )
 }

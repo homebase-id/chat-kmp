@@ -1,7 +1,11 @@
 package id.homebase.chat.services.calling
 
+import java.lang.reflect.Proxy
+import java.util.concurrent.atomic.AtomicInteger
+import javax.sound.sampled.Clip
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -77,5 +81,47 @@ class RingbackToneTest {
         assertEquals("RIFF", wav.decodeToString(0, 4))
         assertEquals("data", wav.decodeToString(36, 40))
         assertEquals(44 + 8_000 * 6 * 2, wav.size)
+    }
+}
+
+class JvmRingbackToneTest {
+    private class FakeClip(val failOnLoop: Boolean) {
+        var closed = false
+        val clip: Clip = Proxy.newProxyInstance(
+            Clip::class.java.classLoader,
+            arrayOf(Clip::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "loop" -> if (failOnLoop) error("loop failed")
+                "close" -> closed = true
+            }
+            when (method.returnType) {
+                Boolean::class.javaPrimitiveType -> false
+                Int::class.javaPrimitiveType -> 0
+                Long::class.javaPrimitiveType -> 0L
+                else -> null
+            }
+        } as Clip
+    }
+
+    @Test
+    fun clipThatFailsToLoopIsClosed() {
+        val fake = FakeClip(failOnLoop = true)
+        JvmRingbackTone { fake.clip }.start()
+        assertTrue(fake.closed)
+    }
+
+    @Test
+    fun concurrentStartsCreateOneClip() {
+        val created = AtomicInteger()
+        val tone = JvmRingbackTone {
+            created.incrementAndGet()
+            Thread.sleep(20)
+            FakeClip(failOnLoop = false).clip
+        }
+        val threads = List(8) { Thread { tone.start() } }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        assertEquals(1, created.get())
     }
 }

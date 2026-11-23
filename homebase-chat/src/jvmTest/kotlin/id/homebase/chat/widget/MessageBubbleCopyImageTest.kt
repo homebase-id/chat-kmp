@@ -123,6 +123,7 @@ class MessageBubbleCopyImageTest {
         onMarkAsRead = {},
         onMediaClick = {},
         onClickMessageId = {},
+        onClickReply = {},
         downloadingFiles = emptySet(),
         onCopyImage = onCopyImage,
     )

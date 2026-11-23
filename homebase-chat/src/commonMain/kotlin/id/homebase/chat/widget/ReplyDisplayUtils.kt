@@ -9,6 +9,11 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.stripComposerLineBreakArtifacts
+import id.homebase.resources.MR
+import id.homebase.resources.chat_reply_quote_photo_position
+import id.homebase.resources.chat_reply_quote_video_position
+import org.jetbrains.compose.resources.stringResource
+import androidx.compose.runtime.Composable
 import kotlin.uuid.Uuid
 
 fun String.replyQuotePlainText(): String =
@@ -31,6 +36,27 @@ fun MessageUiModel.replyQuoteConversationMediaPayloads(): List<PayloadDescriptor
 // own bubble still renders the link card through mediaPayloads() via MediaMessage/MediaItem.
 fun List<PayloadDescriptor>?.replyQuoteMediaPayloads(): List<PayloadDescriptor> =
     mediaPayloads().filter { it.key != ChatProtocol.PAYLOAD_KEY_LINKS }
+
+class QuotedGalleryItem(val payload: PayloadDescriptor, val position: Int, val total: Int)
+
+// A key only quotes one item of a gallery: a lone media item or an unknown/protected/deleted parent is a whole-message quote.
+fun MessageUiModel.quotedGalleryItem(key: String?): QuotedGalleryItem? {
+    if (key == null || isDeleted || messageContent.isProtectedMedia()) return null
+    val items = replyQuoteConversationMediaPayloads()
+    if (items.size < 2) return null
+    val index = items.indexOfFirst { it.key == key }
+    return if (index < 0) null else QuotedGalleryItem(items[index], index + 1, items.size)
+}
+
+@Composable
+fun QuotedGalleryItem.positionText(): String? = when {
+    payload.isVideo() -> stringResource(MR.string.chat_reply_quote_video_position, position, total)
+    payload.isImage() -> stringResource(MR.string.chat_reply_quote_photo_position, position, total)
+    else -> null
+}
+
+fun quotedItemText(position: String, caption: String): String =
+    if (caption.isEmpty()) position else "$position · $caption"
 
 // payloadContentType is load-bearing: a GIF has no server thumbnails and its preview thumb is WebP,
 // so without it the loader asks the drive for a thumb that 404s.

@@ -15,6 +15,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.messageById
 import id.homebase.chat.data.isImage
 import id.homebase.core.widget.quickReactions
 import id.homebase.chat.viewonce.ViewOnceViewer
@@ -35,25 +36,34 @@ internal fun ChatMediaViewer(
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     when (data) {
-        is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
-            data = data,
-            isDownloading = "${data.messageId}_${data.selectedPayloadKey}" in uiState.downloadingFiles,
-            onShare = { id, key -> onUiAction(ShareMedia(id, key)) },
-            onSave = { message, key -> onUiAction(DownloadMedia(message, key)) },
-            onSaveSticker = { message, key ->
-                onUiAction(ConversationListUiAction.SaveStickerFromMessage(message, key))
-            },
-            onSaveToVault = if (vaultActive) { id, key ->
-                onUiAction(ConversationListUiAction.SaveMediaToVault(id, key))
-            } else null,
-            onCopyImage = if (data.canCopyImage()) { id, key ->
-                onUiAction(ConversationListUiAction.CopyImage(id, key))
-            } else null,
-            onDelete = { onUiAction(DeleteMessage(it)) },
-            onDismiss = { onUiAction(CloseFullScreenOverlay) },
-            animatedVisibilityScope = animatedVisibilityScope,
-            sharedTransitionScope = sharedTransitionScope,
-        )
+        is FullScreenOverlay.ViewMessageData -> {
+            val viewed = uiState.messageById(data.messageId)
+            FullScreenMediaViewer(
+                data = data,
+                isDownloading = "${data.messageId}_${data.selectedPayloadKey}" in uiState.downloadingFiles,
+                onShare = { id, key -> onUiAction(ShareMedia(id, key)) },
+                onSave = { message, key -> onUiAction(DownloadMedia(message, key)) },
+                onSaveSticker = { message, key ->
+                    onUiAction(ConversationListUiAction.SaveStickerFromMessage(message, key))
+                },
+                onSaveToVault = if (vaultActive) { id, key ->
+                    onUiAction(ConversationListUiAction.SaveMediaToVault(id, key))
+                } else null,
+                onCopyImage = if (data.canCopyImage()) { id, key ->
+                    onUiAction(ConversationListUiAction.CopyImage(id, key))
+                } else null,
+                onDelete = { onUiAction(DeleteMessage(it)) },
+                onReply = viewed?.takeIf { it.actionPolicy.allowReply && !it.isDeleted }?.let { target ->
+                    { _, key ->
+                        onUiAction(ConversationListUiAction.ReplyToMessage(target, key))
+                        onUiAction(CloseFullScreenOverlay)
+                    }
+                },
+                onDismiss = { onUiAction(CloseFullScreenOverlay) },
+                animatedVisibilityScope = animatedVisibilityScope,
+                sharedTransitionScope = sharedTransitionScope,
+            )
+        }
 
         is FullScreenOverlay.VideoPlayerData -> FullScreenVideoPlayer(
             data = data,
