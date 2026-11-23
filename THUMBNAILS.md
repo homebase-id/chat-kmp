@@ -123,7 +123,7 @@ Words used in this document:
 | Word | Meaning |
 |---|---|
 | **Source** | The file the user picked, at its displayed size after EXIF rotation. |
-| **Tiny** | The 20 px WebP embedded in the file's metadata (`previewThumbnail`), shown blurred while the real image loads. It is stored plain in every app, on encrypted files too, so the server can see it; encrypting it is a later change (`UPLOADS.md` section 7). |
+| **Tiny** | The 20 px WebP embedded in the file's metadata (`previewThumbnail`), shown scaled up, and so soft, while the real image loads. It is stored plain in every app, on encrypted files too, so the server can see it; encrypting it is a later change (`UPLOADS.md` section 7). |
 | **Thumbnail** | A smaller image stored next to the payload, so clients don't download the whole photo. |
 | **Final image, or "the photo"** | The payload: what the recipient saves or zooms into. |
 | **Row** | One line of the table. |
@@ -134,7 +134,7 @@ Each row has a job. A change to a row should show that the row still does its jo
 
 | Row | Its job | Why this size |
 |---|---|---|
-| **Tiny, 20 px** | A blurred placeholder on the first frame, before anything downloads | Enough for the right colours and shape, and small enough to embed in every file's metadata within 768 bytes. Never contains a color map |
+| **Tiny, 20 px** | A soft placeholder, before anything downloads | Enough for the right colours and shape, and small enough to embed in every file's metadata within 768 bytes. Never contains a color map |
 | **Small, 320 px** | Grid cells and small previews | A phone grid's tiles are 270–330 px, and grids allow 40% of stretch, so phone grids use this row. A small rise here costs bytes on every photo in the library. |
 | **Medium, 640 px** | Chat bubbles on phones | A phone bubble is about 600–900 physical pixels wide. |
 | **Large, 1080 px** | Full phone width, and bubbles on desktop | Matches the width of most phone screens. |
@@ -199,7 +199,7 @@ That was about 507 kB on the wire for a 231 kB photo. Without the Large thumbnai
 | **Standard** | q70 thumbnails, q60 photo | **Text needs pixels, not quality:** by eye, text stayed clean at q50. Photos at 2× zoom looked as good at 2048 q60 as at the old 1600 q85, and were smaller: 222 KB against 294 KB median. Thumbnails are viewed smaller than their pixels, so q70 is plenty. |
 | **HD** | q80 small thumbnails, q76 Large, q70 Extra large, q80 photo | People chose sharpness. The big Extra large thumbnail can be lower, because the 4096 photo replaces it when it matters. |
 | **Original** | q80 small thumbnails, q80 Large, q76 Extra large | People chose the best. The thumbnails are all they see until the full file loads, so they're the highest of the three. |
-| **Tiny** | q76, dropping as needed | It's shown blurred. Only its byte limit matters. |
+| **Tiny** | q76, dropping as needed | It's shown scaled up and soft. Only its byte limit matters. |
 
 Two conditions apply:
 
@@ -348,7 +348,7 @@ There are exactly three, and two of them are the server's.
 
 **Why shrink rather than drop quality.** The 1 MiB only bites on HD's and Original's Extra large thumbnail, typically a long screenshot or a very detailed photo. Those settings always have a full-size final image, which the step-up loads when a display needs more pixels. So a slightly smaller thumbnail costs nothing visible, while q40 blockiness would show. Standard's thumbnails never get near 1 MiB.
 
-**Why the tiny drops quality instead.** It's a 20 px placeholder shown blurred, so detail doesn't matter and its size does.
+**Why the tiny drops quality instead.** It's a 20 px placeholder shown scaled up and soft, so detail doesn't matter and its size does.
 
 **Why the limits are the same in every setting.** The limits are hard ceilings set by the server, not tuning knobs. The settings already differ in pixels and quality, and a lower limit for Standard would never trigger.
 
@@ -538,12 +538,12 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
 - **Everything else stops at its largest thumbnail:** Original sends, Photos, Vault, stickers, photos posted from the web app, and older messages. Their payload may be the sender's untouched file, of any size.
 - **Grid tiles stop at thumbnails** too, whatever they show.
 - **Full screen loads the full payload,** whatever the setting.
-- **The tiny always comes first.** Every upload must embed a tiny (the planner always makes one, GIFs and SVGs included), and every view must draw it, blurred, on its very first frame, before anything is downloaded. A photo never shows as an empty box. Only a file with no tiny, such as one uploaded by another client, shows a placeholder.
-- **Each image replaces the one before only once it has loaded,** so a view never drops back to the tiny or to blank. After the tiny: any copy of the photo already in memory, of any size, such as the tile just tapped; then the chosen thumbnail; then, only if it's needed, the final image, about 600 ms after scrolling stops. The step-up is remembered, so scrolling back doesn't download again. A failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good, and the thumbnail stays on screen without an error.
+- **The tiny always comes first.** Every upload must embed a tiny (the planner always makes one, GIFs and SVGs included), and every view must draw it, scaled up, before anything is downloaded. A photo never shows as an empty box once its tiny is decoded. Only a file with no tiny, such as one uploaded by another client, shows a placeholder.
+- **Each image replaces the one before only once it has loaded,** with a short crossfade, so a view never drops back to the tiny or to blank. After the tiny: any copy of the photo already in memory, of any size, such as the tile just tapped; then the chosen thumbnail; then, only if it's needed, the final image, about 600 ms after scrolling stops. The step-up is remembered, so scrolling back doesn't download again. A failure is remembered for two minutes, so a dropped connection doesn't keep a photo soft for good, and the thumbnail stays on screen without an error.
 - **Pagers** keep neighbouring pages composed off screen, so only the settled page steps up.
 - **The album grid loads what you stop on first.** While the grid moves, a tile that isn't already in memory shows only its tiny and starts no download (`HomebaseImage`'s `deferLoad`). About 150 ms after it stops, the tiles in view start. The background prefetch of the newest 500 waits out each scroll.
 - **On the Photos drive, a thumbnail download nobody waits for is cancelled.** `DriveFileProviderCached` shares one download per thumbnail between everyone asking for it. Photos' `DedicatedThumbCache` sets `cancelWhenUnwatched`, so the download stops when the last of them leaves, and a tile scrolled off the screen stops queueing ahead of the ones on it. Every other drive keeps the download going, so a contact row's avatar still lands in the cache after it scrolls away.
-- **The tiny** is decoded off the main thread and kept in memory, so the placeholder is there on the first frame.
+- **The tiny is decoded off the main thread,** by Coil, and kept in its memory cache, keyed by the tiny's bytes. The main thread only draws: the tiny, then the sharp image. A tiny already in memory (scrolling back, or an item the list composed ahead of the screen) is on the first frame; otherwise it follows a frame or so later. Nothing blurs per frame: scaling a 20 px image up is already soft.
 
 **Why these choices.** Change one only with this reasoning in hand:
 
@@ -665,7 +665,7 @@ What must stay proven, and where.
 - Portrait and landscape give the same sizes, transposed.
 - The random-size test also checks the [1.5 rule](#skipping-a-thumbnail-too-close-to-the-next-image) in every setting.
 - `ThumbnailLadderTest` pins the [appendix](#appendix-the-15-rule-on-real-cameras): real camera sizes at Standard, HD and Original, with the thumbnails each keeps, and that a file kept as the payload keeps its largest thumbnail.
-- `HomebaseImageTinyFirstTest` pins that a view draws the tiny on its first frame while the thumbnail loads, and shows the placeholder only without a tiny. `CreateThumbnailsTest` pins that every upload, of every format, gets a tiny.
+- `HomebaseImageTinyFirstTest` pins that the tiny is decoded once, through Coil and off the composition thread, and drawn while the thumbnail loads; that a tiny or thumbnail already in memory is on the first frame; that the thumbnail, then the stepped-up final image, replace it; that a failed thumbnail keeps the tiny under the error, and a failed step-up keeps the thumbnail without one; the sender's stand-in, `deferLoad`, and that the placeholder shows only without a tiny. `CreateThumbnailsTest` pins that every upload, of every format, gets a tiny.
 - `ThumbSizeSelectionTest` pins [how a view picks its image](#showing-the-images): the 10% and 40% allowances, fit against crop, phone and larger grid tiles, that only a recorded final image is pulled, that grid tiles never pull it, and when a view steps up.
 
 ### Pipeline contract: real decoders, scalers and encoders on every platform
