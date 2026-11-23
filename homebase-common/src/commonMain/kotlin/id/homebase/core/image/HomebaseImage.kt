@@ -109,6 +109,7 @@ fun HomebaseImage(
     val platformContext = LocalPlatformContext.current
     // Starts false for every image: the thumbnail shows first, so a slow payload never holds it back.
     var steppedUp by remember(imageData) { mutableStateOf(false) }
+    var stepUpFailed by remember(imageData) { mutableStateOf(false) }
     val displaySize = remember(imageData) { mutableStateOf<ImageSize?>(null) }
     val mayStepUp = stepUpToPayload && imageData.mayStepUp
     val thumbnailKey = remember(imageData) { HomebaseImageKeyer.thumbnailCacheKey(imageData) }
@@ -136,21 +137,30 @@ fun HomebaseImage(
     var standInFailed by remember(standIn) { mutableStateOf(false) }
     val showsStandIn = standIn != null && !standInFailed
 
-    if (mayStepUp) {
+    val full = remember(imageData) { imageData.copy(loadFullPayload = true) }
+    if (mayStepUp && !steppedUp && !stepUpFailed) {
         LaunchedEffect(imageData, contentScale) {
             snapshotFlow {
                 loadState.value is AsyncImagePainter.State.Success &&
                     displaySize.value?.let { shouldStepUpToPayload(it, imageData, crop = contentScale.crops()) } == true
             }.first { it }
-            val full = imageData.copy(loadFullPayload = true)
             val loader = koin.getOrNull<HomebaseImageLoader>()
-            if (loader?.hasStepUpFailed(full) == true) return@LaunchedEffect
+            if (loader?.hasStepUpFailed(full) == true) {
+                stepUpFailed = true
+                return@LaunchedEffect
+            }
             // The wait is what keeps a fling from downloading every payload it passes:
             // scrolling away cancels this before it fires.
             if (loader?.isFullPayloadCached(full) != true) delay(STEP_UP_SETTLE_MILLIS)
             steppedUp = true
+        }
+    }
+    // Outside the step-up gate, so a pager page that stops stepping up mid-download still records the failure.
+    if (steppedUp) {
+        LaunchedEffect(full) {
             snapshotFlow { (loadState.value as? AsyncImagePainter.State.Error)?.result?.request?.data == full }.first { it }
-            loader?.markStepUpFailed(full)
+            koin.getOrNull<HomebaseImageLoader>()?.markStepUpFailed(full)
+            stepUpFailed = true
             steppedUp = false
         }
     }
@@ -166,12 +176,13 @@ fun HomebaseImage(
 
     Box(boxModifier, contentAlignment = alignment, propagateMinConstraints = true) {
         // Under the image: Coil may already draw a photo from memory on this first frame.
-        if (placeholder != null && !showsStandIn && preview?.image == null && !drawsImage.value) placeholder()
+        if (placeholder != null && (deferred || !showsStandIn) && preview?.image == null && !drawsImage.value) placeholder()
         if (deferred) {
             preview?.let { Image(it, contentDescription, Modifier.fillMaxSize(), alignment, contentScale, colorFilter = colorFilter) }
         } else {
             if (standIn != null && !standInFailed && !drawsImage.value) {
-                LocalFileImage(standIn, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
+                // The image on top carries the description.
+                LocalFileImage(standIn, null, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
             }
             AsyncImage(
                 model = model,
@@ -188,10 +199,9 @@ fun HomebaseImage(
                 },
                 onState = { state ->
                     loadState.value = state
-                    if (state is AsyncImagePainter.State.Success) {
-                        lastSharpPainter.value = state.painter
-                        onLoaded?.invoke()
-                    }
+                    // Includes a thumbnail Coil drew from memory while loading, so a failure keeps it.
+                    if (state.painter.let { it != null && it !== preview }) lastSharpPainter.value = state.painter
+                    if (state is AsyncImagePainter.State.Success) onLoaded?.invoke()
                     if (state is AsyncImagePainter.State.Error && !steppedUp) {
                         println("HomebaseImage Error: ${state.result.throwable.message}")
                     }
