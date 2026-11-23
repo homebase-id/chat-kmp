@@ -1,5 +1,6 @@
 package id.homebase.chat.widget.video
 
+import id.homebase.api.video.VideoPlayerData
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -124,3 +125,18 @@ expect fun VideoPlayerSurface(
  * the web `<video>` keep theirs centred and at the bottom.
  */
 expect val nativeVideoControlsOwnTopCorners: Boolean
+
+/** Whether a Live or motion photo's clip plays under the photo: web's `<video>` sits above the page and desktop's player always shows its play bar. */
+expect val playsMotionClips: Boolean
+
+internal fun FullScreenOverlay.VideoPlayerData.toVideoData() = VideoPlayerData(
+    fileId = fileId,
+    driveId = driveId,
+    payloadKey = payloadKey,
+    keyHeader = keyHeader,
+    descriptorContent = payload.descriptorContent,
+    remoteOdinId = remoteOdinId,
+    globalTransitId = globalTransitId,
+    scratchSub = scratchSub,
+    contentType = payload.contentType,
+)
