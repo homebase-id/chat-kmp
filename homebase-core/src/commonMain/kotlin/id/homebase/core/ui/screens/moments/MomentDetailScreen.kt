@@ -2202,6 +2202,7 @@ private fun CommentsPanelContent(
     val commentCount = uiState.comments.size
     var lastCommentCount by remember { mutableIntStateOf(0) }
     LaunchedEffect(commentCount) {
+        // request, not scrollToItem: a forced remeasure here can land inside a pending composition on iOS
         if (commentCount > lastCommentCount) listState.requestScrollToItem(Int.MAX_VALUE)
         lastCommentCount = commentCount
     }
