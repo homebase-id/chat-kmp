@@ -429,7 +429,7 @@ internal fun FeedTimelineList(
                     post = post,
                     displayName = displayName,
                     channelName = remember(channels, post.channelId) { channelNameFor(post.channelId) },
-                    isPublic = remember(channels, post.channelId) { isPublicChannel(post.channelId) },
+                    isPublic = isPublicChannel(post.channelId),
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
                     // ponytail: post composer disabled for now. PostCard hides the repost button + overflow Edit
                     // when these are null. Restore the FAB + Route.PostCompose to re-enable compose.
