@@ -24,12 +24,9 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.UuidSerializer
 import io.ktor.client.HttpClient
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import id.homebase.api.crypto.EncryptionType
-import id.homebase.api.client.drives.asDeletedWithoutContent
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlin.uuid.Uuid
@@ -94,8 +91,7 @@ class DriveQueryProvider(
         // request body — the FileQueryParams.fileSystemType field alone is ignored for routing.
         fileSystemType: FileSystemType? = null,
         externalFileKey: ExternalFileKey? = null,
-        // Drive sync: a file locked with another key than the one this device holds is left out and
-        // logged, so it can't stop the drive.
+        // Leaves out, and logs, a file locked with another key than the drive's, so it can't stop a sync.
         skipUnreadable: Boolean = false,
     ): QueryBatchResponse {
 
@@ -203,15 +199,6 @@ class DriveQueryProvider(
         skipUnreadable: Boolean = false,
     ): QueryBatchResponse {
         val internal = deserialize<QueryBatchResponseInternalRaw>(body)
-        return mapQueryBatchResponseInternal(internal, secret, externalFileKey, skipUnreadable)
-    }
-
-    private suspend fun mapQueryBatchResponseInternal(
-        internal: QueryBatchResponseInternalRaw,
-        secret: SecureByteArray,
-        externalFileKey: ExternalFileKey?,
-        skipUnreadable: Boolean,
-    ): QueryBatchResponse {
         if (internal.invalidDrive) {
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
@@ -235,9 +222,7 @@ class DriveQueryProvider(
         externalFileKey: ExternalFileKey?,
         skipUnreadable: Boolean,
     ): List<HomebaseFile> {
-        var skipped = 0
-        var firstSkipped: Pair<ServerFile, FileDecryptionException>? = null
-        val skippedIds = mutableListOf<Uuid>()
+        val skipped = mutableListOf<Pair<ServerFile, FileDecryptionException.WrongDriveKey>>()
         val files = rows.mapNotNull { row ->
             val serverFile = serverFileWithSafeMetadata(row)
             try {
@@ -245,44 +230,34 @@ class DriveQueryProvider(
             } catch (e: FileDecryptionException.Withheld) {
                 // A share not yet open to this reader loses that file, not the page; the key's owner knows why.
                 null
-            } catch (e: FileDecryptionException.KeyHeaderDecryptionFailed) {
-                if (!skipUnreadable || !serverFile.lockedWithAnotherKey(e)) throw e
-                // A cancellation can come wrapped from a suspending decrypt; it isn't this file's fault.
-                currentCoroutineContext().ensureActive()
-                if (skipped++ == 0) firstSkipped = serverFile to e
-                if (skippedIds.size < 5) skippedIds += serverFile.fileId
+            } catch (e: FileDecryptionException.WrongDriveKey) {
+                if (!skipUnreadable) throw e
+                skipped += serverFile to e
                 // A deletion needs no key, and skipping it would leave the file showing here.
                 if (serverFile.fileState == FileState.Deleted) serverFile.asDeletedWithoutContent() else null
             }
         }
-        firstSkipped?.let { (first, e) ->
+        if (skipped.isNotEmpty()) {
+            val (first, e) = skipped.first()
             Logger.e(tag = "DriveQueryProvider") {
-                "drive ${first.driveId}: skipped $skipped file(s) whose key header the drive key doesn't open: " +
-                    skippedIds.joinToString() + " (${e.cause?.let { "${it::class.simpleName}: ${it.message}" } ?: e.message})"
+                "drive ${first.driveId}: skipped ${skipped.size} file(s) whose key header the drive key doesn't open: " +
+                    skipped.take(5).joinToString { it.first.fileId.toString() } + " (${e.cause?.message})"
             }
         }
         return files
     }
 
-    // A current-format zero-knowledge key header that the drive key this device holds fails to decrypt. A key not
-    // here yet (NoDriveKey), a newer format or any other key still fails the page.
-    private fun ServerFile.lockedWithAnotherKey(e: FileDecryptionException.KeyHeaderDecryptionFailed): Boolean {
-        val header = sharedSecretEncryptedKeyHeader
-        return header.type == EncryptionType.ZkDrive && header.encryptionVersion == 1 && header.iv.size == 16 &&
-            e.cause !is FileDecryptionException
-    }
-
     private fun serverFileWithSafeMetadata(serverFileJson: JsonObject): ServerFile {
         // First deserialize ServerFile with FileMetadata as JsonObject
         val serverFileWithRawMetadata = try {
-            OdinSystemSerializer.json.decodeFromString<ServerFileWithRawMetadata>(serverFileJson.toString())
+            OdinSystemSerializer.json.decodeFromJsonElement<ServerFileWithRawMetadata>(serverFileJson)
         } catch (e: Throwable) {
             throw IllegalStateException("Failed to deserialize ServerFileWithRawMetadata: ${serverFileJson.toString().take(200)}", e)
         }
         
         // Try to deserialize FileMetadata separately, fallback to bad metadata if it fails
         val fileMetadata = try {
-            OdinSystemSerializer.json.decodeFromString<FileMetadata>(serverFileWithRawMetadata.fileMetadata.toString())
+            OdinSystemSerializer.json.decodeFromJsonElement<FileMetadata>(serverFileWithRawMetadata.fileMetadata)
         } catch (e: Throwable) {
             createBadFileMetadata(serverFileWithRawMetadata.fileMetadata)
         }

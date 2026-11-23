@@ -54,6 +54,8 @@ data class ServerFile(
                 sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret, externalFileKey?.let { key -> { locked -> key.open(fileId, fileMetadata.globalTransitId, shares.orEmpty(), locked) } })
             } catch (e: FileDecryptionException.Withheld) {
                 throw e
+            } catch (e: FileDecryptionException.WrongDriveKey) {
+                throw e
             } catch (e: CancellationException) {
                 // Only an outside key suspends on the network; any other path keeps reporting as it did.
                 if (externalFileKey != null) throw e
@@ -81,20 +83,34 @@ data class ServerFile(
             resolvedMetadata = fileMetadata
         }
 
-        return HomebaseFile(
-            fileId = fileId,
-            driveId = driveId,
-            serverFileIsEncrypted = serverFileIsEncrypted,
-            fileState = fileState,
-            fileSystemType = fileSystemType,
-            keyHeader = resolvedKeyHeader,
-            fileMetadata = resolvedMetadata,
-            serverMetadata = serverMetadata,
-            priority = priority,
-            fileByteCount = fileByteCount,
-            shares = shares,
-        )
+        return toHomebaseFile(resolvedKeyHeader, resolvedMetadata, serverFileIsEncrypted)
     }
+
+    /** A deleted file whose key this device can't open: its plain fields, so the deletion still reaches the local index. */
+    internal fun asDeletedWithoutContent(): HomebaseFile = toHomebaseFile(
+        KeyHeader.empty(),
+        fileMetadata.copy(
+            appData = fileMetadata.appData.copy(content = null),
+            localAppData = null,
+            payloads = fileMetadata.payloads?.map { it.copy(descriptorContent = null) },
+            isEncrypted = false,
+        ),
+        encrypted = false,
+    )
+
+    private fun toHomebaseFile(keyHeader: KeyHeader, metadata: FileMetadata, encrypted: Boolean) = HomebaseFile(
+        fileId = fileId,
+        driveId = driveId,
+        serverFileIsEncrypted = encrypted,
+        fileState = fileState,
+        fileSystemType = fileSystemType,
+        keyHeader = keyHeader,
+        fileMetadata = metadata,
+        serverMetadata = serverMetadata,
+        priority = priority,
+        fileByteCount = fileByteCount,
+        shares = shares,
+    )
 }
 
 /**
@@ -109,13 +125,26 @@ suspend fun EncryptedKeyHeader.open(
 ): KeyHeader =
     when (type) {
         EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
-        EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
+        EncryptionType.ZkDrive -> openWithDriveKey(driveId)
         EncryptionType.Sealed -> openSealed(driveId)
         EncryptionType.FileKey, EncryptionType.Share -> {
             val key = (external ?: throw FileDecryptionException.NoFileKey())(encryptedAesKey) ?: throw FileDecryptionException.Withheld()
             KeyHeader(iv, key.toByteArray().toSecureByteArray())
         }
     }
+
+private suspend fun EncryptedKeyHeader.openWithDriveKey(driveId: Uuid): KeyHeader {
+    val driveKey = SecureByteArray(zkDriveKey(driveId))
+    // A format this version can't read isn't another key: an update may open it.
+    if (encryptionVersion != 1 || iv.size != 16) return decryptAesToKeyHeader(driveKey)
+    return try {
+        decryptAesToKeyHeader(driveKey)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        throw FileDecryptionException.WrongDriveKey(e)
+    }
+}
 
 /**
  * The key a key header doesn't carry: a comment's file's, or a shared file's, unlocked from its [shares]' row. Null
@@ -183,25 +212,6 @@ private fun zkDriveKey(driveId: Uuid): ByteArray = ZkKeyStore.driveKey(driveId) 
 
 internal const val DECRYPTION_FAILURE_APP_DATA =
     """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}"""
-
-/** A deleted file whose key this device can't open: its plain fields, so the deletion still reaches the local index. */
-fun ServerFile.asDeletedWithoutContent(): HomebaseFile = HomebaseFile(
-    fileId = fileId,
-    driveId = driveId,
-    fileState = fileState,
-    fileSystemType = fileSystemType,
-    keyHeader = KeyHeader.empty(),
-    fileMetadata = fileMetadata.copy(
-        appData = fileMetadata.appData.copy(content = null),
-        localAppData = null,
-        payloads = fileMetadata.payloads?.map { it.copy(descriptorContent = null) },
-        isEncrypted = false,
-    ),
-    serverMetadata = serverMetadata,
-    priority = priority,
-    fileByteCount = fileByteCount,
-    shares = shares,
-)
 
 /** True when this file's appData could not be decrypted and holds the placeholder instead. */
 fun HomebaseFile.appDataFailedToDecrypt(): Boolean =
@@ -307,6 +317,10 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
 
     class ContentDecryptionFailed(cause: Throwable) :
         FileDecryptionException("Failed to decrypt file content", cause)
+
+    /** The drive key this device holds doesn't open the key header: the file was locked with another key. */
+    class WrongDriveKey(cause: Throwable) :
+        FileDecryptionException("The drive key doesn't open this key header", cause)
 
     class NoDriveKey(driveId: Uuid) :
         FileDecryptionException("This device holds no key for the zero-knowledge drive $driveId")

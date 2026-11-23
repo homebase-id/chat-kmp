@@ -267,7 +267,7 @@ class ZkDriveFilesTest {
               "serverMetadata": {}
             }
         """
-        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+        val queries = offlineQueries()
 
         val file = queries.mapQueryBatchResponse("""{"searchResults":[$json]}""", SecureByteArray(sharedSecret)).searchResults.single()
 
@@ -349,7 +349,7 @@ class ZkDriveFilesTest {
         val byShare = ExternalFileKey { id, globalTransitId, shares, lockedFileKey ->
             ShareKeys.openFileKey(circleKey, lockedFileKey, owner, id, globalTransitId, shares.single().circleId).toSecureByteArray()
         }
-        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+        val queries = offlineQueries()
 
         val shared = queries.mapQueryBatchResponse("""{"searchResults":[$json]}""", SecureByteArray(sharedSecret), byShare).searchResults.single()
 
@@ -371,7 +371,7 @@ class ZkDriveFilesTest {
         """
         val opens = Uuid.random()
         val byShare = ExternalFileKey { id, _, _, _ -> if (id == opens) file.aesKey else null }
-        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+        val queries = offlineQueries()
 
         val page = queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")},${json(Uuid.random(), "other.pdf")}]}""", SecureByteArray(sharedSecret), byShare)
 
