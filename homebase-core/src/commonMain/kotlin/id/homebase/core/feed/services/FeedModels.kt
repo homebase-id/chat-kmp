@@ -43,6 +43,8 @@ data class FeedPostItem(
     val commentCount: Int,
     val isEncrypted: Boolean,
     val acl: AccessControlList?,
+    val articleHeader: PayloadDescriptor? = null,
+    val articleSummary: String? = null,
 )
 
 // originalAuthor is set on the author's own copy; a post aggregated onto someone else's feed drive carries
@@ -134,6 +136,7 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     val ownReactions = fileMetadata.localAppData?.localReactions
         ?.mapNotNull { raw -> decodeReactionEmoji(raw) }
         .orEmpty()
+    val article = content?.takeIf { it.type == PostType.Article }
     return FeedPostItem(
         id = uniqueId,
         fileId = fileId,
@@ -158,7 +161,23 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         commentCount = fileMetadata.reactionPreview?.totalCommentCount ?: 0,
         isEncrypted = serverFileIsEncrypted,
         acl = serverMetadata.accessControlList,
+        // The web's teaser shows an image cover only; a video hero would draw as a player that opens the article.
+        articleHeader = article?.let { ownPrimaryMedia(it) }?.takeIf { it.isImage() },
+        articleSummary = article?.articleSummary(),
     )
+}
+
+private val primaryMediaKinds = setOf("image", "video")
+
+// Media on another file would need that file's own payload descriptor, so only this file's payloads count.
+internal fun HomebaseFile.ownPrimaryMedia(content: PostContent): PayloadDescriptor? {
+    val media = content.primaryMediaFile ?: return null
+    if (media.type.substringBefore('/').lowercase() !in primaryMediaKinds) return null
+    val mediaFileId = media.fileId?.ifBlank { null }
+    if (mediaFileId != null && !mediaFileId.replace("-", "").equals(fileId.toHexString(), ignoreCase = true)) {
+        return null
+    }
+    return fileMetadata.getPayloadDescriptor(media.fileKey)
 }
 
 // The parent post id is the file's groupId for a top-level comment; for a reply the groupId is the parent
