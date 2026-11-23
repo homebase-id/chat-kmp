@@ -1,8 +1,10 @@
 package id.homebase.core.ui.screens.feed
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import io.github.kdroidfilter.webview.request.RequestInterceptor
 import io.github.kdroidfilter.webview.request.WebRequest
 import io.github.kdroidfilter.webview.request.WebRequestInterceptResult
@@ -28,9 +30,9 @@ actual fun rememberFeedWebView(
 actual fun PlatformFeedWebView(
     webView: FeedWebView,
     modifier: Modifier,
-    backgroundArgb: Int,
 ) {
     val handle = webView as KdroidfilterFeedWebView
+    val backgroundArgb = MaterialTheme.colorScheme.surface.toArgb()
     WebView(
         state = handle.nativeState,
         modifier = modifier,
@@ -85,6 +87,6 @@ internal fun ((FeedWebRequest) -> FeedWebRequestDecision).toRequestInterceptor()
         }
     }
 
-/** Android's WebView ships with DOM storage (localStorage) off; desktop and iOS engines default it on. */
+/** Paints [backgroundArgb] before the first frame; on Android also turns on DOM storage, which ships off there. */
 internal expect fun configureNativeWebView(view: NativeWebView, backgroundArgb: Int)
 actual val FeedWebViewAvailable: Boolean = true

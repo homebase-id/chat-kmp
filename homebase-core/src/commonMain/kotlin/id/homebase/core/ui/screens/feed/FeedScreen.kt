@@ -31,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -152,7 +151,6 @@ internal fun FeedWebView(
         )
     }
     val webView = rememberFeedWebView(url, interceptor)
-    val backgroundArgb = MaterialTheme.colorScheme.surface.toArgb()
     var minDisplayElapsed by remember { mutableStateOf(false) }
 
     LaunchedEffect(reloadKey) {
@@ -241,7 +239,6 @@ internal fun FeedWebView(
             PlatformFeedWebView(
                 webView = webView,
                 modifier = Modifier.fillMaxSize(),
-                backgroundArgb = backgroundArgb,
             )
         }
 

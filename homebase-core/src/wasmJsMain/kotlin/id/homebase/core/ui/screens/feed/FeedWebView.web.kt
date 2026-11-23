@@ -31,7 +31,6 @@ actual fun rememberFeedWebView(
 actual fun PlatformFeedWebView(
     webView: FeedWebView,
     modifier: Modifier,
-    backgroundArgb: Int,
 ) {
     Box(
         modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
