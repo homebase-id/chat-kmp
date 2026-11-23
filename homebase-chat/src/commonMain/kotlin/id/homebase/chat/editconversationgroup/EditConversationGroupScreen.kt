@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.foundation.text.input.maxLengthReject
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -167,7 +167,7 @@ fun EditConversationGroupUi(
                                 .fillMaxWidth()
                                 .focusRequester(focusRequester),
                             state = groupNameTextState,
-                            inputTransformation = InputTransformation.maxLength(100),
+                            inputTransformation = InputTransformation.maxLengthReject(100),
                             placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
                         )
                     }

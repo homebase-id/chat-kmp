@@ -331,7 +331,6 @@ internal fun FilesyncNodeRow(
     ListItem(
         modifier = if (checked == null) rounded else rounded.semantics { toggleableState = ToggleableState(checked) },
         colors = ListItemDefaults.colors(containerColor = container),
-        headlineContent = { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2, shared = shared) },
         supportingContent = { if (details.isNotEmpty()) Text(details) },
         leadingContent = {
             if (checked == null) {
@@ -341,7 +340,7 @@ internal fun FilesyncNodeRow(
             }
         },
         trailingContent = trailing,
-    )
+    ) { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2, shared = shared) }
 }
 
 @Composable

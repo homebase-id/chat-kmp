@@ -18,7 +18,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +41,7 @@ import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.sheetComposerInset
 import id.homebase.core.ui.screens.feed.PostDetailEvent
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
+import id.homebase.core.widget.rememberExpandedSheetState
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_comments_title
@@ -66,7 +66,7 @@ fun CommentsModalSheet(
     },
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberExpandedSheetState()
     val uriHandler = getUriHandler()
     // The sheet needs its OWN host: the timeline's Scaffold snackbar renders behind it (a separate window on
     // Android), so a failed post/edit/delete would otherwise vanish.

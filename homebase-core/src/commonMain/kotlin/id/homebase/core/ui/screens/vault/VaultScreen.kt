@@ -54,7 +54,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -590,7 +591,7 @@ fun VaultScreen(
 
     // New Section bottom sheet
     if (showNewSectionSheet) {
-        val sheetState = rememberModalBottomSheetState()
+        val sheetState = rememberBottomSheetState(SheetValue.Hidden)
         VaultNewSectionSheet(
             sheetState = sheetState,
             existingSectionNames = uiState.sections.map { it.title }.toSet(),
@@ -628,7 +629,7 @@ fun VaultScreen(
 
     // Entry add bottom sheet
     if (showImageAddSheet) {
-        val sheetState = rememberModalBottomSheetState()
+        val sheetState = rememberBottomSheetState(SheetValue.Hidden)
         VaultAddEntrySheet(
             sheetState = sheetState,
             onTakePhoto = {

@@ -50,7 +50,6 @@ class KoinGraphTest {
                 definition<id.homebase.core.ui.screens.filesync.FilesyncUploadQueue>(kotlin.Function4::class),
                 definition<id.homebase.chat.calling.CallViewModel>(id.homebase.chat.services.calling.CallSession::class),
                 definition<id.homebase.chat.calling.history.CallsViewModel>(id.homebase.chat.services.calling.history.CallHistorySource::class, kotlinx.coroutines.flow.Flow::class, id.homebase.chat.services.calling.CallSession::class, kotlin.Boolean::class, id.homebase.chat.calling.history.CallLogDeleter::class),
-                definition<id.homebase.chat.calling.history.NewCallViewModel>(kotlinx.coroutines.flow.Flow::class, id.homebase.chat.services.calling.CallSession::class, kotlin.Boolean::class),
                 definition<id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel>(androidx.lifecycle.SavedStateHandle::class),
                 definition<id.homebase.chat.messageinfo.MessageInfoViewModel>(androidx.lifecycle.SavedStateHandle::class),
                 definition<id.homebase.chat.conversationsettings.ConversationSettingsViewModel>(androidx.lifecycle.SavedStateHandle::class),

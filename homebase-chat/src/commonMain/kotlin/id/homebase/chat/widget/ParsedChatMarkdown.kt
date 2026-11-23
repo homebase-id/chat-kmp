@@ -16,6 +16,7 @@ import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
+import org.intellij.markdown.parser.CancellationToken
 import org.intellij.markdown.parser.MarkdownParser
 
 /** A bare URL in [ParsedChatMarkdown.text]; [url] has a lowercase scheme and always one. */
@@ -74,7 +75,7 @@ private fun collectLinkDefinitions(out: MutableMap<String, String>, node: ASTNod
 
 internal fun parseChatMarkdown(content: String): ParsedChatMarkdown {
     val normalized = content.normalizeChatNewlines()
-    val parser = MarkdownParser(ChatMarkdownFlavour)
+    val parser = MarkdownParser(ChatMarkdownFlavour, cancellationToken = CancellationToken.NonCancellable)
     val first = try {
         parser.buildMarkdownTreeFromString(normalized)
     } catch (_: Throwable) {

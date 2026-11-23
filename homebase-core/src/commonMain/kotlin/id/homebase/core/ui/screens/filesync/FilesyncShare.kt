@@ -74,12 +74,11 @@ internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onShare: (FilesyncSha
             )
             FilesyncShareTarget.offered(nodes, withPeople).forEach { target ->
                 ListItem(
-                    headlineContent = { Text(stringResource(target.label)) },
                     leadingContent = { Icon(target.icon, contentDescription = null) },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     // Routed once it has animated out: the chooser's state goes with ShareTo.
                     modifier = Modifier.clickable { dismiss { onShare(target) } },
-                )
+                ) { Text(stringResource(target.label)) }
             }
         }
     }

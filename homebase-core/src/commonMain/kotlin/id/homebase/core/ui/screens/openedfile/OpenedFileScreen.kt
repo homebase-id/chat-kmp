@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -43,7 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
+import id.homebase.core.widget.ScreenBackHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +60,7 @@ import id.homebase.core.ui.screens.filesync.FileTypeTile
 import id.homebase.core.ui.screens.filesync.NodeName
 import id.homebase.core.ui.screens.filesync.message
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.rememberExpandedSheetState
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_root
 import id.homebase.resources.filesync_load_failed
@@ -97,7 +97,7 @@ fun OpenedFileScreen(
     val uriHandler = getUriHandler()
     val request = state.request
 
-    BackHandler(enabled = state.saving) {}
+    ScreenBackHandler(enabled = state.saving) {}
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onAction(OpenedFileAction.Resumed) }
 
     LaunchedEffect(viewModel) {
@@ -205,7 +205,7 @@ private fun NoPreviewCard(request: OpenedFileRequest) {
 private fun SaveFolderSheet(picker: SavePicker, onAction: (OpenedFileAction) -> Unit) {
     ModalBottomSheet(
         onDismissRequest = { onAction(OpenedFileAction.PickerDismiss) },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = rememberExpandedSheetState(),
     ) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) {
             Text(
@@ -226,10 +226,9 @@ private fun SaveFolderSheet(picker: SavePicker, onAction: (OpenedFileAction) -> 
                     LazyColumn(Modifier.fillMaxWidth()) {
                         items(picker.folders, key = { it.nodeId.toString() }) { folder ->
                             ListItem(
-                                headlineContent = { NodeName(folder, ringColor = MaterialTheme.colorScheme.surfaceContainerLow) },
                                 leadingContent = { FileTypeTile(folder, size = 32.dp) },
                                 modifier = Modifier.clickable { onAction(OpenedFileAction.PickerOpen(folder)) },
-                            )
+                            ) { NodeName(folder, ringColor = MaterialTheme.colorScheme.surfaceContainerLow) }
                         }
                     }
                 }

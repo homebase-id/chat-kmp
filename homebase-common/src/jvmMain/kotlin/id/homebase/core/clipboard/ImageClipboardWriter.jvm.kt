@@ -11,8 +11,11 @@ import javax.imageio.ImageIO
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-internal actual suspend fun writePngToClipboard(png: ByteArray) = withContext(Dispatchers.IO) {
-    writePngToClipboard(Toolkit.getDefaultToolkit().systemClipboard, png)
+actual val canCopyImageToClipboard: Boolean = true
+
+internal actual suspend fun writePngToClipboard(png: suspend () -> ByteArray) {
+    val bytes = png()
+    withContext(Dispatchers.IO) { writePngToClipboard(Toolkit.getDefaultToolkit().systemClipboard, bytes) }
 }
 
 internal fun writePngToClipboard(clipboard: Clipboard, png: ByteArray) {

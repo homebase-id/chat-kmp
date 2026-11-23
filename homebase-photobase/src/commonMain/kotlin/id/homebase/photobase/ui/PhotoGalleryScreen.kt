@@ -55,7 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.backhandler.BackHandler
+import id.homebase.core.widget.ScreenBackHandler
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
@@ -169,7 +169,7 @@ private fun GalleryViewer(
     val initialPage = remember { items.indexOfFirst { it.fileId == uiState.openedFileId }.coerceAtLeast(0) }
     val pagerState = rememberPagerState(initialPage) { items.size }
     val close = { onAction(PhotoGalleryUiAction.CloseViewer) }
-    BackHandler(onBack = close)
+    ScreenBackHandler(onBack = close)
     val showUI = remember { mutableStateOf(true) }
     LaunchedEffect(items) {
         // Photos arriving above the open one would otherwise leave the pager on a different photo.
@@ -208,7 +208,8 @@ private fun GalleryViewer(
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 showUIState = showUI,
-                isFocused = settled,
+                // A native video view can't follow the open and close flight, so a Live photo's clip waits for it to end.
+                isFocused = settled && !animatedVisibilityScope.transition.isRunning,
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {

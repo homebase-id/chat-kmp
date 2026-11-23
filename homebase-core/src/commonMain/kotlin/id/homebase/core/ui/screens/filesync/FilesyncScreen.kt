@@ -71,7 +71,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
+import id.homebase.core.widget.ScreenBackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
@@ -203,7 +203,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
 
     // Where Up goes: in a share view, NavigateUp alone would move the path hidden under it.
     val up = filesyncUp(uiState.path, uiState.sharing)
-    BackHandler(enabled = up != null) { up?.actions?.forEach(viewModel::onAction) }
+    ScreenBackHandler(enabled = up != null) { up?.actions?.forEach(viewModel::onAction) }
 
     val onFilesChosen: (List<PlatformFile>) -> Unit = { viewModel.onAction(FilesyncUiAction.FilesPicked(it)) }
     val filePicker = rememberFilePickerLauncher(type = FileKitType.File(), mode = FileKitMode.Multiple()) { files ->
@@ -302,10 +302,10 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
         searching = false
         scope.search.clearText()
     }
-    BackHandler(enabled = searching, onBack = closeSearch)
+    ScreenBackHandler(enabled = searching, onBack = closeSearch)
     val selecting = uiState.selecting
     // After the search's, so Back clears a selection made in the results before it closes the search.
-    BackHandler(enabled = selecting) { scope.onAction(FilesyncUiAction.ClearSelection) }
+    ScreenBackHandler(enabled = selecting) { scope.onAction(FilesyncUiAction.ClearSelection) }
     LaunchedEffect(searching) { if (searching) searchFocus.requestFocus() }
     var infoFor by remember { mutableStateOf<FilesyncNode?>(null) }
     infoFor?.let { node ->
@@ -524,22 +524,20 @@ internal fun FilesyncPrivateDriveBanners(state: PrivateDriveState, signIn: SignI
 @Composable
 internal fun DeletedFolderBanner(scope: FilesyncBrowserScope) {
     ListItem(
-        headlineContent = { Text(stringResource(MR.string.filesync_folder_deleted)) },
         trailingContent = {
             TextButton(onClick = { scope.onAction(FilesyncUiAction.Restore(setOf(scope.uiState.path.last().nodeId))) }) {
                 Text(stringResource(MR.string.filesync_restore))
             }
         },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    )
+    ) { Text(stringResource(MR.string.filesync_folder_deleted)) }
 }
 
 @Composable
 internal fun NotOnComputersBanner() {
     ListItem(
-        headlineContent = { Text(stringResource(MR.string.filesync_folder_not_on_computers)) },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    )
+    ) { Text(stringResource(MR.string.filesync_folder_not_on_computers)) }
 }
 
 @Composable

@@ -15,6 +15,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
@@ -25,6 +27,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import id.homebase.api.common.OdinId
 import id.homebase.chat.calling.CallLogDirection
 import id.homebase.chat.calling.CallOutcome
@@ -91,11 +95,11 @@ class CallsScreenScreenshotTest {
         dark: Boolean = false,
         rtl: Boolean = false,
         actions: MutableList<CallsAction> = mutableListOf(),
-        nav: MutableList<Boolean> = mutableListOf(),
+        findContact: () -> Unit = {},
     ) = setContent {
         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
             CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                CallsContent(state, onAction = { actions += it }, showInNav = true, onShowInNavChange = { nav += it }, avatar = avatar)
+                CallsContent(state, onAction = { actions += it }, onFindContact = findContact, avatar = avatar)
             }
         }
     }
@@ -193,5 +197,27 @@ class CallsScreenScreenshotTest {
         onAllNodes(hasContentDescription("Voice call"))[0].performClick()
         assertTrue(actions.single() is CallsAction.CallBack)
         onAllNodes(hasContentDescription("Voice call"))[1].assertIsNotEnabled()
+    }
+
+    @Test
+    fun emptyStateOffersFindingSomeoneAndAvatarOpensTheContact() = runDesktopComposeUiTest(411, 900) {
+        var found = 0
+        show(CallsUiState(isLoading = false), findContact = { found++ })
+        onNodeWithText("Find someone to call").performClick()
+        assertEquals(1, found)
+    }
+
+    @Test
+    fun avatarIsALabelledTargetAndTheRowStillOpensTheChat() = runDesktopComposeUiTest(411, 900) {
+        val actions = mutableListOf<CallsAction>()
+        show(mixed, actions = actions)
+        val avatar = onAllNodes(hasContentDescription("Open contact")).onFirst()
+        val bounds = avatar.getUnclippedBoundsInRoot()
+        assertTrue(bounds.width.value >= 48f && bounds.height.value >= 48f, "avatar target is $bounds")
+        avatar.performClick()
+        assertTrue(actions.single() is CallsAction.OpenContact)
+        onNodeWithText("Samwise Gamgee").performClick()
+        assertTrue(actions.last() is CallsAction.OpenChat)
+        onNodeWithText("Beta").assertExists()
     }
 }

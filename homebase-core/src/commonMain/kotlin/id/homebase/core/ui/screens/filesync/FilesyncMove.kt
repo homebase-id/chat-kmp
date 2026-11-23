@@ -56,12 +56,11 @@ internal fun FilesyncMoveDialog(picker: FilesyncMovePicker, onAction: (FilesyncU
                             items(picker.folders, key = { it.nodeId.toString() }) { folder ->
                                 val moving = picker.isMoving(folder.nodeId)
                                 ListItem(
-                                    headlineContent = { NodeName(folder, ringColor = MaterialTheme.colorScheme.surfaceContainerHigh) },
                                     leadingContent = { FileTypeTile(folder, size = 32.dp) },
                                     modifier = Modifier
                                         .alpha(if (moving) 0.38f else 1f)
                                         .clickable(enabled = !moving) { onAction(FilesyncUiAction.MovePickerOpen(folder)) },
-                                )
+                                ) { NodeName(folder, ringColor = MaterialTheme.colorScheme.surfaceContainerHigh) }
                             }
                         }
                     }

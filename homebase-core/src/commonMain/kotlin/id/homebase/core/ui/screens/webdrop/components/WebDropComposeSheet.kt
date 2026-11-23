@@ -44,7 +44,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -67,6 +66,7 @@ import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.ui.screens.webdrop.model.WebDropTtlChoice
 import id.homebase.api.file.contentType
 import id.homebase.core.webdrop.WebDropProtocol
+import id.homebase.core.widget.rememberExpandedSheetState
 import id.homebase.resources.MR
 import id.homebase.resources.webdrop_compose_title
 import id.homebase.resources.webdrop_condition_no_retention
@@ -156,7 +156,7 @@ fun WebDropComposeSheet(
 
     ModalBottomSheet(
         onDismissRequest = { onAction(WebDropUiAction.ComposeDismissed) },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = rememberExpandedSheetState(),
     ) {
         WebDropType {
             val motion = MaterialTheme.motionScheme

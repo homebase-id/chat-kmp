@@ -665,8 +665,7 @@ fun SocialSection(handles: List<Pair<ContactSocialNetwork, String>>) {
         ListItem(
             leadingContent = { Icon(Icons.Outlined.AlternateEmail, contentDescription = null) },
             overlineContent = { Text(network.label) },
-            headlineContent = { Text(handle) },
-        )
+        ) { Text(handle) }
     }
 }
 
@@ -704,11 +703,12 @@ private fun DetailField(icon: ImageVector, label: String, value: String?, synced
     ListItem(
         leadingContent = { Icon(icon, contentDescription = null) },
         overlineContent = { Text(label) },
+        trailingContent = synced?.let { { SyncedValuePeek(it) } },
+    ) {
         // Wrap the value so it can be long-pressed/drag-selected and copied (phone, email,
         // address, …). Per-row scope keeps selection inside one value at a time.
-        headlineContent = { SelectionContainer { Text(value) } },
-        trailingContent = synced?.let { { SyncedValuePeek(it) } },
-    )
+        SelectionContainer { Text(value) }
+    }
 }
 
 /**

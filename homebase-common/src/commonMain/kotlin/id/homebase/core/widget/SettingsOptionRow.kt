@@ -25,14 +25,13 @@ fun SettingsOptionRow(
             role = Role.RadioButton,
             onClick = onClick,
         ),
-        headlineContent = {
-            Text(text = label, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
         supportingContent = supportingText?.let { supporting ->
             { Text(text = supporting) }
         },
         leadingContent = {
             RadioButton(selected = selected, onClick = null)
         },
-    )
+    ) {
+        Text(text = label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
 }

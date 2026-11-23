@@ -246,7 +246,6 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
                 val selected = chosenGroup == group.circleId.toString()
                 val members = group.members.joinToString { it.domainName }
                 ListItem(
-                    headlineContent = { Text(group.name) },
                     supportingContent = { Text(members, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     leadingContent = { AudienceAvatar(group, 36.dp) },
                     trailingContent = { RadioButton(selected = selected, onClick = null) },
@@ -255,7 +254,7 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
                         chosenGroup = group.circleId.toString()
                         chosenPeople = emptyList()
                     },
-                )
+                ) { Text(group.name) }
             }
         }
         if (people.isNotEmpty()) {
@@ -531,12 +530,11 @@ private fun rememberPeople(query: String, first: Set<String>, extra: List<OdinId
 @Composable
 private fun PersonCheckRow(person: OdinId, checked: Boolean, onToggle: () -> Unit) {
     ListItem(
-        headlineContent = { Text(person.domainName) },
         leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
         trailingContent = { Checkbox(checked = checked, onCheckedChange = null) },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.toggleable(value = checked, role = Role.Checkbox) { onToggle() },
-    )
+    ) { Text(person.domainName) }
 }
 
 // A shared list's failure, loading and empty states; [list] once there is something to show.

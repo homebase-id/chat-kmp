@@ -245,7 +245,6 @@ private fun CircleSection(
                     )
                 },
             ),
-            headlineContent = { Text(candidate.displayName) },
             // No line at all when there is no date. Null means the circle grants on Connect, so
             // reviewing is not what qualifies them -- saying "not reviewed" would be a claim
             // about the contact rather than about the circle, and would be wrong for anyone the
@@ -261,7 +260,7 @@ private fun CircleSection(
                 }
             },
             leadingContent = { Checkbox(checked = checked, onCheckedChange = null) },
-        )
+        ) { Text(candidate.displayName) }
     }
 
     Button(

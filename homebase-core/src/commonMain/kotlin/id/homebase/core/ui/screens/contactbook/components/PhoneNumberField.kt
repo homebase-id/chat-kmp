@@ -162,9 +162,8 @@ private fun CountryPickerSheet(
                             )
                             .clickable { dismiss { onSelect(c) } },
                         leadingContent = { Text(c.flag) },
-                        headlineContent = { Text(c.name) },
                         trailingContent = { Text(dial) },
-                    )
+                    ) { Text(c.name) }
                 }
             }
         }
