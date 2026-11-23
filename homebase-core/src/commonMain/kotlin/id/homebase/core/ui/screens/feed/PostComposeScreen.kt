@@ -65,10 +65,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,9 +90,15 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.feed.services.PostAudience
 import id.homebase.api.file.contentType
+import id.homebase.core.ui.navigation.LocalPaneCloseGuard
 import id.homebase.core.util.rememberCameraManager
+import id.homebase.core.widget.ScreenBackHandler
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.composer_discard_confirm
+import id.homebase.resources.composer_discard_keep
+import id.homebase.resources.composer_discard_message
+import id.homebase.resources.composer_discard_title
 import id.homebase.resources.done
 import id.homebase.resources.feed_compose_add_media
 import id.homebase.resources.feed_compose_attachment_image
@@ -178,6 +186,42 @@ internal fun PostComposeContent(
     onPickCircles: (Set<String>) -> Unit,
 ) {
     var circlesDialogOpen by remember { mutableStateOf(false) }
+    var discardConfirmOpen by remember { mutableStateOf(false) }
+    // A send runs in the ViewModel's scope, so leaving mid-send would cancel it.
+    val closeTakenOver = state.isPosting || state.hasDraft
+    val requestClose: () -> Unit = {
+        when {
+            state.isPosting -> Unit
+            state.hasDraft -> discardConfirmOpen = true
+            else -> onClose()
+        }
+    }
+    val currentCloseTakenOver by rememberUpdatedState(closeTakenOver)
+    val currentRequestClose by rememberUpdatedState(requestClose)
+    val paneCloseGuard = LocalPaneCloseGuard.current
+    DisposableEffect(paneCloseGuard) {
+        paneCloseGuard?.value = { currentCloseTakenOver.also { if (it) currentRequestClose() } }
+        onDispose { paneCloseGuard?.value = { false } }
+    }
+    ScreenBackHandler(enabled = closeTakenOver, onBack = requestClose)
+
+    if (discardConfirmOpen) {
+        val keepEditing: () -> Unit = { discardConfirmOpen = false }
+        AlertDialog(
+            onDismissRequest = keepEditing,
+            title = { Text(stringResource(MR.string.composer_discard_title)) },
+            text = { Text(stringResource(MR.string.composer_discard_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    discardConfirmOpen = false
+                    onClose()
+                }) { Text(stringResource(MR.string.composer_discard_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = keepEditing) { Text(stringResource(MR.string.composer_discard_keep)) }
+            },
+        )
+    }
 
     Scaffold(
         modifier = Modifier.imePadding(),
@@ -190,7 +234,11 @@ internal fun PostComposeContent(
                     modifier = Modifier.widthIn(max = ComposerMaxWidth),
                     title = { Text(stringResource(MR.string.feed_compose_title)) },
                     navigationIcon = {
-                        IconButton(onClick = onClose, shapes = IconButtonDefaults.shapes()) {
+                        IconButton(
+                            onClick = requestClose,
+                            enabled = !state.isPosting,
+                            shapes = IconButtonDefaults.shapes(),
+                        ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(MR.string.menu_back),
