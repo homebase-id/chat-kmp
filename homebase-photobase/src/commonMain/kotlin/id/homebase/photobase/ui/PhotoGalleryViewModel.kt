@@ -249,7 +249,7 @@ internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
             payloads = listOf(payload),
             keyHeader = keyHeader,
             selectedPayloadKey = payload.key,
-            motionClips = motion?.let { mapOf(payload.key to player(it)) }.orEmpty(),
+            motionClips = motion?.let { mapOf(payload.key to it) }.orEmpty(),
         )
     }
 

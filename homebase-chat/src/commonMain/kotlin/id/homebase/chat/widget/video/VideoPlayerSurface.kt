@@ -1,5 +1,6 @@
 package id.homebase.chat.widget.video
 
+import id.homebase.api.video.VideoPlayerData
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -125,8 +126,17 @@ expect fun VideoPlayerSurface(
  */
 expect val nativeVideoControlsOwnTopCorners: Boolean
 
-/**
- * Whether a Live or motion photo's clip plays when the photo opens (THUMBNAILS.md, "Live and motion photos"). True on
- * Android, iOS and desktop; false on web, whose `<video>` sits above the page and keeps its own controls (#2604).
- */
+/** Whether a Live or motion photo's clip plays under the photo: web's `<video>` sits above the page with its own controls. */
 expect val playsMotionClips: Boolean
+
+internal fun FullScreenOverlay.VideoPlayerData.toVideoData() = VideoPlayerData(
+    fileId = fileId,
+    driveId = driveId,
+    payloadKey = payloadKey,
+    keyHeader = keyHeader,
+    descriptorContent = payload.descriptorContent,
+    remoteOdinId = remoteOdinId,
+    globalTransitId = globalTransitId,
+    scratchSub = scratchSub,
+    contentType = payload.contentType,
+)

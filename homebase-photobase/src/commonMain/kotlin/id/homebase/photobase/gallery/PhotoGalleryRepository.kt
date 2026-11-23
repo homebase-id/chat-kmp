@@ -96,6 +96,6 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         keyHeader = keyHeader,
         payload = payload,
         playableCopy = payload.takeIf { it.isVideo() }?.playableCopyIn(payloads),
-        motion = live?.let { it.playableCopyIn(payloads) ?: it },
+        motion = live?.playableIn(payloads),
     )
 }

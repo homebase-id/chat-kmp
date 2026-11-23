@@ -1,7 +1,5 @@
 package id.homebase.chat.widget
 
-import id.homebase.chat.widget.video.playsMotionClips
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -175,81 +173,57 @@ fun FullScreenMediaViewer(
             }
 
             val localContext by localAttachmentStore.collectContext(data.messageId, payload.key)
-            val motion = rememberMotionState(data.motionClips[payload.key]?.takeIf { playsMotionClips }, isSettled && isFocused)
-            val underPhoto: (@Composable (() -> Rect) -> Unit)? =
-                motion?.takeIf { it.mounted }?.let { m -> { rect -> MotionClipUnderPhoto(m, rect) } }
+            val motion = rememberMotionState(data, data.motionClips[payload.key], isSettled && isFocused)
+            val resolved = resolveMediaPageSource(localContext, payload.iv != null, payloadIv, data.isEncrypted)
+            val source = when (resolved) {
+                is MediaPageSource.LocalFile -> remember(resolved.path) {
+                    SubSamplingImageSource.LocalFile(filePath = resolved.path)
+                }
+                is MediaPageSource.Remote -> remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn) {
+                    val imageData = HomebaseImageData.from(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        descriptor = payload,
+                        loadFullPayload = true,
+                        isEncrypted = resolved.iv != null,
+                        keyHeader = resolved.iv
+                            ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
+                            ?: KeyHeader.empty(),
+                        remoteOdinId = data.remoteOdinId,
+                        globalTransitId = data.globalTransitId,
+                    )
+                    SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
+                }
+                else -> null
+            }
 
-            Box(Modifier.fillMaxSize().stopsMotionOnTouch(motion)) { when (
-                val resolved = resolveMediaPageSource(
-                    localContext,
-                    payload.iv != null,
-                    payloadIv,
-                    data.isEncrypted,
+            when {
+                source != null -> ZoomableSubSamplingImage(
+                    source = source,
+                    modifier = Modifier.stopsMotionOnTouch(motion),
+                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
+                    onTap = { showUI = !showUI },
+                    sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
+                    animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
+                    sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
+                    showsHdr = isSettled && motion?.shown != true,
+                    underPhoto = motion?.takeIf { it.mounted }?.let { m -> { placed -> MotionClipUnderPhoto(m, placed) } },
+                    photoAlpha = { 1f - (motion?.alpha?.value ?: 0f) },
                 )
-            ) {
-                is MediaPageSource.LocalFile -> {
-                    val source = remember(resolved.path) {
-                        SubSamplingImageSource.LocalFile(filePath = resolved.path)
-                    }
-                    ZoomableSubSamplingImage(
-                        source = source,
-                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                        onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                        showsHdr = isSettled && motion?.shown != true,
-                        underPhoto = underPhoto,
-                        photoAlpha = { 1f - (motion?.clipAlpha ?: 0f) },
-                    )
-                }
 
-                is MediaPageSource.Remote -> {
-                    val source = remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn) {
-                        val imageData = HomebaseImageData.from(
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            descriptor = payload,
-                            loadFullPayload = true,
-                            isEncrypted = resolved.iv != null,
-                            keyHeader = resolved.iv
-                                ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
-                                ?: KeyHeader.empty(),
-                            remoteOdinId = data.remoteOdinId,
-                            globalTransitId = data.globalTransitId,
-                        )
-                        SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
-                    }
-                    ZoomableSubSamplingImage(
-                        source = source,
-                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                        onTap = { showUI = !showUI },
-                        sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
-                        animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
-                        sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                        showsHdr = isSettled && motion?.shown != true,
-                        underPhoto = underPhoto,
-                        photoAlpha = { 1f - (motion?.clipAlpha ?: 0f) },
-                    )
-                }
+                // Payload not uploaded yet (no iv): show a spinner like the
+                // vault viewer, not a failure — and keep it tappable.
+                resolved == MediaPageSource.Pending -> MediaPendingOverlay(onTap = { showUI = !showUI })
 
-                MediaPageSource.Pending -> {
-                    // Payload not uploaded yet (no iv): show a spinner like the
-                    // vault viewer, not a failure — and keep it tappable.
-                    MediaPendingOverlay(onTap = { showUI = !showUI })
-                }
-
-                MediaPageSource.Unavailable -> {
-                    // iv present but undecodable (corrupt): keep the page
-                    // tappable so the user can still toggle the chrome (and reach
-                    // the back button) instead of a blank, unresponsive page.
-                    MediaUnavailablePlaceholder(
-                        message = stringResource(MR.string.chat_image_unavailable),
-                        icon = Icons.Default.BrokenImage,
-                        onTap = { showUI = !showUI },
-                    )
-                }
-            } }
+                // iv present but undecodable (corrupt): keep the page
+                // tappable so the user can still toggle the chrome (and reach
+                // the back button) instead of a blank, unresponsive page.
+                else -> MediaUnavailablePlaceholder(
+                    message = stringResource(MR.string.chat_image_unavailable),
+                    icon = Icons.Default.BrokenImage,
+                    onTap = { showUI = !showUI },
+                )
+            }
         }
 
         if (isDownloading) {

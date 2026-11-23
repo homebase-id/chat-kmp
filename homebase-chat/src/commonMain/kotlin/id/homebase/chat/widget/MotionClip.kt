@@ -1,40 +1,43 @@
 package id.homebase.chat.widget
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.unit.Constraints
-import id.homebase.api.video.VideoPlayerData
-import id.homebase.api.video.VideoPreloadService
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.video.VideoPreloader
-import kotlinx.coroutines.flow.first
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.video.VideoPlayerSurface
+import id.homebase.chat.widget.video.playsMotionClips
+import id.homebase.chat.widget.video.toVideoData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
-import kotlin.math.roundToInt
 
 /** One opening of a Live or motion photo (THUMBNAILS.md, "Live and motion photos"). */
-internal class MotionPlayback(play: Boolean) {
+internal class MotionState(val clip: FullScreenOverlay.VideoPlayerData, play: Boolean) {
     var playing by mutableStateOf(play)
         private set
     var visible by mutableStateOf(false)
         private set
+    var preloaded by mutableStateOf(false)
+    val alpha = Animatable(0f)
+    val shown by derivedStateOf { playing || alpha.value > 0f }
+    val mounted get() = shown && preloaded
 
     fun onFirstFrame() {
         if (playing) visible = true
@@ -46,82 +49,58 @@ internal class MotionPlayback(play: Boolean) {
     }
 }
 
-/** A photo page's clip: played once under the photo each time the page settles, faded in and out over it. */
-internal class MotionState(
-    val clip: FullScreenOverlay.VideoPlayerData,
-    val playback: MotionPlayback,
-    private val alpha: State<Float>,
-    private val cached: State<Boolean>,
-) {
-    val shown by derivedStateOf { playback.playing || alpha.value > 0f }
-    // Played from the payload cache once the preload is done, so an opening doesn't download it twice.
-    val mounted by derivedStateOf { shown && cached.value }
-    val clipAlpha: Float get() = alpha.value
-}
+internal fun FullScreenOverlay.ViewMessageData.motionPlayer(clip: PayloadDescriptor) = FullScreenOverlay.VideoPlayerData(
+    fileId = fileId,
+    driveId = driveId,
+    payloadKey = clip.key,
+    keyHeader = clip.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
+    payload = clip,
+    isEncrypted = isEncrypted,
+    remoteOdinId = remoteOdinId,
+    globalTransitId = globalTransitId,
+)
 
 @Composable
-internal fun rememberMotionState(clip: FullScreenOverlay.VideoPlayerData?, settled: Boolean): MotionState? {
-    if (clip == null) return null
-    PreloadsVideo(clip)
-    val preloader = koinInject<VideoPreloader>()
-    val cached = produceState(false, clip) {
-        preloader.progressFlow(clip.fileId, clip.payloadKey).first { it >= 1f }
-        value = true
+internal fun rememberMotionState(viewer: FullScreenOverlay.ViewMessageData, clip: PayloadDescriptor?, settled: Boolean): MotionState? {
+    if (clip == null || !playsMotionClips) return null
+    val motion = remember(viewer, clip, settled) { MotionState(viewer.motionPlayer(clip), play = settled) }
+    if (settled) {
+        val preloader = koinInject<VideoPreloader>()
+        // Played from the payload cache once this is done, so an opening downloads it once; swiping away cancels it.
+        LaunchedEffect(motion) {
+            withContext(Dispatchers.Default) { preloader.preload(motion.clip.toVideoData()) }
+            motion.preloaded = true
+        }
     }
-    val playback = remember(clip, settled) { MotionPlayback(play = settled) }
-    val alpha = animateFloatAsState(if (playback.visible) 1f else 0f, tween(MOTION_FADE_MS), label = "motion")
-    return remember(playback) { MotionState(clip, playback, alpha, cached) }
+    LaunchedEffect(motion) {
+        snapshotFlow { motion.visible }.collectLatest { motion.alpha.animateTo(if (it) 1f else 0f, tween(MOTION_FADE_MS)) }
+    }
+    return motion
 }
 
 /** Seen before the photo's own gestures and not consumed, so the touch that stops the clip zooms or swipes the photo too. */
 internal fun Modifier.stopsMotionOnTouch(motion: MotionState?): Modifier =
-    if (motion == null) this else pointerInput(motion.playback) {
+    if (motion == null) this else pointerInput(motion) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            motion.playback.stop()
+            motion.stop()
         }
     }
 
-/** The clip, muted and without controls, in the rect the photo is displayed in. */
 @Composable
-internal fun MotionClipUnderPhoto(motion: MotionState, displayedRect: () -> Rect) {
+internal fun MotionClipUnderPhoto(motion: MotionState, modifier: Modifier) {
     // A new player per opening: onFirstFrame fires once per mount.
-    key(motion.playback) {
+    key(motion) {
         VideoPlayerSurface(
             data = motion.clip,
-            modifier = Modifier.layout { measurable, _ ->
-                val rect = displayedRect()
-                val width = rect.width.roundToInt().coerceAtLeast(0)
-                val height = rect.height.roundToInt().coerceAtLeast(0)
-                val placeable = measurable.measure(Constraints.fixed(width, height))
-                layout(width, height) { placeable.place(rect.left.roundToInt(), rect.top.roundToInt()) }
-            },
+            modifier = modifier,
             muted = true,
             useNativeControls = false,
-            onFirstFrame = motion.playback::onFirstFrame,
-            onEnded = motion.playback::stop,
-            onError = { motion.playback.stop() },
+            onFirstFrame = motion::onFirstFrame,
+            onEnded = motion::stop,
+            onError = { motion.stop() },
         )
     }
 }
-
-/** Puts the video into the payload cache ahead of playback, as chat's bubbles do (whole MP4s up to the render limit, HLS's first segment). */
-@Composable
-fun PreloadsVideo(data: FullScreenOverlay.VideoPlayerData) {
-    val preloader = koinInject<VideoPreloadService>()
-    LaunchedEffect(data) { preloader.requestPreload(data.toVideoData()) }
-}
-
-internal fun FullScreenOverlay.VideoPlayerData.toVideoData() = VideoPlayerData(
-    fileId = fileId,
-    driveId = driveId,
-    payloadKey = payloadKey,
-    keyHeader = keyHeader,
-    descriptorContent = payload.descriptorContent,
-    remoteOdinId = remoteOdinId,
-    globalTransitId = globalTransitId,
-    scratchSub = scratchSub,
-    contentType = payload.contentType,
-)
 
 private const val MOTION_FADE_MS = 300

@@ -28,6 +28,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -93,10 +96,10 @@ fun ZoomableSubSamplingImage(
     /** Full-screen viewers set this on the page in view, so a photo with a gain map is shown in HDR. */
     showsHdr: Boolean = false,
     /**
-     * Drawn under the photo, given the rect the photo is displayed in, such as a Live Photo's clip. The photo stays on top
-     * so it keeps every gesture, and [photoAlpha] uncovers what's under it.
+     * Drawn under the photo, such as a Live Photo's clip, with a modifier that places it where the photo is displayed. The
+     * photo stays on top so it keeps every gesture, and [photoAlpha] uncovers what's under it.
      */
-    underPhoto: (@Composable (displayedRect: () -> Rect) -> Unit)? = null,
+    underPhoto: (@Composable (placed: Modifier) -> Unit)? = null,
     photoAlpha: () -> Float = { 1f },
 ) {
     val coilImageLoader: ImageLoader = koinInject()
@@ -197,7 +200,8 @@ fun ZoomableSubSamplingImage(
         // So the bridge is the sharp tile, not the ~20px embedded blur, and there
         // is no low-res-to-sharp jump. A local file is already the original on
         // disk, so the image below loads it directly with no intermediate fetch.
-        underPhoto?.invoke { zoomState.zoomable.contentDisplayRectF }
+        val displayedRect = { zoomState.zoomable.contentDisplayRectF }
+        underPhoto?.invoke(Modifier.placedAt(displayedRect))
         if (showPlaceholder && source is SubSamplingImageSource.Remote) {
             val imageData = source.imageData
             val thumbnailData = remember(imageData) {
@@ -251,7 +255,7 @@ fun ZoomableSubSamplingImage(
             active = showsHdr && imageLoaded && settled,
             encoded = encodedPhoto,
             path = localPhoto,
-            displayedRect = { zoomState.zoomable.contentDisplayRectF },
+            displayedRect = displayedRect,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -460,4 +464,12 @@ private fun Modifier.passiveDoubleTap(onDoubleTap: () -> Unit): Modifier = point
         } ?: return@awaitEachGesture
         if (waitForUpOrCancellation(PointerEventPass.Initial) != null) onDoubleTap()
     }
+}
+
+private fun Modifier.placedAt(rect: () -> Rect): Modifier = layout { measurable, _ ->
+    val r = rect()
+    val width = r.width.roundToInt().coerceAtLeast(0)
+    val height = r.height.roundToInt().coerceAtLeast(0)
+    val placeable = measurable.measure(Constraints.fixed(width, height))
+    layout(width, height) { placeable.place(r.left.roundToInt(), r.top.roundToInt()) }
 }

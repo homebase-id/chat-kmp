@@ -72,7 +72,6 @@ import id.homebase.core.HomebaseConstants
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
-import id.homebase.chat.widget.PreloadsVideo
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.forGridTile
@@ -212,9 +211,10 @@ private fun GalleryViewer(
                 isFocused = settled,
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
-            is FullScreenOverlay.VideoPlayerData -> {
-                PreloadsVideo(viewer)
-                if (settled) FullScreenVideoPlayer(data = viewer, onDismiss = close) else VideoStill(item)
+            is FullScreenOverlay.VideoPlayerData -> if (settled) {
+                FullScreenVideoPlayer(data = viewer, onDismiss = close)
+            } else {
+                VideoStill(item)
             }
             else -> Unit
         }

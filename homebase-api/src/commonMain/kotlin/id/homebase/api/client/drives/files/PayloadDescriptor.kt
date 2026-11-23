@@ -38,6 +38,9 @@ data class PayloadDescriptor(
     fun playableCopyIn(payloads: List<PayloadDescriptor>): PayloadDescriptor? =
         playableCopyKey()?.let { copy -> payloads.firstOrNull { it.key == copy } }
 
+    /** What plays for this payload: its playable copy among [payloads], else itself. */
+    fun playableIn(payloads: List<PayloadDescriptor>): PayloadDescriptor = playableCopyIn(payloads) ?: this
+
     fun keyEquals(otherKey: String): Boolean {
         return key.equals(otherKey, ignoreCase = true)
     }
