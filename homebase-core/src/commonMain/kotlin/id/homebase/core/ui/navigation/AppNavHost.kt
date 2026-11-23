@@ -157,11 +157,10 @@ import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.chat.calling.CallLabScreen
-import id.homebase.chat.calling.history.CallsScreen
-import id.homebase.chat.calling.history.NewCallScreen
+import id.homebase.chat.calling.history.CallsTab
+import id.homebase.chat.calling.history.CallsTabLabel
 import id.homebase.chat.calling.rememberPeerCallStarter
 import id.homebase.chat.services.calling.CallService
-import id.homebase.core.calling.CallsPreferences
 import androidx.compose.foundation.lazy.rememberLazyListState
 import org.koin.compose.getKoin
 import id.homebase.core.ui.screens.feed.FeedScreen
@@ -283,7 +282,8 @@ import id.homebase.core.ui.screens.contactbook.ShareContactPickerScreen
 import id.homebase.core.ui.screens.contactbook.components.ContactCardDescriptorSaver
 import id.homebase.core.ui.screens.contactbook.components.ContactCardSaveHost
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
-import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
+import id.homebase.core.ui.screens.contactbook.CallsTabSlot
+import id.homebase.core.ui.screens.contactbook.ContactTab
 import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesScreen
 import id.homebase.resources.chat_contact_card_saved_body
 import id.homebase.resources.chat_contact_card_saved_open
@@ -434,8 +434,6 @@ fun AppNavHost(
     val emailUnreadCount = emailUiState.mailboxStatus
         ?.takeIf { it.available }
         ?.inboxUnread ?: 0
-    val callsPreferences = koinInject<CallsPreferences>()
-    val callsIconVisible by callsPreferences.iconVisible.collectAsStateWithLifecycle()
     val koin = getKoin()
     val callsAvailable = remember(koin) { koin.getOrNull<CallService>()?.available == true }
     val callHistory = remember(koin) { koin.getOrNull<CallHistoryService>() }
@@ -446,8 +444,6 @@ fun AppNavHost(
     val peerCallStarter = rememberPeerCallStarter()
     val showNavigationRail = isExpandedLayout()
     val topLevelRoutes = remember(
-        callsAvailable,
-        callsIconVisible,
         momentsIconVisible,
         vaultIconVisible,
         filesyncIconVisible,
@@ -460,8 +456,6 @@ fun AppNavHost(
         serverSupportsMail,
     ) {
         topLevelRoutesFor(
-            callsAvailable = callsAvailable,
-            callsIconVisible = callsIconVisible,
             momentsVisible = momentsIconVisible,
             vaultVisible = vaultIconVisible,
             filesyncVisible = filesyncIconVisible,
@@ -478,12 +472,11 @@ fun AppNavHost(
         )
     }
     // A narrow desktop window's bottom bar has room only for the apps whose switches are on.
-    val bottomBarRoutes = remember(topLevelRoutes, callsIconVisible, momentsIconVisible, vaultIconVisible,
+    val bottomBarRoutes = remember(topLevelRoutes, momentsIconVisible, vaultIconVisible,
         filesyncIconVisible, feedIconVisible, photobaseIconVisible, locationIconVisible, contactBookIconVisible, emailIconVisible) {
         if (!isDesktopOrWeb()) topLevelRoutes
         else topLevelRoutes.filter { route ->
             when (route) {
-                TopLevelRoute.Calls -> callsIconVisible
                 TopLevelRoute.Moments -> momentsIconVisible
                 TopLevelRoute.Vault -> vaultIconVisible
                 TopLevelRoute.Filesync -> filesyncIconVisible
@@ -504,7 +497,11 @@ fun AppNavHost(
     val settingsOpen = currentDestination?.hasRoute(Route.Settings::class) == true
     val openEmail: () -> Unit = { navController.openApp(Route.Email, tabRoutes) }
     val openContactBook: () -> Unit = { navController.openApp(Route.ContactBook, tabRoutes) }
-    val openCalls: () -> Unit = { navController.openApp(Route.Calls, tabRoutes) }
+    // Not a route argument: openApp restores the saved Contacts entry, which keeps its old arguments.
+    val openCalls: () -> Unit = {
+        contactBookViewModel.onAction(ContactBookUiAction.TabSelected(ContactTab.CALLS))
+        openContactBook()
+    }
     val openMoments: () -> Unit = { navController.openApp(Route.Moments, tabRoutes) }
     val openLocation: () -> Unit = { navController.openApp(Route.Location, tabRoutes) }
     val openChats: () -> Unit = { navController.switchTab(Route.ChatList, tabRoutes) }
@@ -737,7 +734,7 @@ fun AppNavHost(
         onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
     ).takeIf { photobaseAvailable && koinInject<PhotoBackupController>().isSupported }
     val appsPageLinks = AppsPageLinks(
-        onOpenApp = { page -> navController.openApp(page.appRoute, tabRoutes) },
+        onOpenApp = { page -> if (page == AppsPage.Calls) openCalls() else navController.openApp(page.appRoute, tabRoutes) },
         onOpenEmailModeSwitch = { navController.navigate(Route.EmailModeSwitch) },
         callsAvailable = callsAvailable,
         photobaseAvailable = photobaseAvailable,
@@ -1199,34 +1196,6 @@ fun AppNavHost(
                                 }
                             }
 
-                            tab<Route.Calls>(tabRoot) { entry ->
-                                if (isAuthenticated) {
-                                    val scrollCallsToTop by entry.savedStateHandle
-                                        .getStateFlow(SCROLL_TO_TOP_KEY, false)
-                                        .collectAsStateWithLifecycle()
-                                    val callsListState = rememberLazyListState()
-                                    LaunchedEffect(scrollCallsToTop) {
-                                        if (scrollCallsToTop) {
-                                            callsListState.animateScrollToItem(0)
-                                            entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
-                                        }
-                                    }
-                                    val callsScope = rememberCoroutineScope()
-                                    CallsScreen(
-                                        viewModel = koinViewModel(),
-                                        showInNav = callsIconVisible,
-                                        onShowInNavChange = { callsScope.launch { callsPreferences.setIconVisible(it) } },
-                                        onStartCall = { peer, video -> peerCallStarter?.start(peer.domainName, video) },
-                                        onNewCall = { navController.navigate(Route.NewCall) },
-                                        onOpenConversation = { conversationId, messageId ->
-                                            navController.selectConversationOnChatList(conversationId, messageId = messageId)
-                                            openChats()
-                                        },
-                                        listState = callsListState,
-                                    )
-                                }
-                            }
-
                             tab<Route.Feed>(tabRoot) { entry ->
                                 if (isAuthenticated) {
                                     // Read on each Feed entry so the Settings toggle takes effect on return.
@@ -1301,30 +1270,51 @@ fun AppNavHost(
 
                             tab<Route.ContactBook>(tabRoot) {
                                 if (isAuthenticated) {
-                                    if (!contactBookOnboardingComplete) {
-                                        ContactBookOnboardingScreen(viewModel = contactBookViewModel)
-                                    } else {
-                                        ContactBookScreen(
-                                            viewModel = contactBookViewModel,
-                                            connectRequestViewModel = koinViewModel(),
-                                            onProfileClick = {
+                                    val callsListState = rememberLazyListState()
+                                    ContactBookScreen(
+                                        viewModel = contactBookViewModel,
+                                        connectRequestViewModel = koinViewModel(),
+                                        onboardingComplete = contactBookOnboardingComplete,
+                                        calls = if (callsAvailable) {
+                                            CallsTabSlot(
+                                                label = { CallsTabLabel(callsMissedCount) },
+                                                content = { callsSnackbarHostState ->
+                                                    CallsTab(
+                                                        viewModel = koinViewModel(),
+                                                        snackbarHostState = callsSnackbarHostState,
+                                                        onStartCall = { peer, video -> peerCallStarter?.start(peer.domainName, video) },
+                                                        onOpenConversation = { conversationId, messageId ->
+                                                            navController.selectConversationOnChatList(conversationId, messageId = messageId)
+                                                            openChats()
+                                                        },
+                                                        onOpenContact = { peer -> navController.navigateToIdentity(peer.domainName) },
+                                                        onFindContact = {
+                                                            contactBookViewModel.onAction(ContactBookUiAction.TabSelected(ContactTab.KNOWN))
+                                                        },
+                                                        listState = callsListState,
+                                                    )
+                                                },
+                                            )
+                                        } else {
+                                            null
+                                        },
+                                        onProfileClick = {
+                                            navController.navigate(Route.Settings)
+                                        },
+                                        onOpenConversation = { conversationId ->
+                                            navController.selectConversationOnChatList(conversationId)
+                                            openChats()
+                                        },
+                                        onShareCard = {
+                                            // Desktop and web show the card in the Settings pane, inside the window's layout.
+                                            if (isDesktopOrWeb()) {
+                                                SettingsPaneRequest.openProfileCard()
                                                 navController.navigate(Route.Settings)
-                                            },
-                                            onOpenConversation = { conversationId ->
-                                                navController.selectConversationOnChatList(conversationId)
-                                                openChats()
-                                            },
-                                            onShareCard = {
-                                                // Desktop and web show the card in the Settings pane, inside the window's layout.
-                                                if (isDesktopOrWeb()) {
-                                                    SettingsPaneRequest.openProfileCard()
-                                                    navController.navigate(Route.Settings)
-                                                } else {
-                                                    navController.navigate(Route.ProfileCard)
-                                                }
-                                            }.takeIf { profileCardEnabled },
-                                        )
-                                    }
+                                            } else {
+                                                navController.navigate(Route.ProfileCard)
+                                            }
+                                        }.takeIf { profileCardEnabled },
+                                    )
                                 }
                             }
 
@@ -1393,6 +1383,7 @@ fun AppNavHost(
                                         onSeeAllMedia = { conversationId ->
                                             navController.navigate(Route.ConversationMedia(conversationId))
                                         },
+                                        onStartCall = if (callsAvailable) { odinId, video -> peerCallStarter?.start(odinId, video) } else null,
                                         onOpenContact = { uniqueId, odinId ->
                                             navController.navigate(
                                                 Route.ContactBookDetail(uniqueId, odinId)
@@ -1622,16 +1613,6 @@ fun AppNavHost(
                                             },
                                         )
                                     }
-                                }
-                            }
-
-                            composable<Route.NewCall> {
-                                if (isAuthenticated) {
-                                    NewCallScreen(
-                                        viewModel = koinViewModel(),
-                                        onBack = { navController.popBackStack() },
-                                        onStartCall = { peer, video -> peerCallStarter?.start(peer.domainName, video) },
-                                    )
                                 }
                             }
 
@@ -2819,8 +2800,6 @@ private fun NavDestination?.isCardRoute(): Boolean =
     this?.hasRoute(Route.ProfileCard::class) == true || this?.hasRoute(Route.ProfileCardEditor::class) == true
 
 internal fun topLevelRoutesFor(
-    callsAvailable: Boolean,
-    callsIconVisible: Boolean,
     momentsVisible: Boolean,
     vaultVisible: Boolean,
     locationVisible: Boolean,
@@ -2844,7 +2823,6 @@ internal fun topLevelRoutesFor(
     if (shown(vaultVisible)) add(TopLevelRoute.Vault)
     if (shown(locationVisible)) add(TopLevelRoute.Location)
     if (shown(momentsVisible)) add(TopLevelRoute.Moments)
-    if (callsAvailable && shown(callsIconVisible)) add(TopLevelRoute.Calls)
     if (shown(contactBookVisible)) add(TopLevelRoute.ContactBook)
     add(TopLevelRoute.Apps)
 }
@@ -2856,7 +2834,6 @@ sealed class TopLevelRoute(
     val outlinedIcon: androidx.compose.ui.graphics.vector.ImageVector = icon,
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat, BootstrapChatOutlined)
-    data object Calls : TopLevelRoute(Route.Calls, MR.string.nav_calls, Icons.Filled.Call, Icons.Outlined.Call)
     data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, HomebaseIcons.RssFeed)
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome)
     data object Apps : TopLevelRoute(Route.Home, MR.string.nav_apps, HomebaseIcons.Apps, HomebaseIcons.AppsOutlined)
@@ -2951,7 +2928,7 @@ internal fun TopLevelNavIcon(
         )
     }
     val badged = (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) ||
-        (topLevelRoute is TopLevelRoute.Calls && showCallsBadge) ||
+        (topLevelRoute is TopLevelRoute.ContactBook && showCallsBadge) ||
         // Count-less like Moments: the dot says "there is mail", and the number itself lives on
         // the Email setup screen where there is room to say what it means.
         (topLevelRoute is TopLevelRoute.Email && showEmailBadge) ||
@@ -2961,7 +2938,7 @@ internal fun TopLevelNavIcon(
     if (badged) {
         val badgeDescription = when (topLevelRoute) {
             is TopLevelRoute.Location -> stringResource(MR.string.location_attention_cd)
-            is TopLevelRoute.Calls -> stringResource(MR.string.calls_missed_badge_cd)
+            is TopLevelRoute.ContactBook -> stringResource(MR.string.calls_missed_badge_cd)
             else -> null
         }
         BadgedBox(

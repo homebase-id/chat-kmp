@@ -3,6 +3,7 @@ package id.homebase.core.ui.navigation
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.calling.CallsPreferences
+import kotlin.uuid.Uuid
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.email.EmailPreferences
 import id.homebase.core.feed.newInMemoryJdbcDriver
@@ -28,8 +29,6 @@ class BottomBarDefaultsTest {
     private fun routes(db: DatabaseManager) = tabs(db).map { it.route }
 
     private fun tabs(db: DatabaseManager) = topLevelRoutesFor(
-        callsAvailable = true,
-        callsIconVisible = CallsPreferences(db).iconVisible.value,
         momentsVisible = MomentsPreferences(db).iconVisible.value,
         vaultVisible = VaultPreferences(db).iconVisible.value,
         locationVisible = LocationPreferences(db).iconVisible.value,
@@ -41,11 +40,11 @@ class BottomBarDefaultsTest {
     )
 
     @Test
-    fun freshInstallBarIsChatFeedMomentsCallsContactsApps() = runTest {
+    fun freshInstallBarIsChatFeedMomentsContactsApps() = runTest {
         val db = db()
         BottomBarDefaultsMigration.run(db)
         assertEquals(
-            listOf(Route.ChatList, Route.Feed, Route.Moments, Route.Calls, Route.ContactBook, Route.Home),
+            listOf(Route.ChatList, Route.Feed, Route.Moments, Route.ContactBook, Route.Home),
             routes(db),
         )
         assertEquals(TopLevelRoute.Apps, tabs(db).last())
@@ -115,5 +114,48 @@ class BottomBarDefaultsTest {
         assertTrue(VaultPreferences(chosen, migrationScope = backgroundScope).iconVisible.value)
         runCurrent()
         assertFalse(EmailPreferences(chosen).iconVisible.value)
+    }
+
+    private val callsIconKey = Uuid.parse("00000000-0000-0000-0000-0000000a0c01")
+    private val callsEnabledKey = CallsPreferences.ENABLED_KEY
+
+    private suspend fun DatabaseManager.store(key: Uuid, value: Boolean) =
+        keyValue.upsertValue(key, byteArrayOf(if (value) 1 else 0))
+
+    @Test
+    fun contactsComesBackWhenCallsWasVisibleAndContactsHidden() = runTest {
+        val db = db()
+        db.store(callsEnabledKey, true)
+        db.store(ContactBookPreferences.ICON_VISIBLE_KEY, false)
+        assertTrue(ContactBookPreferences(db, migrationScope = backgroundScope).iconVisible.value)
+        runCurrent()
+        assertEquals(1, db.keyValue.selectByKey(ContactBookPreferences.ICON_VISIBLE_KEY)?.data_?.single()?.toInt())
+    }
+
+    @Test
+    fun contactsStaysHiddenWhenCallsIconWasHiddenOrNeverEnabled() = runTest {
+        val iconHidden = db()
+        iconHidden.store(callsEnabledKey, true)
+        iconHidden.store(callsIconKey, false)
+        iconHidden.store(ContactBookPreferences.ICON_VISIBLE_KEY, false)
+        assertFalse(ContactBookPreferences(iconHidden, migrationScope = backgroundScope).iconVisible.value)
+
+        val neverEnabled = db()
+        neverEnabled.store(ContactBookPreferences.ICON_VISIBLE_KEY, false)
+        assertFalse(ContactBookPreferences(neverEnabled, migrationScope = backgroundScope).iconVisible.value)
+        runCurrent()
+        assertFalse(ContactBookPreferences(neverEnabled).iconVisible.value)
+    }
+
+    @Test
+    fun onceDoneHidingContactsStaysHiddenEvenWithCallsEnabled() = runTest {
+        val db = db()
+        assertTrue(ContactBookPreferences(db, migrationScope = backgroundScope).iconVisible.value)
+        runCurrent()
+        db.store(callsEnabledKey, true)
+        ContactBookPreferences(db).setIconVisible(false)
+        assertFalse(ContactBookPreferences(db, migrationScope = backgroundScope).iconVisible.value)
+        runCurrent()
+        assertFalse(ContactBookPreferences(db).iconVisible.value)
     }
 }

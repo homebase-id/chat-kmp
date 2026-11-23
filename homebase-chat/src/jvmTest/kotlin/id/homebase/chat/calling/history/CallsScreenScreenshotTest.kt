@@ -15,6 +15,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
@@ -91,11 +93,11 @@ class CallsScreenScreenshotTest {
         dark: Boolean = false,
         rtl: Boolean = false,
         actions: MutableList<CallsAction> = mutableListOf(),
-        nav: MutableList<Boolean> = mutableListOf(),
+        findContact: () -> Unit = {},
     ) = setContent {
         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
             CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                CallsContent(state, onAction = { actions += it }, showInNav = true, onShowInNavChange = { nav += it }, avatar = avatar)
+                CallsContent(state, onAction = { actions += it }, onFindContact = findContact, avatar = avatar)
             }
         }
     }
@@ -193,5 +195,21 @@ class CallsScreenScreenshotTest {
         onAllNodes(hasContentDescription("Voice call"))[0].performClick()
         assertTrue(actions.single() is CallsAction.CallBack)
         onAllNodes(hasContentDescription("Voice call"))[1].assertIsNotEnabled()
+    }
+
+    @Test
+    fun emptyStateOffersFindingSomeoneAndAvatarOpensTheContact() = runDesktopComposeUiTest(411, 900) {
+        var found = 0
+        show(CallsUiState(isLoading = false), findContact = { found++ })
+        onNodeWithText("Find someone to call").performClick()
+        assertEquals(1, found)
+    }
+
+    @Test
+    fun tappingAnAvatarSendsOpenContact() = runDesktopComposeUiTest(411, 900) {
+        val actions = mutableListOf<CallsAction>()
+        show(mixed, actions = actions)
+        onAllNodes(hasText("S")).onFirst().performClick()
+        assertTrue(actions.single() is CallsAction.OpenContact)
     }
 }

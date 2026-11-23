@@ -15,7 +15,9 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -34,6 +36,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -80,6 +83,8 @@ import id.homebase.resources.contactbook_label
 import id.homebase.resources.contactbook_requests_banner_more
 import id.homebase.resources.contactbook_requests_banner_one
 import id.homebase.resources.contactbook_search_hint
+import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingContent
+import id.homebase.resources.contactbook_tab_calls
 import id.homebase.resources.contactbook_tab_circles
 import id.homebase.resources.contactbook_tab_known
 import id.homebase.resources.contactbook_tab_new
@@ -96,16 +101,27 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 
+/** The Calls tab, supplied by the chat module so this screen needs none of its types. */
+class CallsTabSlot(
+    val label: @Composable () -> Unit,
+    val content: @Composable (SnackbarHostState) -> Unit,
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ContactBookScreen(
     viewModel: ContactBookViewModel,
     connectRequestViewModel: ConnectRequestViewModel,
+    onboardingComplete: Boolean,
+    calls: CallsTabSlot?,
     onProfileClick: () -> Unit,
     onOpenConversation: (Uuid) -> Unit,
     onShareCard: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val tabs = contactTabs(calls != null)
+    val shown = uiState.selectedTab.takeIf { it in tabs } ?: ContactTab.KNOWN
+    val onboarding = shown.showsOnboarding(onboardingComplete)
     val snackbarHostState = remember { SnackbarHostState() }
     var showInviteSheet by rememberSaveable { mutableStateOf(false) }
     val inviteMessage = uiState.ownerSession?.let {
@@ -140,7 +156,7 @@ fun ContactBookScreen(
     }
 
     val newCircle = rememberNewCircleAction { id -> viewModel.onAction(ContactBookUiAction.CircleCreated(id)) }
-    val onContacts = uiState.selectedTab != ContactTab.CIRCLES
+    val onContacts = shown == ContactTab.KNOWN || shown == ContactTab.NEW
 
     // Search is hidden behind a top-bar icon; it expands into the app-bar title when tapped
     // and collapses (clearing the query) on back/close. Mirrors the conversation-list pattern.
@@ -152,6 +168,9 @@ fun ContactBookScreen(
         viewModel.onAction(ContactBookUiAction.SearchChanged(""))
     }
 
+    LaunchedEffect(shown) {
+        if (shown == ContactTab.CALLS && searchActive) collapseSearch()
+    }
     LaunchedEffect(searchActive) {
         if (searchActive) searchFocusRequester.requestFocus()
     }
@@ -248,11 +267,13 @@ fun ContactBookScreen(
                             }
                         },
                         actions = {
-                            IconButton(onClick = { searchActive = true }) {
-                                Icon(
-                                    Icons.Filled.Search,
-                                    contentDescription = stringResource(MR.string.search),
-                                )
+                            if (shown != ContactTab.CALLS && !onboarding) {
+                                IconButton(onClick = { searchActive = true }) {
+                                    Icon(
+                                        Icons.Filled.Search,
+                                        contentDescription = stringResource(MR.string.search),
+                                    )
+                                }
                             }
                         },
                     )
@@ -264,7 +285,7 @@ fun ContactBookScreen(
             // FAB entry point — Add Contact already offers "Send connection request" once an
             // entered ID resolves to someone not yet connected.
             AnimatedVisibility(
-                visible = onContacts,
+                visible = onContacts && !onboarding,
                 enter = scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeIn(enterFade),
                 exit = scaleOut(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(exitFade),
             ) {
@@ -283,41 +304,18 @@ fun ContactBookScreen(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            // The search query (driven from the top-bar search field) filters both the
-            // Contacts and Circles tabs.
-            PrimaryTabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
-                ContactTab.entries.forEach { tab ->
-                    val waiting = uiState.newContacts.size + uiState.incomingRequestCount
-                    Tab(
-                        selected = uiState.selectedTab == tab,
-                        onClick = { viewModel.onAction(ContactBookUiAction.TabSelected(tab)) },
-                        text = {
-                            // Beside the label, not over it: BadgedBox anchors to the top-end
-                            // corner and a three-letter tab loses its last character under it.
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(stringResource(tab.labelRes()))
-                                if (tab == ContactTab.NEW && waiting > 0) {
-                                    Badge { Text(waiting.toString()) }
-                                }
-                                // A dot, not a count: the number of people who could join a
-                                // circle is not a backlog to work through, only a reason to look.
-                                if (tab == ContactTab.CIRCLES &&
-                                    uiState.enrollmentCandidateCount > 0
-                                ) {
-                                    Badge()
-                                }
-                            }
-                        },
-                    )
-                }
-            }
+            ContactTabRow(
+                tabs = tabs,
+                selected = shown,
+                onSelect = { viewModel.onAction(ContactBookUiAction.TabSelected(it)) },
+                waiting = uiState.newContacts.size + uiState.incomingRequestCount,
+                hasEnrollmentCandidates = uiState.enrollmentCandidateCount > 0,
+                callsLabel = calls?.label,
+            )
 
             val newestRequester = uiState.newestIncomingRequestOdinId
             AnimatedVisibility(
-                visible = newestRequester != null && uiState.selectedTab != ContactTab.NEW,
+                visible = newestRequester != null && shown != ContactTab.NEW,
                 enter = expandVertically() + fadeIn(enterFade),
                 exit = shrinkVertically() + fadeOut(exitFade),
             ) {
@@ -330,13 +328,18 @@ fun ContactBookScreen(
 
             val tabSlideFade = rememberTabSlideFade()
             AnimatedContent(
-                targetState = uiState.selectedTab,
+                targetState = shown,
                 modifier = Modifier.weight(1f),
                 transitionSpec = {
                     tabSlideFade.transform(targetState.ordinal > initialState.ordinal)
                 },
             ) { tab ->
+                if (tab.showsOnboarding(onboardingComplete)) {
+                    ContactBookOnboardingContent(viewModel = viewModel)
+                    return@AnimatedContent
+                }
                 when (tab) {
+                    ContactTab.CALLS -> calls?.content?.invoke(snackbarHostState)
                     ContactTab.KNOWN -> ContactBookContent(
                         uiState = uiState,
                         onAction = viewModel::onAction,
@@ -461,8 +464,53 @@ private fun ConnectionRequestsBanner(newestOdinId: String, count: Int, onClick: 
     }
 }
 
+@Composable
+internal fun ContactTabRow(
+    tabs: List<ContactTab>,
+    selected: ContactTab,
+    onSelect: (ContactTab) -> Unit,
+    waiting: Int,
+    hasEnrollmentCandidates: Boolean,
+    callsLabel: (@Composable () -> Unit)?,
+) {
+    PrimaryTabRow(selectedTabIndex = tabs.indexOf(selected).coerceAtLeast(0)) {
+        tabs.forEach { tab ->
+            // The content overload, not `text`: that slot pads 16dp a side, which cuts "Contacts"
+            // and wraps the Beta chip once four tabs share a phone's width.
+            Tab(selected = selected == tab, onClick = { onSelect(tab) }) {
+                Box(
+                    Modifier.heightIn(min = 48.dp).padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ProvideTextStyle(MaterialTheme.typography.titleSmall) {
+                        if (tab == ContactTab.CALLS && callsLabel != null) {
+                            callsLabel()
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(stringResource(tab.labelRes()), maxLines = 1)
+                                if (tab == ContactTab.NEW && waiting > 0) {
+                                    Badge { Text(waiting.toString()) }
+                                }
+                                // A dot, not a count: the number of people who could join a
+                                // circle is not a backlog to work through, only a reason to look.
+                                if (tab == ContactTab.CIRCLES && hasEnrollmentCandidates) {
+                                    Badge()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 private fun ContactTab.labelRes() = when (this) {
     ContactTab.KNOWN -> MR.string.contactbook_tab_known
+    ContactTab.CALLS -> MR.string.contactbook_tab_calls
     ContactTab.NEW -> MR.string.contactbook_tab_new
     ContactTab.CIRCLES -> MR.string.contactbook_tab_circles
 }

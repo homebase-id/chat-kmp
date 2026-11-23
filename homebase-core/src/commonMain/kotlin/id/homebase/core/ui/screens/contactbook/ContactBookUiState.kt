@@ -30,12 +30,21 @@ enum class ContactTab {
     /** Every saved contact and connection, minus those on the New tab. */
     KNOWN,
 
+    /** Call history; only present while calling is available. */
+    CALLS,
+
     /** Connected but unreviewed, plus incoming requests — everything waiting on a decision. */
     NEW,
 
     /** The circles themselves, not people. */
     CIRCLES,
 }
+
+fun contactTabs(callsAvailable: Boolean): List<ContactTab> =
+    ContactTab.entries.filter { callsAvailable || it != ContactTab.CALLS }
+
+/** Calls works before the contact book is set up; the contact tabs need the intro first. */
+fun ContactTab.showsOnboarding(onboardingComplete: Boolean): Boolean = !onboardingComplete && this != ContactTab.CALLS
 
 /** Pills within [ContactTab.KNOWN]. */
 enum class ContactFilter { ALL, CIRCLES, BLOCKED, FOLLOWING, FOLLOWERS }
