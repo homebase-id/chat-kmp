@@ -10,6 +10,7 @@ import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.CommentPreview
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.common.OdinId
@@ -20,6 +21,7 @@ import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostCommentContent
 import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostType
+import id.homebase.core.feed.services.PrimaryMediaFile
 import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.feed.services.decodeReactionEmoji
 import id.homebase.core.feed.services.previewBody
@@ -63,8 +65,10 @@ class FeedModelsTest {
         senderOdinId: OdinId? = null,
         originalAuthor: OdinId? = null,
         versionTag: Uuid? = null,
+        payloads: List<PayloadDescriptor>? = null,
+        fileId: Uuid = Uuid.random(),
     ) = HomebaseFile(
-        fileId = Uuid.random(),
+        fileId = fileId,
         driveId = driveId,
         fileState = FileState.Active,
         fileSystemType = FileSystemType.Standard,
@@ -77,6 +81,7 @@ class FeedModelsTest {
             originalAuthor = originalAuthor,
             versionTag = versionTag,
             reactionPreview = reactionPreview,
+            payloads = payloads,
             localAppData = localReactions?.let { LocalAppMetadata(localReactions = it) },
             appData = AppFileMetaData(
                 uniqueId = uniqueId,
@@ -89,18 +94,46 @@ class FeedModelsTest {
         serverMetadata = ServerMetadata(),
     )
 
+    private fun article(
+        type: PostType = PostType.Article,
+        abstract: String? = null,
+        body: String? = null,
+        primaryMediaFile: PrimaryMediaFile? = null,
+        fileId: Uuid = Uuid.random(),
+    ) = file(
+        uniqueId = Uuid.random(),
+        fileId = fileId,
+        payloads = listOf(PayloadDescriptor(key = "hero")),
+        content = OdinSystemSerializer.serialize(
+            PostContent(
+                type = type,
+                caption = "Title",
+                abstract = abstract,
+                body = body?.let { Json.parseToJsonElement(it) },
+                primaryMediaFile = primaryMediaFile,
+            )
+        ),
+    ).toFeedPostItem()!!
+
     private fun articleSummary(type: PostType = PostType.Article, abstract: String? = null, body: String? = null) =
-        file(
-            uniqueId = Uuid.random(),
-            content = OdinSystemSerializer.serialize(
-                PostContent(
-                    type = type,
-                    caption = "Title",
-                    abstract = abstract,
-                    body = body?.let { Json.parseToJsonElement(it) },
-                )
-            ),
-        ).toFeedPostItem()?.articleSummary
+        article(type = type, abstract = abstract, body = body).articleSummary
+
+    @Test
+    fun articleHeader_isTheOwnImagePayload() {
+        val fileId = Uuid.random()
+        assertEquals("hero", article(primaryMediaFile = PrimaryMediaFile(fileKey = "hero", type = "image")).articleHeader?.key)
+        val ownId = PrimaryMediaFile(fileKey = "hero", fileId = fileId.toString(), type = "image")
+        assertEquals("hero", article(primaryMediaFile = ownId, fileId = fileId).articleHeader?.key)
+    }
+
+    @Test
+    fun articleHeader_nullForAnotherFilesMediaAMissingPayloadOrANonArticle() {
+        val hero = PrimaryMediaFile(fileKey = "hero", type = "image")
+        assertNull(article(primaryMediaFile = hero.copy(fileId = Uuid.random().toString())).articleHeader)
+        assertNull(article(primaryMediaFile = hero.copy(fileKey = "missing")).articleHeader)
+        assertNull(article(primaryMediaFile = hero.copy(type = "application/pdf")).articleHeader)
+        assertNull(article(type = PostType.Media, primaryMediaFile = hero).articleHeader)
+    }
 
     private val richBody = """[
         {"type":"h1","children":[{"text":"Heading"}]},

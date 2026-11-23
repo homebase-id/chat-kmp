@@ -172,6 +172,7 @@ fun PostCard(
 
             PostMedia(
                 post = post,
+                mediaPayloads = post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) },
                 onMediaClick = onMediaClick,
                 onDoubleTapLike = { if (DOUBLE_TAP_EMOJI !in post.ownReactions) onToggleReaction(DOUBLE_TAP_EMOJI) },
                 sharedTransitionScope = sharedTransitionScope,
@@ -201,10 +202,7 @@ fun PostCard(
     }
 }
 
-internal fun FeedPostItem.articleHeaderPayload(): PayloadDescriptor? =
-    articleHeaderKey?.let { key -> payloads.firstOrNull { it.key == key } }
-
-// The web feed's article teaser: header image, title, then the abstract; the whole card opens the article.
+// Matches the web feed's ArticleTeaser.
 @Composable
 private fun ArticleCardBody(
     post: FeedPostItem,
@@ -212,9 +210,10 @@ private fun ArticleCardBody(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.clickable(onClick = onClick).padding(bottom = 8.dp)) {
-        if (post.articleHeaderPayload() != null) {
+        post.articleHeader?.let { header ->
             PostMedia(
                 post = post,
+                mediaPayloads = listOf(header),
                 onMediaClick = { onClick() },
                 onDoubleTapLike = null,
                 sharedTransitionScope = null,
@@ -469,16 +468,13 @@ private fun PostLinkPreview(
 @Composable
 private fun PostMedia(
     post: FeedPostItem,
+    mediaPayloads: List<PayloadDescriptor>,
     onMediaClick: (index: Int) -> Unit,
     onDoubleTapLike: (() -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     modifier: Modifier = Modifier,
 ) {
-    val mediaPayloads: List<PayloadDescriptor> =
-        if (post.type == PostType.Article) listOfNotNull(post.articleHeaderPayload())
-        else post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
-
     // The peer read targets the author's CHANNEL drive (post.channelId), NOT the local feed drive.
     val peerGtid = post.globalTransitId
     val channelDriveAlias = runCatching { Uuid.parse(post.channelId) }.getOrNull()

@@ -12,11 +12,6 @@ import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.util.truncateToCodePoints
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
 
 // Envelope identity ([senderOdinId], [originalAuthor], [createdMs]) comes from the HomebaseFile, never the
@@ -48,8 +43,7 @@ data class FeedPostItem(
     val commentCount: Int,
     val isEncrypted: Boolean,
     val acl: AccessControlList?,
-    /** An article's header image payload key; null when it has none or the image is another file's. */
-    val articleHeaderKey: String? = null,
+    val articleHeader: PayloadDescriptor? = null,
     val articleSummary: String? = null,
 )
 
@@ -142,6 +136,7 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     val ownReactions = fileMetadata.localAppData?.localReactions
         ?.mapNotNull { raw -> decodeReactionEmoji(raw) }
         .orEmpty()
+    val article = content?.takeIf { it.type == PostType.Article }
     return FeedPostItem(
         id = uniqueId,
         fileId = fileId,
@@ -166,40 +161,20 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         commentCount = fileMetadata.reactionPreview?.totalCommentCount ?: 0,
         isEncrypted = serverFileIsEncrypted,
         acl = serverMetadata.accessControlList,
-        articleHeaderKey = content?.primaryMediaFile
-            ?.takeIf { it.fileId == null }?.fileKey?.takeIf { it.isNotBlank() }
-            ?: content?.primaryMediaKey?.takeIf { it.isNotBlank() },
-        articleSummary = content?.takeIf { it.type == PostType.Article }
-            ?.let { it.abstract?.trim()?.ifEmpty { null } ?: openingExcerpt(it.body).ifEmpty { null } },
+        articleHeader = article?.let { ownPrimaryMedia(it) },
+        articleSummary = article?.articleSummary(),
     )
 }
 
-// Mirrors the web feed's openingExcerpt: headings, code and quotes read wrong out of place.
-private val notInExcerpt = Regex("^(h\\d|code_block|blockquote)$")
-private val whitespaceRun = Regex("\\s+")
-
-private fun JsonElement.richText(): String {
-    val node = this as? JsonObject ?: return ""
-    (node["text"] as? JsonPrimitive)?.takeIf { it.isString }?.let { return it.content }
-    val children = node["children"] as? JsonArray ?: return ""
-    val ofBlocks = children.all { (it as? JsonObject)?.get("children") is JsonArray }
-    return children.joinToString(if (ofBlocks) " " else "") { it.richText() }
-}
-
-internal fun openingExcerpt(body: JsonElement?, max: Int = 300): String {
-    val blocks = when (body) {
-        is JsonPrimitive -> if (body.isString) listOf(body.content) else emptyList()
-        is JsonArray -> body
-            .filterNot { block -> ((block as? JsonObject)?.get("type") as? JsonPrimitive)?.content?.matches(notInExcerpt) == true }
-            .map { it.richText() }
-        else -> emptyList()
+// Media on another file would need that file's own payload descriptor, so only this file's payloads count.
+internal fun HomebaseFile.ownPrimaryMedia(content: PostContent): PayloadDescriptor? {
+    val media = content.primaryMediaFile ?: return null
+    if (media.type.substringBefore('/').lowercase() !in setOf("image", "video")) return null
+    val mediaFileId = media.fileId?.ifBlank { null }
+    if (mediaFileId != null && !mediaFileId.replace("-", "").equals(fileId.toHexString(), ignoreCase = true)) {
+        return null
     }
-    var excerpt = ""
-    for (block in blocks) {
-        excerpt = "$excerpt ${block.replace(whitespaceRun, " ").trim()}".trim()
-        if (excerpt.length >= max) break
-    }
-    return excerpt.truncateToCodePoints(max)
+    return fileMetadata.getPayloadDescriptor(media.fileKey)
 }
 
 // The parent post id is the file's groupId for a top-level comment; for a reply the groupId is the parent

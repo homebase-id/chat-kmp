@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.feed.widget
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
@@ -15,22 +16,21 @@ import coil3.intercept.Interceptor
 import coil3.request.ErrorResult
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.contacts.AvatarResolver
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.chat.services.LocalAttachmentContextStore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalTestApi::class)
@@ -52,21 +52,17 @@ class PostCardArticleTest {
         )
     }
 
-    private val headerKey = FeedProtocol.mediaPayloadKey(0)
-
     private fun post(
         type: PostType = PostType.Article,
         caption: String = "The title",
-        articleHeaderKey: String? = null,
-        articleSummary: String? = "The abstract",
-        payloadKeys: List<String> = emptyList(),
+        hasHeader: Boolean = false,
     ) = FeedPostItem(
         id = Uuid.random(),
         fileId = Uuid.random(),
         globalTransitId = null,
         driveId = Uuid.random(),
         keyHeader = KeyHeader.empty(),
-        payloads = payloadKeys.map { PayloadDescriptor(key = it) },
+        payloads = emptyList(),
         caption = caption,
         type = type,
         channelId = Uuid.random().toString(),
@@ -84,23 +80,11 @@ class PostCardArticleTest {
         commentCount = 0,
         isEncrypted = false,
         acl = null,
-        articleHeaderKey = articleHeaderKey,
-        articleSummary = articleSummary,
+        articleHeader = if (hasHeader) PayloadDescriptor(key = FeedProtocol.mediaPayloadKey(0)) else null,
+        articleSummary = "The abstract",
     )
 
-    @Test
-    fun headerPayload_isTheKeyedPayload() {
-        val p = post(articleHeaderKey = headerKey, payloadKeys = listOf(FeedProtocol.mediaPayloadKey(1), headerKey))
-        assertEquals(headerKey, p.articleHeaderPayload()?.key)
-    }
-
-    @Test
-    fun headerPayload_nullWithoutKeyOrMatch() {
-        assertNull(post(payloadKeys = listOf(headerKey)).articleHeaderPayload())
-        assertNull(post(articleHeaderKey = headerKey, payloadKeys = listOf("other")).articleHeaderPayload())
-    }
-
-    private fun render(post: FeedPostItem, onPostClick: () -> Unit = {}, check: androidx.compose.ui.test.ComposeUiTest.() -> Unit) =
+    private fun render(post: FeedPostItem, onPostClick: () -> Unit = {}, check: ComposeUiTest.() -> Unit) =
         runDesktopComposeUiTest(width = 1200, height = 1000) {
             setContent {
                 KoinIsolatedContext(koin) {
@@ -135,7 +119,7 @@ class PostCardArticleTest {
 
     @Test
     fun articleWithHeader_stillShowsTitleAndSummary() {
-        render(post(articleHeaderKey = headerKey, payloadKeys = listOf(headerKey))) {
+        render(post(hasHeader = true)) {
             onNodeWithText("The title").assertIsDisplayed()
             onNodeWithText("The abstract").assertIsDisplayed()
         }
