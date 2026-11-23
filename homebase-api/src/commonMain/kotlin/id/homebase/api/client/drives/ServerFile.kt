@@ -134,17 +134,24 @@ suspend fun EncryptedKeyHeader.open(
     }
 
 private suspend fun EncryptedKeyHeader.openWithDriveKey(driveId: Uuid): KeyHeader {
-    val driveKey = SecureByteArray(zkDriveKey(driveId))
-    // A format this version can't read isn't another key: an update may open it.
-    if (encryptionVersion != 1 || iv.size != 16) return decryptAesToKeyHeader(driveKey)
+    val rawKey = zkDriveKey(driveId)
+    val driveKey = SecureByteArray(rawKey)
+    // Only a well-formed header and key that still don't decrypt mean another key; a format this version can't
+    // read, a damaged header or a damaged key fail as before.
+    val wellFormed = encryptionVersion == 1 && iv.size == 16 && encryptedAesKey.isNotEmpty() &&
+        encryptedAesKey.size % 16 == 0 && rawKey.size in AES_KEY_SIZES
+    if (!wellFormed) return decryptAesToKeyHeader(driveKey)
     return try {
         decryptAesToKeyHeader(driveKey)
     } catch (e: CancellationException) {
         throw e
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
+        // Throwable: on the web a rejected decrypt arrives as a bare Throwable.
         throw FileDecryptionException.WrongDriveKey(e)
     }
 }
+
+private val AES_KEY_SIZES = setOf(16, 24, 32)
 
 /**
  * The key a key header doesn't carry: a comment's file's, or a shared file's, unlocked from its [shares]' row. Null
