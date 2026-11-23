@@ -49,6 +49,14 @@ internal fun ChatMediaViewer(
                 onUiAction(ConversationListUiAction.CopyImage(id, key))
             } else null,
             onDelete = { onUiAction(DeleteMessage(it)) },
+            onReply = uiState.messageById(data.messageId)
+                ?.takeIf { it.actionPolicy.allowReply && !it.isDeleted }
+                ?.let { message ->
+                    { _, key ->
+                        onUiAction(ConversationListUiAction.ReplyToMessage(message, key))
+                        onUiAction(CloseFullScreenOverlay)
+                    }
+                },
             onDismiss = { onUiAction(CloseFullScreenOverlay) },
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,

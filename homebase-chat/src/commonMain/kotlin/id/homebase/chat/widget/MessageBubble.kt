@@ -189,7 +189,7 @@ fun SentMessageBubble(
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     isGroupConversation: Boolean = false,
     onMessageInfo: (() -> Unit)? = null,
-    onReply: (() -> Unit)? = null,
+    onReply: ((payloadKey: String?) -> Unit)? = null,
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
@@ -198,6 +198,7 @@ fun SentMessageBubble(
     onTogglePin: () -> Unit = {},
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
+    onClickReply: (ReplyPreview) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
     onShowReactions: (() -> Unit)? = null,
@@ -282,7 +283,7 @@ fun SentMessageBubble(
                 if (onReply != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { onReply.invoke() },
+                        onClick = { onReply.invoke(null) },
                         enabled = isHovered
                     ) {
                         Icon(
@@ -325,7 +326,7 @@ fun SentMessageBubble(
                             onMessageInfo?.invoke()
                         },
                         onReply = onReply?.let { orig ->
-                            { popupMode = MessagePopupMode.None; orig() }
+                            { popupMode = MessagePopupMode.None; orig(menuImageKey) }
                         },
                         onBattle = onBattle?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
@@ -421,6 +422,7 @@ fun SentMessageBubble(
                         onDoubleClick = openReactionBar,
                         onMediaClick = onMediaClick,
                         onClickMessageId = onClickMessageId,
+                        onClickReply = onClickReply,
                         onRequestDecryptedFile = onRequestDecryptedFile,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
@@ -488,6 +490,7 @@ fun SentMessageBubbleDisplayOnly(
             sentByYou = true,
             onMediaClick = {},
             onClickMessageId = {},
+            onClickReply = {},
             sharedTransitionScope = null,
             animatedVisibilityScope = null,
             downloadingFiles = emptySet(),
@@ -541,7 +544,7 @@ fun ReceivedMessageBubble(
     isGroupConversation: Boolean = false,
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
     onMessageInfo: (() -> Unit)? = null,
-    onReply: (() -> Unit)? = null,
+    onReply: ((payloadKey: String?) -> Unit)? = null,
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onDelete: () -> Unit,
@@ -551,6 +554,7 @@ fun ReceivedMessageBubble(
     onShowReactions: (() -> Unit)? = null,
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
+    onClickReply: (ReplyPreview) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
@@ -702,6 +706,7 @@ fun ReceivedMessageBubble(
                             onDoubleClick = openReactionBar,
                             onMediaClick = onMediaClick,
                             onClickMessageId = onClickMessageId,
+                            onClickReply = onClickReply,
                             onRequestDecryptedFile = onRequestDecryptedFile,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
@@ -766,7 +771,7 @@ fun ReceivedMessageBubble(
                 if (onReply != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { onReply() },
+                        onClick = { onReply(null) },
                         enabled = isHovered
                     ) {
                         Icon(
@@ -810,7 +815,7 @@ fun ReceivedMessageBubble(
                             onMessageInfo?.invoke()
                         },
                         onReply = onReply?.let { orig ->
-                            { popupMode = MessagePopupMode.None; orig() }
+                            { popupMode = MessagePopupMode.None; orig(menuImageKey) }
                         },
                         onBattle = onBattle?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
@@ -928,6 +933,7 @@ fun ReceivedMessageBubbleDisplayOnly(
             sentByYou = false,
             onMediaClick = {},
             onClickMessageId = {},
+            onClickReply = {},
             sharedTransitionScope = null,
             animatedVisibilityScope = null,
             downloadingFiles = emptySet(),
@@ -1123,11 +1129,13 @@ fun InlineReplyPreview(
         replyMessage?.replyQuoteConversationMediaPayloads().orEmpty()
     }
     // A voice note's embedded thumb is its waveform and a PDF's is a 20px page, so only visual media gets one.
-    val showThumbnail = replyMessage == null || mediaPayloads.firstOrNull()?.isVisualMedia() == true
+    val quoted = remember(replyMessage, replyPreview.payloadKey) { replyMessage?.quotedGalleryItem(replyPreview.payloadKey) }
+    val quotePayload = quoted?.payload ?: mediaPayloads.firstOrNull()
+    val showThumbnail = replyMessage == null || quotePayload?.isVisualMedia() == true
 
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyMessage == null || driveId == null) return@remember null
-        val firstVisualPayload = mediaPayloads.firstOrNull()?.takeIf { it.isVisualMedia() }
+        val firstVisualPayload = quotePayload?.takeIf { it.isVisualMedia() }
             ?: return@remember null
         firstVisualPayload.replyQuoteImageData(
             driveId = driveId,
@@ -1163,8 +1171,8 @@ fun InlineReplyPreview(
     val contentLabel = messageContentLabel(
         textContent = replyText,
         isDeleted = replyMessage?.isDeleted ?: false,
-        firstPayload = mediaPayloads.firstOrNull(),
-        hasMultiplePayloads = mediaPayloads.size > 1,
+        firstPayload = quotePayload,
+        hasMultiplePayloads = quoted == null && mediaPayloads.size > 1,
         messageContent = replyMessage?.messageContent.takeIf { it is MessageContent.ViewOnce },
         viewOnceOpened = viewOnceOpened,
     )
@@ -1182,14 +1190,19 @@ fun InlineReplyPreview(
             eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
         }
     }
-    val displayMessage = resolveReplyContentText(
-        replyText = replyText,
-        contentLabelText = contentLabel?.text,
-        hasThumbnail = hasThumb,
-        hasMedia = hasImage,
-        mediaFallbackLabel = stringResource(MR.string.media),
-    )
-    val showContentIcon = shouldShowContentIcon(hasThumb, contentLabel?.text)
+    val position = quoted?.positionText()
+    val displayMessage = if (position != null) {
+        quotedItemText(position, replyText)
+    } else {
+        resolveReplyContentText(
+            replyText = replyText,
+            contentLabelText = contentLabel?.text,
+            hasThumbnail = hasThumb,
+            hasMedia = hasImage,
+            mediaFallbackLabel = stringResource(MR.string.media),
+        )
+    }
+    val showContentIcon = position == null && shouldShowContentIcon(hasThumb, contentLabel?.text)
 
     // Mirror the link-preview / Signal QuoteView bounded-block pattern: the body
     // is already capped at 80 codepoints on the header (payload-free), so this is
