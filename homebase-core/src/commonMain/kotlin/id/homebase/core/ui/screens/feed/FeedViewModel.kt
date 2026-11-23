@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
-import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,9 +28,10 @@ class FeedViewModel(
     private val _reloadEvent = MutableSharedFlow<Unit>()
     val reloadEvent: SharedFlow<Unit> = _reloadEvent.asSharedFlow()
 
+    private var systemDark: Boolean? = null
+
     init {
         addCloseable(feedExtendPermissionViewModel)
-        loadFeed()
         observePermissionGrants()
     }
 
@@ -59,11 +59,13 @@ class FeedViewModel(
     }
 
     fun updateSystemDarkMode(isSystemDark: Boolean) {
-        val effectiveDark = when (userPreferences.theme) {
-            ThemeState.System -> isSystemDark
-            ThemeState.Dark -> true
-            ThemeState.Light -> false
+        val firstReport = systemDark == null
+        systemDark = isSystemDark
+        if (firstReport) {
+            loadFeed()
+            return
         }
+        val effectiveDark = resolveIsDark(userPreferences.theme, isSystemDark)
         val current = _uiState.value
         if (current.isDarkMode != effectiveDark) {
             _uiState.update { it.copy(isDarkMode = effectiveDark) }
@@ -82,11 +84,7 @@ class FeedViewModel(
                 val token = credentials.clientAccessToken
                 val sharedSecretBase64 = credentials.sharedSecret.base64Encode()
 
-                val isDark = when (userPreferences.theme) {
-                    ThemeState.Dark -> true
-                    ThemeState.Light -> false
-                    ThemeState.System -> _uiState.value.isDarkMode
-                }
+                val isDark = resolveIsDark(userPreferences.theme, systemDark == true)
 
                 val feedUrl = "https://$domain/apps/feed"
                 val script = buildFeedInjectionScript(

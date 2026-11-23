@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -18,7 +19,10 @@ actual fun rememberFeedWebView(
     url: String,
     interceptor: (FeedWebRequest) -> FeedWebRequestDecision,
 ): FeedWebView {
+    val surface = MaterialTheme.colorScheme.surface
     val state = rememberWebViewState(url)
+    // Not in onCreated, which every engine paints over; set once, as desktop rebuilds the view on a change.
+    remember(state) { state.webSettings.backgroundColor = surface }
     val nativeInterceptor = remember(interceptor) { interceptor.toRequestInterceptor() }
     val navigator = rememberWebViewNavigator(requestInterceptor = nativeInterceptor)
     return remember(state, navigator) { KdroidfilterFeedWebView(state, navigator) }

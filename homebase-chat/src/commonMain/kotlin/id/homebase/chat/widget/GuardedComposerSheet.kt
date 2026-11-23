@@ -1,9 +1,6 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,12 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.AdaptiveSheetScope
-import id.homebase.resources.MR
-import id.homebase.resources.composer_discard_confirm
-import id.homebase.resources.composer_discard_keep
-import id.homebase.resources.composer_discard_message
-import id.homebase.resources.composer_discard_title
-import org.jetbrains.compose.resources.stringResource
+import id.homebase.core.widget.DiscardChangesDialog
 
 /**
  * A sheet for a content composer (Groodle / Event / Poll) that guards against accidental
@@ -52,21 +44,11 @@ internal fun GuardedComposerSheet(
         content({ if (hasUnsaved) showDiscardConfirm = true else dismiss() }) { hasUnsaved = it }
 
         if (showDiscardConfirm) {
-            val keepEditing: () -> Unit = { showDiscardConfirm = false }
-            AlertDialog(
-                onDismissRequest = keepEditing,
-                title = { Text(stringResource(MR.string.composer_discard_title)) },
-                text = { Text(stringResource(MR.string.composer_discard_message)) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showDiscardConfirm = false
-                        dismiss()
-                    }) { Text(stringResource(MR.string.composer_discard_confirm)) }
-                },
-                dismissButton = {
-                    TextButton(onClick = keepEditing) {
-                        Text(stringResource(MR.string.composer_discard_keep))
-                    }
+            DiscardChangesDialog(
+                onKeepEditing = { showDiscardConfirm = false },
+                onDiscard = {
+                    showDiscardConfirm = false
+                    dismiss()
                 },
             )
         }

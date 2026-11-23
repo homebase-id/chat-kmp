@@ -22,8 +22,11 @@ data class PostComposeUiState(
     val selfName: String? = null,
     val isPosting: Boolean = false,
 ) {
+    val hasDraft: Boolean
+        get() = caption.isNotBlank() || attachments.isNotEmpty()
+
     val canPost: Boolean
-        get() = (caption.isNotBlank() || attachments.isNotEmpty()) &&
+        get() = hasDraft &&
             !isPosting &&
             (audience != PostAudience.Circles || selectedCircleIds.isNotEmpty())
 }
