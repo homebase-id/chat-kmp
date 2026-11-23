@@ -97,6 +97,9 @@ internal fun MotionClipUnderPhoto(motion: MotionState, modifier: Modifier) {
             modifier = modifier,
             muted = true,
             useNativeControls = false,
+            // iOS: report the first frame only once the clip is ready, and keep a muted clip's audio decoder off.
+            useInlineOptimizations = true,
+            useZoomFill = true,
             onFirstFrame = motion::onFirstFrame,
             onEnded = motion::stop,
             onError = { motion.stop() },

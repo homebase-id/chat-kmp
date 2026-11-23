@@ -476,4 +476,5 @@ private fun Modifier.placedAt(rect: () -> Rect): Modifier = clipToBounds().layou
     layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(r.left.roundToInt(), r.top.roundToInt()) }
 }
 
-private const val MAX_PLACED_SIDE = 65_534
+// Constraints can't hold two sides both above this.
+private const val MAX_PLACED_SIDE = 32_766

@@ -34,11 +34,9 @@ data class PayloadDescriptor(
     /** The payload to play for this one: its playable copy when it is an untouched original (UPLOADS.md section 3.6). */
     fun playableCopyKey(): String? = current?.video?.playableCopyKey
 
-    /** [playableCopyKey]'s payload among the file's [payloads]. */
     fun playableCopyIn(payloads: List<PayloadDescriptor>): PayloadDescriptor? =
         playableCopyKey()?.let { copy -> payloads.firstOrNull { it.key == copy } }
 
-    /** What plays for this payload: its playable copy among [payloads], else itself. */
     fun playableIn(payloads: List<PayloadDescriptor>): PayloadDescriptor = playableCopyIn(payloads) ?: this
 
     fun keyEquals(otherKey: String): Boolean {

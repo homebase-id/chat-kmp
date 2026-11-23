@@ -22,7 +22,6 @@ data class PhotoGalleryItem(
     val driveId: Uuid,
     val capturedAtMs: Long,
     val keyHeader: KeyHeader,
-    /** The still, or the video. */
     val payload: PayloadDescriptor,
     /** An untouched original video's copy to play (UPLOADS.md section 3.6). */
     val playableCopy: PayloadDescriptor? = null,
