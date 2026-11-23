@@ -78,7 +78,6 @@ class MediaAttachmentEditorPageTest {
         onNodeWithText("Page C").assertIsDisplayed()
 
         attachments = attachments - c
-        page = page.coerceAtMost(attachments.lastIndex)
         waitForIdle()
         assertEquals(0, page)
         onNodeWithText("Page A").assertIsDisplayed()
