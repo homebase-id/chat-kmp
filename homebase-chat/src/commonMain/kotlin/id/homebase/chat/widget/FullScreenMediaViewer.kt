@@ -113,6 +113,8 @@ fun FullScreenMediaViewer(
     showUIState: MutableState<Boolean> = remember { mutableStateOf(true) },
     // False for a neighbouring page a host composes off screen: it mustn't take the keyboard.
     isFocused: Boolean = true,
+    // False while something plays over the photo, such as a Live Photo's clip: HDR returns when it's done.
+    showsHdr: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -193,7 +195,7 @@ fun FullScreenMediaViewer(
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                        showsHdr = isSettled,
+                        showsHdr = isSettled && showsHdr,
                     )
                 }
 
@@ -220,7 +222,7 @@ fun FullScreenMediaViewer(
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                        showsHdr = isSettled,
+                        showsHdr = isSettled && showsHdr,
                     )
                 }
 

@@ -634,7 +634,7 @@ A Live Photo (iPhone) and a motion photo (Android) are a still plus a clip of a 
 - **The clip has no thumbnails or tiny of its own.** The still's stand for it.
 - **The still keeps its HDR,** as any photo does: the final image at HD, the largest thumbnail at Original. So an SDR clip can end on an HDR still, and the viewer cross-fades from the clip's last frame to the still.
 - **Android's clip is cut from the file.** A motion photo is a JPEG with an MP4 appended. Its XMP says so (`Camera:MotionPhoto="1"`), and a `Container:Directory` item with `Item:Semantic="MotionPhoto"` gives the clip's length, counted from the end of the file; older Pixels write `MicroVideo="1"` and `MicroVideoOffset` instead. The clip is read from that byte range and transcoded. The still at Standard and HD is re-encoded without the XMP ([Metadata](#metadata)), so it no longer claims a clip.
-- **The viewer plays the clip once when the photo opens,** then cross-fades to the still. Grid tiles stay still.
+- **The viewer plays the clip once each time the photo opens,** as Apple's Photos does: muted, with no controls, in the still's frame, shown from its first decoded frame, then cross-fades back to the still. A touch hands back to the still at once, so a zoom or swipe isn't held up. Grid tiles stay still, with no badge.
 - **On the web,** the H.264 clip plays. Where a clip can't play, the viewer shows the largest thumbnail.
 
 ## How others do it
@@ -750,7 +750,6 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 ### Not built yet
 
-- **Live and motion photos:** the clip at every setting, Android's cut from the file, and playback in the viewer ([Live and motion photos](#live-and-motion-photos)). Today Android backs up a motion photo as a plain image, so Standard and HD lose its clip, and the gallery shows only stills.
 - **Every upload records its final image's size and whether it's the user's original** (#911). Every app builds through the shared builder and records it. Photos writes the UPLOADS.md format; everything else still writes the legacy form until `DescriptorContentV1.WRITE` flips (#2521).
 - **Zooming outside full screen loads the full image when the zoom starts.** Moments' inline carousel and detail view use the zoom view, which loads the full payload as soon as the photo shows, even an untouched original. It should show the image chosen by the rule above, and load the full image once the user starts zooming, replacing it seamlessly when ready. A separate change, because the zoom view is shared with every full-screen viewer.
 

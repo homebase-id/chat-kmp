@@ -201,15 +201,21 @@ private fun GalleryViewer(
     ) { page ->
         val item = items[page]
         val settled = page == pagerState.settledPage
+        val clip = remember(item) { item.motionPlayer() }
+        val stillAspectRatio = remember(item) { item.stillAspectRatio() }
         when (val viewer = remember(item) { item.toViewer() }) {
-            is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
-                data = viewer,
-                onDismiss = close,
-                sharedTransitionScope = null,
-                animatedVisibilityScope = null,
-                showUIState = showUI,
-                isFocused = settled,
-            )
+            is FullScreenOverlay.ViewMessageData -> if (clip != null && stillAspectRatio != null) {
+                MotionPhotoPage(viewer, clip, stillAspectRatio, settled, showUI, close)
+            } else {
+                FullScreenMediaViewer(
+                    data = viewer,
+                    onDismiss = close,
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                    showUIState = showUI,
+                    isFocused = settled,
+                )
+            }
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {
                 FullScreenVideoPlayer(data = viewer, onDismiss = close)

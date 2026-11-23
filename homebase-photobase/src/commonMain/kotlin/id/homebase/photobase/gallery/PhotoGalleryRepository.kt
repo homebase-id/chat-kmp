@@ -22,10 +22,12 @@ data class PhotoGalleryItem(
     val driveId: Uuid,
     val capturedAtMs: Long,
     val keyHeader: KeyHeader,
-    /** The still, or the video. A Live Photo's paired video stays out of the gallery until playback is built. */
+    /** The still, or the video. */
     val payload: PayloadDescriptor,
     /** An untouched original video's copy to play (UPLOADS.md section 3.6). */
     val playableCopy: PayloadDescriptor? = null,
+    /** A Live or motion photo's clip to play when it opens: `photo_live`'s copy, or `photo_live` itself (UPLOADS.md 3.7). */
+    val motion: PayloadDescriptor? = null,
 ) {
     /** What the gallery shows and plays. */
     val shown: PayloadDescriptor get() = playableCopy ?: payload
@@ -86,12 +88,16 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
     // A video's playlist is a payload of its own, and not one to show.
     val payloads = fileMetadata.payloads.orEmpty()
     val payload = payloads.firstOrNull { !it.isInternalDescriptor() && it.key != PhotobaseProtocol.LivePhotoVideoPayloadKey } ?: return null
+    val live = payloads.firstOrNull { it.key == PhotobaseProtocol.LivePhotoVideoPayloadKey }
     return PhotoGalleryItem(
         fileId = fileId,
         driveId = driveId,
         capturedAtMs = appData.userDate ?: fileMetadata.created.milliseconds,
         keyHeader = keyHeader,
         payload = payload,
-        playableCopy = payload.takeIf { it.isVideo() }?.playableCopyKey()?.let { copy -> payloads.firstOrNull { it.key == copy } },
+        playableCopy = payload.takeIf { it.isVideo() }?.playableCopyOf(payloads),
+        motion = live?.let { it.playableCopyOf(payloads) ?: it },
     )
 }
+
+private fun PayloadDescriptor.playableCopyOf(payloads: List<PayloadDescriptor>) = playableCopyKey()?.let { copy -> payloads.firstOrNull { it.key == copy } }
