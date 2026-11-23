@@ -126,7 +126,7 @@ expect fun VideoPlayerSurface(
  */
 expect val nativeVideoControlsOwnTopCorners: Boolean
 
-/** Whether a Live or motion photo's clip plays under the photo: web's `<video>` sits above the page with its own controls. */
+/** Whether a Live or motion photo's clip plays under the photo: web's `<video>` sits above the page and desktop's player always shows its play bar. */
 expect val playsMotionClips: Boolean
 
 internal fun FullScreenOverlay.VideoPlayerData.toVideoData() = VideoPlayerData(

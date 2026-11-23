@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Rect
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.Constraints
@@ -201,7 +202,8 @@ fun ZoomableSubSamplingImage(
         // is no low-res-to-sharp jump. A local file is already the original on
         // disk, so the image below loads it directly with no intermediate fetch.
         val displayedRect = { zoomState.zoomable.contentDisplayRectF }
-        underPhoto?.invoke(Modifier.placedAt(displayedRect))
+        // The displayed rect is empty until the photo has loaded.
+        if (imageLoaded) underPhoto?.invoke(Modifier.placedAt(displayedRect))
         if (showPlaceholder && source is SubSamplingImageSource.Remote) {
             val imageData = source.imageData
             val thumbnailData = remember(imageData) {
@@ -466,10 +468,12 @@ private fun Modifier.passiveDoubleTap(onDoubleTap: () -> Unit): Modifier = point
     }
 }
 
-private fun Modifier.placedAt(rect: () -> Rect): Modifier = layout { measurable, _ ->
+// Fills the container and places the child at the rect, which outgrows the container once zoomed.
+private fun Modifier.placedAt(rect: () -> Rect): Modifier = clipToBounds().layout { measurable, constraints ->
     val r = rect()
-    val width = r.width.roundToInt().coerceAtLeast(0)
-    val height = r.height.roundToInt().coerceAtLeast(0)
-    val placeable = measurable.measure(Constraints.fixed(width, height))
-    layout(width, height) { placeable.place(r.left.roundToInt(), r.top.roundToInt()) }
+    val size = { side: Float -> side.roundToInt().coerceIn(0, MAX_PLACED_SIDE) }
+    val placeable = measurable.measure(Constraints.fixed(size(r.width), size(r.height)))
+    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(r.left.roundToInt(), r.top.roundToInt()) }
 }
+
+private const val MAX_PLACED_SIDE = 65_534

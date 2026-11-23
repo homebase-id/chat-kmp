@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -194,11 +195,12 @@ fun FullScreenMediaViewer(
                     )
                     SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
                 }
-                else -> null
+                MediaPageSource.Pending, MediaPageSource.Unavailable -> null
             }
 
             when {
-                source != null -> ZoomableSubSamplingImage(
+                // A local file and the server's copy are separate viewers: an upload finishing remounts it.
+                source != null -> key(source is SubSamplingImageSource.LocalFile) { ZoomableSubSamplingImage(
                     source = source,
                     modifier = Modifier.stopsMotionOnTouch(motion),
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
@@ -206,10 +208,10 @@ fun FullScreenMediaViewer(
                     sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                     animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                     sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                    showsHdr = isSettled && motion?.shown != true,
+                    showsHdr = isSettled && isFocused && motion?.shown != true,
                     underPhoto = motion?.takeIf { it.mounted }?.let { m -> { placed -> MotionClipUnderPhoto(m, placed) } },
                     photoAlpha = { 1f - (motion?.alpha?.value ?: 0f) },
-                )
+                ) }
 
                 // Payload not uploaded yet (no iv): show a spinner like the
                 // vault viewer, not a failure — and keep it tappable.
