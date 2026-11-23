@@ -54,8 +54,6 @@ internal fun resolveIsDark(theme: ThemeState, isSystemDark: Boolean): Boolean = 
     ThemeState.System -> isSystemDark
 }
 
-internal const val ARTICLE_MIN_DISPLAY_MS = 0L
-
 internal data class ArticleWebUiState(
     val url: String? = null,
     val injectionScript: String? = null,
@@ -133,7 +131,7 @@ internal fun ArticleWebContent(
             url = url,
             injectionScript = state.injectionScript,
             isLoading = isLoading,
-            minDisplayMs = ARTICLE_MIN_DISPLAY_MS,
+            minDisplayMs = 0,
             identityHosts = setOfNotNull(post.authorOdinId?.domainName?.lowercase()),
             onAction = { action ->
                 when (action) {

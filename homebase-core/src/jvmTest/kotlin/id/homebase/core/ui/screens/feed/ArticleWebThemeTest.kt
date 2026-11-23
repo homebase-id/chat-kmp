@@ -23,9 +23,4 @@ class ArticleWebThemeTest {
         assertTrue("'prefersDark', '1'" in buildFeedInjectionScript("s", "t", isDark = true))
         assertTrue("'prefersDark', '0'" in buildFeedInjectionScript("s", "t", isDark = false))
     }
-
-    @Test
-    fun articleSkipsTheMinimumOverlayTime() {
-        assertEquals(0L, ARTICLE_MIN_DISPLAY_MS)
-    }
 }
