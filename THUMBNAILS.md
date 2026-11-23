@@ -429,6 +429,8 @@ The rule on phones: native code wherever it's measurably better in quality, spee
 
 Same decode-once pipeline and the same quality bar, on Skia. The last scaling step is the shared Kotlin Lanczos (`LanczosResampler`, in the `kotlinResamplerMain` source set that JVM and web share). Speed matters less here.
 
+A PDF's first page is rendered by PDFBox on desktop, `PdfRenderer` on Android, Core Graphics on iOS and pdf.js on web (`generatePdfThumbnail`). pdf.js is vendored in `webApp/src/wasmJsMain/resources/pdfjs/` and loaded on the first PDF through `odin-pdf.js`; it draws page one on a white canvas and encodes JPEG at quality 0.8, so the call suspends where the other platforms block. A password-protected or damaged PDF gets no page, as everywhere.
+
 ### Reading from a file
 
 `createMediaImages(path, fileOps, …)` hands the decoder the file itself, so the encoded file never sits in memory whole: `ImageDecoder.createSource(File)` or a content URI on Android, `CGImageSourceCreateWithURL` on iOS. Every upload through `UserUploadBuilder` (`UploadImages.generate`) uses it: chat, Moments, Vault, stickers and Photos. An iOS Photos-library pick is streamed to a file once per send first, so it takes this path too. On desktop and web, it reads the bytes and takes the byte-array path. Both paths give the same output (`ImageFileSourceContractTest`).

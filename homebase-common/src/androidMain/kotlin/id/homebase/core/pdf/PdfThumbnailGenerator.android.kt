@@ -27,7 +27,7 @@ private fun generatePdfThumbnail(renderer: AndroidPdfRenderer, maxWidth: Int): P
     )
 }
 
-actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult? {
+actual suspend fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult? {
     return try {
         val fd = ParcelFileDescriptor.open(File(filePath), ParcelFileDescriptor.MODE_READ_ONLY)
         try {
@@ -45,7 +45,7 @@ actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThu
     }
 }
 
-actual fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult? {
+actual suspend fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult? {
     return try {
         val tempFile = File.createTempFile("pdf_thumb_", ".pdf")
         try {
