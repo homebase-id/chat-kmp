@@ -47,7 +47,6 @@ internal fun rememberCallProblemReporter(callId: () -> String?): ((onUnavailable
                 if (file == null) onUnavailable()
                 else handler.shareFile(file) { Logger.w(it) { "call report share failed" } }
             }
-            Unit
         }
     }
 }

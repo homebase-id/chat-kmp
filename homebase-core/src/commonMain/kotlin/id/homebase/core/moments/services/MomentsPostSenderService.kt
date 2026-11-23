@@ -191,7 +191,7 @@ class MomentsPostSenderService(
         if (firstRenderableIndex >= 0) {
             val poster = posterByAttachment?.getOrNull(firstRenderableIndex)
             val previewModel: Any = poster ?: attachments[firstRenderableIndex].filePath
-            _pendingLocalPreviews.update { it.put(momentUniqueId, previewModel) }
+            _pendingLocalPreviews.update { it.putting(momentUniqueId, previewModel) }
         }
 
         val optimisticFileId: Uuid
@@ -208,7 +208,7 @@ class MomentsPostSenderService(
             // Without a placeholder row the feed has nothing to attach the
             // overlay to. Fail loudly so the dialog can surface the error
             // instead of pretending the post succeeded.
-            _pendingLocalPreviews.update { it.remove(momentUniqueId) }
+            _pendingLocalPreviews.update { it.removing(momentUniqueId) }
             Logger.e(throwable = e, tag = TAG) {
                 "postMomentAsync: placeholder write failed moment=$momentUniqueId"
             }
@@ -434,7 +434,7 @@ class MomentsPostSenderService(
             // local-file preview is no longer needed. Always clear, even on
             // error paths — keeping the entry would pin a file URI the user
             // may have just deleted from their picker.
-            _pendingLocalPreviews.update { it.remove(momentUniqueId) }
+            _pendingLocalPreviews.update { it.removing(momentUniqueId) }
         }
     }
 
