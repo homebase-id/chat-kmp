@@ -4,7 +4,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
 import io.github.kdroidfilter.webview.request.RequestInterceptor
 import io.github.kdroidfilter.webview.request.WebRequest
 import io.github.kdroidfilter.webview.request.WebRequestInterceptResult
@@ -32,12 +31,13 @@ actual fun PlatformFeedWebView(
     modifier: Modifier,
 ) {
     val handle = webView as KdroidfilterFeedWebView
-    val backgroundArgb = MaterialTheme.colorScheme.surface.toArgb()
+    // Not in onCreated: every engine applies webSettings.backgroundColor after it, over anything set there.
+    handle.nativeState.webSettings.backgroundColor = MaterialTheme.colorScheme.surface
     WebView(
         state = handle.nativeState,
         modifier = modifier,
         navigator = handle.nativeNavigator,
-        onCreated = { view: NativeWebView -> configureNativeWebView(view, backgroundArgb) },
+        onCreated = ::enableDomStorage,
     )
 }
 
@@ -87,6 +87,6 @@ internal fun ((FeedWebRequest) -> FeedWebRequestDecision).toRequestInterceptor()
         }
     }
 
-/** Paints [backgroundArgb] before the first frame; on Android also turns on DOM storage, which ships off there. */
-internal expect fun configureNativeWebView(view: NativeWebView, backgroundArgb: Int)
+/** Android's WebView ships with DOM storage (localStorage) off; desktop and iOS engines default it on. */
+internal expect fun enableDomStorage(view: NativeWebView)
 actual val FeedWebViewAvailable: Boolean = true
