@@ -1232,7 +1232,9 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.PostCompose>(
+                            paneDestination<Route.PostCompose>(
+                                onDismiss = { navController.popBackStack() },
+                                confirmsClose = true,
                                 enterTransition = { slideInVertically(initialOffsetY = { it }) },
                                 popExitTransition = { slideOutVertically(targetOffsetY = { it }) },
                             ) {
