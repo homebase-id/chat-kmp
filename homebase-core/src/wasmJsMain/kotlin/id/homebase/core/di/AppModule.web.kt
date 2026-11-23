@@ -56,6 +56,8 @@ actual fun platformModule(): Module = module {
     single<UpdateAppManager> { WebUpdateAppManager() }
     single<ShakeDetector> { WebShakeDetector() }
 
+    // Android binds Context, which is its PlatformContext, through androidContext().
+    single<PlatformContext> { PlatformContext.INSTANCE }
     single(createdAtStart = true) {
         // Web intentionally does NOT register PublicImageFetcher.Factory here, even though
         // android/desktop/native do. On web that fetcher routes public avatars (/pub/image)

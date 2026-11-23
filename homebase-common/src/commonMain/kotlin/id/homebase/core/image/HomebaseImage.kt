@@ -24,12 +24,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
 import coil3.ImageLoader
-import coil3.PlatformContext
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
@@ -37,7 +38,6 @@ import coil3.compose.asPainter
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import coil3.request.crossfade
-import coil3.size.SizeResolver
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.Warning
@@ -45,6 +45,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.error
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject
@@ -176,7 +177,7 @@ fun HomebaseImage(
 
     Box(boxModifier, contentAlignment = alignment, propagateMinConstraints = true) {
         // Under the image: Coil may already draw a photo from memory on this first frame.
-        if (placeholder != null && (deferred || !showsStandIn) && (preview == null || preview.failed) && !drawsImage.value) placeholder()
+        if (placeholder != null && (deferred || !showsStandIn) && preview?.image == null && !drawsImage.value) placeholder()
         if (deferred) {
             preview?.let { Image(it, contentDescription, Modifier.fillMaxSize(), alignment, contentScale, colorFilter = colorFilter) }
         } else {
@@ -229,32 +230,32 @@ fun HomebaseImage(
     }
 }
 
-/** The tiny, decoded by Coil off the main thread; on the first frame when it's already in memory. */
+/** The tiny from Coil's memory cache, where [TinyPreviewWarmer] decoded it off the main thread. */
 @Composable
 private fun rememberPreview(bytes: Base64Bytes?, imageLoader: ImageLoader): PreviewPainter? {
     if (bytes == null) return null
     val context = LocalPlatformContext.current
-    val request = remember(bytes, context) { previewRequest(context, bytes) }
-    val preview = remember(request, imageLoader) {
-        PreviewPainter(imageLoader.memoryCache?.get(MemoryCache.Key(request.memoryCacheKey!!))?.image?.asPainter(context))
+    return remember(bytes, context, imageLoader) {
+        val request = previewRequest(context, bytes)
+        val warmed = imageLoader.memoryCache?.get(MemoryCache.Key(request.memoryCacheKey!!))?.image?.asPainter(context)
+        PreviewPainter(warmed ?: decodeUnwarmed(bytes, request, imageLoader))
     }
-    LaunchedEffect(preview) {
-        if (preview.image == null) {
-            preview.image = imageLoader.execute(request).image?.asPainter(context)
-            preview.failed = preview.image == null
-        }
-    }
-    return preview
 }
 
-internal fun previewRequest(context: PlatformContext, bytes: Base64Bytes): ImageRequest =
-    ImageRequest.Builder(context).data(bytes.bytes).memoryCacheKey("preview/" + bytes.toBase64()).size(SizeResolver.ORIGINAL).build()
+internal var tinyPreviewMisses = 0
+    private set
+
+// A view the warm-up didn't reach still draws its tiny on the first frame; the miss is logged, and Coil caches it for next time.
+private fun decodeUnwarmed(bytes: Base64Bytes, request: ImageRequest, imageLoader: ImageLoader): Painter? {
+    tinyPreviewMisses++
+    Logger.i(tag = "HomebaseImage") { "Tiny preview not warmed, decoded on the main thread (miss $tinyPreviewMisses)" }
+    imageLoader.enqueue(request)
+    return runCatching { BitmapPainter(bytes.bytes.decodeToImageBitmap()) }.getOrNull()
+}
 
 // Not a RememberObserver, so Coil drawing it as a placeholder never restarts the tiny's load.
-private class PreviewPainter(image: Painter?) : Painter() {
-    var image: Painter? by mutableStateOf(image)
+private class PreviewPainter(val image: Painter?) : Painter() {
     var hidden: Boolean by mutableStateOf(false)
-    var failed: Boolean by mutableStateOf(false)
     private var alpha = DefaultAlpha
     private var colorFilter: ColorFilter? = null
 

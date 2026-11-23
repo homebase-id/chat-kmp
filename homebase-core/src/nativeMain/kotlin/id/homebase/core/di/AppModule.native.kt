@@ -71,6 +71,8 @@ actual fun platformModule(): Module = module {
     // AVPlayerPool.kt for the rationale.
     single { AVPlayerPool() }
     single<NotificationBackend> { KMPNotifierBackend() }
+    // Android binds Context, which is its PlatformContext, through androidContext().
+    single<PlatformContext> { PlatformContext.INSTANCE }
     single(createdAtStart = true) {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {

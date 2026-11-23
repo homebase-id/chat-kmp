@@ -47,7 +47,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-// THUMBNAILS.md, "Showing the images": the tiny is decoded off the main thread, drawn before any download, then replaced.
+// THUMBNAILS.md, "Showing the images": a view draws the tiny on its first frame, before any download, then replaces it.
 @OptIn(ExperimentalTestApi::class)
 class HomebaseImageTinyFirstTest {
 
@@ -136,24 +136,28 @@ class HomebaseImageTinyFirstTest {
         onNodeWithTag("photo").captureToImage().toPixelMap().let { it[it.width / 2, it.height / 2] }
 
     @Test
-    fun theTinyIsDecodedOffTheMainThreadAndDrawnWhileTheThumbnailLoads() = runSkikoComposeUiTest {
-        var compositionThread: Thread? = null
-        show(neverLoads, photo(tiny()), onComposed = { compositionThread = Thread.currentThread() })
-        awaitCentre(tinyColor)
-        assertEquals(1, decodeThreads.size, "the tiny should decode once, through Coil")
-        assertTrue(decodeThreads.none { it == compositionThread }, "the tiny decoded on the composition thread")
-        onNodeWithTag("empty").assertDoesNotExist()
-    }
-
-    @Test
-    fun aTinyAlreadyInMemoryIsOnTheFirstFrame() = runSkikoComposeUiTest {
+    fun aWarmedTinyIsOnTheFirstFrameWithNoDecodeInComposition() = runSkikoComposeUiTest {
         val data = photo(tiny())
-        runBlocking { neverLoads.execute(previewRequest(PlatformContext.INSTANCE, data.previewThumbnail!!.content!!)) }
-        decodeThreads.clear()
+        runBlocking { TinyPreviewWarmer(neverLoads, PlatformContext.INSTANCE).warm(listOf(data.previewThumbnail!!.content!!)) }
+        val testThread = Thread.currentThread()
+        assertEquals(1, decodeThreads.size, "the warm-up should decode the tiny once, through Coil")
+        assertTrue(decodeThreads.none { it == testThread }, "the warm-up decoded on the calling thread")
+        val misses = tinyPreviewMisses
         mainClock.autoAdvance = false
         show(neverLoads, data)
         assertTrue(centre().isNear(tinyColor), "expected the tiny's colour, got ${centre()}")
-        assertEquals(0, decodeThreads.size, "a tiny in memory should not decode again")
+        assertEquals(misses, tinyPreviewMisses, "a warmed tiny should not be decoded in composition")
+        assertEquals(1, decodeThreads.size)
+    }
+
+    @Test
+    fun aTinyTheWarmUpMissedStillPaintsOnTheFirstFrame() = runSkikoComposeUiTest {
+        val misses = tinyPreviewMisses
+        mainClock.autoAdvance = false
+        show(neverLoads, photo(tiny()))
+        assertTrue(centre().isNear(tinyColor), "expected the tiny's colour, got ${centre()}")
+        onNodeWithTag("empty").assertDoesNotExist()
+        assertEquals(misses + 1, tinyPreviewMisses)
     }
 
     @Test
@@ -228,13 +232,6 @@ class HomebaseImageTinyFirstTest {
     fun anUnreadableStandInGivesWayToTheTiny() = runSkikoComposeUiTest {
         show(neverLoads, photo(tiny()), standIn = "/nonexistent/stand-in.png")
         awaitCentre(tinyColor)
-    }
-
-    @Test
-    fun aTinyStillDecodingShowsNoPlaceholder() = runSkikoComposeUiTest {
-        mainClock.autoAdvance = false
-        show(neverLoads, photo(tiny()))
-        onNodeWithTag("empty").assertDoesNotExist()
     }
 
     @Test

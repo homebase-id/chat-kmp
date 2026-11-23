@@ -1,5 +1,7 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.core.image.TinyPreviewWarmer
+import id.homebase.core.image.tinyPreviews
 import id.homebase.core.settings.sendQuality
 import id.homebase.core.settings.SendQualityApp
 import androidx.compose.foundation.text.input.TextFieldState
@@ -193,6 +195,7 @@ class ConversationListViewModel(
     private val optionalDriveActivation: id.homebase.core.sync.OptionalDriveActivation? = null,
     private val albumSaver: id.homebase.core.util.AlbumSaver,
     private val vaultFileSaver: id.homebase.core.vault.VaultFileSaver? = null,
+    private val tinyPreviewWarmer: TinyPreviewWarmer,
 ) : ViewModel() {
 
     companion object {
@@ -2149,6 +2152,8 @@ class ConversationListViewModel(
                             val window = messageState.window
                             val windowMessages = window.messages
                             var agentUiReplies: List<MessageUiModel> = emptyList()
+                            // Before the rows reach the list, so every row composes with its tiny already in memory.
+                            tinyPreviewWarmer.warm(windowMessages.flatMap { tinyPreviews(it.payloads, it.previewThumbnail) })
                             val messagesModels = withContext(Dispatchers.Default) {
                                 // Soft-delete display lives at the SQL layer now (see
                                 // ChatMessageStream.fetchMessages): note-to-self filters

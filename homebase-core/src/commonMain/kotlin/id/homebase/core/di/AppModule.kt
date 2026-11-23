@@ -277,6 +277,7 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
+import id.homebase.core.image.TinyPreviewWarmer
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
@@ -1001,6 +1002,7 @@ val appModule = module {
     // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
     singleOf(::PostCreateIntroductionPreflightBus)
     singleOf(::ChatServerHistory)
+    single { TinyPreviewWarmer(get(), get()) }
     single {
         val ownerSession: OwnerSessionRepository = get()
         ChatMessageStream(
@@ -1298,6 +1300,7 @@ val appModule = module {
             optionalDriveActivation = get(),
             albumSaver = get(),
             vaultFileSaver = get(),
+            tinyPreviewWarmer = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
