@@ -14,7 +14,7 @@ import id.homebase.upload.PayloadBundleEncryptionService
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -99,10 +99,18 @@ class ChatSendsNoMetadataJvmTest {
     }
 
     @Test
-    fun aPublicVideoIsRefusedRatherThanSentUnprocessed() = runTest {
-        val clip = file("public.mp4", this::class.java.getResourceAsStream("/test_videos/sample.mp4")!!.readBytes())
-        val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(clip, "video/mp4"), fileOps, "chat_web0", SendQuality.Standard)
-        assertFailsWith<IllegalArgumentException> { publicStager.stageBundle(bundle) }
+    fun aPublicVideoIsCompressedAndStagedInTheClearWithNoLocation() = runTest {
+        assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
+        val sample = file("public_sample.mp4", this::class.java.getResourceAsStream("/test_videos/sample.mp4")!!.readBytes())
+        val clip = File(dir, "public_tagged.mov").path
+        ffmpeg(FFmpegBinaryManager.ffmpegPath(), "-y", "-i", sample, "-c", "copy", "-metadata", "location=$filmedAt", clip)
+        val bundle = MessageAttachmentBuilder.buildSingle(AttachmentInput(clip, "video/quicktime"), fileOps, "chat_web0", SendQuality.Standard)
+
+        val video = publicStager.stageBundle(bundle).payloads.first { it.key == "chat_web0" }
+
+        assertFalse(video.isPreEncrypted)
+        assertNull(video.iv)
+        assertNull(locationOf(File(video.filePath).readBytes()), "a public video goes out without the location it was filmed at")
     }
 
     private fun ffmpeg(vararg args: String): String {

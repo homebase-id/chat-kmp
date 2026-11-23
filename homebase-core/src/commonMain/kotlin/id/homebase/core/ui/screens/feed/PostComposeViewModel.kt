@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.contacts.ContactInfoGateway
+import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.FeedPostSenderService
@@ -93,6 +94,20 @@ class PostComposeViewModel(
     fun addAttachments(attachments: List<AttachmentPendingFile>) {
         if (attachments.isEmpty()) return
         _uiState.update { it.copy(attachments = it.attachments + attachments) }
+        attachments.filterIsInstance<AttachmentPendingFile.FileVideo>().forEach { loadPoster(it) }
+    }
+
+    private fun loadPoster(video: AttachmentPendingFile.FileVideo) {
+        viewModelScope.launch {
+            val poster = runCatching { VideoThumbnailService.extractPosterFrame(video.file.toString()) }.getOrNull() ?: return@launch
+            _uiState.update { state ->
+                state.copy(
+                    attachments = state.attachments.map {
+                        if (it is AttachmentPendingFile.FileVideo && it.attachmentId == video.attachmentId) it.copy(thumbnailBytes = poster) else it
+                    },
+                )
+            }
+        }
     }
 
     fun removeAttachment(attachmentId: Uuid) = _uiState.update { state ->

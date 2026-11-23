@@ -48,4 +48,6 @@ interface VideoCompressor {
         onProgress: VideoProgressListener?,
     ): SegmentedVideo?
 
+    /** [segmentAndEncrypt] with no encryption, for an unencrypted upload: the same segments and playlist, in the clear. */
+    suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo? = null
 }

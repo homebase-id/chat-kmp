@@ -34,6 +34,7 @@ import kotlin.uuid.Uuid
 /** A compressed video this size or more is sent as HLS segments, smaller as one MP4. */
 internal const val HLS_MIN_BYTES = 5L * 1024 * 1024
 
+/** A null `keyHeader` processes the same way for an unencrypted upload: every file comes out in the clear, in outbox staging. */
 class VideoPayloadProcessor(
     private val fileOperationsProvider: FileOperationsProvider,
     private val compressor: VideoCompressor = VideoCompressionService,
@@ -41,7 +42,7 @@ class VideoPayloadProcessor(
 ) {
     suspend fun process(
         payload: PayloadFile,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
         descriptorContentPayloadKey: String,
         trimStartMs: Long? = null,
@@ -81,7 +82,7 @@ class VideoPayloadProcessor(
 
     private suspend fun processResolved(
         payload: PayloadFile,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
         descriptorContentPayloadKey: String,
         trimStartMs: Long?,
@@ -129,7 +130,7 @@ class VideoPayloadProcessor(
             tinyThumb = generatedTinyThumb
             thumbnails = generatedThumbnails.map { thumb ->
                 thumb.copy(
-                    thumbnailBytes = keyHeader.encryptDataAes(thumb.thumbnailBytes),
+                    thumbnailBytes = keyHeader?.encryptDataAes(thumb.thumbnailBytes) ?: thumb.thumbnailBytes,
                 )
             }
         }
@@ -228,7 +229,7 @@ class VideoPayloadProcessor(
 
     private suspend fun finishProcessing(
         payload: PayloadFile,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: ((VideoPayloadProgressPhase) -> Unit)?,
         descriptorContentPayloadKey: String,
         playlistPayloadKey: String,
@@ -265,21 +266,15 @@ class VideoPayloadProcessor(
                 val segmentGate = WholePercentProgressGate()
                 val (segmented, segmentElapsed) =
                     measureTimedValue {
-                        compressor.segmentAndEncrypt(
-                            inputPath = compressedPath,
-                            keyHeader = keyHeader,
-                            onProgress = { pct ->
-                                if (segmentGate.admit(pct * 100f) != null) {
-                                    onProgress?.invoke(
-                                        VideoPayloadProgressPhase(
-                                            payload.key,
-                                            VideoProcessingPhase.SEGMENTING,
-                                            pct
-                                        )
-                                    )
-                                }
+                        val onSegmentProgress: VideoProgressListener = { pct ->
+                            if (segmentGate.admit(pct * 100f) != null) {
+                                onProgress?.invoke(
+                                    VideoPayloadProgressPhase(payload.key, VideoProcessingPhase.SEGMENTING, pct)
+                                )
                             }
-                        ) ?: run {
+                        }
+                        (if (keyHeader != null) compressor.segmentAndEncrypt(compressedPath, keyHeader, onSegmentProgress)
+                        else compressor.segment(compressedPath, onSegmentProgress)) ?: run {
                             Logger.e(tag = "VideoProcessing") {
                                 "segmentAndEncrypt returned null (HLS path) — " +
                                     "compressed=${compressedSize}B quality=$videoQuality " +
@@ -337,10 +332,8 @@ class VideoPayloadProcessor(
                     )
                 )
 
-                encryptVideoFile(
-                    inputPath = videoPath,
-                    keyHeader = keyHeader
-                )
+                if (keyHeader != null) encryptVideoFile(inputPath = videoPath, keyHeader = keyHeader)
+                else stagePlain(videoPath) to null
             } else {
                 videoPath to segmentedHash
             }
@@ -394,9 +387,9 @@ class VideoPayloadProcessor(
             filePath = finalVideoPath,
             contentType = if (isSegmented) "video/mp2t" else "video/mp4",
             descriptorContent = descriptorContent,
-            isPreEncrypted = true,
+            isPreEncrypted = keyHeader != null,
             previewThumbnail = tinyThumb,
-            iv = keyHeader.iv,
+            iv = keyHeader?.iv,
             hash = videoHash,
         )
 
@@ -404,10 +397,10 @@ class VideoPayloadProcessor(
         // The video's IV, like its thumbnails, so a player reads it with the key header it already holds.
         suspend fun sidePayload(key: String, text: String, contentType: String, suffix: String) = PayloadFile(
             key = key,
-            filePath = fileOperationsProvider.writeBytesToOutboxTempFile(keyHeader.encryptDataAes(text.toByteArray()), "payload", suffix),
+            filePath = fileOperationsProvider.writeBytesToOutboxTempFile(keyHeader?.encryptDataAes(text.toByteArray()) ?: text.toByteArray(), "payload", suffix),
             contentType = contentType,
-            isPreEncrypted = true,
-            iv = keyHeader.iv
+            isPreEncrypted = keyHeader != null,
+            iv = keyHeader?.iv
         )
 
         val current = payload.descriptorContent?.let(DescriptorContentV1::parseOrNull)
@@ -457,6 +450,18 @@ class VideoPayloadProcessor(
             thumbnails = thumbnails,
             videoMetadata = metadata
         )
+    }
+
+    // A copy, as the compressed scratch is reaped on the way out.
+    private suspend fun stagePlain(path: String): String {
+        val staged = fileOperationsProvider.createOutboxStagingPath("video-public-", ".mp4")
+        try {
+            fileOperationsProvider.writeStream(staged, fileOperationsProvider.readFileAsFlow(path))
+        } catch (e: Throwable) {
+            runCatching { fileOperationsProvider.deleteTempFile(staged) }
+            throw e
+        }
+        return staged
     }
 
     /** The encrypted file and its payload hash, taken in the same pass. */

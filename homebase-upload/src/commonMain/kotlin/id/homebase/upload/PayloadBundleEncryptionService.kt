@@ -35,25 +35,46 @@ class PayloadBundleEncryptionService(
 ) : PayloadBundleEncryptor {
     private val stripper = MediaMetadataStripper(fileOps)
 
-    override suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle {
-        if (bundle == null) return EMPTY_BUNDLE
-        // Video processing (compress, segment) only exists encrypted, and a raw phone video must never go out as is.
-        require(bundle.payloads.none { it.contentType.startsWith("video/") && !it.skipVideoProcessing }) {
-            "an unencrypted upload can't carry a video yet (#2481)"
+    override suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle = stage(bundle, null)
+
+    override suspend fun stageBundle(bundle: PayloadBundle?, uniqueId: Uuid, scope: CoroutineScope): PayloadBundle =
+        stage(bundle) { phase ->
+            scope.launch { eventBus.emit(phase.toEvent(uniqueId)) }
         }
+
+    private suspend fun stage(bundle: PayloadBundle?, onProgress: ((VideoPayloadProgressPhase) -> Unit)?): PayloadBundle {
+        if (bundle == null) return EMPTY_BUNDLE
         requireSources(bundle)
-        val staged = mutableListOf<String>()
+        val staged = mutableListOf<PayloadFile>()
+        val processed = mutableSetOf<String>()
+        val thumbnails = mutableListOf<ThumbnailFile>()
         try {
             // Always a copy: the outbox deletes a row's payload files once sent, and the source may be the person's own.
-            val payloads = bundle.payloads.map { payload ->
-                val path = fileOps.createOutboxStagingPath("public_", ".bin")
-                staged += path
-                fileOps.writeStream(path, plaintextOf(payload, STAGE_CHUNK))
-                payload.copy(filePath = path)
+            for ((index, payload) in bundle.payloads.withIndex()) {
+                if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
+                    val result = videoProcessor.process(
+                        payload = payload,
+                        keyHeader = null,
+                        onProgress = onProgress,
+                        descriptorContentPayloadKey = HomebaseProtocol.payloadDescriptorKey(index),
+                        playlistPayloadKey = HomebaseProtocol.playlistPayloadKey(index),
+                        trimStartMs = payload.trimStartMs,
+                        trimEndMs = payload.trimEndMs,
+                        inputBlobUrl = payload.inputBlobUrl,
+                        videoQuality = payload.videoQuality,
+                    )
+                    staged += result.payloads
+                    thumbnails += result.thumbnails
+                    processed += payload.key
+                } else {
+                    val path = fileOps.createOutboxStagingPath("public_", ".bin")
+                    staged += payload.copy(filePath = path)
+                    fileOps.writeStream(path, plaintextOf(payload, STAGE_CHUNK))
+                }
             }
-            return bundle.copy(payloads = payloads)
+            return bundle.copy(payloads = staged, thumbnails = bundle.thumbnails.filter { it.key !in processed } + thumbnails)
         } catch (e: Throwable) {
-            staged.forEach { runCatching { fileOps.deleteTempFile(it) } }
+            discard(PayloadBundle(staged, emptyList(), emptyList()))
             throw e
         }
     }
@@ -113,16 +134,7 @@ class PayloadBundleEncryptionService(
                 } else if (payload.contentType.startsWith("video/") && !payload.skipVideoProcessing) {
 
                     val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
-                        scope.launch {
-                            eventBus.emit(
-                                BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(
-                                    uniqueId = uniqueId,
-                                    payloadKey = phase.payloadKey,
-                                    phase = phase.phase,
-                                    progress = phase.progress
-                                )
-                            )
-                        }
+                        scope.launch { eventBus.emit(phase.toEvent(uniqueId)) }
                     }
 
                     val result = videoProcessor.process(
@@ -171,6 +183,13 @@ class PayloadBundleEncryptionService(
             payloads = newPayloads, thumbnails = newThumbnails
         )
     }
+
+    private fun VideoPayloadProgressPhase.toEvent(uniqueId: Uuid) = BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(
+        uniqueId = uniqueId,
+        payloadKey = payloadKey,
+        phase = phase,
+        progress = progress,
+    )
 
     private class Encrypted(val path: String, val hash: PayloadHash?)
 

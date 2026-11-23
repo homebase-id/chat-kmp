@@ -41,4 +41,9 @@ internal object FFmpegVideoCompressor : VideoCompressor {
             ?.let { (playlist, segments) -> SegmentedVideo(playlist, segments) }
             ?.also { onProgress?.invoke(1f) }
 
+    override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo? =
+        FFmpegUtils.segmentAndEncryptVideo(inputPath, null, onProgress?.clampedToUnit())
+            ?.let { (playlist, segments) -> SegmentedVideo(playlist, segments) }
+            ?.also { onProgress?.invoke(1f) }
+
 }

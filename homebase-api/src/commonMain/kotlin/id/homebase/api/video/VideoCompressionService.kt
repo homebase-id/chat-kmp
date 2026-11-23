@@ -121,6 +121,11 @@ object VideoCompressionService : VideoCompressor, VideoProber {
             compressor.segmentAndEncrypt(inputPath, keyHeader, onProgress)
         }
 
+    override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo? =
+        heavy {
+            compressor.segment(inputPath, onProgress)
+        }
+
     /**
      * Copies a decrypted HLS video's `.ts` into an MP4 at [outputPath], without re-encoding, the same way on every
      * platform. False, logged, when [tsPath] isn't H.264 (and AAC) in MPEG-TS; nothing is left at [outputPath] then.

@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 
 /**
- * Cuts an H.264 + AAC MP4 into encrypted HLS in one read of the file, as ffmpeg's
+ * Cuts an H.264 + AAC MP4 into HLS, encrypted unless [segmentAndEncrypt] gets no key, in one read of the file, as ffmpeg's
  * `-hls_flags single_file -hls_key_info_file` does: one `index.ts` whose byte ranges are segments
  * of about [SEGMENT_SECONDS], each AES-128-CBC encrypted on its own under the payload's key and IV,
  * and an `index.m3u8` addressing them. The payload hash (odin-core docs/payload-hashes.md) is
@@ -39,7 +39,7 @@ internal object HlsSegmenter {
     suspend fun segmentForUpload(
         fileOps: FileOperationsProvider,
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? {
         val segmented = try {
@@ -62,7 +62,7 @@ internal object HlsSegmenter {
     suspend fun segmentAndEncrypt(
         fileOps: FileOperationsProvider,
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: VideoProgressListener? = null,
     ): SegmentedVideo? {
         val movie = readMoov(fileOps, inputPath)?.let(Mp4Movie::parse) ?: return null
@@ -86,7 +86,7 @@ internal object HlsSegmenter {
                     val plain = ts.drain()
                     if (plain.isEmpty()) return
                     contentHasher.update(plain)
-                    val cipher = AesCbc.encrypt(plain, keyHeader.aesKey, keyHeader.iv)
+                    val cipher = if (keyHeader != null) AesCbc.encrypt(plain, keyHeader.aesKey, keyHeader.iv) else plain
                     segments += Segment((end90k - segmentStart) / 90_000.0, cipher.size.toLong(), written)
                     written += cipher.size
                     emit(cipher)
@@ -123,11 +123,11 @@ internal object HlsSegmenter {
             throw e
         }
 
-        fileOps.writeStream(playlistPath, flow { emit(playlist(segments, keyHeader.iv).encodeToByteArray()) })
+        fileOps.writeStream(playlistPath, flow { emit(playlist(segments, keyHeader?.iv).encodeToByteArray()) })
         return SegmentedVideo(
             playlistPath = playlistPath,
             segmentsPath = segmentsPath,
-            hash = encryptedPayloadHash(PayloadHashAlgorithm.Blake3, storedHasher.digest(), contentHasher.digest(), keyHeader),
+            hash = keyHeader?.let { encryptedPayloadHash(PayloadHashAlgorithm.Blake3, storedHasher.digest(), contentHasher.digest(), it) },
         )
     }
 
@@ -160,12 +160,12 @@ internal object HlsSegmenter {
         return peak
     }
 
-    private fun playlist(segments: List<Segment>, iv: ByteArray): String = buildString {
+    private fun playlist(segments: List<Segment>, iv: ByteArray?): String = buildString {
         appendLine("#EXTM3U")
         appendLine("#EXT-X-VERSION:4")
         appendLine("#EXT-X-TARGETDURATION:${segments.maxOf { it.seconds }.roundToInt()}")
         appendLine("#EXT-X-MEDIA-SEQUENCE:0")
-        appendLine("#EXT-X-KEY:METHOD=AES-128,URI=\"enc.key\",IV=0x${iv.toHexString()}")
+        if (iv != null) appendLine("#EXT-X-KEY:METHOD=AES-128,URI=\"enc.key\",IV=0x${iv.toHexString()}")
         for (segment in segments) {
             appendLine("#EXTINF:${sixDecimals(segment.seconds)},")
             appendLine("#EXT-X-BYTERANGE:${segment.length}@${segment.offset}")

@@ -105,7 +105,7 @@ class UploadService(
         try {
             require(handed.all { encrypted && it.iv != null }) { "a payload handed over encrypted needs its IV and an encrypted upload" }
             require(encrypted || hashes == null) { "payload hashes are for an encrypted upload" }
-            return if (encrypted) encryptor.encryptBundle(uniqueId, bundle, aesKey, scope, hashes) else encryptor.stageBundle(bundle)
+            return if (encrypted) encryptor.encryptBundle(uniqueId, bundle, aesKey, scope, hashes) else encryptor.stageBundle(bundle, uniqueId, scope)
         } catch (e: Throwable) {
             if (handed.isNotEmpty()) encryptor.discard(PayloadBundle(handed, emptyList(), emptyList()))
             throw e

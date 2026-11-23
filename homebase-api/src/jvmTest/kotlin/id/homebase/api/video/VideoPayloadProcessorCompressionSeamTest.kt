@@ -110,6 +110,7 @@ class VideoPayloadProcessorCompressionSeamTest {
         var compressQuality: VideoQuality? = null
         var compressTrim: Pair<Long?, Long?>? = null
         var segmentAndEncryptCalled = false
+        var segmentCalled = false
 
         override suspend fun compress(
             inputPath: String,
@@ -139,6 +140,10 @@ class VideoPayloadProcessorCompressionSeamTest {
             return segmented
         }
 
+        override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo? {
+            segmentCalled = true
+            return segmented
+        }
     }
 
     private class FakeVideoProbe(private val durationMs: Long) : VideoProber {
@@ -520,5 +525,102 @@ class VideoPayloadProcessorCompressionSeamTest {
         )
         // ...and the caller-owned input was left untouched.
         assertTrue(store.containsKey(inputPath), "the input file must not be reaped")
+    }
+
+    @Test
+    fun aVideoWithoutAKeyIsCompressedAndStagedAsPlainMp4() = runTest {
+        val inputPath = "$cacheDir/input.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val compressed = ByteArray(1024) { it.toByte() }
+        val store = mutableMapOf(inputPath to ByteArray(2048), compressedPath to compressed)
+        val compressor = FakeVideoCompressor(compressedPath, SegmentedVideo("unused", "unused"))
+        val processor = VideoPayloadProcessor(FakeFileOperationsProvider(store), compressor, FakeVideoProbe(7_000L))
+
+        val result = processor.process(
+            payload = PayloadFile(key = "pst_mdi0", filePath = inputPath, contentType = "video/mp4"),
+            keyHeader = null,
+            onProgress = null,
+            descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
+            videoQuality = VideoQuality.HIGH,
+        )
+
+        assertEquals(VideoQuality.HIGH, compressor.compressQuality, "the same compression")
+        val video = result.payloads.single()
+        assertFalse(video.isPreEncrypted)
+        assertNull(video.iv)
+        assertNull(video.hash)
+        assertEquals("video/mp4", video.contentType)
+        assertTrue(video.filePath.startsWith(stagingDir), "staged for the outbox row: ${video.filePath}")
+        assertTrue(compressed.contentEquals(store.getValue(video.filePath)), "the compressed bytes, as they are")
+        assertFalse(store.containsKey(compressedPath), "the scratch is reaped")
+    }
+
+    @Test
+    fun aLargeVideoWithoutAKeyIsSegmentedIntoPlainHls() = runTest {
+        val inputPath = "$cacheDir/input.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val playlistPath = "$cacheDir/hls_plain/playlist.m3u8"
+        val segmentsPath = "$cacheDir/hls_plain/segments.ts"
+        val playlistText = "#EXTM3U\n#EXT-X-VERSION:4\n"
+        val store = mutableMapOf(
+            inputPath to ByteArray(1024),
+            compressedPath to ByteArray(5 * 1024 * 1024),
+            playlistPath to playlistText.encodeToByteArray(),
+            segmentsPath to ByteArray(2048),
+        )
+        val compressor = FakeVideoCompressor(compressedPath, SegmentedVideo(playlistPath, segmentsPath))
+        val processor = VideoPayloadProcessor(FakeFileOperationsProvider(store), compressor, FakeVideoProbe(9_000L))
+
+        val result = processor.process(
+            payload = PayloadFile(key = "pst_mdi0", filePath = inputPath, contentType = "video/mp4"),
+            keyHeader = null,
+            onProgress = null,
+            descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
+        )
+
+        assertTrue(compressor.segmentCalled)
+        assertFalse(compressor.segmentAndEncryptCalled, "no key to encrypt with")
+        assertTrue(result.videoMetadata.isSegmented)
+        assertEquals(playlistText, result.videoMetadata.hlsPlaylist)
+        val video = result.payloads.single { it.key == "pst_mdi0" }
+        assertEquals("$stagingDir/hls_plain/segments.ts", video.filePath)
+        assertFalse(video.isPreEncrypted)
+        assertNull(video.iv)
+        assertNull(video.hash)
+    }
+
+    @Test
+    fun aPlainVideoWhoseDescriptorOverflowsKeepsItsMetadataPayloadPlain() = runTest {
+        val inputPath = "$cacheDir/input.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val playlistPath = "$cacheDir/hls_big_plain/playlist.m3u8"
+        val segmentsPath = "$cacheDir/hls_big_plain/segments.ts"
+        val playlistText = "#EXTM3U\n" + "#EXTINF:2.0,\nseg.ts\n".repeat(200)
+        val store = mutableMapOf(
+            inputPath to ByteArray(1024),
+            compressedPath to ByteArray(5 * 1024 * 1024),
+            playlistPath to playlistText.encodeToByteArray(),
+            segmentsPath to ByteArray(2048),
+        )
+        val processor = VideoPayloadProcessor(
+            FakeFileOperationsProvider(store),
+            FakeVideoCompressor(compressedPath, SegmentedVideo(playlistPath, segmentsPath)),
+            FakeVideoProbe(9_000L),
+        )
+
+        val result = processor.process(
+            payload = PayloadFile(key = "pst_mdi0", filePath = inputPath, contentType = "video/mp4"),
+            keyHeader = null,
+            onProgress = null,
+            descriptorContentPayloadKey = "descriptor",
+            playlistPayloadKey = "pls_0000",
+        )
+
+        val overflow = result.payloads.single { it.key == "descriptor" }
+        assertFalse(overflow.isPreEncrypted)
+        assertNull(overflow.iv)
+        assertTrue(store.getValue(overflow.filePath).decodeToString().contains("#EXTINF"), "readable as it is")
     }
 }

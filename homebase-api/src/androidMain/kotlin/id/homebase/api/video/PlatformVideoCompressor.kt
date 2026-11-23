@@ -39,4 +39,7 @@ internal object AndroidVideoCompressor : VideoCompressor {
         keyHeader: KeyHeader,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? = HlsSegmenter.segmentForUpload(fileOps, inputPath, keyHeader, onProgress)
+
+    override suspend fun segment(inputPath: String, onProgress: VideoProgressListener?): SegmentedVideo? =
+        HlsSegmenter.segmentForUpload(fileOps, inputPath, null, onProgress)
 }

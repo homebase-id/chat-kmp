@@ -54,13 +54,13 @@ expect object FFmpegUtils {
     /**
      * Splits [inputPath] into a single-file HLS stream encrypted with AES-128 using [keyHeader]'s
      * key and IV (both must be 16 bytes), and returns (playlist path, segment path) in a new
-     * scratch directory, or null on any failure. Portrait sources are re-encoded to bake in
+     * scratch directory, or null on any failure. A null [keyHeader] leaves the segments in the clear. Portrait sources are re-encoded to bake in
      * rotation; others are stream-copied. [onProgress] reports 0..1. The key material is
      * deleted from disk when the call ends, success or not.
      */
     suspend fun segmentAndEncryptVideo(
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: ((Float) -> Unit)?
     ): Pair<String, String>?
 
