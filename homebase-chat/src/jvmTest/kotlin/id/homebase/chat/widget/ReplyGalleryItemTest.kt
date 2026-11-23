@@ -69,6 +69,16 @@ class ReplyGalleryItemTest {
     }
 
     @Test
+    fun anItemWithoutItsOwnThumbnailDoesNotBorrowTheFirstItems() {
+        val base = gallery()
+        val message = base.copy(
+            previewThumbnail = thumb(0).toEmbeddedThumb(),
+            payloads = base.payloads!!.map { if (it.key == "chat_web2") it.copy(previewThumbnail = null) else it }.toPersistentList(),
+        )
+        assertNull(message.toReplyPreview("chat_web2").previewThumbnail)
+    }
+
+    @Test
     fun noKeyOrAnUnknownKeyIsAWholeMessageQuote() {
         assertNull(gallery().toReplyPreview().payloadKey)
         assertNull(gallery().toReplyPreview("chat_web9").payloadKey)

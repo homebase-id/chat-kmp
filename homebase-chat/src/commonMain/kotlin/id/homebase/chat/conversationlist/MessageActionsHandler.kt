@@ -1384,7 +1384,7 @@ internal fun MessageUiModel.toReplyPreview(payloadKey: String? = null): ReplyPre
         // Trim before truncate: leading newlines would otherwise render as a bare "…" in the quote.
         message = viewOnce?.displayLabel ?: content.trim().truncateToCodePoints(80),
         previewThumbnail = if (item != null) {
-            item.takeIf { it.isVisualMedia() }?.let { it.previewThumbnail?.toEmbeddedThumb() ?: previewThumbnail }
+            item.takeIf { it.isVisualMedia() }?.previewThumbnail?.toEmbeddedThumb()
         } else {
             previewThumbnail.takeIf { replyQuoteConversationMediaPayloads().firstOrNull()?.isVisualMedia() == true }
         },
