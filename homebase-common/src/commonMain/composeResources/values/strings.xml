@@ -1547,6 +1547,11 @@
     <string name="vault_image_add">Add Image</string>
     <string name="vault_add_entry">Add Entry</string>
     <string name="vault_image_take_photo">Take Photo</string>
+    <string name="vault_scan_document">Scan document</string>
+    <string name="vault_scan_type_payment_card">Payment card</string>
+    <string name="vault_scan_type_id_card">ID card</string>
+    <string name="vault_scan_type_card">Card</string>
+    <string name="vault_scan_type_document">Scanned document</string>
     <string name="vault_image_choose_gallery">Choose from Gallery</string>
     <string name="vault_choose_file">Choose File</string>
     <string name="vault_image_replace">Replace</string>

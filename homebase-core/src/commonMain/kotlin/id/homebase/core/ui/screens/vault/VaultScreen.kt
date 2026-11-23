@@ -62,7 +62,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -80,6 +79,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.widget.MediaAttachmentEditor
 import id.homebase.core.ui.screens.vault.auth.VaultBiometricGate
 import id.homebase.core.ui.screens.vault.components.VaultAddSectionControl
+import id.homebase.core.scan.rememberDocumentScanner
 import id.homebase.core.ui.screens.vault.components.VaultAddEntrySheet
 import id.homebase.core.ui.screens.vault.components.VaultNewSectionSheet
 import id.homebase.core.ui.screens.vault.gallery.VaultGalleryScreen
@@ -149,8 +149,6 @@ fun VaultScreen(
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val vaultListState = rememberLazyListState()
-    var savedScrollIndex by remember { mutableIntStateOf(0) }
-    var savedScrollOffset by remember { mutableIntStateOf(0) }
 
     // Per-section horizontal scroll positions, hoisted ABOVE the AnimatedContent
     // (grid <-> gallery) so they survive the grid being disposed while the
@@ -162,20 +160,8 @@ fun VaultScreen(
     // deleted sections are harmless (sections are few).
     val sectionRowStates = remember { mutableMapOf<Uuid, LazyListState>() }
 
-    LaunchedEffect(uiState.fullScreenOverlay) {
-        if (uiState.fullScreenOverlay != null) {
-            savedScrollIndex = vaultListState.firstVisibleItemIndex
-            savedScrollOffset = vaultListState.firstVisibleItemScrollOffset
-        } else if (savedScrollIndex > 0 || savedScrollOffset > 0) {
-            vaultListState.scrollToItem(savedScrollIndex, savedScrollOffset)
-        }
-    }
-
     LaunchedEffect(scrollToTop) {
         if (scrollToTop) {
-            // Clear the saved position too, or closing the gallery would scroll back down.
-            savedScrollIndex = 0
-            savedScrollOffset = 0
             vaultListState.animateScrollToItem(0)
             onScrollToTopHandled()
         }
@@ -319,6 +305,18 @@ fun VaultScreen(
                 }
             }
         }
+    }
+
+    val documentScanner = rememberDocumentScanner { pages ->
+        isPickerActive = false
+        viewModel.onAction(
+            VaultUiAction.AddScannedPages(
+                pages = pages,
+                sectionId = activeSectionForEntry?.sectionId,
+                appendTo = fileForAppend,
+            )
+        )
+        fileForAppend = null
     }
 
     VaultBiometricGate(
@@ -617,6 +615,10 @@ fun VaultScreen(
                 isPickerActive = true
                 documentPicker.launch()
             }
+            VaultPickerAction.Scan -> {
+                isPickerActive = true
+                documentScanner?.launch { isPickerActive = false }
+            }
             VaultPickerAction.Note -> {
                 activeSectionForEntry?.let { section ->
                     onNavigateToNoteEditor(section.sectionId.toString(), null)
@@ -644,6 +646,10 @@ fun VaultScreen(
                 showImageAddSheet = false
                 pendingPickerAction = VaultPickerAction.File
             },
+            onScanDocument = {
+                showImageAddSheet = false
+                pendingPickerAction = VaultPickerAction.Scan
+            }.takeIf { documentScanner != null },
             // A note is its own entry in a section, so it can't be appended to an existing entry.
             onAddNote = {
                 showImageAddSheet = false
@@ -728,7 +734,7 @@ fun VaultScreen(
 
 }
 
-private enum class VaultPickerAction { Camera, Gallery, File, Note }
+private enum class VaultPickerAction { Camera, Gallery, File, Scan, Note }
 
 @Composable
 private fun resolveVaultError(error: VaultError): String = when (error) {
