@@ -28,13 +28,14 @@ actual fun rememberFeedWebView(
 actual fun PlatformFeedWebView(
     webView: FeedWebView,
     modifier: Modifier,
+    backgroundArgb: Int,
 ) {
     val handle = webView as KdroidfilterFeedWebView
     WebView(
         state = handle.nativeState,
         modifier = modifier,
         navigator = handle.nativeNavigator,
-        onCreated = ::enableDomStorage,
+        onCreated = { view: NativeWebView -> configureNativeWebView(view, backgroundArgb) },
     )
 }
 
@@ -85,5 +86,5 @@ internal fun ((FeedWebRequest) -> FeedWebRequestDecision).toRequestInterceptor()
     }
 
 /** Android's WebView ships with DOM storage (localStorage) off; desktop and iOS engines default it on. */
-internal expect fun enableDomStorage(view: NativeWebView)
+internal expect fun configureNativeWebView(view: NativeWebView, backgroundArgb: Int)
 actual val FeedWebViewAvailable: Boolean = true

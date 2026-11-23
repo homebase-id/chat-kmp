@@ -48,6 +48,14 @@ internal fun articleWebUrl(
         "${identity.encodeURLPathPart()}/${channelId.encodeURLPathPart()}/${post.encodeURLPathPart()}"
 }
 
+internal fun resolveIsDark(theme: ThemeState, isSystemDark: Boolean): Boolean = when (theme) {
+    ThemeState.Dark -> true
+    ThemeState.Light -> false
+    ThemeState.System -> isSystemDark
+}
+
+internal const val ARTICLE_MIN_DISPLAY_MS = 0L
+
 internal data class ArticleWebUiState(
     val url: String? = null,
     val injectionScript: String? = null,
@@ -73,11 +81,7 @@ class ArticleWebViewModel(
                     slug = post.slug,
                     postId = post.id.toString(),
                 )
-                val isDark = when (userPreferences.theme) {
-                    ThemeState.Dark -> true
-                    ThemeState.Light -> false
-                    ThemeState.System -> isSystemDark
-                }
+                val isDark = resolveIsDark(userPreferences.theme, isSystemDark)
                 _uiState.value = ArticleWebUiState(
                     url = url,
                     injectionScript = buildFeedInjectionScript(
@@ -129,6 +133,7 @@ internal fun ArticleWebContent(
             url = url,
             injectionScript = state.injectionScript,
             isLoading = isLoading,
+            minDisplayMs = ARTICLE_MIN_DISPLAY_MS,
             identityHosts = setOfNotNull(post.authorOdinId?.domainName?.lowercase()),
             onAction = { action ->
                 when (action) {
