@@ -67,6 +67,10 @@ class ArticleWebViewModel(
     private val _uiState = MutableStateFlow(ArticleWebUiState())
     internal val uiState: StateFlow<ArticleWebUiState> = _uiState.asStateFlow()
 
+    internal fun onPageError(message: String) {
+        _uiState.update { it.copy(error = message) }
+    }
+
     internal fun load(post: FeedPostItem, isSystemDark: Boolean) {
         viewModelScope.launch {
             try {
@@ -122,26 +126,29 @@ internal fun ArticleWebContent(
         return
     }
 
-    var pageError by remember(url) { mutableStateOf<String?>(null) }
     var isLoading by remember(url) { mutableStateOf(false) }
-    val error = state.error ?: pageError
-    when {
-        error != null -> FeedErrorView(errorMessage = error, onRetry = { viewModel.load(post, isSystemDark) })
-        url != null -> FeedWebView(
-            url = url,
-            injectionScript = state.injectionScript,
-            isLoading = isLoading,
-            minDisplayMs = 0,
-            identityHosts = setOfNotNull(post.authorOdinId?.domainName?.lowercase()),
-            onAction = { action ->
-                when (action) {
-                    FeedUiAction.PageStarted -> isLoading = true
-                    FeedUiAction.PageFinished -> isLoading = false
-                    is FeedUiAction.PageError -> pageError = action.message
-                    FeedUiAction.RetryClicked -> Unit
-                }
-            },
-        )
-        else -> Box(modifier.fillMaxSize())
+    val error = state.error
+    Box(modifier.fillMaxSize()) {
+        when {
+            error != null -> FeedErrorView(
+                errorMessage = error,
+                onRetry = { viewModel.load(post, isSystemDark) },
+            )
+            url != null -> FeedWebView(
+                url = url,
+                injectionScript = state.injectionScript,
+                isLoading = isLoading,
+                minDisplayMs = 0,
+                identityHosts = setOfNotNull(post.authorOdinId?.domainName?.lowercase()),
+                onAction = { action ->
+                    when (action) {
+                        FeedUiAction.PageStarted -> isLoading = true
+                        FeedUiAction.PageFinished -> isLoading = false
+                        is FeedUiAction.PageError -> viewModel.onPageError(action.message)
+                        FeedUiAction.RetryClicked -> Unit
+                    }
+                },
+            )
+        }
     }
 }
