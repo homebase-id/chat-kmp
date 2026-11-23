@@ -17,6 +17,7 @@ import platform.Foundation.NSError
 import platform.Foundation.create
 import platform.Vision.VNImageRequestHandler
 import platform.Vision.VNRecognizeTextRequest
+import platform.Vision.VNRecognizedText
 import platform.Vision.VNRecognizedTextObservation
 import platform.Vision.VNRequestTextRecognitionLevelAccurate
 
@@ -39,5 +40,5 @@ actual suspend fun recognizeCardText(jpeg: ByteArray): String? = withContext(Dis
     request.results.orEmpty()
         .filterIsInstance<VNRecognizedTextObservation>()
         .mapNotNull { it.topCandidates(1u).firstOrNull() }
-        .joinToString("\n") { (it as platform.Vision.VNRecognizedText).string }
+        .joinToString("\n") { (it as VNRecognizedText).string }
 }

@@ -10,7 +10,6 @@ import androidx.compose.runtime.Composable
  *    given to [rememberDocumentScanner].
  *  - The callback gets one JPEG per page, in scan order, already cropped and upright. Never an
  *    empty list: cancel, failure and a scan with no pages call nothing. Nothing throws.
- *  - Pages live in memory only; the scanner leaves no files behind for the app to clean up.
  */
 fun interface DocumentScanner {
     fun launch()
