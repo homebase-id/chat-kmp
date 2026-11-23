@@ -69,7 +69,7 @@ expect fun rememberFeedWebView(
 /**
  * Renders the platform WebView bound to [webView]. Must be called with the
  * same [webView] instance returned by [rememberFeedWebView]. Where it renders a page, the native view's
- * background is the theme's surface colour from its first frame and follows later theme changes.
+ * background is the theme's surface colour when it is created, from its first frame.
  */
 @Composable
 expect fun PlatformFeedWebView(

@@ -19,7 +19,10 @@ actual fun rememberFeedWebView(
     url: String,
     interceptor: (FeedWebRequest) -> FeedWebRequestDecision,
 ): FeedWebView {
+    val surface = MaterialTheme.colorScheme.surface
     val state = rememberWebViewState(url)
+    // Not in onCreated, which every engine paints over; set once, as desktop rebuilds the view on a change.
+    remember(state) { state.webSettings.backgroundColor = surface }
     val nativeInterceptor = remember(interceptor) { interceptor.toRequestInterceptor() }
     val navigator = rememberWebViewNavigator(requestInterceptor = nativeInterceptor)
     return remember(state, navigator) { KdroidfilterFeedWebView(state, navigator) }
@@ -31,8 +34,6 @@ actual fun PlatformFeedWebView(
     modifier: Modifier,
 ) {
     val handle = webView as KdroidfilterFeedWebView
-    // Not in onCreated: every engine applies webSettings.backgroundColor after it, over anything set there.
-    handle.nativeState.webSettings.backgroundColor = MaterialTheme.colorScheme.surface
     WebView(
         state = handle.nativeState,
         modifier = modifier,
