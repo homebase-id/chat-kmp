@@ -203,7 +203,7 @@ fun HomebaseImage(
                     if (state.painter.let { it != null && it !== preview }) lastSharpPainter.value = state.painter
                     if (state is AsyncImagePainter.State.Success) onLoaded?.invoke()
                     if (state is AsyncImagePainter.State.Error && !steppedUp) {
-                        println("HomebaseImage Error: ${state.result.throwable.message}")
+                        Logger.w(tag = "HomebaseImage") { "Image failed to load: ${state.result.throwable.message}" }
                     }
                 },
                 alignment = alignment,

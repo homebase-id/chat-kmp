@@ -12,7 +12,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
@@ -20,19 +22,25 @@ import kotlinx.coroutines.withContext
 class TinyPreviewWarmer(private val imageLoader: ImageLoader, private val context: PlatformContext) {
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    // Leaves Coil's other decode slots to the thumbnails on screen.
-    private val decodes = Semaphore(2)
+    // Background decodes only, so they leave Coil's other decode slots to the thumbnails on screen.
+    private val backgroundDecodes = Semaphore(2)
+    private val queued = mutableSetOf<String>()
+    private val queuedLock = Mutex()
 
     /** [previews] in display order: returns once the first [awaited] are in memory, and decodes the rest in the background. */
     suspend fun warm(previews: List<Base64Bytes>, awaited: Int = AWAITED_PREVIEWS) = withContext(Dispatchers.Default) {
         val misses = previews.distinct().map { previewRequest(context, it) }.filter { imageLoader.cachedPreview(it) == null }
-        misses.take(awaited).forEach { launch { decode(it) } }
-        misses.drop(awaited).forEach { background.launch { decode(it) } }
-    }
-
-    // Checked again under the permit: an earlier list's background decode may have got there first.
-    private suspend fun decode(request: ImageRequest) = decodes.withPermit {
-        if (imageLoader.cachedPreview(request) == null) imageLoader.execute(request)
+        misses.take(awaited).forEach { launch { imageLoader.execute(it) } }
+        val fresh = queuedLock.withLock { misses.drop(awaited).filter { queued.add(it.memoryCacheKey!!) } }
+        fresh.forEach { request ->
+            background.launch {
+                try {
+                    backgroundDecodes.withPermit { if (imageLoader.cachedPreview(request) == null) imageLoader.execute(request) }
+                } finally {
+                    queuedLock.withLock { queued.remove(request.memoryCacheKey) }
+                }
+            }
+        }
     }
 }
 
