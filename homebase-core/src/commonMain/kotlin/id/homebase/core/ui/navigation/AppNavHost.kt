@@ -493,6 +493,11 @@ fun AppNavHost(
     // The rail's avatar opens Settings, so it takes the selection for as long as the pane floats over the tab.
     val settingsOpen = currentDestination?.hasRoute(Route.Settings::class) == true
     val openEmail: () -> Unit = { navController.openApp(Route.Email, tabRoutes) }
+    val onContactsTab = selectedTab?.hasRoute(Route.ContactBook::class) == true
+    // The view model outlives the tab; Contacts always opens on its first tab.
+    LaunchedEffect(onContactsTab) {
+        if (!onContactsTab) contactBookViewModel.onAction(ContactBookUiAction.TabSelected(ContactTab.KNOWN))
+    }
     val openContactBook: () -> Unit = { navController.openApp(Route.ContactBook, tabRoutes) }
     // Not a route argument: openApp restores the saved Contacts entry, which keeps its old arguments.
     val openCalls: () -> Unit = {
