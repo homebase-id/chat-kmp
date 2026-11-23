@@ -24,6 +24,10 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.UuidSerializer
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import id.homebase.api.crypto.EncryptionType
+import id.homebase.api.client.drives.asDeletedWithoutContent
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -90,6 +94,9 @@ class DriveQueryProvider(
         // request body — the FileQueryParams.fileSystemType field alone is ignored for routing.
         fileSystemType: FileSystemType? = null,
         externalFileKey: ExternalFileKey? = null,
+        // Drive sync: a file locked with another key than the one this device holds is left out and
+        // logged, so it can't stop the drive.
+        skipUnreadable: Boolean = false,
     ): QueryBatchResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -119,7 +126,7 @@ class DriveQueryProvider(
 
         throwForFailure(apiResponse)
 
-        return mapQueryBatchResponse(apiResponse.body, creds.secret, externalFileKey)
+        return mapQueryBatchResponse(apiResponse.body, creds.secret, externalFileKey, skipUnreadable)
     }
 
     /**
@@ -128,7 +135,7 @@ class DriveQueryProvider(
      * [QueryBatchCollectionSection.name]; a section-level fault never fails the collection, it comes
      * back with a [QueryBatchSectionStatus].
      */
-    suspend fun queryBatchCollection(request: QueryBatchCollectionRequest): QueryBatchCollectionResponse {
+    suspend fun queryBatchCollection(request: QueryBatchCollectionRequest, skipUnreadable: Boolean = false): QueryBatchCollectionResponse {
         request.queries.forEach { ValidationUtil.requireValidUuid(it.driveId, "driveId") }
         require(request.maxRecords >= 1) { "maxRecords must be at least 1" }
 
@@ -147,13 +154,14 @@ class DriveQueryProvider(
         throwForFailure(apiResponse)
 
         val internal = deserialize<QueryBatchCollectionResponseInternalRaw>(apiResponse.body)
-        val results = internal.results.map { section -> mapCollectionSection(section, creds.secret) }
+        val results = internal.results.map { section -> mapCollectionSection(section, creds.secret, skipUnreadable) }
         return QueryBatchCollectionResponse(results = results)
     }
 
     private suspend fun mapCollectionSection(
         internal: QueryBatchCollectionSectionInternalRaw,
         secret: SecureByteArray,
+        skipUnreadable: Boolean,
     ): QueryBatchCollectionSection {
         // A failed section carries no rows, but its cursor still matters: a budgetExhausted section
         // echoes back the cursor we submitted, and dropping it would silently lose or replay records.
@@ -161,7 +169,7 @@ class DriveQueryProvider(
             if (internal.invalidDrive) {
                 emptyList()
             } else {
-                internal.searchResults.map { createServerFileWithSafeMetadata(it, secret) }
+                decodeFiles(internal.searchResults, secret, externalFileKey = null, skipUnreadable)
             }
 
         return QueryBatchCollectionSection(
@@ -192,28 +200,23 @@ class DriveQueryProvider(
         body: String,
         secret: SecureByteArray,
         externalFileKey: ExternalFileKey? = null,
+        skipUnreadable: Boolean = false,
     ): QueryBatchResponse {
         val internal = deserialize<QueryBatchResponseInternalRaw>(body)
-        return mapQueryBatchResponseInternal(internal, secret, externalFileKey)
+        return mapQueryBatchResponseInternal(internal, secret, externalFileKey, skipUnreadable)
     }
 
     private suspend fun mapQueryBatchResponseInternal(
         internal: QueryBatchResponseInternalRaw,
         secret: SecureByteArray,
         externalFileKey: ExternalFileKey?,
+        skipUnreadable: Boolean,
     ): QueryBatchResponse {
         if (internal.invalidDrive) {
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
 
-        val files = internal.searchResults.mapNotNull { serverFileJson ->
-            try {
-                createServerFileWithSafeMetadata(serverFileJson, secret, externalFileKey)
-            } catch (e: FileDecryptionException.Withheld) {
-                // A share not yet open to this reader loses that file, not the page; the key's owner knows why.
-                null
-            }
-        }
+        val files = decodeFiles(internal.searchResults, secret, externalFileKey, skipUnreadable)
 
         return QueryBatchResponse(
             name = internal.name,
@@ -226,11 +229,50 @@ class DriveQueryProvider(
         )
     }
 
-    private suspend fun createServerFileWithSafeMetadata(
-        serverFileJson: JsonObject,
+    private suspend fun decodeFiles(
+        rows: List<JsonObject>,
         secret: SecureByteArray,
-        externalFileKey: ExternalFileKey? = null,
-    ): HomebaseFile {
+        externalFileKey: ExternalFileKey?,
+        skipUnreadable: Boolean,
+    ): List<HomebaseFile> {
+        var skipped = 0
+        var firstSkipped: Pair<ServerFile, FileDecryptionException>? = null
+        val skippedIds = mutableListOf<Uuid>()
+        val files = rows.mapNotNull { row ->
+            val serverFile = serverFileWithSafeMetadata(row)
+            try {
+                serverFile.asHomebaseFile(secret, externalFileKey)
+            } catch (e: FileDecryptionException.Withheld) {
+                // A share not yet open to this reader loses that file, not the page; the key's owner knows why.
+                null
+            } catch (e: FileDecryptionException.KeyHeaderDecryptionFailed) {
+                if (!skipUnreadable || !serverFile.lockedWithAnotherKey(e)) throw e
+                // A cancellation can come wrapped from a suspending decrypt; it isn't this file's fault.
+                currentCoroutineContext().ensureActive()
+                if (skipped++ == 0) firstSkipped = serverFile to e
+                if (skippedIds.size < 5) skippedIds += serverFile.fileId
+                // A deletion needs no key, and skipping it would leave the file showing here.
+                if (serverFile.fileState == FileState.Deleted) serverFile.asDeletedWithoutContent() else null
+            }
+        }
+        firstSkipped?.let { (first, e) ->
+            Logger.e(tag = "DriveQueryProvider") {
+                "drive ${first.driveId}: skipped $skipped file(s) whose key header the drive key doesn't open: " +
+                    skippedIds.joinToString() + " (${e.cause?.let { "${it::class.simpleName}: ${it.message}" } ?: e.message})"
+            }
+        }
+        return files
+    }
+
+    // A current-format zero-knowledge key header that the drive key this device holds fails to decrypt. A key not
+    // here yet (NoDriveKey), a newer format or any other key still fails the page.
+    private fun ServerFile.lockedWithAnotherKey(e: FileDecryptionException.KeyHeaderDecryptionFailed): Boolean {
+        val header = sharedSecretEncryptedKeyHeader
+        return header.type == EncryptionType.ZkDrive && header.encryptionVersion == 1 && header.iv.size == 16 &&
+            e.cause !is FileDecryptionException
+    }
+
+    private fun serverFileWithSafeMetadata(serverFileJson: JsonObject): ServerFile {
         // First deserialize ServerFile with FileMetadata as JsonObject
         val serverFileWithRawMetadata = try {
             OdinSystemSerializer.json.decodeFromString<ServerFileWithRawMetadata>(serverFileJson.toString())
@@ -246,7 +288,7 @@ class DriveQueryProvider(
         }
         
         // Create proper ServerFile with deserialized FileMetadata
-        val serverFile = ServerFile(
+        return ServerFile(
             fileId = serverFileWithRawMetadata.fileId,
             driveId = serverFileWithRawMetadata.driveId,
             fileState = serverFileWithRawMetadata.fileState,
@@ -258,8 +300,6 @@ class DriveQueryProvider(
             fileByteCount = serverFileWithRawMetadata.fileByteCount,
             shares = serverFileWithRawMetadata.shares,
         )
-        
-        return serverFile.asHomebaseFile(secret, externalFileKey)
     }
     
     private fun createBadFileMetadata(fileMetadataJson: JsonObject): FileMetadata {

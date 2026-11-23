@@ -184,6 +184,25 @@ private fun zkDriveKey(driveId: Uuid): ByteArray = ZkKeyStore.driveKey(driveId) 
 internal const val DECRYPTION_FAILURE_APP_DATA =
     """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}"""
 
+/** A deleted file whose key this device can't open: its plain fields, so the deletion still reaches the local index. */
+fun ServerFile.asDeletedWithoutContent(): HomebaseFile = HomebaseFile(
+    fileId = fileId,
+    driveId = driveId,
+    fileState = fileState,
+    fileSystemType = fileSystemType,
+    keyHeader = KeyHeader.empty(),
+    fileMetadata = fileMetadata.copy(
+        appData = fileMetadata.appData.copy(content = null),
+        localAppData = null,
+        payloads = fileMetadata.payloads?.map { it.copy(descriptorContent = null) },
+        isEncrypted = false,
+    ),
+    serverMetadata = serverMetadata,
+    priority = priority,
+    fileByteCount = fileByteCount,
+    shares = shares,
+)
+
 /** True when this file's appData could not be decrypted and holds the placeholder instead. */
 fun HomebaseFile.appDataFailedToDecrypt(): Boolean =
     fileMetadata.appData.content == DECRYPTION_FAILURE_APP_DATA
