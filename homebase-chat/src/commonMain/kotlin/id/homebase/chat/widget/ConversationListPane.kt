@@ -206,7 +206,7 @@ fun ConversationListPane(
         val isAtTop = listState.firstVisibleItemIndex == 0 &&
                 listState.firstVisibleItemScrollOffset == 0
         if (shouldScrollToTop(uiState.listTopSnapshotId, topConversationId, isAtTop)) {
-            listState.scrollToItem(0)
+            listState.requestScrollToItem(0)
         }
         onUiAction(ConversationListUiAction.SnapshotListTop)
     }
