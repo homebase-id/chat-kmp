@@ -11,12 +11,15 @@ import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Decodes tinies into Coil's memory cache off the main thread, before the list that shows them composes. */
 class TinyPreviewWarmer(private val imageLoader: ImageLoader, private val context: PlatformContext) {
@@ -30,7 +33,9 @@ class TinyPreviewWarmer(private val imageLoader: ImageLoader, private val contex
     /** [previews] in display order: returns once the first [awaited] are in memory, and decodes the rest in the background. */
     suspend fun warm(previews: List<Base64Bytes>, awaited: Int = AWAITED_PREVIEWS) = withContext(Dispatchers.Default) {
         val misses = previews.distinct().map { previewRequest(context, it) }.filter { imageLoader.cachedPreview(it) == null }
-        misses.take(awaited).forEach { launch { imageLoader.execute(it) } }
+        val first = misses.take(awaited).map { background.launch { imageLoader.execute(it) } }
+        // Bounded, so rows never wait long behind thumbnail decodes holding Coil's decoder; a late tiny takes the miss path.
+        withTimeoutOrNull(AWAIT_LIMIT) { first.joinAll() }
         val fresh = queuedLock.withLock { misses.drop(awaited).filter { queued.add(it.memoryCacheKey!!) } }
         fresh.forEach { request ->
             background.launch {
@@ -46,6 +51,7 @@ class TinyPreviewWarmer(private val imageLoader: ImageLoader, private val contex
 
 // About two screens of rows, so the first frame and the list's prefetch find their tinies.
 private const val AWAITED_PREVIEWS = 24
+private val AWAIT_LIMIT = 100.milliseconds
 
 /** Every tiny a file's views may draw: each payload's own, and the file's, which payloads without one fall back to. */
 fun tinyPreviews(payloads: List<PayloadDescriptor>?, previewThumbnail: EmbeddedThumb?): List<Base64Bytes> =

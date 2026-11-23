@@ -137,6 +137,13 @@ fun HomebaseImage(
     var standInFailed by remember(standIn) { mutableStateOf(false) }
     val showsStandIn = standIn != null && !standInFailed
 
+    if (onLoaded != null) {
+        LaunchedEffect(imageData) {
+            snapshotFlow { loadState.value is AsyncImagePainter.State.Success }.first { it }
+            onLoaded()
+        }
+    }
+
     val full = remember(imageData) { imageData.copy(loadFullPayload = true) }
     if (mayStepUp && !steppedUp && !stepUpFailed) {
         LaunchedEffect(imageData, contentScale) {
@@ -201,7 +208,6 @@ fun HomebaseImage(
                     loadState.value = state
                     // Includes a thumbnail Coil drew from memory while loading, so a failure keeps it.
                     if (state.painter.let { it != null && it !== preview }) lastSharpPainter.value = state.painter
-                    if (state is AsyncImagePainter.State.Success) onLoaded?.invoke()
                     if (state is AsyncImagePainter.State.Error && !steppedUp) {
                         Logger.w(tag = "HomebaseImage") { "Image failed to load: ${state.result.throwable.message}" }
                     }
