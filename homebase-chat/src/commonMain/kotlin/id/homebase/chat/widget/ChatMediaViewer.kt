@@ -5,6 +5,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import id.homebase.core.clipboard.canCopyImageToClipboard
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
 import id.homebase.chat.conversationlist.ConversationListUiAction.DeleteMessage
@@ -45,7 +46,7 @@ internal fun ChatMediaViewer(
             onSaveToVault = if (vaultActive) { id, key ->
                 onUiAction(ConversationListUiAction.SaveMediaToVault(id, key))
             } else null,
-            onCopyImage = if (uiState.messageById(data.messageId)?.allowsImageCopy == true) { id, key ->
+            onCopyImage = if (canCopyImageToClipboard && uiState.messageById(data.messageId)?.allowsImageCopy == true) { id, key ->
                 onUiAction(ConversationListUiAction.CopyImage(id, key))
             } else null,
             onDelete = { onUiAction(DeleteMessage(it)) },

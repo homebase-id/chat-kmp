@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.clipboard.canCopyImageToClipboard
 import id.homebase.api.video.playableContentType
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -250,14 +251,14 @@ private fun SharedMediaViewer(
                 )
             }
         } else null,
-        onCopyImage = { _, _ ->
+        onCopyImage = if (canCopyImageToClipboard) { _, _ ->
             scope.launch {
                 val copied = actionService.copyImagePayloadToClipboard(item.fileId, item.payload, item.keyHeader)
                 snackbarHostState.showSnackbar(
                     TranslationUtil.getString(if (copied) MR.string.chat_image_copied else MR.string.chat_error_copy_image)
                 )
             }
-        },
+        } else null,
         onDelete = { onDismiss() },
         onDismiss = onDismiss,
         onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },

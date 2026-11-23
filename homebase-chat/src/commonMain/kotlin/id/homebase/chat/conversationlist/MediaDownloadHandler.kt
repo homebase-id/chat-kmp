@@ -169,9 +169,12 @@ internal class MediaDownloadHandler(
     }
 
     fun handleCopyImage(action: ConversationListUiAction.CopyImage) {
-        val message = messagesUiState.value.messageById(action.messageId)
-            ?.takeIf { it.canCopyImage(action.payloadKey) } ?: return
-        val payload = message.payloads?.find { it.key == action.payloadKey } ?: return
+        val message = messagesUiState.value.messageById(action.messageId)?.takeIf { it.canCopyImage(action.payloadKey) }
+        val payload = message?.payloads?.find { it.key == action.payloadKey }
+        if (message == null || payload == null) {
+            sendEvent(ShowErrorMessage(MR.string.chat_error_copy_image))
+            return
+        }
         scope.launch {
             val copied = chatMessageActionService.copyImagePayloadToClipboard(message.fileId, payload, message.keyHeader)
             sendEvent(

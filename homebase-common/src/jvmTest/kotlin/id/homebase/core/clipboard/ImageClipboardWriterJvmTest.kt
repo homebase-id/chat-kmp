@@ -44,4 +44,15 @@ class ImageClipboardWriterJvmTest {
         assertEquals(0xFF0000, image.getRGB(0, 0) and 0xFFFFFF)
         assertEquals(0x0000FF, image.getRGB(5, 3) and 0xFFFFFF)
     }
+
+    @Test
+    fun aSecondCopyReplacesTheFirst() {
+        val clipboard = Clipboard("test")
+        writePngToClipboard(clipboard, encoded("png"))
+        val blue = BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB).apply { setRGB(0, 0, 0x00FF00) }
+        writePngToClipboard(clipboard, ByteArrayOutputStream().also { ImageIO.write(blue, "png", it) }.toByteArray())
+
+        val image = ImageIO.read(ByteArrayInputStream(assertNotNull(readImageFromClipboard(clipboard))))
+        assertEquals(2 to 2, image.width to image.height)
+    }
 }

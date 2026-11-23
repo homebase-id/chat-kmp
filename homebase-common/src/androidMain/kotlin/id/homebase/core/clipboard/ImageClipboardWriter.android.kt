@@ -9,13 +9,18 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// One fixed file: the clipboard only ever holds the latest copy, so overwriting it is safe.
-internal actual suspend fun writePngToClipboard(png: ByteArray) {
+actual val canCopyImageToClipboard: Boolean = true
+
+// A fresh name per copy: the content URI is the clipboard's identity, and a receiver or the system
+// clipboard preview that caches by URI would paste the previous image from a reused one.
+internal actual suspend fun writePngToClipboard(png: suspend () -> ByteArray) {
+    val bytes = png()
     val context = ActivityProvider.requireApplicationContext()
-    val file = File(context.cacheDir, "clipboard/copied_image.png")
+    val file = File(context.cacheDir, "clipboard/copied_image_${System.currentTimeMillis()}.png")
     withContext(Dispatchers.IO) {
+        file.parentFile?.listFiles()?.forEach { it.delete() }
         file.parentFile?.mkdirs()
-        file.writeBytes(png)
+        file.writeBytes(bytes)
     }
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
