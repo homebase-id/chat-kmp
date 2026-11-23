@@ -100,6 +100,9 @@ class VaultViewModel(
     private val _webDropActivated = MutableStateFlow(false)
     private val _pendingEditor = MutableStateFlow<VaultPendingEditor?>(null)
 
+    // Paths the staged-image editor wrote; the only files this screen may delete from a staged list, which can hold a person's own picked file.
+    private val editCopies = mutableSetOf<String>()
+
     /**
      * True while a crop/draw screen is navigated to on top of Vault. That forward-navigation
      * disposes VaultScreen, firing its `onDispose` -> [VaultUiAction.CloseOverlay]; this flag
@@ -370,6 +373,7 @@ class VaultViewModel(
             VaultUiAction.DismissAddEditor -> {
                 imageEditNavInFlight = false
                 val editor = _pendingEditor.value
+                editor?.let { deleteEditCopies(it.stagedFiles()) }
                 _pendingEditor.update { null }
                 if (editor?.isScan == true) editor.stagedFiles().forEach(::deleteScanTemp)
             }
@@ -600,6 +604,7 @@ class VaultViewModel(
                 _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(firstName)))
             } finally {
                 if (action.deleteSources) deleteSources(fileData, files)
+                deleteEditCopies(files)
             }
         }
     }
@@ -713,6 +718,7 @@ class VaultViewModel(
                 }
             } finally {
                 if (action.deleteSources) deleteSources(uploadData, action.newFiles)
+                deleteEditCopies(action.newFiles)
             }
         }
     }
@@ -736,6 +742,19 @@ class VaultViewModel(
         uploads.forEachIndexed { i, (path, _) ->
             if (path != picked[i].toString()) runCatching { fileOperationsProvider.deleteTempFile(path) }
         }
+    }
+
+    private fun deleteEditCopies(files: List<PlatformFile>) {
+        files.forEach { file ->
+            val path = file.toString()
+            if (editCopies.remove(path)) runCatching { fileOperationsProvider.deleteTempFile(path) }
+        }
+    }
+
+    private fun stagedFile(att: AttachmentPendingFile): PlatformFile? = when (att) {
+        is AttachmentPendingFile.FileImage -> att.file
+        is AttachmentPendingFile.File -> att.file
+        else -> null
     }
 
     // region Add-pictures editor (reuses image-editor-ui's crop/draw seam)
@@ -783,6 +802,8 @@ class VaultViewModel(
         _pendingEditor.update { cur ->
             val remaining = cur?.attachments?.filter { it.attachmentId != action.attachmentId }
                 ?: return@update null
+            cur.attachments.firstOrNull { it.attachmentId == action.attachmentId }
+                ?.let(::stagedFile)?.let { deleteEditCopies(listOf(it)) }
             if (remaining.isEmpty()) null else cur.copy(attachments = remaining)
         }
     }
@@ -796,6 +817,7 @@ class VaultViewModel(
             readSource = { attachment.file.readBytes() },
         ) { editedBytes ->
             val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, EDIT_TEMP_PREFIX, ".jpg")
+            editCopies += tempPath
             val replaced = AttachmentPendingFile.FileImage(
                 id = action.attachmentId,
                 file = platformFileFromPath(tempPath),
@@ -807,17 +829,12 @@ class VaultViewModel(
                     },
                 )
             }
+            deleteEditCopies(listOf(attachment.file))
             if (_pendingEditor.value?.isScan == true) deleteScanTemp(attachment.file)
         }
     }
 
-    private fun VaultPendingEditor.stagedFiles(): List<PlatformFile> = attachments.mapNotNull { att ->
-        when (att) {
-            is AttachmentPendingFile.FileImage -> att.file
-            is AttachmentPendingFile.File -> att.file
-            else -> null
-        }
-    }
+    private fun VaultPendingEditor.stagedFiles(): List<PlatformFile> = attachments.mapNotNull(::stagedFile)
 
     private fun handleConfirmAddEditor(action: VaultUiAction.ConfirmAddEditor) {
         val editor = _pendingEditor.value ?: return
