@@ -309,7 +309,7 @@ class YouAuthFlowManager(
 
             // Build authorization URL
             val authorizeUrl =
-                UriBuilder("https://$identity/api/owner/v1/youauth/authorize")
+                UriBuilder("https://$identity/api/v2/youauth/authorize")
                     .apply { query = authRequest.toQueryString() }
                     .toString()
 

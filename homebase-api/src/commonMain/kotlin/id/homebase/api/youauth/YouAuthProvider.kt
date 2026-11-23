@@ -104,7 +104,7 @@ class YouAuthProvider(
     ): YouAuthTokenResponse {
 
         val response =
-            httpClient.post("$ownerApiUrl/api/owner/v1/youauth/token") {
+            httpClient.post("$ownerApiUrl/api/v2/youauth/token") {
                 contentType(ContentType.Application.Json)
                 setBody(mapOf("secret_digest" to base64ExchangedSecretDigest))
             }
