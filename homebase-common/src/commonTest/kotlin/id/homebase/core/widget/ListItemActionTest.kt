@@ -4,8 +4,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.onNodeWithText
@@ -51,7 +51,7 @@ class ListItemActionTest {
     }
 
     @Test
-    fun tappingTheIconFiresTheRowCallback() = runComposeUiTest {
+    fun iconTapFiresRowClick() = runComposeUiTest {
         var clicks = 0
         setContent {
             MaterialTheme {
@@ -64,6 +64,16 @@ class ListItemActionTest {
         }
         onNode(hasClickAction()).performTouchInput { click(Offset(36.dp.toPx(), centerY)) }
         assertEquals(1, clicks)
+    }
+
+    @Test
+    fun rowHasExactlyOneClickTarget() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                ListItemAction(imageVector = Icons.Filled.Delete, text = "Delete", onClick = {})
+            }
+        }
+        assertEquals(1, onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 
     @Test
