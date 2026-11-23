@@ -36,6 +36,15 @@ import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
 import id.homebase.api.file.contentType
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.scan.ScannedDocumentType
+import id.homebase.core.scan.classifyScan
+import id.homebase.resources.MR
+import id.homebase.resources.vault_scan_type_card
+import id.homebase.resources.vault_scan_type_document
+import id.homebase.resources.vault_scan_type_id_card
+import id.homebase.resources.vault_scan_type_payment_card
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.getString
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveState
@@ -63,6 +72,8 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private const val TAG = "VaultViewModel"
+private const val SCAN_TEMP_PREFIX = "vault_scan_"
+private const val EDIT_TEMP_PREFIX = "vault_edit_"
 
 class VaultViewModel(
     private val vaultPreferences: VaultPreferences,
@@ -347,6 +358,7 @@ class VaultViewModel(
             is VaultUiAction.MoveSectionUp -> handleMoveSectionUp(action.section)
             is VaultUiAction.MoveSectionDown -> handleMoveSectionDown(action.section)
             is VaultUiAction.AddEntryToSection -> handleAddEntryToSection(action)
+            is VaultUiAction.AddScannedPages -> handleAddScannedPages(action)
             is VaultUiAction.AppendPages -> handleAppendPages(action)
             is VaultUiAction.OpenAddEditor -> handleOpenAddEditor(action)
             is VaultUiAction.AddToEditor -> handleAddToEditor(action)
@@ -357,7 +369,9 @@ class VaultViewModel(
             is VaultUiAction.ConfirmAddEditor -> handleConfirmAddEditor(action)
             VaultUiAction.DismissAddEditor -> {
                 imageEditNavInFlight = false
+                val editor = _pendingEditor.value
                 _pendingEditor.update { null }
+                if (editor?.isScan == true) editor.stagedFiles().forEach(::deleteScanTemp)
             }
             is VaultUiAction.EditExistingPage -> handleEditExistingPage(action)
             is VaultUiAction.DeletePage -> handleDeletePage(action)
@@ -584,6 +598,8 @@ class VaultViewModel(
                     pendingItem.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
                 )
                 _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(firstName)))
+            } finally {
+                if (action.deleteSources) deleteSources(fileData, files)
             }
         }
     }
@@ -644,6 +660,28 @@ class VaultViewModel(
         }
     }
 
+    private fun handleAddScannedPages(action: VaultUiAction.AddScannedPages) {
+        if (action.appendTo == null && action.sectionId == null) return
+        viewModelScope.launch {
+            try {
+                val files = action.pages.map { platformFileFromPath(fileOperationsProvider.writeBytesToTempFile(it, SCAN_TEMP_PREFIX, ".jpg")) }
+                onAction(VaultUiAction.OpenAddEditor(files, action.sectionId, action.appendTo, isScan = true))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "Staging scanned pages failed" }
+                _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(getString(MR.string.vault_scan_type_document))))
+            }
+        }
+    }
+
+    private fun ScannedDocumentType.labelRes(): StringResource = when (this) {
+        ScannedDocumentType.PaymentCard -> MR.string.vault_scan_type_payment_card
+        ScannedDocumentType.IdCard -> MR.string.vault_scan_type_id_card
+        ScannedDocumentType.Card -> MR.string.vault_scan_type_card
+        ScannedDocumentType.Document -> MR.string.vault_scan_type_document
+    }
+
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {
         val contentTypes = action.newFiles.map { it.contentType() }
 
@@ -660,16 +698,21 @@ class VaultViewModel(
         vaultStream.updateOptimisticEntry(optimisticEntry)
 
         viewModelScope.launch {
-            val uploadData = action.newFiles.mapIndexed { index, file -> file.uploadCopy() to contentTypes[index] }
-            val success = vaultUploaderService.appendPages(
-                file = action.file,
-                newFiles = uploadData,
-                scope = viewModelScope,
-            )
-            if (!success) {
-                deleteCopies(uploadData, action.newFiles)
-                vaultStream.updateOptimisticEntry(action.file)
-                _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
+            var uploadData: List<Pair<String, String>> = emptyList()
+            try {
+                uploadData = action.newFiles.mapIndexed { index, file -> file.uploadCopy() to contentTypes[index] }
+                val success = vaultUploaderService.appendPages(
+                    file = action.file,
+                    newFiles = uploadData,
+                    scope = viewModelScope,
+                )
+                if (!success) {
+                    deleteCopies(uploadData, action.newFiles)
+                    vaultStream.updateOptimisticEntry(action.file)
+                    _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
+                }
+            } finally {
+                if (action.deleteSources) deleteSources(uploadData, action.newFiles)
             }
         }
     }
@@ -681,6 +724,12 @@ class VaultViewModel(
     // On native toString() is the picked path, readable while the picker's grant is live; on web nothing previews.
     private fun previewPicked(entryId: Uuid, payloadKey: String, file: PlatformFile) =
         localAttachmentStore.put(entryId, payloadKey, LocalAttachmentContext.Image(localFilePath = file.toString(), aspectRatio = null))
+
+    // Plaintext scan copies must not outlive the save: the upload has encrypted the bytes by the time it returns.
+    private fun deleteSources(uploads: List<Pair<String, String>>, picked: List<PlatformFile>) {
+        (uploads.map { it.first } + picked.map { it.toString() }).distinct()
+            .forEach(::deleteOwnTemp)
+    }
 
     // A file already in the app's cache is uploaded as it is, not copied: it isn't ours to delete here.
     private fun deleteCopies(uploads: List<Pair<String, String>>, picked: List<PlatformFile>) {
@@ -707,6 +756,7 @@ class VaultViewModel(
                 attachments = action.files.map { stageAttachment(it) },
                 sectionId = action.sectionId,
                 appendTo = action.appendTo,
+                isScan = action.isScan,
             )
         }
     }
@@ -717,7 +767,19 @@ class VaultViewModel(
         _pendingEditor.update { cur -> cur?.copy(attachments = cur.attachments + newAttachments) }
     }
 
+    // Only files this flow wrote: a picker can hand back a person's own file, which must never be deleted.
+    private fun deleteOwnTemp(path: String) {
+        val name = path.substringAfterLast('/')
+        if (name.startsWith(SCAN_TEMP_PREFIX) || name.startsWith(EDIT_TEMP_PREFIX)) runCatching { fileOperationsProvider.deleteTempFile(path) }
+    }
+
+    private fun deleteScanTemp(file: PlatformFile) = deleteOwnTemp(file.toString())
+
     private fun handleRemoveFromEditor(action: VaultUiAction.RemoveFromEditor) {
+        _pendingEditor.value?.takeIf { it.isScan }?.attachments
+            ?.firstOrNull { it.attachmentId == action.attachmentId }
+            ?.let { (it as? AttachmentPendingFile.FileImage)?.file }
+            ?.let(::deleteScanTemp)
         _pendingEditor.update { cur ->
             val remaining = cur?.attachments?.filter { it.attachmentId != action.attachmentId }
                 ?: return@update null
@@ -733,7 +795,7 @@ class VaultViewModel(
             tool = action.tool,
             readSource = { attachment.file.readBytes() },
         ) { editedBytes ->
-            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, EDIT_TEMP_PREFIX, ".jpg")
             val replaced = AttachmentPendingFile.FileImage(
                 id = action.attachmentId,
                 file = platformFileFromPath(tempPath),
@@ -745,6 +807,15 @@ class VaultViewModel(
                     },
                 )
             }
+            if (_pendingEditor.value?.isScan == true) deleteScanTemp(attachment.file)
+        }
+    }
+
+    private fun VaultPendingEditor.stagedFiles(): List<PlatformFile> = attachments.mapNotNull { att ->
+        when (att) {
+            is AttachmentPendingFile.FileImage -> att.file
+            is AttachmentPendingFile.File -> att.file
+            else -> null
         }
     }
 
@@ -752,19 +823,27 @@ class VaultViewModel(
         val editor = _pendingEditor.value ?: return
         imageEditNavInFlight = false
         _pendingEditor.update { null }
-        val files = editor.attachments.mapNotNull { att ->
-            when (att) {
-                is AttachmentPendingFile.FileImage -> att.file
-                is AttachmentPendingFile.File -> att.file
-                else -> null
-            }
-        }
+        val files = editor.stagedFiles()
         if (files.isEmpty()) return
         val appendTo = editor.appendTo
+        val sectionId = editor.sectionId
         if (appendTo != null) {
-            onAction(VaultUiAction.AppendPages(appendTo, files))
-        } else if (editor.sectionId != null) {
-            onAction(VaultUiAction.AddEntryToSection(editor.sectionId, files, action.entryName))
+            onAction(VaultUiAction.AppendPages(appendTo, files, deleteSources = editor.isScan))
+        } else if (sectionId != null && editor.isScan && action.entryName.isNullOrBlank()) {
+            viewModelScope.launch {
+                val type = try {
+                    withContext(Dispatchers.Default) { classifyScan(files.map { it.readBytes() }) }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    deleteSources(emptyList(), files)
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "Classifying scanned pages failed" }
+                    ScannedDocumentType.Document
+                }
+                onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes()), deleteSources = true))
+            }
+        } else if (sectionId != null) {
+            onAction(VaultUiAction.AddEntryToSection(sectionId, files, action.entryName, deleteSources = editor.isScan))
         }
     }
 
@@ -782,7 +861,7 @@ class VaultViewModel(
                 fileOperationsProvider.readFileBytes(path)
             },
         ) { editedBytes ->
-            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, EDIT_TEMP_PREFIX, ".jpg")
             // Refresh the gallery thumbnail immediately from the edited local file
             // while the outbox replace propagates.
             localAttachmentStore.put(
