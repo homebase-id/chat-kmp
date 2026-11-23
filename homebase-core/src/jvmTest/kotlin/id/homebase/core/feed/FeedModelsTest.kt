@@ -100,10 +100,11 @@ class FeedModelsTest {
         body: String? = null,
         primaryMediaFile: PrimaryMediaFile? = null,
         fileId: Uuid = Uuid.random(),
+        heroContentType: String = "image/jpeg",
     ) = file(
         uniqueId = Uuid.random(),
         fileId = fileId,
-        payloads = listOf(PayloadDescriptor(key = "hero")),
+        payloads = listOf(PayloadDescriptor(key = "hero", contentType = heroContentType)),
         content = OdinSystemSerializer.serialize(
             PostContent(
                 type = type,
@@ -137,6 +138,12 @@ class FeedModelsTest {
         assertNull(article(primaryMediaFile = hero.copy(fileKey = "missing")).articleHeader)
         assertNull(article(primaryMediaFile = hero.copy(type = "application/pdf")).articleHeader)
         assertNull(article(type = PostType.Media, primaryMediaFile = hero).articleHeader)
+    }
+
+    @Test
+    fun articleHeader_nullForAVideoHero() {
+        val hero = PrimaryMediaFile(fileKey = "hero", type = "video/mp4")
+        assertNull(article(primaryMediaFile = hero, heroContentType = "video/mp4").articleHeader)
     }
 
     @Test

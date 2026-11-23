@@ -9,7 +9,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
@@ -23,16 +23,21 @@ import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
+import id.homebase.resources.MR
+import id.homebase.resources.feed_open_article
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.getString
 import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
@@ -41,6 +46,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 // The image fetch fails in tests; HomebaseImage then draws this preview, which carries the content description.
@@ -50,6 +56,7 @@ private const val OnePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAA
 class PostCardArticleTest {
 
     private val scope = CoroutineScope(SupervisorJob())
+    private val openArticle = runBlocking { getString(MR.string.feed_open_article) }
 
     private val koin = koinApplication {
         modules(
@@ -157,8 +164,7 @@ class PostCardArticleTest {
     @Test
     fun articleHeader_isCroppedToTwoByOne() {
         render(post(hasHeader = true)) {
-            val bounds = onNodeWithContentDescription("Image attachment", useUnmergedTree = true)
-                .fetchSemanticsNode().boundsInRoot
+            val bounds = onNodeWithTag(ArticleHeaderTag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertEquals(2f, bounds.width / bounds.height, 0.01f)
         }
     }
@@ -167,9 +173,25 @@ class PostCardArticleTest {
     fun articleCard_announcesItselfAsAnArticle() {
         render(post()) {
             val card = onNodeWithText("The title").fetchSemanticsNode().config
-            assertEquals("Open article", card[SemanticsActions.OnClick].label)
+            assertEquals(openArticle, card[SemanticsActions.OnClick].label)
             assertEquals(Role.Button, card[SemanticsProperties.Role])
         }
+    }
+
+    @Test
+    fun mediaSource_readsAReceivedPostOverPeerFromTheChannelDrive() {
+        val channel = Uuid.random()
+        val gtid = Uuid.random()
+        val sender = OdinId("frodo.example")
+        val received = post().copy(channelId = channel.toString(), senderOdinId = sender, globalTransitId = gtid)
+        val source = received.mediaSource()
+        assertEquals(channel, source.driveId)
+        assertEquals(sender, source.remoteOdinId)
+        assertEquals(gtid, source.globalTransitId)
+
+        val own = post()
+        assertEquals(own.driveId, own.mediaSource().driveId)
+        assertNull(own.mediaSource().remoteOdinId)
     }
 
     @Test

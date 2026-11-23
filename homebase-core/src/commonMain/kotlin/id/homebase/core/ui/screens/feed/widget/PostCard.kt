@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -206,6 +208,8 @@ fun PostCard(
     }
 }
 
+internal const val ArticleHeaderTag = "articleHeader"
+
 @Composable
 private fun ArticleCardBody(
     post: FeedPostItem,
@@ -226,7 +230,8 @@ private fun ArticleCardBody(
                 previewThumbnail = post.previewThumbnail,
                 keyHeader = post.keyHeader,
                 isEncrypted = post.isEncrypted,
-                modifier = Modifier.fillMaxWidth().aspectRatio(2f),
+                // Decorative: the card's own label already says it opens the article.
+                modifier = Modifier.fillMaxWidth().aspectRatio(2f).clearAndSetSemantics { testTag = ArticleHeaderTag },
                 shape = RectangleShape,
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
@@ -240,7 +245,6 @@ private fun ArticleCardBody(
             Text(
                 text = post.caption,
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 16.dp),

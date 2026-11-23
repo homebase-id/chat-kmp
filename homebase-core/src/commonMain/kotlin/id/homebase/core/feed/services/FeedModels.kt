@@ -161,7 +161,8 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         commentCount = fileMetadata.reactionPreview?.totalCommentCount ?: 0,
         isEncrypted = serverFileIsEncrypted,
         acl = serverMetadata.accessControlList,
-        articleHeader = article?.let { ownPrimaryMedia(it) },
+        // The web's teaser shows an image cover only; a video hero would draw as a player that opens the article.
+        articleHeader = article?.let { ownPrimaryMedia(it) }?.takeIf { it.isImage() },
         articleSummary = article?.articleSummary(),
     )
 }
