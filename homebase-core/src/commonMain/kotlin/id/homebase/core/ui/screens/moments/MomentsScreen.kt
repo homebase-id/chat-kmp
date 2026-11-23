@@ -131,6 +131,7 @@ import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
 import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
 import id.homebase.core.ui.screens.moments.widget.aspectRatioFor
 import id.homebase.core.ui.screens.moments.widget.feedMediaMaxHeight
+import id.homebase.core.widget.rememberExpandedSheetState
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
@@ -571,7 +572,7 @@ private fun MomentsFeedList(
     // the shrunk band linger over the feed for the whole slide before snapping
     // away. Hiding it the moment the swipe-down settles toward Hidden restores
     // the full-size feed in parallel with the slide instead.
-    val commentsSheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))
+    val commentsSheetState = rememberExpandedSheetState()
     // Which moment (if any) has its "who reacted" roster open. Null = closed.
     // Opened by long-pressing a reaction toggle on a feed card.
     var reactionsMomentId by remember { mutableStateOf<Uuid?>(null) }

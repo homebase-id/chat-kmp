@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.ui.graphics.vector.ImageVector
+import id.homebase.core.widget.rememberExpandedSheetState
 import id.homebase.resources.chat_view_once_close
 import id.homebase.resources.chat_view_once_intro_row_disappears
 import id.homebase.resources.chat_view_once_intro_row_protected
@@ -37,8 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.SheetValue
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
@@ -81,7 +80,7 @@ internal const val VIEW_ONCE_TOAST_MS = 2_000L
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewOnceIntroSheet(isVideo: Boolean, onDismiss: () -> Unit) {
-    val sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))
+    val sheetState = rememberExpandedSheetState()
     val scope = rememberCoroutineScope()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         ViewOnceIntroContent(

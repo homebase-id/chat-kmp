@@ -25,8 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SheetValue
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -62,6 +60,7 @@ import id.homebase.core.ui.screens.filesync.FileTypeTile
 import id.homebase.core.ui.screens.filesync.NodeName
 import id.homebase.core.ui.screens.filesync.message
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.rememberExpandedSheetState
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_root
 import id.homebase.resources.filesync_load_failed
@@ -206,7 +205,7 @@ private fun NoPreviewCard(request: OpenedFileRequest) {
 private fun SaveFolderSheet(picker: SavePicker, onAction: (OpenedFileAction) -> Unit) {
     ModalBottomSheet(
         onDismissRequest = { onAction(OpenedFileAction.PickerDismiss) },
-        sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded)),
+        sheetState = rememberExpandedSheetState(),
     ) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) {
             Text(

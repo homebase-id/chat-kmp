@@ -27,8 +27,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.SheetValue
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +40,7 @@ import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.core.moments.services.isDisabledCircle
 import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
+import id.homebase.core.widget.rememberExpandedSheetState
 import id.homebase.resources.MR
 import id.homebase.resources.moments_add_people_already_shared
 import id.homebase.resources.moments_add_people_confirm
@@ -74,7 +73,7 @@ fun MomentAddRecipientsSheet(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))
+    val sheetState = rememberExpandedSheetState()
 
     // A candidate is "already shared" when every OdinId it would send to is
     // already on the moment. Individuals: their single id; groups: all members.

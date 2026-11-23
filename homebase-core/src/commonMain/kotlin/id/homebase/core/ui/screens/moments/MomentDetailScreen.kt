@@ -143,6 +143,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentVideoTapMode
 import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
 import id.homebase.core.util.showSaveFailed
 import id.homebase.core.util.showSavedTo
+import id.homebase.core.widget.rememberExpandedSheetState
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 import org.koin.compose.koinInject
@@ -672,7 +673,7 @@ internal fun DetailContent(
 
     // Lifted out of [CommentsSheet] so the media-shrink animation can track the
     // sheet's *target* state instead of the post-dismissal callback.
-    val commentsSheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))
+    val commentsSheetState = rememberExpandedSheetState()
 
     // Drives the media shrink. `onDismissRequest` only fires once the sheet has
     // finished sliding off-screen, so keying the shrink off `showCommentsSheet`
@@ -2115,7 +2116,7 @@ private fun CommentsSheet(
     // Lifted in by the detail screen so it can observe the sheet's target state
     // and re-expand the shrunk media in parallel with the slide-down. Defaults
     // to a locally-remembered state for callers that don't need that coupling.
-    sheetState: SheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded)),
+    sheetState: SheetState = rememberExpandedSheetState(),
 ) {
     // Swiping the (now fully-scrollable) body should only ever scroll it — never
     // dismiss the sheet. ModalBottomSheet otherwise hands the leftover downward
@@ -2479,7 +2480,7 @@ internal fun MomentCommentsSheet(
     // Lifted in by the timeline feed list so it can observe the sheet's target
     // state and drop the shrunk media band in parallel with the slide-down.
     // Defaults to a locally-remembered state for any other caller.
-    sheetState: SheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded)),
+    sheetState: SheetState = rememberExpandedSheetState(),
 ) {
     CommentsSheet(
         uiState = uiState,
