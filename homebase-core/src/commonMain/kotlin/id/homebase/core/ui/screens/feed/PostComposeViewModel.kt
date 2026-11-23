@@ -8,6 +8,8 @@ import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.chat.conversationlist.revokePlayableUrl
+import id.homebase.chat.conversationlist.toPlayableUrl
 import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedProtocol
@@ -99,7 +101,13 @@ class PostComposeViewModel(
 
     private fun loadPoster(video: AttachmentPendingFile.FileVideo) {
         viewModelScope.launch {
-            val poster = runCatching { VideoThumbnailService.extractPosterFrame(video.file.toString()) }.getOrNull() ?: return@launch
+            // Web reads the picked File through a blob: URL; a native PlatformFile's string is its path.
+            val url = video.file.toPlayableUrl()
+            val poster = try {
+                runCatching { VideoThumbnailService.extractPosterFrame(url) }.getOrNull()
+            } finally {
+                revokePlayableUrl(url)
+            } ?: return@launch
             _uiState.update { state ->
                 state.copy(
                     attachments = state.attachments.map {
