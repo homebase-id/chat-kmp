@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import id.homebase.api.video.isHlsVideo
 import id.homebase.api.video.playableContentType
+import id.homebase.api.video.playableFileName
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -32,7 +33,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.AlbumSaveResult
 import id.homebase.core.util.AlbumSaver
-import id.homebase.core.util.formatMediumDate
+import id.homebase.core.util.saveFileName
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.saveReceived
 import id.homebase.core.vault.VaultFileSaver
@@ -48,7 +49,6 @@ import id.homebase.resources.chat_error_media_click
 import id.homebase.resources.chat_error_share
 import id.homebase.resources.chat_image_copied
 import id.homebase.resources.contactbook_self_you
-import id.homebase.resources.vault_chat_image_name
 import id.homebase.resources.vault_save_failed
 import id.homebase.resources.vault_saved
 import io.github.vinceglb.filekit.name
@@ -151,7 +151,7 @@ internal class MediaDownloadHandler(
                 tempPath != null && saver.save(
                     tempPath,
                     contentType,
-                    TranslationUtil.getString(MR.string.vault_chat_image_name, formatMediumDate(message.userDate)),
+                    saveFileName(payload.playableFileName(payload.filename()), contentType, message.userDate.toEpochMilliseconds()),
                 )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -222,6 +222,7 @@ internal class MediaDownloadHandler(
                     albumSaver.saveReceived(
                         driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, message.fileId, payload,
                         KeyHeader(payloadIv, message.keyHeader.aesKey),
+                        message.userDate.toEpochMilliseconds(),
                     )
                 }
                 report(saved, if (payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
@@ -246,11 +247,13 @@ internal class MediaDownloadHandler(
         val fileKey = "${action.fileId}_${action.payloadKey}"
         messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles + fileKey) }
 
+        val dateMs = messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
+            .firstOrNull { it.message.fileId == action.fileId }?.message?.userDate?.toEpochMilliseconds() ?: Clock.System.now().toEpochMilliseconds()
         scope.launch {
             try {
                 val saved = withContext(ioDispatcher) {
                     albumSaver.saveReceived(
-                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader,
+                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader, dateMs,
                     )
                 }
                 report(saved, if (action.payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
@@ -297,7 +300,7 @@ internal class MediaDownloadHandler(
                     )).bytes
 
                 val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/" +
-                    decryptedCopyName(message.fileId, action.payloadKey, payload.filename(), payload.contentType)
+                    decryptedCopyName(message.fileId, action.payloadKey, payload.contentType)
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(
                     driveId = chatTargetDrive.alias,

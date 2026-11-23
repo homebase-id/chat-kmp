@@ -721,7 +721,7 @@ class MomentDetailViewModel(
         viewModelScope.launch {
             try {
                 val saved = withContext(ioDispatcher) {
-                    albumSaver.saveReceived(driveFileProvider, fileOperationsProvider, moment.driveId, moment.fileId, payload, keyHeader)
+                    albumSaver.saveReceived(driveFileProvider, fileOperationsProvider, moment.driveId, moment.fileId, payload, keyHeader, moment.userDateMs)
                 }
                 when (saved) {
                     is AlbumSaveResult.Saved -> _events.tryEmit(MomentDetailUiEvent.MediaSaved(saved.location))

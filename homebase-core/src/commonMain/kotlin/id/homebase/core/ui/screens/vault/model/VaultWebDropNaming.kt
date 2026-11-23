@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.vault.model
 
+import id.homebase.api.file.extensionForContentType
 import id.homebase.api.video.playableContentType
 
 /**
@@ -11,19 +12,10 @@ import id.homebase.api.video.playableContentType
 internal fun VaultEntry.webDropFileNames(): List<String> =
     webDropFileNamesFor(fileName, payloadDescriptors.map { it.playableContentType ?: contentType })
 
-/**
- * Extension rule byte-identical to [VaultUploaderService.downloadPayload]'s temp-file suffix
- * (`substringAfter("/", "bin")`, `jpeg` -> `jpg`) so the PickedDropFile name always agrees with
- * the materialized file's extension.
- */
-internal fun webDropExtensionFor(contentType: String?): String =
-    (contentType ?: "").substringAfter("/", "bin").let { if (it == "jpeg") "jpg" else it }
-        .ifEmpty { "bin" }
-
 internal fun webDropFileNamesFor(entryName: String, contentTypes: List<String?>): List<String> {
     val total = contentTypes.size
     return contentTypes.mapIndexed { index, contentType ->
-        val ext = webDropExtensionFor(contentType)
+        val ext = extensionForContentType(contentType)
         // Strip a MATCHING extension case-insensitively so "scan.pdf" doesn't become
         // "scan.pdf-1.pdf" - but never blind-substringBeforeLast: a dotted name with no real
         // extension ("v2.final") must survive untouched.

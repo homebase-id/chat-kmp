@@ -2099,7 +2099,6 @@
     <string name="vault_save_to">Gem i Vault</string>
     <string name="vault_saved">Gemt i Vault</string>
     <string name="vault_save_failed">Kunne ikke gemme i Vault</string>
-    <string name="vault_chat_image_name">Chatbillede, %1$s</string>
     <string name="email_biometric_prompt_title">Lås E-mail op</string>
     <string name="email_biometric_prompt_subtitle">Godkend for at se dine mailadgangskoder og nøgler</string>
     <string name="email_locked_title">E-mail er låst</string>

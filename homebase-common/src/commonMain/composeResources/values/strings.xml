@@ -3351,7 +3351,6 @@
     <string name="vault_save_to">Save to Vault</string>
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
-    <string name="vault_chat_image_name">Chat image, %1$s</string>
     <string name="email_locked_title">Email is locked</string>
     <string name="email_locked_unlock">Unlock</string>
     <string name="email_make_private">Click to change your Email drive to true zero knowledge encryption</string>
