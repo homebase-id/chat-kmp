@@ -15,7 +15,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListUiState
-import id.homebase.chat.conversationlist.messageById
+import id.homebase.chat.data.isImage
 import id.homebase.core.widget.quickReactions
 import id.homebase.chat.viewonce.ViewOnceViewer
 
@@ -46,7 +46,7 @@ internal fun ChatMediaViewer(
             onSaveToVault = if (vaultActive) { id, key ->
                 onUiAction(ConversationListUiAction.SaveMediaToVault(id, key))
             } else null,
-            onCopyImage = if (canCopyImageToClipboard && uiState.messageById(data.messageId)?.allowsImageCopy == true) { id, key ->
+            onCopyImage = if (data.canCopyImage()) { id, key ->
                 onUiAction(ConversationListUiAction.CopyImage(id, key))
             } else null,
             onDelete = { onUiAction(DeleteMessage(it)) },
@@ -94,3 +94,7 @@ internal fun ChatMediaViewer(
         )
     }
 }
+
+/** Offered from the viewer's own payloads, so it holds for a message outside the loaded page. */
+internal fun FullScreenOverlay.ViewMessageData.canCopyImage(): Boolean =
+    canCopyImageToClipboard && payloads.any { it.iv != null && it.isImage }

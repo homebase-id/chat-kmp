@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class ImageClipboardWriterJvmTest {
 
@@ -54,5 +55,10 @@ class ImageClipboardWriterJvmTest {
 
         val image = ImageIO.read(ByteArrayInputStream(assertNotNull(readImageFromClipboard(clipboard))))
         assertEquals(2 to 2, image.width to image.height)
+    }
+
+    @Test
+    fun theDesktopAlwaysOffersImageCopy() {
+        assertTrue(canCopyImageToClipboard)
     }
 }

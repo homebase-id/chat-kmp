@@ -139,7 +139,7 @@ data class MessageUiModel(
     val allowsImageCopy: Boolean get() = messageContent == null && !isPendingSend && !isDeleted
 
     fun canCopyImage(payloadKey: String): Boolean = allowsImageCopy && payloads?.any {
-        it.key == payloadKey && it.contentType?.startsWith("image/") == true
+        it.key == payloadKey && it.isImage
     } == true
 
     /** The image "Copy image" copies: the gallery cell the menu was opened on, else the message's only image. */
@@ -176,3 +176,4 @@ data class MessageUiModel(
             messageGroupId = conversationId,
         )
 }
+internal val PayloadDescriptor.isImage: Boolean get() = contentType?.startsWith("image/") == true
