@@ -3,6 +3,7 @@ package id.homebase.core.util
 import id.homebase.api.file.OCTET_STREAM
 import id.homebase.api.file.detectContentTypeFromExtensionOrHint
 import id.homebase.api.file.extensionForContentType
+import id.homebase.api.file.extensionForMimeType
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.splitExtension
 import kotlinx.datetime.TimeZone
@@ -12,19 +13,19 @@ import kotlin.time.Instant
 
 /**
  * The one name for a payload saved to the device: the sender's name, else `Homebase_yyyyMMdd_HHmmss` from [savedAtMs],
- * ending in the extension of the bytes saved ([contentType]). A name whose extension already means that type is kept as is.
+ * ending in the extension of the bytes saved ([contentType]). The name's own extension stays when it means that type,
+ * or when [contentType] is one we don't know (`audio/x-m4a`) and the extension is.
  */
 fun saveFileName(name: String?, contentType: String?, savedAtMs: Long, zone: TimeZone = TimeZone.currentSystemDefault()): String {
-    val sent = safeFileName(name, "").takeIf { it.isNotEmpty() }
-    val ext = extensionForContentType(contentType)
-    val (stem, ownExt) = splitExtension(sent ?: datedStem(savedAtMs, zone))
+    val full = safeFileName(name, "").ifEmpty { datedStem(savedAtMs, zone) }
+    val (stem, ownExt) = splitExtension(full)
     val ownType = detectContentTypeFromExtensionOrHint(ownExt)
-    if (ownExt.isNotEmpty() && (ext == "bin" || ownType == baseType(contentType))) return stem + ownExt
-    val unknownSuffix = ownExt.isNotEmpty() && ownType == OCTET_STREAM
-    return safeFileName(if (unknownSuffix) stem + ownExt else stem, extension = ext)
+    val type = contentType?.substringBefore(';')?.trim()?.lowercase()
+    val ext = extensionForContentType(contentType)
+    val typeUnknown = type?.let(::extensionForMimeType) == null
+    if (ownExt.isNotEmpty() && (ownType == type || typeUnknown && (ownType != OCTET_STREAM || ext == "bin"))) return full
+    return safeFileName(if (ownType == OCTET_STREAM) full else stem, extension = ext)
 }
-
-private fun baseType(contentType: String?) = contentType?.substringBefore(';')?.trim()?.lowercase()
 
 private fun datedStem(ms: Long, zone: TimeZone): String {
     val t = Instant.fromEpochMilliseconds(ms).toLocalDateTime(zone)

@@ -44,6 +44,13 @@ class SaveFileNameTest {
     }
 
     @Test
+    fun aKnownExtensionStaysWhenTheBytesTypeIsAnAliasWeDoNotKnow() {
+        assertEquals("voice.m4a", saveFileName("voice.m4a", "audio/x-m4a", at, utc))
+        assertEquals("v2.final.x-m4a", saveFileName("v2.final", "audio/x-m4a", at, utc))
+        assertEquals("v2.final", saveFileName("v2.final", null, at, utc))
+    }
+
+    @Test
     fun aSavedNameIsNeverAPath() {
         listOf("../x", "..\\x", "a/../../b", "C:evil.txt", "//server/share/f", "..", "/").forEach { raw ->
             val name = saveFileName(raw, "image/png", at, utc)
