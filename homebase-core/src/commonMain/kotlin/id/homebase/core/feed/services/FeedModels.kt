@@ -12,6 +12,11 @@ import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.util.truncateToCodePoints
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
 
 // Envelope identity ([senderOdinId], [originalAuthor], [createdMs]) comes from the HomebaseFile, never the
@@ -45,6 +50,7 @@ data class FeedPostItem(
     val acl: AccessControlList?,
     /** An article's header image payload key; null when it has none or the image is another file's. */
     val articleHeaderKey: String? = null,
+    val articleSummary: String? = null,
 )
 
 // originalAuthor is set on the author's own copy; a post aggregated onto someone else's feed drive carries
@@ -163,7 +169,37 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         articleHeaderKey = content?.primaryMediaFile
             ?.takeIf { it.fileId == null }?.fileKey?.takeIf { it.isNotBlank() }
             ?: content?.primaryMediaKey?.takeIf { it.isNotBlank() },
+        articleSummary = content?.takeIf { it.type == PostType.Article }
+            ?.let { it.abstract?.trim()?.ifEmpty { null } ?: openingExcerpt(it.body).ifEmpty { null } },
     )
+}
+
+// Mirrors the web feed's openingExcerpt: headings, code and quotes read wrong out of place.
+private val notInExcerpt = Regex("^(h\\d|code_block|blockquote)$")
+private val whitespaceRun = Regex("\\s+")
+
+private fun JsonElement.richText(): String {
+    val node = this as? JsonObject ?: return ""
+    (node["text"] as? JsonPrimitive)?.takeIf { it.isString }?.let { return it.content }
+    val children = node["children"] as? JsonArray ?: return ""
+    val ofBlocks = children.all { (it as? JsonObject)?.get("children") is JsonArray }
+    return children.joinToString(if (ofBlocks) " " else "") { it.richText() }
+}
+
+internal fun openingExcerpt(body: JsonElement?, max: Int = 300): String {
+    val blocks = when (body) {
+        is JsonPrimitive -> if (body.isString) listOf(body.content) else emptyList()
+        is JsonArray -> body
+            .filterNot { block -> ((block as? JsonObject)?.get("type") as? JsonPrimitive)?.content?.matches(notInExcerpt) == true }
+            .map { it.richText() }
+        else -> emptyList()
+    }
+    var excerpt = ""
+    for (block in blocks) {
+        excerpt = "$excerpt ${block.replace(whitespaceRun, " ").trim()}".trim()
+        if (excerpt.length >= max) break
+    }
+    return excerpt.truncateToCodePoints(max)
 }
 
 // The parent post id is the file's groupId for a top-level comment; for a reply the groupId is the parent

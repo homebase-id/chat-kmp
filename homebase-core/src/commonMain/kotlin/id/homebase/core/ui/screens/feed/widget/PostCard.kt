@@ -204,30 +204,44 @@ fun PostCard(
 internal fun FeedPostItem.articleHeaderPayload(): PayloadDescriptor? =
     articleHeaderKey?.let { key -> payloads.firstOrNull { it.key == key } }
 
-// The web feed's article card: the header image alone, else just the title; the whole card opens the article.
+// The web feed's article teaser: header image, title, then the abstract; the whole card opens the article.
 @Composable
 private fun ArticleCardBody(
     post: FeedPostItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (post.articleHeaderPayload() != null) {
-        PostMedia(
-            post = post,
-            onMediaClick = { onClick() },
-            onDoubleTapLike = null,
-            sharedTransitionScope = null,
-            animatedVisibilityScope = null,
-            modifier = modifier,
-        )
-    } else if (post.caption.isNotBlank()) {
-        Text(
-            text = post.caption,
-            style = MaterialTheme.typography.titleLarge,
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis,
-            modifier = modifier.clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+    Column(modifier = modifier.clickable(onClick = onClick).padding(bottom = 8.dp)) {
+        if (post.articleHeaderPayload() != null) {
+            PostMedia(
+                post = post,
+                onMediaClick = { onClick() },
+                onDoubleTapLike = null,
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            )
+        }
+        if (post.caption.isNotBlank()) {
+            Text(
+                text = post.caption,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
+        post.articleSummary?.let { summary ->
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
+            )
+        }
     }
 }
 

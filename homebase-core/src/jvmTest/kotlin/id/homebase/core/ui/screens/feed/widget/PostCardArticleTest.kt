@@ -58,6 +58,7 @@ class PostCardArticleTest {
         type: PostType = PostType.Article,
         caption: String = "The title",
         articleHeaderKey: String? = null,
+        articleSummary: String? = "The abstract",
         payloadKeys: List<String> = emptyList(),
     ) = FeedPostItem(
         id = Uuid.random(),
@@ -84,6 +85,7 @@ class PostCardArticleTest {
         isEncrypted = false,
         acl = null,
         articleHeaderKey = articleHeaderKey,
+        articleSummary = articleSummary,
     )
 
     @Test
@@ -122,18 +124,20 @@ class PostCardArticleTest {
         }
 
     @Test
-    fun articleWithoutHeader_showsTitleAndOpensOnTap() {
+    fun articleWithoutHeader_showsTitleAndSummaryAndOpensOnTap() {
         var clicks = 0
         render(post(), onPostClick = { clicks++ }) {
+            onNodeWithText("The abstract").assertIsDisplayed()
             onNodeWithText("The title").assertIsDisplayed().performClick()
             assertEquals(1, clicks)
         }
     }
 
     @Test
-    fun articleWithHeader_hidesTitleText() {
+    fun articleWithHeader_stillShowsTitleAndSummary() {
         render(post(articleHeaderKey = headerKey, payloadKeys = listOf(headerKey))) {
-            onNodeWithText("The title").assertDoesNotExist()
+            onNodeWithText("The title").assertIsDisplayed()
+            onNodeWithText("The abstract").assertIsDisplayed()
         }
     }
 

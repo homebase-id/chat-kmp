@@ -25,6 +25,7 @@ import id.homebase.core.feed.services.decodeReactionEmoji
 import id.homebase.core.feed.services.previewBody
 import id.homebase.core.feed.services.toCommentItem
 import id.homebase.core.feed.services.toFeedPostItem
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -87,6 +88,42 @@ class FeedModelsTest {
         ),
         serverMetadata = ServerMetadata(),
     )
+
+    private fun articleSummary(type: PostType = PostType.Article, abstract: String? = null, body: String? = null) =
+        file(
+            uniqueId = Uuid.random(),
+            content = OdinSystemSerializer.serialize(
+                PostContent(
+                    type = type,
+                    caption = "Title",
+                    abstract = abstract,
+                    body = body?.let { Json.parseToJsonElement(it) },
+                )
+            ),
+        ).toFeedPostItem()?.articleSummary
+
+    private val richBody = """[
+        {"type":"h1","children":[{"text":"Heading"}]},
+        {"type":"paragraph","children":[{"text":"First "},{"text":"para","bold":true}]},
+        {"type":"blockquote","children":[{"text":"Quoted"}]},
+        {"type":"ul","children":[{"type":"li","children":[{"text":"Apples"}]},{"type":"li","children":[{"text":"Pears"}]}]}
+    ]"""
+
+    @Test
+    fun articleSummary_prefersTheAbstract() {
+        assertEquals("The abstract", articleSummary(abstract = "  The abstract ", body = richBody))
+    }
+
+    @Test
+    fun articleSummary_withoutAbstract_isTheBodyOpeningWithoutHeadingsOrQuotes() {
+        assertEquals("First para Apples Pears", articleSummary(abstract = " ", body = richBody))
+    }
+
+    @Test
+    fun articleSummary_nullWhenNothingToShowOrNotAnArticle() {
+        assertNull(articleSummary())
+        assertNull(articleSummary(type = PostType.Media, abstract = "The abstract"))
+    }
 
     @Test
     fun toFeedPostItem_feedReferenceWithoutUniqueId_fallsBackToGlobalTransitId() {
