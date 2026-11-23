@@ -8,6 +8,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.imageio.ImageIO
+import kotlinx.coroutines.test.runTest
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,7 +44,7 @@ class PdfContractJvmTest {
     }
 
     @Test
-    fun thumbnailIsAJpegOfTheRequestedWidthWithTheDocumentPageCount() {
+    fun thumbnailIsAJpegOfTheRequestedWidthWithTheDocumentPageCount() = runTest {
         val result = assertNotNull(generatePdfThumbnail(pdfBytes(3), 200))
         assertEquals(3, result.pageCount)
         val image = assertNotNull(ImageIO.read(ByteArrayInputStream(assertNotNull(result.thumbnailBytes))))
@@ -52,7 +53,7 @@ class PdfContractJvmTest {
     }
 
     @Test
-    fun fileAndBytesGiveTheSameResult() {
+    fun fileAndBytesGiveTheSameResult() = runTest {
         val bytes = pdfBytes(2)
         withFile(bytes) { file ->
             val fromFile = assertNotNull(generatePdfThumbnailFromFile(file.absolutePath, 150))
@@ -62,14 +63,14 @@ class PdfContractJvmTest {
     }
 
     @Test
-    fun nonPositiveWidthOfAValidPdfGivesNoThumbnail() {
+    fun nonPositiveWidthOfAValidPdfGivesNoThumbnail() = runTest {
         val bytes = pdfBytes(1)
         assertNull(generatePdfThumbnail(bytes, 0))
         withFile(bytes) { file -> assertNull(generatePdfThumbnailFromFile(file.absolutePath, -1)) }
     }
 
     @Test
-    fun passwordProtectedPdfGivesNoThumbnailAndCannotBeOpened() {
+    fun passwordProtectedPdfGivesNoThumbnailAndCannotBeOpened() = runTest {
         val bytes = pdfBytes(1, userPassword = "secret")
         assertNull(generatePdfThumbnail(bytes, 200))
         withFile(bytes) { file ->

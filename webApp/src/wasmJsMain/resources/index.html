@@ -304,7 +304,7 @@
         }
         // Booting without an opener: the router would otherwise keep this path for the whole session.
         if (isPermissionCallback || isDataUpgradeCallback) history.replaceState(null, "", document.baseURI);
-        var scripts = ["odin-cvr-pin.js", "sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "odin-push.js", "<%= htmlWebpackPlugin.files.js[0] %>"];
+        var scripts = ["odin-cvr-pin.js", "sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "odin-push.js", "odin-pdf.js", "<%= htmlWebpackPlugin.files.js[0] %>"];
         var loaded = 0;
         scripts.forEach(function (src) {
             var s = document.createElement("script");

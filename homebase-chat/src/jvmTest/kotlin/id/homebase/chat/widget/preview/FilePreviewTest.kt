@@ -145,14 +145,14 @@ class FilePreviewTest {
     }
 
     @Test
-    fun aDecryptedCopyIsNamedByItsPayloadNotBySender() {
+    fun aDecryptedCopyIsNamedByItsPayloadAndItsBytesType() {
         val id = Uuid.random()
-        val a = decryptedCopyName(id, "chat_web0", "../report #1.pdf", "application/pdf")
-        val b = decryptedCopyName(Uuid.random(), "chat_web0", "../report #1.pdf", "application/pdf")
+        val a = decryptedCopyName(id, "chat_web0 #1", "application/pdf")
+        val b = decryptedCopyName(Uuid.random(), "chat_web0 #1", "application/pdf")
         assertTrue(a.endsWith(".pdf") && a.startsWith("preview_"), a)
         assertFalse(a.contains('/') || a.contains('#') || a.contains('%') || a.contains(' '), a)
         assertTrue(a != b, "two reports with one name must not share a copy")
-        assertTrue(decryptedCopyName(id, "k", "x.p%df", "text/plain").endsWith(".txt"))
+        assertTrue(decryptedCopyName(id, "k", "text/plain").endsWith(".txt"))
     }
 
     @Test

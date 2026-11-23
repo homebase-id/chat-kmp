@@ -706,6 +706,8 @@
     <!-- Conversation message -->
     <string name="chat_message_info">Besked info</string>
     <string name="chat_message_reply">Svar</string>
+    <string name="chat_reply_quote_photo_position">Billede %1$d af %2$d</string>
+    <string name="chat_reply_quote_video_position">Video %1$d af %2$d</string>
     <string name="chat_message_forward">Videresend</string>
     <string name="chat_message_forwarded">Besked videresendt</string>
     <string name="chat_message_copy">Kopiér</string>
@@ -1274,8 +1276,6 @@
     <string name="settings_feed_desc">Opslag fra dem, du følger</string>
     <string name="settings_native_feed">Indbygget feed (eksperimentel)</string>
     <string name="settings_filesync_icon_desc">Vis Drive i navigationslinjen</string>
-    <string name="settings_calls_beta">Tale- og videoopkald (beta)</string>
-    <string name="settings_calls_beta_desc">Eksperimentel og kan gå ned. Genstart appen for at anvende.</string>
     <string name="contactbook_tab_calls">Opkald</string>
     <string name="calls_empty_find_contact">Find en at ringe til</string>
     <string name="calls_new_call">Nyt opkald</string>
@@ -2101,7 +2101,6 @@
     <string name="vault_save_to">Gem i Vault</string>
     <string name="vault_saved">Gemt i Vault</string>
     <string name="vault_save_failed">Kunne ikke gemme i Vault</string>
-    <string name="vault_chat_image_name">Chatbillede, %1$s</string>
     <string name="email_biometric_prompt_title">Lås E-mail op</string>
     <string name="email_biometric_prompt_subtitle">Godkend for at se dine mailadgangskoder og nøgler</string>
     <string name="email_locked_title">E-mail er låst</string>
@@ -2484,8 +2483,8 @@
     <string name="photobase_settings_open">Åbn Photos</string>
     <string name="photobase_settings_in_testing">Photos er stadig under test. Slå det til i Udviklermenu for at prøve det.</string>
     <string name="webdrop_settings_open">Åbn WebDrop</string>
-    <string name="location_settings_open">Åbn Lokation</string>
     <string name="calls_settings_open">Åbn Opkald</string>
+    <string name="location_settings_open">Åbn Lokation</string>
     <string name="settings_not_working">%1$s (virker ikke endnu)</string>
     <string name="settings_media">Kamera</string>
     <string name="settings_media_desc">Spejlvend frontkamera</string>

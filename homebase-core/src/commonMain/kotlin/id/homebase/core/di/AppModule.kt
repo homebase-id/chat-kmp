@@ -304,7 +304,6 @@ import id.homebase.core.ui.screens.moments.MomentComposeViewModel
 import id.homebase.core.ui.screens.moments.MomentDetailViewModel
 import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsViewModel
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsViewModel
 import id.homebase.core.ui.screens.settings.ChatSettingsViewModel
 import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsViewModel
@@ -484,14 +483,13 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
-    // One CallController per identity behind CallService; a null engineFactory (unsupported platform, or off in
-    // Settings, read once so a restart applies it) hides every call entry point. The fake engine/loopback live only in the Call lab.
+    // One CallController per identity behind CallService; a null engineFactory (unsupported platform) hides every call entry point. The fake engine/loopback live only in the Call lab.
     single {
         CallService(
             credentialsManager = get(),
             eventBus = get(),
             relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push, wakeCause = null) },
-            engineFactory = platformCallEngineFactory().takeIf { get<CallsPreferences>().enabled.value },
+            engineFactory = platformCallEngineFactory(),
             iceServers = CallIceServerSource({ peer -> get<IceServersProvider>().iceServers(peer) }, get<StunUrlStore>().urls)::forCall,
             scope = get(),
             onCallActiveChanged = { active ->
@@ -1333,7 +1331,6 @@ val appModule = module {
     viewModelOf(::FeedSettingsViewModel)
     viewModelOf(::ChatSettingsViewModel)
     viewModelOf(::FilesyncSettingsViewModel)
-    viewModelOf(::CallsSettingsViewModel)
     viewModel(LocationPermissionQualifier) {
         ExtendPermissionViewModel(get(), get(), get(), getLocationPermissionExtensionConfig())
     }
