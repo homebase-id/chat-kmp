@@ -13,6 +13,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.FileTooLargeForMemoryException
 import id.homebase.api.file.extensionForContentType
 import id.homebase.chat.agentui.agentUiImagePayloads
+import id.homebase.chat.data.isImage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.FileSaved
 import id.homebase.chat.conversationlist.ConversationListUiEvent.OfferRefusedSave
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
@@ -58,6 +59,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -169,11 +171,26 @@ internal class MediaDownloadHandler(
     }
 
     fun handleCopyImage(action: ConversationListUiAction.CopyImage) {
-        val message = messagesUiState.value.messageById(action.messageId)
-            ?.takeIf { it.canCopyImage(action.payloadKey) } ?: return
-        val payload = message.payloads?.find { it.key == action.payloadKey } ?: return
-        scope.launch {
-            val copied = chatMessageActionService.copyImagePayloadToClipboard(message.fileId, payload, message.keyHeader)
+        val state = messagesUiState.value
+        val loaded = state.messageById(action.messageId)
+        val viewer = (state.fullScreenOverlay as? FullScreenOverlay.ViewMessageData)?.takeIf { it.messageId == action.messageId }
+        val source = when {
+            loaded != null ->
+                if (loaded.canCopyImage(action.payloadKey)) {
+                    loaded.payloads?.find { it.key == action.payloadKey }?.let { Triple(loaded.fileId, it, loaded.keyHeader) }
+                } else null
+            viewer != null ->
+                viewer.payloads.find { it.key == action.payloadKey && it.isImage }?.let { Triple(viewer.fileId, it, viewer.keyHeader) }
+            else -> null
+        }
+        if (source == null) {
+            sendEvent(ShowErrorMessage(MR.string.chat_error_copy_image))
+            return
+        }
+        val (fileId, payload, keyHeader) = source
+        // Undispatched: the web clipboard write must start inside the click (Safari).
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val copied = chatMessageActionService.copyImagePayloadToClipboard(fileId, payload, keyHeader)
             sendEvent(
                 if (copied) ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)
                 else ShowErrorMessage(MR.string.chat_error_copy_image)

@@ -584,9 +584,11 @@ class ChatMessageActionService(
         try {
             val iv = payload.iv ?: error("payload not uploaded")
             val contentType = payload.contentType ?: error("payload has no content type")
-            val bytes = getPayloadBytes(fileId, payload.key, KeyHeader(iv.bytes, messageKeyHeader.aesKey))
-                ?: error("payload not found")
-            copyImageToClipboard(bytes, contentType)
+            copyImageToClipboard {
+                val bytes = getPayloadBytes(fileId, payload.key, KeyHeader(iv.bytes, messageKeyHeader.aesKey))
+                    ?: error("payload not found")
+                bytes to contentType
+            }
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
