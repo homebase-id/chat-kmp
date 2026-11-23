@@ -24,6 +24,7 @@ import platform.Vision.VNRequestTextRecognitionLevelAccurate
 private const val TAG = "CardTextRecognizer"
 
 actual suspend fun recognizeCardText(jpeg: ByteArray): String? = withContext(Dispatchers.Default) {
+    if (jpeg.isEmpty()) return@withContext null
     val data = jpeg.usePinned { NSData.create(bytes = it.addressOf(0), length = jpeg.size.toULong()) }
     val request = VNRecognizeTextRequest().apply {
         recognitionLevel = VNRequestTextRecognitionLevelAccurate

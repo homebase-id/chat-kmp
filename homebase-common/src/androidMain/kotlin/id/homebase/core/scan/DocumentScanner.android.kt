@@ -61,12 +61,12 @@ actual fun rememberDocumentScanner(onPages: (List<ByteArray>) -> Unit): Document
             .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
             .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
             .build()
-        DocumentScanner { onNotStarted ->
+        DocumentScanner { onNoPages ->
             GmsDocumentScanning.getClient(options).getStartScanIntent(activity)
                 .addOnSuccessListener { launcher.launch(IntentSenderRequest.Builder(it).build()) }
                 .addOnFailureListener {
                     Logger.w(TAG) { "scanner unavailable: ${it.message}" }
-                    onNotStarted()
+                    onNoPages()
                 }
         }
     }

@@ -7,12 +7,12 @@ import androidx.compose.runtime.Composable
  * multi-page. Every platform must behave the same:
  *
  *  - [launch] opens the scanner and returns at once; the result arrives through the callback
- *    given to [rememberDocumentScanner]. [onNotStarted] is called if the scanner could not be opened.
+ *    given to [rememberDocumentScanner]. [onNoPages] is called if the scanner could not be opened or was closed without pages.
  *  - The callback gets one JPEG per page, in scan order, already cropped and upright. Never an
  *    empty list: cancel, failure and a scan with no pages call nothing. Nothing throws.
  */
 fun interface DocumentScanner {
-    fun launch(onNotStarted: () -> Unit)
+    fun launch(onNoPages: () -> Unit)
 }
 
 /** Null where the platform has no scanner (desktop, web, Android without Google Play services); callers hide the option. */

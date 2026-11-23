@@ -323,6 +323,7 @@ fun VaultScreen(
     }
 
     val documentScanner = rememberDocumentScanner { pages ->
+        isPickerActive = false
         viewModel.onAction(
             VaultUiAction.AddScannedPages(
                 pages = pages,

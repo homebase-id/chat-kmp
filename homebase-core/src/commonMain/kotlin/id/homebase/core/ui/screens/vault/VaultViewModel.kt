@@ -369,7 +369,7 @@ class VaultViewModel(
                 imageEditNavInFlight = false
                 val editor = _pendingEditor.value
                 _pendingEditor.update { null }
-                if (editor?.isScan == true) editor.stagedFiles().forEach { runCatching { fileOperationsProvider.deleteTempFile(it.toString()) } }
+                if (editor?.isScan == true) editor.stagedFiles().forEach(::deleteScanTemp)
             }
             is VaultUiAction.EditExistingPage -> handleEditExistingPage(action)
             is VaultUiAction.DeletePage -> handleDeletePage(action)
@@ -752,7 +752,13 @@ class VaultViewModel(
         _pendingEditor.update { cur -> cur?.copy(attachments = cur.attachments + newAttachments) }
     }
 
+    private fun deleteScanTemp(file: PlatformFile) = runCatching { fileOperationsProvider.deleteTempFile(file.toString()) }
+
     private fun handleRemoveFromEditor(action: VaultUiAction.RemoveFromEditor) {
+        _pendingEditor.value?.takeIf { it.isScan }?.attachments
+            ?.firstOrNull { it.attachmentId == action.attachmentId }
+            ?.let { (it as? AttachmentPendingFile.FileImage)?.file }
+            ?.let(::deleteScanTemp)
         _pendingEditor.update { cur ->
             val remaining = cur?.attachments?.filter { it.attachmentId != action.attachmentId }
                 ?: return@update null
@@ -780,6 +786,7 @@ class VaultViewModel(
                     },
                 )
             }
+            if (_pendingEditor.value?.isScan == true) deleteScanTemp(attachment.file)
         }
     }
 
@@ -803,7 +810,14 @@ class VaultViewModel(
             onAction(VaultUiAction.AppendPages(appendTo, files))
         } else if (sectionId != null && editor.isScan && action.entryName.isNullOrBlank()) {
             viewModelScope.launch {
-                val type = withContext(Dispatchers.Default) { classifyScan(files.map { it.readBytes() }) }
+                val type = try {
+                    withContext(Dispatchers.Default) { classifyScan(files.map { it.readBytes() }) }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "Classifying scanned pages failed" }
+                    ScannedDocumentType.Document
+                }
                 onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes())))
             }
         } else if (sectionId != null) {
