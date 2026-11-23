@@ -77,13 +77,13 @@ internal fun parseChatMarkdown(content: String): ParsedChatMarkdown {
     val normalized = content.normalizeChatNewlines()
     val parser = MarkdownParser(ChatMarkdownFlavour, cancellationToken = CancellationToken.NonCancellable)
     val first = try {
-        parser.buildTree(normalized)
+        parser.buildMarkdownTreeFromString(normalized)
     } catch (_: Throwable) {
         return ParsedChatMarkdown(normalized, null, false, emptyList())
     }
     val hasBlock = markdownTreeHasBlockElements(first)
     val promoted = normalized.withParagraphSoftBreaksPromoted(first)
-    val tree = if (promoted == normalized) first else parser.buildTree(promoted)
+    val tree = if (promoted == normalized) first else parser.buildMarkdownTreeFromString(promoted)
     return ParsedChatMarkdown(promoted, tree, hasBlock, findMentions(promoted), findUrlRanges(promoted, tree))
 }
 
@@ -161,5 +161,3 @@ class ChatMarkdownParseCache(
 }
 
 val LocalChatMarkdownParseCache = compositionLocalOf { ChatMarkdownParseCache() }
-
-private fun MarkdownParser.buildTree(text: CharSequence): ASTNode = buildMarkdownTreeFromString(text)
