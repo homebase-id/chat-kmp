@@ -113,8 +113,8 @@ fun HomebaseImage(
     val displaySize = remember(imageData) { mutableStateOf<ImageSize?>(null) }
     val mayStepUp = stepUpToPayload && imageData.mayStepUp
     val thumbnailKey = remember(imageData) { HomebaseImageKeyer.thumbnailCacheKey(imageData) }
-    // Fading in over a placeholder or stand-in that is removed at once would flash blank.
-    val crossfade = preview != null && standIn == null
+    // Not over a placeholder or stand-in, which go at once and would flash blank; fixed per image so dropping the stand-in doesn't restart the load.
+    val crossfade = remember(imageData) { preview?.image != null && standIn == null }
     val model = remember(imageData, platformContext, steppedUp, crossfade) {
         ImageRequest.Builder(platformContext)
             .data(if (steppedUp) imageData.copy(loadFullPayload = true) else imageData)
@@ -247,7 +247,9 @@ internal var tinyPreviewMisses = 0
 // A view the warm-up didn't reach still draws its tiny on the first frame; the miss is logged, and Coil caches it for next time.
 private fun decodeUnwarmed(bytes: Base64Bytes, request: ImageRequest, imageLoader: ImageLoader): Painter? {
     tinyPreviewMisses++
-    Logger.i(tag = "HomebaseImage") { "Tiny preview not warmed, decoded on the main thread (miss $tinyPreviewMisses)" }
+    if (tinyPreviewMisses == 1 || tinyPreviewMisses % 100 == 0) {
+        Logger.i(tag = "HomebaseImage") { "Tiny preview not warmed, decoded on the main thread (miss $tinyPreviewMisses)" }
+    }
     imageLoader.enqueue(request)
     return bytes.decodeImageBitmap()?.let(::BitmapPainter)
 }

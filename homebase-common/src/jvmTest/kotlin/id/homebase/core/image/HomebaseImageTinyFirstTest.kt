@@ -32,7 +32,9 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Surface
@@ -148,6 +150,15 @@ class HomebaseImageTinyFirstTest {
         assertTrue(centre().isNear(tinyColor), "expected the tiny's colour, got ${centre()}")
         assertEquals(misses, tinyPreviewMisses, "a warmed tiny should not be decoded in composition")
         assertEquals(1, decodeThreads.size)
+    }
+
+    @Test
+    fun theWarmUpAwaitsTheFirstTiniesAndDecodesTheRestInTheBackground() = runBlocking {
+        val previews = listOf(tinyColor, thumbColor, fullColor).map { Base64Bytes(png(it)) }
+        TinyPreviewWarmer(neverLoads, PlatformContext.INSTANCE).warm(previews, awaited = 1)
+        val cached = { bytes: Base64Bytes -> neverLoads.cachedPreview(previewRequest(PlatformContext.INSTANCE, bytes)) != null }
+        assertTrue(cached(previews.first()), "the first tiny should be in memory when warm returns")
+        withTimeout(5_000) { while (!previews.all(cached)) delay(10) }
     }
 
     @Test

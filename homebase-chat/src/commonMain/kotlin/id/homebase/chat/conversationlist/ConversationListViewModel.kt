@@ -2152,8 +2152,8 @@ class ConversationListViewModel(
                             val window = messageState.window
                             val windowMessages = window.messages
                             var agentUiReplies: List<MessageUiModel> = emptyList()
-                            // Before the rows reach the list, so every row composes with its tiny already in memory.
-                            tinyPreviewWarmer.warm(windowMessages.flatMap { tinyPreviews(it.payloads, it.previewThumbnail) })
+                            // Before the rows reach the list, newest first, so the rows it opens on compose with their tiny in memory.
+                            tinyPreviewWarmer.warm(windowMessages.sortedByDescending { it.userDate }.flatMap { tinyPreviews(it.payloads, it.previewThumbnail) })
                             val messagesModels = withContext(Dispatchers.Default) {
                                 // Soft-delete display lives at the SQL layer now (see
                                 // ChatMessageStream.fetchMessages): note-to-self filters

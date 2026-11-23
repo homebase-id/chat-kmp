@@ -8,24 +8,36 @@ import coil3.size.SizeResolver
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.Base64Bytes
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
-/**
- * Decodes tinies into Coil's memory cache off the main thread, before the list that shows them composes,
- * so a [HomebaseImage] finds its tiny in memory and the main thread only paints it.
- */
+/** Decodes tinies into Coil's memory cache off the main thread, before the list that shows them composes. */
 class TinyPreviewWarmer(private val imageLoader: ImageLoader, private val context: PlatformContext) {
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /** Returns once every tiny not already in memory has been decoded (or failed). */
-    suspend fun warm(previews: List<Base64Bytes>) = withContext(Dispatchers.Default) {
-        for (bytes in previews.distinct()) {
-            val request = previewRequest(context, bytes)
-            if (imageLoader.cachedPreview(request) == null) launch { imageLoader.execute(request) }
-        }
+    // Leaves Coil's other decode slots to the thumbnails on screen.
+    private val decodes = Semaphore(2)
+
+    /** [previews] in display order: returns once the first [awaited] are in memory, and decodes the rest in the background. */
+    suspend fun warm(previews: List<Base64Bytes>, awaited: Int = AWAITED_PREVIEWS) = withContext(Dispatchers.Default) {
+        val misses = previews.distinct().map { previewRequest(context, it) }.filter { imageLoader.cachedPreview(it) == null }
+        misses.take(awaited).forEach { launch { decode(it) } }
+        misses.drop(awaited).forEach { background.launch { decode(it) } }
+    }
+
+    // Checked again under the permit: an earlier list's background decode may have got there first.
+    private suspend fun decode(request: ImageRequest) = decodes.withPermit {
+        if (imageLoader.cachedPreview(request) == null) imageLoader.execute(request)
     }
 }
+
+// About two screens of rows, so the first frame and the list's prefetch find their tinies.
+private const val AWAITED_PREVIEWS = 24
 
 /** Every tiny a file's views may draw: each payload's own, and the file's, which payloads without one fall back to. */
 fun tinyPreviews(payloads: List<PayloadDescriptor>?, previewThumbnail: EmbeddedThumb?): List<Base64Bytes> =
