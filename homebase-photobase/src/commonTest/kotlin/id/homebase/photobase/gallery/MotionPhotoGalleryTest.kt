@@ -5,12 +5,12 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.core.photobase.PhotobaseProtocol
-import id.homebase.photobase.ui.MotionPlayback
-import id.homebase.photobase.ui.motionClip
+import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.photobase.ui.toViewer
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -61,34 +61,14 @@ class MotionPhotoGalleryTest {
     fun aPlainPhotoHasNoClip() {
         val photo = item(still)
         assertNull(photo.motion)
-        assertNull(photo.motionClip())
+        assertTrue(assertIs<FullScreenOverlay.ViewMessageData>(photo.toViewer()).motionClips.isEmpty())
     }
 
     @Test
     fun theClipIsDecryptedWithItsOwnIv() {
-        val player = assertNotNull(item(still, clip(PhotobaseProtocol.LivePhotoVideoPayloadKey, original = 0)).motionClip()).player
+        val viewer = assertIs<FullScreenOverlay.ViewMessageData>(item(still, clip(PhotobaseProtocol.LivePhotoVideoPayloadKey, original = 0)).toViewer())
+        val player = assertNotNull(viewer.motionClips[PhotobaseProtocol.ImagePayloadKey], "the clip goes with the still it plays over")
         assertEquals(PhotobaseProtocol.LivePhotoVideoPayloadKey, player.payloadKey)
         assertContentEquals(ByteArray(16) { 7 }, player.keyHeader.iv)
-    }
-
-    @Test
-    fun theClipFillsTheStillsFrame() {
-        val live = clip(PhotobaseProtocol.LivePhotoVideoPayloadKey, original = 0)
-        assertEquals(4f / 3f, item(still, live).motionClip()?.aspectRatio)
-        assertNull(item(still.copy(thumbnails = null), live).motionClip(), "without a size to go by, no clip is laid over it")
-    }
-
-    @Test
-    fun aClipShowsFromItsFirstFrameAndHandsBackOnce() {
-        val playback = MotionPlayback(play = true)
-        assertTrue(playback.playing)
-        assertFalse(playback.visible, "the still shows while the clip loads")
-        playback.onFirstFrame()
-        assertTrue(playback.visible)
-        playback.stop()
-        assertFalse(playback.playing || playback.visible)
-        playback.onFirstFrame()
-        assertFalse(playback.visible, "a late first frame after a touch doesn't bring it back")
-        assertFalse(MotionPlayback(play = false).playing, "a neighbouring page doesn't play")
     }
 }

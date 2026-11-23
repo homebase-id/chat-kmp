@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import id.homebase.chat.widget.video.playsMotionClips
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -113,8 +115,6 @@ fun FullScreenMediaViewer(
     showUIState: MutableState<Boolean> = remember { mutableStateOf(true) },
     // False for a neighbouring page a host composes off screen: it mustn't take the keyboard.
     isFocused: Boolean = true,
-    // False while an SDR clip plays over the photo.
-    showsHdr: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -175,8 +175,11 @@ fun FullScreenMediaViewer(
             }
 
             val localContext by localAttachmentStore.collectContext(data.messageId, payload.key)
+            val motion = rememberMotionState(data.motionClips[payload.key]?.takeIf { playsMotionClips }, isSettled && isFocused)
+            val underPhoto: (@Composable (() -> Rect) -> Unit)? =
+                motion?.takeIf { it.mounted }?.let { m -> { rect -> MotionClipUnderPhoto(m, rect) } }
 
-            when (
+            Box(Modifier.fillMaxSize().stopsMotionOnTouch(motion)) { when (
                 val resolved = resolveMediaPageSource(
                     localContext,
                     payload.iv != null,
@@ -195,7 +198,9 @@ fun FullScreenMediaViewer(
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                        showsHdr = isSettled && showsHdr,
+                        showsHdr = isSettled && motion?.shown != true,
+                        underPhoto = underPhoto,
+                        photoAlpha = { 1f - (motion?.clipAlpha ?: 0f) },
                     )
                 }
 
@@ -222,7 +227,9 @@ fun FullScreenMediaViewer(
                         sharedTransitionScope = if (isSettled) sharedTransitionScope else null,
                         animatedVisibilityScope = if (isSettled) animatedVisibilityScope else null,
                         sharedContentStateKey = mediaSharedKey(data.fileId, payload.key),
-                        showsHdr = isSettled && showsHdr,
+                        showsHdr = isSettled && motion?.shown != true,
+                        underPhoto = underPhoto,
+                        photoAlpha = { 1f - (motion?.clipAlpha ?: 0f) },
                     )
                 }
 
@@ -242,7 +249,7 @@ fun FullScreenMediaViewer(
                         onTap = { showUI = !showUI },
                     )
                 }
-            }
+            } }
         }
 
         if (isDownloading) {

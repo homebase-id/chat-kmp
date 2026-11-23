@@ -355,6 +355,8 @@ sealed interface FullScreenOverlay {
         /** Set with [globalTransitId] to read the payloads over peer; both null for local media. */
         val remoteOdinId: OdinId? = null,
         val globalTransitId: Uuid? = null,
+        /** A Live or motion photo's clip, by its still's payload key: played when the photo opens. */
+        val motionClips: Map<String, VideoPlayerData> = emptyMap(),
     ) : FullScreenOverlay.MediaViewer
 
     data class AttachmentData(

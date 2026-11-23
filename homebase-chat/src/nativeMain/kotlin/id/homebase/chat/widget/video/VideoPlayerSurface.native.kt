@@ -731,3 +731,5 @@ private fun kickAssetMetadataLoad(asset: AVURLAsset, fileId: String) {
 }
 
 actual val nativeVideoControlsOwnTopCorners: Boolean = true
+
+actual val playsMotionClips: Boolean = true

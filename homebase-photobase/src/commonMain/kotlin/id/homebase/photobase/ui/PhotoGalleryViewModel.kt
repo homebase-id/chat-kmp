@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.core.image.thumbSizesFrom
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -250,17 +249,9 @@ internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
             payloads = listOf(payload),
             keyHeader = keyHeader,
             selectedPayloadKey = payload.key,
+            motionClips = motion?.let { mapOf(payload.key to player(it)) }.orEmpty(),
         )
     }
-
-/** A Live or motion photo's clip, and the width over height of the still it plays over. */
-internal class MotionClip(val player: FullScreenOverlay.VideoPlayerData, val aspectRatio: Float)
-
-internal fun PhotoGalleryItem.motionClip(): MotionClip? {
-    val clip = motion ?: return null
-    val still = thumbSizesFrom(payload.thumbnails).maxByOrNull { it.pixelCount } ?: return null
-    return MotionClip(player(clip), still.pixelWidth.toFloat() / still.pixelHeight)
-}
 
 private fun PhotoGalleryItem.player(video: PayloadDescriptor) = FullScreenOverlay.VideoPlayerData(
     fileId = fileId,

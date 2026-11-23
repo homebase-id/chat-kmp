@@ -124,3 +124,9 @@ expect fun VideoPlayerSurface(
  * the web `<video>` keep theirs centred and at the bottom.
  */
 expect val nativeVideoControlsOwnTopCorners: Boolean
+
+/**
+ * Whether a Live or motion photo's clip plays when the photo opens (THUMBNAILS.md, "Live and motion photos"). True on
+ * Android, iOS and desktop; false on web, whose `<video>` sits above the page and keeps its own controls (#2604).
+ */
+expect val playsMotionClips: Boolean

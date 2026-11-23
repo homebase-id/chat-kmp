@@ -634,8 +634,9 @@ A Live Photo (iPhone) and a motion photo (Android) are a still plus a clip of a 
 - **The clip has no thumbnails or tiny of its own.** The still's stand for it.
 - **The still keeps its HDR,** as any photo does: the final image at HD, the largest thumbnail at Original. So an SDR clip can end on an HDR still, and the viewer cross-fades from the clip's last frame to the still.
 - **Android's clip is cut from the file.** A motion photo is a JPEG with an MP4 appended. Its XMP says so (`Camera:MotionPhoto="1"`), and a `Container:Directory` item with `Item:Semantic="MotionPhoto"` gives the clip's length, counted from the end of the file; older Pixels write `MicroVideo="1"` and `MicroVideoOffset` instead. The clip is read from that byte range and transcoded. The still at Standard and HD is re-encoded without the XMP ([Metadata](#metadata)), so it no longer claims a clip.
-- **The viewer plays the clip once each time the photo opens,** as Apple's Photos does: muted, with no controls, in the still's frame, shown from its first decoded frame, then cross-fades back to the still. A touch hands back to the still at once, so a zoom or swipe isn't held up. Grid tiles stay still, with no badge.
-- **On the web,** the H.264 clip plays. Where a clip can't play, the viewer shows the largest thumbnail.
+- **The viewer plays the clip once each time the photo opens,** as Apple's Photos does: muted, with no controls, then cross-fades back to the still. Grid tiles stay still, with no badge. The shared full-screen viewer plays it, so any app showing a Live Photo gets the same: the clip sits under the photo, in the rect the photo is displayed in, and the photo fades out over it from the clip's first frame. The photo stays on top, so a touch zooms, swipes or toggles the chrome as on any photo, and hands back to the still at once.
+- **The clip is preloaded into the payload cache,** as chat's videos are, for the photo in view and its neighbours, and plays from there: an opening never downloads it twice, and coming back to a photo plays it from disk.
+- **On the web,** the viewer shows the still for now: the browser's video sits above the page with its own controls, so it can't play under the photo yet (#2604).
 
 ## How others do it
 

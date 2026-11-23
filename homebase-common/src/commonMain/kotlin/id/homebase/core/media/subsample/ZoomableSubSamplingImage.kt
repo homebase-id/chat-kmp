@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -91,6 +92,12 @@ fun ZoomableSubSamplingImage(
     heroContentAspect: Float? = null,
     /** Full-screen viewers set this on the page in view, so a photo with a gain map is shown in HDR. */
     showsHdr: Boolean = false,
+    /**
+     * Drawn under the photo, given the rect the photo is displayed in, such as a Live Photo's clip. The photo stays on top
+     * so it keeps every gesture, and [photoAlpha] uncovers what's under it.
+     */
+    underPhoto: (@Composable (displayedRect: () -> Rect) -> Unit)? = null,
+    photoAlpha: () -> Float = { 1f },
 ) {
     val coilImageLoader: ImageLoader = koinInject()
     val homebaseImageLoader: HomebaseImageLoader = koinInject()
@@ -190,6 +197,7 @@ fun ZoomableSubSamplingImage(
         // So the bridge is the sharp tile, not the ~20px embedded blur, and there
         // is no low-res-to-sharp jump. A local file is already the original on
         // disk, so the image below loads it directly with no intermediate fetch.
+        underPhoto?.invoke { zoomState.zoomable.contentDisplayRectF }
         if (showPlaceholder && source is SubSamplingImageSource.Remote) {
             val imageData = source.imageData
             val thumbnailData = remember(imageData) {
@@ -200,14 +208,14 @@ fun ZoomableSubSamplingImage(
                 stepUpToPayload = false,
                 contentDescription = null,
                 contentScale = contentScale,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = photoAlpha() },
             )
         }
         CoilZoomAsyncImage(
             model = model,
             contentDescription = contentDescription,
             imageLoader = coilImageLoader,
-            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (isRemote) sharpAlpha.value else 1f },
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = (if (isRemote) sharpAlpha.value else 1f) * photoAlpha() },
             contentScale = contentScale,
             zoomState = zoomState,
             scrollBar = null,

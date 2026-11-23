@@ -622,3 +622,5 @@ private class HomebaseVideoDataSource(
 }
 
 actual val nativeVideoControlsOwnTopCorners: Boolean = false
+
+actual val playsMotionClips: Boolean = true
