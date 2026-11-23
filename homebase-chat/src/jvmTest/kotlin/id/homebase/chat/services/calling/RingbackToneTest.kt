@@ -1,7 +1,11 @@
 package id.homebase.chat.services.calling
 
+import java.lang.reflect.Proxy
+import java.util.concurrent.atomic.AtomicInteger
+import javax.sound.sampled.Clip
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -82,10 +86,10 @@ class RingbackToneTest {
 
 class JvmRingbackToneTest {
     private class FakeClip(val failOnLoop: Boolean) {
-        @Volatile var closed = false
-        val clip: javax.sound.sampled.Clip = java.lang.reflect.Proxy.newProxyInstance(
-            javax.sound.sampled.Clip::class.java.classLoader,
-            arrayOf(javax.sound.sampled.Clip::class.java),
+        var closed = false
+        val clip: Clip = Proxy.newProxyInstance(
+            Clip::class.java.classLoader,
+            arrayOf(Clip::class.java),
         ) { _, method, _ ->
             when (method.name) {
                 "loop" -> if (failOnLoop) error("loop failed")
@@ -97,19 +101,19 @@ class JvmRingbackToneTest {
                 Long::class.javaPrimitiveType -> 0L
                 else -> null
             }
-        } as javax.sound.sampled.Clip
+        } as Clip
     }
 
     @Test
     fun clipThatFailsToLoopIsClosed() {
         val fake = FakeClip(failOnLoop = true)
         JvmRingbackTone { fake.clip }.start()
-        kotlin.test.assertTrue(fake.closed)
+        assertTrue(fake.closed)
     }
 
     @Test
     fun concurrentStartsCreateOneClip() {
-        val created = java.util.concurrent.atomic.AtomicInteger()
+        val created = AtomicInteger()
         val tone = JvmRingbackTone {
             created.incrementAndGet()
             Thread.sleep(20)

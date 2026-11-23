@@ -19,10 +19,7 @@ internal class JvmRingbackTone(
             AudioSystem.getAudioInputStream(ByteArrayInputStream(ringbackWav())).use { opened.open(it) }
             opened.loop(Clip.LOOP_CONTINUOUSLY)
             opened
-        }.getOrElse {
-            runCatching { opened.close() }
-            null
-        }
+        }.onFailure { opened.close() }.getOrNull()
     }
 
     @Synchronized

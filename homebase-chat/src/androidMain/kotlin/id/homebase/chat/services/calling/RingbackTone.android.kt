@@ -39,10 +39,7 @@ private class AndroidRingbackTone : RingbackTone {
                 setLoopPoints(0, pcm / 2, -1)
                 play()
             }
-        }.getOrElse {
-            runCatching { built.release() }
-            null
-        }
+        }.onFailure { built.release() }.getOrNull()
     }
 
     @Synchronized
