@@ -30,7 +30,8 @@ data class PdfThumbnailResult(
  * JPEG thumbnail of page one of the PDF in [bytes], [maxWidth] pixels wide with the page's
  * aspect ratio, at about 80% quality, plus the document's page count. Blocking except on web,
  * which suspends while pdf.js renders: call off the main thread. Returns null instead of
- * throwing for anything unusable: empty or non-PDF bytes, a PDF with no pages, a password-protected PDF, a [maxWidth] of 0 or less.
+ * throwing for anything unusable: empty or non-PDF bytes, a PDF with no pages, a
+ * password-protected PDF, a [maxWidth] of 0 or less.
  */
 expect suspend fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult?
 
