@@ -55,6 +55,8 @@ data class VaultPendingEditor(
      * reason, so the pager re-mounts on the previously-current page after a crop/draw round-trip.
      */
     val currentPage: Int = 0,
+    /** Pages that came from the scanner: named from the final edited pages on confirm, and their temp files deleted on cancel. */
+    val isScan: Boolean = false,
 )
 
 sealed interface VaultOverlay {
@@ -78,7 +80,7 @@ sealed interface VaultUiAction {
         val entryName: String? = null,
     ) : VaultUiAction
 
-    /** Pages from the platform scanner: named by what they turn out to be (card, ID, document), then added or appended. */
+    /** Pages from the platform scanner: staged in the editor like picked images. */
     data class AddScannedPages(
         val pages: List<ByteArray>,
         val sectionId: Uuid?,
@@ -97,6 +99,7 @@ sealed interface VaultUiAction {
         val files: List<PlatformFile>,
         val sectionId: Uuid?,
         val appendTo: VaultEntry?,
+        val isScan: Boolean = false,
     ) : VaultUiAction
 
     /** Add more files to the already-open editor (the in-editor add/camera buttons). */

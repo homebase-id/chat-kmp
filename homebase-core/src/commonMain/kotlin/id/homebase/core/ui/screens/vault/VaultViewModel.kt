@@ -367,7 +367,9 @@ class VaultViewModel(
             is VaultUiAction.ConfirmAddEditor -> handleConfirmAddEditor(action)
             VaultUiAction.DismissAddEditor -> {
                 imageEditNavInFlight = false
+                val editor = _pendingEditor.value
                 _pendingEditor.update { null }
+                if (editor?.isScan == true) editor.stagedFiles().forEach { runCatching { fileOperationsProvider.deleteTempFile(it.toString()) } }
             }
             is VaultUiAction.EditExistingPage -> handleEditExistingPage(action)
             is VaultUiAction.DeletePage -> handleDeletePage(action)
@@ -655,22 +657,15 @@ class VaultViewModel(
     }
 
     private fun handleAddScannedPages(action: VaultUiAction.AddScannedPages) {
-        val appendTo = action.appendTo
-        val sectionId = action.sectionId
-        if (appendTo == null && sectionId == null) return
+        if (action.appendTo == null && action.sectionId == null) return
         viewModelScope.launch {
             try {
                 val files = action.pages.map { platformFileFromPath(fileOperationsProvider.writeBytesToTempFile(it, "vault_scan_", ".jpg")) }
-                if (appendTo != null) {
-                    onAction(VaultUiAction.AppendPages(appendTo, files))
-                } else if (sectionId != null) {
-                    val type = withContext(Dispatchers.Default) { classifyScan(action.pages) }
-                    onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes())))
-                }
+                onAction(VaultUiAction.OpenAddEditor(files, action.sectionId, action.appendTo, isScan = true))
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.w(e, TAG) { "Saving scanned pages failed" }
+                Logger.w(e, TAG) { "Staging scanned pages failed" }
                 _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(getString(MR.string.vault_scan_type_document))))
             }
         }
@@ -746,6 +741,7 @@ class VaultViewModel(
                 attachments = action.files.map { stageAttachment(it) },
                 sectionId = action.sectionId,
                 appendTo = action.appendTo,
+                isScan = action.isScan,
             )
         }
     }
@@ -787,23 +783,31 @@ class VaultViewModel(
         }
     }
 
+    private fun VaultPendingEditor.stagedFiles(): List<PlatformFile> = attachments.mapNotNull { att ->
+        when (att) {
+            is AttachmentPendingFile.FileImage -> att.file
+            is AttachmentPendingFile.File -> att.file
+            else -> null
+        }
+    }
+
     private fun handleConfirmAddEditor(action: VaultUiAction.ConfirmAddEditor) {
         val editor = _pendingEditor.value ?: return
         imageEditNavInFlight = false
         _pendingEditor.update { null }
-        val files = editor.attachments.mapNotNull { att ->
-            when (att) {
-                is AttachmentPendingFile.FileImage -> att.file
-                is AttachmentPendingFile.File -> att.file
-                else -> null
-            }
-        }
+        val files = editor.stagedFiles()
         if (files.isEmpty()) return
         val appendTo = editor.appendTo
+        val sectionId = editor.sectionId
         if (appendTo != null) {
             onAction(VaultUiAction.AppendPages(appendTo, files))
-        } else if (editor.sectionId != null) {
-            onAction(VaultUiAction.AddEntryToSection(editor.sectionId, files, action.entryName))
+        } else if (sectionId != null && editor.isScan && action.entryName.isNullOrBlank()) {
+            viewModelScope.launch {
+                val type = withContext(Dispatchers.Default) { classifyScan(files.map { it.readBytes() }) }
+                onAction(VaultUiAction.AddEntryToSection(sectionId, files, getString(type.labelRes())))
+            }
+        } else if (sectionId != null) {
+            onAction(VaultUiAction.AddEntryToSection(sectionId, files, action.entryName))
         }
     }
 
