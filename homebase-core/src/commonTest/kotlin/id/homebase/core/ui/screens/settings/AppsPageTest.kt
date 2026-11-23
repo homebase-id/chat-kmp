@@ -31,7 +31,6 @@ class AppsPageTest {
         AppsPage.Filesync to "filesyncSettingsButton",
         AppsPage.Email to "emailSettingsButton",
         AppsPage.Contacts to "contactBookSettingsButton",
-        AppsPage.Calls to "callsSettingsButton",
         AppsPage.Photobase to "photobaseSettingsButton",
         AppsPage.WebDrop to "webDropButton",
         AppsPage.Location to "locationSettingsButton",

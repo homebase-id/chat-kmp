@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import id.homebase.api.client.mail.MailboxMode
 import id.homebase.core.ui.navigation.Route
-import id.homebase.core.ui.screens.calls.settings.CallsSettingsScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.feed.settings.FeedSettingsScreen
@@ -19,7 +18,7 @@ import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import org.koin.compose.viewmodel.koinViewModel
 
 internal enum class AppsPage {
-    Chat, Photobase, Filesync, Email, Feed, Vault, Location, Moments, Calls, Contacts, WebDrop;
+    Chat, Photobase, Filesync, Email, Feed, Vault, Location, Moments, Contacts, WebDrop;
 
     companion object {
         /** The page of the app whose screen [destination] is, if it's one's main screen. */
@@ -44,7 +43,6 @@ internal val AppsPage.appRoute: Route
         AppsPage.Vault -> Route.Vault
         AppsPage.Location -> Route.Location
         AppsPage.Moments -> Route.Moments
-        AppsPage.Calls -> Route.Calls
         AppsPage.Contacts -> Route.ContactBook
         AppsPage.WebDrop -> Route.WebDrop
     }
@@ -52,8 +50,6 @@ internal val AppsPage.appRoute: Route
 internal class AppsPageLinks(
     val onOpenApp: (AppsPage) -> Unit,
     val onOpenEmailModeSwitch: () -> Unit,
-    /** False while calls are off: there's nothing to open. */
-    val callsAvailable: Boolean,
     /** False while Photobase is dark-launched off. */
     val photobaseAvailable: Boolean,
     val photoBackup: PhotoBackupLinks?,
@@ -75,7 +71,7 @@ internal fun AppsPageContent(
     settingsOwner: ViewModelStoreOwner = checkNotNull(LocalViewModelStoreOwner.current),
 ) {
     val open: (() -> Unit)? = { links.onOpenApp(page) }
-        .takeIf { !openedFromApp && (page != AppsPage.Calls || links.callsAvailable) }
+        .takeIf { !openedFromApp }
     when (page) {
         AppsPage.Chat -> ChatSettingsScreen(viewModel = koinViewModel(), onBack = onBack, onOpenChat = open)
 
@@ -116,8 +112,6 @@ internal fun AppsPageContent(
             onNavigateBack = onBack,
             onOpenLocation = open,
         )
-
-        AppsPage.Calls -> CallsSettingsScreen(viewModel = koinViewModel(), onBackClick = onBack, onOpenCalls = open)
 
         AppsPage.Photobase -> if (links.photobaseAvailable) {
             PhotobaseSettingsScreen(

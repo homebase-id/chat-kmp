@@ -12,7 +12,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.MailOutline
@@ -42,7 +41,6 @@ import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.nav_chats
 import id.homebase.resources.settings_chat_desc
-import id.homebase.resources.calls_home_subtitle
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.email_settings_section
 import id.homebase.resources.filesync_home_subtitle
@@ -78,7 +76,6 @@ private val AppsRows = listOf(
     AppsRow(AppsPage.Vault, "vaultSettingsButton", Icons.Outlined.Lock, MR.string.vault_settings_section, MR.string.settings_vault_desc),
     AppsRow(AppsPage.Location, "locationSettingsButton", Icons.Outlined.LocationOn, MR.string.location_settings_section, MR.string.settings_location_desc),
     AppsRow(AppsPage.Moments, "momentsSettingsButton", Icons.Outlined.AutoAwesome, MR.string.moments_settings_section, MR.string.settings_moments_desc),
-    AppsRow(AppsPage.Calls, "callsSettingsButton", Icons.Outlined.Call, MR.string.nav_calls, MR.string.calls_home_subtitle),
     AppsRow(AppsPage.Contacts, "contactBookSettingsButton", Icons.Outlined.People, MR.string.contactbook_settings_section, MR.string.settings_contactbook_desc),
     AppsRow(AppsPage.WebDrop, "webDropButton", Icons.Outlined.Redeem, MR.string.webdrop_label, MR.string.webdrop_home_subtitle),
 )
