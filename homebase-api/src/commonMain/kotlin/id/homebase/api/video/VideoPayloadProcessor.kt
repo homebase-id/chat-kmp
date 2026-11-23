@@ -323,16 +323,12 @@ class VideoPayloadProcessor(
 
         val (finalVideoPath, videoHash) =
             if (!isSegmented) {
-                onProgress?.invoke(
-                    VideoPayloadProgressPhase(
-                        payload.key,
-                        VideoProcessingPhase.ENCRYPTING,
-                        0f
-                    )
-                )
-
-                if (keyHeader != null) encryptVideoFile(inputPath = videoPath, keyHeader = keyHeader)
-                else stagePlain(videoPath) to null
+                if (keyHeader != null) {
+                    onProgress?.invoke(VideoPayloadProgressPhase(payload.key, VideoProcessingPhase.ENCRYPTING, 0f))
+                    encryptVideoFile(inputPath = videoPath, keyHeader = keyHeader)
+                } else {
+                    stagePlain(videoPath) to null
+                }
             } else {
                 videoPath to segmentedHash
             }

@@ -531,16 +531,18 @@ class VideoPayloadProcessorCompressionSeamTest {
         val store = mutableMapOf(inputPath to ByteArray(2048), compressedPath to compressed)
         val compressor = FakeVideoCompressor(compressedPath, SegmentedVideo("unused", "unused"))
         val processor = VideoPayloadProcessor(FakeFileOperationsProvider(store), compressor, FakeVideoProbe(7_000L))
+        val phases = mutableListOf<VideoProcessingPhase>()
 
         val result = processor.process(
             payload = PayloadFile(key = "pst_mdi0", filePath = inputPath, contentType = "video/mp4"),
             keyHeader = null,
-            onProgress = null,
+            onProgress = { phases += it.phase },
             descriptorContentPayloadKey = "descriptor",
             playlistPayloadKey = "pls_0000",
             videoQuality = VideoQuality.HIGH,
         )
 
+        assertFalse(VideoProcessingPhase.ENCRYPTING in phases, "nothing is encrypted, so the upload never says it is")
         assertEquals(VideoQuality.HIGH, compressor.compressQuality, "the same compression")
         val video = result.payloads.single()
         assertFalse(video.isPreEncrypted)

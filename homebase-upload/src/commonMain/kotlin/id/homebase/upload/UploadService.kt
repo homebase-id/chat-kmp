@@ -64,10 +64,9 @@ class UploadService(
     /**
      * Steps 1 and 2: encrypt the payloads, or stage a public post's, and build the request. Payloads handed over
      * already encrypted (`isPreEncrypted`, with their IV) become the upload's own from this call on, like the files it
-     * makes, and on a throw everything is deleted. Throws [SourceUnavailableException] for a missing source and
-     * [IllegalArgumentException] for a public upload that can't be staged or a payload handed over encrypted that
-     * can't be sent as it is. Throws [ContentChangedException] when a payload no longer matches
-     * [MediaUploadSpec.contentHashes].
+     * makes, and on a throw everything is deleted. Throws [SourceUnavailableException] for a missing source,
+     * [IllegalArgumentException] for a payload handed over encrypted that can't be sent as it is, and
+     * [ContentChangedException] when a payload no longer matches [MediaUploadSpec.contentHashes].
      */
     suspend fun prepare(spec: MediaUploadSpec, scope: CoroutineScope): PreparedUpload {
         val encrypted = spec.metadata.isEncrypted
