@@ -3,6 +3,7 @@ package id.homebase.api.client
 import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.compression.ContentEncoding
@@ -26,25 +27,25 @@ internal val HttpBreadcrumbPlugin = createClientPlugin("HttpBreadcrumb") {
     }
 }
 
-object HttpClientProvider {
-    fun create(): HttpClient {
-        return createPlatformHttpClient {
-            install(HttpBreadcrumbPlugin)
+internal fun HttpClientConfig<*>.homebaseDefaults() {
+    install(HttpBreadcrumbPlugin)
 
-            install(ContentNegotiation) {
-                json(OdinSystemSerializer.json)
-            }
-
-            install(ContentEncoding) {
-                gzip(quality = 1.0f)
-                deflate(quality = 0.9f)
-            }
-
-            install(HttpTimeout) {
-                requestTimeoutMillis = 5 * 60_000   // 5 minutes
-                connectTimeoutMillis = 30_000        // 30 seconds
-                socketTimeoutMillis = 5 * 60_000     // 5 minutes
-            }
-        }
+    install(ContentNegotiation) {
+        json(OdinSystemSerializer.json)
     }
+
+    install(ContentEncoding) {
+        gzip(quality = 1.0f)
+        deflate(quality = 0.9f)
+    }
+
+    install(HttpTimeout) {
+        requestTimeoutMillis = 5 * 60_000   // 5 minutes
+        connectTimeoutMillis = 30_000        // 30 seconds
+        socketTimeoutMillis = 5 * 60_000     // 5 minutes
+    }
+}
+
+object HttpClientProvider {
+    fun create(): HttpClient = createPlatformHttpClient { homebaseDefaults() }
 }
