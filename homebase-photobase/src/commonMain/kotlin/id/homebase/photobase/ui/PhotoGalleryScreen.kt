@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -61,6 +60,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Density
+import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.lazy.rememberLazyListState
 import id.homebase.photobase.gallery.GalleryLines
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Row
@@ -128,7 +131,7 @@ fun PhotoGalleryScreen(
         }
     }
     val layout = remember(library, uiState.newestFirst, shown) { library?.let { GalleryLayout(it, uiState.newestFirst, shown) } }
-    val gridState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val gridState = rememberLazyListState()
     val memory = remember(gridState) { GridMemory(gridState) }
     val onAction: (PhotoGalleryUiAction) -> Unit = remember(viewModel) {
         { action ->
@@ -411,19 +414,31 @@ internal fun PhotoGrid(
     haptics: Haptics = rememberHaptics(),
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        // As GridCells.Adaptive would: as many columns of at least TILE_MIN as fit between the padding.
-        val columns = with(LocalDensity.current) {
-            maxOf(1, (constraints.maxWidth - 2 * GRID_PADDING.roundToPx() + GRID_GAP.roundToPx()) / (TILE_MIN.roundToPx() + GRID_GAP.roundToPx()))
-        }
+        val columns = galleryColumns(constraints.maxWidth, LocalDensity.current)
         val lines = remember(layout, columns) { GalleryLines(layout, columns) }
-        PhotoLines(lines, constraints.maxHeight, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope, haptics)
+        // New columns move every row: the line at the top stays the one showing what it showed.
+        val shown = remember { arrayOfNulls<GalleryLines>(1) }
+        SideEffect {
+            val before = shown[0]
+            shown[0] = lines
+            if (before != null && before.columns != lines.columns) {
+                val state = memory.state
+                lines.itemFor(before, state.firstVisibleItemIndex.coerceAtMost(before.itemCount - 1))
+                    ?.let { state.requestScrollToItem(it, state.firstVisibleItemScrollOffset) }
+            }
+        }
+        PhotoLines(lines, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope, haptics)
     }
+}
+
+/** As GridCells.Adaptive would: as many columns of at least TILE_MIN as fit across [widthPx] between the padding. */
+internal fun galleryColumns(widthPx: Int, density: Density): Int = with(density) {
+    maxOf(1, (widthPx - 2 * GRID_PADDING.roundToPx() + GRID_GAP.roundToPx()) / (TILE_MIN.roundToPx() + GRID_GAP.roundToPx()))
 }
 
 @Composable
 private fun PhotoLines(
     lines: GalleryLines,
-    viewportPx: Int,
     loaded: State<Map<Int, List<PhotoGalleryItem>>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     memory: GridMemory,
@@ -481,36 +496,39 @@ private fun PhotoLines(
                 settled.value = true
             }
     }
-    PhotoScrubber(gridState, lines, viewportPx, haptics) {
+    PhotoScrubber(gridState, lines, haptics) {
         LazyColumn(
             state = gridState,
             verticalArrangement = Arrangement.spacedBy(GRID_GAP),
             contentPadding = PaddingValues(GRID_PADDING),
             modifier = Modifier.fillMaxSize(),
         ) {
-            for (position in layout.days.indices) {
-                val day = layout.days[position]
-                item(key = "day-$day", contentType = DAY_HEADER) {
+            items(lines.itemCount, key = lines::keyOf, contentType = { if (lines.rowOfItem(it) < 0) DAY_HEADER else PHOTO_ROW }) { item ->
+                val position = lines.positionOfItem(item)
+                val row = lines.rowOfItem(item)
+                if (row < 0) {
                     Text(
                         // The zone formatMomentDate reads back in, or a new zone shows the day before or after.
-                        text = formatMomentDate(LocalDate.fromEpochDays(day).atStartOfDayIn(TimeZone.currentSystemDefault())),
+                        text = formatMomentDate(LocalDate.fromEpochDays(layout.days[position]).atStartOfDayIn(TimeZone.currentSystemDefault())),
                         style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                     )
+                    return@items
                 }
-                items(lines.rowsOf(position), key = { "row-$day-$it" }, contentType = { PHOTO_ROW }) { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(GRID_GAP)) {
-                        for (column in 0 until lines.columns) {
-                            val slot = row * lines.columns + column
-                            Box(Modifier.weight(1f)) {
-                                if (slot < layout.slotsOf(position)) {
-                                    when (val item = layout.photoAt(position, slot, loaded.value)) {
-                                        null -> PlaceholderCell()
-                                        else -> PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
-                                            onAction(PhotoGalleryUiAction.Open(item))
-                                        }
-                                    }
-                                }
+                val slots = layout.slotsOf(position)
+                val held = loaded.value
+                Row(horizontalArrangement = Arrangement.spacedBy(GRID_GAP)) {
+                    for (column in 0 until lines.columns) {
+                        val slot = row * lines.columns + column
+                        val tile = Modifier.weight(1f)
+                        if (slot >= slots) {
+                            Spacer(tile)
+                            continue
+                        }
+                        when (val photo = layout.photoAt(position, slot, held)) {
+                            null -> PlaceholderCell(tile)
+                            else -> PhotoCell(photo, settled, sharedTransitionScope, animatedVisibilityScope, tile, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
+                                onAction(PhotoGalleryUiAction.Open(photo))
                             }
                         }
                     }
@@ -521,8 +539,8 @@ private fun PhotoLines(
 }
 
 @Composable
-private fun PlaceholderCell() {
-    Box(Modifier.galleryTile())
+private fun PlaceholderCell(modifier: Modifier) {
+    Box(modifier.galleryTile())
 }
 
 @Composable
@@ -534,6 +552,7 @@ private fun PhotoCell(
     settled: State<Boolean>,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    modifier: Modifier,
     onShown: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -546,7 +565,7 @@ private fun PhotoCell(
     val isVideo = item.payload.isVideo()
     val description = stringResource(if (isVideo) MR.string.photobase_gallery_video else MR.string.photobase_gallery_photo)
     Box(
-        modifier = Modifier
+        modifier = modifier
             .galleryTile()
             .clickable(onClick = onClick),
     ) {

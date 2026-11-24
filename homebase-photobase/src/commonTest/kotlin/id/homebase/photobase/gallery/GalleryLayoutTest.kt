@@ -1,18 +1,14 @@
 package id.homebase.photobase.gallery
 
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.uuid.Uuid
 
 class GalleryLayoutTest {
-    private fun item() = PhotoGalleryItem(Uuid.random(), Uuid.random(), 0, KeyHeader.newRandom16(), PayloadDescriptor(key = "photo_main", contentType = "image/jpeg"))
+    private fun item() = galleryItem()
 
-    // Days 30, 20, 10 with 2, 3 and 1 photos.
-    private val library = LibraryDays(intArrayOf(30, 20, 10), intArrayOf(2, 3, 1))
+    private val library = threeDays
 
     @Test
     fun eachDayHasASlotPerCountedPhoto() {

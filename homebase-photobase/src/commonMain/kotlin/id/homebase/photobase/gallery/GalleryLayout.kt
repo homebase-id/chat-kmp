@@ -57,13 +57,17 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
         return photoAt(position, photo - firstPhoto[position], loaded)
     }
 
-    fun photoOf(fileId: Uuid, loaded: Map<Int, List<PhotoGalleryItem>>): Int? {
+    fun photoOf(fileId: Uuid, loaded: Map<Int, List<PhotoGalleryItem>>): Int? =
+        placeOf(fileId, loaded)?.let { (position, slot) -> firstPhoto[position] + slot }
+
+    /** The position of the day showing [fileId] and its slot there. */
+    fun placeOf(fileId: Uuid, loaded: Map<Int, List<PhotoGalleryItem>>): Pair<Int, Int>? {
         for ((day, items) in loaded) {
             val at = items.indexOfFirst { it.fileId == fileId }
             if (at < 0) continue
             val position = positionOf(day) ?: return null
             val slot = if (newestFirst) at else items.size - 1 - at
-            return if (slot < slots[position]) firstPhoto[position] + slot else null
+            return if (slot < slots[position]) position to slot else null
         }
         return null
     }

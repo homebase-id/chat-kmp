@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -44,8 +45,8 @@ class PhotoScrubberTest {
     private val library = LibraryDays(IntArray(1_200) { newest - it * 3 }, IntArray(1_200) { 10 })
     private val layout = GalleryLayout(library, newestFirst = true)
 
-    // 400 dp wide, less 4 dp padding each side, fits four 96 dp columns with 2 dp gaps.
-    private val lines = GalleryLines(layout, columns = 4)
+
+    private fun ComposeUiTest.linesAt(width: Dp) = GalleryLines(layout, galleryColumns(with(density) { width.roundToPx() }, density))
 
     private fun ComposeUiTest.showGrid(gridState: LazyListState, haptics: Haptics) = setContent {
         SharedTransitionLayout {
@@ -64,6 +65,33 @@ class PhotoScrubberTest {
         override fun perform(event: HapticEvent) {
             if (event == HapticEvent.Selection) ticks++
         }
+    }
+
+    @Test
+    fun aWiderWindowKeepsTheSameDayAtTheTop() = runComposeUiTest {
+        val gridState = LazyListState()
+        val width = mutableStateOf(400.dp)
+        setContent {
+            SharedTransitionLayout {
+                AnimatedVisibility(visible = true) {
+                    Box(Modifier.size(width.value, 800.dp)) {
+                        PhotoGrid(layout, mutableStateOf(emptyMap<Int, List<PhotoGalleryItem>>()), {}, GridMemory(gridState), this@SharedTransitionLayout, this@AnimatedVisibility, CountingHaptics())
+                    }
+                }
+            }
+        }
+        val narrow = linesAt(400.dp)
+        val header = narrow.headerItemOf(700)
+        runOnIdle { gridState.requestScrollToItem(header + 2) }
+        waitForIdle()
+        val day = narrow.dayOfItem(gridState.firstVisibleItemIndex)
+
+        width.value = 800.dp
+        waitForIdle()
+
+        val wide = linesAt(800.dp)
+        assertTrue(wide.columns > narrow.columns)
+        assertEquals(day, wide.dayOfItem(gridState.firstVisibleItemIndex), "rows renumber; the day on top doesn't change")
     }
 
     @Test
@@ -136,12 +164,12 @@ class PhotoScrubberTest {
             repeat(20) { moveBy(Offset(0f, 15f)) }
         }
         waitForIdle()
-        val day = LocalDate.fromEpochDays(lines.dayOfItem(gridState.firstVisibleItemIndex))
+        val day = LocalDate.fromEpochDays(linesAt(400.dp).dayOfItem(gridState.firstVisibleItemIndex))
         val bubble = onNodeWithText(formatMonthYear(LocalDate(day.year, day.month, 1).atStartOfDayIn(TimeZone.currentSystemDefault())))
         bubble.assertExists()
         assertTrue(bubble.fetchSemanticsNode().size.width > with(density) { 60.dp.toPx() }, "the label on one line, not squeezed into the 48 dp track")
         assertTrue(haptics.ticks > 0, "a tick for each month passed")
-        val fraction = gridState.firstVisibleItemIndex.toFloat() / lines.itemCount
+        val fraction = gridState.firstVisibleItemIndex.toFloat() / linesAt(400.dp).itemCount
         handle.performTouchInput { up() }
         waitForIdle()
         assertTrue(fraction > 0.2f && fraction < 0.8f, "300 px of an 800 px track lands well inside the library: $fraction")

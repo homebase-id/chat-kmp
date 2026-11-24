@@ -84,7 +84,6 @@ private const val SCREENS_TO_SHOW = 3
 internal fun PhotoScrubber(
     listState: LazyListState,
     lines: GalleryLines,
-    viewportPx: Int,
     haptics: Haptics,
     grid: @Composable () -> Unit,
 ) {
@@ -110,15 +109,15 @@ internal fun PhotoScrubber(
     ) {
         grid()
         val held = rows
-        val edges = pitch?.edgesPx ?: 0
-        if (held != null && held.height >= viewportPx * SCREENS_TO_SHOW) {
-            Handle(listState, held, held.height + edges - viewportPx, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
+        val measured = pitch
+        if (held != null && measured != null && held.height >= measured.viewportPx * SCREENS_TO_SHOW) {
+            Handle(listState, held, held.height + measured.edgesPx - measured.viewportPx, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
         }
     }
 }
 
 // edgesPx: the list's padding above and below, less the gap the rows count after the last one.
-private data class RowPitch(val headerPx: Int, val rowPx: Int, val edgesPx: Int)
+private data class RowPitch(val headerPx: Int, val rowPx: Int, val edgesPx: Int, val viewportPx: Int)
 
 // A header's and a row's height with the gap after each, from each with the item after it on screen. Kept while none
 // is, as inside a day bigger than the screen.
@@ -129,11 +128,20 @@ private fun rememberRowPitch(listState: LazyListState): State<RowPitch?> {
         snapshotFlow {
             val info = listState.layoutInfo
             val items = info.visibleItemsInfo
-            fun pitchOf(type: String) = items.zipWithNext().firstOrNull { (it, next) -> it.contentType == type && next.index == it.index + 1 }
-            val header = pitchOf(DAY_HEADER) ?: return@snapshotFlow null
-            val row = pitchOf(PHOTO_ROW) ?: return@snapshotFlow null
-            val gap = row.second.offset - row.first.offset - row.first.size
-            RowPitch(header.second.offset - header.first.offset, row.second.offset - row.first.offset, info.beforeContentPadding + info.afterContentPadding - gap)
+            // Indexed: this runs on every scroll frame.
+            fun followedAt(type: String): Int {
+                for (i in 0 until items.size - 1) if (items[i].contentType == type && items[i + 1].index == items[i].index + 1) return i
+                return -1
+            }
+            val header = followedAt(DAY_HEADER).takeIf { it >= 0 } ?: return@snapshotFlow null
+            val row = followedAt(PHOTO_ROW).takeIf { it >= 0 } ?: return@snapshotFlow null
+            val gap = items[row + 1].offset - items[row].offset - items[row].size
+            RowPitch(
+                headerPx = items[header + 1].offset - items[header].offset,
+                rowPx = items[row + 1].offset - items[row].offset,
+                edgesPx = info.beforeContentPadding + info.afterContentPadding - gap,
+                viewportPx = info.viewportSize.height,
+            )
         }.filterNotNull().collect { pitch.value = it }
     }
     return pitch
