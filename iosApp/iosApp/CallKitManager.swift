@@ -101,7 +101,9 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
             if error != nil && !alreadyKnown { self.forget(callId) }
             completion()
         }
-        let routed = CallPushRouter.shared.onVoipPush(data: data)
+        PushChainLoggingKt.logPushChain(hop: "voip-arrived", detail: "call=\(callId) keys=\(data.keys.sorted())")
+        let routed = PushInterceptors.shared.tryHandle(data: data)
+        PushChainLoggingKt.logPushChain(hop: "voip-routed", detail: "call=\(callId) routed=\(routed)")
         if !routed && !alreadyKnown { endUnrouted(callId) }
     }
 
