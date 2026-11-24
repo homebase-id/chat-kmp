@@ -123,12 +123,6 @@ class PhotoGalleryViewModel(
     // The days being read right now: a change to one of them mustn't be lost when the read lands.
     private var inFlight: Set<Int> = emptySet()
 
-    /** Every day of the library that has photos; counted from the gallery's opening, and kept current while it's shown. */
-    val library: StateFlow<LibraryDays?> = libraryDays
-        .onEach(::onLibrary)
-        .flowOn(reading)
-        .stateIn(viewModelScope, FromOpeningWhileShown, null)
-
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
 
@@ -146,6 +140,13 @@ class PhotoGalleryViewModel(
     private val opened = TimeSource.Monotonic.markNow()
     private var firstDaysLogged = false
     private var thumbnailsShown = 0
+
+    /** Every day of the library that has photos; counted from the gallery's opening, and kept current while it's shown. */
+    // Last of the fields: it starts collecting here, on another thread, and onLibrary uses the ones above.
+    val library: StateFlow<LibraryDays?> = libraryDays
+        .onEach(::onLibrary)
+        .flowOn(reading)
+        .stateIn(viewModelScope, FromOpeningWhileShown, null)
 
     init {
         viewModelScope.launch {

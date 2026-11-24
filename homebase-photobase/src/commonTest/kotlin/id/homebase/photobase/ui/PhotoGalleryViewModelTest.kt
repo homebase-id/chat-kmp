@@ -34,6 +34,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -662,6 +664,17 @@ class PhotoGalleryViewModelTest {
         assertEquals(listOf(first), server.moved.last().second)
         assertFalse(viewModel.uiState.value.busy)
         screen.cancel()
+    }
+
+    @Test
+    fun daysAlreadyCountedWhenTheViewModelIsMadeDontFindItHalfBuilt() = runTest {
+        // Delivered at once, as the day index does when it holds the days already, on another thread.
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val days = flowOf(LibraryDays(intArrayOf(3), intArrayOf(1)))
+
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), libraryDays = days, reading = Dispatchers.Unconfined)
+
+        assertEquals(listOf(3), viewModel.library.value?.days?.toList())
     }
 
     private companion object {
