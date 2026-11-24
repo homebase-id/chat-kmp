@@ -35,6 +35,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.MoreVert
+import id.homebase.resources.photobase_gallery_more
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import id.homebase.resources.photobase_gallery_retry
@@ -109,6 +113,31 @@ import id.homebase.resources.photobase_gallery_syncing
 import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_label
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import id.homebase.core.haptics.HapticEvent
+import id.homebase.core.widget.ConfirmDialog
+import id.homebase.core.widget.SelectionTopBar
+import id.homebase.photobase.gallery.PhotoShelf
+import id.homebase.resources.menu_back
+import id.homebase.resources.photobase_bin_delete_confirm_title
+import id.homebase.resources.photobase_bin_delete_forever
+import id.homebase.resources.photobase_bin_empty
+import id.homebase.resources.photobase_bin_empty_confirm_title
+import id.homebase.resources.photobase_bin_empty_state
+import id.homebase.resources.photobase_bin_title
+import id.homebase.resources.photobase_bin_cant_undo
+import id.homebase.resources.photobase_selection_day
+import id.homebase.resources.photobase_selection_select
+import id.homebase.resources.photobase_selection_day_clear
+import org.jetbrains.compose.resources.pluralStringResource
 import kotlin.uuid.Uuid
 import id.homebase.core.image.mediaSharedKey
 
@@ -118,6 +147,8 @@ private val TILE_MIN = 96.dp
 private val GRID_GAP = 2.dp
 private val GRID_PADDING = 4.dp
 private const val HEADERS_AFTER_MILLIS = 60L
+private val TOOLBAR_ROOM = 80.dp
+private const val SELECTED_SCALE = 0.86f
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -125,11 +156,15 @@ fun PhotoGalleryScreen(
     viewModel: PhotoGalleryViewModel,
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
+    onOpenBin: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
+    haptics: Haptics = rememberHaptics(),
 ) {
     val state = viewModel.uiState.collectAsStateWithLifecycle()
     val uiState by state
     val library by viewModel.library.collectAsStateWithLifecycle()
     val loaded = remember(state) { derivedStateOf { state.value.loaded } }
+    val selected = remember(state) { derivedStateOf { state.value.selected } }
     // Only the read days that show another number than counted move the grid; other reads fill tiles in place.
     val shown by remember(library) {
         derivedStateOf {
@@ -147,19 +182,53 @@ fun PhotoGalleryScreen(
             viewModel.onAction(action)
         }
     }
+    val shelf = viewModel.shelf
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.show(it, onAction) } }
+    var confirm by remember { mutableStateOf<BinAction?>(null) }
+    val asked = when (confirm) {
+        BinAction.DeleteForGood -> Triple(
+            pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, uiState.selected.size, uiState.selected.size),
+            stringResource(MR.string.photobase_bin_delete_forever),
+            PhotoGalleryUiAction.DeleteForGood,
+        )
+        BinAction.Empty -> Triple(stringResource(MR.string.photobase_bin_empty_confirm_title), stringResource(MR.string.photobase_bin_empty), PhotoGalleryUiAction.EmptyBin)
+        else -> null
+    }
+    asked?.let { (title, confirmLabel, action) ->
+        ConfirmDialog(
+            title = title,
+            text = stringResource(MR.string.photobase_bin_cant_undo),
+            confirmLabel = confirmLabel,
+            destructive = true,
+            onConfirm = {
+                confirm = null
+                onAction(action)
+            },
+            onDismiss = { confirm = null },
+        )
+    }
     // On the shared-bounds clock, or the tile and viewer fade out of step with the morph.
     val fadeSpec = tween<Float>(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)
-    SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
-        AnimatedContent(
-            targetState = uiState.openedFileId != null,
-            transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
-        ) { viewing ->
-            if (viewing && layout != null) {
-                GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent)
-            } else {
-                GalleryGrid(uiState, layout, loaded, onAction, onOpenBackupSettings, backupIndicator, memory, this@SharedTransitionLayout, this@AnimatedContent)
+    Box(Modifier.fillMaxSize()) {
+        SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+            AnimatedContent(
+                targetState = uiState.openedFileId != null,
+                transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
+            ) { viewing ->
+                if (viewing && layout != null) {
+                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf == PhotoShelf.Library }
+                    GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, moveToBin, { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent)
+                } else {
+                    GalleryGrid(
+                        uiState, shelf, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenBin, onBack,
+                        { confirm = it }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
+                    )
+                }
             }
         }
+        // Above the selection's toolbar when a failed action gives the selection back.
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (uiState.selecting) TOOLBAR_ROOM else 0.dp))
     }
 }
 
@@ -181,6 +250,7 @@ private fun GalleryViewer(
     layout: GalleryLayout,
     loaded: Map<Int, List<PhotoGalleryItem>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
+    onMoveToBin: ((Uuid) -> Unit)?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -248,6 +318,7 @@ private fun GalleryViewer(
         when (val viewer = remember(item) { item.toViewer() }) {
             is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                 data = viewer,
+                onDelete = onMoveToBin,
                 onDismiss = close,
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
@@ -300,39 +371,44 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
 @Composable
 private fun GalleryGrid(
     uiState: PhotoGalleryUiState,
+    shelf: PhotoShelf,
     layout: GalleryLayout?,
     loaded: State<Map<Int, List<PhotoGalleryItem>>>,
+    selected: State<Set<Uuid>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
+    onOpenBin: (() -> Unit)?,
+    onBack: (() -> Unit)?,
+    onConfirm: (BinAction) -> Unit,
     memory: GridMemory,
+    haptics: Haptics,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
+    val hasPhotos = (layout?.photoCount ?: 0) > 0
+    ScreenBackHandler(enabled = uiState.selecting) { onAction(PhotoGalleryUiAction.ClearSelection) }
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.photobase_label)) },
-                actions = {
-                    backupIndicator()
-                    IconButton(onClick = { onAction(PhotoGalleryUiAction.ToggleSort) }) {
-                        Icon(
-                            Icons.Outlined.SwapVert,
-                            contentDescription = stringResource(
-                                if (uiState.newestFirst) MR.string.photobase_gallery_sort_newest else MR.string.photobase_gallery_sort_oldest,
-                            ),
-                        )
-                    }
-                    IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isSyncing) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
-                    }
-                    if (onOpenBackupSettings != null) {
-                        IconButton(onClick = onOpenBackupSettings) {
-                            Icon(Icons.Outlined.Settings, contentDescription = stringResource(MR.string.photobase_backup_title))
+            when {
+                uiState.selecting -> SelectionTopBar(uiState.selected.size, onClear = { onAction(PhotoGalleryUiAction.ClearSelection) })
+                shelf == PhotoShelf.Bin -> TopAppBar(
+                    navigationIcon = {
+                        if (onBack != null) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                    title = { Text(stringResource(MR.string.photobase_bin_title)) },
+                    actions = {
+                        TextButton(onClick = { onConfirm(BinAction.Empty) }, enabled = hasPhotos && !uiState.busy) {
+                            Text(stringResource(MR.string.photobase_bin_empty))
+                        }
+                    },
+                )
+                else -> LibraryTopBar(uiState, onAction, onOpenBackupSettings, backupIndicator, onOpenBin)
+            }
         },
     ) { innerPadding ->
         Box(
@@ -341,9 +417,8 @@ private fun GalleryGrid(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            val hasPhotos = (layout?.photoCount ?: 0) > 0
             when {
-                layout != null && hasPhotos -> PhotoGrid(layout, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
+                layout != null && hasPhotos -> PhotoGrid(layout, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope, haptics, selected)
                 // While the drive is still syncing, "nothing backed up" may not be true.
                 uiState.isSyncing -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
@@ -373,13 +448,13 @@ private fun GalleryGrid(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.PhotoLibrary,
+                        imageVector = if (shelf == PhotoShelf.Bin) Icons.Outlined.Delete else Icons.Outlined.PhotoLibrary,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = stringResource(MR.string.photobase_gallery_empty),
+                        text = stringResource(if (shelf == PhotoShelf.Bin) MR.string.photobase_bin_empty_state else MR.string.photobase_gallery_empty),
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -398,8 +473,75 @@ private fun GalleryGrid(
                     SyncingLabel(uiState.syncedSoFar ?: 0, Modifier.padding(vertical = 6.dp))
                 }
             }
+            if (uiState.selecting) {
+                SelectionToolbar(
+                    shelf = shelf,
+                    enabled = !uiState.busy,
+                    onAction = onAction,
+                    onDeleteForGood = { onConfirm(BinAction.DeleteForGood) },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun LibraryTopBar(
+    uiState: PhotoGalleryUiState,
+    onAction: (PhotoGalleryUiAction) -> Unit,
+    onOpenBackupSettings: (() -> Unit)?,
+    backupIndicator: @Composable () -> Unit,
+    onOpenBin: (() -> Unit)?,
+) {
+    TopAppBar(
+        title = { Text(stringResource(MR.string.photobase_label)) },
+        actions = {
+            backupIndicator()
+            IconButton(onClick = { onAction(PhotoGalleryUiAction.ToggleSort) }) {
+                Icon(
+                    Icons.Outlined.SwapVert,
+                    contentDescription = stringResource(
+                        if (uiState.newestFirst) MR.string.photobase_gallery_sort_newest else MR.string.photobase_gallery_sort_oldest,
+                    ),
+                )
+            }
+            IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isSyncing) {
+                Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
+            }
+            // Material 3 keeps three actions in the bar; the rest go in a menu.
+            if (onOpenBin != null || onOpenBackupSettings != null) {
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(MR.string.photobase_gallery_more))
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (onOpenBin != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.string.photobase_bin_title)) },
+                                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                                onClick = {
+                                    menu = false
+                                    onOpenBin()
+                                },
+                            )
+                        }
+                        if (onOpenBackupSettings != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.string.photobase_backup_title)) },
+                                leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                                onClick = {
+                                    menu = false
+                                    onOpenBackupSettings()
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -421,6 +563,7 @@ internal fun PhotoGrid(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     haptics: Haptics = rememberHaptics(),
+    selected: State<Set<Uuid>> = remember { mutableStateOf(emptySet()) },
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = galleryColumns(constraints.maxWidth, LocalDensity.current)
@@ -436,7 +579,7 @@ internal fun PhotoGrid(
                 if (old.itemCount > 0) lines.itemFor(old, state.firstVisibleItemIndex.coerceAtMost(old.itemCount - 1))?.let { state.requestScrollToItem(it) }
             }
         }
-        PhotoLines(lines, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope, haptics)
+        PhotoLines(lines, loaded, selected, onAction, memory, sharedTransitionScope, animatedVisibilityScope, haptics)
     }
 }
 
@@ -449,6 +592,7 @@ internal fun galleryColumns(widthPx: Int, density: Density): Int = with(density)
 private fun PhotoLines(
     lines: GalleryLines,
     loaded: State<Map<Int, List<PhotoGalleryItem>>>,
+    selected: State<Set<Uuid>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     memory: GridMemory,
     sharedTransitionScope: SharedTransitionScope,
@@ -496,6 +640,7 @@ private fun PhotoLines(
     // Settled rather than isScrollInProgress: a finger held still mid-drag is a pause too.
     // A State, not a value: read in each unstarted tile's effect, so a flip doesn't recompose the grid.
     val settled = remember { mutableStateOf(true) }
+    val selecting by remember(selected) { derivedStateOf { selected.value.isNotEmpty() } }
     LaunchedEffect(gridState) {
         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
             .drop(1)
@@ -509,7 +654,8 @@ private fun PhotoLines(
         LazyColumn(
             state = gridState,
             verticalArrangement = Arrangement.spacedBy(GRID_GAP),
-            contentPadding = PaddingValues(GRID_PADDING),
+            // Room for the selection's toolbar always, so starting a selection doesn't move the grid.
+            contentPadding = PaddingValues(start = GRID_PADDING, top = GRID_PADDING, end = GRID_PADDING, bottom = GRID_PADDING + TOOLBAR_ROOM),
             // A grid to accessibility services, as the lazy grid was: a line per row, a column per tile.
             modifier = Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(lines.itemCount, lines.columns) },
         ) {
@@ -517,14 +663,7 @@ private fun PhotoLines(
                 val position = lines.positionOfItem(item)
                 val row = lines.rowOfItem(item)
                 if (row < 0) {
-                    Text(
-                        // The zone formatMomentDate reads back in, or a new zone shows the day before or after.
-                        text = formatMomentDate(LocalDate.fromEpochDays(layout.days[position]).atStartOfDayIn(TimeZone.currentSystemDefault())),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.fillMaxWidth()
-                            .semantics { collectionItemInfo = CollectionItemInfo(item, 1, 0, lines.columns) }
-                            .padding(horizontal = 8.dp, vertical = 10.dp),
-                    )
+                    DayHeader(layout.days[position], item, lines.columns, selecting, loaded, selected, onAction)
                     return@items
                 }
                 val slots = layout.slotsOf(position)
@@ -539,14 +678,60 @@ private fun PhotoLines(
                         }
                         when (val photo = layout.photoAt(position, slot, held)) {
                             null -> PlaceholderCell(tile)
-                            else -> PhotoCell(photo, settled, sharedTransitionScope, animatedVisibilityScope, tile, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
-                                onAction(PhotoGalleryUiAction.Open(photo))
+                            else -> PhotoCell(
+                                photo, settled, selecting, selected, sharedTransitionScope, animatedVisibilityScope, tile,
+                                onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) },
+                                onLongClick = {
+                                    haptics.perform(HapticEvent.LongPress)
+                                    onAction(PhotoGalleryUiAction.ToggleSelected(photo.fileId))
+                                },
+                            ) {
+                                onAction(if (selecting) PhotoGalleryUiAction.ToggleSelected(photo.fileId) else PhotoGalleryUiAction.Open(photo))
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** While selecting, tapping a day picks all its photos, or none if all are picked. */
+@Composable
+private fun DayHeader(
+    day: Int,
+    item: Int,
+    columns: Int,
+    selecting: Boolean,
+    loaded: State<Map<Int, List<PhotoGalleryItem>>>,
+    selected: State<Set<Uuid>>,
+    onAction: (PhotoGalleryUiAction) -> Unit,
+) {
+    val photos = if (selecting) loaded.value[day] else null
+    val allPicked = photos != null && photos.isNotEmpty() && photos.all { it.fileId in selected.value }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+            .semantics { collectionItemInfo = CollectionItemInfo(item, 1, 0, columns) }
+            .then(
+                // Until the day's photos are read there's nothing to pick.
+                if (photos != null) {
+                    Modifier.clickable(
+                        onClickLabel = stringResource(if (allPicked) MR.string.photobase_selection_day_clear else MR.string.photobase_selection_day),
+                    ) { onAction(PhotoGalleryUiAction.ToggleDay(day)) }
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+    ) {
+        Text(
+            // The zone formatMomentDate reads back in, or a new zone shows the day before or after.
+            text = formatMomentDate(LocalDate.fromEpochDays(day).atStartOfDayIn(TimeZone.currentSystemDefault())),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.weight(1f),
+        )
+        if (selecting) SelectionMark(allPicked, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(20.dp))
     }
 }
 
@@ -562,12 +747,19 @@ private fun Modifier.galleryTile(): Modifier = aspectRatio(1f).background(Materi
 private fun PhotoCell(
     item: PhotoGalleryItem,
     settled: State<Boolean>,
+    // Read only while selecting, so a grid that isn't doesn't follow the selection.
+    selecting: Boolean,
+    selection: State<Set<Uuid>>,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     modifier: Modifier,
     onShown: () -> Unit,
+    onLongClick: () -> Unit,
     onClick: () -> Unit,
 ) {
+    val selected = selecting && item.fileId in selection.value
+    // A picked tile draws in from its edges; scaled, not resized, so its thumbnail isn't asked for again.
+    val scale = if (selecting) animateFloatAsState(if (selected) SELECTED_SCALE else 1f).value else 1f
     // Once started a tile keeps loading through the next scroll; only leaving the screen cancels it.
     var started by remember(item.fileId) { mutableStateOf(Snapshot.withoutReadObservation { settled.value }) }
     if (!started) LaunchedEffect(item.fileId) {
@@ -579,15 +771,30 @@ private fun PhotoCell(
     Box(
         modifier = modifier
             .galleryTile()
-            .clickable(onClick = onClick),
+            .then(if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+            .combinedClickable(onLongClickLabel = stringResource(MR.string.photobase_selection_select), onLongClick = onLongClick, onClick = onClick)
+            .semantics {
+                contentDescription = description
+                if (selecting) this.selected = selected
+            },
     ) {
         val imageData = remember(item.fileId, item.payload.key) { item.tileImageData()?.forGridTile() }
         if (imageData != null) {
             HomebaseImage(
                 imageData = imageData,
-                contentDescription = description,
+                // The tile says what it is, also before its thumbnail loads.
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().then(
+                    if (scale == 1f) {
+                        Modifier
+                    } else {
+                        Modifier.graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                    },
+                ),
                 onLoaded = onShown,
                 deferLoad = !started,
                 sharedTransitionScope = sharedTransitionScope,
@@ -602,5 +809,6 @@ private fun PhotoCell(
                 modifier = Modifier.align(Alignment.Center).size(32.dp),
             )
         }
+        if (selecting) SelectionMark(selected, MaterialTheme.colorScheme.inverseOnSurface, Modifier.align(Alignment.TopStart).padding(4.dp).size(22.dp))
     }
 }

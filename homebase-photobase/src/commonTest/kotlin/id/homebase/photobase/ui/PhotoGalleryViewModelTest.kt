@@ -10,6 +10,14 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGallerySource
+import id.homebase.photobase.gallery.PhotoBin
+import id.homebase.photobase.gallery.PhotoBinResult
+import id.homebase.photobase.gallery.PhotoBinServer
+import id.homebase.photobase.gallery.PhotoShelf
+import id.homebase.photobase.gallery.galleryTestFile
+import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.FileVersionTag
+import id.homebase.api.client.drives.files.PerFileResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,6 +34,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -80,6 +90,7 @@ class PhotoGalleryViewModelTest {
         library.publish()
         val viewModel = PhotoGalleryViewModel(
             library.source,
+            noBin(),
             driveState = driveState,
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
@@ -219,7 +230,7 @@ class PhotoGalleryViewModelTest {
         var recounts = 0
         val failed = MutableStateFlow(true)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, countFailed = failed, recount = { recounts++ }, reading = StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), countFailed = failed, recount = { recounts++ }, reading = StandardTestDispatcher(testScheduler))
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.countFailed)
 
@@ -413,7 +424,7 @@ class PhotoGalleryViewModelTest {
         var collections = 0
         val days = flow { collections++; emit(LibraryDays(intArrayOf(20), intArrayOf(3))); awaitCancellation() }
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, libraryDays = days, reading = StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), libraryDays = days, reading = StandardTestDispatcher(testScheduler))
         runCurrent()
         assertEquals(1, collections, "counting starts when the gallery opens, not a frame later")
         assertEquals(3, viewModel.library.value?.photos)
@@ -436,7 +447,7 @@ class PhotoGalleryViewModelTest {
     fun onlyRefreshAsksTheDriveToSync() = runTest {
         var syncs = 0
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, refresh = { syncs++ }, reading = StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), refresh = { syncs++ }, reading = StandardTestDispatcher(testScheduler))
         advanceUntilIdle()
         assertEquals(0, syncs)
 
@@ -448,7 +459,7 @@ class PhotoGalleryViewModelTest {
     fun openingAPhotoUsesTheMediaViewerKeyedByFileId() = runTest {
         val photo = item(1)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, reading = StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), reading = StandardTestDispatcher(testScheduler))
 
         viewModel.onAction(PhotoGalleryUiAction.Open(photo))
         assertEquals(photo.fileId, viewModel.uiState.value.openedFileId)
@@ -489,7 +500,188 @@ class PhotoGalleryViewModelTest {
         assertSame(video.keyHeader.aesKey, keyHeader.aesKey)
     }
 
+    /** Answers every write with [failure] thrown, or as done; [status] is where each photo it moved is now. */
+    private class Server : PhotoBinServer {
+        val moved = mutableListOf<Pair<ArchivalStatus, List<Uuid>>>()
+        val status = mutableMapOf<Uuid, ArchivalStatus>()
+        var failure: Exception? = null
+        var gate: CompletableDeferred<Unit>? = null
+
+        override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>): List<PerFileResult> {
+            failure?.let { throw it }
+            gate?.await()
+            moved += status to files.map { it.fileId }
+            files.forEach { this.status[it.fileId] = status }
+            return files.map { PerFileResult(it.fileId) }
+        }
+
+        override suspend fun softDelete(files: List<FileVersionTag>) = files.map { PerFileResult(it.fileId) }
+
+        override suspend fun header(fileId: Uuid): HomebaseFile? = null
+    }
+
+    private fun noBin() = PhotoBin(Server(), filesOf = { emptyList() }, binned = { emptyList() }, sync = {})
+
+    private fun TestScope.binViewModel(library: Library, server: Server, shelf: PhotoShelf = PhotoShelf.Library): Pair<PhotoGalleryViewModel, Job> {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        library.publish()
+        val onShelf = if (shelf == PhotoShelf.Bin) ArchivalStatus.Removed else ArchivalStatus.None
+        val bin = PhotoBin(
+            server = server,
+            // The device holds every photo it's asked for, synced at once.
+            filesOf = { ids -> ids.map { id -> galleryTestFile(0, fileId = id).onShelf(server.status[id] ?: onShelf) } },
+            binned = { emptyList() },
+            sync = {},
+        )
+        val viewModel = PhotoGalleryViewModel(
+            library.source,
+            bin,
+            shelf = shelf,
+            libraryDays = library.counts.filterNotNull(),
+            touchedDays = library.touched,
+            reading = StandardTestDispatcher(testScheduler),
+        )
+        val screen = launch { viewModel.library.collect { } }
+        advanceUntilIdle()
+        return viewModel to screen
+    }
+
+    @Test
+    fun aPhotoIsPickedAndLetGoAndADayAllAtOnce() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val (viewModel, screen) = viewModel(library)
+        val photo = library.photos.getValue(3).first()
+
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo.fileId))
+        assertEquals(setOf(photo.fileId), viewModel.uiState.value.selected)
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo.fileId))
+        assertFalse(viewModel.uiState.value.selecting)
+
+        val day = library.photos.getValue(3).mapTo(HashSet()) { it.fileId }
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo.fileId))
+        viewModel.onAction(PhotoGalleryUiAction.ToggleDay(3))
+        assertEquals(day, viewModel.uiState.value.selected, "a day partly picked is picked whole")
+        viewModel.onAction(PhotoGalleryUiAction.ToggleDay(3))
+        assertEquals(emptySet(), viewModel.uiState.value.selected, "and a day picked whole is let go")
+        screen.cancel()
+    }
+
+    @Test
+    fun movingToTheBinLetsTheSelectionGoAndOffersUndo() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = binViewModel(library, server)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val picked = library.photos.getValue(3).take(2).mapTo(HashSet()) { it.fileId }
+        picked.forEach { viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(it)) }
+
+        viewModel.onAction(PhotoGalleryUiAction.MoveToBin)
+        assertFalse(viewModel.uiState.value.selecting, "at once, not when the server answers")
+        advanceUntilIdle()
+
+        assertEquals(listOf(ArchivalStatus.Removed to picked), server.moved.map { it.first to it.second.toSet() })
+        val done = assertIs<PhotoGalleryEvent.BinDone>(events.single())
+        assertEquals(PhotoBinResult(done = 2, written = picked), done.result)
+        assertEquals(picked, done.undo)
+        assertFalse(viewModel.uiState.value.busy)
+
+        viewModel.onAction(PhotoGalleryUiAction.Undo(done.undo))
+        advanceUntilIdle()
+        assertEquals(ArchivalStatus.None, server.moved.last().first)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun aMoveThatDoesntGetThroughGivesTheSelectionBack() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server().apply { failure = IllegalStateException("offline") }
+        val (viewModel, screen) = binViewModel(library, server)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val photo = library.photos.getValue(3).first().fileId
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo))
+
+        viewModel.onAction(PhotoGalleryUiAction.MoveToBin)
+        advanceUntilIdle()
+
+        assertEquals(setOf(photo), viewModel.uiState.value.selected)
+        assertEquals(PhotoGalleryEvent.BinFailed(BinAction.MoveToBin), events.single())
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun theOpenPhotoMovesToTheBin() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = binViewModel(library, server)
+        val open = library.photos.getValue(3).first()
+
+        viewModel.onAction(PhotoGalleryUiAction.MovePhotoToBin(open.fileId))
+        advanceUntilIdle()
+
+        assertEquals(listOf(ArchivalStatus.Removed to listOf(open.fileId)), server.moved)
+        screen.cancel()
+    }
+
+    @Test
+    fun aBigDayTakesInOnlyThePhotosOfItsOwnShelf() = runTest {
+        val library = Library(1..1, perDay = 200)
+        val (viewModel, screen) = binViewModel(library, Server(), shelf = PhotoShelf.Bin)
+        val binned = galleryTestFile(DAY_MS + 500).onShelf(ArchivalStatus.Removed)
+        val restored = galleryTestFile(DAY_MS + 600)
+
+        library.touched.emit(mapOf(1 to listOf(binned, restored)))
+        advanceUntilIdle()
+
+        val held = viewModel.uiState.value.loaded.getValue(1).map { it.fileId }
+        assertTrue(binned.fileId in held)
+        assertFalse(restored.fileId in held, "a photo back on the library leaves the bin")
+        screen.cancel()
+    }
+
+    @Test
+    fun anUndoTappedWhileAnotherActionRunsWaitsForItInsteadOfBeingDropped() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = binViewModel(library, server)
+        val first = library.photos.getValue(3)[0].fileId
+        val second = library.photos.getValue(3)[1].fileId
+        viewModel.onAction(PhotoGalleryUiAction.MovePhotoToBin(first))
+        advanceUntilIdle()
+
+        server.gate = CompletableDeferred()
+        viewModel.onAction(PhotoGalleryUiAction.MovePhotoToBin(second))
+        runCurrent()
+        assertTrue(viewModel.uiState.value.busy)
+        viewModel.onAction(PhotoGalleryUiAction.Undo(setOf(first)))
+        server.gate?.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(ArchivalStatus.Removed, ArchivalStatus.Removed, ArchivalStatus.None), server.moved.map { it.first })
+        assertEquals(listOf(first), server.moved.last().second)
+        assertFalse(viewModel.uiState.value.busy)
+        screen.cancel()
+    }
+
+    @Test
+    fun daysAlreadyCountedWhenTheViewModelIsMadeDontFindItHalfBuilt() = runTest {
+        // Delivered at once, as the day index does when it holds the days already, on another thread.
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val days = flowOf(LibraryDays(intArrayOf(3), intArrayOf(1)))
+
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), libraryDays = days, reading = Dispatchers.Unconfined)
+
+        assertEquals(listOf(3), viewModel.library.value?.days?.toList())
+    }
+
     private companion object {
         const val DAY_MS = 86_400_000L
     }
 }
+
+private fun HomebaseFile.onShelf(status: ArchivalStatus) = copy(
+    fileMetadata = fileMetadata.copy(appData = fileMetadata.appData.copy(archivalStatus = status), versionTag = Uuid.random()),
+)

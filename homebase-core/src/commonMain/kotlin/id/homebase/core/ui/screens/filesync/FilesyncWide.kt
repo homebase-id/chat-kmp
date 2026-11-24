@@ -112,7 +112,7 @@ import id.homebase.resources.filesync_refresh
 import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_select
 import id.homebase.resources.filesync_select_all
-import id.homebase.resources.filesync_selected
+import id.homebase.resources.selected_count
 import id.homebase.resources.filesync_search
 import id.homebase.resources.filesync_selected_size
 import id.homebase.resources.filesync_tags_here
@@ -815,7 +815,7 @@ private fun Footer(uiState: FilesyncUiState) {
         )
         val selected = uiState.selected
         if (selected.isNotEmpty()) {
-            val count = pluralStringResource(MR.plurals.filesync_selected, selected.size, selected.size)
+            val count = pluralStringResource(MR.plurals.selected_count, selected.size, selected.size)
             val bytes = uiState.selectedTotals.bytes
             Text(
                 text = if (bytes > 0) stringResource(MR.string.filesync_selected_size, count, formatBytes(bytes)) else count,

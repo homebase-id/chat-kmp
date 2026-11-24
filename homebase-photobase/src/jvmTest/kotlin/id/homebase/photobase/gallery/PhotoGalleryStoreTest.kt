@@ -9,6 +9,7 @@ import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
@@ -84,7 +85,23 @@ class PhotoGalleryStoreTest {
 
         assertEquals(emptyList(), store.dayCounts())
         assertNull(CursorStorage(db, PhotobaseProtocol.DriveAlias).loadCursor())
-        assertEquals(1, PhotoGalleryStore(db, { identity }, otherDrive).dayCounts().single().photos)
+        assertEquals(1, PhotoGalleryStore(db, { identity }, photosDriveId = otherDrive).dayCounts().single().photos)
         assertNotNull(CursorStorage(db, otherDrive).loadCursor())
+    }
+
+    @Test
+    fun theBinsStoreCountsOnlyTheBinAndFindsPhotosOnEitherShelf() = runTest {
+        val kept = galleryTestFile(on(20_000))
+        val binned = galleryTestFile(on(20_000, minute = 1)).let {
+            it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(archivalStatus = ArchivalStatus.Removed)))
+        }
+        synced(kept, binned)
+        val bin = PhotoGalleryStore(db, { identity }, PhotoShelf.Bin)
+        val day = dayOf(on(20_000))
+
+        assertEquals(listOf(day to 1), bin.dayCounts().map { it.day to it.photos })
+        assertEquals(listOf(day to 1), store.dayCounts().map { it.day to it.photos })
+        assertEquals(listOf(binned.fileId), bin.filesOnShelf().map { it.fileId })
+        assertEquals(setOf(kept.fileId, binned.fileId), store.filesOf(listOf(kept.fileId, binned.fileId)).map { it.fileId }.toSet())
     }
 }

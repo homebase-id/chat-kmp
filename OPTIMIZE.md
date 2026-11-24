@@ -494,6 +494,26 @@ SQL. Medians of 15, after the phone cooled (thermal status 0).
   - `AND +userDate BETWEEN …` (shipped): 64.8 ms. The `+` stops SQLite using an index for that term, so it stays on
     the covering index.
 
+### 2026-11-24, the library and the bin (PhotoGridDbBench), same phone and library
+
+The bin is a photo with `archivalStatus = 2`, so every day query also filters on `archivalStatus` (0 for the library).
+`Idx3` doesn't hold that column, so the filter took SQLite off its covering index. Medians of 15, thermal status 0.
+
+| Query | Before | Filtered, today's indexes | Filtered, with `IdxPhotoShelf` (shipped) |
+|---|---|---|---|
+| All days, library | 62.6 ms | 937 ms | 63.4 ms |
+| All days, bin (empty) | | 855 ms | 4.1 ms |
+| One day, busiest day (1,813 photos) | 47.4 ms | | 8.5 ms |
+| One day, median day | 3.9 ms | | 4.5 ms |
+| Building the index, once per install | | | 1,488 ms |
+
+- **`IdxPhotoShelf(identityId, driveId, archivalStatus, fileState, userDate) WHERE fileType = 7201 AND
+  fileSystemType = 0`:** photos only, so chat writes don't keep it. A query uses a partial index only when it names
+  the same terms itself, so the photo queries say `fileType = 7201` rather than taking it as a parameter.
+- **No version bump:** `Schema.create` runs every `CREATE INDEX IF NOT EXISTS` on each open, so an installed app
+  builds it at its first start with this version: 1.5 s on this 562 MB database, inside the database open at
+  startup. A device with no photos still reads the table, but builds an empty index.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
