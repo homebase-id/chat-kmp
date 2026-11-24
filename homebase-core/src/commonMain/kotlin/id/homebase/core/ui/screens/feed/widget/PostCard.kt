@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,7 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -45,10 +50,12 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
+import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.authorOdinId
 import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
 import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
+import id.homebase.core.ui.screens.moments.widget.MomentMediaItem
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.ui.screens.moments.widget.feedMediaMaxHeight
 import id.homebase.core.util.formatTimestamp
@@ -70,6 +77,7 @@ import kotlin.uuid.Uuid
 import kotlin.time.Instant
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_encrypted
+import id.homebase.resources.feed_open_article
 import id.homebase.resources.feed_view_all_comments
 import org.jetbrains.compose.resources.stringResource
 
@@ -134,42 +142,50 @@ fun PostCard(
             )
         }
 
-        // Drop a caption that is nothing but the URL the link card already shows; a URL embedded in real
-        // caption text is kept — we don't silently edit the author's words.
-        val hasLinkCard = post.payloads.any { it.key == FeedProtocol.LinksPayloadKey }
-        val captionIsLoneUrl = post.caption.trim().let { c ->
-            c.startsWith("http", ignoreCase = true) && c.none { it.isWhitespace() }
-        }
-        if (post.caption.isNotBlank() && !(hasLinkCard && captionIsLoneUrl)) {
-            PostBody(
-                caption = post.caption,
-                onExpandFetchFullText = onExpandFetchFullText,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        if (post.type == PostType.Article) {
+            ArticleCardBody(
+                post = post,
+                onClick = onPostClick,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
-        }
+        } else {
+            // Drop a caption that is nothing but the URL the link card already shows; a URL embedded in real
+            // caption text is kept — we don't silently edit the author's words.
+            val hasLinkCard = post.payloads.any { it.key == FeedProtocol.LinksPayloadKey }
+            val captionIsLoneUrl = post.caption.trim().let { c ->
+                c.startsWith("http", ignoreCase = true) && c.none { it.isWhitespace() }
+            }
+            if (post.caption.isNotBlank() && !(hasLinkCard && captionIsLoneUrl)) {
+                PostBody(
+                    caption = post.caption,
+                    onExpandFetchFullText = onExpandFetchFullText,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
 
-        post.embeddedPost?.let { embedded ->
-            QuotedPost(
-                embedded = embedded,
-                authorName = embeddedAuthorName,
+            post.embeddedPost?.let { embedded ->
+                QuotedPost(
+                    embedded = embedded,
+                    authorName = embeddedAuthorName,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+
+            // Mutually exclusive with media: the sender saves one or the other.
+            PostLinkPreview(
+                post = post,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
+
+            PostMedia(
+                post = post,
+                onMediaClick = onMediaClick,
+                onDoubleTapLike = { if (DOUBLE_TAP_EMOJI !in post.ownReactions) onToggleReaction(DOUBLE_TAP_EMOJI) },
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
         }
-
-        // Mutually exclusive with media: the sender saves one or the other.
-        PostLinkPreview(
-            post = post,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-
-        PostMedia(
-            post = post,
-            onMediaClick = onMediaClick,
-            onDoubleTapLike = { if (DOUBLE_TAP_EMOJI !in post.ownReactions) onToggleReaction(DOUBLE_TAP_EMOJI) },
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope,
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        )
 
         PostInteracts(
             reactionSummary = post.reactionPreview,
@@ -189,6 +205,61 @@ fun PostCard(
             onViewAll = onOpenComments,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
         )
+    }
+}
+
+internal const val ArticleHeaderTag = "articleHeader"
+
+@Composable
+private fun ArticleCardBody(
+    post: FeedPostItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clickable(onClickLabel = stringResource(MR.string.feed_open_article), role = Role.Button, onClick = onClick)
+            .padding(bottom = 8.dp),
+    ) {
+        post.articleHeader?.let { header ->
+            val source = post.mediaSource()
+            MomentMediaItem(
+                payload = header,
+                fileId = post.fileId,
+                driveId = source.driveId,
+                previewThumbnail = post.previewThumbnail,
+                keyHeader = post.keyHeader,
+                isEncrypted = post.isEncrypted,
+                // Decorative: the card's own label already says it opens the article.
+                modifier = Modifier.fillMaxWidth().aspectRatio(2f).clearAndSetSemantics { testTag = ArticleHeaderTag },
+                shape = RectangleShape,
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
+                messageId = post.id,
+                remoteOdinId = source.remoteOdinId,
+                globalTransitId = source.globalTransitId,
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+        if (post.caption.isNotBlank()) {
+            Text(
+                text = post.caption,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
+        post.articleSummary?.let { summary ->
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
+            )
+        }
     }
 }
 
@@ -411,8 +482,21 @@ private fun PostLinkPreview(
     )
 }
 
-// A followed identity's media lives on the author's drive, so a received post (non-null senderOdinId) reads
-// over peer by globalTransitId from the author's channel drive; our own posts stay on the local driveId.
+internal class PostMediaSource(val driveId: Uuid, val remoteOdinId: OdinId?, val globalTransitId: Uuid?)
+
+// A followed identity's media lives on the author's channel drive, so a received post (non-null senderOdinId)
+// reads over peer by globalTransitId; our own posts stay on the local driveId.
+internal fun FeedPostItem.mediaSource(): PostMediaSource {
+    val channelDriveAlias = runCatching { Uuid.parse(channelId) }.getOrNull()
+    val sender = senderOdinId
+    val gtid = globalTransitId
+    return if (sender != null && gtid != null && channelDriveAlias != null) {
+        PostMediaSource(channelDriveAlias, sender, gtid)
+    } else {
+        PostMediaSource(driveId, null, null)
+    }
+}
+
 @Composable
 private fun PostMedia(
     post: FeedPostItem,
@@ -424,17 +508,8 @@ private fun PostMedia(
 ) {
     val mediaPayloads: List<PayloadDescriptor> =
         post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
-
-    // The peer read targets the author's CHANNEL drive (post.channelId), NOT the local feed drive.
-    val peerGtid = post.globalTransitId
-    val channelDriveAlias = runCatching { Uuid.parse(post.channelId) }.getOrNull()
-    val isPeerMedia = post.senderOdinId != null && peerGtid != null && channelDriveAlias != null
-
     if (mediaPayloads.isEmpty()) return
-
-    val mediaDriveId = channelDriveAlias?.takeIf { isPeerMedia } ?: post.driveId
-    val mediaRemoteOdinId = post.senderOdinId?.takeIf { isPeerMedia }
-    val mediaGlobalTransitId = peerGtid?.takeIf { isPeerMedia }
+    val source = post.mediaSource()
 
     var burstTick by remember { mutableIntStateOf(0) }
 
@@ -442,7 +517,7 @@ private fun PostMedia(
         MomentMediaGallery(
             payloads = mediaPayloads,
             fileId = post.fileId,
-            driveId = mediaDriveId,
+            driveId = source.driveId,
             previewThumbnail = post.previewThumbnail,
             keyHeader = post.keyHeader,
             isEncrypted = post.isEncrypted,
@@ -460,8 +535,8 @@ private fun PostMedia(
             messageId = post.id,
             downloadingFiles = emptySet(),
             minAspect = FeedMinMediaAspect,
-            remoteOdinId = mediaRemoteOdinId,
-            globalTransitId = mediaGlobalTransitId,
+            remoteOdinId = source.remoteOdinId,
+            globalTransitId = source.globalTransitId,
         )
         DoubleTapHeartBurst(tick = burstTick)
     }

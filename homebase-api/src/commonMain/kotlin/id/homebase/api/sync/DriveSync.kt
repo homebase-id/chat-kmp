@@ -238,7 +238,7 @@ class DriveSync(
                 try {
                     if (!fromPrefetch) killroy.value = false // Atomic
                     queryBatchResponse = pendingPrefetch
-                        ?: driveQueryProvider.queryBatch(driveId, request, ownerOdinId)
+                        ?: driveQueryProvider.queryBatch(driveId, request, ownerOdinId, skipUnreadable = true)
                     pendingPrefetch = null
 
                     if (queryBatchResponse.cursorState != null)
@@ -396,7 +396,7 @@ class DriveSync(
 
                 val response = try {
                     killroy.value = false // Atomic
-                    driveQueryProvider.queryBatch(driveId, request)
+                    driveQueryProvider.queryBatch(driveId, request, skipUnreadable = true)
                 } catch (e: Exception) {
                     Logger.w("DriveSync: initial query on $driveId failed, continuing to windowed crawl: ${e.message}")
                     return runningTotal

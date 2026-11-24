@@ -16,6 +16,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostContent
+import id.homebase.core.feed.services.ownPrimaryMedia
 import id.homebase.core.image.HomebaseImageData
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -118,16 +119,9 @@ internal fun cardPost(odinId: String, channel: CardChannel, file: HomebaseFile):
 internal fun cardPostHref(odinId: String, channelSlug: String, postKey: String): String =
     "https://$odinId/posts/$channelSlug/$postKey"
 
-// Media on another file would need that file's own payload descriptor; the card leaves it out.
 @OptIn(ExperimentalEncodingApi::class)
 internal fun postImage(file: HomebaseFile, content: PostContent): HomebaseImageData? {
-    val media = content.primaryMediaFile ?: return null
-    if (media.type.substringBefore('/').lowercase() !in setOf("image", "video")) return null
-    val mediaFileId = media.fileId?.ifBlank { null }
-    if (mediaFileId != null && !mediaFileId.replace("-", "").equals(file.fileId.toHexString(), ignoreCase = true)) {
-        return null
-    }
-    val payload = file.fileMetadata.getPayloadDescriptor(media.fileKey) ?: return null
+    val payload = file.ownPrimaryMedia(content) ?: return null
     val iv = payload.iv?.bytes
     return HomebaseImageData.from(
         driveId = file.driveId,

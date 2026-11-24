@@ -325,7 +325,8 @@ class DriveSyncManager(
                             )
                         },
                         maxRecords = COLLECTION_BUDGET,
-                    )
+                    ),
+                    skipUnreadable = true,
                 )
             }.onFailure { e ->
                 // Also reached on caller cancellation — the NonCancellable resume below still runs.

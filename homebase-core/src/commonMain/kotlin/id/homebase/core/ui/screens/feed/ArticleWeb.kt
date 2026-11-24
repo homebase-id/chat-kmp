@@ -5,9 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,10 +45,17 @@ internal fun articleWebUrl(
         "${identity.encodeURLPathPart()}/${channelId.encodeURLPathPart()}/${post.encodeURLPathPart()}"
 }
 
+internal fun resolveIsDark(theme: ThemeState, isSystemDark: Boolean): Boolean = when (theme) {
+    ThemeState.Dark -> true
+    ThemeState.Light -> false
+    ThemeState.System -> isSystemDark
+}
+
 internal data class ArticleWebUiState(
     val url: String? = null,
     val injectionScript: String? = null,
     val error: String? = null,
+    val isLoading: Boolean = false,
 )
 
 class ArticleWebViewModel(
@@ -60,6 +64,13 @@ class ArticleWebViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ArticleWebUiState())
     internal val uiState: StateFlow<ArticleWebUiState> = _uiState.asStateFlow()
+
+    internal fun onPageStarted() = _uiState.update { it.copy(isLoading = true) }
+
+    internal fun onPageFinished() = _uiState.update { it.copy(isLoading = false) }
+
+    internal fun onPageError(message: String) =
+        _uiState.update { it.copy(isLoading = false, error = message) }
 
     internal fun load(post: FeedPostItem, isSystemDark: Boolean) {
         viewModelScope.launch {
@@ -73,11 +84,7 @@ class ArticleWebViewModel(
                     slug = post.slug,
                     postId = post.id.toString(),
                 )
-                val isDark = when (userPreferences.theme) {
-                    ThemeState.Dark -> true
-                    ThemeState.Light -> false
-                    ThemeState.System -> isSystemDark
-                }
+                val isDark = resolveIsDark(userPreferences.theme, isSystemDark)
                 _uiState.value = ArticleWebUiState(
                     url = url,
                     injectionScript = buildFeedInjectionScript(
@@ -120,25 +127,28 @@ internal fun ArticleWebContent(
         return
     }
 
-    var pageError by remember(url) { mutableStateOf<String?>(null) }
-    var isLoading by remember(url) { mutableStateOf(false) }
-    val error = state.error ?: pageError
-    when {
-        error != null -> FeedErrorView(errorMessage = error, onRetry = { viewModel.load(post, isSystemDark) })
-        url != null -> FeedWebView(
-            url = url,
-            injectionScript = state.injectionScript,
-            isLoading = isLoading,
-            identityHosts = setOfNotNull(post.authorOdinId?.domainName?.lowercase()),
-            onAction = { action ->
-                when (action) {
-                    FeedUiAction.PageStarted -> isLoading = true
-                    FeedUiAction.PageFinished -> isLoading = false
-                    is FeedUiAction.PageError -> pageError = action.message
-                    FeedUiAction.RetryClicked -> Unit
-                }
-            },
-        )
-        else -> Box(modifier.fillMaxSize())
+    val error = state.error
+    Box(modifier.fillMaxSize()) {
+        when {
+            error != null -> FeedErrorView(
+                errorMessage = error,
+                onRetry = { viewModel.load(post, isSystemDark) },
+            )
+            url != null -> FeedWebView(
+                url = url,
+                injectionScript = state.injectionScript,
+                isLoading = state.isLoading,
+                minDisplayMs = 0,
+                identityHosts = setOfNotNull(post.authorOdinId?.domainName?.lowercase()),
+                onAction = { action ->
+                    when (action) {
+                        FeedUiAction.PageStarted -> viewModel.onPageStarted()
+                        FeedUiAction.PageFinished -> viewModel.onPageFinished()
+                        is FeedUiAction.PageError -> viewModel.onPageError(action.message)
+                        FeedUiAction.RetryClicked -> Unit
+                    }
+                },
+            )
+        }
     }
 }

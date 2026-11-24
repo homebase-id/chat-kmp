@@ -2419,6 +2419,7 @@
     <string name="feed_comment_denied_unknown">We couldn't determine whether you can comment on this post.</string>
     <string name="feed_comments_title">Comments</string>
     <string name="feed_post_empty_comments">No comments yet — be the first to comment.</string>
+    <string name="feed_open_article">Open article</string>
     <string name="feed_view_all_comments">View all comments</string>
     <string name="feed_comment_encrypted">Encrypted comment</string>
     <string name="feed_comment_action_failed">Something went wrong. Please try again.</string>
