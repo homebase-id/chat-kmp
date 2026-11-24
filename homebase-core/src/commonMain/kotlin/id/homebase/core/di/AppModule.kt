@@ -44,6 +44,7 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.core.config.photosLabeledDrive
 import id.homebase.api.sync.DriveSyncPolicy
 import kotlin.time.Duration.Companion.days
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -200,14 +201,14 @@ import id.homebase.core.config.getPhotobasePermissionExtensionConfig
 import id.homebase.core.photobase.PhotoBackupTrigger
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.core.photobase.PhotobaseProtocol
-import id.homebase.photobase.gallery.PhotoGalleryRepository
 import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
+import id.homebase.photobase.gallery.librarySynced
+import id.homebase.photobase.gallery.newPhotoRecords
 import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
 import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
-import id.homebase.photobase.gallery.PhotoGallerySync
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.backup.AssetHasher
@@ -639,11 +640,12 @@ val appModule = module {
                 ),
             ),
             // Chat is the landing screen (and web's first paint): first claim on the greedy budget.
-            // Feed and Moments are large and not visible on first paint: after every small drive.
+            // Feed, Moments and Photos are large and not visible on first paint: after every small drive.
             collectionHead = listOf(chatLabeledDrive.drive.alias),
             collectionTail = listOf(
                 feedLabeledDrive.drive.alias,
                 momentsLabeledDrive.drive.alias,
+                photosLabeledDrive.drive.alias,
             ),
         )
     }
@@ -677,8 +679,6 @@ val appModule = module {
             driveFileProviderCached = get(),
             contactInfo = get(),
             beforeLogout = { hasSession ->
-                get<PhotoGallerySync>().stop()
-                get<PhotoGalleryStore>().stop()
                 get<PhotoBackupEntry>().onBeforeLogout(hasSession)
             },
             clearPlatformCaches = {
@@ -1126,7 +1126,6 @@ val appModule = module {
     single { PhotoBackupEntry({ get<DeveloperPreferences>().photobaseEnabled.value }) { get<PhotoBackupController>() } }
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
     single { PhotobasePreferences(get()) }
-    single { PhotoGalleryRepository(get()) }
     // Far bigger than chat's 300 MB because it holds a library: at Small's measured 14-20 KB
     // (OPTIMIZE.md), about 50,000 photos. Web's cache lives in memory and doesn't survive a reload.
     single {
@@ -1138,8 +1137,7 @@ val appModule = module {
             cancelWhenUnwatched = true,
         )
     }
-    single { photoGalleryStore(get(), get(), get()) }
-    single { PhotoGallerySync(get(), get(), get(), get()) }
+    single { photoGalleryStore(get(), get()) }
     single {
         val files = get<DriveFileProviderCached>()
         PhotoThumbnailPrefetcher(
@@ -1147,6 +1145,7 @@ val appModule = module {
             // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
             // Nor on web, where the cache is gone at the next reload.
             mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
+            librarySynced = { get<DriveSyncManager>().driveStatuses.value[PhotobaseProtocol.DriveAlias]?.state.librarySynced() },
             ensureThumbnail = { item, size ->
                 files.ensureThumbCached(item.driveId, item.fileId, item.shown.key, size.pixelWidth, size.pixelHeight, item.shown.lastModified)
             },
@@ -1513,7 +1512,7 @@ val appModule = module {
             autoCheck = false,
         )
     }
-    // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
+    // Checked on open, unlike the other add-ons: uninstalling Photobase on the server tells the phone nothing.
     viewModel(PhotobasePermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
@@ -1530,10 +1529,22 @@ val appModule = module {
         PhotobaseUninstallCleanup(
             isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
             forget = {
-                get<PhotoGallerySync>().stop()
+                // Locally first: the shared registry is a network write, and its failing mustn't stop the wipe.
+                if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoThumbnailPrefetcher>().reset()
                 get<PhotoBackupEntry>().forgetDrive()
+                // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
+                val registry = get<DriveRegistry>()
+                if (registry.loadDrives().any { it.drive.alias == PhotobaseProtocol.DriveAlias }) {
+                    try {
+                        registry.removeDrive(PhotobaseProtocol.DriveAlias)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.w(tag = "Photobase", throwable = e) { "couldn't take Photos out of the drive registry" }
+                    }
+                }
             },
             scope = get<kotlinx.coroutines.CoroutineScope>(),
         )
@@ -1542,20 +1553,23 @@ val appModule = module {
         PhotobaseSetupViewModel(
             get(PhotobasePermissionQualifier),
             get<PhotobaseUninstallCleanup>()::onNotInstalled,
-            get<PhotoBackupController>().takeIf { it.isSupported },
+            onInstalled = { if (!photosMounted()) get<OptionalDriveActivation>().activate(photosLabeledDrive) },
+            backup = get<PhotoBackupController>().takeIf { it.isSupported },
         )
     }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel {
-        val sync = get<PhotoGallerySync>()
         val prefetcher = get<PhotoThumbnailPrefetcher>()
+        val drives = get<DriveSyncManager>()
         PhotoGalleryViewModel(
-            source = get<PhotoGalleryStore>().also { it.resume() },
-            catchUp = sync::syncNow,
+            source = get<PhotoGalleryStore>(),
+            // syncDrive throws on a drive that isn't mounted, which it may stop being between the check and the call.
+            refresh = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
             warm = prefetcher::prefetch,
             pauseWarm = prefetcher::pause,
-            backedUpCount = get<PhotoBackupController>().status?.map { it.backedUpCount },
+            changes = get<EventBus>().events.newPhotoRecords(),
+            driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
         )
     }
     viewModel(FilesyncPermissionQualifier) {
@@ -1776,3 +1790,5 @@ private fun Scope.photoBackupController(): PhotoBackupController {
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds
 private const val CALL_WS_HOLD = "call"
+
+private fun org.koin.core.scope.Scope.photosMounted(): Boolean = get<OptionalDriveActivation>().isActivated(photosLabeledDrive)

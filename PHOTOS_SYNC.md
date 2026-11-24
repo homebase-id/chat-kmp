@@ -33,7 +33,7 @@ AGPL — this plan uses their *behaviour* only; no code is to be copied.
 | Gallery platforms | All four, read-only; backup runs on Android and iOS only |
 | Backup wake-ups | The app schedules recurring silent pushes through odin-core, with an adjustable interval (§6.2) |
 | Sending uploads | The ledger feeds one shared Outbox, with one upload slot reserved for chat (§3.4) |
-| Gallery data | v1 queries the server directly, like Filesync; the Photos drive is never mounted or synced to the device; reconsidered in v2 (§3.5) |
+| Gallery data | The Photos drive is a mounted drive: the drive sync keeps a copy on the device and the gallery reads it (§3.5; 2026-11-23, replacing v1's server queries) |
 | Push entry | `onPushArrived` only calls `PhotoBackupTrigger.onWake()`, so backup can be lifted out later (§3.3) |
 
 ---
@@ -184,8 +184,8 @@ derived from both parts; an Android motion photo is one file, so its id comes fr
    HLS path instead; how this check applies there is settled when that task is built.
 
 **Dedupe across devices.**
-- Before uploading: ask the server (query by `uniqueId` on the Photos drive; there's no local index
-  in v1, §3.5). If present → mark `DONE`, no upload.
+- Before uploading: ask the server (query by `uniqueId` on the Photos drive; the device's copy may
+  lag another device's backup). If present → mark `DONE`, no upload.
 - Two devices racing on the same photo both pass the check; the server keeps one file per
   `uniqueId` per drive and rejects the second with `ExistingFileWithUniqueId` (4105,
   `ClientException.isExistingFileWithUniqueId()`). Backup treats 4105 as **success** → `DONE`,
@@ -231,13 +231,16 @@ backup outbox, because it would duplicate `OutboxSync`'s retry, storage-full and
 - Registers its own app, Photos drive (`SelectiveShare`) and circle, following
   `filesyncAppRegistration` in `AppConfig.kt`. Sharing UI is out of scope.
 - Gallery, on all four platforms and read-only: tiny thumbnail first, then larger sizes.
-- **Data:** v1 queries the server directly and pages through results, like the Filesync browser. The
-  Photos drive is never mounted, so it stays out of `syncAll` on wake-ups and there's no local copy of
-  tens of thousands of photo records. The cost: the gallery needs a network connection.
-- **Refresh:** the gallery queries when it opens and from a refresh button in the top bar, on all
-  four platforms. With no sync or WebSocket, that's how photos from other devices appear.
-- **Activation:** the recipe's `OptionalDriveActivation` and `FooStream` assume a mounted drive, so
-  they don't apply; follow Filesync's approach instead.
+- **Data:** the Photos drive is mounted like any add-on's drive, and only `DriveSyncManager` syncs it.
+  The gallery reads the device's copy, so it works offline. It's in `collectionTail`, so a first sync of
+  a big library comes after the small drives on every wake-up. (v1 queried the server and never
+  mounted the drive, to keep tens of thousands of records off the device and out of wake-ups;
+  2026-11-23 reversed that so the gallery can scroll the whole library.)
+- **Updates:** a sync round writes without events and sends `Stopped` once it's done; after that each
+  change arrives with its file in `BatchReceived`, over the WebSocket. The gallery follows both, shows
+  the drive sync's progress, and its refresh button asks the drive to sync.
+- **Activation:** `OptionalDriveActivation`, once the setup check finds Photobase installed. Once it's
+  found uninstalled, the drive is unmounted and its records and sync position deleted.
 - **Grid:** a new control, kept simple, modelled on `MomentsAlbumGrid` (grouped by capture date).
   `MomentsAlbumGrid` itself is tied to Moments and isn't reused.
 - **Viewer:** `FullScreenMediaViewer` as is, plus chat-kmp's video player. It lives in
@@ -531,7 +534,7 @@ and for "N items keep failing".
 - [ ] Consider how to handle edited photos
 - [ ] Live Photo and motion photo playback (designed 2026-11-22: THUMBNAILS.md, "Live and motion photos")
 - [ ] Reconsider how videos are stored, including rotated-video quality and offering the original file
-- [ ] Reconsider syncing the Photos drive to the device instead of querying the server
+- [x] Reconsider syncing the Photos drive to the device instead of querying the server (2026-11-23: mounted)
 
 ### Out of scope
 - Standalone Photobase app and SDK split

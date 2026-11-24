@@ -8,8 +8,8 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGalleryPage
 import id.homebase.photobase.gallery.PhotoGalleryPageSource
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -18,6 +18,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
+import id.homebase.api.sync.DriveState
+import id.homebase.photobase.gallery.PhotoChange
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -75,76 +77,115 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
-    fun itShowsWhatsHeldThenCatchesUpAndWarmsTheCache() = runTest {
+    fun itWarmsTheCacheOnceTheGridIsAsked() = runTest {
         val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
-        var caughtUp = 0
         var warmed = 0
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel(
-            source,
-            StandardTestDispatcher(testScheduler),
-            catchUp = {
-                assertEquals(1, source.asked.size, "The grid must not wait on the catch-up")
-                caughtUp++
-            },
-            warm = { warmed++ },
-        )
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), warm = { warmed++ })
         testScheduler.advanceUntilIdle()
 
-        assertEquals(1, caughtUp)
         assertEquals(1, warmed)
-        assertEquals(2, source.asked.size, "It reloads once caught up")
+        assertEquals(1, source.asked.size)
         assertEquals(1, viewModel.uiState.value.days.flatMap { it.items }.size)
     }
 
     @Test
-    fun itSaysItsSyncingUntilTheCatchUpReturns() = runTest {
+    fun itSaysItsSyncingWithTheCountAndOnlyAfterASyncedRoundIsAnEmptyGridEmpty() = runTest {
         val source = Pages(mapOf(null to PhotoGalleryPage(emptyList(), null)))
-        val server = CompletableDeferred<Unit>()
+        val drive = MutableStateFlow<DriveState?>(null)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), catchUp = { server.await() })
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), driveState = drive)
         testScheduler.advanceUntilIdle()
-        assertTrue(viewModel.uiState.value.isSyncing, "An empty grid must not read as nothing backed up yet")
+        assertFalse(viewModel.uiState.value.librarySynced, "Not mounted yet: an empty grid must not read as nothing backed up yet")
 
-        server.complete(Unit)
+        drive.value = DriveState.Synchronizing(1_200)
+        testScheduler.advanceUntilIdle()
+        assertEquals(1_200, viewModel.uiState.value.syncedSoFar)
+
+        drive.value = DriveState.Completed(1_200)
         testScheduler.advanceUntilIdle()
         assertFalse(viewModel.uiState.value.isSyncing)
+        assertTrue(viewModel.uiState.value.librarySynced)
     }
 
     @Test
-    fun backingUpMoreCatchesUpAgainWithoutTheProgressBar() = runTest {
+    fun newRecordsOnTheDriveReloadTheFirstPage() = runTest {
         val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
-        val backedUp = MutableStateFlow(0L)
-        val syncingDuringCatchUp = mutableListOf<Boolean>()
+        val changes = MutableSharedFlow<PhotoChange>(extraBufferCapacity = 1)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        lateinit var viewModel: PhotoGalleryViewModel
-        viewModel = PhotoGalleryViewModel(
-            source,
-            StandardTestDispatcher(testScheduler),
-            catchUp = { syncingDuringCatchUp += viewModel.uiState.value.isSyncing },
-            backedUpCount = backedUp,
-        )
+        PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
         testScheduler.advanceUntilIdle()
 
-        backedUp.value = 1
+        changes.tryEmit(PhotoChange.RoundFinished)
         testScheduler.advanceUntilIdle()
 
-        assertEquals(listOf(true, false), syncingDuringCatchUp)
-        assertEquals(3, source.asked.size, "The first page, then a reload after each catch-up")
+        assertEquals(listOf<String?>(null, null), source.asked)
     }
 
     @Test
-    fun aCatchUpWhileAPhotoIsOpenWaitsForTheViewerToClose() = runTest {
+    fun newRecordsReadAgainAsManyPhotosAsWereShowing() = runTest {
+        val newest = item(3_000)
+        val pages = mutableMapOf<String?, PhotoGalleryPage>(
+            null to PhotoGalleryPage(listOf(item(2_000)), "next"),
+            "next" to PhotoGalleryPage(listOf(item(1_000)), null),
+        )
+        val source = Pages(pages)
+        val changes = MutableSharedFlow<PhotoChange>(extraBufferCapacity = 1)
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
+        testScheduler.advanceUntilIdle()
+        viewModel.onAction(PhotoGalleryUiAction.LoadMore)
+        testScheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.endReached)
+
+        // The sync writes in change order: a photo can land anywhere in what's showing, and the end moves.
+        pages[null] = PhotoGalleryPage(listOf(newest), "next")
+        pages["next"] = PhotoGalleryPage(listOf(item(2_000), item(1_000)), "more")
+        changes.tryEmit(PhotoChange.RoundFinished)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(3_000L, 2_000L, 1_000L), viewModel.uiState.value.days.flatMap { it.items }.map { it.capturedAtMs })
+        assertFalse(viewModel.uiState.value.endReached, "an end reached mid-sync is stale")
+        assertEquals(listOf(null, "next", null, "next"), source.asked, "it reads what was showing, not just the first page")
+    }
+
+    @Test
+    fun aFewFilesArrivingDontReReadALongScrollButARoundDoes() = runTest {
+        val pages = (0 until 3).associate { page ->
+            (if (page == 0) null else "p$page") to PhotoGalleryPage(List(50) { item(10_000L - page * 50 - it) }, if (page < 2) "p${page + 1}" else null)
+        }
+        val source = Pages(pages)
+        val changes = MutableSharedFlow<PhotoChange>(extraBufferCapacity = 1)
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
+        testScheduler.advanceUntilIdle()
+        repeat(2) {
+            viewModel.onAction(PhotoGalleryUiAction.LoadMore)
+            testScheduler.advanceUntilIdle()
+        }
+        val scrolled = source.asked.size
+
+        changes.tryEmit(PhotoChange.FilesArrived)
+        testScheduler.advanceUntilIdle()
+        assertEquals(scrolled, source.asked.size, "150 photos showing: each arrival would re-read them all")
+
+        changes.tryEmit(PhotoChange.RoundFinished)
+        testScheduler.advanceUntilIdle()
+        assertEquals(scrolled + 3, source.asked.size)
+    }
+
+    @Test
+    fun newRecordsWhileAPhotoIsOpenWaitForTheViewerToClose() = runTest {
         val photo = item(1_000)
         val source = Pages(mapOf(null to PhotoGalleryPage(listOf(photo), null)))
-        val backedUp = MutableStateFlow(0L)
+        val changes = MutableSharedFlow<PhotoChange>(extraBufferCapacity = 1)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), catchUp = {}, backedUpCount = backedUp)
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
         testScheduler.advanceUntilIdle()
         val beforeOpen = source.asked.size
 
         viewModel.onAction(PhotoGalleryUiAction.Open(photo))
-        backedUp.value = 1
+        changes.tryEmit(PhotoChange.RoundFinished)
         testScheduler.advanceUntilIdle()
         assertEquals(beforeOpen, source.asked.size, "Replacing the first page could drop the open photo")
 
@@ -167,33 +208,21 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
-    fun aSortToggleDoesntCatchUp() = runTest {
+    fun onlyRefreshAsksTheDriveToSync() = runTest {
         val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
-        var caughtUp = 0
+        var refreshed = 0
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), catchUp = { caughtUp++ })
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), refresh = { refreshed++ })
         testScheduler.advanceUntilIdle()
 
         viewModel.onAction(PhotoGalleryUiAction.ToggleSort)
         viewModel.onAction(PhotoGalleryUiAction.ToggleSort)
         testScheduler.advanceUntilIdle()
+        assertEquals(0, refreshed)
 
-        assertEquals(1, caughtUp)
-    }
-
-    @Test
-    fun aFailedCatchUpLeavesTheGridAlone() = runTest {
-        val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
-        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel(
-            source,
-            StandardTestDispatcher(testScheduler),
-            catchUp = { error("offline") },
-        )
+        viewModel.onAction(PhotoGalleryUiAction.Refresh)
         testScheduler.advanceUntilIdle()
-
-        assertEquals(1, viewModel.uiState.value.days.flatMap { it.items }.size)
-        assertEquals(false, viewModel.uiState.value.loadFailed)
+        assertEquals(1, refreshed)
     }
 
     @Test
@@ -222,7 +251,7 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
-    fun refreshStartsOverFromTheServer() = runTest {
+    fun refreshStartsOverFromTheFirstPage() = runTest {
         val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1)), null)))
         val viewModel = viewModel(source)
         advanceUntilIdle()

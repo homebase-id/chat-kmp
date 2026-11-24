@@ -12,12 +12,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
- * Puts the newest photos' grid thumbnails on the device before they're asked for, walking the store
- * so their records come along too. One at a time, so it can't hold up anything a person is waiting on.
+ * Puts the newest photos' grid thumbnails on the device before they're asked for. One at a time, so it
+ * can't hold up anything a person is waiting on.
  */
 class PhotoThumbnailPrefetcher(
     private val store: PhotoGalleryPageSource,
     private val mayDownload: suspend () -> Boolean,
+    private val librarySynced: () -> Boolean = { true },
     private val ensureThumbnail: suspend (PhotoGalleryItem, ImageSize) -> Unit,
 ) {
     private var finished = false
@@ -54,7 +55,8 @@ class PhotoThumbnailPrefetcher(
             seen += page.items.size
             cursor = page.nextCursor
         } while (cursor != null && seen < RECENT_PHOTOS)
-        finished = true
+        // Before the drive's sync has completed, the newest photos held aren't the library's newest: the next walk does them.
+        finished = librarySynced()
     }
 
     fun reset() {
