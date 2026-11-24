@@ -19,13 +19,6 @@ object CallPushRouter {
         fun onHangup(callId: String, from: String)
     }
 
-    /** iOS PushKit entry: routes the push and logs its arrival, since the Swift handler cannot reach the app log. */
-    fun onVoipPush(data: Map<String, String>): Boolean {
-        val routed = PushInterceptors.tryHandle(data)
-        Logger.i(tag = "CallPush") { "VoIP push arrived keys=${data.keys} handlerSet=${handler != null} routed=$routed" }
-        return routed
-    }
-
     var handler: Handler? = null
         set(value) {
             field = value
@@ -42,4 +35,11 @@ object CallPushRouter {
                 }
             }
         }
+
+    /** The Swift PushKit handler cannot reach the app log. */
+    fun onVoipPush(data: Map<String, String>): Boolean {
+        val routed = PushInterceptors.tryHandle(data)
+        Logger.i(tag = "CallPush") { "VoIP push arrived keys=${data.keys} handlerSet=${handler != null} routed=$routed" }
+        return routed
+    }
 }
