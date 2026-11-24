@@ -20,6 +20,9 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import id.homebase.api.sync.DriveState
 import id.homebase.photobase.gallery.PhotoChange
+import id.homebase.photobase.gallery.LibraryDays
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -165,13 +168,30 @@ class PhotoGalleryViewModelTest {
         }
         val scrolled = source.asked.size
 
-        changes.tryEmit(PhotoChange.FilesArrived)
+        changes.tryEmit(PhotoChange.FilesArrived(listOf(10_000L)))
         testScheduler.advanceUntilIdle()
         assertEquals(scrolled, source.asked.size, "150 photos showing: each arrival would re-read them all")
 
         changes.tryEmit(PhotoChange.RoundFinished)
         testScheduler.advanceUntilIdle()
         assertEquals(scrolled + 3, source.asked.size)
+    }
+
+    @Test
+    fun theLibrarysDaysAreCountedOnlyWhileTheScreenWatchesThem() = runTest {
+        val source = Pages(mapOf(null to PhotoGalleryPage(emptyList(), null)))
+        var collections = 0
+        val days = flow { collections++; emit(LibraryDays(intArrayOf(20), intArrayOf(3))) }
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), libraryDays = days)
+        testScheduler.advanceUntilIdle()
+        assertEquals(0, collections, "a gallery under another screen mustn't keep the days counted")
+
+        val watching = launch { viewModel.library.collect { } }
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, collections)
+        assertEquals(3, viewModel.library.value?.photos)
+        watching.cancel()
     }
 
     @Test

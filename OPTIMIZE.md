@@ -113,6 +113,22 @@ adb shell cat /sdcard/Android/data/id.homebase.api.test/cache/image-bench.txt
 
 For a before/after comparison, copy the bench into a worktree of the base commit and run both APKs back to back, letting the phone cool in between.
 
+### Photos grid database on an Android phone
+
+`PhotoGridDbBench` (homebase-api androidDeviceTest) builds a 40K-photo library plus 50K chat rows in a
+SQLCipher database through the production upsert path, then times the queries a Photos grid needs: photos per
+day, a photo count, and a page of headers near a date, each through `SqlDriver.executeQuery` with a fixed
+identifier (prepared once, as SQLDelight's generated queries are), against today's `QueryBatch` page. The
+database is kept between runs (about 3 minutes to build on a Pixel 5); `-e photoGridRebuild true` builds it again.
+
+```bash
+./gradlew :homebase-api:assembleAndroidDeviceTest
+adb install -r -t homebase-api/build/outputs/apk/androidTest/homebase-api-androidTest.apk
+adb shell am instrument -w -r -e class id.homebase.api.sync.database.PhotoGridDbBench -e photoGridBench true \
+  id.homebase.api.test/androidx.test.runner.AndroidJUnitRunner
+adb shell cat /sdcard/Android/data/id.homebase.api.test/cache/photo-grid-bench.txt
+```
+
 ### Media on an iPhone
 
 `MediaBenchmarks` (homebase-api nativeMain), run from Xcode by `iosAppTests/MediaBenchmarkTests`, takes the iPhone's
@@ -417,6 +433,62 @@ before `ce6f4e731`, after `836763240`; full lines on #2566). Generated 8000×600
   slower.
 
 A single 48 MP photo peaks at about 1.0–1.4 GB. The three-at-once rows above are still to measure.
+
+### 2026-11-23, Photos grid database (PhotoGridDbBench), Pixel 5 (Android 14), synthetic 40K photos
+
+40,000 photos on 2,519 days over 10 years, bursty, headers averaging 2,760 characters of JSON (four thumbnails,
+the tiny, 8% Live photos, 10% videos), plus 50,000 chat rows: 323 MB. Medians of 15; Europe/Copenhagen.
+
+| Query | Existing indexes | With a Photos index `(identityId,driveId,fileType,fileState,userDate DESC,rowId)` |
+|---|---|---|
+| Photos per day, `GROUP BY date(userDate/1000,'unixepoch','localtime')` | 58.7 ms | 59.0 ms |
+| The same, first query on a fresh connection | 305 ms | 61 ms (run second, so not cold) |
+| Photos per day, dates from SQL, grouped with kotlinx-datetime | | 1,101 ms |
+| Photo count | 18.2 ms | 18.1 ms |
+| 100 headers near 7 years back, fixed SQL | 6.0 ms | 1.8 ms |
+| 30 headers (one screen), fixed SQL | | 0.7 ms |
+| Parse 100 headers into `HomebaseFile` | | 33.7 ms |
+| 100 headers + parse, fixed SQL | | 35.8 ms |
+| 100 headers through `QueryBatch` (today's gallery), which parses them | 43.1 ms (p90 182) | |
+
+- **The table is enough.** Counting per day uses `Idx3` already as a covering index; the Photos index only
+  speeds up the header page (6.0 → 1.8 ms).
+- **The day list is small:** 2,519 days as two `IntArray`s is 19 KB, so it can be held in memory once the
+  gallery has opened.
+- **Group in SQL, not in Kotlin:** kotlinx-datetime's `toLocalDateTime` over 40K dates took 1.1 s, against
+  59 ms for SQLite's `localtime`, and the two agreed on every day.
+- **Parsing is the cost of a page, not SQL:** 34 ms of a 36 ms page. A grid reading only what a tile needs
+  would make it cheaper.
+- Not measured: a truly cold read (the OS page cache can't be dropped without root), so the 305 ms first query
+  includes an unknown share of connection setup.
+
+### 2026-11-24, the shipped day queries (PhotoGridDbBench), same phone and library
+
+`PhotoDays.sq` runs on today's indexes. The bench now also times it, and checks it counts the same days as its own
+SQL. Medians of 15, after the phone cooled (thermal status 0).
+
+| Query | Existing indexes |
+|---|---|
+| All days, `PhotoDays.dayCounts` (shipped) | 65.1 ms |
+| All days, the bench's own SQL, same run | 62.6 ms |
+| First day counts on a fresh connection | 80.2 ms |
+| One day, `PhotoDays.dayOf`, the median day (7 photos) | 2.4 ms |
+| One day, `PhotoDays.dayOf`, the busiest day (1,813 photos) | 42.0 ms |
+
+- **A day's count costs about 23 µs per photo on it:** the range on `userDate` comes from `Idx2`, but each row is
+  read for its `fileType` and `fileState`. A Photos index would make it covering; at these numbers it isn't needed,
+  because `PhotoDayIndex` counts a day only while the gallery is open, once per day per batch of arriving photos,
+  off the main thread.
+- **The 305 ms first query of 2026-11-23 was the OS cache:** 80 ms this time without the Photos index.
+- **Unexplained:** parsing 100 headers took 61 ms in both runs today against 34 ms on 2026-11-23, and the
+  `QueryBatch` page 114 ms against 43 ms, on a cool phone. The SQL parts didn't change.
+- **Leaving out photos SQLite has no date for** (a `userDate` outside the years 0 to 9999, which `date()` turns into
+  NULL), measured on all days:
+  - `HAVING day IS NOT NULL`: 82.0 ms.
+  - `AND userDate BETWEEN …`: 924 ms. SQLite switches to `Idx2` for the range, which doesn't cover `fileType` and
+    `fileState`, so it reads all 40,000 rows.
+  - `AND +userDate BETWEEN …` (shipped): 64.8 ms. The `+` stops SQLite using an index for that term, so it stays on
+    the covering index.
 
 ## Findings
 

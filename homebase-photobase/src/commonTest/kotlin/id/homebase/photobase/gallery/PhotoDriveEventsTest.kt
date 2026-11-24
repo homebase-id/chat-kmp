@@ -30,7 +30,7 @@ class PhotoDriveEventsTest {
         )
 
         assertEquals(
-            listOf(PhotoChange.RoundFinished, PhotoChange.RoundFinished, PhotoChange.FilesArrived),
+            listOf(PhotoChange.RoundFinished, PhotoChange.RoundFinished, PhotoChange.FilesArrived(listOf(galleryTestFile(1).fileMetadata.appData.userDate!!))),
             events.newPhotoRecords().toList(),
             "a round is silent until it stops; a failed one may still have written some",
         )

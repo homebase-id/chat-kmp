@@ -16,6 +16,10 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
+import id.homebase.photobase.gallery.LibraryDays
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.filterNotNull
@@ -76,7 +80,11 @@ class PhotoGalleryViewModel(
     private val pauseWarm: (Boolean) -> Unit = {},
     changes: Flow<PhotoChange> = emptyFlow(),
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
+    libraryDays: Flow<LibraryDays> = emptyFlow(),
 ) : ViewModel() {
+    /** Every day of the library that has photos; counted, and kept current, only while the screen collects it. */
+    val library: StateFlow<LibraryDays?> = libraryDays.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
 
