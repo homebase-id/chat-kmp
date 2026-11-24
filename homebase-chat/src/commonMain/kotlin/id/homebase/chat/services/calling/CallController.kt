@@ -3,6 +3,7 @@ package id.homebase.chat.services.calling
 import co.touchlab.kermit.Logger
 import id.homebase.core.util.Platform
 import kotlin.time.Clock
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class CallController(
@@ -58,7 +60,9 @@ class CallController(
 
     // Everything below the inbox is touched only from the inbox loop; other threads just post.
     private sealed interface Command {
-        class Event(val event: CallEvent, val processed: CompletableDeferred<CallState>? = null) : Command
+        class Event(val event: CallEvent, val processed: CompletableDeferred<CallState>? = null) : Command {
+            val posted = TimeSource.Monotonic.markNow()
+        }
         class RepublishOffer(val callId: String) : Command
         class RenewIce(val engine: CallEngine, val lease: IceLease) : Command
         data object Close : Command
@@ -77,10 +81,13 @@ class CallController(
     private val heldIce = mutableListOf<LocalCandidate>()
     private var publishedIce = 0
     private var offerSeq = 0
+    private val heldIceInOffer = mutableMapOf<Int, Set<String>>()
     private var offerVideo = false
     private var publishedOfferSdp: String? = null
     private var republishJob: Job? = null
-    private var trickleJob: Job? = null
+    private var iceSender: IceSender? = null
+    private val remoteIce = mutableSetOf<CallEffect.AddIce>()
+    private var answeredRestartOffer: String? = null
     private var restartOfferSdp: String? = null
     private var iceFetch: Pair<String, Deferred<IceLease>>? = null
     private var callIce: IceLease? = null
@@ -102,6 +109,7 @@ class CallController(
                 for (command in inbox) {
                     when (command) {
                         is Command.Event -> try {
+                            if (command.event == CallEvent.UserAccept) log.i { "accept waited ${command.posted.elapsedNow().inWholeMilliseconds}ms in the inbox" }
                             processInterruptibly(command.event)
                         } finally {
                             command.processed?.complete(_state.value)
@@ -202,8 +210,19 @@ class CallController(
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
-        // The relay keeps only each sender's last blob: a held candidate posted after a hangup would replace it.
-        if (signal !is CallSignal.Ice) trickleJob?.cancelAndJoin()
+        // The relay keeps only each sender's last blob: no candidate may follow the hangup, and the chosen device must
+        // still get the whole list after the caller tells its siblings the call was answered elsewhere.
+        val ice = iceSender?.takeIf { it.peer == peer }
+        if (ice?.closed == true) ice.join()
+        try {
+            post(peer, signal)
+        } finally {
+            if (signal is CallSignal.Hangup && signal.reason.isElsewhere) ice?.repost()
+        }
+    }
+
+    // The IceSender's path: it runs off the inbox, so it must not touch controller state.
+    private suspend fun post(peer: String, signal: CallSignal) {
         val outbound = CallChannel.outbound(peer, signal.fromDevice(deviceId))
         log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
         signaling.send(outbound)
@@ -211,15 +230,16 @@ class CallController(
 
     // Only the offer and the answer are load-bearing: every other signal is resent, superseded or covered by a timeout
     // (ring, connect, reconnect), and a cold push wake often posts before the network is up.
-    private suspend fun sendBestEffort(peer: String, signal: CallSignal) {
+    private suspend fun sendBestEffort(peer: String, signal: CallSignal): Boolean =
         try {
-            send(peer, signal)
+            if (signal is CallSignal.Ice) post(peer, signal) else send(peer, signal)
+            true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log.w(e) { "${describe(signal)} call=${signal.callId} not sent" }
+            false
         }
-    }
 
     // A single unusable remote candidate (unresolvable mDNS, a transport the engine lacks) is routine; ICE uses the rest.
     private suspend fun addIce(engine: CallEngine, ice: CallEffect.AddIce) {
@@ -229,12 +249,15 @@ class CallController(
             throw e
         } catch (e: Exception) {
             log.w(e) { "remote candidate rejected: ${ice.candidate}" }
+            // A candidate that beat its restart offer is rejected; the repeat after the offer must not be deduped away.
+            remoteIce.remove(ice)
         }
     }
 
     private fun describe(signal: CallSignal): String = when (signal) {
         is CallSignal.Hangup -> "hangup(${signal.reason})"
         is CallSignal.Offer -> "offer(seq=${signal.seq})"
+        is CallSignal.Ice -> "ice(${signal.all.size})"
         else -> signal::class.simpleName.orEmpty()
     }
 
@@ -332,10 +355,14 @@ class CallController(
     }
 
     private suspend fun engine(): CallEngine = engine ?: run {
+        val started = TimeSource.Monotonic.markNow()
         val lease = iceServersForEngine()
+        val leased = started.elapsedNow()
         // The next call's camera, mic and audio mode must not race the last call's release of them.
         closingEngine?.join()
+        val released = started.elapsedNow()
         engineFactory.create(lease.ice.servers).also {
+            log.i { "engine build: ICE servers ${leased.inWholeMilliseconds}ms, last engine closed ${(released - leased).inWholeMilliseconds}ms, factory ${(started.elapsedNow() - released).inWholeMilliseconds}ms" }
             callIce = lease
             scheduleRenewal(it, lease)
         }
@@ -366,9 +393,11 @@ class CallController(
                     offerSdp = sdp
                     offerVideo = effect.video
                     offerSeq = 0
+                    heldIceInOffer.clear()
                     publishedOfferSdp = sdp
-                    send(state.peer!!, CallSignal.Offer(state.callId!!, sdp, effect.video))
+                    send(state.peer!!, CallSignal.Offer(state.callId!!, sdp, effect.video, iceBatch = true))
                 }
+                is CallEffect.TrickleIce -> trickle(state, listOf(LocalCandidate(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)))
                 is CallEffect.HoldIce -> {
                     heldIce += LocalCandidate(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)
                     scheduleOfferRepublish(state.callId!!)
@@ -378,7 +407,7 @@ class CallController(
                     reportMissingCamera(effect.video)
                     offerSdp = effect.offerSdp
                     answerSdp = sdp
-                    send(state.peer!!, CallSignal.Answer(state.callId!!, sdp))
+                    send(state.peer!!, CallSignal.Answer(state.callId!!, sdp, offerSeq = effect.offerSeq, iceBatch = true))
                     markRemoteReady()
                     announceVerification(state.callId)
                 }
@@ -386,7 +415,7 @@ class CallController(
                     engine().applyRemote(effect.sdp)
                     restartOfferSdp = null
                     markRemoteReady()
-                    flushHeldIce(state)
+                    flushHeldIce(state, effect.offerSeq)
                     if (answerSdp == null) {
                         answerSdp = effect.sdp
                         announceVerification(state.callId!!)
@@ -396,16 +425,23 @@ class CallController(
                     // Resend the unanswered offer: a fresh one would orphan an answer already in flight for it.
                     val sdp = restartOfferSdp ?: run {
                         refreshIceServers(state)
+                        newIceGeneration()
                         engine().restartIce()
                     }.also { restartOfferSdp = it }
                     sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
                 }
                 is CallEffect.AnswerRestart -> {
                     refreshIceServers(state)
+                    if (effect.offerSdp != answeredRestartOffer) newIceGeneration()
+                    answeredRestartOffer = effect.offerSdp
                     val sdp = engine().answerRestart(effect.offerSdp)
                     sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
                 }
-                is CallEffect.AddIce -> if (!remoteReady) bufferedIce += effect else engine?.let { addIce(it, effect) }
+                is CallEffect.AddIce -> when {
+                    !remoteIce.add(effect) -> Unit
+                    !remoteReady -> bufferedIce += effect
+                    else -> engine?.let { addIce(it, effect) }
+                }
                 is CallEffect.SetMuted -> engine?.setMuted(effect.muted)
                 is CallEffect.SetVideo -> engine?.setVideo(effect.on)
                 CallEffect.AddVideo -> if (engine?.addVideo() != true) {
@@ -450,24 +486,85 @@ class CallController(
         if (sdp == publishedOfferSdp) return
         publishedOfferSdp = sdp
         offerSeq++
+        val lines = sdp.lines().mapTo(HashSet()) { it.trim() }
+        heldIceInOffer[offerSeq] = held.mapNotNullTo(HashSet()) { c -> c.candidate.takeIf { "a=${it.trim().removePrefix("a=")}" in lines } }
         log.i { "republishing offer call=$callId seq=$offerSeq candidates=${held.size}" }
-        sendBestEffort(s.peer!!, CallSignal.Offer(callId, sdp, offerVideo, offerSeq))
+        sendBestEffort(s.peer!!, CallSignal.Offer(callId, sdp, offerVideo, offerSeq, iceBatch = true))
         if (heldIce.size > publishedIce) scheduleOfferRepublish(callId)
     }
 
-    private fun flushHeldIce(state: CallState) {
+    private fun flushHeldIce(state: CallState, answeredSeq: Int?) {
         republishJob?.cancel()
         republishJob = null
-        val pending = heldIce.toList()
+        val carried = answeredSeq?.let { heldIceInOffer[it] }.orEmpty()
+        val pending = heldIce.filter { it.candidate !in carried }
+        if (heldIce.isNotEmpty()) log.i { "answer to offer seq=$answeredSeq: trickling ${pending.size} of ${heldIce.size} held candidates call=${state.callId}" }
         heldIce.clear()
         publishedIce = 0
-        if (pending.isEmpty()) return
-        log.i { "answer selected a device: trickling ${pending.size} held candidates call=${state.callId}" }
-        val peer = state.peer!!
-        val callId = state.callId!!
-        // One relay round trip per candidate: run in the inbox, 66 of them held the caller on Connecting for ~18 s.
-        trickleJob = scope.launch {
-            for (c in pending) sendBestEffort(peer, CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex))
+        heldIceInOffer.clear()
+        if (pending.isNotEmpty()) trickle(state, pending)
+    }
+
+    private fun trickle(state: CallState, candidates: List<LocalCandidate>) {
+        val sender = iceSender?.takeUnless { it.closed }
+            ?: IceSender(state.peer!!, state.callId!!, state.peerIceBatch).also { iceSender = it }
+        sender.add(candidates)
+    }
+
+    // A restart's candidates replace the last generation's on both sides: the old list is not posted again, and the new one
+    // is not deduped against it.
+    private suspend fun newIceGeneration() {
+        iceSender?.let {
+            iceSender = null
+            it.close()
+            it.join()
+        }
+        remoteIce.clear()
+    }
+
+    // Off the inbox, which a relay round trip must not hold; one post at a time, each repeating every candidate before it,
+    // since the relay keeps only the last blob.
+    private inner class IceSender(val peer: String, private val callId: String, private val batch: Boolean) {
+        private val progress = MutableStateFlow(IceProgress())
+        private val job = scope.launch { progress.collect { postUnsent() } }
+        var closed = false
+            private set
+
+        fun add(candidates: List<LocalCandidate>) = progress.update { it.copy(all = it.all + candidates) }
+
+        // A single-candidate post is not the whole list, so only a batch is posted again.
+        fun repost() {
+            if (batch) progress.update { it.copy(sent = 0, reposts = it.reposts + 1) }
+        }
+
+        private suspend fun postUnsent() {
+            var retryMs = ICE_RETRY_MS
+            var attempts = 0
+            while (true) {
+                val p = progress.value
+                if (p.sent >= p.all.size) return
+                val c = p.all[p.sent]
+                val signal = if (batch) CallSignal.Ice.of(callId, p.all) else CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex)
+                if (sendBestEffort(peer, signal)) {
+                    val done = if (batch) p.all.size else p.sent + 1
+                    // A repost asked for while this one was in flight keeps its reset.
+                    progress.update { if (it.reposts == p.reposts) it.copy(sent = done) else it }
+                    retryMs = ICE_RETRY_MS
+                    attempts = 0
+                } else {
+                    // A refusal that never clears stops here; the next candidate or repost tries again.
+                    if (++attempts >= ICE_RETRY_ATTEMPTS) return
+                    delay(retryMs)
+                    retryMs = (retryMs * 2).coerceAtMost(ICE_RETRY_MAX_MS)
+                }
+            }
+        }
+
+        suspend fun join() = job.join()
+
+        fun close() {
+            closed = true
+            job.cancel()
         }
     }
 
@@ -512,8 +609,8 @@ class CallController(
     // ATOMIC: teardown runs this while the scope is cancelling, and a DEFAULT launch would then never close the engine, leaving camera and mic held.
     @OptIn(DelicateCoroutinesApi::class)
     private fun releaseEngine() {
-        trickleJob?.cancel()
-        trickleJob = null
+        // Left set: the hangup that follows waits for the cancelled post before it goes out.
+        iceSender?.close()
         engineEvents?.cancel()
         engineEvents = null
         engineVideos?.cancel()
@@ -530,9 +627,12 @@ class CallController(
         renewJob = null
         remoteReady = false
         bufferedIce.clear()
+        remoteIce.clear()
+        answeredRestartOffer = null
         heldIce.clear()
         publishedIce = 0
         offerSeq = 0
+        heldIceInOffer.clear()
         publishedOfferSdp = null
         offerSdp = null
         answerSdp = null
@@ -543,5 +643,11 @@ class CallController(
         const val TAG = "CallController"
         const val ENDED_CALLS_REMEMBERED = 32
         const val QUIT_HANGUP_BUDGET_MS = 2_000L
+        const val ICE_RETRY_MS = 1_000L
+        // Well inside the connect timeout, so a network that comes back is used within seconds.
+        const val ICE_RETRY_MAX_MS = 4_000L
+        const val ICE_RETRY_ATTEMPTS = 8
     }
 }
+
+private data class IceProgress(val all: List<LocalCandidate> = emptyList(), val sent: Int = 0, val reposts: Int = 0)

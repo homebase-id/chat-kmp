@@ -1,6 +1,9 @@
 package id.homebase.chat.services.calling
 
-data class LocalCandidate(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?)
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class LocalCandidate(val candidate: String, val sdpMid: String? = null, val sdpMLineIndex: Int? = null)
 
 object SdpCandidates {
     /** Returns [sdp] with each candidate appended to its media section, matched by `a=mid` first, then by m-line index. */

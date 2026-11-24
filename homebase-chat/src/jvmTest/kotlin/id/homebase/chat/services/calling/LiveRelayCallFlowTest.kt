@@ -35,6 +35,7 @@ class LiveRelayCallFlowTest {
         identity: String,
         device: LastValueRelay.Device,
         script: FakeCallScript = FakeCallScript(),
+        offerRepublishMs: Long = 30,
     ): Peer {
         val engines = mutableListOf<FakeCallEngine>()
         val scope = this
@@ -43,7 +44,7 @@ class LiveRelayCallFlowTest {
             signaling = LiveRelayCallSignaling(identity, relay.relayFor(identity), device.bus),
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope, script, "peer", identity).also { engines += it } },
             scope = scope,
-            offerRepublishMs = 30,
+            offerRepublishMs = offerRepublishMs,
         )
         return Peer(controller, engines)
     }
@@ -72,7 +73,8 @@ class LiveRelayCallFlowTest {
         callId: String,
         callerDevice: LastValueRelay.Device = relay.device(frodo, online = true),
     ): Peer {
-        val caller = peer(relay, frodo, callerDevice, FakeCallScript(connectAfterMs = 50, localCandidates = heldCandidates))
+        // No republish: the callee answers the first offer, which carries none of the held candidates, so all of them trickle.
+        val caller = peer(relay, frodo, callerDevice, FakeCallScript(connectAfterMs = 50, localCandidates = heldCandidates), offerRepublishMs = 60_000)
         val callee = peer(relay, sam, relay.device(sam, online = true), FakeCallScript(connectAfterMs = 50))
         caller.controller.startCall(sam, video = false, callId = callId)
         await("callee rings") { callee.state.phase == CallPhase.Incoming }
@@ -112,17 +114,19 @@ class LiveRelayCallFlowTest {
 
         woken.controller.accept()
         await("both sides connected") { caller.state.phase == CallPhase.Connected && woken.state.phase == CallPhase.Connected }
-        assertEquals(candidates.toSet(), woken.engines.single().addedIce.toSet(), "held candidates are flushed once the answer picked this device")
+        assertTrue(relay.signalsFrom(frodo).none { it is CallSignal.Ice }, "the answered offer carried every held candidate, so none is trickled again")
     }
 
     @Test
     fun aSlowRelayTrickleDoesNotHoldTheCallerOnConnecting() = flow { relay ->
         connectedOverSlowRelay(relay, "c-slow-relay")
 
-        val trickled = relay.signalsFrom(frodo).count { it is CallSignal.Ice }
-        assertTrue(trickled < heldCandidates.size, "Connected waited behind all $trickled trickled candidates")
-        await("every held candidate still trickled") { relay.signalsFrom(frodo).count { it is CallSignal.Ice } == heldCandidates.size }
+        await("every held candidate still trickled") { trickled(relay).toSet() == heldCandidates.toSet() }
+        val posts = relay.signalsFrom(frodo).count { it is CallSignal.Ice }
+        assertTrue(posts <= 2, "${heldCandidates.size} held candidates took $posts posts")
     }
+
+    private fun trickled(relay: LastValueRelay) = relay.signalsFrom(frodo).filterIsInstance<CallSignal.Ice>().flatMap { it.all }.map { it.candidate }
 
     @Test
     fun aHangupDuringTheTrickleStaysTheLastBlobTheRelayKeeps() = flow { relay ->
@@ -132,7 +136,7 @@ class LiveRelayCallFlowTest {
         delay(300)
 
         assertIs<CallSignal.Hangup>(relay.lastRetained(sam, frodo))
-        assertTrue(relay.signalsFrom(frodo).count { it is CallSignal.Ice } < heldCandidates.size, "the trickle must stop at the hangup")
+        assertTrue(relay.posts.last { it.sender == frodo }.signal is CallSignal.Hangup, "no candidate may be posted after the hangup")
     }
 
     @Test
@@ -207,7 +211,7 @@ class LiveRelayCallFlowTest {
 
         woken.controller.accept()
         await("call connects on the woken device") { caller.state.phase == CallPhase.Connected && woken.state.phase == CallPhase.Connected }
-        assertTrue(relay.signalsFrom(frodo).any { it is CallSignal.Ice }, "trickle starts once an answer selected a device")
+        assertTrue(relay.signalsFrom(frodo).none { it is CallSignal.Ice }, "the answered offer carried every held candidate, so none is trickled again")
     }
 
     @Test

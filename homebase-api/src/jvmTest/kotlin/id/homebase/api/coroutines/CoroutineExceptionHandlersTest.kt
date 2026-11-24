@@ -106,18 +106,20 @@ class CoroutineExceptionHandlersTest {
         client.get("https://shelly.silberberg.dk/api/v2/drive/query?ss=SUPERSECRET&token=PII")
 
         val breadcrumbs = logCollector.entries.filter { it.tag == "HttpIO" }.map { it.message }
-        assertEquals(1, breadcrumbs.size, "one breadcrumb per request")
-        val line = breadcrumbs.single()
-        assertTrue(line.contains("GET"), "method should be present; was: $line")
-        assertTrue(
-            line.contains("shelly.silberberg.dk/api/v2/drive/query"),
-            "host + path should be present; was: $line",
-        )
-        assertFalse(
-            line.contains("SUPERSECRET"),
-            "the query string can carry the shared secret and MUST be stripped; was: $line",
-        )
-        assertFalse(line.contains("token"), "no query params in the breadcrumb; was: $line")
+        assertEquals(2, breadcrumbs.size, "a request line and a response line per request; was: $breadcrumbs")
+        assertTrue(Regex("""^← 200 GET .* \d+ms$""").matches(breadcrumbs[1]), "the response line carries its duration; was: ${breadcrumbs[1]}")
+        breadcrumbs.forEach { line ->
+            assertTrue(line.contains("GET"), "method should be present; was: $line")
+            assertTrue(
+                line.contains("shelly.silberberg.dk/api/v2/drive/query"),
+                "host + path should be present; was: $line",
+            )
+            assertFalse(
+                line.contains("SUPERSECRET"),
+                "the query string can carry the shared secret and MUST be stripped; was: $line",
+            )
+            assertFalse(line.contains("token"), "no query params in the breadcrumb; was: $line")
+        }
     }
 }
 
