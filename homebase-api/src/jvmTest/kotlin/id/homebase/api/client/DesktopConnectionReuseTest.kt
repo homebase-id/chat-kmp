@@ -1,7 +1,5 @@
 package id.homebase.api.client
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -19,26 +17,27 @@ import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 import kotlin.concurrent.thread
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
 
-/** The desktop client on CIO over TLS, against a local server that counts the TCP connections it accepts. */
-class CioConnectionReuseTest {
+/** The desktop client over TLS, against a local server that counts the TCP connections it accepts. */
+class DesktopConnectionReuseTest {
 
-    // Ignored until CIO reuses connections.
-    @Ignore
     @Test
-    fun fiveSequentialPostsShareOneTcpConnection() {
+    fun fiveSequentialPostsShareOneTcpConnection() = assertOneConnection(closeAnotherClientBetween = false)
+
+    // Like a websocket client closing on reconnect.
+    @Test
+    fun anotherClientClosingKeepsTheConnection() = assertOneConnection(closeAnotherClientBetween = true)
+
+    private fun assertOneConnection(closeAnotherClientBetween: Boolean) {
         val keyStore = selfSignedKeyStore()
         val server = TlsServer(keyStore)
+        val otherServer = TlsServer(keyStore)
         val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
             .apply { init(keyStore) }.trustManagers.filterIsInstance<X509TrustManager>().first()
-        val client = HttpClient(CIO) {
-            homebaseDefaults()
-            engine { https { trustManager = trust } }
-        }
+        val client = desktopHttpClient(trust) { homebaseDefaults() }
         try {
             runBlocking {
                 repeat(5) {
@@ -46,12 +45,16 @@ class CioConnectionReuseTest {
                         contentType(ContentType.Application.Json)
                         setBody("""{"blob":"$it"}""")
                     }
+                    if (closeAnotherClientBetween) {
+                        desktopHttpClient(trust) {}.use { other -> other.post("https://localhost:${otherServer.port}/") }
+                    }
                 }
             }
             assertEquals(1, server.accepted.get(), "TCP connections for 5 sequential POSTs; requests:\n${server.requests.joinToString("\n")}")
         } finally {
             client.close()
             server.close()
+            otherServer.close()
         }
     }
 

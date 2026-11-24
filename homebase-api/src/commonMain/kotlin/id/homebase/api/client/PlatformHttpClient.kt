@@ -13,6 +13,9 @@ import io.ktor.client.HttpClientConfig
  * the runtime's default trust store with CA roots the bundled JRE may not carry
  * (see `PlatformHttpClient.jvm.kt`). Android/iOS/Web defer entirely to the OS
  * trust store, so their actuals just name the engine and apply [block] verbatim.
+ *
+ * On every platform a client reuses its connections to a host across requests, also when
+ * another client is closed.
  */
 internal expect fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit = {},

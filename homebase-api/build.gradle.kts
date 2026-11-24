@@ -345,7 +345,7 @@ kotlin {
         }
 
         jvmMain.dependencies {
-            implementation(libs.ktor.client.cio)
+            implementation(libs.ktor.client.okhttp)
             implementation(libs.sqldelight.sqlite.driver.get().toString()) {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")
             }

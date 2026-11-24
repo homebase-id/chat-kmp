@@ -151,7 +151,6 @@ kotlin {
             implementation(libs.ktor.server.cio)
         }
         jvmMain.dependencies {
-            implementation(libs.ktor.client.cio)
             implementation(libs.vlcj.get().toString()) {
                 // jna-jpms is a second copy of com.sun.jna that Gradle cannot dedupe
                 // against jna; two versions leave Conveyor's native-library extraction
