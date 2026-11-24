@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -38,9 +39,11 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
@@ -50,12 +53,12 @@ import id.homebase.photobase.gallery.GalleryMonth
 import id.homebase.photobase.gallery.GalleryRows
 import id.homebase.resources.MR
 import id.homebase.resources.photobase_scrubber
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import org.jetbrains.compose.resources.stringResource
-import kotlin.math.roundToInt
 
 internal const val DAY_HEADER = "day"
 internal const val PHOTO_TILE = "photo"
@@ -67,7 +70,6 @@ private val HANDLE_HEIGHT = 48.dp
 private val EDGE_WIDTH = 48.dp
 private val YEAR_MARK_GAP = 32.dp
 private val YEAR_MARK_INSET = 40.dp
-private val BUBBLE_WIDTH = 160.dp
 private const val HIDE_AFTER_MILLIS = 1_500L
 
 // Below about three screens there's nowhere far to go.
@@ -88,16 +90,18 @@ internal fun PhotoScrubber(
     val pitch by rememberRowPitch(gridState)
     val rows = remember(layout, pitch) { pitch?.let { GalleryRows(layout, it.columns, it.headerPx, it.rowPx) } }
     val pointerNear = remember { mutableStateOf(false) }
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     BoxWithConstraints(
-        Modifier.fillMaxSize().pointerInput(Unit) {
-            // Seen first and never consumed: a mouse near the right edge shows the handle, and the grid still scrolls.
+        Modifier.fillMaxSize().pointerInput(rtl) {
+            // Seen first and never consumed: a mouse near the handle's edge shows it, and the grid still scrolls.
             val near = EDGE_WIDTH.toPx()
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull() ?: continue
                     if (change.type == PointerType.Mouse) {
-                        pointerNear.value = event.type != PointerEventType.Exit && change.position.x > size.width - near
+                        val x = change.position.x
+                        pointerNear.value = event.type != PointerEventType.Exit && if (rtl) x < near else x > size.width - near
                     }
                 }
             }
@@ -106,13 +110,15 @@ internal fun PhotoScrubber(
         grid()
         val viewport = constraints.maxHeight
         val held = rows
+        val edges = pitch?.edgesPx ?: 0
         if (held != null && held.height >= viewport * SCREENS_TO_SHOW) {
-            Handle(gridState, held, held.height - viewport, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
+            Handle(gridState, held, held.height + edges - viewport, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
         }
     }
 }
 
-private data class RowPitch(val columns: Int, val headerPx: Int, val rowPx: Int)
+// edgesPx: the grid's padding above and below, less the gap the rows count after the last one.
+private data class RowPitch(val columns: Int, val headerPx: Int, val rowPx: Int, val edgesPx: Int)
 
 // The grid's columns, and a header's and a row's height with the gap after each, from a header with the item after it
 // on screen. Kept while none is, as inside a day bigger than the screen.
@@ -127,7 +133,7 @@ private fun rememberRowPitch(gridState: LazyGridState): State<RowPitch?> {
             val next = items.firstOrNull { it.index == header.index + 1 } ?: return@snapshotFlow null
             val tile = items.firstOrNull { it.contentType == PHOTO_TILE } ?: return@snapshotFlow null
             val gap = next.offset.y - header.offset.y - header.size.height
-            RowPitch(info.maxSpan, next.offset.y - header.offset.y, tile.size.height + gap)
+            RowPitch(info.maxSpan, next.offset.y - header.offset.y, tile.size.height + gap, info.beforeContentPadding + info.afterContentPadding - gap)
         }.filterNotNull().collect { pitch.value = it }
     }
     return pitch
@@ -162,10 +168,14 @@ private fun Handle(
         // Read in the layout phase only, so following the grid or the finger doesn't recompose this.
         val top = { if (dragging) handleTop else toTrack(rows.topOf(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)) }
         val month by remember(rows, travel) { derivedStateOf { if (dragging) rows.monthAt(toGrid(handleTop)) else null } }
+        // A tick for each month passed, not for the one grabbed in.
+        var passed by remember { mutableStateOf<GalleryMonth?>(null) }
         LaunchedEffect(month) {
-            if (month != null) haptics.perform(HapticEvent.Selection)
+            val now = month
+            if (now != null && passed != null && now != passed) haptics.perform(HapticEvent.Selection)
+            passed = now
         }
-        if (dragging) YearMarks(rows) { toTrack(it) + handlePx / 2 }
+        if (dragging) YearMarks(rows, travel, scrollable) { toTrack(it) + handlePx / 2 }
         val description = stringResource(MR.string.photobase_scrubber)
         AnimatedVisibility(
             visible = shown,
@@ -207,11 +217,11 @@ private fun Handle(
 @Composable
 private fun MonthBubble(month: GalleryMonth, top: () -> Float) {
     val label = remember(month) { formatMonthYear(month.first.atStartOfDayIn(TimeZone.currentSystemDefault())) }
+    // Unbounded: the track is narrower than the label, and the bubble ends where the track begins.
     Box(
         Modifier
-            .offset { IntOffset(-BUBBLE_WIDTH.roundToPx(), top().roundToInt()) }
-            .width(BUBBLE_WIDTH),
-        contentAlignment = Alignment.CenterEnd,
+            .offset { IntOffset(-EDGE_WIDTH.roundToPx(), top().roundToInt()) }
+            .wrapContentWidth(align = Alignment.End, unbounded = true),
     ) {
         Surface(
             shape = RoundedCornerShape(16.dp),
@@ -230,9 +240,9 @@ private fun MonthBubble(month: GalleryMonth, top: () -> Float) {
 
 // A year too close to the last one shown is skipped.
 @Composable
-private fun YearMarks(rows: GalleryRows, trackY: (Int) -> Float) {
+private fun YearMarks(rows: GalleryRows, travel: Float, scrollable: Int, trackY: (Int) -> Float) {
     val gapPx = with(LocalDensity.current) { YEAR_MARK_GAP.toPx() }
-    val marks = remember(rows, gapPx) {
+    val marks = remember(rows, travel, scrollable, gapPx) {
         var last = Float.NEGATIVE_INFINITY
         rows.years.mapNotNull { month ->
             val y = trackY(month.top)

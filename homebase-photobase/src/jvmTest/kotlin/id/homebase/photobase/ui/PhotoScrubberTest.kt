@@ -18,6 +18,9 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.runtime.CompositionLocalProvider
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
@@ -82,6 +85,30 @@ class PhotoScrubberTest {
     }
 
     @Test
+    fun rightToLeftTheMouseShowsTheHandleOnTheLeftEdge() = runComposeUiTest {
+        val gridState = LazyGridState()
+        setContent {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                SharedTransitionLayout {
+                    AnimatedVisibility(visible = true) {
+                        Box(Modifier.size(400.dp, 800.dp)) {
+                            PhotoGrid(layout, mutableStateOf(emptyMap<Int, List<PhotoGalleryItem>>()), {}, GridMemory(gridState), this@SharedTransitionLayout, this@AnimatedVisibility, CountingHaptics())
+                        }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        onRoot().performMouseInput { moveTo(Offset(width - 10f, height / 2f)) }
+        waitForIdle()
+        onNodeWithContentDescription(HANDLE).assertDoesNotExist()
+
+        onRoot().performMouseInput { moveTo(Offset(10f, height / 2f)) }
+        waitForIdle()
+        onNodeWithContentDescription(HANDLE).assertExists()
+    }
+
+    @Test
     fun draggingTheHandleMovesTheGridInProportionAndSaysWhichMonthItsIn() = runComposeUiTest {
         val gridState = LazyGridState()
         val haptics = CountingHaptics()
@@ -93,16 +120,22 @@ class PhotoScrubberTest {
         val before = gridState.firstVisibleItemIndex
         val handle = onNodeWithContentDescription(HANDLE)
 
-        handle.performTouchInput { down(center) }
+        handle.performTouchInput {
+            down(center)
+            moveBy(Offset(0f, 1f))
+        }
         waitForIdle()
-        assertEquals(before, gridState.firstVisibleItemIndex, "grabbing the handle doesn't move the grid")
+        assertTrue(abs(gridState.firstVisibleItemIndex - before) < 20, "grabbing the handle doesn't move the grid")
+        assertEquals(0, haptics.ticks, "no tick for the month it was grabbed in")
 
         handle.performTouchInput {
             repeat(20) { moveBy(Offset(0f, 15f)) }
         }
         waitForIdle()
         val day = LocalDate.fromEpochDays(layout.dayOfItem(gridState.firstVisibleItemIndex))
-        onNodeWithText(formatMonthYear(LocalDate(day.year, day.month, 1).atStartOfDayIn(TimeZone.currentSystemDefault()))).assertExists()
+        val bubble = onNodeWithText(formatMonthYear(LocalDate(day.year, day.month, 1).atStartOfDayIn(TimeZone.currentSystemDefault())))
+        bubble.assertExists()
+        assertTrue(bubble.fetchSemanticsNode().size.width > with(density) { 60.dp.toPx() }, "the label on one line, not squeezed into the 48 dp track")
         assertTrue(haptics.ticks > 0, "a tick for each month passed")
         val fraction = gridState.firstVisibleItemIndex.toFloat() / layout.headerItemOf(layout.days.size - 1)
         handle.performTouchInput { up() }
