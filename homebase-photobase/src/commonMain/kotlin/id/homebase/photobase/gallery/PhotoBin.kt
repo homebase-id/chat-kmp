@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PerFileResult
+import id.homebase.api.client.drives.files.TombstoneOptions
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -42,8 +43,8 @@ class HttpPhotoBinServer(
     override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) =
         this.files.updateArchivalStatus(driveId, status, files).results
 
-    // The tombstone keeps the photo's uniqueId, so no phone backs it up again (ServerBackupDedupe).
-    override suspend fun softDelete(files: List<FileVersionTag>) = this.files.softDeleteFiles(driveId, files, keepUniqueId = true).results
+    override suspend fun softDelete(files: List<FileVersionTag>) =
+        this.files.softDeleteFiles(driveId, files, TombstoneOptions(keepUniqueId = true)).results
 
     override suspend fun header(fileId: Uuid): HomebaseFile? = headers.getFileHeader(driveId, fileId)
 }

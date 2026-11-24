@@ -8,10 +8,7 @@ import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 
-/**
- * Asks the server, not the device's copy: another device may have backed the photo up since this one last synced. A
- * photo deleted for good from the bin counts too: its tombstone keeps the uniqueId.
- */
+/** Asks the server, not the device's copy: another device may have backed the photo up since this one last synced. */
 class ServerBackupDedupe(
     private val queryProvider: DriveQueryProvider,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
