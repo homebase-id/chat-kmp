@@ -386,9 +386,9 @@ public class DriveFileHttpProvider(
     suspend fun hardDeleteFiles(driveId: Uuid, files: List<FileVersionTag>): PerFileBatchResult =
         perFileBatch(driveId, "hard-delete-batch", FileVersionTagBatch(files))
 
-    /** Deletes [files], leaving tombstones: each only at its versionTag. */
-    suspend fun softDeleteFiles(driveId: Uuid, files: List<FileVersionTag>): PerFileBatchResult =
-        perFileBatch(driveId, "soft-delete-batch", FileVersionTagBatch(files))
+    /** Deletes [files], leaving tombstones: each only at its versionTag. [keepUniqueId] keeps each one's uniqueId on its tombstone. */
+    suspend fun softDeleteFiles(driveId: Uuid, files: List<FileVersionTag>, keepUniqueId: Boolean = false): PerFileBatchResult =
+        perFileBatch(driveId, "soft-delete-batch", FileVersionTagBatch(files, tombstone = TombstoneOptions(keepUniqueId = true).takeIf { keepUniqueId }))
 
     /** Sets only the archivalStatus of [files], each only at its versionTag, leaving the rest of each header as it is. */
     suspend fun updateArchivalStatus(driveId: Uuid, status: ArchivalStatus, files: List<FileVersionTag>): PerFileBatchResult =

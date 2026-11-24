@@ -8,24 +8,26 @@ import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 
-/** Asks the server, not the device's copy: another device may have backed the photo up since this one last synced. */
+/**
+ * Asks the server, not the device's copy: another device may have backed the photo up since this one last synced. A
+ * photo deleted for good from the bin counts too: its tombstone keeps the uniqueId.
+ */
 class ServerBackupDedupe(
     private val queryProvider: DriveQueryProvider,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : BackupDedupe {
     override suspend fun existing(uniqueIds: List<Uuid>): Set<Uuid> {
         if (uniqueIds.isEmpty()) return emptySet()
-        val page = queryProvider.queryBatch(
-            photosDriveId,
-            QueryBatchRequest(
-                queryParams = FileQueryParams(
-                    fileType = listOf(PhotobaseProtocol.PhotoFileType),
-                    fileState = listOf(FileState.Active),
-                    clientUniqueIdAtLeastOne = uniqueIds,
-                ),
-                resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = uniqueIds.size),
-            ),
-        )
+        val page = queryProvider.queryBatch(photosDriveId, backedUpQuery(uniqueIds))
         return page.searchResults.mapNotNull { it.fileMetadata.appData.uniqueId }.toSet()
     }
 }
+
+internal fun backedUpQuery(uniqueIds: List<Uuid>) = QueryBatchRequest(
+    queryParams = FileQueryParams(
+        fileType = listOf(PhotobaseProtocol.PhotoFileType),
+        fileState = listOf(FileState.Active, FileState.Deleted),
+        clientUniqueIdAtLeastOne = uniqueIds,
+    ),
+    resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = uniqueIds.size),
+)

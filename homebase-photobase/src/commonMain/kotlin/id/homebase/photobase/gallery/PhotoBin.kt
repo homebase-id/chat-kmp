@@ -42,7 +42,8 @@ class HttpPhotoBinServer(
     override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) =
         this.files.updateArchivalStatus(driveId, status, files).results
 
-    override suspend fun softDelete(files: List<FileVersionTag>) = this.files.softDeleteFiles(driveId, files).results
+    // The tombstone keeps the photo's uniqueId, so no phone backs it up again (ServerBackupDedupe).
+    override suspend fun softDelete(files: List<FileVersionTag>) = this.files.softDeleteFiles(driveId, files, keepUniqueId = true).results
 
     override suspend fun header(fileId: Uuid): HomebaseFile? = headers.getFileHeader(driveId, fileId)
 }
