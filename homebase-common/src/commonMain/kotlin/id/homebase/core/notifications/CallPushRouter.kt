@@ -1,5 +1,7 @@
 package id.homebase.core.notifications
 
+import co.touchlab.kermit.Logger
+
 /**
  * Seam between the push entry points and the call stack in homebase-chat, which this module cannot depend on. A ring and a
  * hangup are told apart by typeId because the delivered payload carries no `kind`; tagId is the callId for both.
@@ -15,6 +17,13 @@ object CallPushRouter {
         /** [sentAtMs] is the server's send time, 0 when the payload carries none. */
         fun onRing(callId: String, from: String, sentAtMs: Long)
         fun onHangup(callId: String, from: String)
+    }
+
+    /** iOS PushKit entry: routes the push and logs its arrival, since the Swift handler cannot reach the app log. */
+    fun onVoipPush(data: Map<String, String>): Boolean {
+        val routed = PushInterceptors.tryHandle(data)
+        Logger.i(tag = "CallPush") { "VoIP push arrived keys=${data.keys} handlerSet=${handler != null} routed=$routed" }
+        return routed
     }
 
     var handler: Handler? = null
