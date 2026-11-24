@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import id.homebase.api.common.OdinId
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -9,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,9 +27,7 @@ import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,16 +41,13 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -80,14 +76,12 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_root
-import id.homebase.resources.cancel
 import id.homebase.resources.filesync_archive_cancel
 import id.homebase.resources.filesync_archive_damaged
 import id.homebase.resources.filesync_archive_listing
 import id.homebase.resources.filesync_archive_progress
 import id.homebase.resources.filesync_cancel_download
 import id.homebase.resources.filesync_changed_elsewhere
-import id.homebase.resources.clear_selection
 import id.homebase.resources.filesync_comment_failed
 import id.homebase.resources.filesync_damaged
 import id.homebase.resources.filesync_day_time
@@ -143,7 +137,6 @@ import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_role_folder_returns
 import id.homebase.resources.filesync_save_failed
-import id.homebase.resources.selected_count
 import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_shared
 import id.homebase.resources.filesync_shared_badge

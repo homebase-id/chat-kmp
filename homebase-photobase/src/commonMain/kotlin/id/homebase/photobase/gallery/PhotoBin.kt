@@ -11,9 +11,13 @@ import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PerFileResult
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
 
-/** [done] photos went where they were sent; [changedElsewhere] another device had moved or deleted first; [failed] the server refused. */
-data class PhotoBinResult(val done: Int, val changedElsewhere: Int = 0, val failed: Int = 0)
+/**
+ * [done] photos went where they were sent; [changedElsewhere] another device had moved or deleted first; [failed] the
+ * server refused, or a request after the first didn't get through. [written] are the photos this call moved itself.
+ */
+data class PhotoBinResult(val done: Int, val changedElsewhere: Int = 0, val failed: Int = 0, val written: Set<Uuid> = emptySet())
 
 /** The server's side of the bin, answered per file. */
 interface PhotoBinServer {
@@ -74,45 +78,52 @@ class PhotoBin(
         for (file in held) {
             val versionTag = file.fileMetadata.versionTag
             when {
-                to != null && file.isAt(to) -> tally.done++
-                versionTag == null || !file.isAt(from) -> tally.changedElsewhere++
-                else -> ready += FileVersionTag(file.fileId, versionTag)
+                file.fileState != FileState.Active -> tally.gone(1)
+                versionTag != null && file.isAt(from) -> ready += FileVersionTag(file.fileId, versionTag)
+                // Maybe this phone's own last write, not synced back yet: the server says where it is.
+                else -> reconsider(file.fileId, from, tally)?.let { ready += it }
             }
         }
         if (ready.isEmpty()) return tally.result()
         try {
-            val again = answer(send(ready, to), from, tally)
-            if (again.isNotEmpty()) answer(send(again, to), from, tally, retry = false)
+            val again = answer(send(ready, tally), from, tally)
+            if (again.isNotEmpty()) answer(send(again, tally), from, tally, retry = false)
         } finally {
             sync()
         }
-        return tally.result().also { Logger.i(tag = TAG) { "${to ?: "deleted for good"}: $it" } }
+        return tally.result().also { Logger.i(tag = TAG) { "${to ?: "deleted for good"}: ${it.copy(written = emptySet())}" } }
     }
 
-    private suspend fun send(files: List<FileVersionTag>, to: ArchivalStatus?): List<PerFileResult> =
-        if (to == null) server.softDelete(files) else server.setArchivalStatus(to, files)
+    /** Sends [files] a batch at a time; one that fails after others went through fails the rest, not the call. */
+    private suspend fun send(files: List<FileVersionTag>, tally: Tally): List<PerFileResult> {
+        val answers = mutableListOf<PerFileResult>()
+        for (batch in files.chunked(DriveFileHttpProvider.FILE_BATCH)) {
+            try {
+                answers += tally.to?.let { server.setArchivalStatus(it, batch) } ?: server.softDelete(batch)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (answers.isEmpty() && tally.written.isEmpty()) throw e
+                Logger.w(tag = TAG, throwable = e) { "${files.size - answers.size} photos not sent" }
+                tally.failed += files.size - answers.size
+                break
+            }
+        }
+        return answers
+    }
 
     /** Tallies [answers]; returns the files to send again at the version the server has now. */
     private suspend fun answer(answers: List<PerFileResult>, from: ArchivalStatus, tally: Tally, retry: Boolean = true): List<FileVersionTag> {
         val again = mutableListOf<FileVersionTag>()
         for (answer in answers) {
             when (answer.errorCode) {
-                null -> tally.done++
-                OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile -> tally.gone(1)
-                OdinClientErrorCode.VersionTagMismatch -> {
-                    if (!retry) {
-                        tally.changedElsewhere++
-                        continue
-                    }
-                    val now = server.header(answer.fileId)
-                    val versionTag = now?.fileMetadata?.versionTag
-                    when {
-                        now == null || now.fileState != FileState.Active -> tally.gone(1)
-                        tally.to != null && now.isAt(tally.to) -> tally.done++
-                        versionTag != null && now.isAt(from) -> again += FileVersionTag(answer.fileId, versionTag)
-                        else -> tally.changedElsewhere++
-                    }
+                null -> {
+                    tally.done++
+                    tally.written += answer.fileId
                 }
+                OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile -> tally.gone(1)
+                OdinClientErrorCode.VersionTagMismatch ->
+                    if (retry) reconsider(answer.fileId, from, tally)?.let { again += it } else tally.changedElsewhere++
                 else -> {
                     tally.failed++
                     Logger.w(tag = TAG) { "photo ${answer.fileId} refused: ${answer.errorCode}" }
@@ -122,17 +133,31 @@ class PhotoBin(
         return again
     }
 
+    /** Tallies the photo by where the server has it; returns its version to send at when it is still at [from]. */
+    private suspend fun reconsider(fileId: Uuid, from: ArchivalStatus, tally: Tally): FileVersionTag? {
+        val now = server.header(fileId)
+        val versionTag = now?.fileMetadata?.versionTag
+        when {
+            now == null || now.fileState != FileState.Active -> tally.gone(1)
+            tally.to != null && now.isAt(tally.to) -> tally.done++
+            versionTag != null && now.isAt(from) -> return FileVersionTag(fileId, versionTag)
+            else -> tally.changedElsewhere++
+        }
+        return null
+    }
+
     private class Tally(val to: ArchivalStatus?) {
         var done = 0
         var changedElsewhere = 0
         var failed = 0
+        val written = mutableSetOf<Uuid>()
 
         // Gone is what deleting for good wanted; for a move, another device deleted it first.
         fun gone(count: Int) {
             if (to == null) done += count else changedElsewhere += count
         }
 
-        fun result() = PhotoBinResult(done, changedElsewhere, failed)
+        fun result() = PhotoBinResult(done, changedElsewhere, failed, written.toSet())
     }
 
     private companion object {

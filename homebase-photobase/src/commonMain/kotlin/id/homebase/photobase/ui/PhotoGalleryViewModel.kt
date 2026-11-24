@@ -25,10 +25,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingCommand
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -89,8 +90,8 @@ sealed interface PhotoGalleryUiAction {
     data class ToggleDay(val day: Int) : PhotoGalleryUiAction
     data object ClearSelection : PhotoGalleryUiAction
     data object MoveToBin : PhotoGalleryUiAction
-    /** The photo open in the viewer. */
-    data object MoveOpenToBin : PhotoGalleryUiAction
+    /** One photo, from the viewer. */
+    data class MovePhotoToBin(val fileId: Uuid) : PhotoGalleryUiAction
     data object Restore : PhotoGalleryUiAction
     data object DeleteForGood : PhotoGalleryUiAction
     data object EmptyBin : PhotoGalleryUiAction
@@ -128,8 +129,12 @@ class PhotoGalleryViewModel(
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
 
-    private val _events = MutableSharedFlow<PhotoGalleryEvent>(extraBufferCapacity = 8)
-    val events: SharedFlow<PhotoGalleryEvent> = _events.asSharedFlow()
+    // Kept until the screen takes them: one that lands while the screen is away is shown when it's back.
+    private val _events = Channel<PhotoGalleryEvent>(Channel.BUFFERED)
+    val events: Flow<PhotoGalleryEvent> = _events.receiveAsFlow()
+    private val binLock = Mutex()
+    // Main only.
+    private var pending = 0
 
     // Not a data class: setting an equal window again must read again, after a count changed.
     private class Window(val first: Int, val last: Int)
@@ -198,7 +203,7 @@ class PhotoGalleryViewModel(
             }
             PhotoGalleryUiAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
             PhotoGalleryUiAction.MoveToBin -> onSelection(BinAction.MoveToBin, PhotoBin::moveToBin)
-            PhotoGalleryUiAction.MoveOpenToBin -> _uiState.value.openedFileId?.let { runBin(BinAction.MoveToBin, setOf(it), PhotoBin::moveToBin) }
+            is PhotoGalleryUiAction.MovePhotoToBin -> runBin(BinAction.MoveToBin, setOf(action.fileId), PhotoBin::moveToBin)
             PhotoGalleryUiAction.Restore -> onSelection(BinAction.Restore, PhotoBin::restore)
             PhotoGalleryUiAction.DeleteForGood -> onSelection(BinAction.DeleteForGood, PhotoBin::deleteForGood)
             PhotoGalleryUiAction.EmptyBin -> runBin(BinAction.Empty, emptySet(), { empty() })
@@ -214,21 +219,28 @@ class PhotoGalleryViewModel(
         runBin(action, ids, block, restoreSelection = true)
     }
 
+    // One at a time, in the order asked: an Undo tapped while another action runs waits for it.
     private fun runBin(action: BinAction, ids: Set<Uuid>, block: suspend PhotoBin.(Set<Uuid>) -> PhotoBinResult, restoreSelection: Boolean = false) {
-        if (_uiState.value.busy) return
+        pending++
         _uiState.update { it.copy(busy = true) }
         viewModelScope.launch {
             try {
-                val result = bin.block(ids)
-                _events.emit(PhotoGalleryEvent.BinDone(action, result, undo = if (action == BinAction.MoveToBin) ids else emptySet()))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
-                if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
-                _events.emit(PhotoGalleryEvent.BinFailed(action))
+                binLock.withLock {
+                    try {
+                        val result = bin.block(ids)
+                        val undo = if (action == BinAction.MoveToBin) result.written else emptySet()
+                        _events.send(PhotoGalleryEvent.BinDone(action, result, undo))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
+                        if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
+                        _events.send(PhotoGalleryEvent.BinFailed(action))
+                    }
+                }
             } finally {
-                _uiState.update { it.copy(busy = false) }
+                pending--
+                _uiState.update { it.copy(busy = pending > 0) }
             }
         }
     }

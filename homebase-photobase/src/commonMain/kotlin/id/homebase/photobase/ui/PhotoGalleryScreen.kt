@@ -213,7 +213,7 @@ fun PhotoGalleryScreen(
                 transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
             ) { viewing ->
                 if (viewing && layout != null) {
-                    val moveToBin = { onAction(PhotoGalleryUiAction.MoveOpenToBin) }.takeIf { shelf == PhotoShelf.Library }
+                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf == PhotoShelf.Library }
                     GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, moveToBin, { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent)
                 } else {
                     GalleryGrid(
@@ -223,7 +223,8 @@ fun PhotoGalleryScreen(
                 }
             }
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+        // Above the selection's toolbar when a failed action gives the selection back.
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (uiState.selecting) TOOLBAR_ROOM else 0.dp))
     }
 }
 
@@ -245,7 +246,7 @@ private fun GalleryViewer(
     layout: GalleryLayout,
     loaded: Map<Int, List<PhotoGalleryItem>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
-    onMoveToBin: (() -> Unit)?,
+    onMoveToBin: ((Uuid) -> Unit)?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -313,7 +314,7 @@ private fun GalleryViewer(
         when (val viewer = remember(item) { item.toViewer() }) {
             is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                 data = viewer,
-                onDelete = onMoveToBin?.let { move -> { _ -> move() } },
+                onDelete = onMoveToBin,
                 onDismiss = close,
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
@@ -680,13 +681,15 @@ private fun DayHeader(
     selected: State<Set<Uuid>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
 ) {
-    val allPicked = selecting && loaded.value[day].orEmpty().let { photos -> photos.isNotEmpty() && photos.all { it.fileId in selected.value } }
+    val photos = if (selecting) loaded.value[day] else null
+    val allPicked = photos != null && photos.isNotEmpty() && photos.all { it.fileId in selected.value }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
             .semantics { collectionItemInfo = CollectionItemInfo(item, 1, 0, columns) }
             .then(
-                if (selecting) {
+                // Until the day's photos are read there's nothing to pick.
+                if (photos != null) {
                     Modifier.clickable(
                         onClickLabel = stringResource(if (allPicked) MR.string.photobase_selection_day_clear else MR.string.photobase_selection_day),
                     ) { onAction(PhotoGalleryUiAction.ToggleDay(day)) }
