@@ -18,19 +18,20 @@ class PhotoDriveEventsTest {
 
     @Test
     fun aFinishedRoundWithRecordsAndAChangeWithItsFileBothCount() = runTest {
+        val arrived = galleryTestFile(1)
         val events = flowOf<BackendEvent>(
             BackendEvent.DriveEvent.Started(photos),
             BackendEvent.DriveEvent.Progress(photos, 500),
             BackendEvent.DriveEvent.Stopped(photos, 0, BackendEvent.DriveResult.Completed),
             BackendEvent.DriveEvent.Stopped(photos, 12, BackendEvent.DriveResult.Completed),
             BackendEvent.DriveEvent.Stopped(photos, 3, BackendEvent.DriveResult.Aborted("offline")),
-            BackendEvent.DataEvent.BatchReceived(photos, listOf(galleryTestFile(1))),
+            BackendEvent.DataEvent.BatchReceived(photos, listOf(arrived)),
             BackendEvent.DriveEvent.Stopped(Uuid.random(), 40, BackendEvent.DriveResult.Completed),
             BackendEvent.DataEvent.BatchReceived(Uuid.random(), listOf(galleryTestFile(2))),
         )
 
         assertEquals(
-            listOf(PhotoChange.RoundFinished, PhotoChange.RoundFinished, PhotoChange.FilesArrived(listOf(galleryTestFile(1).fileMetadata.appData.userDate!!))),
+            listOf(PhotoChange.RoundFinished, PhotoChange.RoundFinished, PhotoChange.FilesArrived(listOf(arrived))),
             events.newPhotoRecords().toList(),
             "a round is silent until it stops; a failed one may still have written some",
         )

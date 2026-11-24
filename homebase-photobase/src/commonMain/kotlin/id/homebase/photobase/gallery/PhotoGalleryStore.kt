@@ -1,48 +1,48 @@
 package id.homebase.photobase.gallery
 
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.FileStateFilter
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.query.QueryBatchCursor
-import id.homebase.api.sync.database.CountedDay
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DayCount
-import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.sync.database.DayHeader
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.serialization.OdinSystemSerializer
+import co.touchlab.kermit.Logger
 import id.homebase.core.photobase.PhotobaseProtocol
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Mutex
 import kotlin.uuid.Uuid
 
-/** The gallery's pages, read from the device's copy of the Photos drive, which the drive sync keeps current. */
+/** The gallery's photos and days, read from the device's copy of the Photos drive, which the drive sync keeps current. */
 class PhotoGalleryStore internal constructor(
     private val db: DatabaseManager,
     private val identityId: suspend () -> Uuid,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
-) : PhotoGalleryPageSource {
-    // Parsing a page of headers doesn't belong on the view model's Main.
-    override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage = withContext(Dispatchers.Default) {
-        val result = QueryBatch(identityId()).queryBatchAsync(
-            dbm = db,
-            driveId = photosDriveId,
-            noOfItems = galleryPageSize(cursor),
-            cursor = cursor?.let { QueryBatchCursor.fromJson(it) },
-            sortOrder = if (newestFirst) QueryBatchSortOrder.NewestFirst else QueryBatchSortOrder.OldestFirst,
-            sortField = QueryBatchSortField.UserDate,
-            fileSystemType = 0,
-            fileState = FileStateFilter.Active,
-            filetypesAnyOf = listOf(PhotobaseProtocol.PhotoFileType),
-        )
-        PhotoGalleryPage(
-            result.records.mapNotNull { it.toGalleryItem() },
-            nextCursor = result.cursor.toJson().takeIf { result.hasMoreRows },
-        )
+) : PhotoGallerySource {
+    // Called from each gallery view model's own reading thread.
+    private val unparsable = mutableSetOf<Int>()
+    private val unparsableLock = Mutex()
+
+    override suspend fun photosOnDays(fromDay: Int, toDay: Int): Map<Int, List<PhotoGalleryItem>> =
+        db.photoDays.headersOnDays(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong(), fromDay, toDay)
+            .mapNotNull { row -> row.toGalleryItem()?.let { row.day to it } }
+            .groupBy({ it.first }, { it.second })
+
+    // One header that won't parse loses that photo, not the day; it's logged once, not on every read of its day.
+    private suspend fun DayHeader.toGalleryItem(): PhotoGalleryItem? = try {
+        OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader).toGalleryItem()
+    } catch (e: Exception) {
+        if (unparsableLock.withLock { unparsable.add(jsonHeader.hashCode()) }) {
+            Logger.e(tag = "PhotoGalleryStore", throwable = e) { "a Photos header on day $day won't parse" }
+        }
+        null
     }
 
     suspend fun dayCounts(): List<DayCount> = db.photoDays.dayCounts(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong())
 
-    suspend fun dayOf(userDate: Long): CountedDay? = db.photoDays.dayOf(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong(), userDate)
+    suspend fun dayOf(userDate: Long): Int? = db.photoDays.dayOf(userDate)
+
+    suspend fun photosOn(day: Int): Int = db.photoDays.photosOn(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong(), day)
 
     /** Whose library and which time zone the day counts are for. */
     suspend fun daysCountedFor(): String = "${identityId()} ${TimeZone.currentSystemDefault().id}"

@@ -57,21 +57,36 @@ class PhotoDaysWrapperTest {
         db.add(local(2024, 10, 26, 23, 59))
         db.add(local(2024, 10, 28, 0, 0))
 
-        val day = assertNotNull(db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 10, 27, 13, 0)))
-        assertEquals(DayCount(morning.localDay(), 2), day.count)
-        assertEquals(morning..<local(2024, 10, 28, 0, 0), day.userDates, "local midnight to local midnight, however long the day")
-        assertEquals(DayCount(local(2024, 5, 1, 9, 0).localDay(), 0), db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 5, 1, 9, 0))?.count)
+        val day = assertNotNull(db.photoDays.dayOf(local(2024, 10, 27, 13, 0)))
+        assertEquals(morning.localDay(), day)
+        assertEquals(2, db.photoDays.photosOn(identity, photos, PHOTO_TYPE, day), "local midnight to local midnight, however long the day")
+        assertEquals(0, db.photoDays.photosOn(identity, photos, PHOTO_TYPE, local(2024, 5, 1, 9, 0).localDay()))
     }
 
-    // Before 1970 SQLite guesses a zone's summer time from a stand-in year, so only the two queries can be compared.
     @Test
-    fun beforeEpochBothQueriesPutAPhotoOnTheSameDay() = runDbTest { db ->
+    fun aWindowOfDaysHoldsExactlyThePhotosTheDayCountsPutOnThem() = runDbTest { db ->
+        // The first and last minute of four local days in a row, so the UTC range's spare day has photos to leave out.
+        val times = (8..11).flatMap { listOf(local(2024, 3, it, 0, 0), local(2024, 3, it, 23, 59)) }
+        times.forEach { db.add(it) }
+        val from = local(2024, 3, 9, 12, 0).localDay()
+
+        val window = db.photoDays.headersOnDays(identity, photos, PHOTO_TYPE, from, from + 1)
+
+        assertEquals(listOf(from + 1, from + 1, from, from), window.map { it.day }, "newest first, and only the two days asked")
+        val counted = db.photoDays.dayCounts(identity, photos, PHOTO_TYPE).filter { it.day in from..from + 1 }
+        assertEquals(counted.associate { it.day to it.photos }, window.groupingBy { it.day }.eachCount())
+    }
+
+    // Before 1970 SQLite guesses a zone's summer time from a stand-in year, so only the queries can be compared.
+    @Test
+    fun beforeEpochEveryQueryPutsAPhotoOnTheSameDay() = runDbTest { db ->
         val halfASecondBefore = -500L
         db.add(halfASecondBefore)
 
-        val day = assertNotNull(db.photoDays.dayOf(identity, photos, PHOTO_TYPE, halfASecondBefore))
-        assertEquals(listOf(day.count), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
-        assertEquals(1, day.count.photos, "the day's own range holds the photo it was asked about")
+        val day = assertNotNull(db.photoDays.dayOf(halfASecondBefore))
+        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
+        assertEquals(1, db.photoDays.photosOn(identity, photos, PHOTO_TYPE, day))
+        assertEquals(listOf(day), db.photoDays.headersOnDays(identity, photos, PHOTO_TYPE, day, day).map { it.day })
     }
 
     @Test
@@ -83,7 +98,8 @@ class PhotoDaysWrapperTest {
         db.add(253_402_300_799_999)
 
         assertEquals(listOf(DayCount(local(2024, 3, 9, 12, 0).localDay(), 1)), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
-        assertEquals(null, db.photoDays.dayOf(identity, photos, PHOTO_TYPE, inMicroseconds))
+        assertEquals(null, db.photoDays.dayOf(inMicroseconds))
+        assertEquals(null, db.photoDays.dayOf(253_402_300_799_999))
     }
 
     private fun local(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =

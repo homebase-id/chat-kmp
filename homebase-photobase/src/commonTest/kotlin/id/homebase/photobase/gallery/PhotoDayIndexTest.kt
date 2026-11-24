@@ -1,7 +1,7 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.sync.database.DayCount
-import id.homebase.api.sync.database.CountedDay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -12,6 +12,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 class PhotoDayIndexTest {
@@ -20,27 +22,30 @@ class PhotoDayIndexTest {
         val days = mutableMapOf(20 to 3, 18 to 1, 15 to 7)
         var builds = 0
         var failDayOf = false
+        var failRebuild = false
+        // As a zone an odd number of minutes from UTC.
+        var offsetMs = 0L
         val recounted = mutableListOf<Int>()
         var countedFor = "frodo UTC"
         var signedOut = false
 
         fun index(scope: TestScope, changes: MutableSharedFlow<PhotoChange>) = PhotoDayIndex(
-            dayCounts = { builds++; days.entries.sortedByDescending { it.key }.map { DayCount(it.key, it.value) } },
+            dayCounts = { check(!failRebuild) { "database closed" }; builds++; days.entries.sortedByDescending { it.key }.map { DayCount(it.key, it.value) } },
             dayOf = { userDate ->
                 check(!failDayOf) { "database closed" }
-                if (userDate == NO_DAY) {
-                    null
-                } else {
-                    val day = (userDate / DAY_MS).toInt()
-                    recounted += day
-                    CountedDay(DayCount(day, days[day] ?: 0), day * DAY_MS..<(day + 1) * DAY_MS)
-                }
+                if (userDate == NO_DAY) null else ((userDate + offsetMs).floorDiv(DAY_MS)).toInt()
+            },
+            photosOn = { day ->
+                recounted += day
+                days[day] ?: 0
             },
             countedFor = { check(!signedOut) { "no active credentials" }; countedFor },
             changes = changes,
             scope = scope.backgroundScope,
         )
     }
+
+    private fun arrived(vararg userDates: Long) = PhotoChange.FilesArrived(userDates.map { galleryTestFile(it) })
 
     private fun TestScope.setUp(): Triple<Library, MutableSharedFlow<PhotoChange>, PhotoDayIndex> {
         val library = Library()
@@ -70,7 +75,7 @@ class PhotoDayIndexTest {
         index.days.first()
 
         library.days[21] = 2
-        changes.emit(PhotoChange.FilesArrived(listOf(21 * DAY_MS)))
+        changes.emit(arrived(21 * DAY_MS))
         changes.emit(PhotoChange.RoundFinished)
         runCurrent()
         assertEquals(1, library.builds, "a reconnect or a background sync costs nothing")
@@ -89,12 +94,12 @@ class PhotoDayIndexTest {
         library.days[19] = 1
         library.days[20] = 4
         library.days.remove(15)
-        changes.emit(PhotoChange.FilesArrived(listOf(19 * DAY_MS + 5, 20 * DAY_MS, 15 * DAY_MS, 20 * DAY_MS)))
+        changes.emit(arrived(19 * DAY_MS + 5, 20 * DAY_MS, 15 * DAY_MS, 20 * DAY_MS))
         runCurrent()
 
         assertContentEquals(intArrayOf(20, 19, 18), shown.last().days, "a new day goes in its place, an emptied one goes")
         assertContentEquals(intArrayOf(4, 1, 1), shown.last().counts)
-        assertEquals(listOf(19, 20, 15), library.recounted, "each day counted once, however many photos arrived on it")
+        assertEquals(listOf(15, 19, 20), library.recounted.sorted(), "each day counted once, however many photos arrived on it")
         assertEquals(1, library.builds)
         watching.cancel()
     }
@@ -128,11 +133,11 @@ class PhotoDayIndexTest {
         runCurrent()
 
         library.failDayOf = true
-        changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS)))
+        changes.emit(arrived(20 * DAY_MS))
         runCurrent()
         library.failDayOf = false
         library.days[21] = 1
-        changes.emit(PhotoChange.FilesArrived(listOf(21 * DAY_MS)))
+        changes.emit(arrived(21 * DAY_MS))
         runCurrent()
 
         assertEquals(2, library.builds, "the screen mustn't keep stale days for the rest of the visit")
@@ -179,7 +184,7 @@ class PhotoDayIndexTest {
         runCurrent()
 
         library.countedFor = "frodo Asia/Tokyo"
-        changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS)))
+        changes.emit(arrived(20 * DAY_MS))
         runCurrent()
 
         assertEquals(2, library.builds)
@@ -193,7 +198,7 @@ class PhotoDayIndexTest {
         val watching = launch { index.days.collect { } }
         runCurrent()
 
-        changes.emit(PhotoChange.FilesArrived(List(201) { it * DAY_MS }))
+        changes.emit(PhotoChange.FilesArrived(List(201) { galleryTestFile(it * DAY_MS) }))
         runCurrent()
 
         assertEquals(2, library.builds)
@@ -208,7 +213,7 @@ class PhotoDayIndexTest {
         runCurrent()
         library.days[19] = 1
 
-        changes.emit(PhotoChange.FilesArrived(listOf(NO_DAY, 19 * DAY_MS)))
+        changes.emit(arrived(NO_DAY, 19 * DAY_MS))
         runCurrent()
 
         assertContentEquals(intArrayOf(20, 19, 18, 15), index.days.first().days)
@@ -234,7 +239,7 @@ class PhotoDayIndexTest {
 
         repeat(5) {
             library.days[20] = 4 + it
-            changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS + it)))
+            changes.emit(arrived(20 * DAY_MS + it))
             runCurrent()
         }
         assertEquals(listOf(20), library.recounted, "the first photo counts at once; the rest wait for the gap")
@@ -243,6 +248,54 @@ class PhotoDayIndexTest {
         runCurrent()
         assertEquals(listOf(20, 20), library.recounted)
         assertEquals(8, index.days.first().counts[0])
+        watching.cancel()
+    }
+
+    @Test
+    fun aQuarterHourAcrossAnOddMinuteMidnightRecountsBothDays() = runTest {
+        val (library, changes, index) = setUp()
+        library.offsetMs = 2_670_000 // 44 min 30 s ahead, as Monrovia was until 1972
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        val midnight = 20 * DAY_MS - library.offsetMs
+        changes.emit(arrived(midnight - 10_000, midnight + 10_000))
+        runCurrent()
+
+        assertEquals(setOf(19, 20), library.recounted.toSet())
+        watching.cancel()
+    }
+
+    @Test
+    fun forgettingClearsAFailedCount() = runTest {
+        val (library, _, index) = setUp()
+        library.failRebuild = true
+        index.recount()
+        assertTrue(index.failed.value)
+
+        index.forget()
+        assertFalse(index.failed.value, "a new library mustn't open on the last one's error")
+    }
+
+    @Test
+    fun itSaysWhichDaysItTouchedAndThatACountFailed() = runTest {
+        val (library, changes, index) = setUp()
+        val touched = mutableListOf<Map<Int, List<HomebaseFile>>?>()
+        val listening = launch { index.touched.collect { touched += it } }
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        changes.emit(arrived(18 * DAY_MS, 20 * DAY_MS))
+        runCurrent()
+        assertEquals(listOf(null, setOf(18, 20)), touched.map { it?.keys }, "the first count touches every day, a recount its own")
+
+        library.failRebuild = true
+        index.recount()
+        assertTrue(index.failed.value)
+        library.failRebuild = false
+        index.recount()
+        assertFalse(index.failed.value)
+        listening.cancel()
         watching.cancel()
     }
 

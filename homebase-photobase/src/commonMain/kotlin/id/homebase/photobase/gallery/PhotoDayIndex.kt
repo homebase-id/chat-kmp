@@ -1,13 +1,15 @@
 package id.homebase.photobase.gallery
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.sync.database.CountedDay
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.sync.database.DayCount
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.onSubscription
@@ -21,6 +23,11 @@ import kotlin.time.measureTimedValue
 /** The library's days that have photos, newest first, and how many each has. */
 class LibraryDays(val days: IntArray, val counts: IntArray) {
     val photos: Int get() = counts.sum()
+
+    fun countOf(day: Int): Int {
+        val at = days.asList().binarySearch { day.compareTo(it) }
+        return if (at >= 0) counts[at] else 0
+    }
 }
 
 /**
@@ -29,7 +36,8 @@ class LibraryDays(val days: IntArray, val counts: IntArray) {
  */
 class PhotoDayIndex(
     private val dayCounts: suspend () -> List<DayCount>,
-    private val dayOf: suspend (userDate: Long) -> CountedDay?,
+    private val dayOf: suspend (userDate: Long) -> Int?,
+    private val photosOn: suspend (day: Int) -> Int,
     // The identity and time zone the days were counted for: either changing means counting again.
     private val countedFor: suspend () -> String,
     changes: Flow<PhotoChange>,
@@ -40,8 +48,19 @@ class PhotoDayIndex(
     private val current = MutableStateFlow<LibraryDays?>(null)
     // Null: count again before the next look.
     private var builtFor: String? = null
-    private val arrived = mutableListOf<Long>()
+    private val arrived = mutableListOf<HomebaseFile>()
     private val recount = Channel<Unit>(Channel.CONFLATED)
+    private val _touched = MutableSharedFlow<Map<Int, List<HomebaseFile>>?>(extraBufferCapacity = 64)
+    private val _failed = MutableStateFlow(false)
+
+    /**
+     * The days whose photos may have changed, even where their counts didn't, with the files that arrived on each;
+     * null for any day, after a full count.
+     */
+    val touched: Flow<Map<Int, List<HomebaseFile>>?> = _touched
+
+    /** The last full count failed: until one succeeds, there are no days to show. */
+    val failed: StateFlow<Boolean> = _failed
 
     init {
         // Caught per change: reading the key throws while nobody is signed in, and must not end the collection.
@@ -60,10 +79,13 @@ class PhotoDayIndex(
         .onSubscription { mutex.withLock { orCountAgainLater { if (builtFor != countedFor()) rebuild() } } }
         .filterNotNull()
 
+    suspend fun recount() = mutex.withLock { orCountAgainLater { rebuild() } }
+
     /** Photobase is gone: count again from scratch next time. */
     suspend fun forget() = mutex.withLock {
         current.value = LibraryDays(IntArray(0), IntArray(0))
         builtFor = null
+        _failed.value = false
         arrived.clear()
     }
 
@@ -85,7 +107,7 @@ class PhotoDayIndex(
                 orCountAgainLater { rebuild() }
             }
             is PhotoChange.FilesArrived -> {
-                arrived += change.userDates
+                arrived += change.files
                 recount.trySend(Unit)
             }
         }
@@ -93,32 +115,46 @@ class PhotoDayIndex(
 
     private suspend fun recountArrived() {
         if (builtFor == null || arrived.isEmpty()) return
-        val dates = arrived.toList()
+        val files = arrived.toList()
         arrived.clear()
         orCountAgainLater {
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
-            if (dates.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
-            val spans = mutableListOf<LongRange>()
-            val counted = mutableListOf<DayCount>()
-            for (userDate in dates) {
-                if (spans.any { userDate in it }) continue
-                val day = dayOf(userDate) ?: continue
-                spans += day.userDates
-                counted += day.count
+            if (files.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
+            // A quarter hour of photos is on at most two days (a few historical zones were odd minutes from UTC), so
+            // its earliest and latest photo settle each one's day without a lookup per photo.
+            val byDay = mutableMapOf<Int, MutableList<HomebaseFile>>()
+            for (quarter in files.sortedBy { it.sqlUserDateMs() }.groupBy { it.sqlUserDateMs().floorDiv(QUARTER_HOUR_MS) }.values) {
+                val first = dayOf(quarter.first().sqlUserDateMs())
+                val last = dayOf(quarter.last().sqlUserDateMs())
+                for (file in quarter) {
+                    val day = if (first == last) first else dayOf(file.sqlUserDateMs())
+                    if (day != null) byDay.getOrPut(day) { mutableListOf() } += file
+                }
             }
-            put(counted)
+            put(byDay.keys.map { DayCount(it, photosOn(it)) })
+            _touched.emit(byDay)
         }
     }
 
     private suspend fun rebuild() {
         val key = countedFor()
-        val (counted, took) = measureTimedValue { dayCounts() }
+        val (counted, took) = try {
+            measureTimedValue { dayCounts() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _failed.value = true
+            throw e
+        }
         val days = IntArray(counted.size) { counted[it].day }
         val counts = IntArray(counted.size) { counted[it].photos }
         val held = current.value
         if (held == null || !held.days.contentEquals(days) || !held.counts.contentEquals(counts)) current.value = LibraryDays(days, counts)
         builtFor = key
+        _failed.value = false
+        // Equal counts can still hide a photo replaced by another.
+        _touched.emit(null)
         Logger.i(tag = TAG) { "counted ${counted.size} days, ${counted.sumOf { it.photos }} photos in $took" }
     }
 
@@ -155,12 +191,14 @@ class PhotoDayIndex(
     private companion object {
         const val TAG = "PhotoDayIndex"
         const val REBUILD_ABOVE = 200
+        const val QUARTER_HOUR_MS = 15 * 60 * 1000L
     }
 }
 
 fun photoDayIndex(store: PhotoGalleryStore, changes: Flow<PhotoChange>, scope: CoroutineScope) = PhotoDayIndex(
     dayCounts = store::dayCounts,
     dayOf = store::dayOf,
+    photosOn = store::photosOn,
     countedFor = store::daysCountedFor,
     changes = changes,
     scope = scope,
