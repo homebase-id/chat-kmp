@@ -23,6 +23,8 @@ class PhotoDayIndexTest {
         var builds = 0
         var failDayOf = false
         var failRebuild = false
+        // As a zone an odd number of minutes from UTC.
+        var offsetMs = 0L
         val recounted = mutableListOf<Int>()
         var countedFor = "frodo UTC"
         var signedOut = false
@@ -31,7 +33,7 @@ class PhotoDayIndexTest {
             dayCounts = { check(!failRebuild) { "database closed" }; builds++; days.entries.sortedByDescending { it.key }.map { DayCount(it.key, it.value) } },
             dayOf = { userDate ->
                 check(!failDayOf) { "database closed" }
-                if (userDate == NO_DAY) null else (userDate / DAY_MS).toInt()
+                if (userDate == NO_DAY) null else ((userDate + offsetMs).floorDiv(DAY_MS)).toInt()
             },
             photosOn = { day ->
                 recounted += day
@@ -97,7 +99,7 @@ class PhotoDayIndexTest {
 
         assertContentEquals(intArrayOf(20, 19, 18), shown.last().days, "a new day goes in its place, an emptied one goes")
         assertContentEquals(intArrayOf(4, 1, 1), shown.last().counts)
-        assertEquals(listOf(19, 20, 15), library.recounted, "each day counted once, however many photos arrived on it")
+        assertEquals(listOf(15, 19, 20), library.recounted.sorted(), "each day counted once, however many photos arrived on it")
         assertEquals(1, library.builds)
         watching.cancel()
     }
@@ -247,6 +249,32 @@ class PhotoDayIndexTest {
         assertEquals(listOf(20, 20), library.recounted)
         assertEquals(8, index.days.first().counts[0])
         watching.cancel()
+    }
+
+    @Test
+    fun aQuarterHourAcrossAnOddMinuteMidnightRecountsBothDays() = runTest {
+        val (library, changes, index) = setUp()
+        library.offsetMs = 2_670_000 // 44 min 30 s ahead, as Monrovia was until 1972
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        val midnight = 20 * DAY_MS - library.offsetMs
+        changes.emit(arrived(midnight - 10_000, midnight + 10_000))
+        runCurrent()
+
+        assertEquals(setOf(19, 20), library.recounted.toSet())
+        watching.cancel()
+    }
+
+    @Test
+    fun forgettingClearsAFailedCount() = runTest {
+        val (library, _, index) = setUp()
+        library.failRebuild = true
+        index.recount()
+        assertTrue(index.failed.value)
+
+        index.forget()
+        assertFalse(index.failed.value, "a new library mustn't open on the last one's error")
     }
 
     @Test

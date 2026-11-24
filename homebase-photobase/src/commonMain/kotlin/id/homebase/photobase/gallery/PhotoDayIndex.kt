@@ -85,6 +85,7 @@ class PhotoDayIndex(
     suspend fun forget() = mutex.withLock {
         current.value = LibraryDays(IntArray(0), IntArray(0))
         builtFor = null
+        _failed.value = false
         arrived.clear()
     }
 
@@ -120,10 +121,17 @@ class PhotoDayIndex(
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
             if (files.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
-            // Every zone is a whole number of quarter hours from UTC, so a quarter hour of photos is on one day.
-            val byDay = files.groupBy { it.sqlUserDateMs().floorDiv(QUARTER_HOUR_MS) }.values
-                .mapNotNull { quarter -> dayOf(quarter.first().sqlUserDateMs())?.let { it to quarter } }
-                .groupBy({ it.first }, { it.second }).mapValues { it.value.flatten() }
+            // A quarter hour of photos is on at most two days (a few historical zones were odd minutes from UTC), so
+            // its earliest and latest photo settle each one's day without a lookup per photo.
+            val byDay = mutableMapOf<Int, MutableList<HomebaseFile>>()
+            for (quarter in files.sortedBy { it.sqlUserDateMs() }.groupBy { it.sqlUserDateMs().floorDiv(QUARTER_HOUR_MS) }.values) {
+                val first = dayOf(quarter.first().sqlUserDateMs())
+                val last = dayOf(quarter.last().sqlUserDateMs())
+                for (file in quarter) {
+                    val day = if (first == last) first else dayOf(file.sqlUserDateMs())
+                    if (day != null) byDay.getOrPut(day) { mutableListOf() } += file
+                }
+            }
             put(byDay.keys.map { DayCount(it, photosOn(it)) })
             _touched.emit(byDay)
         }

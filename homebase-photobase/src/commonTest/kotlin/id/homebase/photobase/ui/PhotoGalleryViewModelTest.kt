@@ -246,6 +246,35 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
+    fun aFileThatArrivesTwiceIsHeldOnceAsItsLastVersion() = runTest {
+        val library = Library(1..1, perDay = 200)
+        val (viewModel, screen) = viewModel(library)
+        val first = id.homebase.photobase.gallery.galleryTestFile(DAY_MS + 500)
+        val second = id.homebase.photobase.gallery.galleryTestFile(DAY_MS + 600, fileId = first.fileId)
+
+        library.touched.emit(mapOf(1 to listOf(first, second)))
+        advanceUntilIdle()
+
+        val held = viewModel.uiState.value.loaded.getValue(1).filter { it.fileId == first.fileId }
+        assertEquals(listOf(DAY_MS + 600), held.map { it.capturedAtMs }, "two pages with one key would crash the viewer")
+        screen.cancel()
+    }
+
+    @Test
+    fun aFullCountReadsSmallHeldDaysAgainButNotABigOneThatStillHoldsItsCount() = runTest {
+        val library = Library(1..2, perDay = 160)
+        library.photos[1] = library.photos.getValue(1).take(3)
+        val (viewModel, screen) = viewModel(library)
+        library.asked.clear()
+
+        library.touched.emit(null)
+        advanceUntilIdle()
+
+        assertEquals(listOf(1..1), library.asked, "every reconnect would parse the big day in full again")
+        screen.cancel()
+    }
+
+    @Test
     fun aFailedReadIsTriedAgainOnRefreshNotOnATimer() = runTest {
         val library = Library(1..10, perDay = 3)
         library.failure = IllegalStateException("database busy")

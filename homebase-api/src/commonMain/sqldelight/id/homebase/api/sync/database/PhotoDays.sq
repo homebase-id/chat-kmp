@@ -14,8 +14,13 @@ WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND
 GROUP BY day
 ORDER BY day DESC;
 
+-- Outside dayCounts' bounds, so a photo it leaves out has no day here either: -2147483648, since SQLDelight types this
+-- as never NULL.
 dayNumberOf:
-SELECT CAST(julianday(date(CAST(:userDate AS INTEGER) / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER);
+SELECT CASE WHEN CAST(:userDate AS INTEGER) BETWEEN -62167132800000 AND 253402214399999
+  THEN CAST(julianday(date(CAST(:userDate AS INTEGER) / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER)
+  ELSE -2147483648
+END AS day;
 
 -- By dayCounts' own day expression, so the two can't disagree. The userDate range lets the index serve it, with a
 -- day to spare each side since no zone is more than 14 hours from UTC.

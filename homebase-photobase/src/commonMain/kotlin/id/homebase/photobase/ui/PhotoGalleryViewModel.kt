@@ -118,7 +118,12 @@ class PhotoGalleryViewModel(
             touchedDays.collect { byDay ->
                 val loaded = _uiState.value.loaded
                 if (byDay == null) {
-                    stale += loaded.keys + inFlight
+                    // A full count, on every reconnect: a big day is read again only if it no longer holds its count,
+                    // since what arrives live merges into it.
+                    val library = counted
+                    stale += inFlight + loaded.filter { (day, items) ->
+                        items.size <= READ_WHOLE_DAY_UP_TO || library == null || library.countOf(day) != items.size
+                    }.keys
                 } else {
                     for ((day, files) in byDay) {
                         val held = loaded[day]
@@ -217,8 +222,10 @@ class PhotoGalleryViewModel(
 
     // A file that arrived replaces its old self wherever it's held, and lands on its day unless it was deleted.
     private fun merge(day: Int, files: List<HomebaseFile>) {
-        val ids = files.mapTo(HashSet()) { it.fileId }
-        val arrived = files.filterNot { it.isSoftDeleted() }.mapNotNull { it.toGalleryItem() }
+        // A file can arrive twice between counts; its last version is the one that stands.
+        val latest = files.associateBy { it.fileId }.values
+        val ids = latest.mapTo(HashSet()) { it.fileId }
+        val arrived = latest.filterNot { it.isSoftDeleted() }.mapNotNull { it.toGalleryItem() }
         _uiState.update { state ->
             val without = state.loaded.mapValues { (_, items) -> items.filterNot { it.fileId in ids } }
             val onDay = without[day] ?: return@update state
@@ -266,7 +273,6 @@ class PhotoGalleryViewModel(
         const val MAX_HELD_PHOTOS = 1_000
         // Parsed in about 50 ms on a Pixel 5; a bigger day takes in arriving photos one by one.
         const val READ_WHOLE_DAY_UP_TO = 150
-
     }
 }
 

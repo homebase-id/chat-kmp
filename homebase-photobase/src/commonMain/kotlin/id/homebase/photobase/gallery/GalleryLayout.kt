@@ -60,6 +60,8 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
     }
 
     fun photoAt(photo: Int, loaded: Map<Int, List<PhotoGalleryItem>>): PhotoGalleryItem? {
+        // Read while composing, so also for a page the layout no longer has, before the viewer closes.
+        if (photo !in 0 until photoCount) return null
         val position = lastAtOrBefore(firstPhoto, photo)
         return photoAt(position, photo - firstPhoto[position], loaded)
     }

@@ -181,9 +181,13 @@ private fun GalleryViewer(
         }
         val waitingOn = awaiting.value
         if (waitingOn != null) {
-            // Photos arriving before it move its page.
+            // Photos arriving before it move its page; a day that's gone takes the viewer with it.
             val at = layout.photoOf(waitingOn.first, waitingOn.second)
-            if (at != null && at != pagerState.settledPage) pagerState.scrollToPage(at)
+            if (at == null) {
+                close()
+                return@LaunchedEffect
+            }
+            if (at != pagerState.settledPage) pagerState.scrollToPage(at)
         } else {
             // Photos arriving above the open one would otherwise leave the pager on a different photo.
             // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
