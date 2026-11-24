@@ -67,12 +67,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.haptics.Haptics
-import id.homebase.photobase.gallery.GalleryRows
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerType
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -105,8 +99,6 @@ import id.homebase.resources.photobase_label
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 import id.homebase.core.image.mediaSharedKey
-
-private val GRID_SPACING = 2.dp
 
 // Thumbnails wait for scrolling to settle; the headers, which carry the tinies, only for a brief pause.
 private const val SETTLE_MILLIS = 150L
@@ -334,7 +326,7 @@ private fun GalleryGrid(
         ) {
             val hasPhotos = (layout?.photoCount ?: 0) > 0
             when {
-                layout != null && hasPhotos -> PhotoGrid(layout, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope, rememberHaptics())
+                layout != null && hasPhotos -> PhotoGrid(layout, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
                 // While the drive is still syncing, "nothing backed up" may not be true.
                 uiState.isSyncing -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
@@ -411,7 +403,7 @@ internal fun PhotoGrid(
     memory: GridMemory,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
-    haptics: Haptics,
+    haptics: Haptics = rememberHaptics(),
 ) {
     val gridState = memory.state
     val newestFirst = layout.newestFirst
@@ -462,44 +454,18 @@ internal fun PhotoGrid(
                 settled.value = true
             }
     }
-    // What the grid measured, for the scrubber: its columns, and a header's and a row's height with the gap after it.
-    val spacing = with(LocalDensity.current) { GRID_SPACING.roundToPx() }
-    val measured by remember(gridState, spacing) {
-        derivedStateOf {
-            val info = gridState.layoutInfo
-            val header = info.visibleItemsInfo.firstOrNull { it.contentType == "day" }?.size?.height
-            val tile = info.visibleItemsInfo.firstOrNull { it.contentType == "photo" }?.size?.height
-            if (header == null || tile == null || info.maxSpan <= 0) null else Triple(info.maxSpan, header + spacing, tile + spacing)
-        }
-    }
-    val rows = remember(layout, measured) { measured?.let { (columns, header, row) -> GalleryRows(layout, columns, header, row) } }
-    var pointerNear by remember { mutableStateOf(false) }
-    val nearPx = with(LocalDensity.current) { 48.dp.toPx() }
-    Box(
-        Modifier.fillMaxSize().pointerInput(nearPx) {
-            // Seen first and never consumed: a mouse near the right edge shows the scrubber, and the grid still scrolls.
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull() ?: continue
-                    if (change.type == PointerType.Mouse) {
-                        pointerNear = event.type != PointerEventType.Exit && change.position.x > size.width - nearPx
-                    }
-                }
-            }
-        },
-    ) {
+    PhotoScrubber(gridState, layout, haptics) {
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Adaptive(minSize = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(GRID_SPACING),
-            horizontalArrangement = Arrangement.spacedBy(GRID_SPACING),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             contentPadding = PaddingValues(4.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
             for (position in layout.days.indices) {
                 val day = layout.days[position]
-                item(key = "day-$day", span = { GridItemSpan(maxLineSpan) }, contentType = "day") {
+                item(key = "day-$day", span = { GridItemSpan(maxLineSpan) }, contentType = DAY_HEADER) {
                     Text(
                         // The zone formatMomentDate reads back in, or a new zone shows the day before or after.
                         text = formatMomentDate(LocalDate.fromEpochDays(day).atStartOfDayIn(TimeZone.currentSystemDefault())),
@@ -507,7 +473,7 @@ internal fun PhotoGrid(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                     )
                 }
-                items(layout.slotsOf(position), key = { "slot-$day-$it" }, contentType = { "photo" }) { slot ->
+                items(layout.slotsOf(position), key = { "slot-$day-$it" }, contentType = { PHOTO_TILE }) { slot ->
                     when (val item = layout.photoAt(position, slot, loaded.value)) {
                         null -> PlaceholderCell()
                         else -> PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
@@ -517,7 +483,6 @@ internal fun PhotoGrid(
                 }
             }
         }
-        if (rows != null) PhotoScrubber(gridState, rows, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
     }
 }
 

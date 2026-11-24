@@ -43,11 +43,12 @@ class GalleryRowsTest {
 
     @Test
     fun monthsStartAtTheirFirstDayInTheGridsOrder() {
-        assertEquals(listOf(GalleryMonth(2024, 3, top = 0, headerItem = 0), GalleryMonth(2024, 2, top = 80, headerItem = 7)), rows.months)
-        assertEquals(3, rows.monthAt(79)?.month)
-        assertEquals(2, rows.monthAt(85)?.month)
+        assertEquals(listOf(GalleryMonth(LocalDate(2024, 3, 1), top = 0), GalleryMonth(LocalDate(2024, 2, 1), top = 80)), rows.months)
+        assertEquals(LocalDate(2024, 3, 1), rows.monthAt(79)?.first)
+        assertEquals(LocalDate(2024, 2, 1), rows.monthAt(85)?.first)
+        assertEquals(listOf(LocalDate(2024, 3, 1)), rows.years.map { it.first })
 
         val oldestFirst = GalleryRows(GalleryLayout(LibraryDays(intArrayOf(day(2024, 3, 10), day(2024, 2, 20)), intArrayOf(1, 1)), newestFirst = false), 2, 10, 20)
-        assertEquals(listOf(2, 3), oldestFirst.months.map { it.month })
+        assertEquals(listOf(2, 3), oldestFirst.months.map { it.first.month.ordinal + 1 })
     }
 }

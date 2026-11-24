@@ -23,6 +23,10 @@ import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoGalleryItem
+import androidx.compose.ui.test.ComposeUiTest
+import id.homebase.core.util.formatMonthYear
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.LocalDate
 import kotlin.math.abs
 import kotlin.test.Test
@@ -35,7 +39,18 @@ class PhotoScrubberTest {
     private val newest = LocalDate(2024, 12, 31).toEpochDays().toInt()
     private val library = LibraryDays(IntArray(1_200) { newest - it * 3 }, IntArray(1_200) { 10 })
     private val layout = GalleryLayout(library, newestFirst = true)
-    private val months = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+    private fun ComposeUiTest.showGrid(gridState: LazyGridState, haptics: Haptics) = setContent {
+        SharedTransitionLayout {
+            AnimatedVisibility(visible = true) {
+                Box(Modifier.size(400.dp, 800.dp)) {
+                    PhotoGrid(layout, mutableStateOf(emptyMap<Int, List<PhotoGalleryItem>>()), {}, GridMemory(gridState), this@SharedTransitionLayout, this@AnimatedVisibility, haptics)
+                }
+            }
+        }
+    }
+
+    private val HANDLE = "Scroll through your photos by date"
 
     private class CountingHaptics : Haptics {
         var ticks = 0
@@ -47,17 +62,9 @@ class PhotoScrubberTest {
     @Test
     fun aMouseNearTheEdgeShowsTheHandleAndDraggingItMovesTheGrid() = runComposeUiTest {
         val gridState = LazyGridState()
-        setContent {
-            SharedTransitionLayout {
-                AnimatedVisibility(visible = true) {
-                    Box(Modifier.size(400.dp, 800.dp)) {
-                        PhotoGrid(layout, mutableStateOf(emptyMap<Int, List<PhotoGalleryItem>>()), {}, GridMemory(gridState), this@SharedTransitionLayout, this@AnimatedVisibility, CountingHaptics())
-                    }
-                }
-            }
-        }
+        showGrid(gridState, CountingHaptics())
         waitForIdle()
-        val handle = onNodeWithContentDescription("Scroll through your photos by date")
+        val handle = onNodeWithContentDescription(HANDLE)
         handle.assertDoesNotExist()
 
         onRoot().performMouseInput { moveTo(Offset(width - 10f, height / 2f)) }
@@ -78,21 +85,13 @@ class PhotoScrubberTest {
     fun draggingTheHandleMovesTheGridInProportionAndSaysWhichMonthItsIn() = runComposeUiTest {
         val gridState = LazyGridState()
         val haptics = CountingHaptics()
-        setContent {
-            SharedTransitionLayout {
-                AnimatedVisibility(visible = true) {
-                    Box(Modifier.size(400.dp, 800.dp)) {
-                        PhotoGrid(layout, mutableStateOf(emptyMap<Int, List<PhotoGalleryItem>>()), {}, GridMemory(gridState), this@SharedTransitionLayout, this@AnimatedVisibility, haptics)
-                    }
-                }
-            }
-        }
+        showGrid(gridState, haptics)
         waitForIdle()
         // The handle shows once the grid scrolls.
         onRoot().performTouchInput { swipeUp() }
         waitForIdle()
         val before = gridState.firstVisibleItemIndex
-        val handle = onNodeWithContentDescription("Scroll through your photos by date")
+        val handle = onNodeWithContentDescription(HANDLE)
 
         handle.performTouchInput { down(center) }
         waitForIdle()
@@ -103,7 +102,7 @@ class PhotoScrubberTest {
         }
         waitForIdle()
         val day = LocalDate.fromEpochDays(layout.dayOfItem(gridState.firstVisibleItemIndex))
-        onNodeWithText("${months[day.month.ordinal]} ${day.year}").assertExists()
+        onNodeWithText(formatMonthYear(LocalDate(day.year, day.month, 1).atStartOfDayIn(TimeZone.currentSystemDefault()))).assertExists()
         assertTrue(haptics.ticks > 0, "a tick for each month passed")
         val fraction = gridState.firstVisibleItemIndex.toFloat() / layout.headerItemOf(layout.days.size - 1)
         handle.performTouchInput { up() }

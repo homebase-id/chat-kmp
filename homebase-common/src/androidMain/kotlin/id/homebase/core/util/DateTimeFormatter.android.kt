@@ -23,6 +23,11 @@ actual fun formatMediumDate(instant: Instant): String {
     return DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).format(date)
 }
 
+actual fun formatMonthYear(instant: Instant): String {
+    val pattern = AndroidDateFormat.getBestDateTimePattern(Locale.getDefault(), "yMMM")
+    return SimpleDateFormat(pattern, Locale.getDefault()).format(Date.from(instant.toJavaInstant()))
+}
+
 actual fun formatMediumDateNoYear(instant: Instant): String {
     // Android has a skeleton-pattern API that returns the locale's preferred
     // day/month ordering: "MMM d" for en-US, "d MMM" for fr-FR, "d. MMM" for de-DE.

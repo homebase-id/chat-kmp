@@ -2,8 +2,8 @@ package id.homebase.photobase.gallery
 
 import kotlinx.datetime.LocalDate
 
-/** A month of the grid, for the scrubber's label and year marks: where its first day's header is. */
-data class GalleryMonth(val year: Int, val month: Int, val top: Int, val headerItem: Int)
+/** A month of the grid: its first day, and how far down the grid its first day in the grid's order starts. */
+data class GalleryMonth(val first: LocalDate, val top: Int)
 
 /**
  * The grid's height in pixels, row by row, from the layout and what the grid measured: each day is its header and
@@ -17,12 +17,15 @@ class GalleryRows(
     private val rowPx: Int,
 ) {
     private val top = IntArray(layout.days.size)
-
-    /** The whole grid, top to bottom. */
     val height: Int
 
-    /** In the grid's order; a month is where its first day in that order is. */
+    /** In the grid's order. */
     val months: List<GalleryMonth>
+
+    /** Each year's first month in the grid's order. */
+    val years: List<GalleryMonth>
+
+    private val monthTops: IntArray
 
     init {
         var y = 0
@@ -30,14 +33,14 @@ class GalleryRows(
         for (position in layout.days.indices) {
             top[position] = y
             val date = LocalDate.fromEpochDays(layout.days[position])
-            val last = months.lastOrNull()
-            if (last == null || last.year != date.year || last.month != date.month.ordinal + 1) {
-                months += GalleryMonth(date.year, date.month.ordinal + 1, y, layout.headerItemOf(position))
-            }
+            val first = LocalDate(date.year, date.month, 1)
+            if (months.lastOrNull()?.first != first) months += GalleryMonth(first, y)
             y += headerPx + rowsOf(position) * rowPx
         }
         height = y
         this.months = months
+        years = months.distinctBy { it.first.year }
+        monthTops = IntArray(months.size) { months[it].top }
     }
 
     private fun rowsOf(position: Int) = (layout.slotsOf(position) + columns - 1) / columns
@@ -55,24 +58,13 @@ class GalleryRows(
     fun itemAt(y: Int): Pair<Int, Int> {
         if (top.isEmpty()) return 0 to 0
         val at = y.coerceIn(0, height)
-        val position = lastAtOrBefore(at)
+        val position = top.lastAtOrBefore(at)
         val within = at - top[position]
         val header = layout.headerItemOf(position)
-        if (within < headerPx) return header to within.coerceAtLeast(0)
+        if (within < headerPx) return header to within
         val row = ((within - headerPx) / rowPx).coerceAtMost((rowsOf(position) - 1).coerceAtLeast(0))
         return header + 1 + row * columns to (within - headerPx - row * rowPx)
     }
 
-    /** The month [y] down the grid is in. */
-    fun monthAt(y: Int): GalleryMonth? {
-        val found = months.binarySearch { it.top.compareTo(y) }
-        val at = if (found >= 0) found else -found - 2
-        return months.getOrNull(at.coerceAtLeast(0))
-    }
-
-    // Every day has a header, so the tops rise strictly.
-    private fun lastAtOrBefore(y: Int): Int {
-        val found = top.asList().binarySearch(y)
-        return if (found >= 0) found else (-found - 2).coerceAtLeast(0)
-    }
+    fun monthAt(y: Int): GalleryMonth? = months.getOrNull(monthTops.lastAtOrBefore(y))
 }
