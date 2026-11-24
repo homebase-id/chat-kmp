@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -48,7 +48,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.core.util.formatMonthYear
-import id.homebase.photobase.gallery.GalleryLayout
+import id.homebase.photobase.gallery.GalleryLines
 import id.homebase.photobase.gallery.GalleryMonth
 import id.homebase.photobase.gallery.GalleryRows
 import id.homebase.resources.MR
@@ -61,7 +61,7 @@ import kotlinx.datetime.atStartOfDayIn
 import org.jetbrains.compose.resources.stringResource
 
 internal const val DAY_HEADER = "day"
-internal const val PHOTO_TILE = "photo"
+internal const val PHOTO_ROW = "row"
 
 private val HANDLE_WIDTH = 32.dp
 private val HANDLE_HEIGHT = 48.dp
@@ -82,16 +82,17 @@ private const val SCREENS_TO_SHOW = 3
  */
 @Composable
 internal fun PhotoScrubber(
-    gridState: LazyGridState,
-    layout: GalleryLayout,
+    listState: LazyListState,
+    lines: GalleryLines,
+    viewportPx: Int,
     haptics: Haptics,
     grid: @Composable () -> Unit,
 ) {
-    val pitch by rememberRowPitch(gridState)
-    val rows = remember(layout, pitch) { pitch?.let { GalleryRows(layout, it.columns, it.headerPx, it.rowPx) } }
+    val pitch by rememberRowPitch(listState)
+    val rows = remember(lines, pitch) { pitch?.let { GalleryRows(lines, it.headerPx, it.rowPx) } }
     val pointerNear = remember { mutableStateOf(false) }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    BoxWithConstraints(
+    Box(
         Modifier.fillMaxSize().pointerInput(rtl) {
             // Seen first and never consumed: a mouse near the handle's edge shows it, and the grid still scrolls.
             val near = EDGE_WIDTH.toPx()
@@ -108,32 +109,31 @@ internal fun PhotoScrubber(
         },
     ) {
         grid()
-        val viewport = constraints.maxHeight
         val held = rows
         val edges = pitch?.edgesPx ?: 0
-        if (held != null && held.height >= viewport * SCREENS_TO_SHOW) {
-            Handle(gridState, held, held.height + edges - viewport, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
+        if (held != null && held.height >= viewportPx * SCREENS_TO_SHOW) {
+            Handle(listState, held, held.height + edges - viewportPx, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
         }
     }
 }
 
-// edgesPx: the grid's padding above and below, less the gap the rows count after the last one.
-private data class RowPitch(val columns: Int, val headerPx: Int, val rowPx: Int, val edgesPx: Int)
+// edgesPx: the list's padding above and below, less the gap the rows count after the last one.
+private data class RowPitch(val headerPx: Int, val rowPx: Int, val edgesPx: Int)
 
-// The grid's columns, and a header's and a row's height with the gap after each, from a header with the item after it
-// on screen. Kept while none is, as inside a day bigger than the screen.
+// A header's and a row's height with the gap after each, from each with the item after it on screen. Kept while none
+// is, as inside a day bigger than the screen.
 @Composable
-private fun rememberRowPitch(gridState: LazyGridState): State<RowPitch?> {
+private fun rememberRowPitch(listState: LazyListState): State<RowPitch?> {
     val pitch = remember { mutableStateOf<RowPitch?>(null) }
-    LaunchedEffect(gridState) {
+    LaunchedEffect(listState) {
         snapshotFlow {
-            val info = gridState.layoutInfo
+            val info = listState.layoutInfo
             val items = info.visibleItemsInfo
-            val header = items.firstOrNull { it.contentType == DAY_HEADER } ?: return@snapshotFlow null
-            val next = items.firstOrNull { it.index == header.index + 1 } ?: return@snapshotFlow null
-            val tile = items.firstOrNull { it.contentType == PHOTO_TILE } ?: return@snapshotFlow null
-            val gap = next.offset.y - header.offset.y - header.size.height
-            RowPitch(info.maxSpan, next.offset.y - header.offset.y, tile.size.height + gap, info.beforeContentPadding + info.afterContentPadding - gap)
+            fun pitchOf(type: String) = items.zipWithNext().firstOrNull { (it, next) -> it.contentType == type && next.index == it.index + 1 }
+            val header = pitchOf(DAY_HEADER) ?: return@snapshotFlow null
+            val row = pitchOf(PHOTO_ROW) ?: return@snapshotFlow null
+            val gap = row.second.offset - row.first.offset - row.first.size
+            RowPitch(header.second.offset - header.first.offset, row.second.offset - row.first.offset, info.beforeContentPadding + info.afterContentPadding - gap)
         }.filterNotNull().collect { pitch.value = it }
     }
     return pitch
@@ -141,7 +141,7 @@ private fun rememberRowPitch(gridState: LazyGridState): State<RowPitch?> {
 
 @Composable
 private fun Handle(
-    gridState: LazyGridState,
+    listState: LazyListState,
     rows: GalleryRows,
     scrollable: Int,
     pointerNear: MutableState<Boolean>,
@@ -151,7 +151,7 @@ private fun Handle(
     var dragging by remember { mutableStateOf(false) }
     var handleTop by remember { mutableFloatStateOf(0f) }
     var shown by remember { mutableStateOf(false) }
-    val scrolling = gridState.isScrollInProgress
+    val scrolling = listState.isScrollInProgress
     LaunchedEffect(scrolling, dragging, pointerNear.value) {
         if (scrolling || dragging || pointerNear.value) {
             shown = true
@@ -166,7 +166,7 @@ private fun Handle(
         val toGrid = { trackY: Float -> (trackY / travel * scrollable).roundToInt() }
         val toTrack = { gridY: Int -> (gridY.toFloat() / scrollable).coerceIn(0f, 1f) * travel }
         // Read in the layout phase only, so following the grid or the finger doesn't recompose this.
-        val top = { if (dragging) handleTop else toTrack(rows.topOf(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)) }
+        val top = { if (dragging) handleTop else toTrack(rows.topOf(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)) }
         val month by remember(rows, travel) { derivedStateOf { if (dragging) rows.monthAt(toGrid(handleTop)) else null } }
         // A tick for each month passed, not for the one grabbed in.
         var passed by remember { mutableStateOf<GalleryMonth?>(null) }
@@ -193,7 +193,7 @@ private fun Handle(
                             handleTop = (handleTop + delta).coerceIn(0f, travel)
                             val (item, offset) = rows.itemAt(toGrid(handleTop))
                             // Not scrollToItem: that measures the grid on each pointer event, several a frame on desktop.
-                            gridState.requestScrollToItem(item, offset)
+                            listState.requestScrollToItem(item, offset)
                         },
                         onDragStarted = {
                             handleTop = top()

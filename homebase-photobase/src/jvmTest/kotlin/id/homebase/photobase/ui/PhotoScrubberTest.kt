@@ -5,7 +5,7 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -24,6 +24,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
+import id.homebase.photobase.gallery.GalleryLines
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import androidx.compose.ui.test.ComposeUiTest
@@ -43,7 +44,10 @@ class PhotoScrubberTest {
     private val library = LibraryDays(IntArray(1_200) { newest - it * 3 }, IntArray(1_200) { 10 })
     private val layout = GalleryLayout(library, newestFirst = true)
 
-    private fun ComposeUiTest.showGrid(gridState: LazyGridState, haptics: Haptics) = setContent {
+    // 400 dp wide, less 4 dp padding each side, fits four 96 dp columns with 2 dp gaps.
+    private val lines = GalleryLines(layout, columns = 4)
+
+    private fun ComposeUiTest.showGrid(gridState: LazyListState, haptics: Haptics) = setContent {
         SharedTransitionLayout {
             AnimatedVisibility(visible = true) {
                 Box(Modifier.size(400.dp, 800.dp)) {
@@ -64,7 +68,7 @@ class PhotoScrubberTest {
 
     @Test
     fun aMouseNearTheEdgeShowsTheHandleAndDraggingItMovesTheGrid() = runComposeUiTest {
-        val gridState = LazyGridState()
+        val gridState = LazyListState()
         showGrid(gridState, CountingHaptics())
         waitForIdle()
         val handle = onNodeWithContentDescription(HANDLE)
@@ -86,7 +90,7 @@ class PhotoScrubberTest {
 
     @Test
     fun rightToLeftTheMouseShowsTheHandleOnTheLeftEdge() = runComposeUiTest {
-        val gridState = LazyGridState()
+        val gridState = LazyListState()
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 SharedTransitionLayout {
@@ -110,7 +114,7 @@ class PhotoScrubberTest {
 
     @Test
     fun draggingTheHandleMovesTheGridInProportionAndSaysWhichMonthItsIn() = runComposeUiTest {
-        val gridState = LazyGridState()
+        val gridState = LazyListState()
         val haptics = CountingHaptics()
         showGrid(gridState, haptics)
         waitForIdle()
@@ -132,12 +136,12 @@ class PhotoScrubberTest {
             repeat(20) { moveBy(Offset(0f, 15f)) }
         }
         waitForIdle()
-        val day = LocalDate.fromEpochDays(layout.dayOfItem(gridState.firstVisibleItemIndex))
+        val day = LocalDate.fromEpochDays(lines.dayOfItem(gridState.firstVisibleItemIndex))
         val bubble = onNodeWithText(formatMonthYear(LocalDate(day.year, day.month, 1).atStartOfDayIn(TimeZone.currentSystemDefault())))
         bubble.assertExists()
         assertTrue(bubble.fetchSemanticsNode().size.width > with(density) { 60.dp.toPx() }, "the label on one line, not squeezed into the 48 dp track")
         assertTrue(haptics.ticks > 0, "a tick for each month passed")
-        val fraction = gridState.firstVisibleItemIndex.toFloat() / layout.headerItemOf(layout.days.size - 1)
+        val fraction = gridState.firstVisibleItemIndex.toFloat() / lines.itemCount
         handle.performTouchInput { up() }
         waitForIdle()
         assertTrue(fraction > 0.2f && fraction < 0.8f, "300 px of an 800 px track lands well inside the library: $fraction")

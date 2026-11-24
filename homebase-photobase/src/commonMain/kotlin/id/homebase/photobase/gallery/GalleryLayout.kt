@@ -3,15 +3,14 @@ package id.homebase.photobase.gallery
 import kotlin.uuid.Uuid
 
 /**
- * Where every day and photo of the library sits, in the grid's order: each day is a header item and then a slot per
- * photo. A day has as many slots as the index counts, so reading it fills them without moving anything; [shown] gives
- * the days that, once read, show another number (a photo the gallery can't show, a count not caught up yet).
+ * Where every day and photo of the library sits, in the grid's order: each day has a slot per photo. A day has as many
+ * slots as the index counts, so reading it fills them without moving anything; [shown] gives the days that, once read,
+ * show another number (a photo the gallery can't show, a count not caught up yet). [GalleryLines] lays them out.
  */
 class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<Int, Int> = emptyMap()) {
     /** The days, in the grid's order. */
     val days: IntArray
     private val slots: IntArray
-    private val firstItem: IntArray
     private val firstPhoto: IntArray
     val photoCount: Int
 
@@ -19,27 +18,16 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
         val n = library.days.size
         days = IntArray(n) { library.days[if (newestFirst) it else n - 1 - it] }
         slots = IntArray(n) { shown[days[it]] ?: library.counts[if (newestFirst) it else n - 1 - it] }
-        firstItem = IntArray(n)
         firstPhoto = IntArray(n)
-        var item = 0
         var photo = 0
         for (position in 0 until n) {
-            firstItem[position] = item
             firstPhoto[position] = photo
-            item += 1 + slots[position]
             photo += slots[position]
         }
         photoCount = photo
     }
 
     fun slotsOf(position: Int): Int = slots[position]
-
-    fun headerItemOf(position: Int): Int = firstItem[position]
-
-    fun positionOfItem(item: Int): Int = firstItem.lastAtOrBefore(item)
-
-    /** The day an item of the grid, header or photo, belongs to. */
-    fun dayOfItem(item: Int): Int = days[positionOfItem(item)]
 
     /** The day and slot of the [photo]th photo: where it stays when photos arrive before it. */
     fun locate(photo: Int): Pair<Int, Int> {
@@ -50,9 +38,8 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
     /** The photo index of a day's slot, held to the day's last; null once the day has none. */
     fun photoOf(day: Int, slot: Int): Int? = positionOf(day)?.let { firstPhoto[it] + slot.coerceAtMost(slots[it] - 1) }
 
-    fun itemOf(day: Int, slot: Int): Int? = positionOf(day)?.let { firstItem[it] + 1 + slot.coerceAtMost(slots[it] - 1) }
-
-    private fun positionOf(day: Int): Int? {
+    /** Where [day] is among the days, or null once it has no slots. */
+    fun positionOf(day: Int): Int? {
         val at = days.asList().binarySearch { if (newestFirst) day.compareTo(it) else it.compareTo(day) }
         return at.takeIf { it >= 0 && slots[it] > 0 }
     }
@@ -70,19 +57,13 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
         return photoAt(position, photo - firstPhoto[position], loaded)
     }
 
-    fun itemOf(fileId: Uuid, loaded: Map<Int, List<PhotoGalleryItem>>): Int? =
-        find(fileId, loaded) { position, slot -> firstItem[position] + 1 + slot }
-
-    fun photoOf(fileId: Uuid, loaded: Map<Int, List<PhotoGalleryItem>>): Int? =
-        find(fileId, loaded) { position, slot -> firstPhoto[position] + slot }
-
-    private inline fun find(fileId: Uuid, loaded: Map<Int, List<PhotoGalleryItem>>, index: (Int, Int) -> Int): Int? {
+    fun photoOf(fileId: Uuid, loaded: Map<Int, List<PhotoGalleryItem>>): Int? {
         for ((day, items) in loaded) {
             val at = items.indexOfFirst { it.fileId == fileId }
             if (at < 0) continue
             val position = positionOf(day) ?: return null
             val slot = if (newestFirst) at else items.size - 1 - at
-            return if (slot < slots[position]) index(position, slot) else null
+            return if (slot < slots[position]) firstPhoto[position] + slot else null
         }
         return null
     }
