@@ -210,14 +210,14 @@ class CallController(
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
-        // The relay keeps only each sender's last blob: no candidate may follow the hangup, and every other signal to the
-        // peer is followed by the whole list again.
+        // The relay keeps only each sender's last blob: no candidate may follow the hangup, and the chosen device must
+        // still get the whole list after the caller tells its siblings the call was answered elsewhere.
         val ice = iceSender?.takeIf { it.peer == peer }
         if (ice?.closed == true) ice.join()
         try {
             post(peer, signal)
         } finally {
-            ice?.repost()
+            if (signal is CallSignal.Hangup && signal.reason.isElsewhere) ice?.repost()
         }
     }
 
@@ -484,7 +484,8 @@ class CallController(
         if (sdp == publishedOfferSdp) return
         publishedOfferSdp = sdp
         offerSeq++
-        heldIceInOffer[offerSeq] = held.mapNotNullTo(HashSet()) { c -> c.candidate.takeIf { it.trim().removePrefix("a=") in sdp } }
+        val lines = sdp.lines().mapTo(HashSet()) { it.trim() }
+        heldIceInOffer[offerSeq] = held.mapNotNullTo(HashSet()) { c -> c.candidate.takeIf { "a=${it.trim().removePrefix("a=")}" in lines } }
         log.i { "republishing offer call=$callId seq=$offerSeq candidates=${held.size}" }
         sendBestEffort(s.peer!!, CallSignal.Offer(callId, sdp, offerVideo, offerSeq, iceBatch = true))
         if (heldIce.size > publishedIce) scheduleOfferRepublish(callId)
@@ -495,7 +496,7 @@ class CallController(
         republishJob = null
         val carried = answeredSeq?.let { heldIceInOffer[it] }.orEmpty()
         val pending = heldIce.filter { it.candidate !in carried }
-        log.i { "answer to offer seq=$answeredSeq: trickling ${pending.size} of ${heldIce.size} held candidates call=${state.callId}" }
+        if (heldIce.isNotEmpty()) log.i { "answer to offer seq=$answeredSeq: trickling ${pending.size} of ${heldIce.size} held candidates call=${state.callId}" }
         heldIce.clear()
         publishedIce = 0
         heldIceInOffer.clear()
@@ -535,6 +536,7 @@ class CallController(
 
         private suspend fun postUnsent() {
             var retryMs = ICE_RETRY_MS
+            var attempts = 0
             while (true) {
                 val p = progress.value
                 if (p.sent >= p.all.size) return
@@ -545,7 +547,10 @@ class CallController(
                     // A repost asked for while this one was in flight keeps its reset.
                     progress.update { if (it.reposts == p.reposts) it.copy(sent = done) else it }
                     retryMs = ICE_RETRY_MS
+                    attempts = 0
                 } else {
+                    // A refusal that never clears stops here; the next candidate or repost tries again.
+                    if (++attempts >= ICE_RETRY_ATTEMPTS) return
                     delay(retryMs)
                     retryMs = (retryMs * 2).coerceAtMost(ICE_RETRY_MAX_MS)
                 }
@@ -636,7 +641,9 @@ class CallController(
         const val ENDED_CALLS_REMEMBERED = 32
         const val QUIT_HANGUP_BUDGET_MS = 2_000L
         const val ICE_RETRY_MS = 1_000L
-        const val ICE_RETRY_MAX_MS = 30_000L
+        // Well inside the connect timeout, so a network that comes back is used within seconds.
+        const val ICE_RETRY_MAX_MS = 4_000L
+        const val ICE_RETRY_ATTEMPTS = 8
     }
 }
 
