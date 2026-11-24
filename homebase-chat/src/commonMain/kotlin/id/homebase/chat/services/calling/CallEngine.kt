@@ -14,6 +14,7 @@ interface VideoHandle {
 
 data class CallVideos(val local: VideoHandle? = null, val remote: VideoHandle? = null)
 
+/** Every engine bundles all media on one transport and requires rtcp-mux, so candidates gather once, on the first m-line. */
 interface CallEngine {
     val events: Flow<MediaEvent>
     val localVideo: StateFlow<VideoHandle?>

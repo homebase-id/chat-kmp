@@ -81,12 +81,13 @@ class CallController(
     private val heldIce = mutableListOf<LocalCandidate>()
     private var publishedIce = 0
     private var offerSeq = 0
-    private val heldIceInOffer = mutableMapOf<Int, Int>()
+    private val heldIceInOffer = mutableMapOf<Int, Set<String>>()
     private var offerVideo = false
     private var publishedOfferSdp: String? = null
     private var republishJob: Job? = null
     private var iceSender: IceSender? = null
-    private val remoteIce = mutableSetOf<String>()
+    private val remoteIce = mutableSetOf<CallEffect.AddIce>()
+    private var answeredRestartOffer: String? = null
     private var restartOfferSdp: String? = null
     private var iceFetch: Pair<String, Deferred<IceLease>>? = null
     private var callIce: IceLease? = null
@@ -209,28 +210,30 @@ class CallController(
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
-        // The relay keeps only each sender's last blob: a candidate posted after a hangup or restart would replace it.
-        if (signal !is CallSignal.Ice) {
-            val ice = iceSender
-            iceSender = null
-            ice?.job?.cancelAndJoin()
+        // The relay keeps only each sender's last blob: a candidate posted after a hangup would replace it.
+        val ice = if (signal is CallSignal.Ice) null else iceSender
+        ice?.pause()
+        try {
+            val outbound = CallChannel.outbound(peer, signal.fromDevice(deviceId))
+            log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
+            signaling.send(outbound)
+        } finally {
+            ice?.resume()
         }
-        val outbound = CallChannel.outbound(peer, signal.fromDevice(deviceId))
-        log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
-        signaling.send(outbound)
     }
 
     // Only the offer and the answer are load-bearing: every other signal is resent, superseded or covered by a timeout
     // (ring, connect, reconnect), and a cold push wake often posts before the network is up.
-    private suspend fun sendBestEffort(peer: String, signal: CallSignal) {
+    private suspend fun sendBestEffort(peer: String, signal: CallSignal): Boolean =
         try {
             send(peer, signal)
+            true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log.w(e) { "${describe(signal)} call=${signal.callId} not sent" }
+            false
         }
-    }
 
     // A single unusable remote candidate (unresolvable mDNS, a transport the engine lacks) is routine; ICE uses the rest.
     private suspend fun addIce(engine: CallEngine, ice: CallEffect.AddIce) {
@@ -413,18 +416,21 @@ class CallController(
                 CallEffect.RestartIce -> {
                     // Resend the unanswered offer: a fresh one would orphan an answer already in flight for it.
                     val sdp = restartOfferSdp ?: run {
+                        newIceGeneration()
                         refreshIceServers(state)
                         engine().restartIce()
                     }.also { restartOfferSdp = it }
                     sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
                 }
                 is CallEffect.AnswerRestart -> {
+                    if (effect.offerSdp != answeredRestartOffer) newIceGeneration()
+                    answeredRestartOffer = effect.offerSdp
                     refreshIceServers(state)
                     val sdp = engine().answerRestart(effect.offerSdp)
                     sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
                 }
                 is CallEffect.AddIce -> when {
-                    !remoteIce.add(effect.candidate) -> Unit
+                    !remoteIce.add(effect) -> Unit
                     !remoteReady -> bufferedIce += effect
                     else -> engine?.let { addIce(it, effect) }
                 }
@@ -472,7 +478,7 @@ class CallController(
         if (sdp == publishedOfferSdp) return
         publishedOfferSdp = sdp
         offerSeq++
-        heldIceInOffer[offerSeq] = held.size
+        heldIceInOffer[offerSeq] = held.mapNotNullTo(HashSet()) { c -> c.candidate.takeIf { it.trim().removePrefix("a=") in sdp } }
         log.i { "republishing offer call=$callId seq=$offerSeq candidates=${held.size}" }
         sendBestEffort(s.peer!!, CallSignal.Offer(callId, sdp, offerVideo, offerSeq, iceBatch = true))
         if (heldIce.size > publishedIce) scheduleOfferRepublish(callId)
@@ -481,7 +487,8 @@ class CallController(
     private fun flushHeldIce(state: CallState, answeredSeq: Int?) {
         republishJob?.cancel()
         republishJob = null
-        val pending = heldIce.drop(answeredSeq?.let { heldIceInOffer[it] } ?: 0)
+        val carried = answeredSeq?.let { heldIceInOffer[it] }.orEmpty()
+        val pending = heldIce.filter { it.candidate !in carried }
         log.i { "answer to offer seq=$answeredSeq: trickling ${pending.size} of ${heldIce.size} held candidates call=${state.callId}" }
         heldIce.clear()
         publishedIce = 0
@@ -490,27 +497,64 @@ class CallController(
     }
 
     private fun trickle(state: CallState, candidates: List<LocalCandidate>) {
-        val sender = iceSender?.takeIf { it.job.isActive }
+        val sender = iceSender?.takeUnless { it.closed }
             ?: IceSender(state.peer!!, state.callId!!, state.peerIceBatch).also { iceSender = it }
-        sender.gathered.update { it + candidates }
+        sender.add(candidates)
+    }
+
+    // A restart's candidates replace the last generation's on both sides: the old ones are neither posted nor deduped against.
+    private suspend fun newIceGeneration() {
+        iceSender?.let {
+            iceSender = null
+            it.close()
+            it.pause()
+        }
+        remoteIce.clear()
     }
 
     // Off the inbox, which a relay round trip must not hold; one post at a time, each repeating every candidate before it,
     // since the relay keeps only the last blob.
-    private inner class IceSender(peer: String, callId: String, batch: Boolean) {
-        val gathered = MutableStateFlow(emptyList<LocalCandidate>())
-        val job = scope.launch {
-            var sent = 0
-            gathered.collect { all ->
-                if (batch && all.size > sent) {
-                    sendBestEffort(peer, CallSignal.Ice.of(callId, all))
-                    sent = all.size
+    private inner class IceSender(private val peer: String, private val callId: String, private val batch: Boolean) {
+        private val gathered = MutableStateFlow(emptyList<LocalCandidate>())
+        // Written by the posting job only; the next job reads it after joining the last.
+        private var sent = 0
+        private var job: Job? = null
+        var closed = false
+            private set
+
+        fun add(candidates: List<LocalCandidate>) {
+            gathered.update { it + candidates }
+            resume()
+        }
+
+        fun resume() {
+            if (closed || job?.isActive == true) return
+            job = scope.launch { gathered.collect(::post) }
+        }
+
+        private suspend fun post(all: List<LocalCandidate>) {
+            if (batch) {
+                // ponytail: a fixed retry until the call ends; the last blob is the only one the relay keeps.
+                while (sent < gathered.value.size) {
+                    val now = gathered.value
+                    if (sendBestEffort(peer, CallSignal.Ice.of(callId, now))) sent = now.size else delay(ICE_RETRY_MS)
                 }
-                while (!batch && sent < all.size) {
-                    val c = all[sent++]
-                    sendBestEffort(peer, CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex))
-                }
+                return
             }
+            while (sent < all.size) {
+                val c = all[sent++]
+                sendBestEffort(peer, CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex))
+            }
+        }
+
+        suspend fun pause() {
+            job?.cancelAndJoin()
+            job = null
+        }
+
+        fun close() {
+            closed = true
+            job?.cancel()
         }
     }
 
@@ -556,7 +600,7 @@ class CallController(
     @OptIn(DelicateCoroutinesApi::class)
     private fun releaseEngine() {
         // Left set: the hangup that follows waits for the cancelled post before it goes out.
-        iceSender?.job?.cancel()
+        iceSender?.close()
         engineEvents?.cancel()
         engineEvents = null
         engineVideos?.cancel()
@@ -574,6 +618,7 @@ class CallController(
         remoteReady = false
         bufferedIce.clear()
         remoteIce.clear()
+        answeredRestartOffer = null
         heldIce.clear()
         publishedIce = 0
         offerSeq = 0
@@ -588,5 +633,6 @@ class CallController(
         const val TAG = "CallController"
         const val ENDED_CALLS_REMEMBERED = 32
         const val QUIT_HANGUP_BUDGET_MS = 2_000L
+        const val ICE_RETRY_MS = 1_000L
     }
 }

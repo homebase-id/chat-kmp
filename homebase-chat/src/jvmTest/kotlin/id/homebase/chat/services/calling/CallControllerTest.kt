@@ -907,6 +907,33 @@ class CallControllerTest {
     }
 
     @Test
+    fun aBusyReplyToAThirdCallerDoesNotDropTheTrickle() = runTest {
+        val (net, a, b) = calleeSendingIceSlowly()
+        val gimliSide = Side("gimli.demo.rocks", this, net, FakeCallScript())
+        gimliSide.controller.startCall(sam, video = false)
+        advanceTimeBy(10_000)
+
+        assertEquals(CallPhase.Ended(CallEndReason.Busy), gimliSide.phase)
+        assertEquals(candidates(1), a.engines.single().addedIce)
+    }
+
+    @Test
+    fun aCandidateWhosePostFailedIsPostedAgain() = runTest {
+        val (_, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        b.offline = true
+        b.engines.single().simulateLocalIce(candidates(1).single())
+        advanceTimeBy(500)
+        b.offline = false
+        advanceTimeBy(2_000)
+
+        assertEquals(candidates(1), a.engines.single().addedIce)
+    }
+
+    @Test
     fun theLastIceBlobAloneCarriesEveryCandidateAndARepeatIsAddedOnce() = runTest {
         val (net, a, b) = pair()
         b.iceSendMs = 2_000
