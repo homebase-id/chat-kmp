@@ -184,8 +184,12 @@ derived from both parts; an Android motion photo is one file, so its id comes fr
    HLS path instead; how this check applies there is settled when that task is built.
 
 **Dedupe across devices.**
-- Before uploading: ask the server (query by `uniqueId` on the Photos drive; the device's copy may
-  lag another device's backup). If present → mark `DONE`, no upload.
+- Before uploading: ask the server (query by `uniqueId` on the Photos drive, live files and tombstones;
+  the device's copy may lag another device's backup). If present → mark `DONE`, no upload. If it's a
+  tombstone → mark `SKIPPED`: the photo was deleted for good from the bin, whose deletes keep the
+  `uniqueId` on the tombstone (`tombstone.keepUniqueId`, odin-core v0.1.997), and is never sent again;
+  "check the drive again" passes over it. Deletes from before that, or by an older app, cleared the
+  `uniqueId`, so those photos are still backed up again.
 - Two devices racing on the same photo both pass the check; the server keeps one file per
   `uniqueId` per drive and rejects the second with `ExistingFileWithUniqueId` (4105,
   `ClientException.isExistingFileWithUniqueId()`). Backup treats 4105 as **success** → `DONE`,

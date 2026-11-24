@@ -768,7 +768,7 @@ data class FileVersionTagBatch(
     val tombstone: TombstoneOptions? = null,
 )
 
-/** [keepUniqueId]: the tombstone keeps the file's uniqueId, so a new upload with it is refused (4105) until it's hard-deleted: Photos counts that as backed up. */
+/** [keepUniqueId]: the tombstone keeps the file's uniqueId, so a new upload with it is refused (4105) until it's hard-deleted. */
 @Serializable
 data class TombstoneOptions(val keepUniqueId: Boolean)
 

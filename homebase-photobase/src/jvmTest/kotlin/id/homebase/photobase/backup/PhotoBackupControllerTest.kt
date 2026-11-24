@@ -102,7 +102,7 @@ class PhotoBackupControllerTest {
             ledger = ledger,
             source = source,
             hasher = AssetHasher(HashedExports(source, NoFileOps), NoFileOps),
-            dedupe = { emptySet() },
+            dedupe = { OnServer(emptySet()) },
             uploader = uploader,
             results = results,
             probe = FakeProbe(),

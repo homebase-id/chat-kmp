@@ -45,6 +45,7 @@ class PhotoBackupRunTest {
     private var hashTime: Duration = Duration.ZERO
     private val hashGates = mutableMapOf<String, CompletableDeferred<Unit>>()
     private val existing = mutableSetOf<Uuid>()
+    private val deletedForGood = mutableSetOf<Uuid>()
     private val dedupeCalls = mutableListOf<List<Uuid>>()
     private var dedupeFailure: Exception? = null
     private var storageFull = false
@@ -81,7 +82,7 @@ class PhotoBackupRunTest {
             dedupe = { ids ->
                 dedupeCalls += ids
                 dedupeFailure?.let { throw it }
-                ids.filter { it in existing }.toSet()
+                OnServer(ids.filter { it in existing }.toSet(), ids.filter { it in deletedForGood }.toSet())
             },
             uploader = uploader,
             results = results,
@@ -120,6 +121,21 @@ class PhotoBackupRunTest {
         assertEquals(3, ledger.counts().done)
         assertEquals(0, ledger.counts().pending)
         assertTrue(ledger.isInitialBackupDone())
+    }
+
+    @Test
+    fun aPhotoDeletedForGoodFromTheBinIsSkippedNotSentNorCountedBackedUp() = runTest {
+        source.next = fullListing(asset("kept"), asset("binned"))
+        deletedForGood += idOf("binned")
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(listOf("kept"), uploader.handedOff)
+        assertEquals(BackupState.Skipped.code, state("binned"))
+        assertEquals(1, ledger.counts().done)
     }
 
     @Test
