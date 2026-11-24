@@ -249,6 +249,8 @@ class CallController(
             throw e
         } catch (e: Exception) {
             log.w(e) { "remote candidate rejected: ${ice.candidate}" }
+            // A candidate that beat its restart offer is rejected; the repeat after the offer must not be deduped away.
+            remoteIce.remove(ice)
         }
     }
 
@@ -509,7 +511,8 @@ class CallController(
         sender.add(candidates)
     }
 
-    // A restart's candidates replace the last generation's on both sides: the old ones are neither posted nor deduped against.
+    // A restart's candidates replace the last generation's on both sides: the old list is not posted again, and the new one
+    // is not deduped against it.
     private suspend fun newIceGeneration() {
         iceSender?.let {
             iceSender = null

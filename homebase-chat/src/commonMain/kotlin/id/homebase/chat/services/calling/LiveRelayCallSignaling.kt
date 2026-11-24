@@ -41,11 +41,10 @@ class LiveRelayCallSignaling(
             LiveRelayPush(kind = it.kind.wire, typeId = it.typeId, tagId = it.tagId, unEncryptedMessage = it.message)
         }
         val accepted = relay(outbound.channelKey, listOf(outbound.peer), CallSignalCodec.encode(outbound.signal), push)
-        // A lost ICE candidate or hangup is recoverable; an offer the relay refused means nobody can ring.
+        // A refused offer means nobody can ring; refused candidates throw so the sender retries; a refused hangup is only logged.
         if (!accepted && outbound.signal is CallSignal.Offer) {
             throw CallEngineException(FailReason.NoRoute, "relay refused the offer")
         }
-        // The caller retries refused candidates.
         check(accepted || outbound.signal !is CallSignal.Ice) { "relay refused the candidates" }
     }
 }
