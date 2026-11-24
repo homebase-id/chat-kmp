@@ -286,5 +286,6 @@ tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEa
     filter {
         includeTestsMatching("org.webrtc.*")
         includeTestsMatching("id.homebase.chat.widget.ComposerSelectionToolbarTest")
+        includeTestsMatching("id.homebase.chat.services.calling.WebRtcKmpConfigurationTest")
     }
 }

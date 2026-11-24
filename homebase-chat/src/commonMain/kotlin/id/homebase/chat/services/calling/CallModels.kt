@@ -98,6 +98,7 @@ data class CallState(
     val peerRinging: Boolean = false,
     val pendingOfferSdp: String? = null,
     val offerSeq: Int = 0,
+    val peerIceBatch: Boolean = false,
     val acceptPending: Boolean = false,
     val verificationCode: String? = null,
     val placedWithVideo: Boolean = false,
