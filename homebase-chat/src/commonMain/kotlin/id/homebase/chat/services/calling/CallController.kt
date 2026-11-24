@@ -210,15 +210,16 @@ class CallController(
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
-        // The relay keeps only each sender's last blob: a candidate posted after a hangup would replace it.
-        val ice = if (signal is CallSignal.Ice) null else iceSender
-        ice?.pause()
+        // The relay keeps only each sender's last blob: no candidate may follow the hangup, and every other signal to the
+        // peer is followed by the whole list again.
+        val ice = iceSender?.takeIf { signal !is CallSignal.Ice && it.peer == peer }
+        if (ice?.closed == true) ice.join()
+        val outbound = CallChannel.outbound(peer, signal.fromDevice(deviceId))
+        log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
         try {
-            val outbound = CallChannel.outbound(peer, signal.fromDevice(deviceId))
-            log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
             signaling.send(outbound)
         } finally {
-            ice?.resume()
+            ice?.repost()
         }
     }
 
@@ -507,54 +508,50 @@ class CallController(
         iceSender?.let {
             iceSender = null
             it.close()
-            it.pause()
+            it.join()
         }
         remoteIce.clear()
     }
 
     // Off the inbox, which a relay round trip must not hold; one post at a time, each repeating every candidate before it,
     // since the relay keeps only the last blob.
-    private inner class IceSender(private val peer: String, private val callId: String, private val batch: Boolean) {
-        private val gathered = MutableStateFlow(emptyList<LocalCandidate>())
-        // Written by the posting job only; the next job reads it after joining the last.
-        private var sent = 0
-        private var job: Job? = null
+    private inner class IceSender(val peer: String, private val callId: String, private val batch: Boolean) {
+        private val progress = MutableStateFlow(IceProgress())
+        private val job = scope.launch { progress.collect { postUnsent() } }
         var closed = false
             private set
 
-        fun add(candidates: List<LocalCandidate>) {
-            gathered.update { it + candidates }
-            resume()
+        fun add(candidates: List<LocalCandidate>) = progress.update { it.copy(all = it.all + candidates) }
+
+        // A single-candidate post is not the whole list, so only a batch is posted again.
+        fun repost() {
+            if (batch) progress.update { it.copy(sent = 0) }
         }
 
-        fun resume() {
-            if (closed || job?.isActive == true) return
-            job = scope.launch { gathered.collect(::post) }
-        }
-
-        private suspend fun post(all: List<LocalCandidate>) {
-            if (batch) {
-                // ponytail: a fixed retry until the call ends; the last blob is the only one the relay keeps.
-                while (sent < gathered.value.size) {
-                    val now = gathered.value
-                    if (sendBestEffort(peer, CallSignal.Ice.of(callId, now))) sent = now.size else delay(ICE_RETRY_MS)
+        private suspend fun postUnsent() {
+            var retryMs = ICE_RETRY_MS
+            while (true) {
+                val p = progress.value
+                if (p.sent >= p.all.size) return
+                val c = p.all[p.sent]
+                val signal = if (batch) CallSignal.Ice.of(callId, p.all) else CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex)
+                if (sendBestEffort(peer, signal)) {
+                    val done = if (batch) p.all.size else p.sent + 1
+                    // A repost asked for while this one was in flight keeps its reset.
+                    progress.update { if (it.sent == p.sent) it.copy(sent = done) else it }
+                    retryMs = ICE_RETRY_MS
+                } else {
+                    delay(retryMs)
+                    retryMs = (retryMs * 2).coerceAtMost(ICE_RETRY_MAX_MS)
                 }
-                return
-            }
-            while (sent < all.size) {
-                val c = all[sent++]
-                sendBestEffort(peer, CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex))
             }
         }
 
-        suspend fun pause() {
-            job?.cancelAndJoin()
-            job = null
-        }
+        suspend fun join() = job.join()
 
         fun close() {
             closed = true
-            job?.cancel()
+            job.cancel()
         }
     }
 
@@ -634,5 +631,8 @@ class CallController(
         const val ENDED_CALLS_REMEMBERED = 32
         const val QUIT_HANGUP_BUDGET_MS = 2_000L
         const val ICE_RETRY_MS = 1_000L
+        const val ICE_RETRY_MAX_MS = 30_000L
     }
 }
+
+private data class IceProgress(val all: List<LocalCandidate> = emptyList(), val sent: Int = 0)
