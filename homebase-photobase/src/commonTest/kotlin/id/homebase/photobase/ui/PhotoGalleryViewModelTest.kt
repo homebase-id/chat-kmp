@@ -88,6 +88,7 @@ class PhotoGalleryViewModelTest {
         library.publish()
         val viewModel = PhotoGalleryViewModel(
             library.source,
+            noBin(),
             driveState = driveState,
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
@@ -227,7 +228,7 @@ class PhotoGalleryViewModelTest {
         var recounts = 0
         val failed = MutableStateFlow(true)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, countFailed = failed, recount = { recounts++ }, reading = StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), countFailed = failed, recount = { recounts++ }, reading = StandardTestDispatcher(testScheduler))
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.countFailed)
 
@@ -421,7 +422,7 @@ class PhotoGalleryViewModelTest {
         var collections = 0
         val days = flow { collections++; emit(LibraryDays(intArrayOf(20), intArrayOf(3))); awaitCancellation() }
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, libraryDays = days, reading = StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), libraryDays = days, reading = StandardTestDispatcher(testScheduler))
         runCurrent()
         assertEquals(1, collections, "counting starts when the gallery opens, not a frame later")
         assertEquals(3, viewModel.library.value?.photos)
@@ -444,7 +445,7 @@ class PhotoGalleryViewModelTest {
     fun onlyRefreshAsksTheDriveToSync() = runTest {
         var syncs = 0
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, refresh = { syncs++ }, reading = StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), refresh = { syncs++ }, reading = StandardTestDispatcher(testScheduler))
         advanceUntilIdle()
         assertEquals(0, syncs)
 
@@ -456,7 +457,7 @@ class PhotoGalleryViewModelTest {
     fun openingAPhotoUsesTheMediaViewerKeyedByFileId() = runTest {
         val photo = item(1)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, reading = StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, noBin(), reading = StandardTestDispatcher(testScheduler))
 
         viewModel.onAction(PhotoGalleryUiAction.Open(photo))
         assertEquals(photo.fileId, viewModel.uiState.value.openedFileId)
@@ -515,6 +516,8 @@ class PhotoGalleryViewModelTest {
         override suspend fun header(fileId: Uuid): HomebaseFile? = null
     }
 
+    private fun noBin() = PhotoBin(Server(), filesOf = { emptyList() }, binned = { emptyList() }, sync = {})
+
     private fun TestScope.binViewModel(library: Library, server: Server, shelf: PhotoShelf = PhotoShelf.Library): Pair<PhotoGalleryViewModel, Job> {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         library.publish()
@@ -528,8 +531,8 @@ class PhotoGalleryViewModelTest {
         )
         val viewModel = PhotoGalleryViewModel(
             library.source,
+            bin,
             shelf = shelf,
-            bin = bin,
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
             reading = StandardTestDispatcher(testScheduler),

@@ -29,6 +29,12 @@ import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoShelf
+import id.homebase.photobase.gallery.PhotoBin
+import id.homebase.photobase.gallery.PhotoBinServer
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.FileVersionTag
+import id.homebase.api.client.drives.files.PerFileResult
 import id.homebase.photobase.gallery.galleryItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
@@ -117,6 +123,7 @@ class PhotoGallerySelectionTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val viewModel = PhotoGalleryViewModel(
             source = { _, _ -> loaded },
+            bin = PhotoBin(NoServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
             libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
         )
         setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
@@ -133,4 +140,10 @@ class PhotoGallerySelectionTest {
 
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
+}
+
+private object NoServer : PhotoBinServer {
+    override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) = emptyList<PerFileResult>()
+    override suspend fun softDelete(files: List<FileVersionTag>) = emptyList<PerFileResult>()
+    override suspend fun header(fileId: Uuid): HomebaseFile? = null
 }

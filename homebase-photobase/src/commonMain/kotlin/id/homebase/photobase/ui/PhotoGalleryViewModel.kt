@@ -64,10 +64,9 @@ data class PhotoGalleryUiState(
     val selecting: Boolean get() = selected.isNotEmpty()
 }
 
-enum class BinAction { MoveToBin, Restore, DeleteForGood, Empty, Undo }
+enum class BinAction { MoveToBin, Restore, DeleteForGood, Empty }
 
 sealed interface PhotoGalleryEvent {
-    /** [undo] holds the photos Undo puts back. */
     data class BinDone(val action: BinAction, val result: PhotoBinResult, val undo: Set<Uuid> = emptySet()) : PhotoGalleryEvent
     /** Nothing is known to have changed: the request didn't get through. */
     data class BinFailed(val action: BinAction) : PhotoGalleryEvent
@@ -104,8 +103,8 @@ sealed interface PhotoGalleryUiAction {
  */
 class PhotoGalleryViewModel(
     private val source: PhotoGallerySource,
+    private val bin: PhotoBin,
     val shelf: PhotoShelf = PhotoShelf.Library,
-    private val bin: PhotoBin? = null,
     private val refresh: () -> Unit = {},
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
     libraryDays: Flow<LibraryDays> = emptyFlow(),
@@ -198,32 +197,29 @@ class PhotoGalleryViewModel(
                 state.copy(selected = if (state.selected.containsAll(day)) state.selected - day else state.selected + day)
             }
             PhotoGalleryUiAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
-            PhotoGalleryUiAction.MoveToBin -> onSelection(BinAction.MoveToBin) { bin, ids -> bin.moveToBin(ids) }
-            PhotoGalleryUiAction.MoveOpenToBin -> _uiState.value.openedFileId?.let { open ->
-                runBin(BinAction.MoveToBin, setOf(open)) { it.moveToBin(setOf(open)) }
-            }
-            PhotoGalleryUiAction.Restore -> onSelection(BinAction.Restore) { bin, ids -> bin.restore(ids) }
-            PhotoGalleryUiAction.DeleteForGood -> onSelection(BinAction.DeleteForGood) { bin, ids -> bin.deleteForGood(ids) }
-            PhotoGalleryUiAction.EmptyBin -> runBin(BinAction.Empty, emptySet()) { it.empty() }
-            is PhotoGalleryUiAction.Undo -> runBin(BinAction.Undo, emptySet()) { it.restore(action.fileIds) }
+            PhotoGalleryUiAction.MoveToBin -> onSelection(BinAction.MoveToBin, PhotoBin::moveToBin)
+            PhotoGalleryUiAction.MoveOpenToBin -> _uiState.value.openedFileId?.let { runBin(BinAction.MoveToBin, setOf(it), PhotoBin::moveToBin) }
+            PhotoGalleryUiAction.Restore -> onSelection(BinAction.Restore, PhotoBin::restore)
+            PhotoGalleryUiAction.DeleteForGood -> onSelection(BinAction.DeleteForGood, PhotoBin::deleteForGood)
+            PhotoGalleryUiAction.EmptyBin -> runBin(BinAction.Empty, emptySet(), { empty() })
+            is PhotoGalleryUiAction.Undo -> runBin(BinAction.Restore, action.fileIds, PhotoBin::restore)
         }
     }
 
     // The selection goes as the action starts; it comes back if the request doesn't get through.
-    private fun onSelection(action: BinAction, block: suspend (PhotoBin, Set<Uuid>) -> PhotoBinResult) {
+    private fun onSelection(action: BinAction, block: suspend PhotoBin.(Set<Uuid>) -> PhotoBinResult) {
         val ids = _uiState.value.selected
         if (ids.isEmpty()) return
         _uiState.update { it.copy(selected = emptySet()) }
-        runBin(action, ids, restoreSelection = true) { block(it, ids) }
+        runBin(action, ids, block, restoreSelection = true)
     }
 
-    private fun runBin(action: BinAction, ids: Set<Uuid>, restoreSelection: Boolean = false, block: suspend (PhotoBin) -> PhotoBinResult) {
-        val bin = bin ?: return
+    private fun runBin(action: BinAction, ids: Set<Uuid>, block: suspend PhotoBin.(Set<Uuid>) -> PhotoBinResult, restoreSelection: Boolean = false) {
         if (_uiState.value.busy) return
         _uiState.update { it.copy(busy = true) }
         viewModelScope.launch {
             try {
-                val result = block(bin)
+                val result = bin.block(ids)
                 _events.emit(PhotoGalleryEvent.BinDone(action, result, undo = if (action == BinAction.MoveToBin) ids else emptySet()))
             } catch (e: CancellationException) {
                 throw e

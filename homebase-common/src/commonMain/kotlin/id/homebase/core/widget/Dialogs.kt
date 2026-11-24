@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.composer_discard_confirm
 import id.homebase.resources.composer_discard_keep
 import id.homebase.resources.composer_discard_message
@@ -149,6 +150,31 @@ fun DiscardChangesDialog(onKeepEditing: () -> Unit, onDiscard: () -> Unit) {
         },
         dismissButton = {
             TextButton(onClick = onKeepEditing) { Text(stringResource(MR.string.composer_discard_keep)) }
+        },
+    )
+}
+
+/** A yes/no question; [destructive] paints the confirm button in the error colour. */
+@Composable
+fun ConfirmDialog(
+    text: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    title: String? = null,
+    destructive: Boolean = false,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = title?.let { { Text(it) } },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirmLabel, color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
         },
     )
 }

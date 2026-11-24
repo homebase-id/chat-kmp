@@ -377,24 +377,6 @@ val FilesyncPermissionQualifier = named("filesyncPermission")
 val PhotobasePermissionQualifier = named("photobasePermission")
 val PhotoBinQualifier = named("photoBin")
 
-/** The Library's gallery, or with [shelf] the Bin's: each with its own store and day index, sharing the bin's writes. */
-private fun Scope.photoGalleryViewModel(shelf: Qualifier?): PhotoGalleryViewModel {
-    val drives = get<DriveSyncManager>()
-    val store = get<PhotoGalleryStore>(shelf)
-    val index = get<PhotoDayIndex>(shelf)
-    return PhotoGalleryViewModel(
-        source = store,
-        shelf = store.shelf,
-        bin = get(),
-        // syncDrive throws on a drive that isn't mounted, which it may stop being between the check and the call.
-        refresh = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
-        driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
-        libraryDays = index.days,
-        touchedDays = index.touched,
-        countFailed = index.failed,
-        recount = index::recount,
-    )
-}
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -1577,12 +1559,11 @@ val appModule = module {
     viewModel { PhotobaseSettingsViewModel(get()) }
     single<PhotoBinServer> { HttpPhotoBinServer(get(), get()) }
     single {
-        val drives = get<DriveSyncManager>()
         PhotoBin(
             server = get(),
             filesOf = get<PhotoGalleryStore>()::filesOf,
             binned = get<PhotoGalleryStore>(PhotoBinQualifier)::filesOnShelf,
-            sync = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
+            sync = { syncPhotos() },
         )
     }
     viewModel { photoGalleryViewModel(null) }
@@ -1807,3 +1788,26 @@ private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds
 private const val CALL_WS_HOLD = "call"
 
 private fun org.koin.core.scope.Scope.photosMounted(): Boolean = get<OptionalDriveActivation>().isActivated(photosLabeledDrive)
+
+// syncDrive throws on a drive that isn't mounted, which it may stop being between the check and the call.
+private fun Scope.syncPhotos() {
+    if (photosMounted()) runCatching { get<DriveSyncManager>().syncDrive(PhotobaseProtocol.DriveAlias) }
+}
+
+/** Each shelf's gallery has its own store and day index. */
+private fun Scope.photoGalleryViewModel(qualifier: Qualifier?): PhotoGalleryViewModel {
+    val drives = get<DriveSyncManager>()
+    val store = get<PhotoGalleryStore>(qualifier)
+    val index = get<PhotoDayIndex>(qualifier)
+    return PhotoGalleryViewModel(
+        source = store,
+        shelf = store.shelf,
+        bin = get(),
+        refresh = { syncPhotos() },
+        driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
+        libraryDays = index.days,
+        touchedDays = index.touched,
+        countFailed = index.failed,
+        recount = index::recount,
+    )
+}

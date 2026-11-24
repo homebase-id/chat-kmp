@@ -394,22 +394,23 @@ public class DriveFileHttpProvider(
     suspend fun updateArchivalStatus(driveId: Uuid, status: ArchivalStatus, files: List<FileVersionTag>): PerFileBatchResult =
         perFileBatch(driveId, "update-archival-status-batch", FileVersionTagBatch(files, status))
 
-    /** One answer per file, in order; one file's answer never stops the others. At most [FILE_BATCH] per call. */
+    /** One answer per file, in order; one file's answer never stops the others. Sent [FILE_BATCH] files a request. */
     private suspend fun perFileBatch(driveId: Uuid, endpoint: String, request: FileVersionTagBatch): PerFileBatchResult {
         ValidationUtil.requireValidUuid(driveId, "driveId")
-        require(request.files.size in 1..FILE_BATCH) { "1 to $FILE_BATCH files, not ${request.files.size}" }
+        require(request.files.isNotEmpty()) { "no files" }
         val creds = requireCreds()
 
-        val response = encryptedPostJson(
-            url = apiUrl(creds.domain, "/drives/$driveId/files/$endpoint"),
-            token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(request),
-            secret = creds.secret
-        )
-
-        throwForFailure(response)
-
-        return deserialize<PerFileBatchResult>(response.body)
+        val results = request.files.chunked(FILE_BATCH).flatMap { chunk ->
+            val response = encryptedPostJson(
+                url = apiUrl(creds.domain, "/drives/$driveId/files/$endpoint"),
+                token = creds.accessToken,
+                jsonBody = OdinSystemSerializer.serialize(request.copy(files = chunk)),
+                secret = creds.secret
+            )
+            throwForFailure(response)
+            deserialize<PerFileBatchResult>(response.body).results
+        }
+        return PerFileBatchResult(results)
     }
 
     /** Deletes files from the drive by group IDs. */

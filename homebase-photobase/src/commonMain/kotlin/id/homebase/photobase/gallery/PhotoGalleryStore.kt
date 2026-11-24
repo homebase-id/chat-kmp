@@ -34,12 +34,14 @@ class PhotoGalleryStore internal constructor(
             .mapNotNull { row -> row.toGalleryItem()?.let { row.day to it } }
             .groupBy({ it.first }, { it.second })
 
+    private suspend fun DayHeader.toGalleryItem(): PhotoGalleryItem? = parsed(jsonHeader)?.toGalleryItem()
+
     // One header that won't parse loses that photo, not the day; it's logged once, not on every read of its day.
-    private suspend fun DayHeader.toGalleryItem(): PhotoGalleryItem? = try {
-        OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader).toGalleryItem()
+    private suspend fun parsed(jsonHeader: String): HomebaseFile? = try {
+        OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
     } catch (e: Exception) {
         if (unparsableLock.withLock { unparsable.add(jsonHeader.hashCode()) }) {
-            Logger.e(tag = "PhotoGalleryStore", throwable = e) { "a Photos header on day $day won't parse" }
+            Logger.e(tag = "PhotoGalleryStore", throwable = e) { "a Photos header won't parse" }
         }
         null
     }
@@ -52,14 +54,11 @@ class PhotoGalleryStore internal constructor(
 
     /** The device's copy of those of [fileIds] it holds, on any shelf; one that won't parse is left out. */
     suspend fun filesOf(fileIds: Collection<Uuid>): List<HomebaseFile> =
-        db.photoDays.headersOf(identityId(), photosDriveId, fileIds).mapNotNull(::parsedOrNull)
+        db.photoDays.headersOf(identityId(), photosDriveId, fileIds).mapNotNull { parsed(it) }
 
     /** The device's copy of every photo on this shelf. */
     suspend fun filesOnShelf(): List<HomebaseFile> =
-        db.photoDays.headersOnShelf(identityId(), photosDriveId, status).mapNotNull(::parsedOrNull)
-
-    private fun parsedOrNull(jsonHeader: String): HomebaseFile? =
-        runCatching { OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader) }.getOrNull()
+        db.photoDays.headersOnShelf(identityId(), photosDriveId, status).mapNotNull { parsed(it) }
 
     /** Whose library and which time zone the day counts are for. */
     suspend fun daysCountedFor(): String = "${identityId()} ${TimeZone.currentSystemDefault().id}"

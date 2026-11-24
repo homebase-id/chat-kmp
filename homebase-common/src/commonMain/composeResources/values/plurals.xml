@@ -68,7 +68,7 @@
         <item quantity="one">%1$d more queued</item>
         <item quantity="other">%1$d more queued</item>
     </plurals>
-    <plurals name="filesync_selected">
+    <plurals name="selected_count">
         <item quantity="one">%1$d selected</item>
         <item quantity="other">%1$d selected</item>
     </plurals>
@@ -135,10 +135,6 @@
     <plurals name="filesync_peer_not_confirmed_many">
         <item quantity="one">Couldn't confirm that %1$d files reached %2$s's folder. If they aren't there, send them again.</item>
         <item quantity="other">Couldn't confirm that %1$d files reached %2$s's folder. If they aren't there, send them again.</item>
-    </plurals>
-    <plurals name="photobase_selected">
-        <item quantity="one">%1$d selected</item>
-        <item quantity="other">%1$d selected</item>
     </plurals>
     <plurals name="photobase_bin_moved">
         <item quantity="one">Moved %1$d to the bin.</item>

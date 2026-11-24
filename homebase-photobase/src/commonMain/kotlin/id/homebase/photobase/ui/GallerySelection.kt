@@ -5,11 +5,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.RestoreFromTrash
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -22,12 +22,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.resources.MR
-import id.homebase.resources.cancel
-import id.homebase.resources.photobase_bin_cant_undo
+import id.homebase.resources.action_undo
 import id.homebase.resources.photobase_bin_changed_elsewhere
 import id.homebase.resources.photobase_bin_delete_forever
 import id.homebase.resources.photobase_bin_deleted
@@ -37,13 +37,11 @@ import id.homebase.resources.photobase_bin_moved
 import id.homebase.resources.photobase_bin_refused
 import id.homebase.resources.photobase_bin_restore
 import id.homebase.resources.photobase_bin_restored
-import id.homebase.resources.photobase_bin_undo
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getPluralString
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
-/** What the selected photos can do on this shelf. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SelectionToolbar(
@@ -79,19 +77,14 @@ private fun ToolbarAction(icon: ImageVector, label: StringResource, enabled: Boo
     }
 }
 
-/** For what can't be undone: deleting for good, emptying the bin. */
+/** A picked or unpicked mark, on a tile or a day's header. */
 @Composable
-internal fun BinConfirmDialog(title: String, confirmLabel: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(stringResource(MR.string.photobase_bin_cant_undo)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                Text(confirmLabel)
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) } },
+internal fun SelectionMark(picked: Boolean, unpickedTint: Color, modifier: Modifier = Modifier) {
+    Icon(
+        imageVector = if (picked) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+        contentDescription = null,
+        tint = if (picked) MaterialTheme.colorScheme.primary else unpickedTint,
+        modifier = modifier,
     )
 }
 
@@ -104,7 +97,7 @@ internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: 
             if (result.done > 0) {
                 val done = when (event.action) {
                     BinAction.MoveToBin -> MR.plurals.photobase_bin_moved
-                    BinAction.Restore, BinAction.Undo -> MR.plurals.photobase_bin_restored
+                    BinAction.Restore -> MR.plurals.photobase_bin_restored
                     BinAction.DeleteForGood, BinAction.Empty -> MR.plurals.photobase_bin_deleted
                 }
                 add(getPluralString(done, result.done, result.done))
@@ -117,7 +110,7 @@ internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: 
     val undo = (event as? PhotoGalleryEvent.BinDone)?.takeIf { it.result.done > 0 }?.undo.orEmpty()
     val answer = showSnackbar(
         message = message,
-        actionLabel = if (undo.isEmpty()) null else getString(MR.string.photobase_bin_undo),
+        actionLabel = if (undo.isEmpty()) null else getString(MR.string.action_undo),
         duration = if (undo.isEmpty()) SnackbarDuration.Short else SnackbarDuration.Long,
     )
     if (answer == SnackbarResult.ActionPerformed && undo.isNotEmpty()) onAction(PhotoGalleryUiAction.Undo(undo))

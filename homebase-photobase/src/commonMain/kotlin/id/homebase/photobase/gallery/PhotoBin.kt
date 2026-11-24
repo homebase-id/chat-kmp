@@ -31,10 +31,9 @@ class HttpPhotoBinServer(
     private val driveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoBinServer {
     override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) =
-        files.chunked(DriveFileHttpProvider.FILE_BATCH).flatMap { this.files.updateArchivalStatus(driveId, status, it).results }
+        this.files.updateArchivalStatus(driveId, status, files).results
 
-    override suspend fun softDelete(files: List<FileVersionTag>) =
-        files.chunked(DriveFileHttpProvider.FILE_BATCH).flatMap { this.files.softDeleteFiles(driveId, it).results }
+    override suspend fun softDelete(files: List<FileVersionTag>) = this.files.softDeleteFiles(driveId, files).results
 
     override suspend fun header(fileId: Uuid): HomebaseFile? = headers.getFileHeader(driveId, fileId)
 }
@@ -67,11 +66,12 @@ class PhotoBin(
 
     /** [to] null deletes for good. */
     private suspend fun write(fileIds: Collection<Uuid>, files: List<HomebaseFile>, from: ArchivalStatus, to: ArchivalStatus?): PhotoBinResult {
-        val tally = Tally()
+        val tally = Tally(to)
+        val held = files.distinctBy { it.fileId }
         // One the device no longer holds was deleted by another device.
-        tally.gone(fileIds.size - files.distinctBy { it.fileId }.size, to)
+        tally.gone(fileIds.size - held.size)
         val ready = mutableListOf<FileVersionTag>()
-        for (file in files.distinctBy { it.fileId }) {
+        for (file in held) {
             val versionTag = file.fileMetadata.versionTag
             when {
                 to != null && file.isAt(to) -> tally.done++
@@ -81,8 +81,8 @@ class PhotoBin(
         }
         if (ready.isEmpty()) return tally.result()
         try {
-            val again = answer(send(ready, to), from, to, tally)
-            if (again.isNotEmpty()) answer(send(again, to), from, to, tally, retry = false)
+            val again = answer(send(ready, to), from, tally)
+            if (again.isNotEmpty()) answer(send(again, to), from, tally, retry = false)
         } finally {
             sync()
         }
@@ -93,25 +93,22 @@ class PhotoBin(
         if (to == null) server.softDelete(files) else server.setArchivalStatus(to, files)
 
     /** Tallies [answers]; returns the files to send again at the version the server has now. */
-    private suspend fun answer(
-        answers: List<PerFileResult>,
-        from: ArchivalStatus,
-        to: ArchivalStatus?,
-        tally: Tally,
-        retry: Boolean = true,
-    ): List<FileVersionTag> {
+    private suspend fun answer(answers: List<PerFileResult>, from: ArchivalStatus, tally: Tally, retry: Boolean = true): List<FileVersionTag> {
         val again = mutableListOf<FileVersionTag>()
         for (answer in answers) {
             when (answer.errorCode) {
                 null -> tally.done++
-                OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile -> tally.gone(1, to)
+                OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile -> tally.gone(1)
                 OdinClientErrorCode.VersionTagMismatch -> {
-                    val now = if (retry) server.header(answer.fileId) else null
+                    if (!retry) {
+                        tally.changedElsewhere++
+                        continue
+                    }
+                    val now = server.header(answer.fileId)
                     val versionTag = now?.fileMetadata?.versionTag
                     when {
-                        !retry -> tally.changedElsewhere++
-                        now == null || now.fileState != FileState.Active -> tally.gone(1, to)
-                        to != null && now.isAt(to) -> tally.done++
+                        now == null || now.fileState != FileState.Active -> tally.gone(1)
+                        tally.to != null && now.isAt(tally.to) -> tally.done++
                         versionTag != null && now.isAt(from) -> again += FileVersionTag(answer.fileId, versionTag)
                         else -> tally.changedElsewhere++
                     }
@@ -125,13 +122,13 @@ class PhotoBin(
         return again
     }
 
-    private class Tally {
+    private class Tally(val to: ArchivalStatus?) {
         var done = 0
         var changedElsewhere = 0
         var failed = 0
 
         // Gone is what deleting for good wanted; for a move, another device deleted it first.
-        fun gone(count: Int, to: ArchivalStatus?) {
+        fun gone(count: Int) {
             if (to == null) done += count else changedElsewhere += count
         }
 
