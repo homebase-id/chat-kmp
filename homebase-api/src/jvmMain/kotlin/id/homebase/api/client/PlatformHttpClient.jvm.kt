@@ -9,13 +9,11 @@ import java.security.cert.CertificateFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+import okhttp3.ConnectionPool
 
 /**
- * Desktop/JVM HTTP client, on OkHttp: CIO keeps a connection only for pipelined GET/HEAD
- * without custom timeouts, so every other request paid a new TCP + TLS handshake.
- *
- * The JetBrains Runtime's `cacerts` lags the public CA set (JBR 17.0.9 lacks ISRG Root X2),
- * so the engine trusts the JRE defaults plus [ExtraTrustRoots].
+ * Not CIO: it reuses a connection only for pipelined GET/HEAD without custom timeouts.
+ * The JetBrains Runtime's `cacerts` lacks ISRG Root X2, so the engine also trusts [ExtraTrustRoots].
  */
 internal actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit,
@@ -27,6 +25,9 @@ internal fun desktopHttpClient(
 ): HttpClient = HttpClient(OkHttp) {
     block()
     engine {
+        // Ktor's OkHttp clients share one pool by default, and closing any client evicts it.
+        val pool = ConnectionPool()
+        config { connectionPool(pool) }
         if (trustManager != null) {
             val tls = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustManager), null) }
             config { sslSocketFactory(tls.socketFactory, trustManager) }

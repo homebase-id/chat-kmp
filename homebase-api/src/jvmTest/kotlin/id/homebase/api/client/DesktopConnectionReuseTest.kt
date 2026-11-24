@@ -25,9 +25,16 @@ import kotlinx.coroutines.runBlocking
 class DesktopConnectionReuseTest {
 
     @Test
-    fun fiveSequentialPostsShareOneTcpConnection() {
+    fun fiveSequentialPostsShareOneTcpConnection() = assertOneConnection(closeAnotherClientBetween = false)
+
+    // Like a websocket client closing on reconnect.
+    @Test
+    fun anotherClientClosingKeepsTheConnection() = assertOneConnection(closeAnotherClientBetween = true)
+
+    private fun assertOneConnection(closeAnotherClientBetween: Boolean) {
         val keyStore = selfSignedKeyStore()
         val server = TlsServer(keyStore)
+        val otherServer = TlsServer(keyStore)
         val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
             .apply { init(keyStore) }.trustManagers.filterIsInstance<X509TrustManager>().first()
         val client = desktopHttpClient(trust) { homebaseDefaults() }
@@ -38,12 +45,16 @@ class DesktopConnectionReuseTest {
                         contentType(ContentType.Application.Json)
                         setBody("""{"blob":"$it"}""")
                     }
+                    if (closeAnotherClientBetween) {
+                        desktopHttpClient(trust) {}.use { other -> other.post("https://localhost:${otherServer.port}/") }
+                    }
                 }
             }
             assertEquals(1, server.accepted.get(), "TCP connections for 5 sequential POSTs; requests:\n${server.requests.joinToString("\n")}")
         } finally {
             client.close()
             server.close()
+            otherServer.close()
         }
     }
 

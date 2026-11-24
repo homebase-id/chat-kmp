@@ -109,7 +109,7 @@ abstract class OdinApiProviderBase(
             throw NetworkException(e)
         } catch (e: Exception) {
             // Some engines raise connect-time transport failures that are NOT IOExceptions —
-            // Ktor CIO (Desktop) throws UnresolvedAddressException (an IllegalArgumentException)
+            // Ktor CIO throws UnresolvedAddressException (an IllegalArgumentException)
             // on DNS/offline. Wrap those too so every engine surfaces one typed NetworkException;
             // anything that isn't a transport failure rethrows unchanged.
             if (e.isTransientNetworkFailure()) throw NetworkException(e)

@@ -3,6 +3,7 @@ package id.homebase.api.client
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.okhttp.OkHttp
+import okhttp3.ConnectionPool
 
 /**
  * Android uses the OkHttp engine, which validates TLS against the OS trust store.
@@ -18,7 +19,10 @@ internal actual fun createPlatformHttpClient(
 ): HttpClient = HttpClient(OkHttp) {
     block()
     engine {
+        // Ktor's OkHttp clients share one pool by default, and closing any client evicts it.
+        val pool = ConnectionPool()
         config {
+            connectionPool(pool)
             eventListener(ServerIpCaptureEventListener())
         }
     }
