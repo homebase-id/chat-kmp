@@ -45,7 +45,6 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.config.photosLabeledDrive
-import id.homebase.api.sync.DriveState
 import id.homebase.api.sync.DriveSyncPolicy
 import kotlin.time.Duration.Companion.days
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -205,7 +204,7 @@ import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
-import id.homebase.photobase.gallery.syncedSoFar
+import id.homebase.photobase.gallery.librarySynced
 import id.homebase.photobase.gallery.newPhotoRecords
 import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
 import id.homebase.photobase.PhotobaseUninstallCleanup
@@ -1146,7 +1145,7 @@ val appModule = module {
             // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
             // Nor on web, where the cache is gone at the next reload.
             mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
-            librarySynced = { get<DriveSyncManager>().driveStatuses.value[PhotobaseProtocol.DriveAlias]?.state is DriveState.Completed },
+            librarySynced = { get<DriveSyncManager>().driveStatuses.value[PhotobaseProtocol.DriveAlias]?.state.librarySynced() },
             ensureThumbnail = { item, size ->
                 files.ensureThumbCached(item.driveId, item.fileId, item.shown.key, size.pixelWidth, size.pixelHeight, item.shown.lastModified)
             },
@@ -1530,8 +1529,7 @@ val appModule = module {
         PhotobaseUninstallCleanup(
             isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
             forget = {
-                // First, locally: unmounting returns once the drive's sync has stopped writing. The shared registry
-                // is a network write, so it comes last and can't keep the local wipe from happening.
+                // Locally first: the shared registry is a network write, and its failing mustn't stop the wipe.
                 if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoThumbnailPrefetcher>().reset()
@@ -1571,7 +1569,7 @@ val appModule = module {
             warm = prefetcher::prefetch,
             pauseWarm = prefetcher::pause,
             changes = get<EventBus>().events.newPhotoRecords(),
-            syncProgress = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state.syncedSoFar() },
+            driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
         )
     }
     viewModel(FilesyncPermissionQualifier) {

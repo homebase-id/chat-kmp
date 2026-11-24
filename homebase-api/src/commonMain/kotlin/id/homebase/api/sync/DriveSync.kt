@@ -22,14 +22,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.measureTimedValue
-import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
 // Only DriveSyncManager runs a drive's sync (ADDING_ADDON_APPS.md): an app mounts its drive, it doesn't sync it.
@@ -103,34 +101,15 @@ class DriveSync internal constructor(
     /** Epoch-ms when the last sync round finished, or 0 if none has this session. */
     fun lastStoppedAtMs(): Long = lastStoppedAt.value
 
-    // The batch write in flight: on the manager's scope, so cancelling the round doesn't stop it.
-    @Volatile private var pendingDbJob: Deferred<Unit>? = null
-
     fun cancel() {
         killroy.value = false
         job?.cancel()
-    }
-
-    @Volatile private var retired = false
-
-    /**
-     * Stops this drive's sync for good and returns once its round and the batch it was writing have stopped, so the
-     * drive's records can be deleted or the database wiped.
-     */
-    suspend fun retire() {
-        retired = true
-        killroy.value = false
-        job?.cancelAndJoin()
-        // A batched round holds the lock with no job until it resumes; resuming sees [retired] and lets go.
-        mutex.withLock { }
-        pendingDbJob?.join()
     }
 
     // sync() spawn a thread unless it's already working. Returns a pointer to the
     // Job created, or null if another job was already running. You can check if a
     // job is running by calling isJobRunning()
     fun sync(): Job? {
-        if (retired) return null
         if (!mutex.tryLock()) {
             killroy.value = true // Atomic
             return null
@@ -159,7 +138,6 @@ class DriveSync internal constructor(
      * Synchronizing while the collection round trip is in flight.
      */
     internal suspend fun beginBatchedRound(): BatchedRound? {
-        if (retired) return null
         if (!mutex.tryLock()) {
             killroy.value = true // Atomic
             return null
@@ -177,11 +155,6 @@ class DriveSync internal constructor(
      * or missing collection section.
      */
     internal fun resumeBatchedRound(@Suppress("UNUSED_PARAMETER") round: BatchedRound, prefetched: QueryBatchResponse?): Job {
-        if (retired) {
-            syncing.value = false
-            mutex.unlock()
-            return Job().apply { complete() }
-        }
         val newJob = launchRound(prefetched, startedEmitted = true)
         job = newJob
         return newJob
@@ -222,7 +195,7 @@ class DriveSync internal constructor(
     private suspend fun performSync(prefetched: QueryBatchResponse? = null, startedEmitted: Boolean = false) {
         var totalCount = 0
         var queryBatchResponse: QueryBatchResponse? = null
-        pendingDbJob = null
+        var pendingDbJob: Deferred<Unit>? = null
         var pendingPrefetch = prefetched
 
         if (!startedEmitted) eventBus.emit(BackendEvent.DriveEvent.Started(driveId))

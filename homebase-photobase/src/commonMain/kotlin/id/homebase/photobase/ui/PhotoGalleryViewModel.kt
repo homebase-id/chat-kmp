@@ -16,10 +16,16 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.filterNotNull
+import id.homebase.photobase.gallery.syncedSoFar
+import id.homebase.photobase.gallery.librarySynced
+import id.homebase.photobase.gallery.PhotoChange
+import id.homebase.api.sync.DriveState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
@@ -35,6 +41,8 @@ data class PhotoGalleryUiState(
     val isLoadingMore: Boolean = false,
     /** Records the running drive sync has brought in so far, or null when it isn't running. The grid may already show what's held. */
     val syncedSoFar: Int? = null,
+    /** Until then an empty grid doesn't mean nothing is backed up. */
+    val librarySynced: Boolean = false,
     val loadFailed: Boolean = false,
     val endReached: Boolean = false,
     val newestFirst: Boolean = true,
@@ -66,8 +74,8 @@ class PhotoGalleryViewModel(
     private val refresh: () -> Unit = {},
     private val warm: suspend () -> Unit = {},
     private val pauseWarm: (Boolean) -> Unit = {},
-    changes: Flow<Unit> = emptyFlow(),
-    syncProgress: Flow<Int?> = emptyFlow(),
+    changes: Flow<PhotoChange> = emptyFlow(),
+    driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
@@ -89,12 +97,20 @@ class PhotoGalleryViewModel(
             startWarm()
         }
         viewModelScope.launch {
-            syncProgress.collect { count -> _uiState.update { it.copy(syncedSoFar = count) } }
+            driveState.collect { state ->
+                _uiState.update { it.copy(syncedSoFar = state.syncedSoFar(), librarySynced = state.librarySynced()) }
+            }
+        }
+        // A burst of changes reloads once, not once per change, and a finished round among them isn't lost.
+        val due = MutableStateFlow<PhotoChange?>(null)
+        viewModelScope.launch {
+            changes.collect { change -> due.update { if (it == PhotoChange.RoundFinished) it else change } }
         }
         viewModelScope.launch {
-            // Conflated: a burst of changes reloads once, not once per change.
-            changes.conflate().collect {
-                reloadShown()
+            due.filterNotNull().collect {
+                val change = due.getAndUpdate { null } ?: return@collect
+                // A few files re-read a short grid only: re-reading a long scroll for each would cost seconds of parsing.
+                if (change == PhotoChange.RoundFinished || items.size <= FILES_ARRIVED_REREAD) reloadShown()
                 startWarm()
                 delay(CHANGES_GAP)
             }
@@ -235,6 +251,7 @@ class PhotoGalleryViewModel(
     private companion object {
         const val TAG = "PhotoGalleryViewModel"
         const val FIRST_SCREEN_THUMBNAILS = 12
+        const val FILES_ARRIVED_REREAD = 100
         val CHANGES_GAP = 2.seconds
     }
 }

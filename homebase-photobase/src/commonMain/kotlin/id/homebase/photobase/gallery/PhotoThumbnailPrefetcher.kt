@@ -55,8 +55,8 @@ class PhotoThumbnailPrefetcher(
             seen += page.items.size
             cursor = page.nextCursor
         } while (cursor != null && seen < RECENT_PHOTOS)
-        // Fewer than that before the drive's sync has completed isn't the whole library yet: the next walk gets the rest.
-        finished = seen >= RECENT_PHOTOS || librarySynced()
+        // Before the drive's sync has completed, the newest photos held aren't the library's newest: the next walk does them.
+        finished = librarySynced()
     }
 
     fun reset() {

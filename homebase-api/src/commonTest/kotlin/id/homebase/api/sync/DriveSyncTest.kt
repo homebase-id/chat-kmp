@@ -28,7 +28,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -123,28 +122,6 @@ class DriveSyncTest {
                 "Must not emit Failure for a 403"
             )
             collector.cancel()
-        }
-        db.close()
-    }
-
-    @Test
-    fun aRetiredDriveStartsNoMoreRoundsEvenOneItHadBegun() {
-        val db = DatabaseManager({ createInMemoryDatabase() })
-        runTest {
-            var requests = 0
-            val sync = buildSync(db, MockEngine { requests++; respond("", HttpStatusCode.InternalServerError) }, EventBus(), backgroundScope, Uuid.random())
-
-            // A batched round holds the lock without a job until the collection answers.
-            val begun = assertNotNull(sync.beginBatchedRound())
-            val retiring = launch { sync.retire() }
-            runCurrent()
-            assertFalse(retiring.isCompleted, "it waits for the begun round to let go")
-
-            sync.resumeBatchedRound(begun, prefetched = null).join()
-            retiring.join()
-
-            assertEquals(0, requests, "unmounted, it would write records back after they were deleted")
-            assertNull(sync.sync())
         }
         db.close()
     }

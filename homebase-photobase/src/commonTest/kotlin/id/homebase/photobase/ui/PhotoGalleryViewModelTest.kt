@@ -18,6 +18,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
+import id.homebase.api.sync.DriveState
+import id.homebase.photobase.gallery.PhotoChange
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -88,32 +90,33 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
-    fun itSaysItsSyncingWithTheCountUntilTheDriveSyncStops() = runTest {
+    fun itSaysItsSyncingWithTheCountAndOnlyAfterASyncedRoundIsAnEmptyGridEmpty() = runTest {
         val source = Pages(mapOf(null to PhotoGalleryPage(emptyList(), null)))
-        val progress = MutableStateFlow<Int?>(0)
+        val drive = MutableStateFlow<DriveState?>(null)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), syncProgress = progress)
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), driveState = drive)
         testScheduler.advanceUntilIdle()
-        assertTrue(viewModel.uiState.value.isSyncing, "An empty grid must not read as nothing backed up yet")
+        assertFalse(viewModel.uiState.value.librarySynced, "Not mounted yet: an empty grid must not read as nothing backed up yet")
 
-        progress.value = 1_200
+        drive.value = DriveState.Synchronizing(1_200)
         testScheduler.advanceUntilIdle()
         assertEquals(1_200, viewModel.uiState.value.syncedSoFar)
 
-        progress.value = null
+        drive.value = DriveState.Completed(1_200)
         testScheduler.advanceUntilIdle()
         assertFalse(viewModel.uiState.value.isSyncing)
+        assertTrue(viewModel.uiState.value.librarySynced)
     }
 
     @Test
     fun newRecordsOnTheDriveReloadTheFirstPage() = runTest {
         val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
-        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val changes = MutableSharedFlow<PhotoChange>(extraBufferCapacity = 1)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
         testScheduler.advanceUntilIdle()
 
-        changes.tryEmit(Unit)
+        changes.tryEmit(PhotoChange.RoundFinished)
         testScheduler.advanceUntilIdle()
 
         assertEquals(listOf<String?>(null, null), source.asked)
@@ -127,7 +130,7 @@ class PhotoGalleryViewModelTest {
             "next" to PhotoGalleryPage(listOf(item(1_000)), null),
         )
         val source = Pages(pages)
-        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val changes = MutableSharedFlow<PhotoChange>(extraBufferCapacity = 1)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
         testScheduler.advanceUntilIdle()
@@ -138,7 +141,7 @@ class PhotoGalleryViewModelTest {
         // The sync writes in change order: a photo can land anywhere in what's showing, and the end moves.
         pages[null] = PhotoGalleryPage(listOf(newest), "next")
         pages["next"] = PhotoGalleryPage(listOf(item(2_000), item(1_000)), "more")
-        changes.tryEmit(Unit)
+        changes.tryEmit(PhotoChange.RoundFinished)
         testScheduler.advanceUntilIdle()
 
         assertEquals(listOf(3_000L, 2_000L, 1_000L), viewModel.uiState.value.days.flatMap { it.items }.map { it.capturedAtMs })
@@ -147,17 +150,42 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
+    fun aFewFilesArrivingDontReReadALongScrollButARoundDoes() = runTest {
+        val pages = (0 until 3).associate { page ->
+            (if (page == 0) null else "p$page") to PhotoGalleryPage(List(50) { item(10_000L - page * 50 - it) }, if (page < 2) "p${page + 1}" else null)
+        }
+        val source = Pages(pages)
+        val changes = MutableSharedFlow<PhotoChange>(extraBufferCapacity = 1)
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
+        testScheduler.advanceUntilIdle()
+        repeat(2) {
+            viewModel.onAction(PhotoGalleryUiAction.LoadMore)
+            testScheduler.advanceUntilIdle()
+        }
+        val scrolled = source.asked.size
+
+        changes.tryEmit(PhotoChange.FilesArrived)
+        testScheduler.advanceUntilIdle()
+        assertEquals(scrolled, source.asked.size, "150 photos showing: each arrival would re-read them all")
+
+        changes.tryEmit(PhotoChange.RoundFinished)
+        testScheduler.advanceUntilIdle()
+        assertEquals(scrolled + 3, source.asked.size)
+    }
+
+    @Test
     fun newRecordsWhileAPhotoIsOpenWaitForTheViewerToClose() = runTest {
         val photo = item(1_000)
         val source = Pages(mapOf(null to PhotoGalleryPage(listOf(photo), null)))
-        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val changes = MutableSharedFlow<PhotoChange>(extraBufferCapacity = 1)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
         testScheduler.advanceUntilIdle()
         val beforeOpen = source.asked.size
 
         viewModel.onAction(PhotoGalleryUiAction.Open(photo))
-        changes.tryEmit(Unit)
+        changes.tryEmit(PhotoChange.RoundFinished)
         testScheduler.advanceUntilIdle()
         assertEquals(beforeOpen, source.asked.size, "Replacing the first page could drop the open photo")
 

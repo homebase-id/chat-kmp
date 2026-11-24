@@ -307,7 +307,7 @@ private fun GalleryGrid(
                     CircularProgressIndicator()
                     SyncingLabel(uiState.syncedSoFar ?: 0)
                 }
-                uiState.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                uiState.isLoading || !uiState.librarySynced && !uiState.loadFailed -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 uiState.loadFailed -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,

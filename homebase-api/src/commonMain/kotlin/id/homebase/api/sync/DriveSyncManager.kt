@@ -451,8 +451,7 @@ class DriveSyncManager(
             snapshot
         }
 
-        // Joined, so a logout's database wipe can't have a batch of the old account written into the new one.
-        old.values.forEach { it.retire() }
+        old.values.forEach { it.cancel() }
         _driveStatuses.update { emptyMap() }
     }
 
@@ -550,8 +549,7 @@ class DriveSyncManager(
             driveSyncs = driveSyncs - driveId
             s
         } ?: return
-        // Joined, so a caller that deletes the drive's records next can't have a batch written back.
-        sync.retire()
+        sync.cancel()
         remoteRetryAttempts.remove(driveId)
         _driveStatuses.update { it - driveId }
         Logger.i(tag = "DriveSync") { "unmountDrive($driveId)" }

@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class PhotoDriveEventsTest {
@@ -27,7 +29,11 @@ class PhotoDriveEventsTest {
             BackendEvent.DataEvent.BatchReceived(Uuid.random(), listOf(galleryTestFile(2))),
         )
 
-        assertEquals(3, events.newPhotoRecords().toList().size, "a round is silent until it stops; a failed one may still have written some")
+        assertEquals(
+            listOf(PhotoChange.RoundFinished, PhotoChange.RoundFinished, PhotoChange.FilesArrived),
+            events.newPhotoRecords().toList(),
+            "a round is silent until it stops; a failed one may still have written some",
+        )
     }
 
     @Test
@@ -39,5 +45,14 @@ class PhotoDriveEventsTest {
         assertNull(DriveState.Completed(12).syncedSoFar())
         assertNull(DriveState.Failed("offline").syncedSoFar())
         assertNull((null as DriveState?).syncedSoFar())
+    }
+
+    @Test
+    fun onlyACompletedRoundMeansTheWholeLibraryIsHere() {
+        assertTrue(DriveState.Completed(0).librarySynced())
+        assertFalse(DriveState.Initialized.librarySynced())
+        assertFalse(DriveState.Synchronizing(10).librarySynced())
+        assertFalse(DriveState.Failed("offline").librarySynced())
+        assertFalse((null as DriveState?).librarySynced())
     }
 }
