@@ -22,7 +22,7 @@ import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
 
 /** The desktop client over TLS, against a local server that counts the TCP connections it accepts. */
-class CioConnectionReuseTest {
+class DesktopConnectionReuseTest {
 
     @Test
     fun fiveSequentialPostsShareOneTcpConnection() {

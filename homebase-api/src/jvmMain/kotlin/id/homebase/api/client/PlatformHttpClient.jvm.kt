@@ -11,17 +11,11 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 /**
- * Desktop/JVM HTTP client, on OkHttp like Android. CIO can't be used: it pools a
- * connection only for pipelined GET/HEAD requests without custom timeouts, so every
- * POST, and every request once [HttpTimeout][io.ktor.client.plugins.HttpTimeout] is
- * installed, paid a new TCP + TLS handshake.
+ * Desktop/JVM HTTP client, on OkHttp: CIO keeps a connection only for pipelined GET/HEAD
+ * without custom timeouts, so every other request paid a new TCP + TLS handshake.
  *
- * TLS is validated against the running JRE's `cacerts`. For `desktopApp:run` and the
- * packaged app that's the JetBrains Runtime, whose store historically lags the public
- * CA set: JBR 17.0.9 carries ISRG Root X1 but **not** ISRG Root X2, so a Let's Encrypt
- * cert renewed onto an X2-anchored chain fails with `SunCertPathBuilderException`.
- * We give the engine a trust manager seeded from the JRE defaults **plus** the extra
- * roots in [ExtraTrustRoots]. Android/iOS/Web use their OS trust stores and don't need this.
+ * The JetBrains Runtime's `cacerts` lags the public CA set (JBR 17.0.9 lacks ISRG Root X2),
+ * so the engine trusts the JRE defaults plus [ExtraTrustRoots].
  */
 internal actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit,
