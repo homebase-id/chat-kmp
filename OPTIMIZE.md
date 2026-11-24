@@ -139,9 +139,17 @@ share of MEDIA_BENCHMARKS.md:
 - for each file in the app's `Documents/bench`: a whole send of a video at Standard and HD, every shrink step of a
   GIF, and the image pipeline on a real photo.
 
-Each line comes out as `measured: …`. The test is skipped unless `MEDIA_BENCH=1`. Use the release Kotlin framework
-(`iosApp Dev`'s default; don't pass `KOTLIN_FRAMEWORK_BUILD_TYPE=debug`), because an unoptimised build is several
-times slower at the Kotlin parts: segmenting and the GIF codec.
+Each line comes out as `measured: …`. The test is skipped unless `MEDIA_BENCH=1`. It must run the release Kotlin
+framework: the debug one is 6–8× slower at the Kotlin parts (segmenting, the GIF codec). Three things get it there:
+
+- **`-configuration Dev`, never `Debug`.** The Kotlin Gradle plugin takes the build type from Xcode's
+  `CONFIGURATION` first and reads `KOTLIN_FRAMEWORK_BUILD_TYPE` only when that isn't `Debug` or `Release`, so
+  `-configuration Debug` links the debug framework whatever `Dev.xcconfig` says. Check the build log for
+  `linkReleaseFrameworkIosArm64`. Until 2026-11-24 this command said `Debug`, so earlier iPhone rows are debug.
+- **`ENABLE_TESTABILITY=YES`.** Only Debug turns it on, and `iosAppTests` uses `@testable import Homebase`.
+- **CI's release-link settings.** The release link of `homebase-core` runs out of memory without them
+  (IOS_RELEASE_LINK_OOM.md). Append them to `gradle.properties` for the run and remove them after. The first link
+  is long; a later run with the same settings reuses the framework.
 
 ```bash
 # Once, so the app and its container exist: build and run iosApp on the iPhone from Xcode.
@@ -150,8 +158,20 @@ for f in ~/media-bench/*; do
   xcrun devicectl device copy to --device <device id> --domain-type appDataContainer \
     --domain-identifier id.homebase.feed.dev --source "$f" --destination "Documents/bench/$(basename "$f")"
 done
-TEST_RUNNER_MEDIA_BENCH=1 xcodebuild test -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
-  -destination 'id=<device UDID>' -only-testing:iosAppTests/MediaBenchmarkTests | grep 'measured:'
+cp gradle.properties /tmp/gradle.properties.bak
+cat >> gradle.properties <<'EOF'
+kotlin.native.gradle.workers.max=1
+kotlin.incremental.native=false
+kotlin.native.disableCompilerDaemon=true
+kotlin.native.jvmArgs=-Xmx12g
+homebase.native.disableDevirtualization=true
+EOF
+TEST_RUNNER_MEDIA_BENCH=1 xcodebuild test -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Dev \
+  ENABLE_TESTABILITY=YES -destination 'id=<device UDID>' -only-testing:iosAppTests/MediaBenchmarkTests \
+  > /tmp/bench.log 2>&1
+cp /tmp/gradle.properties.bak gradle.properties
+grep -o 'link[A-Za-z]*FrameworkIosArm64' /tmp/bench.log   # must be linkReleaseFrameworkIosArm64
+grep 'measured:' /tmp/bench.log
 ```
 
 The inputs are MEDIA_BENCHMARKS.md's (its "Inputs" table has the ffmpeg commands), `homebase-api/src/nativeTest/test_videos`, and
@@ -258,7 +278,7 @@ Small on Original was 14-20 KB across these fixtures, so a 1 GiB cache holds abo
 fixtures are small and already compressed, so real photos will probably cost more and hold fewer.
 Measure on a real library before trusting this.
 
-### 2026-11-20, 5a2c13b42 (ios-media-benchmarks), iPhone 15 (iPhone15,4, iOS 27.2.1, Xcode 27.2), release Kotlin framework (#2566)
+### 2026-11-20, 5a2c13b42 (ios-media-benchmarks), iPhone 15 (iPhone15,4, iOS 27.2.1, Xcode 27.2), debug Kotlin framework (#2566; the command said `-configuration Debug`, #2587)
 
 First real-iPhone run of `MediaBenchmarks`; all tables are in MEDIA_BENCHMARKS.md. Run 2, after the phone cooled; run 1 (same code) gave the same shape. Thermal state: 21 lines at 0, 61 at 1, none at 2, so even from cool the phone reaches 1 within a run. Two runs per video setting; GIF steps ran twice. `PhotoLibraryCheckTests` failed (#2569); `DisplayDecodeCheckTests` and `MediaBenchmarkTests` passed.
 
@@ -426,7 +446,7 @@ Still to measure, same three 48 MP photos:
 | iPhone 15, release framework, guard 100 MP | | |
 | 4 GB iPhone, release framework, guard 100 MP | | |
 
-One photo at a time, from `MediaBenchmarks` (iPhone 15 Plus, release framework, 2026-11-20, footprint peak;
+One photo at a time, from `MediaBenchmarks` (iPhone 15 Plus, debug framework (#2587), 2026-11-20, footprint peak;
 before `ce6f4e731`, after `836763240`; full lines on #2566). Generated 8000×6000 photos, no gain map:
 - **HD:** JPEG 1443 → 1286 ms and 1021 → 1112 MB; HEIC 1302 → 1395 ms and 820 → 1273 MB.
 - **Standard:** it decodes in full too (8000 → 2048 is under 4×). JPEG 590 → 1007 MB, HEIC 651 → 1222 MB, about 190 ms

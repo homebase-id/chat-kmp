@@ -88,8 +88,14 @@ Full reads of the file per operation, with the code that ships. Header reads (du
 | iPhone 15 | iPhone HEVC capture, 36 MB | HD | HLS, 10.1 MB | **7.02–7.11 s**: compress 6.64–6.73 s, HLS 0.38 s | — | 2026-11-20 |
 | iPhone 15 | iPhone spatial capture, 13 MB | Standard | MP4, 0.8 MB | **0.74–0.83 s**: compress 0.71–0.81 s, encrypt and hash 0.03 s | — | 2026-11-20 |
 | iPhone 15 | iPhone spatial capture, 13 MB | HD | MP4, 1.6 MB | **0.85–0.87 s**: compress 0.77–0.79 s, encrypt and hash 0.07–0.08 s | — | 2026-11-20 |
+| iPhone 15 Plus, release | iPhone HEVC capture, 36 MB | Standard | MP4, 5.2 MB | **5.59–6.12 s**: compress 5.56–6.08 s, encrypt and hash 0.04 s | — | 2026-11-24 |
+| iPhone 15 Plus, release | iPhone HEVC capture, 36 MB | HD | HLS, 10.1 MB | **6.97–6.98 s**: compress 6.91–6.93 s, HLS 0.06 s | — | 2026-11-24 |
+| iPhone 15 Plus, release | iPhone spatial capture, 13 MB | Standard | MP4, 0.8 MB | **0.74–0.83 s**: compress 0.73–0.82 s, encrypt and hash 0.01 s | — | 2026-11-24 |
+| iPhone 15 Plus, release | iPhone spatial capture, 13 MB | HD | MP4, 1.6 MB | **0.81–0.83 s**: compress 0.79–0.81 s, encrypt and hash 0.02 s | — | 2026-11-24 |
 
-The iPhone 15 rows are AVFoundation's reader and writer with our segmenter (release Kotlin framework, two runs per setting, each pair within 1 s), measured with `MediaBenchmarks` on the phone; iOS no longer has ffmpeg, so there is no comparison column. The thermal state was 0 for 21 of 82 lines, 1 for 61 and never 2; the phone reaches 1 within a run even from cool. Compress memory (footprint peak) stays at 140–157 MB (+1 to +5 MB over idle) for every input, from 13 MB to 210 MB. Standard's 10 s clip lands on 3.3 MB, 2.6 Mbps, the target.
+The iPhone 15 rows are AVFoundation's reader and writer with our segmenter (debug Kotlin framework: the bench command then said `-configuration Debug`, #2587; two runs per setting, each pair within 1 s), measured with `MediaBenchmarks` on the phone; iOS no longer has ffmpeg, so there is no comparison column. The thermal state was 0 for 21 of 82 lines, 1 for 61 and never 2; the phone reaches 1 within a run even from cool. Compress memory (footprint peak) stays at 140–157 MB (+1 to +5 MB over idle) for every input, from 13 MB to 210 MB. Standard's 10 s clip lands on 3.3 MB, 2.6 Mbps, the target.
+
+The iPhone 15 Plus rows are the release framework (`main` `72ec60b0c`, thermal 0). Compression is AVFoundation and barely moves; our segmenting is 6× faster (HLS of the 10 MB send 0.38 → 0.06 s), so the debug rows' HLS and encrypt times overstate ours.
 
 **The stand-in, explained:** Standard asks for its target, 2.5 Mbps, which is the stand-in's own rate, so it comes out the same size (27430 kB); skipping that re-encode is #2576's open half. HD came out smaller (24566 kB) because the area-scaled bitrate gave a 720p source 2.22 Mbps at HD against Standard's 2.5; since then HD never asks for less than Standard, so these HD rows are from before the fix and are to measure again.
 
@@ -211,7 +217,7 @@ Ours is a little smaller because it keeps parameter sets in the index rather tha
 | Desktop JVM | 800×450, 300 frames | 512 px, 128 colours | **1.40–1.51 s** | 2.05 s (285 MB peak) | **2.79** / 3.32 MB | 2026-11-16 |
 | Desktop JVM | sticker 480×480 | 480 px (no scaling) | 0.51–0.56 s | **0.36–0.41 s** | 1.47 / 1.48 MB | 2026-11-16 |
 
-The iPhone 15 rows are the release Kotlin framework (`MediaBenchmarks`, two runs per step, four for the sticker's first step); the 800×450 GIF takes about 10× the desktop JVM's time at the same step. Output sizes match the Android and desktop ones.
+The iPhone 15 rows are the debug Kotlin framework (`MediaBenchmarks` with the command's old `-configuration Debug`, #2587; two runs per step, four for the sticker's first step), which is why the 800×450 GIF took about 10× the desktop JVM's time. The release framework's numbers are in the next section. Output sizes match the Android and desktop ones.
 
 Where the time goes without scaling, desktop: decoding 85 ms (done twice: palette, then encode), mapping colours 60–90 ms on one core, changed rectangles and LZW 317 ms.
 
@@ -229,20 +235,20 @@ A stand-in for the 7 MB GIF: 800×450, 300 frames, 9.6 MB (`ffmpeg -stream_loop 
 | Desktop JVM | 384 px, 64 colours, 12 fps | 0.96–1.24 s | **0.41–0.43 s** |
 | iOS simulator, K/N **debug** | 512 px, 128 colours | 7.6–8.1 s | — |
 
-On an iPhone 15 Plus (iOS 27.0.1, release framework, two runs per step, `MediaBenchmarks`). Before is `ce6f4e731`, after is `7f6ea150f`, with the Pixel 5's times for scale:
+On an iPhone 15 Plus (iOS 27.0.1, two runs per step, `MediaBenchmarks`). Before is `ce6f4e731`, after is `7f6ea150f`, both the debug framework (the command's old `-configuration Debug`, #2587). The release column is `72ec60b0c` (2026-11-24, thermal 0). The Pixel 5's times are for scale:
 
-| Step | iPhone before | iPhone after | Pixel 5 |
-|---|---|---|---|
-| 512 px, 128 colours | 16.0–17.0 s | **8.0–8.3 s** | 8.5–8.9 s |
-| 384 px, 128 colours | 12.4–12.5 s | **6.0–6.1 s** | 5.9–6.2 s |
-| 384 px, 64 colours, 12 fps | 8.9–9.0 s | **4.5 s** | 3.5–5.9 s |
+| Step | iPhone before, debug | iPhone after, debug | iPhone, release | Pixel 5 |
+|---|---|---|---|---|
+| 512 px, 128 colours | 16.0–17.0 s | 8.0–8.3 s | **1.02 s** | 8.5–8.9 s |
+| 384 px, 128 colours | 12.4–12.5 s | 6.0–6.1 s | **0.82 s** | 5.9–6.2 s |
+| 384 px, 64 colours, 12 fps | 8.9–9.0 s | 4.5 s | **0.61 s** | 3.5–5.9 s |
 
 - **The run:** the after run was at thermal state 2, the before run at 1. Output sizes are the same.
-- **The gap:** the phone is still about 10× slower than the simulator for the same release build, so code generation alone doesn't explain it. It's still to profile on the phone.
+- **The gap was the build:** on the release framework the phone runs these steps in 0.61–1.02 s, like the simulator's 0.72–0.83 s, and 7–8× faster than its own debug runs.
 
 - **Where the time went** (the `sample` profiler on the release binary; single-thread stage timings for 300 frames): decoding about 55% of the CPU, and it's serial, twice per step (palette, then encode): 430 ms a pass on both runtimes, 300 ms of it LZW. Area scaling about 28% (790 ms on one thread). LZW encoding about 8%. The four-frame scaling and mapping does run on four threads on Kotlin/Native (GCD's default-QoS pool).
 - **What changed, in common Kotlin:** LZW decoding copies each table entry's string from where it was first written in the frame, instead of walking its prefix chain one dependent load per pixel (300 → 110 ms on the JVM, 135 ms on K/N), into one buffer reused across frames. Frames draw through a 256-entry colour table with the clipping worked out per row. The scaler sums each output pixel in locals from flat span arrays, not boxed `Span` objects and four `LongArray` rows (790 → 550 ms on one thread).
-- **What this doesn't explain:** release Kotlin/Native runs this codec at the JVM's speed on the simulator, so Kotlin/Native's code generation alone doesn't account for the 1.6–2.4× gap the iPhone 15 showed. An unoptimised framework is 6× slower here, about the size of the iPhone's gap to desktop. To do: profile `MediaBenchmarks` on an iPhone with Instruments, release framework, and fill in the iPhone rows above again.
+- **The iPhone gap:** release Kotlin/Native runs this codec at the JVM's speed on the simulator, so Kotlin/Native's code generation alone doesn't account for the 1.6–2.4× gap the iPhone 15 showed. An unoptimised framework is 6× slower here, about the size of the iPhone's gap to desktop, and that was the cause: the iPhone runs were the debug framework (#2587).
 
 ## iOS compression: AVFoundation
 
@@ -267,7 +273,8 @@ The FFmpegKit frameworks embedded in the app were 16.4 MB of arm64 binaries (18.
 | Pixel 5, 32-bit app | native C, NEON | **603 MB/s** | 36 MB/s | 2026-11-16 |
 | Pixel 8 | native C, NEON | **924 MB/s** | 52 MB/s | 2026-11-16 |
 | Desktop JVM | Kotlin port | 141 MB/s | — | 2026-11-16 |
-| iPhone 15 Plus, release framework | native C, NEON (homebase-blake3's sources, through cinterop) | **1511–1805 MB/s** over 256 MB; MP4 encrypt of a 5 MB send 140 → 52 ms, HLS of a 10 MB send 383 → 100 ms | 48–49 MB/s over 256 MB (iPhone 15: 43–45) | 2026-11-20 |
+| iPhone 15 Plus, debug framework (#2587) | native C, NEON (homebase-blake3's sources, through cinterop) | **1511–1805 MB/s** over 256 MB; MP4 encrypt of a 5 MB send 140 → 52 ms, HLS of a 10 MB send 383 → 100 ms | 48–49 MB/s over 256 MB (iPhone 15: 43–45) | 2026-11-20 |
+| iPhone 15 Plus, release framework | native C, NEON | **1565–1880 MB/s** over 256 MB; MP4 encrypt of a 5 MB send 36–37 ms, HLS of a 10 MB send 59–63 ms | not measured: the bench runs the port only when C fails its self-check | 2026-11-24 |
 
 For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed with `adb install --abi armeabi-v7a`.
 
@@ -286,17 +293,18 @@ Same quality number for both (60 at Standard, 80 at HD); a JPEG at the same numb
 
 ### iPhone: the whole photo pipeline with HDR
 
-`MediaBenchmarks` on an iPhone 15 Plus (iOS 27.0.1, release framework). Before: `main` `ce6f4e731`, which sends an iPhone's HDR photo as SDR. After: `836763240`, with #2522 (Ultra HDR from an iPhone HEIC) and #2365 (48 MP decoded in full). Real HEIF Max photos with ISO and Apple gain maps, median of 3, footprint peak. Full lines on #2566.
+`MediaBenchmarks` on an iPhone 15 Plus (iOS 27.0.1, debug framework: the command's old `-configuration Debug`, #2587). Before: `main` `ce6f4e731`, which sends an iPhone's HDR photo as SDR. After: `836763240`, with #2522 (Ultra HDR from an iPhone HEIC) and #2365 (48 MP decoded in full). Real HEIF Max photos with ISO and Apple gain maps, median of 3, footprint peak. Full lines on #2566. The release column is the same photos on `72ec60b0c`, the release framework, thermal 0 (2026-11-24).
 
-| Photo | Setting | Before (SDR) | After (Ultra HDR) | Measured |
+| Photo | Setting | Before (SDR), debug | After (Ultra HDR), debug | Ultra HDR, release |
 |---|---|---|---|---|
-| 48 MP, 5 photos | HD | 1157–1588 ms, 479–561 MB | 2930–3145 ms, 1038–1098 MB | 2026-11-20 |
-| 48 MP, 5 photos | Original | 355–480 ms | 2667–2787 ms | 2026-11-20 |
-| 48 MP, 5 photos | Standard (stays SDR) | 338–464 ms | 473–622 ms | 2026-11-20 |
-| 24 MP, 2 photos | HD | 1313–1339 ms | 1792–1802 ms | 2026-11-20 |
-| 24 MP, 2 photos | Original | 377–392 ms | 1487–1496 ms | 2026-11-20 |
+| 48 MP, 5 photos | HD | 1157–1588 ms, 479–561 MB | 2930–3145 ms, 1038–1098 MB | **704–890 ms**, 1101–1318 MB |
+| 48 MP, 5 photos | Original | 355–480 ms | 2667–2787 ms | **454–579 ms** |
+| 48 MP, 5 photos | Standard (stays SDR) | 338–464 ms | 473–622 ms | **445–575 ms** |
+| 24 MP, 2 photos | HD | 1313–1339 ms | 1792–1802 ms | **614–631 ms** |
+| 24 MP, 2 photos | Original | 377–392 ms | 1487–1496 ms | **326–335 ms** |
 
-- **Cost:** keeping HDR costs about 1.1–2.3 s per photo at HD and Original. Where it goes (the auxiliary map read, the pixel copy, the extra JPEG round trip) is still to profile.
+- **Release:** on the release framework a 48 MP photo with Ultra HDR takes 0.70–0.89 s at HD, less than the debug build's SDR. What HDR costs against SDR on release is still to measure (#2588).
+- **Cost, debug:** keeping HDR cost about 1.1–2.3 s per photo at HD and Original. Where it goes (the auxiliary map read, the pixel copy, the extra JPEG round trip) is still to profile.
 - **Standard:** it gets slower only from the full decode.
 - **Thermal:** the after run reached thermal state 2 from the last 48 MP photo's Original onward.
 
@@ -334,9 +342,11 @@ The Pixel 5 row's Android SDR figure, measured before 2026-11-17, is left out: `
 | Lanczos 4000×3000 → 2048×1536 | 596 ms | 203 ms | 99 ms | +12 MB | — | — |
 | Lanczos 2048×1536 → 1080×810 | 31 ms | 101 ms | 37 ms | +3 MB | — | — |
 
-The iPhone 15 columns: `MediaBenchmarks`, release Kotlin framework, median of 3, with the first run's growth of the app's memory footprint (Android's column is native memory only, so they don't compare exactly). Generated photos; the 48 MP rows ran at thermal 1. At Original, 12 MP took 327 ms (JPEG) and 370 ms (HEIC), 48 MP 402 ms and 413 ms, each +135–149 MB.
+The iPhone 15 columns: `MediaBenchmarks`, debug Kotlin framework (the command's old `-configuration Debug`, #2587), median of 3, with the first run's growth of the app's memory footprint (Android's column is native memory only, so they don't compare exactly). Generated photos; the 48 MP rows ran at thermal 1. At Original, 12 MP took 327 ms (JPEG) and 370 ms (HEIC), 48 MP 402 ms and 413 ms, each +135–149 MB.
 
-**Real photos on the iPhone 15** (the owner's, HEIC unless noted; median of 3, thermal 1):
+On the release framework (iPhone 15 Plus, `72ec60b0c`, 2026-11-24) the generated photos barely move, because decoding and scaling are ImageIO and vImage: 48 MP HEIC 502 ms at Standard and 1188 ms at HD, 48 MP JPEG 492 and 1169 ms.
+
+**Real photos on the iPhone 15** (the owner's, HEIC unless noted; median of 3, thermal 1; debug framework):
 
 | Photo | Standard | HD | Original | Peak footprint growth, Standard / HD |
 |---|---|---|---|---|
