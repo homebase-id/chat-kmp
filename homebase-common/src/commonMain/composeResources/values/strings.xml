@@ -3501,8 +3501,6 @@
     <string name="photobase_indicator_attention">Backup needs attention. Open backup status.</string>
     <string name="photobase_gallery_empty">Nothing backed up yet.</string>
     <string name="photobase_gallery_syncing">Syncing photos (%1$d so far)</string>
-    <string name="photobase_gallery_load_failed">Couldn't load your photos. Try again.</string>
-    <string name="photobase_gallery_retry">Try again</string>
     <string name="photobase_gallery_photo">Photo</string>
     <string name="photobase_gallery_video">Video</string>
     <string name="photobase_backup_notification">Backing up photos</string>

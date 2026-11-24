@@ -41,10 +41,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -76,34 +74,29 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.forGridTile
 import id.homebase.core.media.subsample.fullScreenImageSharedBounds
-import id.homebase.photobase.gallery.PhotoGalleryDay
+import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.core.util.formatMomentDate
 import id.homebase.resources.MR
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import id.homebase.resources.photobase_backup_title
 import id.homebase.resources.photobase_gallery_empty
-import id.homebase.resources.photobase_gallery_load_failed
 import id.homebase.resources.photobase_gallery_photo
 import id.homebase.resources.photobase_gallery_refresh
 import id.homebase.resources.photobase_gallery_sort_newest
 import id.homebase.resources.photobase_gallery_sort_oldest
 import id.homebase.resources.photobase_gallery_syncing
-import id.homebase.resources.photobase_gallery_retry
 import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_label
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 import id.homebase.core.image.mediaSharedKey
 
-// Under what's left of the first page after a screenful, or opening would fetch the next one straight away.
-private const val LOAD_MORE_WHEN_WITHIN = 15
-
+// Thumbnails wait for scrolling to settle; the headers, which carry the tinies, only for a brief pause.
 private const val SETTLE_MILLIS = 150L
-
-// A few swipes' warning, so the next page is usually there before the last photo is reached.
-private const val VIEWER_LOAD_MORE_WHEN_WITHIN = 5
+private const val HEADERS_AFTER_MILLIS = 60L
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -113,6 +106,10 @@ fun PhotoGalleryScreen(
     backupIndicator: @Composable () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val library by viewModel.library.collectAsStateWithLifecycle()
+    val layout = remember(library, uiState.newestFirst, uiState.loaded) {
+        library?.let { GalleryLayout(it, uiState.newestFirst, uiState.loaded) }
+    }
     val gridState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     val memory = remember(gridState) { GridMemory(gridState) }
     val onAction: (PhotoGalleryUiAction) -> Unit = remember(viewModel) {
@@ -128,10 +125,10 @@ fun PhotoGalleryScreen(
             targetState = uiState.openedFileId != null,
             transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
         ) { viewing ->
-            if (viewing) {
-                GalleryViewer(uiState, onAction, this@SharedTransitionLayout, this@AnimatedContent)
+            if (viewing && layout != null) {
+                GalleryViewer(uiState, layout, onAction, this@SharedTransitionLayout, this@AnimatedContent)
             } else {
-                GalleryGrid(uiState, onAction, onOpenBackupSettings, backupIndicator, memory, this@SharedTransitionLayout, this@AnimatedContent)
+                GalleryGrid(uiState, layout, onAction, onOpenBackupSettings, backupIndicator, memory, this@SharedTransitionLayout, this@AnimatedContent)
             }
         }
     }
@@ -140,57 +137,51 @@ fun PhotoGalleryScreen(
 /** Outlives the grid while the viewer covers it. */
 private class GridMemory(val state: LazyGridState) {
     var newestFirst: Boolean? = null
-    var topId: Uuid? = null
+    var topDay: Int? = null
     var returnTo: Uuid? = null
 }
 
-private fun gridIndexOf(days: List<PhotoGalleryDay>, fileId: Uuid): Int? {
-    var index = 0
-    for (day in days) {
-        index++
-        for (item in day.items) {
-            if (item.fileId == fileId) return index
-            index++
-        }
-    }
-    return null
+private fun GalleryLayout.photoAt(page: Int): PhotoGalleryItem? {
+    val (position, slot) = slotOfPhoto(page)
+    return itemsOf(position)?.getOrNull(slot)
 }
 
-/** Every photo loaded so far, in the grid's order, one per page; nearing the end loads the next page. */
+/** Every photo of the library in the grid's order, one per page; a page whose day isn't read yet reads it. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun GalleryViewer(
     uiState: PhotoGalleryUiState,
+    layout: GalleryLayout,
     onAction: (PhotoGalleryUiAction) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
-    val items = remember(uiState.days) { uiState.days.flatMap { it.items } }
     val openedFileId by rememberUpdatedState(uiState.openedFileId)
-    val initialPage = remember { items.indexOfFirst { it.fileId == uiState.openedFileId }.coerceAtLeast(0) }
-    val pagerState = rememberPagerState(initialPage) { items.size }
+    val initialPage = remember { uiState.openedFileId?.let { layout.photoOf(it) } ?: 0 }
+    val pagerState = rememberPagerState(initialPage) { layout.photoCount }
     val close = { onAction(PhotoGalleryUiAction.CloseViewer) }
     ScreenBackHandler(onBack = close)
     val showUI = remember { mutableStateOf(true) }
-    LaunchedEffect(items) {
+    LaunchedEffect(layout) {
         // Photos arriving above the open one would otherwise leave the pager on a different photo.
         // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
-        val opened = items.indexOfFirst { it.fileId == openedFileId }
-        if (opened < 0) {
+        val opened = openedFileId?.let { layout.photoOf(it) }
+        if (opened == null) {
             close()
             return@LaunchedEffect
         }
         if (opened != pagerState.settledPage) pagerState.scrollToPage(opened)
         snapshotFlow { pagerState.settledPage }.collect { page ->
-            val item = items.getOrNull(page) ?: return@collect
+            val (position, _) = layout.slotOfPhoto(page)
+            onAction(PhotoGalleryUiAction.Showing(position..position))
+            val item = layout.photoAt(page) ?: return@collect
             if (item.fileId != openedFileId) onAction(PhotoGalleryUiAction.Open(item))
-            if (page >= items.size - VIEWER_LOAD_MORE_WHEN_WITHIN) onAction(PhotoGalleryUiAction.LoadMore)
         }
     }
-    val shown = items.getOrNull(pagerState.settledPage)
+    val shown = layout.photoAt(pagerState.settledPage)
     HorizontalPager(
         state = pagerState,
-        key = { items[it].fileId.toString() },
+        key = { page -> layout.photoAt(page)?.fileId?.toString() ?: "slot-$page" },
         beyondViewportPageCount = 1,
         pageSpacing = 24.dp,
         // Around the pager, not inside a page: from inside a page the open animation restarts mid-flight and jumps.
@@ -200,7 +191,11 @@ private fun GalleryViewer(
             animatedVisibilityScope,
         ),
     ) { page ->
-        val item = items[page]
+        val item = layout.photoAt(page)
+        if (item == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@HorizontalPager
+        }
         val settled = page == pagerState.settledPage
         when (val viewer = remember(item) { item.toViewer() }) {
             is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
@@ -257,6 +252,7 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
 @Composable
 private fun GalleryGrid(
     uiState: PhotoGalleryUiState,
+    layout: GalleryLayout?,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
@@ -270,7 +266,7 @@ private fun GalleryGrid(
                 title = { Text(stringResource(MR.string.photobase_label)) },
                 actions = {
                     backupIndicator()
-                    IconButton(onClick = { onAction(PhotoGalleryUiAction.ToggleSort) }, enabled = !uiState.isLoading) {
+                    IconButton(onClick = { onAction(PhotoGalleryUiAction.ToggleSort) }) {
                         Icon(
                             Icons.Outlined.SwapVert,
                             contentDescription = stringResource(
@@ -278,7 +274,7 @@ private fun GalleryGrid(
                             ),
                         )
                     }
-                    IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isLoading && !uiState.isSyncing) {
+                    IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isSyncing) {
                         Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
                     }
                     if (onOpenBackupSettings != null) {
@@ -297,7 +293,7 @@ private fun GalleryGrid(
                 .padding(innerPadding),
         ) {
             when {
-                uiState.days.isNotEmpty() -> PhotoGrid(uiState.days, uiState.newestFirst, uiState.isLoadingMore, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
+                layout != null && layout.photoCount > 0 -> PhotoGrid(layout, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
                 // While the drive is still syncing, "nothing backed up" may not be true.
                 uiState.isSyncing -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
@@ -307,20 +303,7 @@ private fun GalleryGrid(
                     CircularProgressIndicator()
                     SyncingLabel(uiState.syncedSoFar ?: 0)
                 }
-                uiState.isLoading || !uiState.librarySynced && !uiState.loadFailed -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                uiState.loadFailed -> Column(
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = stringResource(MR.string.photobase_gallery_load_failed),
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    TextButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }) {
-                        Text(stringResource(MR.string.photobase_gallery_retry))
-                    }
-                }
+                layout == null || !uiState.librarySynced -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 else -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -340,7 +323,7 @@ private fun GalleryGrid(
                 }
             }
             // Not for a routine round that brings nothing: every reconnect starts one.
-            if ((uiState.syncedSoFar ?: 0) > 0 && uiState.days.isNotEmpty()) {
+            if ((uiState.syncedSoFar ?: 0) > 0 && layout != null && layout.photoCount > 0) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -368,36 +351,42 @@ private fun SyncingLabel(syncedSoFar: Int, modifier: Modifier = Modifier) {
 
 @Composable
 private fun PhotoGrid(
-    days: List<PhotoGalleryDay>,
-    newestFirst: Boolean,
-    isLoadingMore: Boolean,
+    layout: GalleryLayout,
     onAction: (PhotoGalleryUiAction) -> Unit,
     memory: GridMemory,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val gridState = memory.state
-    val topId = days.firstOrNull()?.items?.firstOrNull()?.fileId
-    LaunchedEffect(newestFirst, topId) {
+    val newestFirst = layout.newestFirst
+    val topDay = layout.days.firstOrNull()
+    LaunchedEffect(newestFirst, topDay) {
         val sortChanged = memory.newestFirst.let { it != null && it != newestFirst }
-        // A new photo on top is brought into view only for someone already at the top; further down stays put.
-        val newOnTop = memory.topId.let { it != null && it != topId } && gridState.firstVisibleItemIndex <= 1
+        // A new day on top is brought into view only for someone already at the top; further down stays put.
+        val newOnTop = memory.topDay.let { it != null && it != topDay } && gridState.firstVisibleItemIndex <= 1
         memory.newestFirst = newestFirst
-        memory.topId = topId
+        memory.topDay = topDay
         if (sortChanged || newOnTop) gridState.scrollToItem(0)
     }
     LaunchedEffect(Unit) {
         val viewed = memory.returnTo ?: return@LaunchedEffect
         memory.returnTo = null
-        val index = gridIndexOf(days, viewed) ?: return@LaunchedEffect
+        val index = layout.itemOf(viewed) ?: return@LaunchedEffect
         if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) gridState.scrollToItem(index)
     }
+    val currentLayout by rememberUpdatedState(layout)
     LaunchedEffect(gridState) {
+        var first = true
         snapshotFlow {
-            val info = gridState.layoutInfo
-            // With the count, so a page that still leaves the end in view asks for the next.
-            info.totalItemsCount to ((info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - LOAD_MORE_WHEN_WITHIN)
-        }.collect { (_, nearEnd) -> if (nearEnd) onAction(PhotoGalleryUiAction.LoadMore) }
+            val visible = gridState.layoutInfo.visibleItemsInfo
+            if (visible.isEmpty()) null else currentLayout.positionOfItem(visible.first().index)..currentLayout.positionOfItem(visible.last().index)
+        }.collectLatest { positions ->
+            if (positions == null) return@collectLatest
+            // Not on every frame of a fling: only where the grid pauses. Not for the first screen either.
+            if (!first) delay(HEADERS_AFTER_MILLIS)
+            first = false
+            onAction(PhotoGalleryUiAction.Showing(positions))
+        }
     }
     // Settled rather than isScrollInProgress: a finger held still mid-drag is a pause too.
     // A State, not a value: read in each unstarted tile's effect, so a flip doesn't recompose the grid.
@@ -406,17 +395,12 @@ private fun PhotoGrid(
         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
             .drop(1)
             .collectLatest {
-                if (settled.value) {
-                    settled.value = false
-                    onAction(PhotoGalleryUiAction.Scrolling(true))
-                }
+                settled.value = false
                 delay(SETTLE_MILLIS)
                 settled.value = true
-                onAction(PhotoGalleryUiAction.Scrolling(false))
             }
     }
-    // Opening a photo mid-fling disposes the grid before it settles, which would leave the prefetch paused.
-    DisposableEffect(Unit) { onDispose { onAction(PhotoGalleryUiAction.Scrolling(false)) } }
+    val zone = remember { TimeZone.currentSystemDefault() }
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = 96.dp),
@@ -425,28 +409,32 @@ private fun PhotoGrid(
         contentPadding = PaddingValues(4.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        for (day in days) {
-            item(key = "day-${day.date}", span = { GridItemSpan(maxLineSpan) }, contentType = "day") {
+        for (position in layout.days.indices) {
+            val day = layout.days[position]
+            item(key = "day-$day", span = { GridItemSpan(maxLineSpan) }, contentType = "day") {
                 Text(
-                    text = formatMomentDate(day.date.atStartOfDayIn(TimeZone.currentSystemDefault())),
+                    text = formatMomentDate(LocalDate.fromEpochDays(day).atStartOfDayIn(zone)),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                 )
             }
-            items(day.items, key = { it.fileId.toString() }, contentType = { "photo" }) { item ->
-                PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
-                    onAction(PhotoGalleryUiAction.Open(item))
-                }
-            }
-        }
-        if (isLoadingMore) {
-            item(key = "more", span = { GridItemSpan(maxLineSpan) }, contentType = "more") {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+            val items = layout.itemsOf(position)
+            if (items == null) {
+                items(layout.slotsOf(position), key = { "slot-$day-$it" }, contentType = { "photo" }) { PlaceholderCell() }
+            } else {
+                items(items, key = { it.fileId.toString() }, contentType = { "photo" }) { item ->
+                    PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
+                        onAction(PhotoGalleryUiAction.Open(item))
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun PlaceholderCell() {
+    Box(Modifier.aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceContainerHighest))
 }
 
 @Composable

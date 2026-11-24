@@ -25,6 +25,12 @@ class PhotoDaysWrapper(
         databaseManager.readValue("photoDays.photosOnDay") {
             queries.photosOnDay(identityId, driveId, fileType, day.toLong()).executeAsOne()
         }.toInt()
+
+    /** The headers of days [fromDay] to [toDay], newest first, each with its day. */
+    suspend fun headersOnDays(identityId: Uuid, driveId: Uuid, fileType: Long, fromDay: Int, toDay: Int): List<DayHeader> =
+        databaseManager.readValue("photoDays.photosOnDays") {
+            queries.photosOnDays(identityId, driveId, fileType, fromDay.toLong(), toDay.toLong()).executeAsList()
+        }.mapNotNull { row -> DayHeader(row.day.toInt(), row.jsonHeader).takeIf { it.day in fromDay..toDay } }
 }
 
 /** [day] counts days since 1970-01-01 of the phone's local date. */
@@ -32,3 +38,5 @@ data class DayCount(val day: Int, val photos: Int)
 
 // The bounds of dayCounts' guard: a day inside the years 0 to 9999, so no time zone pushes a date out of them.
 private val DATED = -62_167_132_800_000L..253_402_214_399_999L
+
+data class DayHeader(val day: Int, val jsonHeader: String)

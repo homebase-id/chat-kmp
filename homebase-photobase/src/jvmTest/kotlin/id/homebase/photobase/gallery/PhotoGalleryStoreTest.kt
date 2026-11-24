@@ -35,6 +35,12 @@ class PhotoGalleryStoreTest {
         MainIndexMetaHelpers.HomebaseFileProcessor(db).baseUpsertEntryZapZap(identity, driveId, files.toList(), cursor = null)
     }
 
+    // Noon UTC, so every zone puts it on the same calendar date the day number names... give or take one, which the
+    // day counts settle.
+    private fun on(day: Int, minute: Int = 0) = day * 86_400_000L + 12 * 3_600_000L + minute * 60_000L
+
+    private suspend fun dayOf(ms: Long) = assertNotNull(store.dayOf(ms))
+
     @Test
     fun theTinyPreviewAndTheNameSurviveTheLocalIndex() = runTest {
         val tiny = byteArrayOf(1, 2, 3, 4)
@@ -44,48 +50,43 @@ class PhotoGalleryStoreTest {
             descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG.jpg", original = 1).encode(),
             previewThumbnail = ThumbnailDescriptor(pixelWidth = 20, pixelHeight = 15, contentType = "image/webp", content = Base64Bytes(tiny)),
         )
-        synced(galleryTestFile(500, payload = payload))
+        synced(galleryTestFile(on(20_000), payload = payload))
+        val day = dayOf(on(20_000))
 
-        val item = store.page(null, newestFirst = true).items.single()
+        val item = store.photosOnDays(day, day).getValue(day).single()
         assertContentEquals(tiny, item.payload.previewThumbnail?.content?.bytes)
         assertEquals(20, item.payload.previewThumbnail?.pixelWidth)
         assertEquals("IMG.jpg", item.payload.filename())
     }
 
     @Test
-    fun pagesGoByCaptureDateEitherWay() = runTest {
-        synced(galleryTestFile(100), galleryTestFile(300), galleryTestFile(200))
+    fun photosComeByTheirDayNewestFirstAndOnlyForTheDaysAsked() = runTest {
+        synced(galleryTestFile(on(20_000, 1)), galleryTestFile(on(20_000, 3)), galleryTestFile(on(20_000, 2)))
+        synced(galleryTestFile(on(20_002)), galleryTestFile(on(20_004)))
+        val first = dayOf(on(20_000))
+        val middle = dayOf(on(20_002))
 
-        assertEquals(listOf(300L, 200L, 100L), store.page(null, newestFirst = true).items.map { it.capturedAtMs })
-        assertEquals(listOf(100L, 200L, 300L), store.page(null, newestFirst = false).items.map { it.capturedAtMs })
-    }
+        val read = store.photosOnDays(first, middle)
 
-    @Test
-    fun pagingContinuesFromItsCursorToTheEnd() = runTest {
-        synced(*(1..45L).map { galleryTestFile(it) }.toTypedArray())
-
-        val first = store.page(null, newestFirst = true)
-        val second = store.page(assertNotNull(first.nextCursor), newestFirst = true)
-
-        assertEquals(galleryPageSize(null), first.items.size)
-        assertEquals((5L downTo 1L).toList(), second.items.map { it.capturedAtMs })
-        assertNull(second.nextCursor)
+        assertEquals(setOf(first, middle), read.keys, "the day after, inside the query's spare range, isn't returned")
+        assertEquals(listOf(on(20_000, 3), on(20_000, 2), on(20_000, 1)), read.getValue(first).map { it.capturedAtMs })
+        assertEquals(store.dayCounts().filter { it.day in first..middle }.associate { it.day to it.photos }, read.mapValues { it.value.size })
     }
 
     @Test
     fun forgettingTheDriveTakesItsRecordsAndSyncPositionAndNothingElse() = runTest {
         val otherDrive = Uuid.random()
-        synced(galleryTestFile(100), galleryTestFile(200))
-        synced(galleryTestFile(300), driveId = otherDrive)
+        synced(galleryTestFile(on(20_000)), galleryTestFile(on(20_001)))
+        synced(galleryTestFile(on(20_000)), driveId = otherDrive)
         val position = QueryBatchCursor.fromStartPoint(UnixTimeUtc(1_000_000_000_000))
         CursorStorage(db, PhotobaseProtocol.DriveAlias).saveCursor(position)
         CursorStorage(db, otherDrive).saveCursor(position)
 
         store.forget()
 
-        assertEquals(emptyList(), store.page(null, newestFirst = true).items)
+        assertEquals(emptyList(), store.dayCounts())
         assertNull(CursorStorage(db, PhotobaseProtocol.DriveAlias).loadCursor())
-        assertEquals(1, PhotoGalleryStore(db, { identity }, otherDrive).page(null, newestFirst = true).items.size)
+        assertEquals(1, PhotoGalleryStore(db, { identity }, otherDrive).dayCounts().single().photos)
         assertNotNull(CursorStorage(db, otherDrive).loadCursor())
     }
 }

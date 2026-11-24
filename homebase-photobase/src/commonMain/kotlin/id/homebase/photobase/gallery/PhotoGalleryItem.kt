@@ -21,14 +21,10 @@ data class PhotoGalleryItem(
     val shown: PayloadDescriptor get() = playableCopy ?: payload
 }
 
-data class PhotoGalleryPage(val items: List<PhotoGalleryItem>, val nextCursor: String?)
-
-fun interface PhotoGalleryPageSource {
-    suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage
+fun interface PhotoGallerySource {
+    /** The photos of days [fromDay] to [toDay] by day, newest first within each; a day with none is left out. */
+    suspend fun photosOnDays(fromDay: Int, toDay: Int): Map<Int, List<PhotoGalleryItem>>
 }
-
-// A phone shows about 24 tiles, and the first page is what the first screen waits on.
-internal fun galleryPageSize(cursor: String?) = if (cursor == null) 40 else 100
 
 internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
     val appData = fileMetadata.appData

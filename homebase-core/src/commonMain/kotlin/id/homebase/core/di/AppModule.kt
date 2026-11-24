@@ -201,14 +201,11 @@ import id.homebase.core.config.getPhotobasePermissionExtensionConfig
 import id.homebase.core.photobase.PhotoBackupTrigger
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.core.photobase.PhotobaseProtocol
-import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
 import id.homebase.photobase.gallery.photoDayIndex
 import id.homebase.photobase.gallery.PhotoDayIndex
-import id.homebase.photobase.gallery.librarySynced
 import id.homebase.photobase.gallery.newPhotoRecords
-import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
 import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
@@ -887,7 +884,6 @@ val appModule = module {
                 get<DeveloperPreferences>().reload()
                 get<PhotoBackupEntry>().onPostAuthenticated()
                 get<PhotobasePreferences>().reset()
-                get<PhotoThumbnailPrefetcher>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -1141,19 +1137,6 @@ val appModule = module {
     }
     single { photoGalleryStore(get(), get()) }
     single { photoDayIndex(get(), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
-    single {
-        val files = get<DriveFileProviderCached>()
-        PhotoThumbnailPrefetcher(
-            store = get<PhotoGalleryStore>(),
-            // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
-            // Nor on web, where the cache is gone at the next reload.
-            mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
-            librarySynced = { get<DriveSyncManager>().driveStatuses.value[PhotobaseProtocol.DriveAlias]?.state.librarySynced() },
-            ensureThumbnail = { item, size ->
-                files.ensureThumbCached(item.driveId, item.fileId, item.shown.key, size.pixelWidth, size.pixelHeight, item.shown.lastModified)
-            },
-        )
-    }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
@@ -1536,7 +1519,6 @@ val appModule = module {
                 if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoDayIndex>().forget()
-                get<PhotoThumbnailPrefetcher>().reset()
                 get<PhotoBackupEntry>().forgetDrive()
                 // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
                 val registry = get<DriveRegistry>()
@@ -1564,15 +1546,11 @@ val appModule = module {
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel {
-        val prefetcher = get<PhotoThumbnailPrefetcher>()
         val drives = get<DriveSyncManager>()
         PhotoGalleryViewModel(
             source = get<PhotoGalleryStore>(),
             // syncDrive throws on a drive that isn't mounted, which it may stop being between the check and the call.
             refresh = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
-            warm = prefetcher::prefetch,
-            pauseWarm = prefetcher::pause,
-            changes = get<EventBus>().events.newPhotoRecords(),
             driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
             libraryDays = get<PhotoDayIndex>().days,
         )
