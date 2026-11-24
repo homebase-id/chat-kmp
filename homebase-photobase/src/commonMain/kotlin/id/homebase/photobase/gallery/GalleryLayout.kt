@@ -34,8 +34,14 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
 
     fun slotsOf(position: Int): Int = slots[position]
 
+    /** The grid item of a day's header. */
+    fun headerItemOf(position: Int): Int = firstItem[position]
+
+    /** The day an item of the grid, header or photo, belongs to, as its position. */
+    fun positionOfItem(item: Int): Int = lastAtOrBefore(firstItem, item)
+
     /** The day an item of the grid, header or photo, belongs to. */
-    fun dayOfItem(item: Int): Int = days[lastAtOrBefore(firstItem, item)]
+    fun dayOfItem(item: Int): Int = days[positionOfItem(item)]
 
     /** The day and slot of the [photo]th photo: where it stays when photos arrive before it. */
     fun locate(photo: Int): Pair<Int, Int> {
