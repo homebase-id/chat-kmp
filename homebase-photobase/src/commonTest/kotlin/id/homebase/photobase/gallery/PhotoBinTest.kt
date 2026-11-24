@@ -30,7 +30,12 @@ class PhotoBinTest {
         override suspend fun softDelete(files: List<FileVersionTag>) =
             write(files) { it.copy(fileState = FileState.Deleted) }
 
-        override suspend fun header(fileId: Uuid): HomebaseFile? = files[fileId]
+        var headersFail = false
+
+        override suspend fun header(fileId: Uuid): HomebaseFile? {
+            if (headersFail) throw IllegalStateException("offline")
+            return files[fileId]
+        }
 
         private fun write(tags: List<FileVersionTag>, change: (HomebaseFile) -> HomebaseFile): List<PerFileResult> {
             if (sent.size >= throwFromRequest) throw IllegalStateException("offline")
@@ -222,6 +227,28 @@ class PhotoBinTest {
 
         assertEquals(PhotoBinResult(done = 1), bin.deleteForGood(listOf(photo.fileId)).counts())
         assertEquals(0, server.sent.size)
+    }
+
+    @Test
+    fun aLookupThatFailsAfterSomethingWasWrittenCountsAsFailedRatherThanFailingTheCall() = runTest {
+        val moving = photo()
+        val writtenElsewhere = photo()
+        server.files[writtenElsewhere.fileId] = server.files.getValue(writtenElsewhere.fileId).newVersion()
+        server.headersFail = true
+
+        val result = bin.moveToBin(listOf(moving.fileId, writtenElsewhere.fileId))
+
+        assertEquals(PhotoBinResult(done = 1, failed = 1), result.counts())
+        assertEquals(setOf(moving.fileId), result.written, "Undo still has the one that moved")
+    }
+
+    @Test
+    fun aPhotoWhoseHeaderTheDeviceCantReadIsAskedOfTheServerNotCountedGone() = runTest {
+        val photo = photo(ArchivalStatus.Removed)
+        device.remove(photo.fileId)
+
+        assertEquals(PhotoBinResult(done = 1), bin.deleteForGood(listOf(photo.fileId)).counts())
+        assertEquals(null, statusOnServer(photo), "deleted, not just reported so")
     }
 }
 

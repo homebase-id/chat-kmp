@@ -3507,7 +3507,7 @@
     <string name="photobase_gallery_photo">Photo</string>
     <string name="photobase_gallery_video">Video</string>
     <string name="photobase_bin_title">Bin</string>
-    <string name="photobase_bin_open">Open the bin</string>
+    <string name="photobase_gallery_more">More options</string>
     <string name="photobase_bin_empty_state">The bin is empty.</string>
     <string name="photobase_bin_empty">Empty bin</string>
     <string name="photobase_bin_empty_confirm_title">Empty the bin?</string>

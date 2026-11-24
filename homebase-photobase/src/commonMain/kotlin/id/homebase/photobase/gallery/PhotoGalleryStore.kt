@@ -11,6 +11,8 @@ import id.homebase.core.photobase.PhotobaseProtocol
 import kotlinx.datetime.TimeZone
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 /**
@@ -54,11 +56,15 @@ class PhotoGalleryStore internal constructor(
 
     /** The device's copy of those of [fileIds] it holds, on any shelf; one that won't parse is left out. */
     suspend fun filesOf(fileIds: Collection<Uuid>): List<HomebaseFile> =
-        db.photoDays.headersOf(identityId(), photosDriveId, fileIds).mapNotNull { parsed(it) }
+        parsedOffMain(db.photoDays.headersOf(identityId(), photosDriveId, fileIds))
 
     /** The device's copy of every photo on this shelf. */
     suspend fun filesOnShelf(): List<HomebaseFile> =
-        db.photoDays.headersOnShelf(identityId(), photosDriveId, status).mapNotNull { parsed(it) }
+        parsedOffMain(db.photoDays.headersOnShelf(identityId(), photosDriveId, status))
+
+    // A bin action asks from Main; a few thousand headers take seconds to parse.
+    private suspend fun parsedOffMain(headers: List<String>): List<HomebaseFile> =
+        withContext(Dispatchers.Default) { headers.mapNotNull { parsed(it) } }
 
     /** Whose library and which time zone the day counts are for. */
     suspend fun daysCountedFor(): String = "${identityId()} ${TimeZone.currentSystemDefault().id}"

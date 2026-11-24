@@ -23,6 +23,7 @@ import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.channels.Channel
@@ -114,6 +115,8 @@ class PhotoGalleryViewModel(
     private val recount: suspend () -> Unit = {},
     // One at a time, off Main: the first screen's composing mustn't hold up reading it. Owns counted and stale.
     private val reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
+    // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
+    private val binScope: CoroutineScope? = null,
 ) : ViewModel() {
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
@@ -223,7 +226,7 @@ class PhotoGalleryViewModel(
     private fun runBin(action: BinAction, ids: Set<Uuid>, block: suspend PhotoBin.(Set<Uuid>) -> PhotoBinResult, restoreSelection: Boolean = false) {
         pending++
         _uiState.update { it.copy(busy = true) }
-        viewModelScope.launch {
+        (binScope ?: viewModelScope).launch(Dispatchers.Main.immediate) {
             try {
                 binLock.withLock {
                     try {

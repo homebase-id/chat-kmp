@@ -35,6 +35,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.MoreVert
+import id.homebase.resources.photobase_gallery_more
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import id.homebase.resources.photobase_gallery_retry
@@ -128,7 +132,6 @@ import id.homebase.resources.photobase_bin_delete_forever
 import id.homebase.resources.photobase_bin_empty
 import id.homebase.resources.photobase_bin_empty_confirm_title
 import id.homebase.resources.photobase_bin_empty_state
-import id.homebase.resources.photobase_bin_open
 import id.homebase.resources.photobase_bin_title
 import id.homebase.resources.photobase_bin_cant_undo
 import id.homebase.resources.photobase_selection_day
@@ -505,14 +508,35 @@ private fun LibraryTopBar(
             IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isSyncing) {
                 Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
             }
-            if (onOpenBin != null) {
-                IconButton(onClick = onOpenBin) {
-                    Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.string.photobase_bin_open))
-                }
-            }
-            if (onOpenBackupSettings != null) {
-                IconButton(onClick = onOpenBackupSettings) {
-                    Icon(Icons.Outlined.Settings, contentDescription = stringResource(MR.string.photobase_backup_title))
+            // Material 3 keeps three actions in the bar; the rest go in a menu.
+            if (onOpenBin != null || onOpenBackupSettings != null) {
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(MR.string.photobase_gallery_more))
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (onOpenBin != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.string.photobase_bin_title)) },
+                                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                                onClick = {
+                                    menu = false
+                                    onOpenBin()
+                                },
+                            )
+                        }
+                        if (onOpenBackupSettings != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.string.photobase_backup_title)) },
+                                leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                                onClick = {
+                                    menu = false
+                                    onOpenBackupSettings()
+                                },
+                            )
+                        }
+                    }
                 }
             }
         },

@@ -1809,5 +1809,6 @@ private fun Scope.photoGalleryViewModel(qualifier: Qualifier?): PhotoGalleryView
         touchedDays = index.touched,
         countFailed = index.failed,
         recount = index::recount,
+        binScope = get(),
     )
 }
