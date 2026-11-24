@@ -27,10 +27,7 @@ sealed class CallSignal {
     abstract val callId: String
     abstract val device: String?
 
-    /**
-     * [seq] orders re-published offers of one call; the first offer is 0 and is omitted from the wire. [iceBatch] says the
-     * sender reads [Ice.candidates]; a build that predates it gets one candidate per [Ice].
-     */
+    /** [seq] orders re-published offers of one call; the first offer is 0 and is omitted from the wire. [iceBatch]: the sender reads [Ice.candidates]. */
     @Serializable @SerialName("offer")
     data class Offer(
         override val callId: String,

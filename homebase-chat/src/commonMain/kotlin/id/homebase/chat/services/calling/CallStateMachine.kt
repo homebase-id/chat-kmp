@@ -35,6 +35,7 @@ sealed interface CallEffect {
     data class AddIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     /** Caller-side candidate gathered before any device answered: folded into the retained offer, not trickled. */
     data class HoldIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
+    data class TrickleIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     data class SetMuted(val muted: Boolean) : CallEffect
     data class SetVideo(val on: Boolean) : CallEffect
     /** The first camera of a call that began without one goes onto the idle video transceiver; nothing is renegotiated. */
@@ -376,10 +377,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             is MediaEvent.LocalIce -> when (s.phase) {
                 CallPhase.Incoming -> CallTransition(s)
                 CallPhase.Outgoing -> CallTransition(s, listOf(CallEffect.HoldIce(e.candidate, e.sdpMid, e.sdpMLineIndex)))
-                else -> CallTransition(
-                    s,
-                    listOf(CallEffect.SendSignal(s.peer!!, CallSignal.Ice(s.callId!!, e.candidate, e.sdpMid, e.sdpMLineIndex))),
-                )
+                else -> CallTransition(s, listOf(CallEffect.TrickleIce(e.candidate, e.sdpMid, e.sdpMLineIndex)))
             }
         }
     }

@@ -210,7 +210,11 @@ class CallController(
 
     private suspend fun send(peer: String, signal: CallSignal) {
         // The relay keeps only each sender's last blob: a candidate posted after a hangup or restart would replace it.
-        if (signal !is CallSignal.Ice) iceSender?.also { iceSender = null }?.job?.cancelAndJoin()
+        if (signal !is CallSignal.Ice) {
+            val ice = iceSender
+            iceSender = null
+            ice?.job?.cancelAndJoin()
+        }
         val outbound = CallChannel.outbound(peer, signal.fromDevice(deviceId))
         log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
         signaling.send(outbound)
@@ -371,7 +375,7 @@ class CallController(
     private suspend fun run(effect: CallEffect, state: CallState) {
         try {
             when (effect) {
-                is CallEffect.SendSignal -> if (effect.signal is CallSignal.Ice) trickle(state, effect.signal.all) else sendBestEffort(effect.peer, effect.signal)
+                is CallEffect.SendSignal -> sendBestEffort(effect.peer, effect.signal)
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
                     reportMissingCamera(effect.video)
@@ -382,6 +386,7 @@ class CallController(
                     publishedOfferSdp = sdp
                     send(state.peer!!, CallSignal.Offer(state.callId!!, sdp, effect.video, iceBatch = true))
                 }
+                is CallEffect.TrickleIce -> trickle(state, listOf(LocalCandidate(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)))
                 is CallEffect.HoldIce -> {
                     heldIce += LocalCandidate(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)
                     scheduleOfferRepublish(state.callId!!)
@@ -490,11 +495,8 @@ class CallController(
         sender.gathered.update { it + candidates }
     }
 
-    /**
-     * Posts candidates off the inbox, which a relay round trip of up to 2 s must not hold. One post at a time carries every
-     * candidate gathered while the last was in flight; the relay keeps only each sender's last blob, so a batch repeats every
-     * candidate sent before it. A peer that cannot read batches gets one candidate per post.
-     */
+    // Off the inbox, which a relay round trip must not hold; one post at a time, each repeating every candidate before it,
+    // since the relay keeps only the last blob.
     private inner class IceSender(peer: String, callId: String, batch: Boolean) {
         val gathered = MutableStateFlow(emptyList<LocalCandidate>())
         val job = scope.launch {
