@@ -22,6 +22,11 @@ actual fun formatMediumDate(instant: Instant): String {
     return DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).format(date)
 }
 
+actual fun formatMonthYear(instant: Instant): String =
+    java.time.format.DateTimeFormatter.ofLocalizedPattern("yMMM")
+        .withLocale(Locale.getDefault())
+        .format(instant.toJavaInstant().atZone(ZoneId.systemDefault()))
+
 actual fun formatMediumDateNoYear(instant: Instant): String =
     java.time.format.DateTimeFormatter.ofLocalizedPattern("MMMd")
         .withLocale(Locale.getDefault())

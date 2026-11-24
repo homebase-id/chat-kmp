@@ -65,6 +65,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.haptics.Haptics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -146,7 +148,7 @@ fun PhotoGalleryScreen(
 }
 
 /** Outlives the grid while the viewer covers it. */
-private class GridMemory(val state: LazyGridState) {
+internal class GridMemory(val state: LazyGridState) {
     var newestFirst: Boolean? = null
     var topDay: Int? = null
     var returnTo: Uuid? = null
@@ -394,13 +396,14 @@ private fun SyncingLabel(syncedSoFar: Int, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PhotoGrid(
+internal fun PhotoGrid(
     layout: GalleryLayout,
     loaded: State<Map<Int, List<PhotoGalleryItem>>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     memory: GridMemory,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    haptics: Haptics = rememberHaptics(),
 ) {
     val gridState = memory.state
     val newestFirst = layout.newestFirst
@@ -451,29 +454,31 @@ private fun PhotoGrid(
                 settled.value = true
             }
     }
-    LazyVerticalGrid(
-        state = gridState,
-        columns = GridCells.Adaptive(minSize = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        contentPadding = PaddingValues(4.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        for (position in layout.days.indices) {
-            val day = layout.days[position]
-            item(key = "day-$day", span = { GridItemSpan(maxLineSpan) }, contentType = "day") {
-                Text(
-                    // The zone formatMomentDate reads back in, or a new zone shows the day before or after.
-                    text = formatMomentDate(LocalDate.fromEpochDays(day).atStartOfDayIn(TimeZone.currentSystemDefault())),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
-                )
-            }
-            items(layout.slotsOf(position), key = { "slot-$day-$it" }, contentType = { "photo" }) { slot ->
-                when (val item = layout.photoAt(position, slot, loaded.value)) {
-                    null -> PlaceholderCell()
-                    else -> PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
-                        onAction(PhotoGalleryUiAction.Open(item))
+    PhotoScrubber(gridState, layout, haptics) {
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Adaptive(minSize = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = PaddingValues(4.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            for (position in layout.days.indices) {
+                val day = layout.days[position]
+                item(key = "day-$day", span = { GridItemSpan(maxLineSpan) }, contentType = DAY_HEADER) {
+                    Text(
+                        // The zone formatMomentDate reads back in, or a new zone shows the day before or after.
+                        text = formatMomentDate(LocalDate.fromEpochDays(day).atStartOfDayIn(TimeZone.currentSystemDefault())),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+                    )
+                }
+                items(layout.slotsOf(position), key = { "slot-$day-$it" }, contentType = { PHOTO_TILE }) { slot ->
+                    when (val item = layout.photoAt(position, slot, loaded.value)) {
+                        null -> PlaceholderCell()
+                        else -> PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
+                            onAction(PhotoGalleryUiAction.Open(item))
+                        }
                     }
                 }
             }

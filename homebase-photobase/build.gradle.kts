@@ -86,6 +86,8 @@ kotlin {
             implementation(libs.androidx.work.testing)
         }
         jvmTest.dependencies {
+            implementation(compose.desktop.currentOs)
+            implementation(libs.jetbrains.compose.ui.test)
             implementation(libs.ktor.client.mock)
             implementation(libs.sqldelight.sqlite.driver.get().toString()) {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")

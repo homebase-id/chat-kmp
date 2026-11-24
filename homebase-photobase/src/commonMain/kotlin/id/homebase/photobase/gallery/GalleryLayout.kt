@@ -34,12 +34,16 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
 
     fun slotsOf(position: Int): Int = slots[position]
 
+    fun headerItemOf(position: Int): Int = firstItem[position]
+
+    fun positionOfItem(item: Int): Int = firstItem.lastAtOrBefore(item)
+
     /** The day an item of the grid, header or photo, belongs to. */
-    fun dayOfItem(item: Int): Int = days[lastAtOrBefore(firstItem, item)]
+    fun dayOfItem(item: Int): Int = days[positionOfItem(item)]
 
     /** The day and slot of the [photo]th photo: where it stays when photos arrive before it. */
     fun locate(photo: Int): Pair<Int, Int> {
-        val position = lastAtOrBefore(firstPhoto, photo)
+        val position = firstPhoto.lastAtOrBefore(photo)
         return days[position] to photo - firstPhoto[position]
     }
 
@@ -62,7 +66,7 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
     fun photoAt(photo: Int, loaded: Map<Int, List<PhotoGalleryItem>>): PhotoGalleryItem? {
         // Read while composing, so also for a page the layout no longer has, before the viewer closes.
         if (photo !in 0 until photoCount) return null
-        val position = lastAtOrBefore(firstPhoto, photo)
+        val position = firstPhoto.lastAtOrBefore(photo)
         return photoAt(position, photo - firstPhoto[position], loaded)
     }
 
@@ -82,13 +86,24 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
         }
         return null
     }
+}
 
-    // A day without photos shares its first photo with the next day, which is the one a photo index means.
-    private fun lastAtOrBefore(starts: IntArray, index: Int): Int {
-        val found = starts.asList().binarySearch(index)
-        if (found < 0) return (-found - 2).coerceAtLeast(0)
-        var position = found
-        while (position + 1 < starts.size && starts[position + 1] == index) position++
-        return position
+/**
+ * The last index whose value is at most [value], in an array rising or level, or 0 if none is. On a level run, its
+ * last: a day without photos shares its first photo with the next day, which is the one a photo index means.
+ */
+internal fun IntArray.lastAtOrBefore(value: Int): Int {
+    var low = 0
+    var high = size - 1
+    var found = 0
+    while (low <= high) {
+        val mid = (low + high) ushr 1
+        if (this[mid] <= value) {
+            found = mid
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
     }
+    return found
 }
