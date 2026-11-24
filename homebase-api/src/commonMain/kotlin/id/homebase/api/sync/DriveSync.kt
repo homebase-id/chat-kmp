@@ -111,10 +111,18 @@ class DriveSync internal constructor(
         job?.cancel()
     }
 
-    /** Returns once the round and the batch it was writing have stopped, so the drive's records can be deleted. */
-    suspend fun cancelAndJoin() {
+    @Volatile private var retired = false
+
+    /**
+     * Stops this drive's sync for good and returns once its round and the batch it was writing have stopped, so the
+     * drive's records can be deleted or the database wiped.
+     */
+    suspend fun retire() {
+        retired = true
         killroy.value = false
         job?.cancelAndJoin()
+        // A batched round holds the lock with no job until it resumes; resuming sees [retired] and lets go.
+        mutex.withLock { }
         pendingDbJob?.join()
     }
 
@@ -122,6 +130,7 @@ class DriveSync internal constructor(
     // Job created, or null if another job was already running. You can check if a
     // job is running by calling isJobRunning()
     fun sync(): Job? {
+        if (retired) return null
         if (!mutex.tryLock()) {
             killroy.value = true // Atomic
             return null
@@ -150,6 +159,7 @@ class DriveSync internal constructor(
      * Synchronizing while the collection round trip is in flight.
      */
     internal suspend fun beginBatchedRound(): BatchedRound? {
+        if (retired) return null
         if (!mutex.tryLock()) {
             killroy.value = true // Atomic
             return null
@@ -167,6 +177,11 @@ class DriveSync internal constructor(
      * or missing collection section.
      */
     internal fun resumeBatchedRound(@Suppress("UNUSED_PARAMETER") round: BatchedRound, prefetched: QueryBatchResponse?): Job {
+        if (retired) {
+            syncing.value = false
+            mutex.unlock()
+            return Job().apply { complete() }
+        }
         val newJob = launchRound(prefetched, startedEmitted = true)
         job = newJob
         return newJob

@@ -339,7 +339,8 @@ private fun GalleryGrid(
                     )
                 }
             }
-            if (uiState.isSyncing && uiState.days.isNotEmpty()) {
+            // Not for a routine round that brings nothing: every reconnect starts one.
+            if ((uiState.syncedSoFar ?: 0) > 0 && uiState.days.isNotEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
 class PhotoThumbnailPrefetcher(
     private val store: PhotoGalleryPageSource,
     private val mayDownload: suspend () -> Boolean,
-    private val stillSyncing: () -> Boolean = { false },
+    private val librarySynced: () -> Boolean = { true },
     private val ensureThumbnail: suspend (PhotoGalleryItem, ImageSize) -> Unit,
 ) {
     private var finished = false
@@ -55,8 +55,8 @@ class PhotoThumbnailPrefetcher(
             seen += page.items.size
             cursor = page.nextCursor
         } while (cursor != null && seen < RECENT_PHOTOS)
-        // Fewer than that while the drive still syncs isn't the whole library yet: the next walk gets the rest.
-        finished = seen >= RECENT_PHOTOS || !stillSyncing()
+        // Fewer than that before the drive's sync has completed isn't the whole library yet: the next walk gets the rest.
+        finished = seen >= RECENT_PHOTOS || librarySynced()
     }
 
     fun reset() {

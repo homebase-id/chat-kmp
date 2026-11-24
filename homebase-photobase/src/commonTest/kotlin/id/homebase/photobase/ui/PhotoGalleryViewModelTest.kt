@@ -120,24 +120,30 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
-    fun newRecordsPastTheFirstPageLeaveTheGridAlone() = runTest {
-        val source = Pages(
-            mapOf(
-                null to PhotoGalleryPage(listOf(item(2_000)), "next"),
-                "next" to PhotoGalleryPage(listOf(item(1_000)), null),
-            ),
+    fun newRecordsReadAgainAsManyPhotosAsWereShowing() = runTest {
+        val newest = item(3_000)
+        val pages = mutableMapOf<String?, PhotoGalleryPage>(
+            null to PhotoGalleryPage(listOf(item(2_000)), "next"),
+            "next" to PhotoGalleryPage(listOf(item(1_000)), null),
         )
+        val source = Pages(pages)
         val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), changes = changes)
         testScheduler.advanceUntilIdle()
         viewModel.onAction(PhotoGalleryUiAction.LoadMore)
         testScheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.endReached)
 
+        // The sync writes in change order: a photo can land anywhere in what's showing, and the end moves.
+        pages[null] = PhotoGalleryPage(listOf(newest), "next")
+        pages["next"] = PhotoGalleryPage(listOf(item(2_000), item(1_000)), "more")
         changes.tryEmit(Unit)
         testScheduler.advanceUntilIdle()
 
-        assertEquals(listOf(null, "next"), source.asked, "Reloading would take away what was scrolled to")
+        assertEquals(listOf(3_000L, 2_000L, 1_000L), viewModel.uiState.value.days.flatMap { it.items }.map { it.capturedAtMs })
+        assertFalse(viewModel.uiState.value.endReached, "an end reached mid-sync is stale")
+        assertEquals(listOf(null, "next", null, "next"), source.asked, "it reads what was showing, not just the first page")
     }
 
     @Test

@@ -1146,7 +1146,7 @@ val appModule = module {
             // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
             // Nor on web, where the cache is gone at the next reload.
             mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
-            stillSyncing = { get<DriveSyncManager>().driveStatuses.value[PhotobaseProtocol.DriveAlias]?.state is DriveState.Synchronizing },
+            librarySynced = { get<DriveSyncManager>().driveStatuses.value[PhotobaseProtocol.DriveAlias]?.state is DriveState.Completed },
             ensureThumbnail = { item, size ->
                 files.ensureThumbCached(item.driveId, item.fileId, item.shown.key, size.pixelWidth, size.pixelHeight, item.shown.lastModified)
             },
@@ -1530,13 +1530,23 @@ val appModule = module {
         PhotobaseUninstallCleanup(
             isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
             forget = {
-                // First: unmounting returns once the drive's sync has stopped writing. Also for a drive a 403
-                // unmounted this session, or it would stay in the registry every device mounts from.
-                val listed = get<DriveRegistry>().loadDrives().any { it.drive.alias == PhotobaseProtocol.DriveAlias }
-                if (listed || photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias)
+                // First, locally: unmounting returns once the drive's sync has stopped writing. The shared registry
+                // is a network write, so it comes last and can't keep the local wipe from happening.
+                if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoThumbnailPrefetcher>().reset()
                 get<PhotoBackupEntry>().forgetDrive()
+                // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
+                val registry = get<DriveRegistry>()
+                if (registry.loadDrives().any { it.drive.alias == PhotobaseProtocol.DriveAlias }) {
+                    try {
+                        registry.removeDrive(PhotobaseProtocol.DriveAlias)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.w(tag = "Photobase", throwable = e) { "couldn't take Photos out of the drive registry" }
+                    }
+                }
             },
             scope = get<kotlinx.coroutines.CoroutineScope>(),
         )
@@ -1556,8 +1566,8 @@ val appModule = module {
         val drives = get<DriveSyncManager>()
         PhotoGalleryViewModel(
             source = get<PhotoGalleryStore>(),
-            // syncDrive throws on a drive that isn't mounted.
-            refresh = { if (photosMounted()) drives.syncDrive(PhotobaseProtocol.DriveAlias) },
+            // syncDrive throws on a drive that isn't mounted, which it may stop being between the check and the call.
+            refresh = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
             warm = prefetcher::prefetch,
             pauseWarm = prefetcher::pause,
             changes = get<EventBus>().events.newPhotoRecords(),

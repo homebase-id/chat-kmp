@@ -79,7 +79,6 @@ class PhotoGalleryViewModel(
     private var reloadOnClose = false
     private val opened = TimeSource.Monotonic.markNow()
     private var firstPageLogged = false
-    private var pagedPastFirst = false
     private var thumbnailsShown = 0
 
     init {
@@ -95,7 +94,7 @@ class PhotoGalleryViewModel(
         viewModelScope.launch {
             // Conflated: a burst of changes reloads once, not once per change.
             changes.conflate().collect {
-                reloadFirstPage()
+                reloadShown()
                 startWarm()
                 delay(CHANGES_GAP)
             }
@@ -124,7 +123,7 @@ class PhotoGalleryViewModel(
                 _uiState.update { it.copy(openedFileId = null) }
                 if (reloadOnClose) {
                     reloadOnClose = false
-                    if (!pagedPastFirst && _uiState.value.newestFirst) reload()
+                    viewModelScope.launch { reloadShown() }
                 }
             }
         }
@@ -143,18 +142,38 @@ class PhotoGalleryViewModel(
         loadJob = viewModelScope.launch { load(cursorToLoad = null) }
     }
 
-    // Past the first page, or oldest first, a reload would change what's on screen for nothing.
-    // It goes in loadJob so a sort toggle can cancel it, and a load-more can't run alongside it.
-    private suspend fun reloadFirstPage() {
+    // Reads again as many photos as are showing: the sync writes in change order, not photo order, so new records
+    // can land anywhere in them, and an end of the library reached mid-sync is stale. In loadJob, so a sort toggle
+    // can cancel it and a load-more can't run alongside it.
+    private suspend fun reloadShown() {
         loadJob?.join()
-        // Replacing the first page under an open viewer could drop the photo being looked at.
+        // Replacing the pages under an open viewer could drop the photo being looked at.
         if (_uiState.value.openedFileId != null) {
             reloadOnClose = true
-        } else if (!pagedPastFirst && _uiState.value.newestFirst) {
-            val reload = viewModelScope.launch { load(cursorToLoad = null) }
-            loadJob = reload
-            reload.join()
+            return
         }
+        val shown = items.size
+        val reload = viewModelScope.launch {
+            val newestFirst = _uiState.value.newestFirst
+            val fresh = mutableListOf<PhotoGalleryItem>()
+            var next: String? = null
+            try {
+                do {
+                    val page = source.page(next, newestFirst)
+                    fresh += page.items
+                    next = page.nextCursor
+                } while (next != null && fresh.size < shown)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // What's on screen stays; the next change tries again.
+                Logger.w(tag = TAG, throwable = e) { "gallery reload failed" }
+                return@launch
+            }
+            show(fresh, next, newestFirst)
+        }
+        loadJob = reload
+        reload.join()
     }
 
     // Its own job: a prefetch that waits out a scroll mustn't hold up the next reload.
@@ -191,22 +210,25 @@ class PhotoGalleryViewModel(
             _uiState.update { it.copy(isLoading = false, isLoadingMore = false, loadFailed = true) }
             return
         }
-        items = if (cursorToLoad == null) page.items else items + page.items
-        pagedPastFirst = cursorToLoad != null
-        cursor = page.nextCursor
-        val days = withContext(grouping) { groupByCaptureDay(items, newestFirst = newestFirst) }
+        show(if (cursorToLoad == null) page.items else items + page.items, page.nextCursor, newestFirst)
+        if (!firstPageLogged) {
+            firstPageLogged = true
+            Logger.i(tag = TAG) { "first page ready ${opened.elapsedNow()} after opening" }
+        }
+    }
+
+    private suspend fun show(loaded: List<PhotoGalleryItem>, nextCursor: String?, newestFirst: Boolean) {
+        items = loaded
+        cursor = nextCursor
+        val days = withContext(grouping) { groupByCaptureDay(loaded, newestFirst = newestFirst) }
         _uiState.update {
             it.copy(
                 days = days,
                 isLoading = false,
                 isLoadingMore = false,
                 loadFailed = false,
-                endReached = page.nextCursor == null,
+                endReached = nextCursor == null,
             )
-        }
-        if (!firstPageLogged) {
-            firstPageLogged = true
-            Logger.i(tag = TAG) { "first page ready ${opened.elapsedNow()} after opening" }
         }
     }
 
