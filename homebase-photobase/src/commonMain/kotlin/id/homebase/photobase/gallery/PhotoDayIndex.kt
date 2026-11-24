@@ -44,7 +44,8 @@ class PhotoDayIndex(
     private val recount = Channel<Unit>(Channel.CONFLATED)
 
     init {
-        scope.launch { changes.collect { change -> mutex.withLock { note(change) } } }
+        // Caught per change: reading the key throws while nobody is signed in, and must not end the collection.
+        scope.launch { changes.collect { change -> mutex.withLock { orCountAgainLater { note(change) } } } }
         scope.launch {
             for (signal in recount) {
                 mutex.withLock { recountArrived() }
@@ -61,7 +62,7 @@ class PhotoDayIndex(
 
     /** Photobase is gone: count again from scratch next time. */
     suspend fun forget() = mutex.withLock {
-        current.value = null
+        current.value = LibraryDays(IntArray(0), IntArray(0))
         builtFor = null
         arrived.clear()
     }
@@ -95,8 +96,9 @@ class PhotoDayIndex(
         val dates = arrived.toList()
         arrived.clear()
         orCountAgainLater {
-            // A catch-up after time offline: one count of the whole library beats hundreds of days.
-            if (dates.size > REBUILD_ABOVE) return@orCountAgainLater rebuild()
+            // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
+            // since the count: days counted now mustn't go in among the old ones.
+            if (dates.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
             val spans = mutableListOf<LongRange>()
             val counted = mutableListOf<DayCount>()
             for (userDate in dates) {

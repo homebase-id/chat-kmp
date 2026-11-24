@@ -63,11 +63,24 @@ class PhotoDaysWrapperTest {
         assertEquals(DayCount(local(2024, 5, 1, 9, 0).localDay(), 0), db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 5, 1, 9, 0))?.count)
     }
 
+    // Before 1970 SQLite guesses a zone's summer time from a stand-in year, so only the two queries can be compared.
+    @Test
+    fun beforeEpochBothQueriesPutAPhotoOnTheSameDay() = runDbTest { db ->
+        val halfASecondBefore = -500L
+        db.add(halfASecondBefore)
+
+        val day = assertNotNull(db.photoDays.dayOf(identity, photos, PHOTO_TYPE, halfASecondBefore))
+        assertEquals(listOf(day.count), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
+        assertEquals(1, day.count.photos, "the day's own range holds the photo it was asked about")
+    }
+
     @Test
     fun aPhotoDatedPastTheYear9999IsLeftOutRatherThanStoppingTheCount() = runDbTest { db ->
         val inMicroseconds = local(2024, 3, 9, 12, 0) * 1000
         db.add(local(2024, 3, 9, 12, 0))
         db.add(inMicroseconds)
+        // .NET's DateTime.MaxValue, which a zone ahead of UTC turns into the year 10000.
+        db.add(253_402_300_799_999)
 
         assertEquals(listOf(DayCount(local(2024, 3, 9, 12, 0).localDay(), 1)), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
         assertEquals(null, db.photoDays.dayOf(identity, photos, PHOTO_TYPE, inMicroseconds))

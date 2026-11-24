@@ -83,9 +83,7 @@ class PhotoGalleryViewModel(
     libraryDays: Flow<LibraryDays> = emptyFlow(),
 ) : ViewModel() {
     /** Every day of the library that has photos; counted, and kept current, only while the screen collects it. */
-    val library: StateFlow<LibraryDays?> = libraryDays
-        .catch { e -> Logger.w(tag = TAG, throwable = e) { "couldn't count the library's days" } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val library: StateFlow<LibraryDays?> = libraryDays.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()

@@ -22,6 +22,7 @@ class PhotoDayIndexTest {
         var failDayOf = false
         val recounted = mutableListOf<Int>()
         var countedFor = "frodo UTC"
+        var signedOut = false
 
         fun index(scope: TestScope, changes: MutableSharedFlow<PhotoChange>) = PhotoDayIndex(
             dayCounts = { builds++; days.entries.sortedByDescending { it.key }.map { DayCount(it.key, it.value) } },
@@ -35,7 +36,7 @@ class PhotoDayIndexTest {
                     CountedDay(DayCount(day, days[day] ?: 0), day * DAY_MS..<(day + 1) * DAY_MS)
                 }
             },
-            countedFor = { countedFor },
+            countedFor = { check(!signedOut) { "no active credentials" }; countedFor },
             changes = changes,
             scope = scope.backgroundScope,
         )
@@ -136,6 +137,38 @@ class PhotoDayIndexTest {
 
         assertEquals(2, library.builds, "the screen mustn't keep stale days for the rest of the visit")
         assertContentEquals(intArrayOf(21, 20, 18, 15), index.days.first().days)
+        watching.cancel()
+    }
+
+    @Test
+    fun aChangeWhileSignedOutDoesntStopItFollowingChanges() = runTest {
+        val (library, changes, index) = setUp()
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        library.signedOut = true
+        changes.emit(PhotoChange.RoundFinished)
+        runCurrent()
+        library.signedOut = false
+        library.days[21] = 1
+        changes.emit(PhotoChange.RoundFinished)
+        runCurrent()
+
+        assertContentEquals(intArrayOf(21, 20, 18, 15), index.days.first().days)
+        watching.cancel()
+    }
+
+    @Test
+    fun forgettingWhileShownShowsNoDays() = runTest {
+        val (_, _, index) = setUp()
+        val shown = mutableListOf<LibraryDays>()
+        val watching = launch { index.days.collect { shown += it } }
+        runCurrent()
+
+        index.forget()
+        runCurrent()
+
+        assertEquals(0, shown.last().photos)
         watching.cancel()
     }
 
