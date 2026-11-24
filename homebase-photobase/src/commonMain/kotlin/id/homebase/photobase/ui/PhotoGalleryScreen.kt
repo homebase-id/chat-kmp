@@ -137,7 +137,7 @@ fun PhotoGalleryScreen(
             transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
         ) { viewing ->
             if (viewing && layout != null) {
-                GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, { memory.returnToPhoto = it }, this@SharedTransitionLayout, this@AnimatedContent)
+                GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent)
             } else {
                 GalleryGrid(uiState, layout, loaded, onAction, onOpenBackupSettings, backupIndicator, memory, this@SharedTransitionLayout, this@AnimatedContent)
             }
@@ -150,8 +150,8 @@ private class GridMemory(val state: LazyGridState) {
     var newestFirst: Boolean? = null
     var topDay: Int? = null
     var returnTo: Uuid? = null
-    // The viewer's page when its day wasn't read yet: the open photo is still the one before it.
-    var returnToPhoto: Int? = null
+    // The viewer's day and slot when that day wasn't read yet: the open photo is still the one before it.
+    var returnToSlot: Pair<Int, Int>? = null
 }
 
 /** Every photo of the library in the grid's order, one per page; a page whose day isn't read yet reads it. */
@@ -162,7 +162,7 @@ private fun GalleryViewer(
     layout: GalleryLayout,
     loaded: Map<Int, List<PhotoGalleryItem>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
-    onUnreadPage: (Int?) -> Unit,
+    onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -172,14 +172,19 @@ private fun GalleryViewer(
     val close = { onAction(PhotoGalleryUiAction.CloseViewer) }
     ScreenBackHandler(onBack = close)
     val showUI = remember { mutableStateOf(true) }
-    // On a page whose day is still being read: when it arrives, that page's photo becomes the open one.
-    val awaiting = remember { mutableStateOf(false) }
+    // The day and slot of a page whose day is still being read: when it arrives, that photo becomes the open one.
+    val awaiting = remember { mutableStateOf<Pair<Int, Int>?>(null) }
     LaunchedEffect(layout, loaded) {
         if (layout.photoCount == 0) {
             close()
             return@LaunchedEffect
         }
-        if (!awaiting.value) {
+        val waitingOn = awaiting.value
+        if (waitingOn != null) {
+            // Photos arriving before it move its page.
+            val at = layout.photoOf(waitingOn.first, waitingOn.second)
+            if (at != null && at != pagerState.settledPage) pagerState.scrollToPage(at)
+        } else {
             // Photos arriving above the open one would otherwise leave the pager on a different photo.
             // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
             val at = opened?.let { layout.photoOf(it, loaded) }
@@ -190,11 +195,11 @@ private fun GalleryViewer(
             if (at != pagerState.settledPage) pagerState.scrollToPage(at)
         }
         snapshotFlow { pagerState.settledPage }.collect { page ->
-            val day = layout.dayOfPhoto(page)
-            onAction(PhotoGalleryUiAction.Showing(day, day))
+            val place = layout.locate(page)
+            onAction(PhotoGalleryUiAction.Showing(place.first, place.first))
             val item = layout.photoAt(page, loaded)
-            awaiting.value = item == null
-            onUnreadPage(if (item == null) page else null)
+            awaiting.value = if (item == null) place else null
+            onUnreadPage(awaiting.value)
             if (item != null && item.fileId != opened) onAction(PhotoGalleryUiAction.Open(item))
         }
     }
@@ -405,12 +410,12 @@ private fun PhotoGrid(
         if (sortChanged || newOnTop) gridState.scrollToItem(0)
     }
     LaunchedEffect(Unit) {
-        val page = memory.returnToPhoto
+        val slot = memory.returnToSlot
         val viewed = memory.returnTo
-        memory.returnToPhoto = null
+        memory.returnToSlot = null
         memory.returnTo = null
         val index = when {
-            page != null && page < layout.photoCount -> layout.itemOfPhoto(page)
+            slot != null -> layout.itemOf(slot.first, slot.second)
             viewed != null -> layout.itemOf(viewed, loaded.value)
             else -> null
         } ?: return@LaunchedEffect
@@ -442,7 +447,6 @@ private fun PhotoGrid(
                 settled.value = true
             }
     }
-    val zone = remember { TimeZone.currentSystemDefault() }
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = 96.dp),
@@ -455,7 +459,8 @@ private fun PhotoGrid(
             val day = layout.days[position]
             item(key = "day-$day", span = { GridItemSpan(maxLineSpan) }, contentType = "day") {
                 Text(
-                    text = formatMomentDate(LocalDate.fromEpochDays(day).atStartOfDayIn(zone)),
+                    // The zone formatMomentDate reads back in, or a new zone shows the day before or after.
+                    text = formatMomentDate(LocalDate.fromEpochDays(day).atStartOfDayIn(TimeZone.currentSystemDefault())),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                 )

@@ -37,12 +37,20 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
     /** The day an item of the grid, header or photo, belongs to. */
     fun dayOfItem(item: Int): Int = days[lastAtOrBefore(firstItem, item)]
 
-    fun dayOfPhoto(photo: Int): Int = days[lastAtOrBefore(firstPhoto, photo)]
-
-    /** The grid item of the [photo]th photo. */
-    fun itemOfPhoto(photo: Int): Int {
+    /** The day and slot of the [photo]th photo: where it stays when photos arrive before it. */
+    fun locate(photo: Int): Pair<Int, Int> {
         val position = lastAtOrBefore(firstPhoto, photo)
-        return firstItem[position] + 1 + photo - firstPhoto[position]
+        return days[position] to photo - firstPhoto[position]
+    }
+
+    /** The photo index of a day's slot, held to the day's last; null once the day has none. */
+    fun photoOf(day: Int, slot: Int): Int? = positionOf(day)?.let { firstPhoto[it] + slot.coerceAtMost(slots[it] - 1) }
+
+    fun itemOf(day: Int, slot: Int): Int? = positionOf(day)?.let { firstItem[it] + 1 + slot.coerceAtMost(slots[it] - 1) }
+
+    private fun positionOf(day: Int): Int? {
+        val at = days.asList().binarySearch { if (newestFirst) day.compareTo(it) else it.compareTo(day) }
+        return at.takeIf { it >= 0 && slots[it] > 0 }
     }
 
     /** The photo in a day's [slot], or null while its headers aren't read. */
@@ -66,8 +74,7 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<I
         for ((day, items) in loaded) {
             val at = items.indexOfFirst { it.fileId == fileId }
             if (at < 0) continue
-            val position = days.asList().binarySearch { if (newestFirst) day.compareTo(it) else it.compareTo(day) }
-            if (position < 0) return null
+            val position = positionOf(day) ?: return null
             val slot = if (newestFirst) at else items.size - 1 - at
             return if (slot < slots[position]) index(position, slot) else null
         }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -12,6 +13,7 @@ import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGallerySource
 import id.homebase.photobase.gallery.librarySynced
 import id.homebase.photobase.gallery.syncedSoFar
+import id.homebase.photobase.gallery.toGalleryItem
 import kotlin.math.abs
 import kotlin.time.Instant
 import kotlin.time.TimeSource
@@ -19,6 +21,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingCommand
@@ -73,16 +76,17 @@ class PhotoGalleryViewModel(
     private val refresh: () -> Unit = {},
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
     libraryDays: Flow<LibraryDays> = emptyFlow(),
-    touchedDays: Flow<Set<Int>?> = emptyFlow(),
+    touchedDays: Flow<Map<Int, List<HomebaseFile>>?> = emptyFlow(),
     countFailed: Flow<Boolean> = flowOf(false),
     private val recount: suspend () -> Unit = {},
     // One at a time, off Main: the first screen's composing mustn't hold up reading it. Owns counted and stale.
-    reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
+    private val reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) : ViewModel() {
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
     // The days being read right now: a change to one of them mustn't be lost when the read lands.
     private var inFlight: Set<Int> = emptySet()
+    private var failures = 0
 
     /** Every day of the library that has photos; counted from the gallery's opening, and kept current while it's shown. */
     val library: StateFlow<LibraryDays?> = libraryDays
@@ -110,11 +114,25 @@ class PhotoGalleryViewModel(
         viewModelScope.launch { countFailed.collect { failed -> _uiState.update { it.copy(countFailed = failed) } } }
         // Conflated, not latest: a read can't stop partway through its parse, and the days it brings are nearby.
         viewModelScope.launch(reading) { window.filterNotNull().conflate().collect { read(it) } }
-        // A photo replaced on a held day, or one taken away and another added, leaves its count as it was.
+        // Every change to a day's photos is touched: a count that changed, and one that didn't because a photo was
+        // replaced, or one taken away and another added.
         viewModelScope.launch(reading) {
-            touchedDays.collect { days ->
-                val held = _uiState.value.loaded.keys + inFlight
-                stale += if (days == null) held else held intersect days
+            touchedDays.collect { byDay ->
+                val loaded = _uiState.value.loaded
+                if (byDay == null) {
+                    stale += loaded.keys + inFlight
+                } else {
+                    for ((day, files) in byDay) {
+                        val held = loaded[day]
+                        when {
+                            day in inFlight -> stale += day
+                            held == null -> Unit
+                            // A backup adds to today every few seconds: reading a big day again each time costs seconds.
+                            held.size > READ_WHOLE_DAY_UP_TO -> merge(day, files)
+                            else -> stale += day
+                        }
+                    }
+                }
                 window.value = window.value?.let { Window(it.first, it.last) }
             }
         }
@@ -132,14 +150,10 @@ class PhotoGalleryViewModel(
         }
     }
 
-    // Only held days can be out of date: a held day whose count changed is read again, but keeps what it shows until
-    // then, so an open photo doesn't vanish.
+    // A day that's gone goes; one whose photos changed is touched and read again, keeping what it shows until then.
     private fun onLibrary(library: LibraryDays) {
-        val before = counted
         counted = library
-        val held = _uiState.value.loaded.keys
-        if (before != null) stale += (held + inFlight).filter { day -> library.countOf(day) != before.countOf(day) }
-        val gone = held.filter { library.countOf(day = it) == 0 }
+        val gone = _uiState.value.loaded.keys.filter { library.countOf(day = it) == 0 }
         if (gone.isNotEmpty()) _uiState.update { state -> state.copy(loaded = state.loaded - gone.toSet()) }
         // Before the screen has laid out and said what it shows, the top: the gallery opens there.
         val top = if (library.days.isEmpty()) null else if (_uiState.value.newestFirst) library.days.first() else library.days.last()
@@ -147,6 +161,7 @@ class PhotoGalleryViewModel(
     }
 
     private suspend fun read(window: Window) {
+        var landed = false
         // What onLibrary saw, on this same thread: library.value is set on Main, after it.
         val library = counted ?: return
         val last = library.days.size - 1
@@ -175,9 +190,10 @@ class PhotoGalleryViewModel(
                 stale += days
                 throw e
             } catch (e: Exception) {
-                // The placeholders stay; the next scroll asks again.
+                // The placeholders stay until a retry, which waits longer each time it fails.
                 stale += days
                 Logger.w(tag = TAG, throwable = e) { "couldn't read the photos of days ${days.last()}..${days.first()}" }
+                retryLater()
                 continue
             } finally {
                 inFlight = emptySet()
@@ -185,16 +201,39 @@ class PhotoGalleryViewModel(
             val now = counted ?: library
             val arriving = days.filter { now.countOf(it) > 0 }.associateWith { read[it].orEmpty() }
             val ids = arriving.values.flatten().mapTo(HashSet()) { it.fileId }
+            failures = 0
+            landed = true
             _uiState.update { state ->
                 // A photo that moved day is held once, on the day it was read on.
                 val elsewhere = state.loaded.filterKeys { it !in arriving }.mapValues { (_, items) -> items.filterNot { it.fileId in ids } }
                 state.copy(loaded = (elsewhere + arriving).evictedAround(centre, inWindow))
             }
         }
-        if (wanted.isEmpty()) return
+        if (!landed) return
         if (!firstDaysLogged) {
             firstDaysLogged = true
             Logger.i(tag = TAG) { "first days ready ${opened.elapsedNow()} after opening" }
+        }
+    }
+
+    // A few times, waiting longer each time; after that the next scroll or change asks again.
+    private fun retryLater() {
+        if (++failures > MAX_RETRIES) return
+        val wait = (RETRY_FIRST_MS shl (failures - 1).coerceAtMost(5)).coerceAtMost(RETRY_MOST_MS)
+        viewModelScope.launch(reading) {
+            delay(wait)
+            window.value = window.value?.let { Window(it.first, it.last) }
+        }
+    }
+
+    // A file that arrived replaces its old self wherever it's held, and lands on its day unless it was deleted.
+    private fun merge(day: Int, files: List<HomebaseFile>) {
+        val ids = files.mapTo(HashSet()) { it.fileId }
+        val arrived = files.filterNot { it.isSoftDeleted() }.mapNotNull { it.toGalleryItem() }
+        _uiState.update { state ->
+            val without = state.loaded.mapValues { (_, items) -> items.filterNot { it.fileId in ids } }
+            val onDay = without[day] ?: return@update state
+            state.copy(loaded = without + (day to (onDay + arrived).sortedByDescending { it.capturedAtMs }))
         }
     }
 
@@ -236,6 +275,11 @@ class PhotoGalleryViewModel(
         const val MARGIN_PHOTOS = 80
         // A few dozen screens: parsing them again costs more than holding them.
         const val MAX_HELD_PHOTOS = 1_000
+        // Parsed in about 50 ms on a Pixel 5; a bigger day takes in arriving photos one by one.
+        const val READ_WHOLE_DAY_UP_TO = 150
+        const val RETRY_FIRST_MS = 1_000L
+        const val RETRY_MOST_MS = 30_000L
+        const val MAX_RETRIES = 5
     }
 }
 

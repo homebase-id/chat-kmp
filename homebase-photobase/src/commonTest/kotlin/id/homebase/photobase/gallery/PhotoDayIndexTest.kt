@@ -1,5 +1,6 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.sync.database.DayCount
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
@@ -42,6 +43,8 @@ class PhotoDayIndexTest {
         )
     }
 
+    private fun arrived(vararg userDates: Long) = PhotoChange.FilesArrived(userDates.map { galleryTestFile(it) })
+
     private fun TestScope.setUp(): Triple<Library, MutableSharedFlow<PhotoChange>, PhotoDayIndex> {
         val library = Library()
         val changes = MutableSharedFlow<PhotoChange>()
@@ -70,7 +73,7 @@ class PhotoDayIndexTest {
         index.days.first()
 
         library.days[21] = 2
-        changes.emit(PhotoChange.FilesArrived(listOf(21 * DAY_MS)))
+        changes.emit(arrived(21 * DAY_MS))
         changes.emit(PhotoChange.RoundFinished)
         runCurrent()
         assertEquals(1, library.builds, "a reconnect or a background sync costs nothing")
@@ -89,7 +92,7 @@ class PhotoDayIndexTest {
         library.days[19] = 1
         library.days[20] = 4
         library.days.remove(15)
-        changes.emit(PhotoChange.FilesArrived(listOf(19 * DAY_MS + 5, 20 * DAY_MS, 15 * DAY_MS, 20 * DAY_MS)))
+        changes.emit(arrived(19 * DAY_MS + 5, 20 * DAY_MS, 15 * DAY_MS, 20 * DAY_MS))
         runCurrent()
 
         assertContentEquals(intArrayOf(20, 19, 18), shown.last().days, "a new day goes in its place, an emptied one goes")
@@ -128,11 +131,11 @@ class PhotoDayIndexTest {
         runCurrent()
 
         library.failDayOf = true
-        changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS)))
+        changes.emit(arrived(20 * DAY_MS))
         runCurrent()
         library.failDayOf = false
         library.days[21] = 1
-        changes.emit(PhotoChange.FilesArrived(listOf(21 * DAY_MS)))
+        changes.emit(arrived(21 * DAY_MS))
         runCurrent()
 
         assertEquals(2, library.builds, "the screen mustn't keep stale days for the rest of the visit")
@@ -179,7 +182,7 @@ class PhotoDayIndexTest {
         runCurrent()
 
         library.countedFor = "frodo Asia/Tokyo"
-        changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS)))
+        changes.emit(arrived(20 * DAY_MS))
         runCurrent()
 
         assertEquals(2, library.builds)
@@ -193,7 +196,7 @@ class PhotoDayIndexTest {
         val watching = launch { index.days.collect { } }
         runCurrent()
 
-        changes.emit(PhotoChange.FilesArrived(List(201) { it * DAY_MS }))
+        changes.emit(PhotoChange.FilesArrived(List(201) { galleryTestFile(it * DAY_MS) }))
         runCurrent()
 
         assertEquals(2, library.builds)
@@ -208,7 +211,7 @@ class PhotoDayIndexTest {
         runCurrent()
         library.days[19] = 1
 
-        changes.emit(PhotoChange.FilesArrived(listOf(NO_DAY, 19 * DAY_MS)))
+        changes.emit(arrived(NO_DAY, 19 * DAY_MS))
         runCurrent()
 
         assertContentEquals(intArrayOf(20, 19, 18, 15), index.days.first().days)
@@ -234,7 +237,7 @@ class PhotoDayIndexTest {
 
         repeat(5) {
             library.days[20] = 4 + it
-            changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS + it)))
+            changes.emit(arrived(20 * DAY_MS + it))
             runCurrent()
         }
         assertEquals(listOf(20), library.recounted, "the first photo counts at once; the rest wait for the gap")
@@ -249,14 +252,14 @@ class PhotoDayIndexTest {
     @Test
     fun itSaysWhichDaysItTouchedAndThatACountFailed() = runTest {
         val (library, changes, index) = setUp()
-        val touched = mutableListOf<Set<Int>?>()
+        val touched = mutableListOf<Map<Int, List<HomebaseFile>>?>()
         val listening = launch { index.touched.collect { touched += it } }
         val watching = launch { index.days.collect { } }
         runCurrent()
 
-        changes.emit(PhotoChange.FilesArrived(listOf(18 * DAY_MS, 20 * DAY_MS)))
+        changes.emit(arrived(18 * DAY_MS, 20 * DAY_MS))
         runCurrent()
-        assertEquals(listOf(null, setOf(18, 20)), touched, "the first count touches every day, a recount its own")
+        assertEquals(listOf(null, setOf(18, 20)), touched.map { it?.keys }, "the first count touches every day, a recount its own")
 
         library.failRebuild = true
         index.recount()

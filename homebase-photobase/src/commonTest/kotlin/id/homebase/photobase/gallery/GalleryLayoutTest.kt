@@ -21,7 +21,7 @@ class GalleryLayoutTest {
         assertEquals(6, layout.photoCount)
         // Items: 30, a, a, 20, b, b, b, 10, c
         assertEquals(listOf(30, 30, 30, 20, 20, 20, 20, 10, 10), (0 until 9).map { layout.dayOfItem(it) })
-        assertEquals(listOf(30, 30, 20, 20, 20, 10), (0 until 6).map { layout.dayOfPhoto(it) })
+        assertEquals(listOf(30, 30, 20, 20, 20, 10), (0 until 6).map { layout.locate(it).first })
     }
 
     @Test
@@ -62,7 +62,8 @@ class GalleryLayoutTest {
         assertEquals(1, layout.slotsOf(0))
         assertEquals(5, layout.photoCount)
         assertEquals(shown, layout.photoAt(0, loaded))
-        assertEquals(20, layout.dayOfPhoto(1))
-        assertEquals(3, layout.itemOfPhoto(1), "day 30's header, its photo, day 20's header, then this")
+        assertEquals(20 to 0, layout.locate(1))
+        assertEquals(3, layout.itemOf(20, 0), "day 30's header, its photo, day 20's header, then this")
+        assertEquals(1 + 3 - 1, layout.photoOf(20, 7), "a slot past the day's last is held to its last")
     }
 }

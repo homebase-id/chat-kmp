@@ -1,6 +1,7 @@
 package id.homebase.photobase.ui
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.serialization.Base64Bytes
@@ -57,7 +58,7 @@ class PhotoGalleryViewModelTest {
         var failOn: IntRange? = null
         var gate: CompletableDeferred<Unit>? = null
         val counts = MutableStateFlow<LibraryDays?>(null)
-        val touched = MutableSharedFlow<Set<Int>?>(extraBufferCapacity = 8)
+        val touched = MutableSharedFlow<Map<Int, List<HomebaseFile>>?>(extraBufferCapacity = 8)
 
         fun publish() {
             val days = photos.keys.sortedDescending()
@@ -70,8 +71,7 @@ class PhotoGalleryViewModelTest {
             if (failOn == from..to) throw IllegalStateException("database busy")
             val snapshot = photos.toMap()
             gate?.await()
-            return@PhotoGallerySource snapshot.filterKeys { it in from..to }.filterValues { it.isNotEmpty() }
-            photos.filterKeys { it in from..to }.filterValues { it.isNotEmpty() }
+            snapshot.filterKeys { it in from..to }.filterValues { it.isNotEmpty() }
         }
     }
 
@@ -144,7 +144,7 @@ class PhotoGalleryViewModelTest {
 
         val replacement = item(9 * DAY_MS + 99)
         library.photos[9] = listOf(replacement) + library.photos.getValue(9).drop(1)
-        library.touched.emit(setOf(9, 42))
+        library.touched.emit(mapOf(9 to emptyList(), 42 to emptyList()))
         advanceUntilIdle()
 
         assertEquals(listOf(9..9), library.asked, "only the held day touched")
@@ -162,6 +162,7 @@ class PhotoGalleryViewModelTest {
         // The top read is waiting on the database when a photo lands on day 10.
         library.photos[10] = listOf(item(10 * DAY_MS + 99)) + library.photos.getValue(10)
         library.publish()
+        library.touched.emit(mapOf(10 to emptyList()))
         advanceUntilIdle()
         library.gate = null
         gate.complete(Unit)
@@ -205,7 +206,7 @@ class PhotoGalleryViewModelTest {
         // Its day changed (a new time zone, an edited date); day 5's count is topped up by another.
         library.photos[5] = listOf(item(5 * DAY_MS + 7)) + library.photos.getValue(5).drop(1)
         library.photos[6] = library.photos.getValue(6) + moved
-        library.touched.emit(setOf(6))
+        library.touched.emit(mapOf(6 to emptyList()))
         advanceUntilIdle()
 
         val holding = viewModel.uiState.value.loaded.filterValues { items -> items.any { it.fileId == moved.fileId } }.keys
@@ -225,6 +226,57 @@ class PhotoGalleryViewModelTest {
         viewModel.onAction(PhotoGalleryUiAction.Retry)
         advanceUntilIdle()
         assertEquals(1, recounts)
+    }
+
+    @Test
+    fun aBigDayTakesInArrivingPhotosWithoutBeingReadAgain() = runTest {
+        val library = Library(1..1, perDay = 200)
+        val (viewModel, screen) = viewModel(library)
+        library.asked.clear()
+
+        val arrived = id.homebase.photobase.gallery.galleryTestFile(DAY_MS + 500)
+        library.touched.emit(mapOf(1 to listOf(arrived)))
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), library.asked, "a backup adds to today every few seconds")
+        val day = viewModel.uiState.value.loaded.getValue(1)
+        assertEquals(201, day.size)
+        assertEquals(arrived.fileId, day.first().fileId, "in its place, newest first")
+        screen.cancel()
+    }
+
+    @Test
+    fun aFailedReadIsTriedAgainOnItsOwn() = runTest {
+        val library = Library(1..10, perDay = 3)
+        library.failure = IllegalStateException("database busy")
+        library.publish()
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(library.source, libraryDays = library.counts.filterNotNull(), reading = StandardTestDispatcher(testScheduler))
+        val screen = launch { viewModel.library.collect { } }
+        runCurrent()
+        assertEquals(emptyMap(), viewModel.uiState.value.loaded)
+
+        library.failure = null
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertTrue(10 in viewModel.uiState.value.loaded, "nobody scrolled, and it was read anyway")
+        screen.cancel()
+    }
+
+    @Test
+    fun theOpenPhotosDayIsNeverLetGo() = runTest {
+        val library = Library(1..400, perDay = 10)
+        val (viewModel, screen) = viewModel(library)
+        val open = library.photos.getValue(400).first()
+        viewModel.onAction(PhotoGalleryUiAction.Open(open))
+        for (start in 20..380 step 20) {
+            viewModel.onAction(PhotoGalleryUiAction.Showing(400 - start, 400 - start - 2))
+            advanceUntilIdle()
+        }
+
+        assertTrue(400 in viewModel.uiState.value.loaded, "letting it go would close the viewer on the photo it shows")
+        screen.cancel()
     }
 
     @Test
@@ -267,14 +319,15 @@ class PhotoGalleryViewModelTest {
         val arrived = item(9 * DAY_MS + 50)
         library.photos[9] = listOf(arrived) + library.photos.getValue(9)
         library.failure = IllegalStateException("database busy")
+        // As the index does: a recount publishes the counts and touches the day.
         library.publish()
-        advanceUntilIdle()
+        library.touched.emit(mapOf(9 to emptyList()))
+        runCurrent()
         assertEquals(3, viewModel.uiState.value.loaded.getValue(9).size, "an open photo on that day mustn't vanish while it's read")
 
         library.failure = null
-        library.publish()
         advanceUntilIdle()
-        assertEquals(listOf(9..9, 9..9), library.asked, "only the day that changed, again after the failure")
+        assertTrue(library.asked.size >= 2 && library.asked.all { it == 9..9 }, "only the day that changed, again after the failure: ${library.asked}")
         assertEquals(arrived, viewModel.uiState.value.loaded.getValue(9).first())
         screen.cancel()
     }

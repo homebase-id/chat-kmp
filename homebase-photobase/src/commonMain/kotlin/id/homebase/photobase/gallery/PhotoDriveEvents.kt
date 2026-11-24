@@ -1,5 +1,6 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.sync.DriveState
 import id.homebase.core.photobase.PhotobaseProtocol
@@ -11,8 +12,8 @@ sealed interface PhotoChange {
     /** A sync round wrote records, anywhere in the library. */
     data object RoundFinished : PhotoChange
 
-    /** A few files arrived with their records, after the round; their photos' dates, deleted ones too. */
-    data class FilesArrived(val userDates: List<Long>) : PhotoChange
+    /** A few files arrived with their records, after the round, deleted ones too. */
+    data class FilesArrived(val files: List<HomebaseFile>) : PhotoChange
 }
 
 /**
@@ -23,7 +24,7 @@ fun Flow<BackendEvent>.newPhotoRecords(photosDriveId: Uuid = PhotobaseProtocol.D
     when {
         event is BackendEvent.DriveEvent.Stopped && event.driveId == photosDriveId && event.totalCount > 0 -> PhotoChange.RoundFinished
         event is BackendEvent.DataEvent.BatchReceived && event.driveId == photosDriveId ->
-            PhotoChange.FilesArrived(event.batchData.map { it.sqlUserDateMs() })
+            PhotoChange.FilesArrived(event.batchData)
         else -> null
     }
 }

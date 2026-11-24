@@ -1,6 +1,7 @@
 package id.homebase.photobase.gallery
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.sync.database.DayCount
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -47,15 +48,18 @@ class PhotoDayIndex(
     private val current = MutableStateFlow<LibraryDays?>(null)
     // Null: count again before the next look.
     private var builtFor: String? = null
-    private val arrived = mutableListOf<Long>()
+    private val arrived = mutableListOf<HomebaseFile>()
     private val recount = Channel<Unit>(Channel.CONFLATED)
-    private val _touched = MutableSharedFlow<Set<Int>?>(extraBufferCapacity = 64)
+    private val _touched = MutableSharedFlow<Map<Int, List<HomebaseFile>>?>(extraBufferCapacity = 64)
     private val _failed = MutableStateFlow(false)
 
-    /** The days whose photos may have changed, even where their counts didn't; null for any day. */
-    val touched: Flow<Set<Int>?> = _touched
+    /**
+     * The days whose photos may have changed, even where their counts didn't, with the files that arrived on each;
+     * null for any day, after a full count.
+     */
+    val touched: Flow<Map<Int, List<HomebaseFile>>?> = _touched
 
-    /** The last count failed, so nothing is shown until one succeeds. */
+    /** The last full count failed: until one succeeds, there are no days to show. */
     val failed: StateFlow<Boolean> = _failed
 
     init {
@@ -102,7 +106,7 @@ class PhotoDayIndex(
                 orCountAgainLater { rebuild() }
             }
             is PhotoChange.FilesArrived -> {
-                arrived += change.userDates
+                arrived += change.files
                 recount.trySend(Unit)
             }
         }
@@ -110,21 +114,31 @@ class PhotoDayIndex(
 
     private suspend fun recountArrived() {
         if (builtFor == null || arrived.isEmpty()) return
-        val dates = arrived.toList()
+        val files = arrived.toList()
         arrived.clear()
         orCountAgainLater {
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
-            if (dates.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
-            val days = dates.mapNotNull { dayOf(it) }.distinct()
-            put(days.map { DayCount(it, photosOn(it)) })
-            _touched.emit(days.toSet())
+            if (files.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
+            // Every zone is a whole number of quarter hours from UTC, so a quarter hour of photos is on one day.
+            val byDay = files.groupBy { it.sqlUserDateMs().floorDiv(QUARTER_HOUR_MS) }.values
+                .mapNotNull { quarter -> dayOf(quarter.first().sqlUserDateMs())?.let { it to quarter } }
+                .groupBy({ it.first }, { it.second }).mapValues { it.value.flatten() }
+            put(byDay.keys.map { DayCount(it, photosOn(it)) })
+            _touched.emit(byDay)
         }
     }
 
     private suspend fun rebuild() {
         val key = countedFor()
-        val (counted, took) = measureTimedValue { dayCounts() }
+        val (counted, took) = try {
+            measureTimedValue { dayCounts() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _failed.value = true
+            throw e
+        }
         val days = IntArray(counted.size) { counted[it].day }
         val counts = IntArray(counted.size) { counted[it].photos }
         val held = current.value
@@ -163,13 +177,13 @@ class PhotoDayIndex(
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "couldn't update the day index; counting again next time" }
             builtFor = null
-            _failed.value = true
         }
     }
 
     private companion object {
         const val TAG = "PhotoDayIndex"
         const val REBUILD_ABOVE = 200
+        const val QUARTER_HOUR_MS = 15 * 60 * 1000L
     }
 }
 
