@@ -27,7 +27,7 @@ import kotlinx.coroutines.runBlocking
 /** The desktop client on CIO over TLS, against a local server that counts the TCP connections it accepts. */
 class CioConnectionReuseTest {
 
-    // Fails today: CIO opened 5 connections for the 5 posts. Un-ignore once the client reuses them.
+    // Ignored until CIO reuses connections (#2671).
     @Ignore
     @Test
     fun fiveSequentialPostsShareOneTcpConnection() {

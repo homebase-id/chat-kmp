@@ -57,7 +57,7 @@ Every signal is one `POST /api/v2/live-relay` with `{channelKey, recipients, blo
   replayed offer of a finished call neither rings nor answers `Busy`.
 - **receive**: `BackendEvent.LiveRelayReceived` becomes `InboundSignal(senderOdinId, signal, receivedAt)`.
   The state machine rejects offers older than the ring timeout, which also covers the event bus replay.
-- A relay refusal (non-2xx) for an `Offer` fails the call with `NoRoute`; for ICE or hangup it is only logged.
+- A relay refusal (non-2xx) for an `Offer` fails the call with `NoRoute`; ICE is retried with backoff; a hangup is only logged.
 - `LiveRelayCallSignalingTest` decrypts the request body in a ktor MockEngine and asserts the exact JSON shape.
 
 STUN: `deviceHandshakeSuccess.stunUrls` is stored by `StunUrlStore` (created at app start, so a late-created

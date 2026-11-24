@@ -45,6 +45,8 @@ class LiveRelayCallSignaling(
         if (!accepted && outbound.signal is CallSignal.Offer) {
             throw CallEngineException(FailReason.NoRoute, "relay refused the offer")
         }
+        // The caller retries refused candidates.
+        check(accepted || outbound.signal !is CallSignal.Ice) { "relay refused the candidates" }
     }
 }
 
