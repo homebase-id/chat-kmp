@@ -11,6 +11,7 @@ import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -56,10 +57,20 @@ class PhotoDaysWrapperTest {
         db.add(local(2024, 10, 26, 23, 59))
         db.add(local(2024, 10, 28, 0, 0))
 
-        val day = db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 10, 27, 13, 0))
+        val day = assertNotNull(db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 10, 27, 13, 0)))
         assertEquals(DayCount(morning.localDay(), 2), day.count)
         assertEquals(morning..<local(2024, 10, 28, 0, 0), day.userDates, "local midnight to local midnight, however long the day")
-        assertEquals(DayCount(local(2024, 5, 1, 9, 0).localDay(), 0), db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 5, 1, 9, 0)).count)
+        assertEquals(DayCount(local(2024, 5, 1, 9, 0).localDay(), 0), db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 5, 1, 9, 0))?.count)
+    }
+
+    @Test
+    fun aPhotoDatedPastTheYear9999IsLeftOutRatherThanStoppingTheCount() = runDbTest { db ->
+        val inMicroseconds = local(2024, 3, 9, 12, 0) * 1000
+        db.add(local(2024, 3, 9, 12, 0))
+        db.add(inMicroseconds)
+
+        assertEquals(listOf(DayCount(local(2024, 3, 9, 12, 0).localDay(), 1)), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
+        assertEquals(null, db.photoDays.dayOf(identity, photos, PHOTO_TYPE, inMicroseconds))
     }
 
     private fun local(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =

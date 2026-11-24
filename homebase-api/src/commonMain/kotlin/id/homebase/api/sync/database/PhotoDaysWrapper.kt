@@ -17,12 +17,10 @@ class PhotoDaysWrapper(
             queries.dayCounts(identityId, driveId, fileType) { day, photos -> DayCount(day!!.toInt(), photos.toInt()) }.executeAsList()
         }
 
-    /** The day a photo taken at [userDate] falls on. */
-    suspend fun dayOf(identityId: Uuid, driveId: Uuid, fileType: Long, userDate: Long): CountedDay =
-        databaseManager.readValue("photoDays.dayOf") {
-            queries.dayOf(userDate, identityId, driveId, fileType) { day, photos, startMs, endMs ->
-                CountedDay(DayCount(day!!.toInt(), photos.toInt()), startMs!!..<endMs!!)
-            }.executeAsOne()
+    /** The day a photo taken at [userDate] falls on, or null for a date SQLite has no day for. */
+    suspend fun dayOf(identityId: Uuid, driveId: Uuid, fileType: Long, userDate: Long): CountedDay? =
+        databaseManager.readValue("photoDays.dayOf") { queries.dayOf(userDate, identityId, driveId, fileType).executeAsOne() }.run {
+            if (day == null || startMs == null || endMs == null) null else CountedDay(DayCount(day.toInt(), photos.toInt()), startMs..<endMs)
         }
 }
 

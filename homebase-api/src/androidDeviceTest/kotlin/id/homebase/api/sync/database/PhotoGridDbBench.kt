@@ -72,7 +72,7 @@ class PhotoGridDbBench {
         assertEquals(days, shipped.map { it.day to it.photos }, "PhotoDays.dayCounts must count the days this bench does")
         measure("day counts, PhotoDays.dayCounts (shipped)") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong()) }
         val busiest = days.maxBy { it.second }
-        val inBusiest = dbm.photoDays.dayOf(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiest.first * DAY_MS + DAY_MS / 2)
+        val inBusiest = checkNotNull(dbm.photoDays.dayOf(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiest.first * DAY_MS + DAY_MS / 2))
         log("  busiest day ${busiest.first}: ${busiest.second} photos; dayOf found ${inBusiest.count.photos} on day ${inBusiest.count.day}")
         measure("one day's count, PhotoDays.dayOf (shipped), busiest day") {
             dbm.photoDays.dayOf(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiest.first * DAY_MS + DAY_MS / 2)

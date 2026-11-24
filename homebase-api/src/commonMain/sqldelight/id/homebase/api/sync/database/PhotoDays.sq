@@ -5,6 +5,9 @@ dayCounts:
 SELECT CAST(julianday(date(userDate / 1000, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, count(*) AS photos
 FROM DriveMainIndex
 WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = :fileType AND fileState = 1
+  -- SQLite has no date outside the years 0 to 9999 (a userDate in microseconds, say): such a photo has no day.
+  -- The + keeps SQLite on the covering index; a range on userDate read every row (924 ms, not 62, on a Pixel 5).
+  AND +userDate BETWEEN -62167219200000 AND 253402300799999
 GROUP BY day
 ORDER BY day DESC;
 

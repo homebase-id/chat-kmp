@@ -29,7 +29,7 @@ class LibraryDays(val days: IntArray, val counts: IntArray) {
  */
 class PhotoDayIndex(
     private val dayCounts: suspend () -> List<DayCount>,
-    private val dayOf: suspend (userDate: Long) -> CountedDay,
+    private val dayOf: suspend (userDate: Long) -> CountedDay?,
     // The identity and time zone the days were counted for: either changing means counting again.
     private val countedFor: suspend () -> String,
     changes: Flow<PhotoChange>,
@@ -54,8 +54,9 @@ class PhotoDayIndex(
         }
     }
 
+    // A failed count leaves the days stale; the next change while the screen watches counts them again.
     val days: Flow<LibraryDays> = current
-        .onSubscription { mutex.withLock { if (builtFor != countedFor()) rebuild() } }
+        .onSubscription { mutex.withLock { orCountAgainLater { if (builtFor != countedFor()) rebuild() } } }
         .filterNotNull()
 
     /** Photobase is gone: count again from scratch next time. */
@@ -66,9 +67,15 @@ class PhotoDayIndex(
     }
 
     private suspend fun note(change: PhotoChange) {
-        if (builtFor == null || current.subscriptionCount.value == 0) {
+        if (current.subscriptionCount.value == 0) {
             builtFor = null
             arrived.clear()
+            return
+        }
+        // After a failure, a forget, or a new time zone: on screen, so count it all now.
+        if (builtFor == null || builtFor != countedFor()) {
+            arrived.clear()
+            orCountAgainLater { rebuild() }
             return
         }
         when (change) {
@@ -88,11 +95,13 @@ class PhotoDayIndex(
         val dates = arrived.toList()
         arrived.clear()
         orCountAgainLater {
+            // A catch-up after time offline: one count of the whole library beats hundreds of days.
+            if (dates.size > REBUILD_ABOVE) return@orCountAgainLater rebuild()
             val spans = mutableListOf<LongRange>()
             val counted = mutableListOf<DayCount>()
             for (userDate in dates) {
                 if (spans.any { userDate in it }) continue
-                val day = dayOf(userDate)
+                val day = dayOf(userDate) ?: continue
                 spans += day.userDates
                 counted += day.count
             }
@@ -103,7 +112,10 @@ class PhotoDayIndex(
     private suspend fun rebuild() {
         val key = countedFor()
         val (counted, took) = measureTimedValue { dayCounts() }
-        current.value = LibraryDays(IntArray(counted.size) { counted[it].day }, IntArray(counted.size) { counted[it].photos })
+        val days = IntArray(counted.size) { counted[it].day }
+        val counts = IntArray(counted.size) { counted[it].photos }
+        val held = current.value
+        if (held == null || !held.days.contentEquals(days) || !held.counts.contentEquals(counts)) current.value = LibraryDays(days, counts)
         builtFor = key
         Logger.i(tag = TAG) { "counted ${counted.size} days, ${counted.sumOf { it.photos }} photos in $took" }
     }
@@ -140,6 +152,7 @@ class PhotoDayIndex(
 
     private companion object {
         const val TAG = "PhotoDayIndex"
+        const val REBUILD_ABOVE = 200
     }
 }
 

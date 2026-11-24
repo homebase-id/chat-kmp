@@ -42,7 +42,7 @@ class PhotoGalleryStore internal constructor(
 
     suspend fun dayCounts(): List<DayCount> = db.photoDays.dayCounts(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong())
 
-    suspend fun dayOf(userDate: Long): CountedDay = db.photoDays.dayOf(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong(), userDate)
+    suspend fun dayOf(userDate: Long): CountedDay? = db.photoDays.dayOf(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong(), userDate)
 
     /** Whose library and which time zone the day counts are for. */
     suspend fun daysCountedFor(): String = "${identityId()} ${TimeZone.currentSystemDefault().id}"

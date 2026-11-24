@@ -23,7 +23,7 @@ fun Flow<BackendEvent>.newPhotoRecords(photosDriveId: Uuid = PhotobaseProtocol.D
     when {
         event is BackendEvent.DriveEvent.Stopped && event.driveId == photosDriveId && event.totalCount > 0 -> PhotoChange.RoundFinished
         event is BackendEvent.DataEvent.BatchReceived && event.driveId == photosDriveId ->
-            PhotoChange.FilesArrived(event.batchData.mapNotNull { it.fileMetadata.appData.userDate })
+            PhotoChange.FilesArrived(event.batchData.map { it.sqlUserDateMs() })
         else -> null
     }
 }

@@ -482,6 +482,13 @@ SQL. Medians of 15, after the phone cooled (thermal status 0).
 - **The 305 ms first query of 2026-11-23 was the OS cache:** 80 ms this time without the Photos index.
 - **Unexplained:** parsing 100 headers took 61 ms in both runs today against 34 ms on 2026-11-23, and the
   `QueryBatch` page 114 ms against 43 ms, on a cool phone. The SQL parts didn't change.
+- **Leaving out photos SQLite has no date for** (a `userDate` outside the years 0 to 9999, which `date()` turns into
+  NULL), measured on all days:
+  - `HAVING day IS NOT NULL`: 82.0 ms.
+  - `AND userDate BETWEEN …`: 924 ms. SQLite switches to `Idx2` for the range, which doesn't cover `fileType` and
+    `fileState`, so it reads all 40,000 rows.
+  - `AND +userDate BETWEEN …` (shipped): 64.8 ms. The `+` stops SQLite using an index for that term, so it stays on
+    the covering index.
 
 ## Findings
 

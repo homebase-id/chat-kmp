@@ -27,9 +27,13 @@ class PhotoDayIndexTest {
             dayCounts = { builds++; days.entries.sortedByDescending { it.key }.map { DayCount(it.key, it.value) } },
             dayOf = { userDate ->
                 check(!failDayOf) { "database closed" }
-                val day = (userDate / DAY_MS).toInt()
-                recounted += day
-                CountedDay(DayCount(day, days[day] ?: 0), day * DAY_MS..<(day + 1) * DAY_MS)
+                if (userDate == NO_DAY) {
+                    null
+                } else {
+                    val day = (userDate / DAY_MS).toInt()
+                    recounted += day
+                    CountedDay(DayCount(day, days[day] ?: 0), day * DAY_MS..<(day + 1) * DAY_MS)
+                }
             },
             countedFor = { countedFor },
             changes = changes,
@@ -117,7 +121,7 @@ class PhotoDayIndexTest {
     }
 
     @Test
-    fun aFailedRecountCountsEverythingAgainNextTime() = runTest {
+    fun aFailedRecountCountsEverythingAgainOnTheNextChangeWhileShown() = runTest {
         val (library, changes, index) = setUp()
         val watching = launch { index.days.collect { } }
         runCurrent()
@@ -125,11 +129,57 @@ class PhotoDayIndexTest {
         library.failDayOf = true
         changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS)))
         runCurrent()
-        watching.cancel()
+        library.failDayOf = false
+        library.days[21] = 1
+        changes.emit(PhotoChange.FilesArrived(listOf(21 * DAY_MS)))
         runCurrent()
 
-        index.days.first()
+        assertEquals(2, library.builds, "the screen mustn't keep stale days for the rest of the visit")
+        assertContentEquals(intArrayOf(21, 20, 18, 15), index.days.first().days)
+        watching.cancel()
+    }
+
+    @Test
+    fun aNewTimeZoneWhileShownCountsEverythingAgain() = runTest {
+        val (library, changes, index) = setUp()
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        library.countedFor = "frodo Asia/Tokyo"
+        changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS)))
+        runCurrent()
+
         assertEquals(2, library.builds)
+        assertEquals(emptyList(), library.recounted, "a day counted in another zone mustn't go in among the old ones")
+        watching.cancel()
+    }
+
+    @Test
+    fun aCatchUpOfManyPhotosCountsTheLibraryOnceInsteadOfDayByDay() = runTest {
+        val (library, changes, index) = setUp()
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        changes.emit(PhotoChange.FilesArrived(List(201) { it * DAY_MS }))
+        runCurrent()
+
+        assertEquals(2, library.builds)
+        assertEquals(emptyList(), library.recounted)
+        watching.cancel()
+    }
+
+    @Test
+    fun aPhotoWithNoDayIsLeftOut() = runTest {
+        val (library, changes, index) = setUp()
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+        library.days[19] = 1
+
+        changes.emit(PhotoChange.FilesArrived(listOf(NO_DAY, 19 * DAY_MS)))
+        runCurrent()
+
+        assertContentEquals(intArrayOf(20, 19, 18, 15), index.days.first().days)
+        watching.cancel()
     }
 
     @Test
@@ -165,5 +215,6 @@ class PhotoDayIndexTest {
 
     private companion object {
         const val DAY_MS = 86_400_000L
+        const val NO_DAY = Long.MAX_VALUE
     }
 }
