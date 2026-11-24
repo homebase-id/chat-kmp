@@ -135,6 +135,7 @@ import id.homebase.resources.photobase_bin_empty_state
 import id.homebase.resources.photobase_bin_title
 import id.homebase.resources.photobase_bin_cant_undo
 import id.homebase.resources.photobase_selection_day
+import id.homebase.resources.photobase_selection_select
 import id.homebase.resources.photobase_selection_day_clear
 import org.jetbrains.compose.resources.pluralStringResource
 import kotlin.uuid.Uuid
@@ -653,6 +654,7 @@ private fun PhotoLines(
         LazyColumn(
             state = gridState,
             verticalArrangement = Arrangement.spacedBy(GRID_GAP),
+            // Room for the selection's toolbar always, so starting a selection doesn't move the grid.
             contentPadding = PaddingValues(start = GRID_PADDING, top = GRID_PADDING, end = GRID_PADDING, bottom = GRID_PADDING + TOOLBAR_ROOM),
             // A grid to accessibility services, as the lazy grid was: a line per row, a column per tile.
             modifier = Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(lines.itemCount, lines.columns) },
@@ -770,7 +772,7 @@ private fun PhotoCell(
         modifier = modifier
             .galleryTile()
             .then(if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
-            .combinedClickable(onLongClick = onLongClick, onClick = onClick)
+            .combinedClickable(onLongClickLabel = stringResource(MR.string.photobase_selection_select), onLongClick = onLongClick, onClick = onClick)
             .semantics {
                 contentDescription = description
                 if (selecting) this.selected = selected
