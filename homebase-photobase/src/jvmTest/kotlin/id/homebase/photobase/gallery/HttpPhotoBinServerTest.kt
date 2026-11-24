@@ -21,6 +21,7 @@ import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
@@ -29,6 +30,10 @@ import kotlin.uuid.Uuid
 class HttpPhotoBinServerTest {
     private val secret = ByteArray(16) { 5 }
     private val sent = mutableListOf<Pair<String, FileVersionTagBatch>>()
+    private val cacheDir = Files.createTempDirectory("photo-bin")
+
+    @AfterTest
+    fun removeCache() = cacheDir.toFile().deleteRecursively().let { }
 
     private suspend fun server(): HttpPhotoBinServer {
         val credentials = CredentialsManager()
@@ -38,7 +43,7 @@ class HttpPhotoBinServerTest {
             sent += request.url.encodedPath.substringAfterLast('/') to OdinSystemSerializer.deserialize<FileVersionTagBatch>(body)
             respond("""{"results":[]}""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
         })
-        return HttpPhotoBinServer(DriveFileHttpProvider(http, credentials), DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, OkioFileOperationsProvider(FileSystem.SYSTEM, Files.createTempDirectory("photo-bin").toString()))))
+        return HttpPhotoBinServer(DriveFileHttpProvider(http, credentials), DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, OkioFileOperationsProvider(FileSystem.SYSTEM, cacheDir.toString()))))
     }
 
     @Test

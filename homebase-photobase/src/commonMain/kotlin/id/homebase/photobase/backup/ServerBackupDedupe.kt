@@ -16,13 +16,16 @@ class ServerBackupDedupe(
 ) : BackupDedupe {
     override suspend fun existing(uniqueIds: List<Uuid>): OnServer {
         if (uniqueIds.isEmpty()) return OnServer(emptySet())
-        val (deleted, live) = queryProvider.queryBatch(photosDriveId, backedUpQuery(uniqueIds)).searchResults
-            .partition { it.fileState == FileState.Deleted }
-        return OnServer(live.uniqueIds(), deleted.uniqueIds())
+        return onServer(queryProvider.queryBatch(photosDriveId, backedUpQuery(uniqueIds)).searchResults)
     }
-
-    private fun List<HomebaseFile>.uniqueIds() = mapNotNullTo(mutableSetOf()) { it.fileMetadata.appData.uniqueId }
 }
+
+internal fun onServer(found: List<HomebaseFile>): OnServer {
+    val (deleted, live) = found.partition { it.fileState == FileState.Deleted }
+    return OnServer(live.uniqueIds(), deleted.uniqueIds())
+}
+
+private fun List<HomebaseFile>.uniqueIds() = mapNotNullTo(mutableSetOf()) { it.fileMetadata.appData.uniqueId }
 
 internal fun backedUpQuery(uniqueIds: List<Uuid>) = QueryBatchRequest(
     queryParams = FileQueryParams(

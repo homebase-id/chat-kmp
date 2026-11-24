@@ -190,6 +190,9 @@ derived from both parts; an Android motion photo is one file, so its id comes fr
   `uniqueId` on the tombstone (`tombstone.keepUniqueId`, odin-core v0.1.997), and is never sent again;
   "check the drive again" passes over it. Deletes from before that, or by an older app, cleared the
   `uniqueId`, so those photos are still backed up again.
+- A 4105 counts as `DONE` even when the `uniqueId` is held by such a tombstone: an upload already in the
+  Outbox while another device deletes the photo for good. Sending it back through the check instead could
+  loop, so the rare case counts as backed up until "check the drive again".
 - Two devices racing on the same photo both pass the check; the server keeps one file per
   `uniqueId` per drive and rejects the second with `ExistingFileWithUniqueId` (4105,
   `ClientException.isExistingFileWithUniqueId()`). Backup treats 4105 as **success** → `DONE`,
