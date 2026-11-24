@@ -22,7 +22,7 @@ data class PhotoGalleryItem(
 }
 
 fun interface PhotoGallerySource {
-    /** The photos of days [fromDay] to [toDay] by day, newest first within each; a day with none is left out. */
+    /** The photos of days [fromDay] to [toDay] by day, newest first within each; a day with none is left out. Parses, so not on Main. */
     suspend fun photosOnDays(fromDay: Int, toDay: Int): Map<Int, List<PhotoGalleryItem>>
 }
 

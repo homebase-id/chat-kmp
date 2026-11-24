@@ -45,6 +45,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.flow.first
@@ -105,11 +106,12 @@ fun PhotoGalleryScreen(
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val state = viewModel.uiState.collectAsStateWithLifecycle()
+    val uiState by state
     val library by viewModel.library.collectAsStateWithLifecycle()
-    val layout = remember(library, uiState.newestFirst, uiState.loaded) {
-        library?.let { GalleryLayout(it, uiState.newestFirst, uiState.loaded) }
-    }
+    // From the counts alone: reading a day's photos fills tiles, read in each tile, without rebuilding the grid.
+    val layout = remember(library, uiState.newestFirst) { library?.let { GalleryLayout(it, uiState.newestFirst) } }
+    val loaded = remember(state) { derivedStateOf { state.value.loaded } }
     val gridState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     val memory = remember(gridState) { GridMemory(gridState) }
     val onAction: (PhotoGalleryUiAction) -> Unit = remember(viewModel) {
@@ -126,9 +128,9 @@ fun PhotoGalleryScreen(
             transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
         ) { viewing ->
             if (viewing && layout != null) {
-                GalleryViewer(uiState, layout, onAction, this@SharedTransitionLayout, this@AnimatedContent)
+                GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, this@SharedTransitionLayout, this@AnimatedContent)
             } else {
-                GalleryGrid(uiState, layout, onAction, onOpenBackupSettings, backupIndicator, memory, this@SharedTransitionLayout, this@AnimatedContent)
+                GalleryGrid(uiState, layout, loaded, onAction, onOpenBackupSettings, backupIndicator, memory, this@SharedTransitionLayout, this@AnimatedContent)
             }
         }
     }
@@ -141,47 +143,48 @@ private class GridMemory(val state: LazyGridState) {
     var returnTo: Uuid? = null
 }
 
-private fun GalleryLayout.photoAt(page: Int): PhotoGalleryItem? {
-    val (position, slot) = slotOfPhoto(page)
-    return itemsOf(position)?.getOrNull(slot)
-}
-
 /** Every photo of the library in the grid's order, one per page; a page whose day isn't read yet reads it. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun GalleryViewer(
-    uiState: PhotoGalleryUiState,
+    openedFileId: Uuid?,
     layout: GalleryLayout,
+    loaded: Map<Int, List<PhotoGalleryItem>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
-    val openedFileId by rememberUpdatedState(uiState.openedFileId)
-    val initialPage = remember { uiState.openedFileId?.let { layout.photoOf(it) } ?: 0 }
+    val opened by rememberUpdatedState(openedFileId)
+    val initialPage = remember { openedFileId?.let { layout.photoOf(it, loaded) } ?: 0 }
     val pagerState = rememberPagerState(initialPage) { layout.photoCount }
     val close = { onAction(PhotoGalleryUiAction.CloseViewer) }
     ScreenBackHandler(onBack = close)
     val showUI = remember { mutableStateOf(true) }
-    LaunchedEffect(layout) {
-        // Photos arriving above the open one would otherwise leave the pager on a different photo.
-        // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
-        val opened = openedFileId?.let { layout.photoOf(it) }
-        if (opened == null) {
-            close()
-            return@LaunchedEffect
+    // On a page whose day is still being read: when it arrives, that page's photo becomes the open one.
+    val awaiting = remember { mutableStateOf(false) }
+    LaunchedEffect(layout, loaded) {
+        if (!awaiting.value) {
+            // Photos arriving above the open one would otherwise leave the pager on a different photo.
+            // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
+            val at = opened?.let { layout.photoOf(it, loaded) }
+            if (at == null) {
+                close()
+                return@LaunchedEffect
+            }
+            if (at != pagerState.settledPage) pagerState.scrollToPage(at)
         }
-        if (opened != pagerState.settledPage) pagerState.scrollToPage(opened)
         snapshotFlow { pagerState.settledPage }.collect { page ->
-            val (position, _) = layout.slotOfPhoto(page)
-            onAction(PhotoGalleryUiAction.Showing(position..position))
-            val item = layout.photoAt(page) ?: return@collect
-            if (item.fileId != openedFileId) onAction(PhotoGalleryUiAction.Open(item))
+            val day = layout.dayOfPhoto(page)
+            onAction(PhotoGalleryUiAction.Showing(day, day))
+            val item = layout.photoAt(page, loaded)
+            awaiting.value = item == null
+            if (item != null && item.fileId != opened) onAction(PhotoGalleryUiAction.Open(item))
         }
     }
-    val shown = layout.photoAt(pagerState.settledPage)
+    val shown = layout.photoAt(pagerState.settledPage, loaded)
     HorizontalPager(
         state = pagerState,
-        key = { page -> layout.photoAt(page)?.fileId?.toString() ?: "slot-$page" },
+        key = { page -> layout.photoAt(page, loaded)?.fileId?.toString() ?: "slot-$page" },
         beyondViewportPageCount = 1,
         pageSpacing = 24.dp,
         // Around the pager, not inside a page: from inside a page the open animation restarts mid-flight and jumps.
@@ -191,7 +194,7 @@ private fun GalleryViewer(
             animatedVisibilityScope,
         ),
     ) { page ->
-        val item = layout.photoAt(page)
+        val item = layout.photoAt(page, loaded)
         if (item == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             return@HorizontalPager
@@ -253,6 +256,7 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
 private fun GalleryGrid(
     uiState: PhotoGalleryUiState,
     layout: GalleryLayout?,
+    loaded: State<Map<Int, List<PhotoGalleryItem>>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
@@ -292,8 +296,9 @@ private fun GalleryGrid(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
+            val hasPhotos = (layout?.photoCount ?: 0) > 0
             when {
-                layout != null && layout.photoCount > 0 -> PhotoGrid(layout, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
+                layout != null && hasPhotos -> PhotoGrid(layout, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
                 // While the drive is still syncing, "nothing backed up" may not be true.
                 uiState.isSyncing -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
@@ -323,7 +328,7 @@ private fun GalleryGrid(
                 }
             }
             // Not for a routine round that brings nothing: every reconnect starts one.
-            if ((uiState.syncedSoFar ?: 0) > 0 && layout != null && layout.photoCount > 0) {
+            if ((uiState.syncedSoFar ?: 0) > 0 && hasPhotos) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -352,6 +357,7 @@ private fun SyncingLabel(syncedSoFar: Int, modifier: Modifier = Modifier) {
 @Composable
 private fun PhotoGrid(
     layout: GalleryLayout,
+    loaded: State<Map<Int, List<PhotoGalleryItem>>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     memory: GridMemory,
     sharedTransitionScope: SharedTransitionScope,
@@ -371,7 +377,7 @@ private fun PhotoGrid(
     LaunchedEffect(Unit) {
         val viewed = memory.returnTo ?: return@LaunchedEffect
         memory.returnTo = null
-        val index = layout.itemOf(viewed) ?: return@LaunchedEffect
+        val index = layout.itemOf(viewed, loaded.value) ?: return@LaunchedEffect
         if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) gridState.scrollToItem(index)
     }
     val currentLayout by rememberUpdatedState(layout)
@@ -379,13 +385,13 @@ private fun PhotoGrid(
         var first = true
         snapshotFlow {
             val visible = gridState.layoutInfo.visibleItemsInfo
-            if (visible.isEmpty()) null else currentLayout.positionOfItem(visible.first().index)..currentLayout.positionOfItem(visible.last().index)
-        }.collectLatest { positions ->
-            if (positions == null) return@collectLatest
+            if (visible.isEmpty()) null else currentLayout.dayOfItem(visible.first().index) to currentLayout.dayOfItem(visible.last().index)
+        }.collectLatest { days ->
+            if (days == null) return@collectLatest
             // Not on every frame of a fling: only where the grid pauses. Not for the first screen either.
             if (!first) delay(HEADERS_AFTER_MILLIS)
             first = false
-            onAction(PhotoGalleryUiAction.Showing(positions))
+            onAction(PhotoGalleryUiAction.Showing(days.first, days.second))
         }
     }
     // Settled rather than isScrollInProgress: a finger held still mid-drag is a pause too.
@@ -418,12 +424,10 @@ private fun PhotoGrid(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                 )
             }
-            val items = layout.itemsOf(position)
-            if (items == null) {
-                items(layout.slotsOf(position), key = { "slot-$day-$it" }, contentType = { "photo" }) { PlaceholderCell() }
-            } else {
-                items(items, key = { it.fileId.toString() }, contentType = { "photo" }) { item ->
-                    PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
+            items(layout.slotsOf(position), key = { "slot-$day-$it" }, contentType = { "photo" }) { slot ->
+                when (val item = layout.photoAt(position, slot, loaded.value)) {
+                    null -> PlaceholderCell()
+                    else -> PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
                         onAction(PhotoGalleryUiAction.Open(item))
                     }
                 }
@@ -434,8 +438,11 @@ private fun PhotoGrid(
 
 @Composable
 private fun PlaceholderCell() {
-    Box(Modifier.aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceContainerHighest))
+    Box(Modifier.galleryTile())
 }
+
+@Composable
+private fun Modifier.galleryTile(): Modifier = aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceContainerHighest)
 
 @Composable
 private fun PhotoCell(
@@ -456,8 +463,7 @@ private fun PhotoCell(
     val description = stringResource(if (isVideo) MR.string.photobase_gallery_video else MR.string.photobase_gallery_photo)
     Box(
         modifier = Modifier
-            .aspectRatio(1f)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .galleryTile()
             .clickable(onClick = onClick),
     ) {
         val imageData = remember(item.fileId, item.payload.key) { item.tileImageData()?.forGridTile() }

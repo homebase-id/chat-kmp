@@ -15,45 +15,51 @@ class GalleryLayoutTest {
     private val library = LibraryDays(intArrayOf(30, 20, 10), intArrayOf(2, 3, 1))
 
     @Test
-    fun eachDayIsAHeaderThenASlotPerPhoto() {
-        val layout = GalleryLayout(library, newestFirst = true, loaded = emptyMap())
+    fun eachDayIsAHeaderThenASlotPerCountedPhoto() {
+        val layout = GalleryLayout(library, newestFirst = true)
 
-        assertEquals(9, layout.itemCount)
         assertEquals(6, layout.photoCount)
         // Items: 30, a, a, 20, b, b, b, 10, c
-        assertEquals(listOf(0, 0, 0, 1, 1, 1, 1, 2, 2), (0 until 9).map { layout.positionOfItem(it) })
-        assertEquals(listOf(0 to 0, 0 to 1, 1 to 0, 1 to 1, 1 to 2, 2 to 0), (0 until 6).map { layout.slotOfPhoto(it) })
+        assertEquals(listOf(30, 30, 30, 20, 20, 20, 20, 10, 10), (0 until 9).map { layout.dayOfItem(it) })
+        assertEquals(listOf(30, 30, 20, 20, 20, 10), (0 until 6).map { layout.dayOfPhoto(it) })
+    }
+
+    @Test
+    fun aDaysSlotsFillFromWhatsReadWithoutMovingAnything() {
+        val newer = item()
+        val older = item()
+        val layout = GalleryLayout(library, newestFirst = true)
+        val loaded = mapOf(30 to listOf(newer, older))
+
+        assertEquals(newer, layout.photoAt(0, loaded))
+        assertEquals(older, layout.photoAt(1, loaded))
+        assertNull(layout.photoAt(2, loaded), "day 20 isn't read yet")
+        assertEquals(2, layout.itemOf(older.fileId, loaded))
+        assertEquals(1, layout.photoOf(older.fileId, loaded))
     }
 
     @Test
     fun oldestFirstRunsTheDaysAndTheirPhotosTheOtherWay() {
         val newer = item()
         val older = item()
-        val layout = GalleryLayout(library, newestFirst = false, loaded = mapOf(30 to listOf(newer, older)))
+        val layout = GalleryLayout(library, newestFirst = false)
+        val loaded = mapOf(30 to listOf(newer, older))
 
         assertContentEquals(intArrayOf(10, 20, 30), layout.days)
-        assertEquals(listOf(older, newer), layout.itemsOf(2))
-        assertEquals(1 + 1 + 1 + 3 + 1, layout.itemOf(older.fileId))
+        assertEquals(older, layout.photoAt(2, 0, loaded))
+        assertEquals(newer, layout.photoAt(2, 1, loaded))
+        assertEquals(1 + 1 + 1 + 3 + 1, layout.itemOf(older.fileId, loaded))
+        assertEquals(1 + 3, layout.photoOf(older.fileId, loaded))
     }
 
     @Test
-    fun aReadDayHasASlotPerPhotoItShowsAndOneNotReadAsManyAsCounted() {
+    fun aDayThatShowsFewerPhotosThanCountedLeavesItsLastSlotsEmpty() {
         val shown = item()
         // Two counted on day 30, but only one header made a photo to show.
-        val layout = GalleryLayout(library, newestFirst = true, loaded = mapOf(30 to listOf(shown)))
+        val layout = GalleryLayout(library, newestFirst = true)
+        val loaded = mapOf(30 to listOf(shown))
 
-        assertEquals(1, layout.slotsOf(0))
-        assertEquals(3, layout.slotsOf(1))
-        assertNull(layout.itemsOf(1))
-        assertEquals(0, layout.photoOf(shown.fileId))
-        assertEquals(1 to 0, layout.slotOfPhoto(1))
-    }
-
-    @Test
-    fun aDayWithNothingToShowIsSkippedByPhotoIndexes() {
-        val layout = GalleryLayout(library, newestFirst = true, loaded = mapOf(20 to emptyList()))
-
-        assertEquals(listOf(0 to 0, 0 to 1, 2 to 0), (0 until 3).map { layout.slotOfPhoto(it) })
-        assertEquals(1, layout.positionOfItem(3))
+        assertEquals(shown, layout.photoAt(0, 0, loaded))
+        assertNull(layout.photoAt(0, 1, loaded))
     }
 }

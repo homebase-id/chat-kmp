@@ -26,12 +26,12 @@ WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND
   AND userDate < (CAST(:day AS INTEGER) + 2) * 86400000
   AND CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) = :day;
 
--- The headers of days :fromDay to :toDay with the day each falls on, newest first. The userDate range has a day to
--- spare on each side, since no zone is more than 14 hours from UTC; only the day expression decides which day.
+-- Newest first, by the same day expression and spare UTC day each side as photosOnDay.
 photosOnDays:
 SELECT CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, jsonHeader
 FROM DriveMainIndex
 WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = :fileType AND fileState = 1
   AND userDate >= (CAST(:fromDay AS INTEGER) - 1) * 86400000
   AND userDate < (CAST(:toDay AS INTEGER) + 2) * 86400000
+  AND CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) BETWEEN :fromDay AND :toDay
 ORDER BY userDate DESC, rowId DESC;

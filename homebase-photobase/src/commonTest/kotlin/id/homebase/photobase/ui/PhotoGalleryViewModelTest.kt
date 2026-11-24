@@ -88,8 +88,8 @@ class PhotoGalleryViewModelTest {
         assertEquals(listOf(92..100), library.asked, "the top is read as soon as the days are counted, where the gallery opens")
         library.asked.clear()
 
-        // Positions 40..42 are days 60..58, newest first; 80 photos either side is 8 more days each way.
-        viewModel.onAction(PhotoGalleryUiAction.Showing(40..42))
+        // 80 photos either side is 8 more days each way.
+        viewModel.onAction(PhotoGalleryUiAction.Showing(60, 58))
         advanceUntilIdle()
 
         assertEquals(listOf(50..68), library.asked)
@@ -102,10 +102,10 @@ class PhotoGalleryViewModelTest {
     fun scrollingOnReadsOnlyTheDaysNotHeldYet() = runTest {
         val library = Library(1..100, perDay = 10)
         val (viewModel, screen) = viewModel(library)
-        viewModel.onAction(PhotoGalleryUiAction.Showing(40..42))
+        viewModel.onAction(PhotoGalleryUiAction.Showing(60, 58))
         advanceUntilIdle()
 
-        viewModel.onAction(PhotoGalleryUiAction.Showing(43..45))
+        viewModel.onAction(PhotoGalleryUiAction.Showing(57, 55))
         advanceUntilIdle()
 
         assertEquals(listOf(92..100, 50..68, 47..49), library.asked)
@@ -113,13 +113,29 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
-    fun oldestFirstCountsPositionsFromTheOldestDay() = runTest {
+    fun aWindowWithHeldDaysInTheMiddleReadsTheRunsEitherSideOnly() = runTest {
+        val library = Library(1..100, perDay = 10)
+        val (viewModel, screen) = viewModel(library)
+        viewModel.onAction(PhotoGalleryUiAction.Showing(50, 50))
+        advanceUntilIdle()
+
+        viewModel.onAction(PhotoGalleryUiAction.Showing(70, 30))
+        advanceUntilIdle()
+
+        assertEquals(listOf(59..78, 22..41), library.asked.takeLast(2), "days 42..58 are held and aren't read again")
+        screen.cancel()
+    }
+
+    @Test
+    fun oldestFirstReadsTheOldestDaysTheScreenShows() = runTest {
         val library = Library(1..100, perDay = 10)
         val (viewModel, screen) = viewModel(library)
         viewModel.onAction(PhotoGalleryUiAction.ToggleSort)
+        // Oldest first, the screen's first and last days come the other way round.
+        viewModel.onAction(PhotoGalleryUiAction.Showing(1, 1))
         advanceUntilIdle()
 
-        assertEquals(listOf(92..100, 1..9), library.asked, "the top of the other order, without the screen saying so")
+        assertEquals(listOf(92..100, 1..9), library.asked)
         screen.cancel()
     }
 
@@ -128,7 +144,7 @@ class PhotoGalleryViewModelTest {
         val library = Library(1..400, perDay = 10)
         val (viewModel, screen) = viewModel(library)
         for (start in 0..380 step 20) {
-            viewModel.onAction(PhotoGalleryUiAction.Showing(start..start + 2))
+            viewModel.onAction(PhotoGalleryUiAction.Showing(400 - start, 400 - start - 2))
             advanceUntilIdle()
         }
 
@@ -143,7 +159,7 @@ class PhotoGalleryViewModelTest {
     fun aDayWhoseCountChangesIsReadAgainAndKeepsItsPhotosUntilThen() = runTest {
         val library = Library(1..10, perDay = 3)
         val (viewModel, screen) = viewModel(library)
-        viewModel.onAction(PhotoGalleryUiAction.Showing(0..2))
+        viewModel.onAction(PhotoGalleryUiAction.Showing(10, 8))
         advanceUntilIdle()
         library.asked.clear()
 
@@ -166,7 +182,7 @@ class PhotoGalleryViewModelTest {
     fun aDayThatEmptiedGoes() = runTest {
         val library = Library(1..10, perDay = 3)
         val (viewModel, screen) = viewModel(library)
-        viewModel.onAction(PhotoGalleryUiAction.Showing(0..2))
+        viewModel.onAction(PhotoGalleryUiAction.Showing(10, 8))
         advanceUntilIdle()
 
         library.photos.remove(10)
@@ -185,7 +201,7 @@ class PhotoGalleryViewModelTest {
         assertEquals(emptyMap(), viewModel.uiState.value.loaded)
 
         library.failure = null
-        viewModel.onAction(PhotoGalleryUiAction.Showing(0..1))
+        viewModel.onAction(PhotoGalleryUiAction.Showing(10, 9))
         advanceUntilIdle()
         assertTrue(10 in viewModel.uiState.value.loaded)
         screen.cancel()

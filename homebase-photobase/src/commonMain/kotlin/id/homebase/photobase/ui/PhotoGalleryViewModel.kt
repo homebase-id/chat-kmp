@@ -19,15 +19,13 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingCommand
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
@@ -35,7 +33,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -57,8 +54,8 @@ sealed interface PhotoGalleryUiAction {
     data object Refresh : PhotoGalleryUiAction
     data object ThumbnailShown : PhotoGalleryUiAction
     data object ToggleSort : PhotoGalleryUiAction
-    /** The days on screen, as positions in the grid's order. */
-    data class Showing(val positions: IntRange) : PhotoGalleryUiAction
+    /** The first and last day on screen, in either order. */
+    data class Showing(val first: Int, val last: Int) : PhotoGalleryUiAction
     /** Tapped in the grid, or swiped to in the viewer. */
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
@@ -76,7 +73,7 @@ class PhotoGalleryViewModel(
     // One at a time, off Main: the first screen's composing mustn't hold up reading it. Owns counted and stale.
     reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) : ViewModel() {
-    private var counted: Map<Int, Int> = emptyMap()
+    private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
 
     /** Every day of the library that has photos; counted from the gallery's opening, and kept current while it's shown. */
@@ -88,7 +85,8 @@ class PhotoGalleryViewModel(
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
 
-    private data class Window(val positions: IntRange, val generation: Int)
+    // Not a data class: setting an equal window again must read again, after a count changed.
+    private class Window(val first: Int, val last: Int)
 
     private val window = MutableStateFlow<Window?>(null)
     private val opened = TimeSource.Monotonic.markNow()
@@ -101,68 +99,71 @@ class PhotoGalleryViewModel(
                 _uiState.update { it.copy(syncedSoFar = state.syncedSoFar(), librarySynced = state.librarySynced()) }
             }
         }
-        // A newer window replaces one still being read: it's where the screen is now.
-        viewModelScope.launch(reading) { window.filterNotNull().collectLatest { read(it.positions) } }
+        // Conflated, not latest: a read can't stop partway through its parse, and the days it brings are nearby.
+        viewModelScope.launch(reading) { window.filterNotNull().conflate().collect { read(it) } }
     }
 
     fun onAction(action: PhotoGalleryUiAction) {
         when (action) {
             PhotoGalleryUiAction.Refresh -> refresh()
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
-            PhotoGalleryUiAction.ToggleSort -> {
-                _uiState.update { it.copy(newestFirst = !it.newestFirst) }
-                // The same positions are other days now.
-                window.update { it?.copy(generation = it.generation + 1) }
-            }
-            is PhotoGalleryUiAction.Showing -> window.update { Window(action.positions, it?.generation ?: 0) }
+            PhotoGalleryUiAction.ToggleSort -> _uiState.update { it.copy(newestFirst = !it.newestFirst) }
+            is PhotoGalleryUiAction.Showing -> window.value = Window(action.first, action.last)
             is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
             PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(openedFileId = null) }
         }
     }
 
-    // A day whose count changed is read again, but keeps what it shows until then: an open photo mustn't vanish.
+    // Only held days can be out of date: a held day whose count changed is read again, but keeps what it shows until
+    // then, so an open photo doesn't vanish.
     private fun onLibrary(library: LibraryDays) {
-        val now = library.days.indices.associate { library.days[it] to library.counts[it] }
-        stale += now.keys.filter { day -> counted[day] != null && counted[day] != now[day] }
-        val gone = counted.keys - now.keys
-        counted = now
-        if (gone.isNotEmpty()) _uiState.update { state -> state.copy(loaded = state.loaded - gone) }
-        // The top first, before the screen has laid out and said what it shows: the gallery opens there.
-        window.update { it?.copy(generation = it.generation + 1) ?: Window(0..0, 0) }
+        val before = counted
+        counted = library
+        val held = _uiState.value.loaded.keys
+        if (before != null) stale += held.filter { day -> library.countOf(day) != before.countOf(day) }
+        val gone = held.filter { library.countOf(day = it) == 0 }
+        if (gone.isNotEmpty()) _uiState.update { state -> state.copy(loaded = state.loaded - gone.toSet()) }
+        // Before the screen has laid out and said what it shows, the top: the gallery opens there.
+        val top = if (library.days.isEmpty()) null else if (_uiState.value.newestFirst) library.days.first() else library.days.last()
+        window.value = window.value?.let { Window(it.first, it.last) } ?: top?.let { Window(it, it) }
     }
 
-    private suspend fun read(positions: IntRange) {
+    private suspend fun read(window: Window) {
         val library = library.value ?: return
-        val newestFirst = _uiState.value.newestFirst
-        val order = { position: Int -> if (newestFirst) position else library.days.size - 1 - position }
-        val count = { position: Int -> library.counts[order(position)] }
         val last = library.days.size - 1
         if (last < 0) return
-        var from = positions.first.coerceIn(0, last)
-        var to = positions.last.coerceIn(from, last)
+        // Indexes into the index's days, newest first, whichever way the grid runs.
+        var from = library.indexAtOrNear(maxOf(window.first, window.last))
+        var to = library.indexAtOrNear(minOf(window.first, window.last)).coerceAtLeast(from)
+        val centre = library.days[(from + to) / 2]
         // Tinies come in the headers, so reading a little either side paints them before they're scrolled to.
-        var above = 0
-        while (from > 0 && above < MARGIN_PHOTOS) above += count(--from)
-        var below = 0
-        while (to < last && below < MARGIN_PHOTOS) below += count(++to)
+        var newer = 0
+        while (from > 0 && newer < MARGIN_PHOTOS) newer += library.counts[--from]
+        var older = 0
+        while (to < last && older < MARGIN_PHOTOS) older += library.counts[++to]
         val loaded = _uiState.value.loaded
-        val wanted = (from..to).map { library.days[order(it)] }.filter { it !in loaded || it in stale }
+        val wanted = (from..to).filter { library.days[it] !in loaded || library.days[it] in stale }
+        // Each unbroken run on its own: one span over a gap would parse the held days in it again.
+        for (run in wanted.runs()) {
+            val newest = library.days[run.first]
+            val oldest = library.days[run.last]
+            val read = try {
+                source.photosOnDays(oldest, newest)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The placeholders stay; the next scroll asks again.
+                Logger.w(tag = TAG, throwable = e) { "couldn't read the photos of days $oldest..$newest" }
+                return
+            }
+            val days = run.map { library.days[it] }
+            stale -= days.toSet()
+            _uiState.update { state ->
+                val merged = state.loaded + days.associateWith { read[it].orEmpty() }
+                state.copy(loaded = merged.evictedAround(centre))
+            }
+        }
         if (wanted.isEmpty()) return
-        val read = try {
-            source.photosOnDays(wanted.min(), wanted.max())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // The placeholders stay; the next scroll asks again.
-            Logger.w(tag = TAG, throwable = e) { "couldn't read the photos of days ${wanted.min()}..${wanted.max()}" }
-            return
-        }
-        stale -= wanted.toSet()
-        val centre = library.days[order((positions.first + positions.last) / 2)]
-        _uiState.update { state ->
-            val merged = state.loaded + wanted.associateWith { read[it].orEmpty() }
-            state.copy(loaded = merged.evictedAround(centre))
-        }
         if (!firstDaysLogged) {
             firstDaysLogged = true
             Logger.i(tag = TAG) { "first days ready ${opened.elapsedNow()} after opening" }
@@ -194,19 +195,9 @@ class PhotoGalleryViewModel(
 
     private companion object {
         // The view model is made when the gallery opens, so counting starts then, not a frame later when the screen
-        // first collects; it stops 5 s after the screen leaves, as WhileSubscribed does.
+        // first collects; after that, WhileSubscribed's 5 s.
         val FromOpeningWhileShown = SharingStarted { subscribers ->
-            subscribers
-                .transformLatest { count ->
-                    if (count > 0) {
-                        emit(SharingCommand.START)
-                    } else {
-                        delay(5_000)
-                        emit(SharingCommand.STOP)
-                    }
-                }
-                .onStart { emit(SharingCommand.START) }
-                .distinctUntilChanged()
+            SharingStarted.WhileSubscribed(5_000).command(subscribers).onStart { emit(SharingCommand.START) }
         }
 
         const val TAG = "PhotoGalleryViewModel"
@@ -244,3 +235,26 @@ private fun PhotoGalleryItem.player(video: PayloadDescriptor) = FullScreenOverla
     keyHeader = video.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
     payload = video,
 )
+
+private fun LibraryDays.countOf(day: Int): Int {
+    val at = days.asList().binarySearch { day.compareTo(it) }
+    return if (at >= 0) counts[at] else 0
+}
+
+// The day's index, or where it would be: the days are newest first.
+private fun LibraryDays.indexAtOrNear(day: Int): Int {
+    val at = days.asList().binarySearch { day.compareTo(it) }
+    return (if (at >= 0) at else -at - 1).coerceIn(0, days.size - 1)
+}
+
+private fun List<Int>.runs(): List<IntRange> {
+    val runs = mutableListOf<IntRange>()
+    var start = firstOrNull() ?: return runs
+    for (i in 1..size) {
+        if (i == size || this[i] != this[i - 1] + 1) {
+            runs += start..this[i - 1]
+            if (i < size) start = this[i]
+        }
+    }
+    return runs
+}

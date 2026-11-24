@@ -35,8 +35,6 @@ class PhotoGalleryStoreTest {
         MainIndexMetaHelpers.HomebaseFileProcessor(db).baseUpsertEntryZapZap(identity, driveId, files.toList(), cursor = null)
     }
 
-    // Noon UTC, so every zone puts it on the same calendar date the day number names... give or take one, which the
-    // day counts settle.
     private fun on(day: Int, minute: Int = 0) = day * 86_400_000L + 12 * 3_600_000L + minute * 60_000L
 
     private suspend fun dayOf(ms: Long) = assertNotNull(store.dayOf(ms))

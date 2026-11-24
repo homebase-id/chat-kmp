@@ -30,7 +30,7 @@ class PhotoDaysWrapper(
     suspend fun headersOnDays(identityId: Uuid, driveId: Uuid, fileType: Long, fromDay: Int, toDay: Int): List<DayHeader> =
         databaseManager.readValue("photoDays.photosOnDays") {
             queries.photosOnDays(identityId, driveId, fileType, fromDay.toLong(), toDay.toLong()).executeAsList()
-        }.mapNotNull { row -> DayHeader(row.day.toInt(), row.jsonHeader).takeIf { it.day in fromDay..toDay } }
+        }.map { row -> DayHeader(row.day.toInt(), row.jsonHeader) }
 }
 
 /** [day] counts days since 1970-01-01 of the phone's local date. */

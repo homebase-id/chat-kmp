@@ -8,8 +8,6 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.serialization.OdinSystemSerializer
 import co.touchlab.kermit.Logger
 import id.homebase.core.photobase.PhotobaseProtocol
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlin.uuid.Uuid
 
@@ -19,12 +17,10 @@ class PhotoGalleryStore internal constructor(
     private val identityId: suspend () -> Uuid,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoGallerySource {
-    // Parsing headers doesn't belong on the view model's Main.
-    override suspend fun photosOnDays(fromDay: Int, toDay: Int): Map<Int, List<PhotoGalleryItem>> = withContext(Dispatchers.Default) {
+    override suspend fun photosOnDays(fromDay: Int, toDay: Int): Map<Int, List<PhotoGalleryItem>> =
         db.photoDays.headersOnDays(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong(), fromDay, toDay)
             .mapNotNull { row -> row.toGalleryItem()?.let { row.day to it } }
             .groupBy({ it.first }, { it.second })
-    }
 
     suspend fun dayCounts(): List<DayCount> = db.photoDays.dayCounts(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong())
 
