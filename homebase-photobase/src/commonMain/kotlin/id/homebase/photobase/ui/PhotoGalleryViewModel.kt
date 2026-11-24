@@ -21,7 +21,6 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingCommand
@@ -86,7 +85,6 @@ class PhotoGalleryViewModel(
     private val stale = mutableSetOf<Int>()
     // The days being read right now: a change to one of them mustn't be lost when the read lands.
     private var inFlight: Set<Int> = emptySet()
-    private var failures = 0
 
     /** Every day of the library that has photos; counted from the gallery's opening, and kept current while it's shown. */
     val library: StateFlow<LibraryDays?> = libraryDays
@@ -140,7 +138,10 @@ class PhotoGalleryViewModel(
 
     fun onAction(action: PhotoGalleryUiAction) {
         when (action) {
-            PhotoGalleryUiAction.Refresh -> refresh()
+            PhotoGalleryUiAction.Refresh -> {
+                refresh()
+                window.value = window.value?.let { Window(it.first, it.last) }
+            }
             PhotoGalleryUiAction.Retry -> viewModelScope.launch { recount() }
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             PhotoGalleryUiAction.ToggleSort -> _uiState.update { it.copy(newestFirst = !it.newestFirst) }
@@ -190,10 +191,9 @@ class PhotoGalleryViewModel(
                 stale += days
                 throw e
             } catch (e: Exception) {
-                // The placeholders stay until a retry, which waits longer each time it fails.
+                // The placeholders stay until the next scroll, change or Refresh: nothing polls.
                 stale += days
                 Logger.w(tag = TAG, throwable = e) { "couldn't read the photos of days ${days.last()}..${days.first()}" }
-                retryLater()
                 continue
             } finally {
                 inFlight = emptySet()
@@ -201,7 +201,6 @@ class PhotoGalleryViewModel(
             val now = counted ?: library
             val arriving = days.filter { now.countOf(it) > 0 }.associateWith { read[it].orEmpty() }
             val ids = arriving.values.flatten().mapTo(HashSet()) { it.fileId }
-            failures = 0
             landed = true
             _uiState.update { state ->
                 // A photo that moved day is held once, on the day it was read on.
@@ -213,16 +212,6 @@ class PhotoGalleryViewModel(
         if (!firstDaysLogged) {
             firstDaysLogged = true
             Logger.i(tag = TAG) { "first days ready ${opened.elapsedNow()} after opening" }
-        }
-    }
-
-    // A few times, waiting longer each time; after that the next scroll or change asks again.
-    private fun retryLater() {
-        if (++failures > MAX_RETRIES) return
-        val wait = (RETRY_FIRST_MS shl (failures - 1).coerceAtMost(5)).coerceAtMost(RETRY_MOST_MS)
-        viewModelScope.launch(reading) {
-            delay(wait)
-            window.value = window.value?.let { Window(it.first, it.last) }
         }
     }
 
@@ -277,9 +266,7 @@ class PhotoGalleryViewModel(
         const val MAX_HELD_PHOTOS = 1_000
         // Parsed in about 50 ms on a Pixel 5; a bigger day takes in arriving photos one by one.
         const val READ_WHOLE_DAY_UP_TO = 150
-        const val RETRY_FIRST_MS = 1_000L
-        const val RETRY_MOST_MS = 30_000L
-        const val MAX_RETRIES = 5
+
     }
 }
 

@@ -246,21 +246,20 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
-    fun aFailedReadIsTriedAgainOnItsOwn() = runTest {
+    fun aFailedReadIsTriedAgainOnRefreshNotOnATimer() = runTest {
         val library = Library(1..10, perDay = 3)
         library.failure = IllegalStateException("database busy")
-        library.publish()
-        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val viewModel = PhotoGalleryViewModel(library.source, libraryDays = library.counts.filterNotNull(), reading = StandardTestDispatcher(testScheduler))
-        val screen = launch { viewModel.library.collect { } }
-        runCurrent()
-        assertEquals(emptyMap(), viewModel.uiState.value.loaded)
+        val (viewModel, screen) = viewModel(library)
+        val asked = library.asked.size
 
         library.failure = null
-        advanceTimeBy(1_001)
+        advanceTimeBy(60_000)
         runCurrent()
+        assertEquals(asked, library.asked.size, "nothing polls")
 
-        assertTrue(10 in viewModel.uiState.value.loaded, "nobody scrolled, and it was read anyway")
+        viewModel.onAction(PhotoGalleryUiAction.Refresh)
+        advanceUntilIdle()
+        assertTrue(10 in viewModel.uiState.value.loaded)
         screen.cancel()
     }
 
@@ -325,9 +324,11 @@ class PhotoGalleryViewModelTest {
         runCurrent()
         assertEquals(3, viewModel.uiState.value.loaded.getValue(9).size, "an open photo on that day mustn't vanish while it's read")
 
+        // The next change reads it again; nothing polls.
         library.failure = null
+        library.touched.emit(mapOf(9 to emptyList()))
         advanceUntilIdle()
-        assertTrue(library.asked.size >= 2 && library.asked.all { it == 9..9 }, "only the day that changed, again after the failure: ${library.asked}")
+        assertEquals(listOf(9..9, 9..9), library.asked, "only the day that changed, again after the failure")
         assertEquals(arrived, viewModel.uiState.value.loaded.getValue(9).first())
         screen.cancel()
     }
