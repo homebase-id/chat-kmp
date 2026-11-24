@@ -179,6 +179,7 @@ kotlin {
         "id.homebase.api.sync.database.OutboxSyncTest",
         "id.homebase.api.sync.database.OutboxBulkSlotTest",
         "id.homebase.api.sync.database.OutboxTest",
+        "id.homebase.api.sync.database.PhotoDaysWrapperTest",
         "id.homebase.api.sync.DriveSyncCollectionTest",
         "id.homebase.api.sync.DriveSyncManagerTest",
         "id.homebase.api.sync.DriveSyncTest",

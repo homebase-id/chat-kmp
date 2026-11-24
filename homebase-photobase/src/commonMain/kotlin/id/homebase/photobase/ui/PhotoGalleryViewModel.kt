@@ -16,6 +16,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import id.homebase.photobase.gallery.PhotoDays
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.filterNotNull
@@ -43,6 +45,8 @@ data class PhotoGalleryUiState(
     val syncedSoFar: Int? = null,
     /** Until then an empty grid doesn't mean nothing is backed up. */
     val librarySynced: Boolean = false,
+    /** Every day of the library that has photos, for laying out the whole grid; null until counted. */
+    val library: PhotoDays? = null,
     val loadFailed: Boolean = false,
     val endReached: Boolean = false,
     val newestFirst: Boolean = true,
@@ -76,6 +80,7 @@ class PhotoGalleryViewModel(
     private val pauseWarm: (Boolean) -> Unit = {},
     changes: Flow<PhotoChange> = emptyFlow(),
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
+    library: Flow<PhotoDays> = emptyFlow(),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
@@ -95,6 +100,11 @@ class PhotoGalleryViewModel(
         viewModelScope.launch {
             loadJob?.join()
             startWarm()
+        }
+        viewModelScope.launch {
+            library
+                .catch { e -> Logger.w(tag = TAG, throwable = e) { "couldn't count the library's days" } }
+                .collect { days -> _uiState.update { it.copy(library = days) } }
         }
         viewModelScope.launch {
             driveState.collect { state ->

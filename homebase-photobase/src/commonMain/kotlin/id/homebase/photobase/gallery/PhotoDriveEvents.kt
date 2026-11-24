@@ -7,12 +7,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.mapNotNull
 import kotlin.uuid.Uuid
 
-enum class PhotoChange {
+sealed interface PhotoChange {
     /** A sync round wrote records, anywhere in the library. */
-    RoundFinished,
+    data object RoundFinished : PhotoChange
 
-    /** A few files arrived with their records, after the round. */
-    FilesArrived,
+    /** A few files arrived with their records, after the round; their photos' dates, deleted ones too. */
+    data class FilesArrived(val userDates: List<Long>) : PhotoChange
 }
 
 /**
@@ -22,7 +22,8 @@ enum class PhotoChange {
 fun Flow<BackendEvent>.newPhotoRecords(photosDriveId: Uuid = PhotobaseProtocol.DriveAlias): Flow<PhotoChange> = mapNotNull { event ->
     when {
         event is BackendEvent.DriveEvent.Stopped && event.driveId == photosDriveId && event.totalCount > 0 -> PhotoChange.RoundFinished
-        event is BackendEvent.DataEvent.BatchReceived && event.driveId == photosDriveId -> PhotoChange.FilesArrived
+        event is BackendEvent.DataEvent.BatchReceived && event.driveId == photosDriveId ->
+            PhotoChange.FilesArrived(event.batchData.mapNotNull { it.fileMetadata.appData.userDate })
         else -> null
     }
 }

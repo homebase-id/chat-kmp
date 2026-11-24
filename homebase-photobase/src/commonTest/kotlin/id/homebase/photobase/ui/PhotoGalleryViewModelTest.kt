@@ -165,7 +165,7 @@ class PhotoGalleryViewModelTest {
         }
         val scrolled = source.asked.size
 
-        changes.tryEmit(PhotoChange.FilesArrived)
+        changes.tryEmit(PhotoChange.FilesArrived(listOf(10_000L)))
         testScheduler.advanceUntilIdle()
         assertEquals(scrolled, source.asked.size, "150 photos showing: each arrival would re-read them all")
 

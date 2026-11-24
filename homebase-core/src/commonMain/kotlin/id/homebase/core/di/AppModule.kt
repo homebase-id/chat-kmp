@@ -204,6 +204,8 @@ import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
+import id.homebase.photobase.gallery.photoDayIndex
+import id.homebase.photobase.gallery.PhotoDayIndex
 import id.homebase.photobase.gallery.librarySynced
 import id.homebase.photobase.gallery.newPhotoRecords
 import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
@@ -1138,6 +1140,7 @@ val appModule = module {
         )
     }
     single { photoGalleryStore(get(), get()) }
+    single { photoDayIndex(get(), get(), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
     single {
         val files = get<DriveFileProviderCached>()
         PhotoThumbnailPrefetcher(
@@ -1532,6 +1535,7 @@ val appModule = module {
                 // Locally first: the shared registry is a network write, and its failing mustn't stop the wipe.
                 if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
+                get<PhotoDayIndex>().forget()
                 get<PhotoThumbnailPrefetcher>().reset()
                 get<PhotoBackupEntry>().forgetDrive()
                 // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
@@ -1570,6 +1574,7 @@ val appModule = module {
             pauseWarm = prefetcher::pause,
             changes = get<EventBus>().events.newPhotoRecords(),
             driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
+            library = get<PhotoDayIndex>().days,
         )
     }
     viewModel(FilesyncPermissionQualifier) {
