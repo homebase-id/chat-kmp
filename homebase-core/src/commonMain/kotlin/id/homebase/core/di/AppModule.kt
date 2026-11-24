@@ -208,6 +208,10 @@ import id.homebase.photobase.gallery.PhotoDayIndex
 import id.homebase.photobase.gallery.newPhotoRecords
 import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
+import id.homebase.photobase.gallery.HttpPhotoBinServer
+import id.homebase.photobase.gallery.PhotoBin
+import id.homebase.photobase.gallery.PhotoBinServer
+import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.backup.AssetHasher
@@ -324,6 +328,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
+import org.koin.core.qualifier.Qualifier
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
@@ -370,6 +375,26 @@ val WebDropPermissionQualifier = named("webDropPermission")
 val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val PhotobasePermissionQualifier = named("photobasePermission")
+val PhotoBinQualifier = named("photoBin")
+
+/** The Library's gallery, or with [shelf] the Bin's: each with its own store and day index, sharing the bin's writes. */
+private fun Scope.photoGalleryViewModel(shelf: Qualifier?): PhotoGalleryViewModel {
+    val drives = get<DriveSyncManager>()
+    val store = get<PhotoGalleryStore>(shelf)
+    val index = get<PhotoDayIndex>(shelf)
+    return PhotoGalleryViewModel(
+        source = store,
+        shelf = store.shelf,
+        bin = get(),
+        // syncDrive throws on a drive that isn't mounted, which it may stop being between the check and the call.
+        refresh = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
+        driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
+        libraryDays = index.days,
+        touchedDays = index.touched,
+        countFailed = index.failed,
+        recount = index::recount,
+    )
+}
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -1136,7 +1161,11 @@ val appModule = module {
         )
     }
     single { photoGalleryStore(get(), get()) }
+    single(PhotoBinQualifier) { photoGalleryStore(get(), get(), PhotoShelf.Bin) }
     single { photoDayIndex(get(), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
+    single(PhotoBinQualifier) {
+        photoDayIndex(get(PhotoBinQualifier), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>())
+    }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
@@ -1519,6 +1548,7 @@ val appModule = module {
                 if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoDayIndex>().forget()
+                get<PhotoDayIndex>(PhotoBinQualifier).forget()
                 get<PhotoBackupEntry>().forgetDrive()
                 // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
                 val registry = get<DriveRegistry>()
@@ -1545,19 +1575,18 @@ val appModule = module {
     }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
-    viewModel {
+    single<PhotoBinServer> { HttpPhotoBinServer(get(), get()) }
+    single {
         val drives = get<DriveSyncManager>()
-        PhotoGalleryViewModel(
-            source = get<PhotoGalleryStore>(),
-            // syncDrive throws on a drive that isn't mounted, which it may stop being between the check and the call.
-            refresh = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
-            driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
-            libraryDays = get<PhotoDayIndex>().days,
-            touchedDays = get<PhotoDayIndex>().touched,
-            countFailed = get<PhotoDayIndex>().failed,
-            recount = get<PhotoDayIndex>()::recount,
+        PhotoBin(
+            server = get(),
+            filesOf = get<PhotoGalleryStore>()::filesOf,
+            binned = get<PhotoGalleryStore>(PhotoBinQualifier)::filesOnShelf,
+            sync = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
         )
     }
+    viewModel { photoGalleryViewModel(null) }
+    viewModel(PhotoBinQualifier) { photoGalleryViewModel(PhotoBinQualifier) }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(

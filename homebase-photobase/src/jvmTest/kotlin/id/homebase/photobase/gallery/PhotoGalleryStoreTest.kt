@@ -84,7 +84,7 @@ class PhotoGalleryStoreTest {
 
         assertEquals(emptyList(), store.dayCounts())
         assertNull(CursorStorage(db, PhotobaseProtocol.DriveAlias).loadCursor())
-        assertEquals(1, PhotoGalleryStore(db, { identity }, otherDrive).dayCounts().single().photos)
+        assertEquals(1, PhotoGalleryStore(db, { identity }, photosDriveId = otherDrive).dayCounts().single().photos)
         assertNotNull(CursorStorage(db, otherDrive).loadCursor())
     }
 }

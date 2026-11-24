@@ -58,6 +58,9 @@ class PhotoGridDbBench {
         }
         log("database ${context.getDatabasePath(DB).length() / MB} MB, zone $zone, runs $runs")
         dbm.driver.execute(null, "DROP INDEX IF EXISTS $GRID_INDEX", 0)
+        // What an installed app does once, at its first open with IdxPhotoShelf in the schema.
+        dbm.driver.execute(null, "DROP INDEX IF EXISTS $SHELF_INDEX", 0)
+        once("build $SHELF_INDEX, once per install") { OdinDatabase.Schema.create(dbm.driver) }
 
         // A fresh process and connection, as the first open of the gallery after a cold start finds it.
         dbm.close()
@@ -68,19 +71,20 @@ class PhotoGridDbBench {
         assertEquals(dayCountsKotlin(dbm.driver), days, "SQLite's localtime and kotlinx-datetime must agree on every day")
 
         measure("day counts, SQL localtime, existing indexes") { dayCountsSql(dbm.driver) }
-        val shipped = dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong())
+        val shipped = dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, LIBRARY)
         assertEquals(days, shipped.map { it.day to it.photos }, "PhotoDays.dayCounts must count the days this bench does")
-        measure("day counts, PhotoDays.dayCounts (shipped)") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong()) }
+        measure("day counts, PhotoDays.dayCounts (shipped)") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, LIBRARY) }
+        measure("day counts, PhotoDays.dayCounts (shipped), the bin") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, BIN) }
         val busiest = days.maxBy { it.second }
         val busiestDay = checkNotNull(dbm.photoDays.dayOf(busiest.first * DAY_MS + DAY_MS / 2))
-        log("  busiest day ${busiest.first}: ${busiest.second} photos; photosOn found ${dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiestDay)} on day $busiestDay")
+        log("  busiest day ${busiest.first}: ${busiest.second} photos; photosOn found ${dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, LIBRARY, busiestDay)} on day $busiestDay")
         measure("one day's count, PhotoDays.photosOn (shipped), busiest day") {
-            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiest.first)
+            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, LIBRARY, busiest.first)
         }
         val typical = days.sortedBy { it.second }[days.size / 2]
         log("  median day has ${typical.second} photos")
         measure("one day's count, PhotoDays.photosOn (shipped), median day") {
-            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), typical.first)
+            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, LIBRARY, typical.first)
         }
         measure("a photo's day, PhotoDays.dayOf (shipped)") { dbm.photoDays.dayOf(busiest.first * DAY_MS + DAY_MS / 2) }
         measure("photo count, existing indexes") { photoCount(dbm.driver) }
@@ -300,6 +304,9 @@ class PhotoGridDbBench {
         const val BATCH = 500
         const val PHOTO_FILE_TYPE = 7201
         const val GRID_INDEX = "IdxBenchPhotoGrid"
+        const val SHELF_INDEX = "IdxPhotoShelf"
+        const val LIBRARY = 0L
+        const val BIN = 2L
         const val DAY_COUNTS_ID = 0x50470001
         const val USER_DATES_ID = 0x50470002
         const val COUNT_ID = 0x50470003

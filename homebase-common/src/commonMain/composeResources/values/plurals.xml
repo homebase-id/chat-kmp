@@ -136,4 +136,32 @@
         <item quantity="one">Couldn't confirm that %1$d files reached %2$s's folder. If they aren't there, send them again.</item>
         <item quantity="other">Couldn't confirm that %1$d files reached %2$s's folder. If they aren't there, send them again.</item>
     </plurals>
+    <plurals name="photobase_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <plurals name="photobase_bin_moved">
+        <item quantity="one">Moved %1$d to the bin.</item>
+        <item quantity="other">Moved %1$d to the bin.</item>
+    </plurals>
+    <plurals name="photobase_bin_restored">
+        <item quantity="one">Restored %1$d.</item>
+        <item quantity="other">Restored %1$d.</item>
+    </plurals>
+    <plurals name="photobase_bin_deleted">
+        <item quantity="one">Deleted %1$d forever.</item>
+        <item quantity="other">Deleted %1$d forever.</item>
+    </plurals>
+    <plurals name="photobase_bin_changed_elsewhere">
+        <item quantity="one">%1$d was changed on another device and was left as it is.</item>
+        <item quantity="other">%1$d were changed on another device and were left as they are.</item>
+    </plurals>
+    <plurals name="photobase_bin_refused">
+        <item quantity="one">%1$d couldn't be changed.</item>
+        <item quantity="other">%1$d couldn't be changed.</item>
+    </plurals>
+    <plurals name="photobase_bin_delete_confirm_title">
+        <item quantity="one">Delete %1$d photo forever?</item>
+        <item quantity="other">Delete %1$d photos forever?</item>
+    </plurals>
 </resources>

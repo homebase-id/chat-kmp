@@ -1,14 +1,20 @@
 import kotlin.uuid.Uuid;
 
+-- Photos only (PhotobaseProtocol.PhotoFileType), so chat writes don't keep it; a query uses it only when it names
+-- fileType 7201 itself, not as a parameter.
+CREATE INDEX IF NOT EXISTS IdxPhotoShelf ON DriveMainIndex(identityId, driveId, archivalStatus, fileState, userDate)
+  WHERE fileType = 7201 AND fileSystemType = 0;
+
 -- A photo's day is its local date by SQLite, the one expression every query here uses. Outside 1970-2037 SQLite
 -- guesses a zone's summer time, so a photo near midnight can land a day off from kotlinx-datetime: place photos by
 -- these days.
 dayCounts:
 SELECT CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, count(*) AS photos
 FROM DriveMainIndex
-WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = :fileType AND fileState = 1
+WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = 7201 AND fileState = 1
+  AND archivalStatus = :archivalStatus
   -- SQLite has no date outside the years 0 to 9999 (a userDate in microseconds, say): such a photo has no day.
-  -- A day inside them, so no time zone pushes a date out. The + keeps SQLite on the covering index; a range on
+  -- A day inside them, so no time zone pushes a date out. The + keeps SQLite on IdxPhotoShelf; a range on
   -- userDate read every row (924 ms, not 62, on a Pixel 5).
   AND +userDate BETWEEN -62167132800000 AND 253402214399999
 GROUP BY day
@@ -26,7 +32,8 @@ END AS day;
 -- day to spare each side since no zone is more than 14 hours from UTC.
 photosOnDay:
 SELECT count(*) FROM DriveMainIndex
-WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = :fileType AND fileState = 1
+WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = 7201 AND fileState = 1
+  AND archivalStatus = :archivalStatus
   AND userDate >= (CAST(:day AS INTEGER) - 1) * 86400000
   AND userDate < (CAST(:day AS INTEGER) + 2) * 86400000
   AND CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) = :day;
@@ -35,8 +42,18 @@ WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND
 photosOnDays:
 SELECT CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, jsonHeader
 FROM DriveMainIndex
-WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = :fileType AND fileState = 1
+WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = 7201 AND fileState = 1
+  AND archivalStatus = :archivalStatus
   AND userDate >= (CAST(:fromDay AS INTEGER) - 1) * 86400000
   AND userDate < (CAST(:toDay AS INTEGER) + 2) * 86400000
   AND CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) BETWEEN :fromDay AND :toDay
 ORDER BY userDate DESC, rowId DESC;
+
+headersOf:
+SELECT jsonHeader FROM DriveMainIndex
+WHERE identityId = :identityId AND driveId = :driveId AND fileId IN :fileIds;
+
+headersOnShelf:
+SELECT jsonHeader FROM DriveMainIndex
+WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = 7201 AND fileState = 1
+  AND archivalStatus = :archivalStatus;

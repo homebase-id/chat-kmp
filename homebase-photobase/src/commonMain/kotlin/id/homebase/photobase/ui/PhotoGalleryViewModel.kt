@@ -9,6 +9,9 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.LibraryDays
+import id.homebase.photobase.gallery.PhotoBin
+import id.homebase.photobase.gallery.PhotoBinResult
+import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGallerySource
 import id.homebase.photobase.gallery.librarySynced
@@ -22,7 +25,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingCommand
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,8 +55,22 @@ data class PhotoGalleryUiState(
     /** The days whose headers are read, by day, newest first within each. */
     val loaded: Map<Int, List<PhotoGalleryItem>> = emptyMap(),
     val countFailed: Boolean = false,
+    /** The photos picked for the toolbar's actions, by id, so photos arriving don't change which. */
+    val selected: Set<Uuid> = emptySet(),
+    /** A bin action is on its way to the server. */
+    val busy: Boolean = false,
 ) {
     val isSyncing: Boolean get() = syncedSoFar != null
+    val selecting: Boolean get() = selected.isNotEmpty()
+}
+
+enum class BinAction { MoveToBin, Restore, DeleteForGood, Empty, Undo }
+
+sealed interface PhotoGalleryEvent {
+    /** [undo] holds the photos Undo puts back. */
+    data class BinDone(val action: BinAction, val result: PhotoBinResult, val undo: Set<Uuid> = emptySet()) : PhotoGalleryEvent
+    /** Nothing is known to have changed: the request didn't get through. */
+    data class BinFailed(val action: BinAction) : PhotoGalleryEvent
 }
 
 sealed interface PhotoGalleryUiAction {
@@ -64,14 +84,28 @@ sealed interface PhotoGalleryUiAction {
     /** Tapped in the grid, or swiped to in the viewer. */
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
+    /** A long press, or a tap while selecting. */
+    data class ToggleSelected(val fileId: Uuid) : PhotoGalleryUiAction
+    /** All of a day's photos, or none if all are picked. */
+    data class ToggleDay(val day: Int) : PhotoGalleryUiAction
+    data object ClearSelection : PhotoGalleryUiAction
+    data object MoveToBin : PhotoGalleryUiAction
+    /** The photo open in the viewer. */
+    data object MoveOpenToBin : PhotoGalleryUiAction
+    data object Restore : PhotoGalleryUiAction
+    data object DeleteForGood : PhotoGalleryUiAction
+    data object EmptyBin : PhotoGalleryUiAction
+    data class Undo(val fileIds: Set<Uuid>) : PhotoGalleryUiAction
 }
 
 /**
- * The library's days from [libraryDays], and the headers of the days on screen and a margin around them from [source].
+ * The [shelf]'s days from [libraryDays], and the headers of the days on screen and a margin around them from [source].
  * A day whose count changes is read again; [refresh] asks the drive to sync now.
  */
 class PhotoGalleryViewModel(
     private val source: PhotoGallerySource,
+    val shelf: PhotoShelf = PhotoShelf.Library,
+    private val bin: PhotoBin? = null,
     private val refresh: () -> Unit = {},
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
     libraryDays: Flow<LibraryDays> = emptyFlow(),
@@ -94,6 +128,9 @@ class PhotoGalleryViewModel(
 
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
+
+    private val _events = MutableSharedFlow<PhotoGalleryEvent>(extraBufferCapacity = 8)
+    val events: SharedFlow<PhotoGalleryEvent> = _events.asSharedFlow()
 
     // Not a data class: setting an equal window again must read again, after a count changed.
     private class Window(val first: Int, val last: Int)
@@ -153,6 +190,50 @@ class PhotoGalleryViewModel(
             is PhotoGalleryUiAction.Showing -> window.value = Window(action.first, action.last)
             is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
             PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(openedFileId = null) }
+            is PhotoGalleryUiAction.ToggleSelected -> _uiState.update { state ->
+                state.copy(selected = if (action.fileId in state.selected) state.selected - action.fileId else state.selected + action.fileId)
+            }
+            is PhotoGalleryUiAction.ToggleDay -> _uiState.update { state ->
+                val day = state.loaded[action.day].orEmpty().mapTo(HashSet()) { it.fileId }
+                state.copy(selected = if (state.selected.containsAll(day)) state.selected - day else state.selected + day)
+            }
+            PhotoGalleryUiAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
+            PhotoGalleryUiAction.MoveToBin -> onSelection(BinAction.MoveToBin) { bin, ids -> bin.moveToBin(ids) }
+            PhotoGalleryUiAction.MoveOpenToBin -> _uiState.value.openedFileId?.let { open ->
+                runBin(BinAction.MoveToBin, setOf(open)) { it.moveToBin(setOf(open)) }
+            }
+            PhotoGalleryUiAction.Restore -> onSelection(BinAction.Restore) { bin, ids -> bin.restore(ids) }
+            PhotoGalleryUiAction.DeleteForGood -> onSelection(BinAction.DeleteForGood) { bin, ids -> bin.deleteForGood(ids) }
+            PhotoGalleryUiAction.EmptyBin -> runBin(BinAction.Empty, emptySet()) { it.empty() }
+            is PhotoGalleryUiAction.Undo -> runBin(BinAction.Undo, emptySet()) { it.restore(action.fileIds) }
+        }
+    }
+
+    // The selection goes as the action starts; it comes back if the request doesn't get through.
+    private fun onSelection(action: BinAction, block: suspend (PhotoBin, Set<Uuid>) -> PhotoBinResult) {
+        val ids = _uiState.value.selected
+        if (ids.isEmpty()) return
+        _uiState.update { it.copy(selected = emptySet()) }
+        runBin(action, ids, restoreSelection = true) { block(it, ids) }
+    }
+
+    private fun runBin(action: BinAction, ids: Set<Uuid>, restoreSelection: Boolean = false, block: suspend (PhotoBin) -> PhotoBinResult) {
+        val bin = bin ?: return
+        if (_uiState.value.busy) return
+        _uiState.update { it.copy(busy = true) }
+        viewModelScope.launch {
+            try {
+                val result = block(bin)
+                _events.emit(PhotoGalleryEvent.BinDone(action, result, undo = if (action == BinAction.MoveToBin) ids else emptySet()))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
+                if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
+                _events.emit(PhotoGalleryEvent.BinFailed(action))
+            } finally {
+                _uiState.update { it.copy(busy = false) }
+            }
         }
     }
 
@@ -225,7 +306,7 @@ class PhotoGalleryViewModel(
         // A file can arrive twice between counts; its last version is the one that stands.
         val latest = files.associateBy { it.fileId }.values
         val ids = latest.mapTo(HashSet()) { it.fileId }
-        val arrived = latest.filterNot { it.isSoftDeleted() }.mapNotNull { it.toGalleryItem() }
+        val arrived = latest.filter(shelf::holds).mapNotNull { it.toGalleryItem() }
         _uiState.update { state ->
             val without = state.loaded.mapValues { (_, items) -> items.filterNot { it.fileId in ids } }
             val onDay = without[day] ?: return@update state
