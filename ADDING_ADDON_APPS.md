@@ -15,8 +15,8 @@ A self-contained feature that:
 1. Shows up as a **toggleable icon** in a phone's bottom navigation bar. Desktop and web show every available app in the side rail, whatever the switch.
 2. Has an **onboarding screen** the first time the user taps it, with *Set it up* and
    *Dismiss* options.
-3. When setup it flips a runtime **activation flag** via an "Extend Permissions" dialog — which in
-   turn widens the set of drives the auth WebSocket subscribes to (and probably mounts it as an optional drive).
+3. When set up, it gets its drive's grant through an "Extend Permissions" dialog and **mounts the
+   drive** as an optional drive, which adds it to the auth WebSocket's subscription.
 4. Has a **Settings sub-page** with a switch to hide its icon and (optionally) a
    biometrics switch plus other app specific settings.
 5. Optionally gates the main screen behind **device biometrics** on entry.
@@ -140,6 +140,12 @@ only. Feed (or any other add-on) appears on all devices only after the user expl
 activates it once, somewhere.
 
 ### Activation is the drive lifecycle — use `OptionalDriveActivation`
+
+**An app's drive is always a mounted drive, and only `DriveSyncManager` syncs it.** An app never
+runs its own `DriveSync`, and never pages the drive's files from the server in place of the sync:
+its screens read the local index and update from the drive's events. A big drive goes in
+`collectionTail` (`AppModule.kt`) so it syncs after the small ones. `ArchitectureTest` enforces
+the first part.
 
 An optional add-on has no `activated` boolean of its own. **Activation == the drive is
 mounted.** Reading and performing activation both go through one shared, injectable helper,

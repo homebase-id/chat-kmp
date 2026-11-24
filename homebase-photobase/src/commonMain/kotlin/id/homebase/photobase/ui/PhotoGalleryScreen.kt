@@ -89,6 +89,7 @@ import id.homebase.resources.photobase_gallery_photo
 import id.homebase.resources.photobase_gallery_refresh
 import id.homebase.resources.photobase_gallery_sort_newest
 import id.homebase.resources.photobase_gallery_sort_oldest
+import id.homebase.resources.photobase_gallery_syncing
 import id.homebase.resources.photobase_gallery_retry
 import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_label
@@ -297,8 +298,16 @@ private fun GalleryGrid(
         ) {
             when {
                 uiState.days.isNotEmpty() -> PhotoGrid(uiState, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
-                // While the server is still being asked, "nothing backed up" may not be true.
-                uiState.isLoading || uiState.isSyncing -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                // While the drive is still syncing, "nothing backed up" may not be true.
+                uiState.isSyncing -> Column(
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator()
+                    SyncingLabel(uiState.syncedSoFar)
+                }
+                uiState.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 uiState.loadFailed -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -331,10 +340,29 @@ private fun GalleryGrid(
                 }
             }
             if (uiState.isSyncing && uiState.days.isNotEmpty()) {
-                LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .background(MaterialTheme.colorScheme.surfaceContainer),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    SyncingLabel(uiState.syncedSoFar, Modifier.padding(vertical = 6.dp))
+                }
             }
         }
     }
+}
+
+@Composable
+private fun SyncingLabel(syncedSoFar: Int, modifier: Modifier = Modifier) {
+    Text(
+        text = stringResource(MR.string.photobase_gallery_syncing, syncedSoFar),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+    )
 }
 
 @Composable

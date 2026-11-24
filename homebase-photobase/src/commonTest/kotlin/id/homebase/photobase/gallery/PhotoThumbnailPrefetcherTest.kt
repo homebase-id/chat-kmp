@@ -51,6 +51,19 @@ class PhotoThumbnailPrefetcherTest {
     }
 
     @Test
+    fun aWalkThatFoundFewerThan500WalksAgainOnceMoreHaveSynced() = runTest {
+        val held = mutableListOf(item(), item())
+        var fetched = 0
+        val prefetcher = PhotoThumbnailPrefetcher({ _, _ -> PhotoGalleryPage(held.toList(), null) }, { true }) { _, _ -> fetched++ }
+
+        prefetcher.prefetch()
+        held += item()
+        prefetcher.prefetch()
+
+        assertEquals(5, fetched, "The second walk covers the photo the drive sync brought in")
+    }
+
+    @Test
     fun itDoesNothingWhenItMayNotDownload() = runTest {
         val pages = EndlessPages()
 

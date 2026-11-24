@@ -51,11 +51,13 @@ sealed interface PhotobaseSetupUiAction {
 
 /**
  * Installing Photobase is what creates the Photos drive; the owner console does it, in a browser.
+ * [onInstalled] mounts the drive, so the drive sync keeps the gallery's copy of it current.
  * [backup] is null where this device can't back up, and then there are no qualities to confirm.
  */
 class PhotobaseSetupViewModel(
     val extendPermissionViewModel: ExtendPermissionViewModel,
     private val onNotInstalled: () -> Unit = {},
+    private val onInstalled: suspend () -> Unit = {},
     private val backup: PhotoBackupController? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotobaseSetupUiState())
@@ -71,7 +73,11 @@ class PhotobaseSetupViewModel(
                 extendPermissionViewModel.permissionsGranted,
             ) { checked, granted -> if (granted) true else if (checked) false else null }
                 .collect { installed ->
-                    if (installed == true) setupPaused = false
+                    if (installed == true) {
+                        setupPaused = false
+                        // Once per verdict, not per recheck; not inline, so the gallery doesn't wait on the mount.
+                        if (_uiState.value.installed != true) viewModelScope.launch { onInstalled() }
+                    }
                     if (installed == false) {
                         onNotInstalled()
                         backup?.let { controller ->

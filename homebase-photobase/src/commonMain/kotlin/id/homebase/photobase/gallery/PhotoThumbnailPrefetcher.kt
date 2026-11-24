@@ -28,7 +28,7 @@ class PhotoThumbnailPrefetcher(
         this.paused.value = paused
     }
 
-    /** Once a process: after that, a new photo's tile fetches its own, and re-walking 500 records buys nothing. */
+    /** Once a process, once it has seen 500: after that a new photo's tile fetches its own, and re-walking buys nothing. */
     suspend fun prefetch() = withContext(Dispatchers.Default) {
         if (finished) return@withContext
         var cursor: String? = null
@@ -54,7 +54,8 @@ class PhotoThumbnailPrefetcher(
             seen += page.items.size
             cursor = page.nextCursor
         } while (cursor != null && seen < RECENT_PHOTOS)
-        finished = true
+        // Fewer than that held may just mean the drive is still syncing: the next walk gets the rest.
+        finished = seen >= RECENT_PHOTOS
     }
 
     fun reset() {

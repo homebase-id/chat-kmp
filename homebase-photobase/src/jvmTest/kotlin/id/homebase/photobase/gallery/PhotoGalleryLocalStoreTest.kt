@@ -1,21 +1,17 @@
 package id.homebase.photobase.gallery
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.respondError
-import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -29,12 +25,15 @@ import kotlin.uuid.Uuid
 class PhotoGalleryLocalStoreTest {
     private val db = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
     private val identity = Uuid.random()
-    private val repository =
-        PhotoGalleryRepository(DriveQueryProvider(HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }), CredentialsManager()))
-    private val backend = DrivePhotoGalleryBackend(db, { identity }, repository)
+    private val store = PhotoGalleryStore(db, { identity })
 
     @AfterTest
     fun close() = db.close()
+
+    // As the drive sync writes them.
+    private suspend fun synced(vararg files: HomebaseFile, driveId: Uuid = PhotobaseProtocol.DriveAlias) {
+        MainIndexMetaHelpers.HomebaseFileProcessor(db).baseUpsertEntryZapZap(identity, driveId, files.toList(), cursor = null)
+    }
 
     @Test
     fun theTinyPreviewAndTheNameSurviveTheLocalIndex() = runTest {
@@ -45,69 +44,48 @@ class PhotoGalleryLocalStoreTest {
             descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG.jpg", original = 1).encode(),
             previewThumbnail = ThumbnailDescriptor(pixelWidth = 20, pixelHeight = 15, contentType = "image/webp", content = Base64Bytes(tiny)),
         )
-        backend.save(listOf(galleryTestFile(500, payload = payload)))
+        synced(galleryTestFile(500, payload = payload))
 
-        val item = backend.localPage(null, null, 10).files.single().toGalleryItem()!!
+        val item = store.page(null, newestFirst = true).items.single()
         assertContentEquals(tiny, item.payload.previewThumbnail?.content?.bytes)
         assertEquals(20, item.payload.previewThumbnail?.pixelWidth)
         assertEquals("IMG.jpg", item.payload.filename())
     }
 
     @Test
-    fun localPagesGoNewestFirstByCaptureDateAndRespectTheFloor() = runTest {
-        backend.save(listOf(galleryTestFile(100), galleryTestFile(300), galleryTestFile(200)))
+    fun pagesGoByCaptureDateEitherWay() = runTest {
+        synced(galleryTestFile(100), galleryTestFile(300), galleryTestFile(200))
 
-        assertEquals(listOf(300L, 200L, 100L), backend.localPage(null, null, 10).files.map { it.sqlUserDateMs() })
-        assertEquals(listOf(300L, 200L), backend.localPage(null, 200, 10).files.map { it.sqlUserDateMs() })
+        assertEquals(listOf(300L, 200L, 100L), store.page(null, newestFirst = true).items.map { it.capturedAtMs })
+        assertEquals(listOf(100L, 200L, 300L), store.page(null, newestFirst = false).items.map { it.capturedAtMs })
     }
 
     @Test
-    fun localPagingContinuesFromItsCursor() = runTest {
-        backend.save(listOf(galleryTestFile(100), galleryTestFile(300), galleryTestFile(200)))
+    fun pagingContinuesFromItsCursorToTheEnd() = runTest {
+        synced(*(1..45L).map { galleryTestFile(it) }.toTypedArray())
 
-        val first = backend.localPage(null, null, 2)
-        val second = backend.localPage(first.cursor, null, 2)
+        val first = store.page(null, newestFirst = true)
+        val second = store.page(assertNotNull(first.nextCursor), newestFirst = true)
 
-        assertEquals(true, first.hasMore)
-        assertEquals(listOf(100L), second.files.map { it.sqlUserDateMs() })
+        assertEquals(galleryPageSize(null), first.items.size)
+        assertEquals((5L downTo 1L).toList(), second.items.map { it.capturedAtMs })
+        assertNull(second.nextCursor)
     }
 
     @Test
-    fun coverageSurvivesARead() = runTest {
-        val coverage = GalleryCoverage(floorMs = 42, serverCursor = "abc", reachedTheEnd = true)
-        backend.saveCoverage(coverage)
-        assertEquals(coverage, backend.coverage())
-    }
-
-    @Test
-    fun aQuietFirstSyncStillLeavesACursorSoTheNextDoesntSkipAhead() = runTest {
-        val drive = Uuid.random()
-        val monday = UnixTimeUtc(1_000_000_000_000)
-
-        seedPhotoSyncCursor(db, drive, monday)
-        val seeded = CursorStorage(db, drive).loadCursor()
-
-        seedPhotoSyncCursor(db, drive, UnixTimeUtc(2_000_000_000_000))
-        assertEquals(seeded?.toJson(), CursorStorage(db, drive).loadCursor()?.toJson(), "Friday mustn't move Monday's position")
-        assertEquals(QueryBatchCursor.fromStartPoint(UnixTimeUtc(monday.milliseconds - 86_400_000)).toJson(), seeded?.toJson())
-    }
-
-    @Test
-    fun forgettingTheDriveTakesItsRecordsCoverageAndCursorAndNothingElse() = runTest {
+    fun forgettingTheDriveTakesItsRecordsAndSyncPositionAndNothingElse() = runTest {
         val otherDrive = Uuid.random()
-        val other = DrivePhotoGalleryBackend(db, { identity }, repository, photosDriveId = otherDrive)
-        backend.save(listOf(galleryTestFile(100), galleryTestFile(200)))
-        backend.saveCoverage(GalleryCoverage(floorMs = 100, reachedTheEnd = true))
-        seedPhotoSyncCursor(db, PhotobaseProtocol.DriveAlias, UnixTimeUtc(1_000_000_000_000))
-        other.save(listOf(galleryTestFile(300)))
-        seedPhotoSyncCursor(db, otherDrive, UnixTimeUtc(1_000_000_000_000))
+        synced(galleryTestFile(100), galleryTestFile(200))
+        synced(galleryTestFile(300), driveId = otherDrive)
+        val position = QueryBatchCursor.fromStartPoint(UnixTimeUtc(1_000_000_000_000))
+        CursorStorage(db, PhotobaseProtocol.DriveAlias).saveCursor(position)
+        CursorStorage(db, otherDrive).saveCursor(position)
 
-        backend.forget()
+        store.forget()
 
-        assertEquals(emptyList(), backend.localPage(null, null, 10).files)
-        assertEquals(GalleryCoverage(), backend.coverage())
+        assertEquals(emptyList(), store.page(null, newestFirst = true).items)
         assertNull(CursorStorage(db, PhotobaseProtocol.DriveAlias).loadCursor())
-        assertEquals(1, other.localPage(null, null, 10).files.size)
+        assertEquals(1, PhotoGalleryStore(db, { identity }, otherDrive).page(null, newestFirst = true).items.size)
         assertNotNull(CursorStorage(db, otherDrive).loadCursor())
     }
 }

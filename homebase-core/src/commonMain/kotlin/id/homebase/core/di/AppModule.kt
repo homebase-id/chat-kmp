@@ -44,6 +44,10 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
+import kotlinx.coroutines.flow.filter
+import id.homebase.core.config.photosLabeledDrive
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.sync.DriveState
 import id.homebase.api.sync.DriveSyncPolicy
 import kotlin.time.Duration.Companion.days
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -200,14 +204,12 @@ import id.homebase.core.config.getPhotobasePermissionExtensionConfig
 import id.homebase.core.photobase.PhotoBackupTrigger
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.core.photobase.PhotobaseProtocol
-import id.homebase.photobase.gallery.PhotoGalleryRepository
 import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
 import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
 import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
-import id.homebase.photobase.gallery.PhotoGallerySync
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.backup.AssetHasher
@@ -639,11 +641,12 @@ val appModule = module {
                 ),
             ),
             // Chat is the landing screen (and web's first paint): first claim on the greedy budget.
-            // Feed and Moments are large and not visible on first paint: after every small drive.
+            // Feed, Moments and Photos are large and not visible on first paint: after every small drive.
             collectionHead = listOf(chatLabeledDrive.drive.alias),
             collectionTail = listOf(
                 feedLabeledDrive.drive.alias,
                 momentsLabeledDrive.drive.alias,
+                photosLabeledDrive.drive.alias,
             ),
         )
     }
@@ -677,8 +680,6 @@ val appModule = module {
             driveFileProviderCached = get(),
             contactInfo = get(),
             beforeLogout = { hasSession ->
-                get<PhotoGallerySync>().stop()
-                get<PhotoGalleryStore>().stop()
                 get<PhotoBackupEntry>().onBeforeLogout(hasSession)
             },
             clearPlatformCaches = {
@@ -1126,7 +1127,6 @@ val appModule = module {
     single { PhotoBackupEntry({ get<DeveloperPreferences>().photobaseEnabled.value }) { get<PhotoBackupController>() } }
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
     single { PhotobasePreferences(get()) }
-    single { PhotoGalleryRepository(get()) }
     // Far bigger than chat's 300 MB because it holds a library: at Small's measured 14-20 KB
     // (OPTIMIZE.md), about 50,000 photos. Web's cache lives in memory and doesn't survive a reload.
     single {
@@ -1138,8 +1138,7 @@ val appModule = module {
             cancelWhenUnwatched = true,
         )
     }
-    single { photoGalleryStore(get(), get(), get()) }
-    single { PhotoGallerySync(get(), get(), get(), get()) }
+    single { photoGalleryStore(get(), get()) }
     single {
         val files = get<DriveFileProviderCached>()
         PhotoThumbnailPrefetcher(
@@ -1530,7 +1529,10 @@ val appModule = module {
         PhotobaseUninstallCleanup(
             isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
             forget = {
-                get<PhotoGallerySync>().stop()
+                // First, so the drive sync can't write records back after they're gone.
+                if (get<OptionalDriveActivation>().isActivated(photosLabeledDrive)) {
+                    get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias)
+                }
                 get<PhotoGalleryStore>().forget()
                 get<PhotoThumbnailPrefetcher>().reset()
                 get<PhotoBackupEntry>().forgetDrive()
@@ -1542,20 +1544,36 @@ val appModule = module {
         PhotobaseSetupViewModel(
             get(PhotobasePermissionQualifier),
             get<PhotobaseUninstallCleanup>()::onNotInstalled,
-            get<PhotoBackupController>().takeIf { it.isSupported },
+            onInstalled = {
+                val activation = get<OptionalDriveActivation>()
+                if (!activation.isActivated(photosLabeledDrive)) activation.activate(photosLabeledDrive)
+            },
+            backup = get<PhotoBackupController>().takeIf { it.isSupported },
         )
     }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel {
-        val sync = get<PhotoGallerySync>()
         val prefetcher = get<PhotoThumbnailPrefetcher>()
+        val drives = get<DriveSyncManager>()
+        val photos = PhotobaseProtocol.DriveAlias
         PhotoGalleryViewModel(
-            source = get<PhotoGalleryStore>().also { it.resume() },
-            catchUp = sync::syncNow,
+            source = get<PhotoGalleryStore>(),
+            refresh = { if (get<OptionalDriveActivation>().isActivated(photosLabeledDrive)) drives.syncDrive(photos) },
             warm = prefetcher::prefetch,
             pauseWarm = prefetcher::pause,
-            backedUpCount = get<PhotoBackupController>().status?.map { it.backedUpCount },
+            // A sync round writes silently and says so once it stops; after that each change arrives with its file.
+            changes = get<EventBus>().events.filter { event ->
+                (event is BackendEvent.DriveEvent.Stopped && event.driveId == photos && event.totalCount > 0) ||
+                    (event is BackendEvent.DataEvent.BatchReceived && event.driveId == photos)
+            }.map { },
+            syncProgress = drives.driveStatuses.map { statuses ->
+                when (val state = statuses[photos]?.state) {
+                    DriveState.Initialized -> 0
+                    is DriveState.Synchronizing -> state.count
+                    else -> null
+                }
+            },
         )
     }
     viewModel(FilesyncPermissionQualifier) {

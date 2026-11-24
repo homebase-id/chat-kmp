@@ -13,17 +13,13 @@ import id.homebase.photobase.gallery.groupByCaptureDay
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlin.time.Duration.Companion.seconds
@@ -36,8 +32,10 @@ data class PhotoGalleryUiState(
     val days: List<PhotoGalleryDay> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
-    /** Fetching from the server after an open or a refresh; the grid may already show what's held. */
+    /** The drive sync is running; the grid may already show what's held. */
     val isSyncing: Boolean = false,
+    /** Records the running sync has brought in so far. */
+    val syncedSoFar: Int = 0,
     val loadFailed: Boolean = false,
     val endReached: Boolean = false,
     val newestFirst: Boolean = true,
@@ -57,17 +55,18 @@ sealed interface PhotoGalleryUiAction {
 }
 
 /**
- * Shows what the device holds straight away, then catches up when it opens, when asked, and when this
- * phone backs up more: with no WebSocket, that's how new photos appear. [catchUp] returning fetches
- * the first page again.
+ * Shows what the device holds. The drive sync keeps that current: [changes] fires when it has brought
+ * in new records, and [syncProgress] is how many the running sync has brought in, or null when it isn't
+ * running. [refresh] asks it to sync now.
  */
 class PhotoGalleryViewModel(
     private val source: PhotoGalleryPageSource,
     private val grouping: CoroutineDispatcher = Dispatchers.Default,
-    private val catchUp: (suspend () -> Unit)? = null,
+    private val refresh: () -> Unit = {},
     private val warm: suspend () -> Unit = {},
     private val pauseWarm: (Boolean) -> Unit = {},
-    backedUpCount: Flow<Long>? = null,
+    changes: Flow<Unit>? = null,
+    syncProgress: Flow<Int?>? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
@@ -75,7 +74,6 @@ class PhotoGalleryViewModel(
     private var items: List<PhotoGalleryItem> = emptyList()
     private var cursor: String? = null
     private var loadJob: Job? = null
-    private var catchUpJob: Job? = null
     private var warmJob: Job? = null
     private var reloadOnClose = false
     private val opened = TimeSource.Monotonic.markNow()
@@ -84,15 +82,24 @@ class PhotoGalleryViewModel(
     private var thumbnailsShown = 0
 
     init {
-        refresh()
-        if (backedUpCount != null) {
+        reload()
+        // After the first page, so the prefetch's reads don't hold it up.
+        viewModelScope.launch {
+            loadJob?.join()
+            startWarm()
+        }
+        if (syncProgress != null) {
             viewModelScope.launch {
-                // Conflated: a backup ticking per photo queues one more catch-up, not one per photo.
-                backedUpCount.distinctUntilChanged().drop(1).conflate().collect {
-                    catchUpJob?.join()
-                    startCatchUp(showProgress = false).join()
-                    // A long first backup ticks every few seconds; one round trip per gap is plenty.
-                    delay(AUTO_CATCH_UP_GAP)
+                syncProgress.collect { count -> _uiState.update { it.copy(isSyncing = count != null, syncedSoFar = count ?: 0) } }
+            }
+        }
+        if (changes != null) {
+            viewModelScope.launch {
+                // Conflated: a burst of changes reloads once, not once per change.
+                changes.conflate().collect {
+                    reloadFirstPage()
+                    startWarm()
+                    delay(CHANGES_GAP)
                 }
             }
         }
@@ -104,7 +111,10 @@ class PhotoGalleryViewModel(
 
     fun onAction(action: PhotoGalleryUiAction) {
         when (action) {
-            PhotoGalleryUiAction.Refresh -> refresh()
+            PhotoGalleryUiAction.Refresh -> {
+                reload()
+                refresh()
+            }
             PhotoGalleryUiAction.LoadMore -> loadMore()
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             is PhotoGalleryUiAction.Scrolling -> pauseWarm(action.scrolling)
@@ -130,54 +140,29 @@ class PhotoGalleryViewModel(
         }
     }
 
-    private fun refresh() {
-        reload()
-        startCatchUp(showProgress = true)
-    }
-
-    private fun startCatchUp(showProgress: Boolean): Job {
-        catchUpJob?.cancel()
-        // Lazy so catchUpJob is set before the body runs: Main.immediate would otherwise run it first.
-        return viewModelScope.launch(start = CoroutineStart.LAZY) { catchUpThenReload(showProgress) }
-            .also { catchUpJob = it; it.start() }
-    }
-
     private fun reload() {
         loadJob?.cancel()
         _uiState.update { it.copy(isLoading = true, isLoadingMore = false, loadFailed = false) }
         loadJob = viewModelScope.launch { load(cursorToLoad = null) }
     }
 
-    // Offline is normal here: what's on screen stays, and the next open or refresh tries again.
-    private suspend fun catchUpThenReload(showProgress: Boolean) {
-        // Waits for the first page, so the grid shows what's held before any of this runs.
+    // Past the first page, or oldest first, a reload would change what's on screen for nothing.
+    // It goes in loadJob so a sort toggle can cancel it, and a load-more can't run alongside it.
+    private suspend fun reloadFirstPage() {
         loadJob?.join()
-        val catchUp = catchUp ?: return
-        val self = currentCoroutineContext()[Job]
-        if (showProgress) _uiState.update { it.copy(isSyncing = true) }
-        try {
-            catchUp()
-            // Past the first page, or oldest first, a reload would change what's on screen for nothing.
-            // It goes in loadJob so a sort toggle can cancel it, and a load-more can't run alongside it.
-            loadJob?.join()
-            // Replacing the first page under an open viewer could drop the photo being looked at.
-            if (_uiState.value.openedFileId != null) {
-                reloadOnClose = true
-            } else if (!pagedPastFirst && _uiState.value.newestFirst) {
-                val reload = viewModelScope.launch { load(cursorToLoad = null) }
-                loadJob = reload
-                reload.join()
-            }
-            // Its own job: a prefetch that waits out a scroll mustn't hold up the next catch-up.
-            if (warmJob?.isActive != true) warmJob = viewModelScope.launch { runCatchingWarm() }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "gallery catch-up failed" }
-        } finally {
-            // A refresh that replaced this one owns the flag now.
-            if (showProgress && catchUpJob === self) _uiState.update { it.copy(isSyncing = false) }
+        // Replacing the first page under an open viewer could drop the photo being looked at.
+        if (_uiState.value.openedFileId != null) {
+            reloadOnClose = true
+        } else if (!pagedPastFirst && _uiState.value.newestFirst) {
+            val reload = viewModelScope.launch { load(cursorToLoad = null) }
+            loadJob = reload
+            reload.join()
         }
+    }
+
+    // Its own job: a prefetch that waits out a scroll mustn't hold up the next reload.
+    private fun startWarm() {
+        if (warmJob?.isActive != true) warmJob = viewModelScope.launch { runCatchingWarm() }
     }
 
     private suspend fun runCatchingWarm() {
@@ -231,7 +216,7 @@ class PhotoGalleryViewModel(
     private companion object {
         const val TAG = "PhotoGalleryViewModel"
         const val FIRST_SCREEN_THUMBNAILS = 12
-        val AUTO_CATCH_UP_GAP = 10.seconds
+        val CHANGES_GAP = 2.seconds
     }
 }
 
