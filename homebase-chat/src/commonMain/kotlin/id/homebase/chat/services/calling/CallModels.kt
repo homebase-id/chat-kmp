@@ -98,6 +98,8 @@ data class CallState(
     val peerRinging: Boolean = false,
     val pendingOfferSdp: String? = null,
     val offerSeq: Int = 0,
+    /** The peer reads batched [CallSignal.Ice.candidates], as its offer or answer said. */
+    val peerIceBatch: Boolean = false,
     val acceptPending: Boolean = false,
     val verificationCode: String? = null,
     val placedWithVideo: Boolean = false,

@@ -27,7 +27,10 @@ sealed class CallSignal {
     abstract val callId: String
     abstract val device: String?
 
-    /** [seq] orders re-published offers of one call; the first offer is 0 and is omitted from the wire. */
+    /**
+     * [seq] orders re-published offers of one call; the first offer is 0 and is omitted from the wire. [iceBatch] says the
+     * sender reads [Ice.candidates]; a build that predates it gets one candidate per [Ice].
+     */
     @Serializable @SerialName("offer")
     data class Offer(
         override val callId: String,
@@ -35,14 +38,23 @@ sealed class CallSignal {
         val video: Boolean,
         val seq: Int = 0,
         override val device: String? = null,
+        val iceBatch: Boolean = false,
     ) : CallSignal()
 
     @Serializable @SerialName("ringing")
     data class Ringing(override val callId: String, override val device: String? = null) : CallSignal()
 
+    /** [offerSeq] is the [Offer.seq] answered, whose candidates the caller need not trickle; null from an older build. */
     @Serializable @SerialName("answer")
-    data class Answer(override val callId: String, val sdp: String, override val device: String? = null) : CallSignal()
+    data class Answer(
+        override val callId: String,
+        val sdp: String,
+        override val device: String? = null,
+        val offerSeq: Int? = null,
+        val iceBatch: Boolean = false,
+    ) : CallSignal()
 
+    /** [candidates], when present, is every candidate sent so far and starts with the one in [candidate], which an older build reads alone. */
     @Serializable @SerialName("ice")
     data class Ice(
         override val callId: String,
@@ -50,7 +62,16 @@ sealed class CallSignal {
         val sdpMid: String? = null,
         val sdpMLineIndex: Int? = null,
         override val device: String? = null,
-    ) : CallSignal()
+        val candidates: List<LocalCandidate>? = null,
+    ) : CallSignal() {
+        val all: List<LocalCandidate> get() = candidates ?: listOf(LocalCandidate(candidate, sdpMid, sdpMLineIndex))
+
+        companion object {
+            fun of(callId: String, candidates: List<LocalCandidate>): Ice = candidates.first().let {
+                Ice(callId, it.candidate, it.sdpMid, it.sdpMLineIndex, candidates = candidates)
+            }
+        }
+    }
 
     /** [chosen] is the callee device that took the call, on an [HangupReason.AnsweredElsewhere] the caller relays. */
     @Serializable @SerialName("hangup")

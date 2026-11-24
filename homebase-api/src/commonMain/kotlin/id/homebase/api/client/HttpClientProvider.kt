@@ -3,6 +3,7 @@ package id.homebase.api.client
 import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.compression.ContentEncoding
@@ -24,27 +25,34 @@ internal val HttpBreadcrumbPlugin = createClientPlugin("HttpBreadcrumb") {
             "→ ${request.method.value} ${request.url.host}${request.url.encodedPathSegments.joinToString("/")}"
         }
     }
+    onResponse { response ->
+        val url = response.call.request.url
+        Logger.i(tag = "HttpIO") {
+            "← ${response.status.value} ${response.call.request.method.value} ${url.host}${url.encodedPath} " +
+                "${response.responseTime.timestamp - response.requestTime.timestamp}ms"
+        }
+    }
+}
+
+internal fun HttpClientConfig<*>.homebaseDefaults() {
+    install(HttpBreadcrumbPlugin)
+
+    install(ContentNegotiation) {
+        json(OdinSystemSerializer.json)
+    }
+
+    install(ContentEncoding) {
+        gzip(quality = 1.0f)
+        deflate(quality = 0.9f)
+    }
+
+    install(HttpTimeout) {
+        requestTimeoutMillis = 5 * 60_000   // 5 minutes
+        connectTimeoutMillis = 30_000        // 30 seconds
+        socketTimeoutMillis = 5 * 60_000     // 5 minutes
+    }
 }
 
 object HttpClientProvider {
-    fun create(): HttpClient {
-        return createPlatformHttpClient {
-            install(HttpBreadcrumbPlugin)
-
-            install(ContentNegotiation) {
-                json(OdinSystemSerializer.json)
-            }
-
-            install(ContentEncoding) {
-                gzip(quality = 1.0f)
-                deflate(quality = 0.9f)
-            }
-
-            install(HttpTimeout) {
-                requestTimeoutMillis = 5 * 60_000   // 5 minutes
-                connectTimeoutMillis = 30_000        // 30 seconds
-                socketTimeoutMillis = 5 * 60_000     // 5 minutes
-            }
-        }
-    }
+    fun create(): HttpClient = createPlatformHttpClient { homebaseDefaults() }
 }
