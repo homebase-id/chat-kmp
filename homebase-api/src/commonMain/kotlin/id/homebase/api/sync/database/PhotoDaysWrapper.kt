@@ -11,13 +11,13 @@ class PhotoDaysWrapper(
 ) {
     private val queries = PhotoDaysQueries(driver, driveMainIndexAdapter)
 
-    /** (day, photos) for each day that has photos, newest day first. */
+    /** Newest day first. */
     suspend fun dayCounts(identityId: Uuid, driveId: Uuid, fileType: Long): List<DayCount> =
         databaseManager.readValue("photoDays.dayCounts") {
             queries.dayCounts(identityId, driveId, fileType) { day, photos -> DayCount(day!!.toInt(), photos.toInt()) }.executeAsList()
         }
 
-    /** The day a photo taken at [userDate] falls on, and how many photos that day has now. */
+    /** The day a photo taken at [userDate] falls on. */
     suspend fun dayOf(identityId: Uuid, driveId: Uuid, fileType: Long, userDate: Long): CountedDay =
         databaseManager.readValue("photoDays.dayOf") {
             queries.dayOf(userDate, identityId, driveId, fileType) { day, photos, startMs, endMs ->

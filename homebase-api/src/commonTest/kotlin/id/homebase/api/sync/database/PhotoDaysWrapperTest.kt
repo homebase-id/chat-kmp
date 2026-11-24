@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-/** Runs on every platform's own SQLite, in the machine's time zone: the days must be the ones the phone shows. */
+/** On each platform's own SQLite (not the web, which has no test database yet), in the machine's time zone. */
 class PhotoDaysWrapperTest {
     private val identity = Uuid.random()
     private val photos = Uuid.random()

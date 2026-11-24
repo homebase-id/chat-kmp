@@ -1140,7 +1140,7 @@ val appModule = module {
         )
     }
     single { photoGalleryStore(get(), get()) }
-    single { photoDayIndex(get(), get(), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
+    single { photoDayIndex(get(), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
     single {
         val files = get<DriveFileProviderCached>()
         PhotoThumbnailPrefetcher(
@@ -1574,7 +1574,7 @@ val appModule = module {
             pauseWarm = prefetcher::pause,
             changes = get<EventBus>().events.newPhotoRecords(),
             driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
-            library = get<PhotoDayIndex>().days,
+            libraryDays = get<PhotoDayIndex>().days,
         )
     }
     viewModel(FilesyncPermissionQualifier) {

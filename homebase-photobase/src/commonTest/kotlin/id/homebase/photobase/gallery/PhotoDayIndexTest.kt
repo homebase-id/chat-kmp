@@ -6,11 +6,13 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.seconds
 
 class PhotoDayIndexTest {
     /** A library in a database: day -> photos, read the way the real queries read it. */
@@ -75,7 +77,7 @@ class PhotoDayIndexTest {
     @Test
     fun whileItsShownAnArrivingPhotoRecountsItsDayOnly() = runTest {
         val (library, changes, index) = setUp()
-        val shown = mutableListOf<PhotoDays>()
+        val shown = mutableListOf<LibraryDays>()
         val watching = launch { index.days.collect { shown += it } }
         runCurrent()
 
@@ -142,13 +144,23 @@ class PhotoDayIndexTest {
     }
 
     @Test
-    fun theSearchFindsDaysAndWhereANewOneGoes() {
-        val days = intArrayOf(30, 20, 10)
-        assertEquals(1, days.binarySearchDescending(20))
-        assertEquals(-1, days.binarySearchDescending(40))
-        assertEquals(-3, days.binarySearchDescending(15))
-        assertEquals(-4, days.binarySearchDescending(5))
-        assertEquals(-1, intArrayOf().binarySearchDescending(5))
+    fun aBackupsBurstOfPhotosCountsTheirDayOncePerGap() = runTest {
+        val (library, changes, index) = setUp()
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        repeat(5) {
+            library.days[20] = 4 + it
+            changes.emit(PhotoChange.FilesArrived(listOf(20 * DAY_MS + it)))
+            runCurrent()
+        }
+        assertEquals(listOf(20), library.recounted, "the first photo counts at once; the rest wait for the gap")
+
+        advanceTimeBy(2.seconds)
+        runCurrent()
+        assertEquals(listOf(20, 20), library.recounted)
+        assertEquals(8, index.days.first().counts[0])
+        watching.cancel()
     }
 
     private companion object {

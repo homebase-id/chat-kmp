@@ -1,9 +1,6 @@
 import kotlin.uuid.Uuid;
 
--- Days are the phone's local days, worked out by SQLite in both queries, so they always agree.
--- Day = days since 1970-01-01 of the photo's local date.
-
--- Each day that has photos and how many, newest day first.
+-- Both queries work out the local day in SQLite, so they always agree.
 dayCounts:
 SELECT CAST(julianday(date(userDate / 1000, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, count(*) AS photos
 FROM DriveMainIndex
@@ -11,7 +8,6 @@ WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND
 GROUP BY day
 ORDER BY day DESC;
 
--- The day a photo taken at :userDate falls on, how many photos it has, and where it starts and ends.
 -- A range on userDate, so the index serves it.
 dayOf:
 SELECT CAST(julianday(date(CAST(:userDate AS INTEGER) / 1000, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day,
