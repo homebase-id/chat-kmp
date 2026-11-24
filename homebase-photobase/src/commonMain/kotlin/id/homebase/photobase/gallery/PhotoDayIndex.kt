@@ -1,7 +1,6 @@
 package id.homebase.photobase.gallery
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.sync.database.CountedDay
 import id.homebase.api.sync.database.DayCount
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +28,8 @@ class LibraryDays(val days: IntArray, val counts: IntArray) {
  */
 class PhotoDayIndex(
     private val dayCounts: suspend () -> List<DayCount>,
-    private val dayOf: suspend (userDate: Long) -> CountedDay?,
+    private val dayOf: suspend (userDate: Long) -> Int?,
+    private val photosOn: suspend (day: Int) -> Int,
     // The identity and time zone the days were counted for: either changing means counting again.
     private val countedFor: suspend () -> String,
     changes: Flow<PhotoChange>,
@@ -99,15 +99,8 @@ class PhotoDayIndex(
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
             if (dates.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
-            val spans = mutableListOf<LongRange>()
-            val counted = mutableListOf<DayCount>()
-            for (userDate in dates) {
-                if (spans.any { userDate in it }) continue
-                val day = dayOf(userDate) ?: continue
-                spans += day.userDates
-                counted += day.count
-            }
-            put(counted)
+            val days = dates.mapNotNull { dayOf(it) }.distinct()
+            put(days.map { DayCount(it, photosOn(it)) })
         }
     }
 
@@ -161,6 +154,7 @@ class PhotoDayIndex(
 fun photoDayIndex(store: PhotoGalleryStore, changes: Flow<PhotoChange>, scope: CoroutineScope) = PhotoDayIndex(
     dayCounts = store::dayCounts,
     dayOf = store::dayOf,
+    photosOn = store::photosOn,
     countedFor = store::daysCountedFor,
     changes = changes,
     scope = scope,

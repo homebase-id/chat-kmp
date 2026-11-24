@@ -482,6 +482,10 @@ SQL. Medians of 15, after the phone cooled (thermal status 0).
 - **The 305 ms first query of 2026-11-23 was the OS cache:** 80 ms this time without the Photos index.
 - **Unexplained:** parsing 100 headers took 61 ms in both runs today against 34 ms on 2026-11-23, and the
   `QueryBatch` page 114 ms against 43 ms, on a cool phone. The SQL parts didn't change.
+- **One day's count by `dayCounts`' own day expression** (`photosOnDay`, over a UTC range with a spare day each
+  side), replacing local midnights from `strftime(…, 'utc')`, which SQLite's guessed summer time made disagree with
+  the day counts before 1970 in some zones (Pacific/Kiritimati): median day 3.8 ms (was 2.7), busiest 46.5 ms (was
+  42.8). A photo's day alone (`dayNumberOf`, no table) is 2.2 ms through the read lane.
 - **Leaving out photos SQLite has no date for** (a `userDate` outside the years 0 to 9999, which `date()` turns into
   NULL), measured on all days:
   - `HAVING day IS NOT NULL`: 82.0 ms.

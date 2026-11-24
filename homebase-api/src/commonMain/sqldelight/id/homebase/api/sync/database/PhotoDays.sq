@@ -1,7 +1,8 @@
 import kotlin.uuid.Uuid;
 
--- Both queries work out the local day in SQLite, so they always agree. Outside 1970-2037 SQLite guesses a zone's
--- summer time, so a photo near midnight can land a day off from kotlinx-datetime: place photos by these days.
+-- A photo's day is its local date by SQLite, the one expression every query here uses. Outside 1970-2037 SQLite
+-- guesses a zone's summer time, so a photo near midnight can land a day off from kotlinx-datetime: place photos by
+-- these days.
 dayCounts:
 SELECT CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, count(*) AS photos
 FROM DriveMainIndex
@@ -13,13 +14,14 @@ WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND
 GROUP BY day
 ORDER BY day DESC;
 
--- A range on userDate, so the index serves it.
-dayOf:
-SELECT CAST(julianday(date(CAST(:userDate AS INTEGER) / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day,
-  count(*) AS photos,
-  CAST(strftime('%s', date(CAST(:userDate AS INTEGER) / 1000.0, 'unixepoch', 'localtime'), 'utc') AS INTEGER) * 1000 AS startMs,
-  CAST(strftime('%s', date(CAST(:userDate AS INTEGER) / 1000.0, 'unixepoch', 'localtime', '+1 day'), 'utc') AS INTEGER) * 1000 AS endMs
-FROM DriveMainIndex
+dayNumberOf:
+SELECT CAST(julianday(date(CAST(:userDate AS INTEGER) / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER);
+
+-- By dayCounts' own day expression, so the two can't disagree. The userDate range lets the index serve it, with a
+-- day to spare each side since no zone is more than 14 hours from UTC.
+photosOnDay:
+SELECT count(*) FROM DriveMainIndex
 WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = :fileType AND fileState = 1
-  AND userDate >= CAST(strftime('%s', date(CAST(:userDate AS INTEGER) / 1000.0, 'unixepoch', 'localtime'), 'utc') AS INTEGER) * 1000
-  AND userDate < CAST(strftime('%s', date(CAST(:userDate AS INTEGER) / 1000.0, 'unixepoch', 'localtime', '+1 day'), 'utc') AS INTEGER) * 1000;
+  AND userDate >= (CAST(:day AS INTEGER) - 1) * 86400000
+  AND userDate < (CAST(:day AS INTEGER) + 2) * 86400000
+  AND CAST(julianday(date(userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) = :day;

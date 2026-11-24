@@ -5,7 +5,6 @@ import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.query.QueryBatchCursor
-import id.homebase.api.sync.database.CountedDay
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DayCount
 import id.homebase.api.sync.database.QueryBatch
@@ -42,7 +41,9 @@ class PhotoGalleryStore internal constructor(
 
     suspend fun dayCounts(): List<DayCount> = db.photoDays.dayCounts(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong())
 
-    suspend fun dayOf(userDate: Long): CountedDay? = db.photoDays.dayOf(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong(), userDate)
+    suspend fun dayOf(userDate: Long): Int? = db.photoDays.dayOf(userDate)
+
+    suspend fun photosOn(day: Int): Int = db.photoDays.photosOn(identityId(), photosDriveId, PhotobaseProtocol.PhotoFileType.toLong(), day)
 
     /** Whose library and which time zone the day counts are for. */
     suspend fun daysCountedFor(): String = "${identityId()} ${TimeZone.currentSystemDefault().id}"

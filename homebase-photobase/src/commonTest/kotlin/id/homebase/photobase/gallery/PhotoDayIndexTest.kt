@@ -1,7 +1,6 @@
 package id.homebase.photobase.gallery
 
 import id.homebase.api.sync.database.DayCount
-import id.homebase.api.sync.database.CountedDay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -28,13 +27,11 @@ class PhotoDayIndexTest {
             dayCounts = { builds++; days.entries.sortedByDescending { it.key }.map { DayCount(it.key, it.value) } },
             dayOf = { userDate ->
                 check(!failDayOf) { "database closed" }
-                if (userDate == NO_DAY) {
-                    null
-                } else {
-                    val day = (userDate / DAY_MS).toInt()
-                    recounted += day
-                    CountedDay(DayCount(day, days[day] ?: 0), day * DAY_MS..<(day + 1) * DAY_MS)
-                }
+                if (userDate == NO_DAY) null else (userDate / DAY_MS).toInt()
+            },
+            photosOn = { day ->
+                recounted += day
+                days[day] ?: 0
             },
             countedFor = { check(!signedOut) { "no active credentials" }; countedFor },
             changes = changes,

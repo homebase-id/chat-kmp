@@ -57,21 +57,21 @@ class PhotoDaysWrapperTest {
         db.add(local(2024, 10, 26, 23, 59))
         db.add(local(2024, 10, 28, 0, 0))
 
-        val day = assertNotNull(db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 10, 27, 13, 0)))
-        assertEquals(DayCount(morning.localDay(), 2), day.count)
-        assertEquals(morning..<local(2024, 10, 28, 0, 0), day.userDates, "local midnight to local midnight, however long the day")
-        assertEquals(DayCount(local(2024, 5, 1, 9, 0).localDay(), 0), db.photoDays.dayOf(identity, photos, PHOTO_TYPE, local(2024, 5, 1, 9, 0))?.count)
+        val day = assertNotNull(db.photoDays.dayOf(local(2024, 10, 27, 13, 0)))
+        assertEquals(morning.localDay(), day)
+        assertEquals(2, db.photoDays.photosOn(identity, photos, PHOTO_TYPE, day), "local midnight to local midnight, however long the day")
+        assertEquals(0, db.photoDays.photosOn(identity, photos, PHOTO_TYPE, local(2024, 5, 1, 9, 0).localDay()))
     }
 
-    // Before 1970 SQLite guesses a zone's summer time from a stand-in year, so only the two queries can be compared.
+    // Before 1970 SQLite guesses a zone's summer time from a stand-in year, so only the queries can be compared.
     @Test
-    fun beforeEpochBothQueriesPutAPhotoOnTheSameDay() = runDbTest { db ->
+    fun beforeEpochEveryQueryPutsAPhotoOnTheSameDay() = runDbTest { db ->
         val halfASecondBefore = -500L
         db.add(halfASecondBefore)
 
-        val day = assertNotNull(db.photoDays.dayOf(identity, photos, PHOTO_TYPE, halfASecondBefore))
-        assertEquals(listOf(day.count), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
-        assertEquals(1, day.count.photos, "the day's own range holds the photo it was asked about")
+        val day = assertNotNull(db.photoDays.dayOf(halfASecondBefore))
+        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
+        assertEquals(1, db.photoDays.photosOn(identity, photos, PHOTO_TYPE, day))
     }
 
     @Test
@@ -83,7 +83,8 @@ class PhotoDaysWrapperTest {
         db.add(253_402_300_799_999)
 
         assertEquals(listOf(DayCount(local(2024, 3, 9, 12, 0).localDay(), 1)), db.photoDays.dayCounts(identity, photos, PHOTO_TYPE))
-        assertEquals(null, db.photoDays.dayOf(identity, photos, PHOTO_TYPE, inMicroseconds))
+        assertEquals(null, db.photoDays.dayOf(inMicroseconds))
+        assertEquals(null, db.photoDays.dayOf(253_402_300_799_999))
     }
 
     private fun local(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =

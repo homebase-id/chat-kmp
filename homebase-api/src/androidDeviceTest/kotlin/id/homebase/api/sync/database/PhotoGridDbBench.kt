@@ -72,16 +72,17 @@ class PhotoGridDbBench {
         assertEquals(days, shipped.map { it.day to it.photos }, "PhotoDays.dayCounts must count the days this bench does")
         measure("day counts, PhotoDays.dayCounts (shipped)") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong()) }
         val busiest = days.maxBy { it.second }
-        val inBusiest = checkNotNull(dbm.photoDays.dayOf(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiest.first * DAY_MS + DAY_MS / 2))
-        log("  busiest day ${busiest.first}: ${busiest.second} photos; dayOf found ${inBusiest.count.photos} on day ${inBusiest.count.day}")
-        measure("one day's count, PhotoDays.dayOf (shipped), busiest day") {
-            dbm.photoDays.dayOf(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiest.first * DAY_MS + DAY_MS / 2)
+        val busiestDay = checkNotNull(dbm.photoDays.dayOf(busiest.first * DAY_MS + DAY_MS / 2))
+        log("  busiest day ${busiest.first}: ${busiest.second} photos; photosOn found ${dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiestDay)} on day $busiestDay")
+        measure("one day's count, PhotoDays.photosOn (shipped), busiest day") {
+            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), busiest.first)
         }
         val typical = days.sortedBy { it.second }[days.size / 2]
         log("  median day has ${typical.second} photos")
-        measure("one day's count, PhotoDays.dayOf (shipped), median day") {
-            dbm.photoDays.dayOf(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), typical.first * DAY_MS + DAY_MS / 2)
+        measure("one day's count, PhotoDays.photosOn (shipped), median day") {
+            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PHOTO_FILE_TYPE.toLong(), typical.first)
         }
+        measure("a photo's day, PhotoDays.dayOf (shipped)") { dbm.photoDays.dayOf(busiest.first * DAY_MS + DAY_MS / 2) }
         measure("photo count, existing indexes") { photoCount(dbm.driver) }
         val deep = dateAround(days, yearsBack = 7)
         measure("100 headers near 7 years back, QueryBatch (today's gallery)") { queryBatchPage(dbm, deep) }
