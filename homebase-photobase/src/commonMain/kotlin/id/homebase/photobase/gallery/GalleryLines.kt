@@ -48,7 +48,7 @@ class GalleryLines(val layout: GalleryLayout, val columns: Int) {
     fun itemFor(other: GalleryLines, item: Int): Int? {
         val day = other.dayOfItem(item)
         val row = other.rowOfItem(item)
-        return if (row < 0) headerOnOrAfter(day) else itemOf(day, row * other.columns)
+        return if (row < 0) headerOnOrAfter(day) else itemOf(day, row * other.columns) ?: headerOnOrAfter(day)
     }
 
     // The day's header, or once the day is gone the next day's. Only on a column change, so a plain walk.

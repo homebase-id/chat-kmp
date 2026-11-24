@@ -65,6 +65,35 @@ class GalleryLinesTest {
     }
 
     @Test
+    fun oldestFirstAPhotoIsOnTheRowOfItsReversedSlot() {
+        val newer = item()
+        val older = item()
+        val lines = GalleryLines(GalleryLayout(library, newestFirst = false), columns = 2)
+
+        // Items: 10, [c], 20, [b b], [b], 30, [a a]; day 30's older photo is its first slot.
+        assertEquals(6, lines.itemOf(older.fileId, mapOf(30 to listOf(newer, older))))
+        assertEquals(6, lines.itemOf(newer.fileId, mapOf(30 to listOf(newer, older))))
+    }
+
+    @Test
+    fun aDayShowingFewerThanCountedTakesFewerRows() {
+        val lines = GalleryLines(GalleryLayout(library, newestFirst = true, shown = mapOf(30 to 1)), columns = 2)
+
+        // Items: 30, [a], 20, [b b], [b], 10, [c]
+        assertEquals(3, lines.itemOf(20, 0), "day 30's header, its one row, day 20's header, then this")
+        assertEquals(4, lines.itemOf(20, 2))
+    }
+
+    @Test
+    fun aRowWhoseDayEmptiedGoesToTheNextDay() {
+        val before = GalleryLines(GalleryLayout(library, newestFirst = true), columns = 2)
+        val after = GalleryLines(GalleryLayout(library, newestFirst = true, shown = mapOf(20 to 0)), columns = 3)
+
+        // After: 30, [a a], 20, 10, [c]: day 20's row 1 has no photos to land on.
+        assertEquals(2, after.itemFor(before, 4))
+    }
+
+    @Test
     fun oneColumnIsAnItemPerPhoto() {
         val lines = GalleryLines(GalleryLayout(library, newestFirst = false), columns = 1)
 

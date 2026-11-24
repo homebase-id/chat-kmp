@@ -60,6 +60,13 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.collectionItemInfo
+import androidx.compose.ui.semantics.collectionInfo
+import androidx.compose.ui.semantics.CollectionItemInfo
+import androidx.compose.ui.semantics.CollectionInfo
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.MutableIntState
 import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.layout.Spacer
@@ -132,7 +139,8 @@ fun PhotoGalleryScreen(
     }
     val layout = remember(library, uiState.newestFirst, shown) { library?.let { GalleryLayout(it, uiState.newestFirst, shown) } }
     val gridState = rememberLazyListState()
-    val memory = remember(gridState) { GridMemory(gridState) }
+    val columns = rememberSaveable { mutableIntStateOf(0) }
+    val memory = remember(gridState) { GridMemory(gridState, columns) }
     val onAction: (PhotoGalleryUiAction) -> Unit = remember(viewModel) {
         { action ->
             if (action is PhotoGalleryUiAction.CloseViewer) memory.returnTo = viewModel.uiState.value.openedFileId
@@ -156,7 +164,8 @@ fun PhotoGalleryScreen(
 }
 
 /** Outlives the grid while the viewer covers it. */
-internal class GridMemory(val state: LazyListState) {
+/** [columns] is the column count [state]'s index was taken in, saved with it. */
+internal class GridMemory(val state: LazyListState, val columns: MutableIntState = mutableIntStateOf(0)) {
     var newestFirst: Boolean? = null
     var topDay: Int? = null
     var returnTo: Uuid? = null
@@ -416,15 +425,15 @@ internal fun PhotoGrid(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = galleryColumns(constraints.maxWidth, LocalDensity.current)
         val lines = remember(layout, columns) { GalleryLines(layout, columns) }
-        // New columns move every row: the line at the top stays the one showing what it showed.
-        val shown = remember { arrayOfNulls<GalleryLines>(1) }
+        // New columns move every row, also while the grid was away: the line at the top stays the one showing what it
+        // showed, its top aligned, since the old offset was into a row of another height.
         SideEffect {
-            val before = shown[0]
-            shown[0] = lines
-            if (before != null && before.columns != lines.columns) {
+            val before = memory.columns.intValue
+            memory.columns.intValue = columns
+            if (before != 0 && before != columns) {
+                val old = GalleryLines(layout, before)
                 val state = memory.state
-                lines.itemFor(before, state.firstVisibleItemIndex.coerceAtMost(before.itemCount - 1))
-                    ?.let { state.requestScrollToItem(it, state.firstVisibleItemScrollOffset) }
+                if (old.itemCount > 0) lines.itemFor(old, state.firstVisibleItemIndex.coerceAtMost(old.itemCount - 1))?.let { state.requestScrollToItem(it) }
             }
         }
         PhotoLines(lines, loaded, onAction, memory, sharedTransitionScope, animatedVisibilityScope, haptics)
@@ -501,7 +510,8 @@ private fun PhotoLines(
             state = gridState,
             verticalArrangement = Arrangement.spacedBy(GRID_GAP),
             contentPadding = PaddingValues(GRID_PADDING),
-            modifier = Modifier.fillMaxSize(),
+            // A grid to accessibility services, as the lazy grid was: a line per row, a column per tile.
+            modifier = Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(lines.itemCount, lines.columns) },
         ) {
             items(lines.itemCount, key = lines::keyOf, contentType = { if (lines.rowOfItem(it) < 0) DAY_HEADER else PHOTO_ROW }) { item ->
                 val position = lines.positionOfItem(item)
@@ -511,7 +521,9 @@ private fun PhotoLines(
                         // The zone formatMomentDate reads back in, or a new zone shows the day before or after.
                         text = formatMomentDate(LocalDate.fromEpochDays(layout.days[position]).atStartOfDayIn(TimeZone.currentSystemDefault())),
                         style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                            .semantics { collectionItemInfo = CollectionItemInfo(item, 1, 0, lines.columns) }
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
                     )
                     return@items
                 }
@@ -520,7 +532,7 @@ private fun PhotoLines(
                 Row(horizontalArrangement = Arrangement.spacedBy(GRID_GAP)) {
                     for (column in 0 until lines.columns) {
                         val slot = row * lines.columns + column
-                        val tile = Modifier.weight(1f)
+                        val tile = Modifier.weight(1f).semantics { collectionItemInfo = CollectionItemInfo(item, 1, column, 1) }
                         if (slot >= slots) {
                             Spacer(tile)
                             continue

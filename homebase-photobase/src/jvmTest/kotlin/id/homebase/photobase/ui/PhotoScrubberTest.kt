@@ -9,6 +9,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -92,6 +95,48 @@ class PhotoScrubberTest {
         val wide = linesAt(800.dp)
         assertTrue(wide.columns > narrow.columns)
         assertEquals(day, wide.dayOfItem(gridState.firstVisibleItemIndex), "rows renumber; the day on top doesn't change")
+    }
+
+    @Test
+    fun aGridComingBackAtAnotherWidthOpensWhereItWas() = runComposeUiTest {
+        val gridState = LazyListState()
+        val memory = GridMemory(gridState)
+        val width = mutableStateOf(400.dp)
+        val showing = mutableStateOf(true)
+        setContent {
+            SharedTransitionLayout {
+                AnimatedVisibility(visible = true) {
+                    Box(Modifier.size(width.value, 800.dp)) {
+                        if (showing.value) PhotoGrid(layout, mutableStateOf(emptyMap<Int, List<PhotoGalleryItem>>()), {}, memory, this@SharedTransitionLayout, this@AnimatedVisibility, CountingHaptics())
+                    }
+                }
+            }
+        }
+        val narrow = linesAt(400.dp)
+        runOnIdle { gridState.requestScrollToItem(narrow.headerItemOf(700) + 2) }
+        waitForIdle()
+        val day = narrow.dayOfItem(gridState.firstVisibleItemIndex)
+
+        showing.value = false
+        waitForIdle()
+        width.value = 800.dp
+        waitForIdle()
+        showing.value = true
+        waitForIdle()
+
+        assertEquals(day, linesAt(800.dp).dayOfItem(gridState.firstVisibleItemIndex), "the saved position was in 400 dp rows")
+    }
+
+    @Test
+    fun accessibilityServicesSeeAGridOfTiles() = runComposeUiTest {
+        showGrid(LazyListState(), CountingHaptics())
+        waitForIdle()
+        val columns = linesAt(400.dp).columns
+
+        val grid = onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.CollectionInfo)).fetchSemanticsNode()
+        assertEquals(columns, grid.config[SemanticsProperties.CollectionInfo].columnCount)
+        val tiles = onAllNodes(SemanticsMatcher("a tile") { it.config.getOrNull(SemanticsProperties.CollectionItemInfo)?.columnSpan == 1 }).fetchSemanticsNodes()
+        assertEquals((0 until columns).toSet(), tiles.map { it.config[SemanticsProperties.CollectionItemInfo].columnIndex }.toSet())
     }
 
     @Test

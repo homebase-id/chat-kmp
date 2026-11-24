@@ -87,7 +87,8 @@ internal fun PhotoScrubber(
     haptics: Haptics,
     grid: @Composable () -> Unit,
 ) {
-    val pitch by rememberRowPitch(listState)
+    val pitch by rememberRowPitch(listState, lines.columns)
+    val viewportPx by remember(listState) { derivedStateOf { listState.layoutInfo.viewportSize.height } }
     val rows = remember(lines, pitch) { pitch?.let { GalleryRows(lines, it.headerPx, it.rowPx) } }
     val pointerNear = remember { mutableStateOf(false) }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -110,21 +111,26 @@ internal fun PhotoScrubber(
         grid()
         val held = rows
         val measured = pitch
-        if (held != null && measured != null && held.height >= measured.viewportPx * SCREENS_TO_SHOW) {
-            Handle(listState, held, held.height + measured.edgesPx - measured.viewportPx, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
+        if (held != null && measured != null && viewportPx > 0 && held.height >= viewportPx * SCREENS_TO_SHOW) {
+            Handle(listState, held, held.height + measured.edgesPx - viewportPx, pointerNear, haptics, Modifier.align(Alignment.TopEnd))
         }
     }
 }
 
 // edgesPx: the list's padding above and below, less the gap the rows count after the last one.
-private data class RowPitch(val headerPx: Int, val rowPx: Int, val edgesPx: Int, val viewportPx: Int)
+private data class RowPitch(val headerPx: Int, val rowPx: Int, val edgesPx: Int)
 
-// A header's and a row's height with the gap after each, from each with the item after it on screen. Kept while none
-// is, as inside a day bigger than the screen.
+private data class Seen(val headerPx: Int?, val rowPx: Int?, val edgesPx: Int?)
+
+// A header's and a row's height with the gap after each, each from one with the item after it on screen, kept while
+// none is (inside a day bigger than the screen). New columns change a row's height, so they start over.
 @Composable
-private fun rememberRowPitch(listState: LazyListState): State<RowPitch?> {
-    val pitch = remember { mutableStateOf<RowPitch?>(null) }
-    LaunchedEffect(listState) {
+private fun rememberRowPitch(listState: LazyListState, columns: Int): State<RowPitch?> {
+    val pitch = remember(columns) { mutableStateOf<RowPitch?>(null) }
+    LaunchedEffect(listState, columns) {
+        var headerPx: Int? = null
+        var rowPx: Int? = null
+        var edgesPx: Int? = null
         snapshotFlow {
             val info = listState.layoutInfo
             val items = info.visibleItemsInfo
@@ -133,16 +139,22 @@ private fun rememberRowPitch(listState: LazyListState): State<RowPitch?> {
                 for (i in 0 until items.size - 1) if (items[i].contentType == type && items[i + 1].index == items[i].index + 1) return i
                 return -1
             }
-            val header = followedAt(DAY_HEADER).takeIf { it >= 0 } ?: return@snapshotFlow null
-            val row = followedAt(PHOTO_ROW).takeIf { it >= 0 } ?: return@snapshotFlow null
-            val gap = items[row + 1].offset - items[row].offset - items[row].size
-            RowPitch(
-                headerPx = items[header + 1].offset - items[header].offset,
-                rowPx = items[row + 1].offset - items[row].offset,
-                edgesPx = info.beforeContentPadding + info.afterContentPadding - gap,
-                viewportPx = info.viewportSize.height,
+            val header = followedAt(DAY_HEADER)
+            val row = followedAt(PHOTO_ROW)
+            Seen(
+                headerPx = if (header < 0) null else items[header + 1].offset - items[header].offset,
+                rowPx = if (row < 0) null else items[row + 1].offset - items[row].offset,
+                edgesPx = if (row < 0) null else info.beforeContentPadding + info.afterContentPadding - (items[row + 1].offset - items[row].offset - items[row].size),
             )
-        }.filterNotNull().collect { pitch.value = it }
+        }.collect { seen ->
+            headerPx = seen.headerPx ?: headerPx
+            rowPx = seen.rowPx ?: rowPx
+            edgesPx = seen.edgesPx ?: edgesPx
+            val h = headerPx
+            val r = rowPx
+            val e = edgesPx
+            if (h != null && r != null && e != null) pitch.value = RowPitch(h, r, e)
+        }
     }
     return pitch
 }
