@@ -1,26 +1,21 @@
 package id.homebase.photobase.gallery
 
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.uuid.Uuid
 
 class GalleryLayoutTest {
-    private fun item() = PhotoGalleryItem(Uuid.random(), Uuid.random(), 0, KeyHeader.newRandom16(), PayloadDescriptor(key = "photo_main", contentType = "image/jpeg"))
+    private fun item() = galleryItem()
 
-    // Days 30, 20, 10 with 2, 3 and 1 photos.
-    private val library = LibraryDays(intArrayOf(30, 20, 10), intArrayOf(2, 3, 1))
+    private val library = threeDays
 
     @Test
-    fun eachDayIsAHeaderThenASlotPerCountedPhoto() {
+    fun eachDayHasASlotPerCountedPhoto() {
         val layout = GalleryLayout(library, newestFirst = true)
 
         assertEquals(6, layout.photoCount)
-        // Items: 30, a, a, 20, b, b, b, 10, c
-        assertEquals(listOf(30, 30, 30, 20, 20, 20, 20, 10, 10), (0 until 9).map { layout.dayOfItem(it) })
+        assertEquals(listOf(2, 3, 1), (0 until 3).map { layout.slotsOf(it) })
         assertEquals(listOf(30, 30, 20, 20, 20, 10), (0 until 6).map { layout.locate(it).first })
     }
 
@@ -34,7 +29,6 @@ class GalleryLayoutTest {
         assertEquals(newer, layout.photoAt(0, loaded))
         assertEquals(older, layout.photoAt(1, loaded))
         assertNull(layout.photoAt(2, loaded), "day 20 isn't read yet")
-        assertEquals(2, layout.itemOf(older.fileId, loaded))
         assertEquals(1, layout.photoOf(older.fileId, loaded))
     }
 
@@ -48,7 +42,6 @@ class GalleryLayoutTest {
         assertContentEquals(intArrayOf(10, 20, 30), layout.days)
         assertEquals(older, layout.photoAt(2, 0, loaded))
         assertEquals(newer, layout.photoAt(2, 1, loaded))
-        assertEquals(1 + 1 + 1 + 3 + 1, layout.itemOf(older.fileId, loaded))
         assertEquals(1 + 3, layout.photoOf(older.fileId, loaded))
     }
 
@@ -63,7 +56,6 @@ class GalleryLayoutTest {
         assertEquals(5, layout.photoCount)
         assertEquals(shown, layout.photoAt(0, loaded))
         assertEquals(20 to 0, layout.locate(1))
-        assertEquals(3, layout.itemOf(20, 0), "day 30's header, its photo, day 20's header, then this")
         assertEquals(1 + 3 - 1, layout.photoOf(20, 7), "a slot past the day's last is held to its last")
     }
 
