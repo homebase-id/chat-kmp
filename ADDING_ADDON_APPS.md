@@ -141,11 +141,14 @@ activates it once, somewhere.
 
 ### Activation is the drive lifecycle — use `OptionalDriveActivation`
 
-**An app's drive is always a mounted drive, and only `DriveSyncManager` syncs it.** An app never
-runs its own `DriveSync`, and never pages the drive's files from the server in place of the sync:
-its screens read the local index and update from the drive's events. A big drive goes in
-`collectionTail` (`AppModule.kt`) so it syncs after the small ones. `ArchitectureTest` enforces
-the first part.
+**An app's drive is a mounted drive, and only `DriveSyncManager` syncs it.** An app never runs its
+own `DriveSync` (its constructor is internal to `homebase-api`), and doesn't page the drive's files
+from the server in place of the sync: its screens read the local index, which is what makes them
+fast, and update from the drive's events. A big drive goes in `collectionTail` (`AppModule.kt`) so
+it syncs after the small ones.
+
+The one exception is Filesync: its drive can hold 200,000 files, and their headers must not flood
+the local database, so it is never mounted and its browser lists folders over the network.
 
 An optional add-on has no `activated` boolean of its own. **Activation == the drive is
 mounted.** Reading and performing activation both go through one shared, injectable helper,

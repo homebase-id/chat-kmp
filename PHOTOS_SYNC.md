@@ -184,8 +184,8 @@ derived from both parts; an Android motion photo is one file, so its id comes fr
    HLS path instead; how this check applies there is settled when that task is built.
 
 **Dedupe across devices.**
-- Before uploading: ask the server (query by `uniqueId` on the Photos drive; there's no local index
-  in v1, §3.5). If present → mark `DONE`, no upload.
+- Before uploading: ask the server (query by `uniqueId` on the Photos drive; the device's copy may
+  lag another device's backup). If present → mark `DONE`, no upload.
 - Two devices racing on the same photo both pass the check; the server keeps one file per
   `uniqueId` per drive and rejects the second with `ExistingFileWithUniqueId` (4105,
   `ClientException.isExistingFileWithUniqueId()`). Backup treats 4105 as **success** → `DONE`,

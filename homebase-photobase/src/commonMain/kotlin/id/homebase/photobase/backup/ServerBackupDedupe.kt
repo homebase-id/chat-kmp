@@ -8,7 +8,7 @@ import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 
-/** No local index in v1: the drive isn't synced, so the server is what knows. */
+/** Asks the server, not the device's copy: another device may have backed the photo up since this one last synced. */
 class ServerBackupDedupe(
     private val queryProvider: DriveQueryProvider,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,

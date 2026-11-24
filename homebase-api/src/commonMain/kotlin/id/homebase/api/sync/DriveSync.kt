@@ -22,15 +22,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.measureTimedValue
+import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
-class DriveSync(
+// Only DriveSyncManager runs a drive's sync (ADDING_ADDON_APPS.md): an app mounts its drive, it doesn't sync it.
+class DriveSync internal constructor(
     private val identityId: Uuid,
     private val driveId: Uuid,
     private val driveQueryProvider: DriveQueryProvider, // TODO: <- can we get rid of this?
@@ -100,9 +103,19 @@ class DriveSync(
     /** Epoch-ms when the last sync round finished, or 0 if none has this session. */
     fun lastStoppedAtMs(): Long = lastStoppedAt.value
 
+    // The batch write in flight: on the manager's scope, so cancelling the round doesn't stop it.
+    @Volatile private var pendingDbJob: Deferred<Unit>? = null
+
     fun cancel() {
         killroy.value = false
         job?.cancel()
+    }
+
+    /** Returns once the round and the batch it was writing have stopped, so the drive's records can be deleted. */
+    suspend fun cancelAndJoin() {
+        killroy.value = false
+        job?.cancelAndJoin()
+        pendingDbJob?.join()
     }
 
     // sync() spawn a thread unless it's already working. Returns a pointer to the
@@ -194,7 +207,7 @@ class DriveSync(
     private suspend fun performSync(prefetched: QueryBatchResponse? = null, startedEmitted: Boolean = false) {
         var totalCount = 0
         var queryBatchResponse: QueryBatchResponse? = null
-        var pendingDbJob: Deferred<Unit>? = null
+        pendingDbJob = null
         var pendingPrefetch = prefetched
 
         if (!startedEmitted) eventBus.emit(BackendEvent.DriveEvent.Started(driveId))

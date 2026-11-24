@@ -51,16 +51,20 @@ class PhotoThumbnailPrefetcherTest {
     }
 
     @Test
-    fun aWalkThatFoundFewerThan500WalksAgainOnceMoreHaveSynced() = runTest {
+    fun aWalkWhileTheDriveStillSyncsWalksAgainAndOneAfterItIsTheLast() = runTest {
         val held = mutableListOf(item(), item())
+        var syncing = true
         var fetched = 0
-        val prefetcher = PhotoThumbnailPrefetcher({ _, _ -> PhotoGalleryPage(held.toList(), null) }, { true }) { _, _ -> fetched++ }
+        val prefetcher = PhotoThumbnailPrefetcher({ _, _ -> PhotoGalleryPage(held.toList(), null) }, { true }, { syncing }) { _, _ -> fetched++ }
 
         prefetcher.prefetch()
         held += item()
+        syncing = false
         prefetcher.prefetch()
-
         assertEquals(5, fetched, "The second walk covers the photo the drive sync brought in")
+
+        prefetcher.prefetch()
+        assertEquals(5, fetched, "A small library isn't walked again on every change")
     }
 
     @Test

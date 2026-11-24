@@ -37,19 +37,6 @@ class ArchitectureTest {
     }
 
     @Test
-    fun `Only DriveSyncManager runs a drive's sync`() {
-        Konsist.scopeFromProduction()
-            .files
-            .filter { it.name !in setOf("DriveSync", "DriveSyncManager") }
-            .assertFalse(
-                additionalMessage = "An app's drive is a mounted drive (ADDING_ADDON_APPS.md): mount it with " +
-                    "OptionalDriveActivation and let DriveSyncManager sync it, rather than running a DriveSync of its own."
-            ) {
-                it.text.contains(Regex("""(?<![\w.])DriveSync\("""))
-            }
-    }
-
-    @Test
     fun `Forward and moment share stream the payload to disk instead of reading it whole`() {
         val wholeFileRead = Regex("""\.\s*getPayloadBytesDecrypted\s*\(""")
         val guarded = Konsist.scopeFromProject()

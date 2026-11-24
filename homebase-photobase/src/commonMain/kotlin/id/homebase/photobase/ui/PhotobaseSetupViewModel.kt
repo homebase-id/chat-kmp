@@ -75,8 +75,8 @@ class PhotobaseSetupViewModel(
                 .collect { installed ->
                     if (installed == true) {
                         setupPaused = false
-                        // Once per verdict, not per recheck; not inline, so the gallery doesn't wait on the mount.
-                        if (_uiState.value.installed != true) viewModelScope.launch { onInstalled() }
+                        // Not inline, so the gallery doesn't wait on the mount.
+                        viewModelScope.launch { onInstalled() }
                     }
                     if (installed == false) {
                         onNotInstalled()

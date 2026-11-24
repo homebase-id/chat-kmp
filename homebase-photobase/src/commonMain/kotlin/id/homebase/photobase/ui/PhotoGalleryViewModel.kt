@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlin.time.Duration.Companion.seconds
@@ -32,16 +33,16 @@ data class PhotoGalleryUiState(
     val days: List<PhotoGalleryDay> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
-    /** The drive sync is running; the grid may already show what's held. */
-    val isSyncing: Boolean = false,
-    /** Records the running sync has brought in so far. */
-    val syncedSoFar: Int = 0,
+    /** Records the running drive sync has brought in so far, or null when it isn't running. The grid may already show what's held. */
+    val syncedSoFar: Int? = null,
     val loadFailed: Boolean = false,
     val endReached: Boolean = false,
     val newestFirst: Boolean = true,
     /** The photo open full screen; by id, so a reload while it's open doesn't move to another photo. */
     val openedFileId: Uuid? = null,
-)
+) {
+    val isSyncing: Boolean get() = syncedSoFar != null
+}
 
 sealed interface PhotoGalleryUiAction {
     data object Refresh : PhotoGalleryUiAction
@@ -65,8 +66,8 @@ class PhotoGalleryViewModel(
     private val refresh: () -> Unit = {},
     private val warm: suspend () -> Unit = {},
     private val pauseWarm: (Boolean) -> Unit = {},
-    changes: Flow<Unit>? = null,
-    syncProgress: Flow<Int?>? = null,
+    changes: Flow<Unit> = emptyFlow(),
+    syncProgress: Flow<Int?> = emptyFlow(),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
@@ -88,19 +89,15 @@ class PhotoGalleryViewModel(
             loadJob?.join()
             startWarm()
         }
-        if (syncProgress != null) {
-            viewModelScope.launch {
-                syncProgress.collect { count -> _uiState.update { it.copy(isSyncing = count != null, syncedSoFar = count ?: 0) } }
-            }
+        viewModelScope.launch {
+            syncProgress.collect { count -> _uiState.update { it.copy(syncedSoFar = count) } }
         }
-        if (changes != null) {
-            viewModelScope.launch {
-                // Conflated: a burst of changes reloads once, not once per change.
-                changes.conflate().collect {
-                    reloadFirstPage()
-                    startWarm()
-                    delay(CHANGES_GAP)
-                }
+        viewModelScope.launch {
+            // Conflated: a burst of changes reloads once, not once per change.
+            changes.conflate().collect {
+                reloadFirstPage()
+                startWarm()
+                delay(CHANGES_GAP)
             }
         }
     }

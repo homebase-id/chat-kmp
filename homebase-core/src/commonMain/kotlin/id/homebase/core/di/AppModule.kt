@@ -44,9 +44,7 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
-import kotlinx.coroutines.flow.filter
 import id.homebase.core.config.photosLabeledDrive
-import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.sync.DriveState
 import id.homebase.api.sync.DriveSyncPolicy
 import kotlin.time.Duration.Companion.days
@@ -207,6 +205,8 @@ import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
+import id.homebase.photobase.gallery.syncedSoFar
+import id.homebase.photobase.gallery.newPhotoRecords
 import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
 import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
@@ -1146,6 +1146,7 @@ val appModule = module {
             // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
             // Nor on web, where the cache is gone at the next reload.
             mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
+            stillSyncing = { get<DriveSyncManager>().driveStatuses.value[PhotobaseProtocol.DriveAlias]?.state is DriveState.Synchronizing },
             ensureThumbnail = { item, size ->
                 files.ensureThumbCached(item.driveId, item.fileId, item.shown.key, size.pixelWidth, size.pixelHeight, item.shown.lastModified)
             },
@@ -1512,7 +1513,7 @@ val appModule = module {
             autoCheck = false,
         )
     }
-    // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
+    // Checked on open, unlike the other add-ons: uninstalling Photobase on the server tells the phone nothing.
     viewModel(PhotobasePermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
@@ -1529,10 +1530,10 @@ val appModule = module {
         PhotobaseUninstallCleanup(
             isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
             forget = {
-                // First, so the drive sync can't write records back after they're gone.
-                if (get<OptionalDriveActivation>().isActivated(photosLabeledDrive)) {
-                    get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias)
-                }
+                // First: unmounting returns once the drive's sync has stopped writing. Also for a drive a 403
+                // unmounted this session, or it would stay in the registry every device mounts from.
+                val listed = get<DriveRegistry>().loadDrives().any { it.drive.alias == PhotobaseProtocol.DriveAlias }
+                if (listed || photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoThumbnailPrefetcher>().reset()
                 get<PhotoBackupEntry>().forgetDrive()
@@ -1544,10 +1545,7 @@ val appModule = module {
         PhotobaseSetupViewModel(
             get(PhotobasePermissionQualifier),
             get<PhotobaseUninstallCleanup>()::onNotInstalled,
-            onInstalled = {
-                val activation = get<OptionalDriveActivation>()
-                if (!activation.isActivated(photosLabeledDrive)) activation.activate(photosLabeledDrive)
-            },
+            onInstalled = { if (!photosMounted()) get<OptionalDriveActivation>().activate(photosLabeledDrive) },
             backup = get<PhotoBackupController>().takeIf { it.isSupported },
         )
     }
@@ -1556,24 +1554,14 @@ val appModule = module {
     viewModel {
         val prefetcher = get<PhotoThumbnailPrefetcher>()
         val drives = get<DriveSyncManager>()
-        val photos = PhotobaseProtocol.DriveAlias
         PhotoGalleryViewModel(
             source = get<PhotoGalleryStore>(),
-            refresh = { if (get<OptionalDriveActivation>().isActivated(photosLabeledDrive)) drives.syncDrive(photos) },
+            // syncDrive throws on a drive that isn't mounted.
+            refresh = { if (photosMounted()) drives.syncDrive(PhotobaseProtocol.DriveAlias) },
             warm = prefetcher::prefetch,
             pauseWarm = prefetcher::pause,
-            // A sync round writes silently and says so once it stops; after that each change arrives with its file.
-            changes = get<EventBus>().events.filter { event ->
-                (event is BackendEvent.DriveEvent.Stopped && event.driveId == photos && event.totalCount > 0) ||
-                    (event is BackendEvent.DataEvent.BatchReceived && event.driveId == photos)
-            }.map { },
-            syncProgress = drives.driveStatuses.map { statuses ->
-                when (val state = statuses[photos]?.state) {
-                    DriveState.Initialized -> 0
-                    is DriveState.Synchronizing -> state.count
-                    else -> null
-                }
-            },
+            changes = get<EventBus>().events.newPhotoRecords(),
+            syncProgress = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state.syncedSoFar() },
         )
     }
     viewModel(FilesyncPermissionQualifier) {
@@ -1794,3 +1782,5 @@ private fun Scope.photoBackupController(): PhotoBackupController {
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds
 private const val CALL_WS_HOLD = "call"
+
+private fun org.koin.core.scope.Scope.photosMounted(): Boolean = get<OptionalDriveActivation>().isActivated(photosLabeledDrive)

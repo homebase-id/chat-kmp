@@ -549,7 +549,8 @@ class DriveSyncManager(
             driveSyncs = driveSyncs - driveId
             s
         } ?: return
-        sync.cancel()
+        // Joined, so a caller that deletes the drive's records next can't have a batch written back.
+        sync.cancelAndJoin()
         remoteRetryAttempts.remove(driveId)
         _driveStatuses.update { it - driveId }
         Logger.i(tag = "DriveSync") { "unmountDrive($driveId)" }

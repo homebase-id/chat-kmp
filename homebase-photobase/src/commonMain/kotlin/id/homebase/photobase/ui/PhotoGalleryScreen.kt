@@ -297,7 +297,7 @@ private fun GalleryGrid(
                 .padding(innerPadding),
         ) {
             when {
-                uiState.days.isNotEmpty() -> PhotoGrid(uiState, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
+                uiState.days.isNotEmpty() -> PhotoGrid(uiState.days, uiState.newestFirst, uiState.isLoadingMore, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
                 // While the drive is still syncing, "nothing backed up" may not be true.
                 uiState.isSyncing -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
@@ -305,7 +305,7 @@ private fun GalleryGrid(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     CircularProgressIndicator()
-                    SyncingLabel(uiState.syncedSoFar)
+                    SyncingLabel(uiState.syncedSoFar ?: 0)
                 }
                 uiState.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 uiState.loadFailed -> Column(
@@ -348,7 +348,7 @@ private fun GalleryGrid(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
-                    SyncingLabel(uiState.syncedSoFar, Modifier.padding(vertical = 6.dp))
+                    SyncingLabel(uiState.syncedSoFar ?: 0, Modifier.padding(vertical = 6.dp))
                 }
             }
         }
@@ -367,26 +367,28 @@ private fun SyncingLabel(syncedSoFar: Int, modifier: Modifier = Modifier) {
 
 @Composable
 private fun PhotoGrid(
-    uiState: PhotoGalleryUiState,
+    days: List<PhotoGalleryDay>,
+    newestFirst: Boolean,
+    isLoadingMore: Boolean,
     onAction: (PhotoGalleryUiAction) -> Unit,
     memory: GridMemory,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val gridState = memory.state
-    val topId = uiState.days.firstOrNull()?.items?.firstOrNull()?.fileId
-    LaunchedEffect(uiState.newestFirst, topId) {
-        val sortChanged = memory.newestFirst.let { it != null && it != uiState.newestFirst }
+    val topId = days.firstOrNull()?.items?.firstOrNull()?.fileId
+    LaunchedEffect(newestFirst, topId) {
+        val sortChanged = memory.newestFirst.let { it != null && it != newestFirst }
         // A new photo on top is brought into view only for someone already at the top; further down stays put.
         val newOnTop = memory.topId.let { it != null && it != topId } && gridState.firstVisibleItemIndex <= 1
-        memory.newestFirst = uiState.newestFirst
+        memory.newestFirst = newestFirst
         memory.topId = topId
         if (sortChanged || newOnTop) gridState.scrollToItem(0)
     }
     LaunchedEffect(Unit) {
         val viewed = memory.returnTo ?: return@LaunchedEffect
         memory.returnTo = null
-        val index = gridIndexOf(uiState.days, viewed) ?: return@LaunchedEffect
+        val index = gridIndexOf(days, viewed) ?: return@LaunchedEffect
         if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) gridState.scrollToItem(index)
     }
     LaunchedEffect(gridState) {
@@ -422,7 +424,7 @@ private fun PhotoGrid(
         contentPadding = PaddingValues(4.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        for (day in uiState.days) {
+        for (day in days) {
             item(key = "day-${day.date}", span = { GridItemSpan(maxLineSpan) }, contentType = "day") {
                 Text(
                     text = formatMomentDate(day.date.atStartOfDayIn(TimeZone.currentSystemDefault())),
@@ -436,7 +438,7 @@ private fun PhotoGrid(
                 }
             }
         }
-        if (uiState.isLoadingMore) {
+        if (isLoadingMore) {
             item(key = "more", span = { GridItemSpan(maxLineSpan) }, contentType = "more") {
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()

@@ -22,7 +22,7 @@ import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 /** Through the real upsert and the real local query: the tiny preview has to survive both. */
-class PhotoGalleryLocalStoreTest {
+class PhotoGalleryStoreTest {
     private val db = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
     private val identity = Uuid.random()
     private val store = PhotoGalleryStore(db, { identity })
