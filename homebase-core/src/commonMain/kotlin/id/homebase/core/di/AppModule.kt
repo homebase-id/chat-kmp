@@ -1553,6 +1553,9 @@ val appModule = module {
             refresh = { if (photosMounted()) runCatching { drives.syncDrive(PhotobaseProtocol.DriveAlias) } },
             driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
             libraryDays = get<PhotoDayIndex>().days,
+            touchedDays = get<PhotoDayIndex>().touched,
+            countFailed = get<PhotoDayIndex>().failed,
+            recount = get<PhotoDayIndex>()::recount,
         )
     }
     viewModel(FilesyncPermissionQualifier) {

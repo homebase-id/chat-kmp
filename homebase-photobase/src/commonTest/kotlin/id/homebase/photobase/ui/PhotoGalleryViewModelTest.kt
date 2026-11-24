@@ -11,6 +11,8 @@ import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGallerySource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
@@ -52,7 +54,10 @@ class PhotoGalleryViewModelTest {
         val photos = days.reversed().associateWith { day -> List(perDay) { item(day * DAY_MS + (perDay - it)) } }.toMutableMap()
         val asked = mutableListOf<IntRange>()
         var failure: Exception? = null
+        var failOn: IntRange? = null
+        var gate: CompletableDeferred<Unit>? = null
         val counts = MutableStateFlow<LibraryDays?>(null)
+        val touched = MutableSharedFlow<Set<Int>?>(extraBufferCapacity = 8)
 
         fun publish() {
             val days = photos.keys.sortedDescending()
@@ -62,6 +67,10 @@ class PhotoGalleryViewModelTest {
         val source = PhotoGallerySource { from, to ->
             asked += from..to
             failure?.let { throw it }
+            if (failOn == from..to) throw IllegalStateException("database busy")
+            val snapshot = photos.toMap()
+            gate?.await()
+            return@PhotoGallerySource snapshot.filterKeys { it in from..to }.filterValues { it.isNotEmpty() }
             photos.filterKeys { it in from..to }.filterValues { it.isNotEmpty() }
         }
     }
@@ -73,6 +82,7 @@ class PhotoGalleryViewModelTest {
             library.source,
             driveState = driveState,
             libraryDays = library.counts.filterNotNull(),
+            touchedDays = library.touched,
             reading = StandardTestDispatcher(testScheduler),
         )
         // The screen collects the days while it's shown.
@@ -124,6 +134,97 @@ class PhotoGalleryViewModelTest {
 
         assertEquals(listOf(59..78, 22..41), library.asked.takeLast(2), "days 42..58 are held and aren't read again")
         screen.cancel()
+    }
+
+    @Test
+    fun aPhotoReplacedOnAHeldDayIsReadAgainThoughItsCountStayed() = runTest {
+        val library = Library(1..10, perDay = 3)
+        val (viewModel, screen) = viewModel(library)
+        library.asked.clear()
+
+        val replacement = item(9 * DAY_MS + 99)
+        library.photos[9] = listOf(replacement) + library.photos.getValue(9).drop(1)
+        library.touched.emit(setOf(9, 42))
+        advanceUntilIdle()
+
+        assertEquals(listOf(9..9), library.asked, "only the held day touched")
+        assertEquals(replacement, viewModel.uiState.value.loaded.getValue(9).first())
+        screen.cancel()
+    }
+
+    @Test
+    fun aCountThatChangesWhileItsDayIsBeingReadReadsItAgain() = runTest {
+        val library = Library(1..10, perDay = 3)
+        val gate = CompletableDeferred<Unit>()
+        library.gate = gate
+        val (viewModel, screen) = viewModel(library)
+
+        // The top read is waiting on the database when a photo lands on day 10.
+        library.photos[10] = listOf(item(10 * DAY_MS + 99)) + library.photos.getValue(10)
+        library.publish()
+        advanceUntilIdle()
+        library.gate = null
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(4, viewModel.uiState.value.loaded.getValue(10).size, "the read that began before the change isn't the last word")
+        screen.cancel()
+    }
+
+    @Test
+    fun aDayWithMoreThanAThousandPhotosIsKeptWhileItsShown() = runTest {
+        val library = Library(1..1, perDay = 1_200)
+        val (viewModel, screen) = viewModel(library)
+
+        assertEquals(1_200, viewModel.uiState.value.loaded.getValue(1).size)
+        screen.cancel()
+    }
+
+    @Test
+    fun aFailedRunDoesntStopTheNextOne() = runTest {
+        val library = Library(1..100, perDay = 10)
+        val (viewModel, screen) = viewModel(library)
+        viewModel.onAction(PhotoGalleryUiAction.Showing(50, 50))
+        advanceUntilIdle()
+        library.failOn = 59..78
+
+        viewModel.onAction(PhotoGalleryUiAction.Showing(70, 30))
+        advanceUntilIdle()
+
+        assertTrue(22 in viewModel.uiState.value.loaded, "the older run is read though the newer one failed")
+        assertFalse(70 in viewModel.uiState.value.loaded)
+        screen.cancel()
+    }
+
+    @Test
+    fun aPhotoThatMovedDayIsHeldOnlyOnTheDayItWasReadOn() = runTest {
+        val library = Library(1..10, perDay = 2)
+        val (viewModel, screen) = viewModel(library)
+        val moved = library.photos.getValue(5).first()
+
+        // Its day changed (a new time zone, an edited date); day 5's count is topped up by another.
+        library.photos[5] = listOf(item(5 * DAY_MS + 7)) + library.photos.getValue(5).drop(1)
+        library.photos[6] = library.photos.getValue(6) + moved
+        library.touched.emit(setOf(6))
+        advanceUntilIdle()
+
+        val holding = viewModel.uiState.value.loaded.filterValues { items -> items.any { it.fileId == moved.fileId } }.keys
+        assertEquals(setOf(6), holding, "held twice, it would be two pages with one key in the viewer")
+        screen.cancel()
+    }
+
+    @Test
+    fun aFailedCountSaysSoAndRetryCountsAgain() = runTest {
+        var recounts = 0
+        val failed = MutableStateFlow(true)
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel({ _, _ -> emptyMap() }, countFailed = failed, recount = { recounts++ }, reading = StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.countFailed)
+
+        viewModel.onAction(PhotoGalleryUiAction.Retry)
+        advanceUntilIdle()
+        assertEquals(1, recounts)
     }
 
     @Test

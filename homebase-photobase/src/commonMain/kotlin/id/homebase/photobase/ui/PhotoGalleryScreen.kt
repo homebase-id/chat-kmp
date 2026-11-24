@@ -42,6 +42,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import id.homebase.resources.photobase_gallery_retry
+import id.homebase.resources.photobase_gallery_load_failed
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -109,9 +112,15 @@ fun PhotoGalleryScreen(
     val state = viewModel.uiState.collectAsStateWithLifecycle()
     val uiState by state
     val library by viewModel.library.collectAsStateWithLifecycle()
-    // From the counts alone: reading a day's photos fills tiles, read in each tile, without rebuilding the grid.
-    val layout = remember(library, uiState.newestFirst) { library?.let { GalleryLayout(it, uiState.newestFirst) } }
     val loaded = remember(state) { derivedStateOf { state.value.loaded } }
+    // Only the read days that show another number than counted move the grid; other reads fill tiles in place.
+    val shown by remember(library) {
+        derivedStateOf {
+            val counts = library ?: return@derivedStateOf emptyMap()
+            loaded.value.filter { (day, items) -> items.size != counts.countOf(day) }.mapValues { it.value.size }
+        }
+    }
+    val layout = remember(library, uiState.newestFirst, shown) { library?.let { GalleryLayout(it, uiState.newestFirst, shown) } }
     val gridState = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     val memory = remember(gridState) { GridMemory(gridState) }
     val onAction: (PhotoGalleryUiAction) -> Unit = remember(viewModel) {
@@ -128,7 +137,7 @@ fun PhotoGalleryScreen(
             transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
         ) { viewing ->
             if (viewing && layout != null) {
-                GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, this@SharedTransitionLayout, this@AnimatedContent)
+                GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, { memory.returnToPhoto = it }, this@SharedTransitionLayout, this@AnimatedContent)
             } else {
                 GalleryGrid(uiState, layout, loaded, onAction, onOpenBackupSettings, backupIndicator, memory, this@SharedTransitionLayout, this@AnimatedContent)
             }
@@ -141,6 +150,8 @@ private class GridMemory(val state: LazyGridState) {
     var newestFirst: Boolean? = null
     var topDay: Int? = null
     var returnTo: Uuid? = null
+    // The viewer's page when its day wasn't read yet: the open photo is still the one before it.
+    var returnToPhoto: Int? = null
 }
 
 /** Every photo of the library in the grid's order, one per page; a page whose day isn't read yet reads it. */
@@ -151,6 +162,7 @@ private fun GalleryViewer(
     layout: GalleryLayout,
     loaded: Map<Int, List<PhotoGalleryItem>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
+    onUnreadPage: (Int?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -163,6 +175,10 @@ private fun GalleryViewer(
     // On a page whose day is still being read: when it arrives, that page's photo becomes the open one.
     val awaiting = remember { mutableStateOf(false) }
     LaunchedEffect(layout, loaded) {
+        if (layout.photoCount == 0) {
+            close()
+            return@LaunchedEffect
+        }
         if (!awaiting.value) {
             // Photos arriving above the open one would otherwise leave the pager on a different photo.
             // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
@@ -178,6 +194,7 @@ private fun GalleryViewer(
             onAction(PhotoGalleryUiAction.Showing(day, day))
             val item = layout.photoAt(page, loaded)
             awaiting.value = item == null
+            onUnreadPage(if (item == null) page else null)
             if (item != null && item.fileId != opened) onAction(PhotoGalleryUiAction.Open(item))
         }
     }
@@ -308,6 +325,19 @@ private fun GalleryGrid(
                     CircularProgressIndicator()
                     SyncingLabel(uiState.syncedSoFar ?: 0)
                 }
+                layout == null && uiState.countFailed -> Column(
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = stringResource(MR.string.photobase_gallery_load_failed),
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = { onAction(PhotoGalleryUiAction.Retry) }) {
+                        Text(stringResource(MR.string.photobase_gallery_retry))
+                    }
+                }
                 layout == null || !uiState.librarySynced -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 else -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
@@ -375,9 +405,15 @@ private fun PhotoGrid(
         if (sortChanged || newOnTop) gridState.scrollToItem(0)
     }
     LaunchedEffect(Unit) {
-        val viewed = memory.returnTo ?: return@LaunchedEffect
+        val page = memory.returnToPhoto
+        val viewed = memory.returnTo
+        memory.returnToPhoto = null
         memory.returnTo = null
-        val index = layout.itemOf(viewed, loaded.value) ?: return@LaunchedEffect
+        val index = when {
+            page != null && page < layout.photoCount -> layout.itemOfPhoto(page)
+            viewed != null -> layout.itemOf(viewed, loaded.value)
+            else -> null
+        } ?: return@LaunchedEffect
         if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) gridState.scrollToItem(index)
     }
     val currentLayout by rememberUpdatedState(layout)

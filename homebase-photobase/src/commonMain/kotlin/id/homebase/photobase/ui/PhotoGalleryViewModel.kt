@@ -46,6 +46,7 @@ data class PhotoGalleryUiState(
     val openedFileId: Uuid? = null,
     /** The days whose headers are read, by day, newest first within each. */
     val loaded: Map<Int, List<PhotoGalleryItem>> = emptyMap(),
+    val countFailed: Boolean = false,
 ) {
     val isSyncing: Boolean get() = syncedSoFar != null
 }
@@ -54,6 +55,8 @@ sealed interface PhotoGalleryUiAction {
     data object Refresh : PhotoGalleryUiAction
     data object ThumbnailShown : PhotoGalleryUiAction
     data object ToggleSort : PhotoGalleryUiAction
+    /** Count the library's days again, after a count failed. */
+    data object Retry : PhotoGalleryUiAction
     /** The first and last day on screen, in either order. */
     data class Showing(val first: Int, val last: Int) : PhotoGalleryUiAction
     /** Tapped in the grid, or swiped to in the viewer. */
@@ -70,11 +73,16 @@ class PhotoGalleryViewModel(
     private val refresh: () -> Unit = {},
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
     libraryDays: Flow<LibraryDays> = emptyFlow(),
+    touchedDays: Flow<Set<Int>?> = emptyFlow(),
+    countFailed: Flow<Boolean> = flowOf(false),
+    private val recount: suspend () -> Unit = {},
     // One at a time, off Main: the first screen's composing mustn't hold up reading it. Owns counted and stale.
     reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) : ViewModel() {
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
+    // The days being read right now: a change to one of them mustn't be lost when the read lands.
+    private var inFlight: Set<Int> = emptySet()
 
     /** Every day of the library that has photos; counted from the gallery's opening, and kept current while it's shown. */
     val library: StateFlow<LibraryDays?> = libraryDays
@@ -99,13 +107,23 @@ class PhotoGalleryViewModel(
                 _uiState.update { it.copy(syncedSoFar = state.syncedSoFar(), librarySynced = state.librarySynced()) }
             }
         }
+        viewModelScope.launch { countFailed.collect { failed -> _uiState.update { it.copy(countFailed = failed) } } }
         // Conflated, not latest: a read can't stop partway through its parse, and the days it brings are nearby.
         viewModelScope.launch(reading) { window.filterNotNull().conflate().collect { read(it) } }
+        // A photo replaced on a held day, or one taken away and another added, leaves its count as it was.
+        viewModelScope.launch(reading) {
+            touchedDays.collect { days ->
+                val held = _uiState.value.loaded.keys + inFlight
+                stale += if (days == null) held else held intersect days
+                window.value = window.value?.let { Window(it.first, it.last) }
+            }
+        }
     }
 
     fun onAction(action: PhotoGalleryUiAction) {
         when (action) {
             PhotoGalleryUiAction.Refresh -> refresh()
+            PhotoGalleryUiAction.Retry -> viewModelScope.launch { recount() }
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             PhotoGalleryUiAction.ToggleSort -> _uiState.update { it.copy(newestFirst = !it.newestFirst) }
             is PhotoGalleryUiAction.Showing -> window.value = Window(action.first, action.last)
@@ -120,7 +138,7 @@ class PhotoGalleryViewModel(
         val before = counted
         counted = library
         val held = _uiState.value.loaded.keys
-        if (before != null) stale += held.filter { day -> library.countOf(day) != before.countOf(day) }
+        if (before != null) stale += (held + inFlight).filter { day -> library.countOf(day) != before.countOf(day) }
         val gone = held.filter { library.countOf(day = it) == 0 }
         if (gone.isNotEmpty()) _uiState.update { state -> state.copy(loaded = state.loaded - gone.toSet()) }
         // Before the screen has laid out and said what it shows, the top: the gallery opens there.
@@ -129,7 +147,8 @@ class PhotoGalleryViewModel(
     }
 
     private suspend fun read(window: Window) {
-        val library = library.value ?: return
+        // What onLibrary saw, on this same thread: library.value is set on Main, after it.
+        val library = counted ?: return
         val last = library.days.size - 1
         if (last < 0) return
         // Indexes into the index's days, newest first, whichever way the grid runs.
@@ -141,26 +160,35 @@ class PhotoGalleryViewModel(
         while (from > 0 && newer < MARGIN_PHOTOS) newer += library.counts[--from]
         var older = 0
         while (to < last && older < MARGIN_PHOTOS) older += library.counts[++to]
+        val inWindow = (from..to).map { library.days[it] }.toSet()
         val loaded = _uiState.value.loaded
         val wanted = (from..to).filter { library.days[it] !in loaded || library.days[it] in stale }
         // Each unbroken run on its own: one span over a gap would parse the held days in it again.
         for (run in wanted.runs()) {
-            val newest = library.days[run.first]
-            val oldest = library.days[run.last]
+            val days = run.map { library.days[it] }
+            // Before reading, so a change while it reads marks the day again.
+            stale -= days.toSet()
+            inFlight = days.toSet()
             val read = try {
-                source.photosOnDays(oldest, newest)
+                source.photosOnDays(days.last(), days.first())
             } catch (e: CancellationException) {
+                stale += days
                 throw e
             } catch (e: Exception) {
                 // The placeholders stay; the next scroll asks again.
-                Logger.w(tag = TAG, throwable = e) { "couldn't read the photos of days $oldest..$newest" }
-                return
+                stale += days
+                Logger.w(tag = TAG, throwable = e) { "couldn't read the photos of days ${days.last()}..${days.first()}" }
+                continue
+            } finally {
+                inFlight = emptySet()
             }
-            val days = run.map { library.days[it] }
-            stale -= days.toSet()
+            val now = counted ?: library
+            val arriving = days.filter { now.countOf(it) > 0 }.associateWith { read[it].orEmpty() }
+            val ids = arriving.values.flatten().mapTo(HashSet()) { it.fileId }
             _uiState.update { state ->
-                val merged = state.loaded + days.associateWith { read[it].orEmpty() }
-                state.copy(loaded = merged.evictedAround(centre))
+                // A photo that moved day is held once, on the day it was read on.
+                val elsewhere = state.loaded.filterKeys { it !in arriving }.mapValues { (_, items) -> items.filterNot { it.fileId in ids } }
+                state.copy(loaded = (elsewhere + arriving).evictedAround(centre, inWindow))
             }
         }
         if (wanted.isEmpty()) return
@@ -170,14 +198,16 @@ class PhotoGalleryViewModel(
         }
     }
 
-    // The days farthest from where the screen is go first; the open photo's day stays.
-    private fun Map<Int, List<PhotoGalleryItem>>.evictedAround(centre: Int): Map<Int, List<PhotoGalleryItem>> {
+    // The days farthest from where the screen is go first; the window's days and the open photo's day stay, however
+    // many photos they hold.
+    private fun Map<Int, List<PhotoGalleryItem>>.evictedAround(centre: Int, window: Set<Int>): Map<Int, List<PhotoGalleryItem>> {
         var held = values.sumOf { it.size }
         if (held <= MAX_HELD_PHOTOS) return this
         val open = _uiState.value.openedFileId
         val kept = toMutableMap()
         for (day in keys.sortedByDescending { abs(it - centre) }) {
             if (held <= MAX_HELD_PHOTOS) break
+            if (day in window) continue
             val items = kept.getValue(day)
             if (open != null && items.any { it.fileId == open }) continue
             kept.remove(day)
@@ -235,11 +265,6 @@ private fun PhotoGalleryItem.player(video: PayloadDescriptor) = FullScreenOverla
     keyHeader = video.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
     payload = video,
 )
-
-private fun LibraryDays.countOf(day: Int): Int {
-    val at = days.asList().binarySearch { day.compareTo(it) }
-    return if (at >= 0) counts[at] else 0
-}
 
 // The day's index, or where it would be: the days are newest first.
 private fun LibraryDays.indexAtOrNear(day: Int): Int {

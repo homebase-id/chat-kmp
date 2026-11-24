@@ -53,13 +53,16 @@ class GalleryLayoutTest {
     }
 
     @Test
-    fun aDayThatShowsFewerPhotosThanCountedLeavesItsLastSlotsEmpty() {
+    fun aDayThatShowsAnotherNumberThanCountedHasASlotPerPhotoItShows() {
         val shown = item()
         // Two counted on day 30, but only one header made a photo to show.
-        val layout = GalleryLayout(library, newestFirst = true)
+        val layout = GalleryLayout(library, newestFirst = true, shown = mapOf(30 to 1))
         val loaded = mapOf(30 to listOf(shown))
 
-        assertEquals(shown, layout.photoAt(0, 0, loaded))
-        assertNull(layout.photoAt(0, 1, loaded))
+        assertEquals(1, layout.slotsOf(0))
+        assertEquals(5, layout.photoCount)
+        assertEquals(shown, layout.photoAt(0, loaded))
+        assertEquals(20, layout.dayOfPhoto(1))
+        assertEquals(3, layout.itemOfPhoto(1), "day 30's header, its photo, day 20's header, then this")
     }
 }

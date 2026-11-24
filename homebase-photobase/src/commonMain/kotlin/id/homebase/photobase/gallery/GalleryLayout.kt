@@ -4,10 +4,10 @@ import kotlin.uuid.Uuid
 
 /**
  * Where every day and photo of the library sits, in the grid's order: each day is a header item and then a slot per
- * photo the index counts. Built from the counts alone, so reading a day's photos fills its slots without moving
- * anything.
+ * photo. A day has as many slots as the index counts, so reading it fills them without moving anything; [shown] gives
+ * the days that, once read, show another number (a photo the gallery can't show, a count not caught up yet).
  */
-class GalleryLayout(library: LibraryDays, val newestFirst: Boolean) {
+class GalleryLayout(library: LibraryDays, val newestFirst: Boolean, shown: Map<Int, Int> = emptyMap()) {
     /** The days, in the grid's order. */
     val days: IntArray
     private val slots: IntArray
@@ -18,7 +18,7 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean) {
     init {
         val n = library.days.size
         days = IntArray(n) { library.days[if (newestFirst) it else n - 1 - it] }
-        slots = IntArray(n) { library.counts[if (newestFirst) it else n - 1 - it] }
+        slots = IntArray(n) { shown[days[it]] ?: library.counts[if (newestFirst) it else n - 1 - it] }
         firstItem = IntArray(n)
         firstPhoto = IntArray(n)
         var item = 0
@@ -38,6 +38,12 @@ class GalleryLayout(library: LibraryDays, val newestFirst: Boolean) {
     fun dayOfItem(item: Int): Int = days[lastAtOrBefore(firstItem, item)]
 
     fun dayOfPhoto(photo: Int): Int = days[lastAtOrBefore(firstPhoto, photo)]
+
+    /** The grid item of the [photo]th photo. */
+    fun itemOfPhoto(photo: Int): Int {
+        val position = lastAtOrBefore(firstPhoto, photo)
+        return firstItem[position] + 1 + photo - firstPhoto[position]
+    }
 
     /** The photo in a day's [slot], or null while its headers aren't read. */
     fun photoAt(position: Int, slot: Int, loaded: Map<Int, List<PhotoGalleryItem>>): PhotoGalleryItem? {

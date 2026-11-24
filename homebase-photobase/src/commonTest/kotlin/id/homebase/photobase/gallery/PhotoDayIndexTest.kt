@@ -11,6 +11,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 class PhotoDayIndexTest {
@@ -19,12 +21,13 @@ class PhotoDayIndexTest {
         val days = mutableMapOf(20 to 3, 18 to 1, 15 to 7)
         var builds = 0
         var failDayOf = false
+        var failRebuild = false
         val recounted = mutableListOf<Int>()
         var countedFor = "frodo UTC"
         var signedOut = false
 
         fun index(scope: TestScope, changes: MutableSharedFlow<PhotoChange>) = PhotoDayIndex(
-            dayCounts = { builds++; days.entries.sortedByDescending { it.key }.map { DayCount(it.key, it.value) } },
+            dayCounts = { check(!failRebuild) { "database closed" }; builds++; days.entries.sortedByDescending { it.key }.map { DayCount(it.key, it.value) } },
             dayOf = { userDate ->
                 check(!failDayOf) { "database closed" }
                 if (userDate == NO_DAY) null else (userDate / DAY_MS).toInt()
@@ -240,6 +243,28 @@ class PhotoDayIndexTest {
         runCurrent()
         assertEquals(listOf(20, 20), library.recounted)
         assertEquals(8, index.days.first().counts[0])
+        watching.cancel()
+    }
+
+    @Test
+    fun itSaysWhichDaysItTouchedAndThatACountFailed() = runTest {
+        val (library, changes, index) = setUp()
+        val touched = mutableListOf<Set<Int>?>()
+        val listening = launch { index.touched.collect { touched += it } }
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        changes.emit(PhotoChange.FilesArrived(listOf(18 * DAY_MS, 20 * DAY_MS)))
+        runCurrent()
+        assertEquals(listOf(null, setOf(18, 20)), touched, "the first count touches every day, a recount its own")
+
+        library.failRebuild = true
+        index.recount()
+        assertTrue(index.failed.value)
+        library.failRebuild = false
+        index.recount()
+        assertFalse(index.failed.value)
+        listening.cancel()
         watching.cancel()
     }
 
