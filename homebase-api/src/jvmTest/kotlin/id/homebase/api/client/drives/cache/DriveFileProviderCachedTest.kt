@@ -43,6 +43,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -451,6 +452,29 @@ class DriveFileProviderCachedTest {
             options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 512L),
         )
         assertEquals(before + 1, requestCount, "cleared chunk must be re-fetched")
+    }
+
+    @Test
+    fun `clearCaches leaves every cache directory empty of files no journal entry points to`() = runTest {
+        nextBody = ByteArray(512) { 1 }
+        provider.getPayloadBytesRaw(driveId, fileId, key)
+        val cacheDirs = listOf(
+            "homebase-payloads-v2", "homebase-thumbs-v2", "homebase-hls-chunks-v1",
+        ).map { java.io.File(tempDir, it).also { d -> d.mkdirs() } }
+        val orphans = cacheDirs.map { java.io.File(it, "orphan.1").also { f -> f.writeBytes(ByteArray(1024)) } }
+        val journal = java.io.File(cacheDirs[0], "journal")
+        assertTrue(journal.exists(), "payload cache must have a journal after a write")
+        val outside = java.io.File(tempDir, "keep-me.bin").also { it.writeBytes(ByteArray(8)) }
+
+        provider.clearCaches()
+
+        orphans.forEach { assertFalse(it.exists(), "orphan survived clearCaches: $it") }
+        assertTrue(journal.exists(), "the live journal must survive the purge")
+        assertTrue(outside.exists(), "files outside the cache roots must be left alone")
+        assertEquals(0L, statsSize(provider.getCacheStats(), "drive_payloads"))
+        val before = requestCount
+        provider.getPayloadBytesRaw(driveId, fileId, key)
+        assertEquals(before + 1, requestCount, "cache must still work after the purge")
     }
 
     @Test
