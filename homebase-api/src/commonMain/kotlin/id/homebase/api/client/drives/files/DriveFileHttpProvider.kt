@@ -394,16 +394,26 @@ public class DriveFileHttpProvider(
     suspend fun updateArchivalStatus(driveId: Uuid, status: ArchivalStatus, files: List<FileVersionTag>): PerFileBatchResult =
         perFileBatch(driveId, "update-archival-status-batch", FileVersionTagBatch(files, status))
 
+    /**
+     * Adds [add] and removes [remove] in each of [fileIds]' local tags, on top of whatever tags each holds: no version
+     * is checked, and a file already as asked counts as done.
+     */
+    suspend fun updateLocalTags(driveId: Uuid, fileIds: List<Uuid>, add: List<Uuid> = emptyList(), remove: List<Uuid> = emptyList()): PerFileBatchResult =
+        perFileBatch(driveId, "update-local-tags-batch", fileIds.size, OdinSystemSerializer.serialize(LocalTagsBatch(add, remove, fileIds.map(::LocalTagsFile))))
+
+    private suspend fun perFileBatch(driveId: Uuid, endpoint: String, request: FileVersionTagBatch): PerFileBatchResult =
+        perFileBatch(driveId, endpoint, request.files.size, OdinSystemSerializer.serialize(request))
+
     /** One answer per file, in order; one file's answer never stops the others. At most [FILE_BATCH] per call. */
-    private suspend fun perFileBatch(driveId: Uuid, endpoint: String, request: FileVersionTagBatch): PerFileBatchResult {
+    private suspend fun perFileBatch(driveId: Uuid, endpoint: String, files: Int, jsonBody: String): PerFileBatchResult {
         ValidationUtil.requireValidUuid(driveId, "driveId")
-        require(request.files.size in 1..FILE_BATCH) { "1 to $FILE_BATCH files, not ${request.files.size}" }
+        require(files in 1..FILE_BATCH) { "1 to $FILE_BATCH files, not $files" }
         val creds = requireCreds()
 
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "/drives/$driveId/files/$endpoint"),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(request),
+            jsonBody = jsonBody,
             secret = creds.secret
         )
 

@@ -123,6 +123,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import id.homebase.resources.photobase_favorite_state
+import id.homebase.resources.photobase_favorites_empty_state
+import id.homebase.resources.photobase_favorites_title
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.widget.ConfirmDialog
 import id.homebase.core.widget.SelectionTopBar
@@ -224,8 +230,11 @@ fun PhotoGalleryScreen(
                 transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
             ) { viewing ->
                 if (viewing && layout != null) {
-                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf != PhotoShelf.Bin }
-                    GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, moveToBin, { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent)
+                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf.isPlace && shelf != PhotoShelf.Bin }
+                    GalleryViewer(
+                        uiState.openedFileId, layout, loaded.value, onAction, moveToBin, canFavorite = shelf != PhotoShelf.Bin,
+                        { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent,
+                    )
                 } else {
                     GalleryGrid(
                         uiState, shelf, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenShelf, onBack,
@@ -258,6 +267,7 @@ private fun GalleryViewer(
     loaded: Map<Int, List<PhotoGalleryItem>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onMoveToBin: ((Uuid) -> Unit)?,
+    canFavorite: Boolean,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -326,6 +336,9 @@ private fun GalleryViewer(
             is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                 data = viewer,
                 onDelete = onMoveToBin,
+                extraActions = {
+                    if (canFavorite) FavoriteButton(item.favorite, enabled = true) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
+                },
                 onDismiss = close,
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
@@ -486,6 +499,7 @@ private fun GalleryGrid(
                 SelectionToolbar(
                     shelf = shelf,
                     enabled = !uiState.busy,
+                    favorites = uiState.selectedAreFavorites(),
                     onAction = onAction,
                     onDeleteForGood = { onConfirm(MoveAction.DeleteForGood) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
@@ -779,6 +793,7 @@ private fun PhotoCell(
     }
     val isVideo = item.payload.isVideo()
     val description = stringResource(if (isVideo) MR.string.photobase_gallery_video else MR.string.photobase_gallery_photo)
+    val favorite = if (item.favorite) stringResource(MR.string.photobase_favorite_state) else null
     Box(
         modifier = modifier
             .galleryTile()
@@ -786,6 +801,7 @@ private fun PhotoCell(
             .combinedClickable(onLongClickLabel = stringResource(MR.string.photobase_selection_select), onLongClick = onLongClick, onClick = onClick)
             .semantics {
                 contentDescription = description
+                if (favorite != null) stateDescription = favorite
                 if (selecting) this.selected = selected
             },
     ) {
@@ -820,6 +836,14 @@ private fun PhotoCell(
                 modifier = Modifier.align(Alignment.Center).size(32.dp),
             )
         }
+        if (item.favorite) {
+            Icon(
+                imageVector = Icons.Filled.Favorite,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).size(18.dp),
+            )
+        }
         if (selecting) SelectionMark(selected, MaterialTheme.colorScheme.inverseOnSurface, Modifier.align(Alignment.TopStart).padding(4.dp).size(22.dp))
     }
 }
@@ -829,6 +853,7 @@ private val PhotoShelf.title: StringResource
         PhotoShelf.Library -> MR.string.photobase_label
         PhotoShelf.Archive -> MR.string.photobase_archive_title
         PhotoShelf.Bin -> MR.string.photobase_bin_title
+        PhotoShelf.Favorites -> MR.string.photobase_favorites_title
     }
 
 private val PhotoShelf.emptyText: StringResource
@@ -836,6 +861,7 @@ private val PhotoShelf.emptyText: StringResource
         PhotoShelf.Library -> MR.string.photobase_gallery_empty
         PhotoShelf.Archive -> MR.string.photobase_archive_empty_state
         PhotoShelf.Bin -> MR.string.photobase_bin_empty_state
+        PhotoShelf.Favorites -> MR.string.photobase_favorites_empty_state
     }
 
 private val PhotoShelf.icon: ImageVector
@@ -843,4 +869,5 @@ private val PhotoShelf.icon: ImageVector
         PhotoShelf.Library -> Icons.Outlined.PhotoLibrary
         PhotoShelf.Archive -> Icons.Outlined.Archive
         PhotoShelf.Bin -> Icons.Outlined.Delete
+        PhotoShelf.Favorites -> Icons.Outlined.FavoriteBorder
     }

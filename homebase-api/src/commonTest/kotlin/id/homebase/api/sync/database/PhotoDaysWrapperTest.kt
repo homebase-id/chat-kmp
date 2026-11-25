@@ -46,7 +46,7 @@ class PhotoDaysWrapperTest {
         db.add(local(2024, 3, 9, 12, 0), drive = Uuid.random())
 
         val expected = times.groupingBy { it.localDay() }.eachCount().toList().sortedByDescending { it.first }.map { DayCount(it.first, it.second) }
-        assertEquals(expected, db.photoDays.dayCounts(identity, photos, LIBRARY))
+        assertEquals(expected, db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)))
     }
 
     @Test
@@ -59,8 +59,8 @@ class PhotoDaysWrapperTest {
 
         val day = assertNotNull(db.photoDays.dayOf(local(2024, 10, 27, 13, 0)))
         assertEquals(morning.localDay(), day)
-        assertEquals(2, db.photoDays.photosOn(identity, photos, LIBRARY, day), "local midnight to local midnight, however long the day")
-        assertEquals(0, db.photoDays.photosOn(identity, photos, LIBRARY, local(2024, 5, 1, 9, 0).localDay()))
+        assertEquals(2, db.photoDays.photosOn(identity, photos, shelf(LIBRARY), day), "local midnight to local midnight, however long the day")
+        assertEquals(0, db.photoDays.photosOn(identity, photos, shelf(LIBRARY), local(2024, 5, 1, 9, 0).localDay()))
     }
 
     @Test
@@ -70,10 +70,10 @@ class PhotoDaysWrapperTest {
         times.forEach { db.add(it) }
         val from = local(2024, 3, 9, 12, 0).localDay()
 
-        val window = db.photoDays.headersOnDays(identity, photos, LIBRARY, from, from + 1)
+        val window = db.photoDays.headersOnDays(identity, photos, shelf(LIBRARY), from, from + 1)
 
         assertEquals(listOf(from + 1, from + 1, from, from), window.map { it.day }, "newest first, and only the two days asked")
-        val counted = db.photoDays.dayCounts(identity, photos, LIBRARY).filter { it.day in from..from + 1 }
+        val counted = db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)).filter { it.day in from..from + 1 }
         assertEquals(counted.associate { it.day to it.photos }, window.groupingBy { it.day }.eachCount())
     }
 
@@ -84,9 +84,9 @@ class PhotoDaysWrapperTest {
         db.add(halfASecondBefore)
 
         val day = assertNotNull(db.photoDays.dayOf(halfASecondBefore))
-        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, LIBRARY))
-        assertEquals(1, db.photoDays.photosOn(identity, photos, LIBRARY, day))
-        assertEquals(listOf(day), db.photoDays.headersOnDays(identity, photos, LIBRARY, day, day).map { it.day })
+        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)))
+        assertEquals(1, db.photoDays.photosOn(identity, photos, shelf(LIBRARY), day))
+        assertEquals(listOf(day), db.photoDays.headersOnDays(identity, photos, shelf(LIBRARY), day, day).map { it.day })
     }
 
     @Test
@@ -97,7 +97,7 @@ class PhotoDaysWrapperTest {
         // .NET's DateTime.MaxValue, which a zone ahead of UTC turns into the year 10000.
         db.add(253_402_300_799_999)
 
-        assertEquals(listOf(DayCount(local(2024, 3, 9, 12, 0).localDay(), 1)), db.photoDays.dayCounts(identity, photos, LIBRARY))
+        assertEquals(listOf(DayCount(local(2024, 3, 9, 12, 0).localDay(), 1)), db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)))
         assertEquals(null, db.photoDays.dayOf(inMicroseconds))
         assertEquals(null, db.photoDays.dayOf(253_402_300_799_999))
     }
@@ -111,12 +111,33 @@ class PhotoDaysWrapperTest {
         db.add(noon + 180_000, archivalStatus = ARCHIVED)
         val day = noon.localDay()
 
-        assertEquals(listOf(DayCount(day, 2)), db.photoDays.dayCounts(identity, photos, LIBRARY))
-        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, BIN))
-        assertEquals(2, db.photoDays.photosOn(identity, photos, LIBRARY, day))
-        assertEquals(1, db.photoDays.photosOn(identity, photos, BIN, day))
-        assertEquals(2, db.photoDays.headersOnDays(identity, photos, LIBRARY, day, day).size)
-        assertEquals(1, db.photoDays.headersOnDays(identity, photos, BIN, day, day).size)
+        assertEquals(listOf(DayCount(day, 2)), db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)))
+        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, shelf(BIN)))
+        assertEquals(2, db.photoDays.photosOn(identity, photos, shelf(LIBRARY), day))
+        assertEquals(1, db.photoDays.photosOn(identity, photos, shelf(BIN), day))
+        assertEquals(2, db.photoDays.headersOnDays(identity, photos, shelf(LIBRARY), day, day).size)
+        assertEquals(1, db.photoDays.headersOnDays(identity, photos, shelf(BIN), day, day).size)
+    }
+
+    @Test
+    fun aTaggedViewCountsOnlyItsTaggedPhotosOnItsShelvesByTheSameDays() = runDbTest { db ->
+        val favorite = Uuid.random()
+        val noon = local(2024, 3, 9, 12, 0)
+        val lateEvening = local(2024, 3, 9, 23, 30)
+        db.add(noon, localTags = listOf(favorite))
+        db.add(lateEvening, archivalStatus = ARCHIVED, localTags = listOf(Uuid.random(), favorite))
+        db.add(noon + 60_000, archivalStatus = BIN, localTags = listOf(favorite))
+        db.add(noon + 120_000)
+        db.add(noon + 180_000, localTags = listOf(Uuid.random()))
+        db.add(noon, drive = Uuid.random(), localTags = listOf(favorite))
+        val day = noon.localDay()
+        val favorites = PhotoFilter(listOf(LIBRARY, ARCHIVED), favorite)
+
+        assertEquals(listOf(DayCount(day, 2)), db.photoDays.dayCounts(identity, photos, favorites))
+        assertEquals(2, db.photoDays.photosOn(identity, photos, favorites, day))
+        assertEquals(listOf(lateEvening, noon), db.photoDays.headersOnDays(identity, photos, favorites, day, day).map {
+            OdinSystemSerializer.deserialize<HomebaseFile>(it.jsonHeader).fileMetadata.appData.userDate
+        })
     }
 
     @Test
@@ -136,6 +157,8 @@ class PhotoDaysWrapperTest {
     private fun local(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
         LocalDateTime(year, month, day, hour, minute).toInstant(zone).toEpochMilliseconds()
 
+    private fun shelf(status: Long) = PhotoFilter(listOf(status))
+
     private fun Long.localDay(): Int = Instant.fromEpochMilliseconds(this).toLocalDateTime(zone).date.toEpochDays().toInt()
 
     private suspend fun DatabaseManager.add(
@@ -144,14 +167,20 @@ class PhotoDaysWrapperTest {
         fileType: Long = PHOTO_TYPE,
         drive: Uuid = photos,
         archivalStatus: Long = LIBRARY,
+        localTags: List<Uuid> = emptyList(),
     ): Uuid {
         val processor = MainIndexMetaHelpers.HomebaseFileProcessor(this)
-        val file = file(drive, userDate, state, fileType, archivalStatus)
-        MainIndexMetaHelpers.upsertDriveMainIndex(this, processor.convertFileHeaderToDriveMainIndexRecord(identity, drive, file))
+        val file = file(drive, userDate, state, fileType, archivalStatus, localTags)
+        // As the sync writes a file: with its local tags.
+        if (localTags.isEmpty()) {
+            MainIndexMetaHelpers.upsertDriveMainIndex(this, processor.convertFileHeaderToDriveMainIndexRecord(identity, drive, file))
+        } else {
+            processor.baseUpsertEntryZapZap(identity, drive, file, cursor = null)
+        }
         return file.fileId
     }
 
-    private fun file(drive: Uuid, userDate: Long, state: String, fileType: Long, archivalStatus: Long): HomebaseFile = OdinSystemSerializer.deserialize(
+    private fun file(drive: Uuid, userDate: Long, state: String, fileType: Long, archivalStatus: Long, localTags: List<Uuid>): HomebaseFile = OdinSystemSerializer.deserialize(
         """{
             "fileId": "${Uuid.random()}", "driveId": "$drive", "fileState": "$state", "fileSystemType": "standard",
             "serverFileIsEncrypted": false,
@@ -162,7 +191,7 @@ class PhotoDaysWrapperTest {
                 "senderOdinId": "test.sender", "originalAuthor": "test.sender",
                 "appData": {"uniqueId": "${Uuid.random()}", "tags": null, "fileType": $fileType, "dataType": 0, "groupId": null,
                     "userDate": $userDate, "content": null, "previewThumbnail": null, "archivalStatus": $archivalStatus},
-                "localAppData": null, "referencedFile": null, "reactionPreview": null,
+                "localAppData": ${if (localTags.isEmpty()) "null" else localTags.joinToString(prefix = "{\"tags\": [", postfix = "]}") { "\"$it\"" }}, "referencedFile": null, "reactionPreview": null,
                 "versionTag": "${Uuid.random()}", "payloads": [], "dataSource": null
             },
             "serverMetadata": {

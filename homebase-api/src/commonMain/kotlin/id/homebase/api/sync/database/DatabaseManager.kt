@@ -366,7 +366,7 @@ class DatabaseManager(
         ChatReadCountWrapper(driver, chatReadCountAdapter, driveMainIndexAdapter, this)
     }
     val photoDays: PhotoDaysWrapper by lazy {
-        PhotoDaysWrapper(driver, driveMainIndexAdapter, this)
+        PhotoDaysWrapper(driver, driveMainIndexAdapter, driveLocalTagIndexAdapter, this)
     }
     val driveMainIndex: DriveMainIndexWrapper by lazy {
         DriveMainIndexWrapper(

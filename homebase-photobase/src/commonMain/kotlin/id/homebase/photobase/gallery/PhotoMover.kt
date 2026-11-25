@@ -31,6 +31,9 @@ interface PhotoMoveServer {
 
     suspend fun softDelete(files: List<FileVersionTag>): List<PerFileResult>
 
+    /** Adds or removes [tag] in each file's local tags, on top of the ones it has. */
+    suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult>
+
     /** Null when the server hasn't the file. */
     suspend fun header(fileId: Uuid): HomebaseFile?
 }
@@ -45,6 +48,9 @@ class HttpPhotoMoveServer(
 
     override suspend fun softDelete(files: List<FileVersionTag>) =
         this.files.softDeleteFiles(driveId, files, TombstoneOptions(keepUniqueId = true)).results
+
+    override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>) =
+        if (on) this.files.updateLocalTags(driveId, fileIds, add = listOf(tag)).results else this.files.updateLocalTags(driveId, fileIds, remove = listOf(tag)).results
 
     override suspend fun header(fileId: Uuid): HomebaseFile? = headers.getFileHeader(driveId, fileId)
 }
@@ -68,6 +74,49 @@ class PhotoMover(
 
     suspend fun deleteForGood(fileIds: Collection<Uuid>): PhotoMoveResult =
         write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = null)
+
+    /**
+     * Hearts [fileIds], or takes the heart away, wherever each is. No version is checked: a heart is the same whoever set
+     * it, and another device's heart on the same photo stands beside this one.
+     */
+    suspend fun setFavorite(fileIds: Collection<Uuid>, favorite: Boolean): PhotoMoveResult {
+        val tally = Tally(to = null)
+        val ids = fileIds.distinct()
+        var answered = 0
+        try {
+            for (batch in ids.chunked(DriveFileHttpProvider.FILE_BATCH)) {
+                val answers = try {
+                    server.setLocalTag(PhotobaseProtocol.FavoriteTag, favorite, batch)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (answered == 0) throw e
+                    Logger.w(tag = TAG, throwable = e) { "${ids.size - answered} photos not sent" }
+                    tally.failed += ids.size - answered
+                    break
+                }
+                answered += answers.size
+                for (answer in answers) {
+                    when (answer.errorCode) {
+                        null -> {
+                            tally.done++
+                            tally.written += answer.fileId
+                        }
+                        OdinClientErrorCode.FileNotFound -> tally.changedElsewhere++
+                        else -> {
+                            tally.failed++
+                            Logger.w(tag = TAG) { "photo ${answer.fileId} refused: ${answer.errorCode}" }
+                        }
+                    }
+                }
+            }
+        } finally {
+            if (answered > 0) sync()
+        }
+        return tally.result().also {
+            Logger.i(tag = TAG) { "${if (favorite) "favorite" else "not favorite"}: ${it.done} done, ${it.changedElsewhere} changed elsewhere, ${it.failed} failed" }
+        }
+    }
 
     /** Deletes for good what the bin shows, not what reached the server since. */
     suspend fun empty(): PhotoMoveResult = binned().let { files -> write(files.map { it.fileId }, files, ArchivalStatus.Removed, to = null) }

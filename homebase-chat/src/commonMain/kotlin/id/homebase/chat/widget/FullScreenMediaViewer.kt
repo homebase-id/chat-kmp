@@ -111,6 +111,8 @@ fun FullScreenMediaViewer(
     onReply: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     onDismiss: () -> Unit,
     onNavigateToMessage: (() -> Unit)? = null,
+    // A host's own buttons, first in the top bar.
+    extraActions: @Composable () -> Unit = {},
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     // A host paging several viewers shares one, so hidden chrome stays hidden across a swipe.
@@ -269,6 +271,7 @@ fun FullScreenMediaViewer(
 
                 },
                 actions = {
+                    extraActions()
                     if (onReply != null) {
                         IconButton(onClick = { onReply(data.messageId, currentPayloadKey) }) {
                             Icon(

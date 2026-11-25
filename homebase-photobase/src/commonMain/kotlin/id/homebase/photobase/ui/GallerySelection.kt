@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.HeartBroken
+import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
@@ -31,6 +35,10 @@ import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.resources.MR
 import id.homebase.resources.action_undo
 import id.homebase.resources.photobase_archive_archived
+import id.homebase.resources.photobase_favorites_add
+import id.homebase.resources.photobase_favorites_added
+import id.homebase.resources.photobase_favorites_remove
+import id.homebase.resources.photobase_favorites_removed
 import id.homebase.resources.photobase_archive_move
 import id.homebase.resources.photobase_archive_unarchive
 import id.homebase.resources.photobase_archive_unarchived
@@ -53,6 +61,8 @@ import org.jetbrains.compose.resources.stringResource
 internal fun SelectionToolbar(
     shelf: PhotoShelf,
     enabled: Boolean,
+    /** Every picked photo is a favourite already, so the heart takes them out. */
+    favorites: Boolean,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onDeleteForGood: () -> Unit,
     modifier: Modifier = Modifier,
@@ -60,15 +70,34 @@ internal fun SelectionToolbar(
     HorizontalFloatingToolbar(expanded = true, modifier = modifier) {
         val moveTo = { to: PhotoShelf -> { onAction(PhotoGalleryUiAction.MoveSelected(to)) } }
         when (shelf) {
-            PhotoShelf.Library -> ToolbarAction(Icons.Outlined.Archive, MR.string.photobase_archive_move, enabled, moveTo(PhotoShelf.Archive))
-            PhotoShelf.Archive -> ToolbarAction(Icons.Outlined.Unarchive, MR.string.photobase_archive_unarchive, enabled, moveTo(PhotoShelf.Library))
-            PhotoShelf.Bin -> ToolbarAction(Icons.Outlined.RestoreFromTrash, MR.string.photobase_bin_restore, enabled, moveTo(PhotoShelf.Library))
+            PhotoShelf.Library, PhotoShelf.Archive -> {
+                FavoriteButton(favorites, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!favorites)) }
+                if (shelf == PhotoShelf.Library) {
+                    ToolbarAction(Icons.Outlined.Archive, MR.string.photobase_archive_move, enabled, moveTo(PhotoShelf.Archive))
+                } else {
+                    ToolbarAction(Icons.Outlined.Unarchive, MR.string.photobase_archive_unarchive, enabled, moveTo(PhotoShelf.Library))
+                }
+                ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled, moveTo(PhotoShelf.Bin))
+            }
+            PhotoShelf.Bin -> {
+                ToolbarAction(Icons.Outlined.RestoreFromTrash, MR.string.photobase_bin_restore, enabled, moveTo(PhotoShelf.Library))
+                ToolbarAction(Icons.Outlined.DeleteForever, MR.string.photobase_bin_delete_forever, enabled, onDeleteForGood)
+            }
+            PhotoShelf.Favorites -> ToolbarAction(Icons.Outlined.HeartBroken, MR.string.photobase_favorites_remove, enabled) {
+                onAction(PhotoGalleryUiAction.SetFavorite(false))
+            }
         }
-        if (shelf == PhotoShelf.Bin) {
-            ToolbarAction(Icons.Outlined.DeleteForever, MR.string.photobase_bin_delete_forever, enabled, onDeleteForGood)
-        } else {
-            ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled, moveTo(PhotoShelf.Bin))
-        }
+    }
+}
+
+/** Filled when the photos are favourites already; tapping takes them out. */
+@Composable
+internal fun FavoriteButton(favorite: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(
+            imageVector = if (favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            contentDescription = stringResource(if (favorite) MR.string.photobase_favorites_remove else MR.string.photobase_favorites_add),
+        )
     }
 }
 
@@ -94,7 +123,7 @@ internal fun SelectionMark(picked: Boolean, unpickedTint: Color, modifier: Modif
     )
 }
 
-/** Says what a move or delete did; a move offers Undo. */
+/** Says what a move, delete or heart did; a move or heart offers Undo. */
 internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: (PhotoGalleryUiAction) -> Unit) {
     val message = when (event) {
         is PhotoGalleryEvent.MoveFailed -> getString(MR.string.photobase_bin_failed)
@@ -102,6 +131,8 @@ internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: 
             val result = event.result
             if (result.done > 0) {
                 val done = when (event.action) {
+                    MoveAction.Favorite -> MR.plurals.photobase_favorites_added
+                    MoveAction.Unfavorite -> MR.plurals.photobase_favorites_removed
                     MoveAction.Archive -> MR.plurals.photobase_archive_archived
                     MoveAction.Unarchive -> MR.plurals.photobase_archive_unarchived
                     MoveAction.MoveToBin -> MR.plurals.photobase_bin_moved

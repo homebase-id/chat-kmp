@@ -71,20 +71,20 @@ class PhotoGridDbBench {
         assertEquals(dayCountsKotlin(dbm.driver), days, "SQLite's localtime and kotlinx-datetime must agree on every day")
 
         measure("day counts, SQL localtime, existing indexes") { dayCountsSql(dbm.driver) }
-        val shipped = dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, LIBRARY)
+        val shipped = dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, PhotoFilter(listOf(LIBRARY)))
         assertEquals(days, shipped.map { it.day to it.photos }, "PhotoDays.dayCounts must count the days this bench does")
-        measure("day counts, PhotoDays.dayCounts (shipped)") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, LIBRARY) }
-        measure("day counts, PhotoDays.dayCounts (shipped), the bin") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, BIN) }
+        measure("day counts, PhotoDays.dayCounts (shipped)") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, PhotoFilter(listOf(LIBRARY))) }
+        measure("day counts, PhotoDays.dayCounts (shipped), the bin") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, PhotoFilter(listOf(BIN))) }
         val busiest = days.maxBy { it.second }
         val busiestDay = checkNotNull(dbm.photoDays.dayOf(busiest.first * DAY_MS + DAY_MS / 2))
-        log("  busiest day ${busiest.first}: ${busiest.second} photos; photosOn found ${dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, LIBRARY, busiestDay)} on day $busiestDay")
+        log("  busiest day ${busiest.first}: ${busiest.second} photos; photosOn found ${dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PhotoFilter(listOf(LIBRARY)), busiestDay)} on day $busiestDay")
         measure("one day's count, PhotoDays.photosOn (shipped), busiest day") {
-            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, LIBRARY, busiest.first)
+            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PhotoFilter(listOf(LIBRARY)), busiest.first)
         }
         val typical = days.sortedBy { it.second }[days.size / 2]
         log("  median day has ${typical.second} photos")
         measure("one day's count, PhotoDays.photosOn (shipped), median day") {
-            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, LIBRARY, typical.first)
+            dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, PhotoFilter(listOf(LIBRARY)), typical.first)
         }
         measure("a photo's day, PhotoDays.dayOf (shipped)") { dbm.photoDays.dayOf(busiest.first * DAY_MS + DAY_MS / 2) }
         measure("photo count, existing indexes") { photoCount(dbm.driver) }
