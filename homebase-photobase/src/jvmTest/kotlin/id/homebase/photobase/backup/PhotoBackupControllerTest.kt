@@ -12,6 +12,7 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.PhotobaseConfigFile
+import id.homebase.photobase.PhotobaseRecord
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
@@ -121,15 +122,17 @@ class PhotoBackupControllerTest {
             OutboxSync(db, Offline, eventBus, backgroundScope).also { it.setOnline(false) },
         ) { 1_000 }
         val configFile = PhotobaseConfigFile(
-            getFileHeaderByUid = { _, _ ->
-                configReads++
-                null
-            },
-            uploadFile = { request ->
-                configSaveFailure?.let { throw it }
-                configUploads += request
-            },
-            updateFileByUniqueId = { error("nothing to update") },
+            PhotobaseRecord(
+                getFileHeaderByUid = { _, _ ->
+                    configReads++
+                    null
+                },
+                uploadFile = { request ->
+                    configSaveFailure?.let { throw it }
+                    configUploads += request
+                },
+                updateFileByUniqueId = { error("nothing to update") },
+            ),
         )
         settingsStore = store
         return PhotoBackupController(run, store, push, configFile, results, triggers, scope)

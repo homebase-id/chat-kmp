@@ -27,7 +27,7 @@ class PhotobaseConfigFileTest {
     private val updates = mutableListOf<UpdateFileByUniqueIdRequest>()
     private val failures = ArrayDeque<OdinClientErrorCode>()
 
-    private val configFile = PhotobaseConfigFile(
+    private val configFile = PhotobaseConfigFile(PhotobaseRecord(
         getFileHeaderByUid = { driveId, uniqueId ->
             assertEquals(PhotobaseProtocol.DriveAlias, driveId)
             assertEquals(PhotobaseProtocol.ConfigUniqueId, uniqueId)
@@ -41,7 +41,7 @@ class PhotobaseConfigFileTest {
             failures.removeFirstOrNull()?.let { throw conflict(it) }
             updates += request
         },
-    )
+    ))
 
     private fun conflict(code: OdinClientErrorCode) = ClientException(
         status = 400,

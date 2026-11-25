@@ -124,6 +124,16 @@ import androidx.compose.material.icons.filled.Favorite
 import id.homebase.resources.photobase_favorite_state
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.widget.ConfirmDialog
+import id.homebase.core.widget.NameDialog
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.ui.text.style.TextOverflow
+import id.homebase.resources.save
+import id.homebase.resources.photobase_album_delete
+import id.homebase.resources.photobase_album_delete_confirm_text
+import id.homebase.resources.photobase_album_delete_confirm_title
+import id.homebase.resources.photobase_album_name
+import id.homebase.resources.photobase_album_rename
 import id.homebase.core.widget.SelectionTopBar
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoShelf
@@ -188,7 +198,41 @@ fun PhotoGalleryScreen(
     }
     val gallery = viewModel.gallery
     val snackbar = remember { SnackbarHostState() }
-    LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.show(it, onAction) } }
+    val leave by rememberUpdatedState(onBack)
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            if (event is PhotoGalleryEvent.Moved && event.action == MoveAction.DeleteAlbum) leave?.invoke() else snackbar.show(event, onAction)
+        }
+    }
+    val album = gallery as? PhotoGallery.Album
+    var picking by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf<AlbumNaming?>(null) }
+    // Read only where they're shown: every change to the drive reads them again.
+    val albums = if (album != null || picking) viewModel.albums.collectAsStateWithLifecycle().value else null
+    val title = album?.let { albums?.firstOrNull { it.id == album.id }?.name } ?: stringResource(gallery.look.title)
+    if (picking) {
+        AlbumPickerSheet(
+            albums = albums,
+            onPick = { picking = false; onAction(PhotoGalleryUiAction.AddSelectedToAlbum(it)) },
+            onNew = { picking = false; naming = AlbumNaming.New },
+            onDismiss = { picking = false },
+        )
+    }
+    when (naming) {
+        AlbumNaming.New -> NewAlbumDialog(
+            onCreate = { naming = null; onAction(PhotoGalleryUiAction.AddSelectedToNewAlbum(it)) },
+            onDismiss = { naming = null },
+        )
+        AlbumNaming.Rename -> NameDialog(
+            title = stringResource(MR.string.photobase_album_rename),
+            label = stringResource(MR.string.photobase_album_name),
+            confirmLabel = stringResource(MR.string.save),
+            initial = title,
+            onConfirm = { naming = null; onAction(PhotoGalleryUiAction.RenameAlbum(it)) },
+            onDismiss = { naming = null },
+        )
+        null -> Unit
+    }
     // Moving to the bin asks first: a missed tap on a small phone mustn't take photos away unnoticed.
     var asking by remember { mutableStateOf<PhotoGalleryUiAction?>(null) }
     // The viewer's question goes with its photo, should a sync take that away.
@@ -213,6 +257,11 @@ fun PhotoGalleryScreen(
                 pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, selected, selected),
                 pluralStringResource(MR.plurals.photobase_bin_cant_undo, selected),
                 stringResource(MR.string.photobase_bin_delete_forever),
+            )
+            action == PhotoGalleryUiAction.DeleteAlbum -> Triple(
+                stringResource(MR.string.photobase_album_delete_confirm_title, title),
+                stringResource(MR.string.photobase_album_delete_confirm_text),
+                stringResource(MR.string.photobase_album_delete),
             )
             action == PhotoGalleryUiAction.EmptyBin -> Triple(
                 stringResource(MR.string.photobase_bin_empty_confirm_title),
@@ -255,8 +304,8 @@ fun PhotoGalleryScreen(
                     )
                 } else {
                     GalleryGrid(
-                        uiState, gallery, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenLibrary, onBack,
-                        { asking = it }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
+                        uiState, gallery, title, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenLibrary, onBack,
+                        { asking = it }, { picking = true }, { naming = AlbumNaming.Rename }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
                     )
                 }
             }
@@ -396,7 +445,7 @@ private fun VideoStill(item: PhotoGalleryItem) {
     }
 }
 
-private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
+internal fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
     val iv = shown.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
@@ -411,6 +460,7 @@ private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
 private fun GalleryGrid(
     uiState: PhotoGalleryUiState,
     gallery: PhotoGallery,
+    title: String,
     layout: GalleryLayout?,
     loaded: State<Map<Int, List<PhotoGalleryItem>>>,
     selected: State<Set<Uuid>>,
@@ -420,6 +470,8 @@ private fun GalleryGrid(
     onOpenLibrary: (() -> Unit)?,
     onBack: (() -> Unit)?,
     onConfirm: (PhotoGalleryUiAction) -> Unit,
+    onAddToAlbum: () -> Unit,
+    onRenameAlbum: () -> Unit,
     memory: GridMemory,
     haptics: Haptics,
     sharedTransitionScope: SharedTransitionScope,
@@ -440,13 +492,14 @@ private fun GalleryGrid(
                             }
                         }
                     },
-                    title = { Text(stringResource(gallery.look.title)) },
+                    title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     actions = {
                         if (gallery == PhotoGallery.Bin) {
                             TextButton(onClick = { onConfirm(PhotoGalleryUiAction.EmptyBin) }, enabled = hasPhotos && !uiState.busy) {
                                 Text(stringResource(MR.string.photobase_bin_empty))
                             }
                         }
+                        if (gallery is PhotoGallery.Album) AlbumMenu(enabled = !uiState.busy, onRename = onRenameAlbum, onDelete = { onConfirm(PhotoGalleryUiAction.DeleteAlbum) })
                     },
                 )
             }
@@ -521,9 +574,42 @@ private fun GalleryGrid(
                     allFavorite = uiState.selectedAreFavorites(),
                     onAction = onAction,
                     onConfirm = onConfirm,
+                    onAddToAlbum = onAddToAlbum,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                 )
             }
+        }
+    }
+}
+
+private enum class AlbumNaming { New, Rename }
+
+@Composable
+private fun AlbumMenu(enabled: Boolean, onRename: () -> Unit, onDelete: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { menu = true }) {
+            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(MR.string.photobase_gallery_more))
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.photobase_album_rename)) },
+                leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+                enabled = enabled,
+                onClick = {
+                    menu = false
+                    onRename()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.photobase_album_delete)) },
+                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                enabled = enabled,
+                onClick = {
+                    menu = false
+                    onDelete()
+                },
+            )
         }
     }
 }

@@ -90,3 +90,23 @@ WHERE t.identityId = :identityId AND t.driveId = :driveId AND t.tagId = :tagId
   AND m.userDate < (CAST(:toDay AS INTEGER) + 2) * 86400000
   AND CAST(julianday(date(m.userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) BETWEEN :fromDay AND :toDay
 ORDER BY m.userDate DESC, m.rowId DESC;
+
+-- groupId IS NULL lets Idx3DriveMainIndex find the few records of a type among the photos.
+headersOfType:
+SELECT jsonHeader FROM DriveMainIndex
+WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileState = 1 AND groupId IS NULL
+  AND fileType = :fileType;
+
+-- Per tag, how many photos carry it and the newest of them, counted as taggedDayCounts counts them.
+taggedCovers:
+SELECT t.tagId, count(*) AS photos, m.jsonHeader, max(m.userDate) AS newest
+FROM DriveLocalTagIndex t CROSS JOIN DriveMainIndex m
+  ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId
+WHERE t.identityId = :identityId AND t.driveId = :driveId AND t.tagId IN :tagIds
+  AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1 AND m.archivalStatus IN :archivalStatuses
+  AND m.userDate BETWEEN -62167132800000 AND 253402214399999
+GROUP BY t.tagId;
+
+taggedFileIds:
+SELECT fileId FROM DriveLocalTagIndex
+WHERE identityId = :identityId AND driveId = :driveId AND tagId = :tagId;

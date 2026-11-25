@@ -16,7 +16,7 @@ enum class PhotoShelf(val status: ArchivalStatus) {
 
 /** What a gallery shows: the photos on one shelf, or the tagged photos of the library and the archive. */
 sealed interface PhotoGallery {
-    /** Names its route and its Koin qualifier. */
+    /** Names its route. */
     val key: String
     val filter: PhotoFilter
 
@@ -33,7 +33,7 @@ sealed interface PhotoGallery {
     /** A binned photo drops out, and is back, still tagged, if restored. */
     sealed interface Tagged : PhotoGallery {
         val tag: Uuid
-        override val filter: PhotoFilter get() = PhotoFilter.Tagged(tag, TAGGED_SHELVES.map { it.status.value.toLong() })
+        override val filter: PhotoFilter get() = PhotoFilter.Tagged(tag, TAGGED_STATUSES)
 
         override fun holds(file: HomebaseFile): Boolean = TAGGED_SHELVES.any { file.isAt(it.status) } && tag in file.localTags()
     }
@@ -41,6 +41,12 @@ sealed interface PhotoGallery {
     data object Favorites : Tagged {
         override val key: String = "Favorites"
         override val tag: Uuid = PhotobaseProtocol.FavoriteTag
+    }
+
+    /** The photos carrying the album's tag, which is the album record's unique id. */
+    data class Album(val id: Uuid) : Tagged {
+        override val key: String get() = "$ALBUM_KEY$id"
+        override val tag: Uuid get() = id
     }
 
     companion object {
@@ -51,11 +57,14 @@ sealed interface PhotoGallery {
         /** The galleries the Library screen opens, in its order. */
         val away: List<PhotoGallery> = listOf(Favorites, Archive, Bin)
 
-        fun ofKey(key: String): PhotoGallery? = away.firstOrNull { it.key == key }
+        fun ofKey(key: String): PhotoGallery? =
+            away.firstOrNull { it.key == key } ?: key.removePrefix(ALBUM_KEY).takeIf { it != key }?.let(Uuid::parseOrNull)?.let(::Album)
     }
 }
 
 private val TAGGED_SHELVES = listOf(PhotoShelf.Library, PhotoShelf.Archive)
+internal val TAGGED_STATUSES = TAGGED_SHELVES.map { it.status.value.toLong() }
+private const val ALBUM_KEY = "album-"
 
 internal fun HomebaseFile.isAt(status: ArchivalStatus): Boolean =
     fileState == FileState.Active && (fileMetadata.appData.archivalStatus ?: ArchivalStatus.None) == status

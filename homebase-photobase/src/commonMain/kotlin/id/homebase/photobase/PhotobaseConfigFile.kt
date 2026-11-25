@@ -32,32 +32,15 @@ data class PhotobaseConfig(
     val pushIntervalMs: Long? = null,
 )
 
-class PhotobaseConfigFile(
-    private val getFileHeaderByUid: suspend (driveId: Uuid, uniqueId: Uuid) -> HomebaseFile?,
-    private val uploadFile: suspend (UploadFileRequest) -> Unit,
-    private val updateFileByUniqueId: suspend (UpdateFileByUniqueIdRequest) -> Unit,
-) {
+class PhotobaseConfigFile(private val record: PhotobaseRecord) {
+
     /** Null when no device has saved one yet. Throws when the server can't be asked. */
-    suspend fun read(): PhotobaseConfig? = header()?.let { parse(it.fileMetadata.appData.content) }
+    suspend fun read(): PhotobaseConfig? = parse(record.header(PhotobaseProtocol.ConfigUniqueId)?.fileMetadata?.appData?.content)
 
-    suspend fun update(transform: (PhotobaseConfig) -> PhotobaseConfig) {
-        repeat(MAX_CONFLICT_RETRIES) {
-            val existing = header()
-            val stored = existing?.fileMetadata?.appData?.content
-            val content = merged(stored, transform(parse(stored) ?: PhotobaseConfig()))
-            try {
-                if (existing == null) create(content) else update(existing, content)
-                return
-            } catch (e: ClientException) {
-                val conflict = e.isExistingFileWithUniqueId() || e.errorCode == OdinClientErrorCode.VersionTagMismatch
-                if (!conflict) throw e
-                Logger.i(tag = TAG) { "update: ${e.errorCode}, retrying" }
-            }
+    suspend fun update(transform: (PhotobaseConfig) -> PhotobaseConfig) =
+        record.write(PhotobaseProtocol.ConfigUniqueId, PhotobaseProtocol.ConfigFileType) { stored ->
+            OdinSystemSerializer.serialize(transform(parse(stored) ?: PhotobaseConfig()))
         }
-        throw IllegalStateException("Could not save the Photobase config after $MAX_CONFLICT_RETRIES conflicts")
-    }
-
-    private suspend fun header() = getFileHeaderByUid(PhotobaseProtocol.DriveAlias, PhotobaseProtocol.ConfigUniqueId)
 
     private fun parse(content: String?): PhotobaseConfig? {
         if (content == null) return null
@@ -66,35 +49,62 @@ class PhotobaseConfigFile(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "unreadable config file" }
+            Logger.w(tag = "PhotobaseConfigFile", throwable = e) { "unreadable config file" }
             null
         }
     }
+}
+
+/** An owner-only record on the Photos drive, all in its header, found by its unique id. */
+class PhotobaseRecord(
+    private val getFileHeaderByUid: suspend (driveId: Uuid, uniqueId: Uuid) -> HomebaseFile?,
+    private val uploadFile: suspend (UploadFileRequest) -> Unit,
+    private val updateFileByUniqueId: suspend (UpdateFileByUniqueIdRequest) -> Unit,
+) {
+    /** Null when there's none. Throws when the server can't be asked. */
+    suspend fun header(uniqueId: Uuid): HomebaseFile? = getFileHeaderByUid(PhotobaseProtocol.DriveAlias, uniqueId)
+
+    /** Saves [content] of what's stored, or of null, creating the record if there's none; another device's save in between asks again. */
+    suspend fun write(uniqueId: Uuid, fileType: Int, content: (stored: String?) -> String) {
+        repeat(MAX_CONFLICT_RETRIES) {
+            val existing = header(uniqueId)
+            val stored = existing?.fileMetadata?.appData?.content
+            val merged = merged(stored, content(stored))
+            try {
+                if (existing == null) create(uniqueId, fileType, merged) else update(existing, uniqueId, fileType, merged)
+                return
+            } catch (e: ClientException) {
+                val conflict = e.isExistingFileWithUniqueId() || e.errorCode == OdinClientErrorCode.VersionTagMismatch
+                if (!conflict) throw e
+                Logger.i(tag = TAG) { "write: ${e.errorCode}, retrying" }
+            }
+        }
+        throw IllegalStateException("Could not save Photobase record $uniqueId after $MAX_CONFLICT_RETRIES conflicts")
+    }
 
     // Keeps fields this app version doesn't know, so an older phone saving can't erase a newer one's.
-    private fun merged(stored: String?, config: PhotobaseConfig): String {
-        val known = OdinSystemSerializer.serialize(config)
+    private fun merged(stored: String?, known: String): String {
         val previous = stored?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() } ?: return known
         return JsonObject(previous + Json.parseToJsonElement(known).jsonObject).toString()
     }
 
-    private suspend fun create(content: String) {
+    private suspend fun create(uniqueId: Uuid, fileType: Int, content: String) {
         val keyHeader = KeyHeader.newRandom16()
         uploadFile(
             UploadFileRequest(
                 driveId = PhotobaseProtocol.DriveAlias,
                 keyHeader = keyHeader,
-                metadata = metadata(content, encrypted = true, versionTag = null).encryptContent(keyHeader),
+                metadata = metadata(uniqueId, fileType, content, encrypted = true, versionTag = null).encryptContent(keyHeader),
             ),
         )
     }
 
-    private suspend fun update(existing: HomebaseFile, content: String) {
+    private suspend fun update(existing: HomebaseFile, uniqueId: Uuid, fileType: Int, content: String) {
         val keyHeader = existing.keyHeader.withNewIv()
         updateFileByUniqueId(
             UpdateFileByUniqueIdRequest(
                 driveId = PhotobaseProtocol.DriveAlias,
-                uniqueId = PhotobaseProtocol.ConfigUniqueId,
+                uniqueId = uniqueId,
                 keyHeader = keyHeader,
                 instructions = FileUpdateInstructionSet(
                     transferIv = ByteArrayUtil.getRndByteArray(16),
@@ -107,27 +117,27 @@ class PhotobaseConfigFile(
                         generatePayloadIv = false,
                     ),
                 ),
-                metadata = metadata(content, existing.serverFileIsEncrypted, existing.fileMetadata.versionTag)
+                metadata = metadata(uniqueId, fileType, content, existing.serverFileIsEncrypted, existing.fileMetadata.versionTag)
                     .encryptContent(keyHeader),
             ),
         )
     }
 
-    private fun metadata(content: String, encrypted: Boolean, versionTag: Uuid?) = UploadFileMetadata(
+    private fun metadata(uniqueId: Uuid, fileType: Int, content: String, encrypted: Boolean, versionTag: Uuid?) = UploadFileMetadata(
         allowDistribution = false,
         isEncrypted = encrypted,
         versionTag = versionTag,
         // The drive is shared by circle, and a circle member has no business reading this.
         accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
         appData = UploadAppFileMetaData(
-            uniqueId = PhotobaseProtocol.ConfigUniqueId,
-            fileType = PhotobaseProtocol.ConfigFileType,
+            uniqueId = uniqueId,
+            fileType = fileType,
             content = content,
         ),
     )
 
     private companion object {
-        const val TAG = "PhotobaseConfigFile"
+        const val TAG = "PhotobaseRecord"
         const val MAX_CONFLICT_RETRIES = 5
     }
 }

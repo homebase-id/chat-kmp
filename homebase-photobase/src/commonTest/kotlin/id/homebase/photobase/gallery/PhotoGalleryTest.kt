@@ -35,5 +35,16 @@ class PhotoGalleryTest {
     fun everyGalleryTheLibraryOpensIsFoundByItsKey() {
         for (gallery in PhotoGallery.away) assertEquals(gallery, PhotoGallery.ofKey(gallery.key))
         assertEquals(null, PhotoGallery.ofKey(PhotoGallery.Library.key), "the library is the Photos tab, not a route of its own")
+        val album = PhotoGallery.Album(Uuid.random())
+        assertEquals(album, PhotoGallery.ofKey(album.key))
+        assertEquals(null, PhotoGallery.ofKey("album-not-an-id"))
+    }
+
+    @Test
+    fun anAlbumHoldsThePhotosCarryingItsIdOfTheLibraryAndTheArchive() {
+        val album = PhotoGallery.Album(Uuid.random())
+        assertTrue(album.holds(photo(ArchivalStatus.Archived, album.id)))
+        assertFalse(album.holds(photo(ArchivalStatus.Removed, album.id)))
+        assertFalse(album.holds(photo(ArchivalStatus.None, PhotobaseProtocol.FavoriteTag)))
     }
 }

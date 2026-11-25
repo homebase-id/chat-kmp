@@ -8,7 +8,10 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.LibraryDays
+import id.homebase.photobase.gallery.PhotoAlbum
+import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveResult
 import id.homebase.photobase.gallery.PhotoGallery
@@ -73,7 +76,7 @@ data class PhotoGalleryUiState(
     }
 }
 
-enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty, Favorite, Unfavorite }
+enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty, Favorite, Unfavorite, AddToAlbum, RemoveFromAlbum, RenameAlbum, DeleteAlbum }
 
 sealed interface PhotoGalleryEvent {
     data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: PhotoGalleryUiAction? = null) : PhotoGalleryEvent
@@ -106,7 +109,14 @@ sealed interface PhotoGalleryUiAction {
     data class Undo(val fileIds: Set<Uuid>, val from: PhotoShelf, val to: PhotoShelf) : PhotoGalleryUiAction
     /** A null [fileId], from the toolbar, means the selection. */
     data class SetFavorite(val favorite: Boolean, val fileId: Uuid? = null) : PhotoGalleryUiAction
-    data class UndoFavorite(val fileIds: Set<Uuid>, val favorite: Boolean) : PhotoGalleryUiAction
+    /** Puts [tag], a heart or an album, back on [fileIds], or takes it off them again. */
+    data class UndoTag(val tag: Uuid, val fileIds: Set<Uuid>, val on: Boolean) : PhotoGalleryUiAction
+    data class AddSelectedToAlbum(val albumId: Uuid) : PhotoGalleryUiAction
+    data class AddSelectedToNewAlbum(val name: String) : PhotoGalleryUiAction
+    /** From this gallery's album. */
+    data object RemoveSelectedFromAlbum : PhotoGalleryUiAction
+    data class RenameAlbum(val name: String) : PhotoGalleryUiAction
+    data object DeleteAlbum : PhotoGalleryUiAction
 }
 
 /**
@@ -127,8 +137,14 @@ class PhotoGalleryViewModel(
     private val reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
     private val moveScope: CoroutineScope? = null,
+    private val albumSource: PhotoAlbumSource? = null,
 ) : ViewModel() {
     private val shelf = (gallery as? PhotoGallery.OnShelf)?.shelf
+    private val album = gallery as? PhotoGallery.Album
+
+    /** Every album, for this one's name and for adding photos to one; null until read. */
+    val albums: StateFlow<List<PhotoAlbum>?> =
+        albumSource?.albums?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null) ?: MutableStateFlow(null)
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
     // The days being read right now: a change to one of them mustn't be lost when the read lands.
@@ -224,9 +240,31 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet()) { empty() }
             is PhotoGalleryUiAction.Undo -> runMove(moveAction(action.from, action.to), action.fileIds) { move(it, action.from, action.to) }
             is PhotoGalleryUiAction.SetFavorite -> (action.fileId?.let(::setOf) ?: takeSelection())?.let { ids ->
-                setFavorite(ids, action.favorite, restoreSelection = action.fileId == null, undoable = true)
+                setTag(PhotobaseProtocol.FavoriteTag, action.favorite, ids, restoreSelection = action.fileId == null, undoable = true)
             }
-            is PhotoGalleryUiAction.UndoFavorite -> setFavorite(action.fileIds, action.favorite, restoreSelection = false, undoable = false)
+            is PhotoGalleryUiAction.UndoTag -> setTag(action.tag, action.on, action.fileIds, restoreSelection = false, undoable = false)
+            is PhotoGalleryUiAction.AddSelectedToAlbum -> takeSelection()?.let { setTag(action.albumId, true, it, restoreSelection = true, undoable = true) }
+            is PhotoGalleryUiAction.AddSelectedToNewAlbum -> albumSource?.let { albums -> takeSelection()?.let { addToNewAlbum(albums, action.name, it) } }
+            PhotoGalleryUiAction.RemoveSelectedFromAlbum -> album?.let { album -> takeSelection()?.let { setTag(album.id, false, it, restoreSelection = true, undoable = true) } }
+            is PhotoGalleryUiAction.RenameAlbum -> albumWrite(MoveAction.RenameAlbum) { albums, id -> albums.rename(id, action.name) }
+            PhotoGalleryUiAction.DeleteAlbum -> albumWrite(MoveAction.DeleteAlbum) { albums, id -> albums.delete(id) }
+        }
+    }
+
+    private fun addToNewAlbum(albums: PhotoAlbumSource, name: String, ids: Set<Uuid>) {
+        var made: Uuid? = null
+        runMove(MoveAction.AddToAlbum, ids, restoreSelection = true, undo = { written -> made?.let { PhotoGalleryUiAction.UndoTag(it, written, on = false) } }) {
+            tagShown(albums.create(name).also { made = it }, on = true, it)
+        }
+    }
+
+    // Nothing to tally: the album's name or the screen going says it's done.
+    private fun albumWrite(action: MoveAction, write: suspend (PhotoAlbumSource, Uuid) -> Unit) {
+        val albums = albumSource ?: return
+        val id = album?.id ?: return
+        runMove(action, emptySet()) {
+            write(albums, id)
+            PhotoMoveResult(done = 0)
         }
     }
 
@@ -243,18 +281,24 @@ class PhotoGalleryViewModel(
             move(it, from, to)
         }
 
-    private fun setFavorite(ids: Set<Uuid>, favorite: Boolean, restoreSelection: Boolean, undoable: Boolean) {
+    private fun setTag(tag: Uuid, on: Boolean, ids: Set<Uuid>, restoreSelection: Boolean, undoable: Boolean) {
         // The server answers done for a photo already as asked; Undo mustn't take those back.
-        val already = _uiState.value.loaded.values.flatMapTo(HashSet()) { items -> items.filter { it.fileId in ids && it.favorite == favorite }.map { it.fileId } }
-        val undo = { written: Set<Uuid> -> (written - already).takeIf { it.isNotEmpty() }?.let { PhotoGalleryUiAction.UndoFavorite(it, !favorite) } }
-        runMove(if (favorite) MoveAction.Favorite else MoveAction.Unfavorite, ids, restoreSelection, undo.takeIf { undoable }) {
-            // Shown on the server's answer, not when the sync brings the photos back.
-            setFavorite(it, favorite).also { result -> markFavorite(result.written, favorite) }
+        val already = _uiState.value.loaded.values.flatMapTo(HashSet()) { items -> items.filter { it.fileId in ids && (tag in it.tags) == on }.map { it.fileId } }
+        val undo = { written: Set<Uuid> -> (written - already).takeIf { it.isNotEmpty() }?.let { PhotoGalleryUiAction.UndoTag(tag, it, !on) } }
+        val action = when {
+            tag == PhotobaseProtocol.FavoriteTag -> if (on) MoveAction.Favorite else MoveAction.Unfavorite
+            on -> MoveAction.AddToAlbum
+            else -> MoveAction.RemoveFromAlbum
         }
+        runMove(action, ids, restoreSelection, undo.takeIf { undoable }) { tagShown(tag, on, it) }
     }
 
-    private fun markFavorite(ids: Set<Uuid>, favorite: Boolean) = _uiState.update { state ->
-        state.copy(loaded = state.loaded.mapValues { (_, items) -> items.map { if (it.fileId in ids) it.copy(favorite = favorite) else it } })
+    // Shown on the server's answer, not when the sync brings the photos back.
+    private suspend fun PhotoMover.tagShown(tag: Uuid, on: Boolean, ids: Set<Uuid>): PhotoMoveResult =
+        setTag(tag, on, ids).also { result -> markTag(result.written, tag, on) }
+
+    private fun markTag(ids: Set<Uuid>, tag: Uuid, on: Boolean) = _uiState.update { state ->
+        state.copy(loaded = state.loaded.mapValues { (_, items) -> items.map { if (it.fileId in ids) it.copy(tags = if (on) it.tags + tag else it.tags - tag) else it } })
     }
 
     // One at a time, in the order asked: an Undo tapped while another action runs waits for it.

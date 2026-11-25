@@ -62,6 +62,18 @@ class PhotoGalleryStore internal constructor(
     suspend fun filesOn(shelf: PhotoShelf): List<HomebaseFile> =
         parsedOffMain(db.photoDays.headersOnShelf(identityId(), photosDriveId, shelf.status.value.toLong()))
 
+    /** The device's copy of every album record. */
+    suspend fun albumRecords(): List<HomebaseFile> =
+        parsedOffMain(db.photoDays.headersOfType(identityId(), photosDriveId, PhotobaseProtocol.AlbumFileType.toLong()))
+
+    /** For each of [albums] that holds a photo in the library or the archive: how many, and the newest. */
+    suspend fun albumCovers(albums: Collection<Uuid>): Map<Uuid, Pair<Int, PhotoGalleryItem?>> =
+        db.photoDays.taggedCovers(identityId(), photosDriveId, albums, TAGGED_STATUSES)
+            .associate { it.tag to (it.photos to parsed(it.newestHeader)?.toGalleryItem()) }
+
+    /** Every photo carrying [tag], binned and deleted ones too. */
+    suspend fun taggedFileIds(tag: Uuid): List<Uuid> = db.photoDays.taggedFileIds(identityId(), photosDriveId, tag)
+
     // A bin action asks from Main; a few thousand headers take seconds to parse.
     private suspend fun parsedOffMain(headers: List<String>): List<HomebaseFile> =
         withContext(Dispatchers.Default) { headers.mapNotNull { parsed(it) } }
