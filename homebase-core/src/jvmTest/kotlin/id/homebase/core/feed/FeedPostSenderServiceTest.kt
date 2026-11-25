@@ -16,11 +16,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.chat.services.builder.AttachmentInput
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.Outbox
 import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostContent
+import id.homebase.core.feed.services.PrimaryMediaFile
 import id.homebase.core.feed.services.PostType
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -118,6 +124,47 @@ class FeedPostSenderServiceTest {
         assertEquals("hello feed", content.caption)
         assertEquals(PostType.Tweet, content.type)
         assertEquals(channelDrive.toString(), content.channelId)
+        assertEquals(null, content.primaryMediaFile)
+    }
+
+    @Test
+    fun createPost_withAnImage_namesItsFirstPayloadAsThePrimaryMediaFile() {
+        val dir = kotlin.io.path.createTempDirectory("feed-primary-media").toFile()
+        val photo = java.io.File(dir, "photo.jpg").apply { writeBytes(jpeg()) }
+        val fileOps = JvmFileOperationsProvider()
+        runTest {
+            env = FeedTestEnv(this, fileOps = fileOps)
+            env.login()
+            advanceUntilIdle()
+            try {
+                val result = sender().createPost(
+                    channelId = channelDrive,
+                    caption = "a photo",
+                    attachments = listOf(AttachmentInput(photo.path, "image/jpeg")),
+                    acl = postAcl(PostAudience.Public),
+                )
+                advanceUntilIdle()
+
+                val request = readRequest(result.uniqueId)
+                val first = request.payloads.first { it.key == FeedProtocol.mediaPayloadKey(0) }
+                val content = OdinSystemSerializer.deserialize<PostContent>(request.metadata.appData.content!!)
+                assertEquals(PostType.Media, content.type)
+                assertEquals(
+                    PrimaryMediaFile(fileKey = FeedProtocol.mediaPayloadKey(0), type = first.contentType),
+                    content.primaryMediaFile,
+                )
+                assertTrue(first.contentType.startsWith("image/"))
+                assertTrue(""""primaryMediaFile":{"fileKey":"${FeedProtocol.mediaPayloadKey(0)}"""" in request.metadata.appData.content!!)
+            } finally {
+                env.close()
+                dir.deleteRecursively()
+            }
+        }
+    }
+
+    private fun jpeg(): ByteArray {
+        val bitmap = Bitmap().apply { allocN32Pixels(64, 64); erase(0xFF336699.toInt()) }
+        return Image.makeFromBitmap(bitmap).encodeToData(EncodedImageFormat.JPEG)!!.bytes
     }
 
     @Test

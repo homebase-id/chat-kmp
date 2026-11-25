@@ -59,7 +59,6 @@ import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
 private val ImageMaxHeight = 180.dp
-internal val LinkPreviewWideImageMaxHeight = 480.dp
 private const val OpenGraphAspectRatio = 1.91f
 private const val MaxImageAspectRatio = 4f
 private val ImageCornerShape = RoundedCornerShape(
@@ -76,12 +75,10 @@ private fun EmbeddedThumb?.aspectRatio(): Float =
 private fun Modifier.linkPreviewImageSize(
     aspectRatio: Float,
     maxHeight: Dp = ImageMaxHeight,
-    wideMaxHeight: Dp = maxHeight,
 ): Modifier = layout { measurable, constraints ->
     val ratio = aspectRatio.coerceAtMost(MaxImageAspectRatio)
-    val narrowCapPx = maxHeight.roundToPx()
-    val width = if (constraints.hasBoundedWidth) constraints.maxWidth else (narrowCapPx * ratio).roundToInt()
-    val capPx = if (width > Dimens.MediaBubble.linkPreviewMaxWidth.roundToPx()) wideMaxHeight.roundToPx() else narrowCapPx
+    val capPx = maxHeight.roundToPx()
+    val width = if (constraints.hasBoundedWidth) constraints.maxWidth else (capPx * ratio).roundToInt()
     val height = constraints.constrainHeight((width / ratio).roundToInt().coerceAtMost(capPx))
     val placeable = measurable.measure(Constraints.fixed(width, height))
     layout(width, height) { placeable.place(0, 0) }
@@ -321,13 +318,12 @@ fun LinkPreviewCard(
     localImagePath: String? = null,
     modifier: Modifier = Modifier,
     imageMaxHeight: Dp = ImageMaxHeight,
-    wideImageMaxHeight: Dp = imageMaxHeight,
 ) {
     val uriHandler = LocalUriHandler.current
     val domain = extractDomain(descriptor.url)
 
     val imageModifier = Modifier
-        .linkPreviewImageSize(previewThumbnail.aspectRatio(), imageMaxHeight, wideImageMaxHeight)
+        .linkPreviewImageSize(previewThumbnail.aspectRatio(), imageMaxHeight)
         .clip(ImageCornerShape)
 
     // While the message is pending/uploading the drive payload does not exist yet, so a

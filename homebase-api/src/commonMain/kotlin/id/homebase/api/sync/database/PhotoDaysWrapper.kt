@@ -11,7 +11,7 @@ class PhotoDaysWrapper(
 ) {
     private val queries = PhotoDaysQueries(driver, driveMainIndexAdapter)
 
-    /** Newest day first. [archivalStatus] picks the shelf: 0 the library, 2 the bin. */
+    /** Newest day first. [archivalStatus] picks the shelf: 0 the library, 1 the archive, 2 the bin. */
     suspend fun dayCounts(identityId: Uuid, driveId: Uuid, archivalStatus: Long): List<DayCount> =
         databaseManager.readValue("photoDays.dayCounts") {
             queries.dayCounts(identityId, driveId, archivalStatus) { day, photos -> DayCount(day!!.toInt(), photos.toInt()) }.executeAsList()

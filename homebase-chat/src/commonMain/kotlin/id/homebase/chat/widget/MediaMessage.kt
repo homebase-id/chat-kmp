@@ -138,9 +138,7 @@ fun MediaMessage(
     // UploadProgressOverlay scrim is heavy, redundant with the message's own pending tick, and would
     // hide the crisp local image we now render during send. Skip the scrim for it — the inner card
     // still receives isUploading so it renders the local source instead of a failing drive fetch.
-    val isLinkPreview = remember(payloads) {
-        payloads.size == 1 && payloads[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
-    }
+    val isLinkPreview = remember(payloads) { payloads.isSoloLinkPreview() }
 
     val soloBadgedQuality = remember(payloads) {
         payloads.singleOrNull()?.badgedQuality()

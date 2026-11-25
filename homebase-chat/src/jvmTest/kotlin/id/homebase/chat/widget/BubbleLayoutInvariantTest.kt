@@ -879,25 +879,22 @@ class BubbleLayoutInvariantTest {
     }
 
     @Test
-    fun linkPreview_blockCaption_imageFollowsAspect_desktop_unchangedPhone() = runComposeUiTest {
+    fun linkPreview_blockCaption_cappedAtLinkPreviewMaxWidth_onDesktop() = runComposeUiTest {
+        val cap = Dimens.MediaBubble.linkPreviewMaxWidth.value
         val failures = mutableListOf<String>()
         for (width in listOf(desktopWidth, phoneWidth)) {
             val case = Case("link/${width.value}", sent = false, images = 0, caption = Caption.BLOCK, linkPreview = true)
             // Preparing makes the card use AsyncImage, which carries the title as its description without a drive fetch.
             render(case, width = width, uploadStatus = UploadStatus.Preparing)
             val image = onNodeWithContentDescription(linkTitle, useUnmergedTree = true).getUnclippedBoundsInRoot()
-            val media = boundsOf(ChatBubbleTestTags.MEDIA)
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
             val imageWidth = image.right.value - image.left.value
             val imageHeight = image.bottom.value - image.top.value
-            val mediaHeight = media.bottom.value - media.top.value
-            if (width == desktopWidth) {
-                if (!approx(imageHeight, minOf(imageWidth / 2f, 480f)))
-                    failures += "[${case.name}] image is ${imageWidth}x${imageHeight}dp, expected 2:1 up to 480dp tall"
-                if (mediaHeight <= Dimens.MediaBubble.maxHeight.value + tol)
-                    failures += "[${case.name}] card is ${mediaHeight}dp, still clamped to the bubble cap"
-            } else if (!approx(imageHeight, minOf(imageWidth / 2f, 180f))) {
-                failures += "[${case.name}] phone image is ${imageWidth}x${imageHeight}dp, expected 2:1 up to 180dp tall"
-            }
+            val bubbleWidth = bubble.right.value - bubble.left.value
+            if (bubbleWidth > cap + tol)
+                failures += "[${case.name}] bubble is ${bubbleWidth}dp wide, cap is ${cap}dp"
+            if (!approx(imageHeight, minOf(imageWidth / 2f, 180f)))
+                failures += "[${case.name}] image is ${imageWidth}x${imageHeight}dp, expected 2:1 up to 180dp tall"
         }
         assertTrue(failures.isEmpty(), "link preview block-caption failures:\n" + failures.joinToString("\n"))
     }

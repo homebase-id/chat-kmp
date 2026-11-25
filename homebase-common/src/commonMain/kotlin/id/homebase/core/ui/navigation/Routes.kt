@@ -168,8 +168,8 @@ sealed class Route {
     data object PhotoBackupStatus : Route()
 
     @Serializable
-    @SerialName("photo-bin")
-    data object PhotoBin : Route()
+    @SerialName("photo-shelf")
+    data class PhotoGalleryShelf(val shelf: String) : Route()
 
     // Not a tab: pushed over the screen that needs Filesync, and pops back to it once set up.
     @Serializable
