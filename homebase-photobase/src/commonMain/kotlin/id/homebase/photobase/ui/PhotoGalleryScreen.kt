@@ -145,6 +145,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import org.jetbrains.compose.resources.StringResource
 import id.homebase.resources.photobase_bin_title
 import id.homebase.resources.photobase_bin_cant_undo
+import id.homebase.resources.photobase_bin_move
+import id.homebase.resources.photobase_bin_move_confirm_title
+import id.homebase.resources.photobase_bin_move_confirm_text
 import id.homebase.resources.photobase_selection_day
 import id.homebase.resources.photobase_selection_select
 import id.homebase.resources.photobase_selection_day_clear
@@ -196,30 +199,51 @@ fun PhotoGalleryScreen(
     val shelf = viewModel.shelf
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.show(it, onAction) } }
-    var confirm by remember { mutableStateOf<MoveAction?>(null) }
-    val asked = when (confirm) {
-        MoveAction.DeleteForGood -> Triple(
-            pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, uiState.selected.size, uiState.selected.size),
-            stringResource(MR.string.photobase_bin_delete_forever),
-            PhotoGalleryUiAction.DeleteForGood,
-        )
-        MoveAction.Empty -> Triple(stringResource(MR.string.photobase_bin_empty_confirm_title), stringResource(MR.string.photobase_bin_empty), PhotoGalleryUiAction.EmptyBin)
-        else -> null
+    // Moving to the bin asks first: a missed tap on a small phone mustn't take photos away unnoticed.
+    var asking by remember { mutableStateOf<PhotoGalleryUiAction?>(null) }
+    // The viewer's question goes with its photo, should a sync take that away.
+    LaunchedEffect(uiState.openedFileId) {
+        val pending = asking as? PhotoGalleryUiAction.MovePhotoToBin
+        if (pending != null && pending.fileId != uiState.openedFileId) asking = null
     }
-    asked?.let { (title, confirmLabel, action) ->
-        ConfirmDialog(
-            title = title,
-            text = (if (confirm == MoveAction.Empty) layout?.photoCount ?: 0 else uiState.selected.size).let { count ->
-                pluralStringResource(MR.plurals.photobase_bin_cant_undo, count)
-            },
-            confirmLabel = confirmLabel,
-            destructive = true,
-            onConfirm = {
-                confirm = null
-                onAction(action)
-            },
-            onDismiss = { confirm = null },
-        )
+    asking?.let { action ->
+        val selected = uiState.selected.size
+        val toBin = when (action) {
+            is PhotoGalleryUiAction.MovePhotoToBin -> 1
+            is PhotoGalleryUiAction.MoveSelected -> selected.takeIf { action.to == PhotoShelf.Bin }
+            else -> null
+        }
+        val question = when {
+            toBin != null -> Triple(
+                pluralStringResource(MR.plurals.photobase_bin_move_confirm_title, toBin, toBin),
+                pluralStringResource(MR.plurals.photobase_bin_move_confirm_text, toBin),
+                stringResource(MR.string.photobase_bin_move),
+            )
+            action == PhotoGalleryUiAction.DeleteForGood -> Triple(
+                pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, selected, selected),
+                pluralStringResource(MR.plurals.photobase_bin_cant_undo, selected),
+                stringResource(MR.string.photobase_bin_delete_forever),
+            )
+            action == PhotoGalleryUiAction.EmptyBin -> Triple(
+                stringResource(MR.string.photobase_bin_empty_confirm_title),
+                pluralStringResource(MR.plurals.photobase_bin_cant_undo, layout?.photoCount ?: 0),
+                stringResource(MR.string.photobase_bin_empty),
+            )
+            else -> null
+        }
+        question?.let { (title, text, confirmLabel) ->
+            ConfirmDialog(
+                title = title,
+                text = text,
+                confirmLabel = confirmLabel,
+                destructive = true,
+                onConfirm = {
+                    asking = null
+                    onAction(action)
+                },
+                onDismiss = { asking = null },
+            )
+        }
     }
     // On the shared-bounds clock, or the tile and viewer fade out of step with the morph.
     val fadeSpec = tween<Float>(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)
@@ -230,7 +254,7 @@ fun PhotoGalleryScreen(
                 transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
             ) { viewing ->
                 if (viewing && layout != null) {
-                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf == PhotoShelf.Library || shelf == PhotoShelf.Archive }
+                    val moveToBin = { fileId: Uuid -> asking = PhotoGalleryUiAction.MovePhotoToBin(fileId) }.takeIf { shelf == PhotoShelf.Library || shelf == PhotoShelf.Archive }
                     GalleryViewer(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
                         // A heart waits for the one before it, so a second tap can't send the same again.
@@ -242,7 +266,7 @@ fun PhotoGalleryScreen(
                 } else {
                     GalleryGrid(
                         uiState, shelf, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenShelf, onBack,
-                        { confirm = it }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
+                        { asking = it }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
                     )
                 }
             }
@@ -405,7 +429,7 @@ private fun GalleryGrid(
     backupIndicator: @Composable () -> Unit,
     onOpenShelf: ((PhotoShelf) -> Unit)?,
     onBack: (() -> Unit)?,
-    onConfirm: (MoveAction) -> Unit,
+    onConfirm: (PhotoGalleryUiAction) -> Unit,
     memory: GridMemory,
     haptics: Haptics,
     sharedTransitionScope: SharedTransitionScope,
@@ -429,7 +453,7 @@ private fun GalleryGrid(
                     title = { Text(stringResource(shelf.title)) },
                     actions = {
                         if (shelf == PhotoShelf.Bin) {
-                            TextButton(onClick = { onConfirm(MoveAction.Empty) }, enabled = hasPhotos && !uiState.busy) {
+                            TextButton(onClick = { onConfirm(PhotoGalleryUiAction.EmptyBin) }, enabled = hasPhotos && !uiState.busy) {
                                 Text(stringResource(MR.string.photobase_bin_empty))
                             }
                         }
@@ -506,7 +530,7 @@ private fun GalleryGrid(
                     enabled = !uiState.busy,
                     allFavorite = uiState.selectedAreFavorites(),
                     onAction = onAction,
-                    onDeleteForGood = { onConfirm(MoveAction.DeleteForGood) },
+                    onConfirm = onConfirm,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                 )
             }
