@@ -30,7 +30,6 @@ interface PhotoAlbumSource {
     /** Newest made first, null until read; kept current while collected. */
     val albums: StateFlow<List<PhotoAlbum>?>
 
-    /** Returns the new album's id. */
     suspend fun create(name: String): Uuid
 
     suspend fun rename(id: Uuid, name: String)
@@ -81,7 +80,8 @@ class PhotoAlbums(
 
     override suspend fun delete(id: Uuid) {
         val tagged = store.taggedFileIds(id)
-        if (tagged.isNotEmpty()) mover.setTag(id, on = false, tagged)
+        // A record gone first would leave tags no album names, and nothing to delete again to clear them.
+        if (tagged.isNotEmpty() && mover.setTag(id, on = false, tagged).failed > 0) throw IllegalStateException("album $id: tags not all taken off")
         try {
             record.delete(id)
         } finally {

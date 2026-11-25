@@ -12,6 +12,7 @@ import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoAlbum
 import id.homebase.photobase.gallery.PhotoAlbumSource
+import id.homebase.photobase.RecordGoneException
 import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveResult
 import id.homebase.photobase.gallery.PhotoGallery
@@ -275,6 +276,9 @@ class PhotoGalleryViewModel(
                 done?.let { _events.send(it) }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: RecordGoneException) {
+                Logger.i(tag = TAG) { "album $id was deleted elsewhere" }
+                _events.send(PhotoGalleryEvent.AlbumDeleted)
             } catch (e: Exception) {
                 Logger.w(tag = TAG, throwable = e) { "album $id not written" }
                 _events.send(PhotoGalleryEvent.AlbumWriteFailed)

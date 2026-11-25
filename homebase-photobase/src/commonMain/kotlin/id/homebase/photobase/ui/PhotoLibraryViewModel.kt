@@ -8,6 +8,7 @@ import id.homebase.photobase.gallery.PhotoAlbum
 import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoGallery
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,8 @@ import kotlinx.coroutines.launch
 class PhotoLibraryViewModel(
     galleries: List<Pair<PhotoGallery, Flow<LibraryDays>>>,
     private val albumSource: PhotoAlbumSource? = null,
+    // The app's: leaving the screen mustn't stop a save halfway. Null runs it on the view model's own.
+    private val writeScope: CoroutineScope? = null,
 ) : ViewModel() {
     // Main only: what each gallery last counted, shown again at once when the screen comes back.
     private val held = mutableMapOf<PhotoGallery, Int>()
@@ -46,7 +49,7 @@ class PhotoLibraryViewModel(
     /** It shows once the drive's sync brings it back. */
     fun createAlbum(name: String) {
         val source = albumSource ?: return
-        viewModelScope.launch {
+        (writeScope ?: viewModelScope).launch {
             try {
                 source.create(name)
             } catch (e: CancellationException) {

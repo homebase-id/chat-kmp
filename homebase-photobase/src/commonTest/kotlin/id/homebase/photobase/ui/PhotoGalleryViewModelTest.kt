@@ -16,6 +16,7 @@ import id.homebase.photobase.gallery.PhotoMoveResult
 import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoAlbumSource
+import id.homebase.photobase.RecordGoneException
 import id.homebase.photobase.gallery.PhotoAlbum
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.galleryTestFile
@@ -545,6 +546,7 @@ class PhotoGalleryViewModelTest {
         val renamed = mutableListOf<Pair<Uuid, String>>()
         val deleted = mutableListOf<Uuid>()
         var failure: Exception? = null
+        var gone = false
 
         override suspend fun create(name: String): Uuid {
             failure?.let { throw it }
@@ -552,6 +554,7 @@ class PhotoGalleryViewModelTest {
         }
 
         override suspend fun rename(id: Uuid, name: String) {
+            if (gone) throw RecordGoneException(id)
             renamed += id to name
         }
 
@@ -960,6 +963,22 @@ class PhotoGalleryViewModelTest {
         assertEquals(MoveAction.RemoveFromAlbum, assertIs<PhotoGalleryEvent.Moved>(events.first()).action)
         assertEquals(PhotoGalleryEvent.AlbumDeleted, events.last(), "the rename says nothing; its name shows")
         assertEquals(2, events.size)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun renamingAnAlbumDeletedElsewhereLeavesIt() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val albums = Albums().apply { gone = true }
+        val (viewModel, screen) = moverViewModel(library, Server(), gallery = PhotoGallery.Album(Uuid.random()), albums = albums)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+
+        viewModel.onAction(PhotoGalleryUiAction.RenameAlbum("Winter"))
+        advanceUntilIdle()
+
+        assertEquals(listOf<PhotoGalleryEvent>(PhotoGalleryEvent.AlbumDeleted), events)
         listening.cancel()
         screen.cancel()
     }

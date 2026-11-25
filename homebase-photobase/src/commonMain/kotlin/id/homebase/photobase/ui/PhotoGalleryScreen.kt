@@ -208,10 +208,12 @@ fun PhotoGalleryScreen(
     }
     var picking by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf<AlbumNaming?>(null) }
-    val title = viewModel.albumName.collectAsStateWithLifecycle().value ?: stringResource(gallery.look.title)
+    val albumName = viewModel.albumName.collectAsStateWithLifecycle().value
+    val title = albumName ?: stringResource(gallery.look.title)
     if (picking) {
         AlbumPickerSheet(
             albums = viewModel.albums,
+            leaveOut = (gallery as? PhotoGallery.Album)?.id,
             onPick = { picking = false; onAction(PhotoGalleryUiAction.AddSelectedToAlbum(it)) },
             onNew = { picking = false; naming = AlbumNaming.New },
             onDismiss = { picking = false },
@@ -226,7 +228,7 @@ fun PhotoGalleryScreen(
             title = stringResource(MR.string.photobase_album_rename),
             label = stringResource(MR.string.photobase_album_name),
             confirmLabel = stringResource(MR.string.save),
-            initial = title,
+            initial = albumName.orEmpty(),
             onConfirm = { naming = null; onAction(PhotoGalleryUiAction.RenameAlbum(it)) },
             onDismiss = { naming = null },
         )
@@ -304,7 +306,7 @@ fun PhotoGalleryScreen(
                 } else {
                     GalleryGrid(
                         uiState, gallery, title, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenLibrary, onBack,
-                        { asking = it }, { picking = true }, { naming = AlbumNaming.Rename }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
+                        { asking = it }, { picking = true }, { naming = AlbumNaming.Rename }.takeIf { albumName != null }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
                     )
                 }
             }
@@ -470,7 +472,8 @@ private fun GalleryGrid(
     onBack: (() -> Unit)?,
     onConfirm: (PhotoGalleryUiAction) -> Unit,
     onAddToAlbum: () -> Unit,
-    onRenameAlbum: () -> Unit,
+    // Null before the album's name is read: the dialog starts from it.
+    onRenameAlbum: (() -> Unit)?,
     memory: GridMemory,
     haptics: Haptics,
     sharedTransitionScope: SharedTransitionScope,
@@ -584,9 +587,9 @@ private fun GalleryGrid(
 private enum class AlbumNaming { New, Rename }
 
 @Composable
-private fun AlbumMenu(enabled: Boolean, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun AlbumMenu(enabled: Boolean, onRename: (() -> Unit)?, onDelete: () -> Unit) {
     GalleryMenu { item ->
-        item(MR.string.photobase_album_rename, Icons.Outlined.Edit, enabled, onRename)
+        item(MR.string.photobase_album_rename, Icons.Outlined.Edit, enabled && onRename != null) { onRename?.invoke() }
         item(MR.string.photobase_album_delete, Icons.Outlined.Delete, enabled, onDelete)
     }
 }

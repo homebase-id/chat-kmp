@@ -1584,7 +1584,8 @@ val appModule = module {
             uploadFile = { request -> fileUploader.uploadFile(request) },
             updateFileByUniqueId = { request -> fileUploader.updateFileByUniqueId(request) },
             softDelete = { fileId, versionTag ->
-                batches.softDeleteFiles(PhotobaseProtocol.DriveAlias, listOf(FileVersionTag(fileId, versionTag))).results.single().errorCode
+                val answer = batches.softDeleteFiles(PhotobaseProtocol.DriveAlias, listOf(FileVersionTag(fileId, versionTag))).results.firstOrNull { it.fileId == fileId }
+                answer?.errorCode ?: if (answer == null) throw IllegalStateException("no answer for $fileId") else null
             },
         )
     }
@@ -1602,7 +1603,7 @@ val appModule = module {
     viewModel { params -> photoGalleryViewModel(params.getOrNull<PhotoGallery>() ?: PhotoGallery.Library) }
     viewModel {
         val galleries = get<PhotoGalleries>()
-        PhotoLibraryViewModel(PhotoGallery.away.map { it to galleries.of(it).days.days }, get())
+        PhotoLibraryViewModel(PhotoGallery.away.map { it to galleries.of(it).days.days }, get(), writeScope = get())
     }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()

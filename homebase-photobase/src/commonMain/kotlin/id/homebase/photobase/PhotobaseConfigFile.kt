@@ -54,6 +54,8 @@ inline fun <reified T> parseRecord(content: String?, what: String): T? {
     }
 }
 
+class RecordGoneException(uniqueId: Uuid) : IllegalStateException("Photobase record $uniqueId is gone")
+
 /** An owner-only record on the Photos drive, all in its header, found by its unique id. */
 class PhotobaseRecord(
     private val getFileHeaderByUid: suspend (driveId: Uuid, uniqueId: Uuid) -> HomebaseFile?,
@@ -62,9 +64,8 @@ class PhotobaseRecord(
     /** The server's error for the file, or null once it's deleted. */
     private val softDelete: suspend (fileId: Uuid, versionTag: Uuid) -> OdinClientErrorCode?,
 ) {
-    /** Null when there's none, or it was deleted. Throws when the server can't be asked. */
-    suspend fun header(uniqueId: Uuid): HomebaseFile? =
-        getFileHeaderByUid(PhotobaseProtocol.DriveAlias, uniqueId)?.takeIf { it.fileState == FileState.Active }
+    /** Null when there's none. Throws when the server can't be asked. */
+    suspend fun header(uniqueId: Uuid): HomebaseFile? = getFileHeaderByUid(PhotobaseProtocol.DriveAlias, uniqueId)
 
     /**
      * Saves [content] of what's stored, or of null; another device's save in between asks again. Without [create],
@@ -73,7 +74,7 @@ class PhotobaseRecord(
     suspend fun write(uniqueId: Uuid, fileType: Int, create: Boolean = true, content: (stored: String?) -> String) {
         repeat(MAX_CONFLICT_RETRIES) {
             val existing = header(uniqueId)
-            if (existing == null && !create) throw IllegalStateException("Photobase record $uniqueId is gone")
+            if (!create && existing?.fileState != FileState.Active) throw RecordGoneException(uniqueId)
             val stored = existing?.fileMetadata?.appData?.content
             val merged = merged(stored, content(stored))
             try {
@@ -90,7 +91,7 @@ class PhotobaseRecord(
 
     /** Nothing to do for a record that's gone already. */
     suspend fun delete(uniqueId: Uuid) {
-        val existing = header(uniqueId) ?: return
+        val existing = header(uniqueId)?.takeIf { it.fileState == FileState.Active } ?: return
         val versionTag = existing.fileMetadata.versionTag ?: throw IllegalStateException("Photobase record $uniqueId has no version tag")
         val error = softDelete(existing.fileId, versionTag)
         if (error != null && error != OdinClientErrorCode.FileNotFound) throw IllegalStateException("Photobase record $uniqueId not deleted: $error")

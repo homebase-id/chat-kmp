@@ -56,7 +56,7 @@ internal fun AlbumCover(album: PhotoAlbum, modifier: Modifier = Modifier) {
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
         contentAlignment = Alignment.Center,
     ) {
-        val imageData = remember(album.cover?.fileId) { album.cover?.tileImageData()?.forGridTile() }
+        val imageData = remember(album.cover) { album.cover?.tileImageData()?.forGridTile() }
         if (imageData != null) {
             HomebaseImage(imageData = imageData, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {
@@ -81,7 +81,7 @@ internal fun AlbumCard(album: PhotoAlbum, onOpen: () -> Unit, modifier: Modifier
 
 /** Picks the album the selection goes to, or a new one; null [albums] while they're read. */
 @Composable
-internal fun AlbumPickerSheet(albums: StateFlow<List<PhotoAlbum>?>, onPick: (Uuid) -> Unit, onNew: () -> Unit, onDismiss: () -> Unit) {
+internal fun AlbumPickerSheet(albums: StateFlow<List<PhotoAlbum>?>, leaveOut: Uuid?, onPick: (Uuid) -> Unit, onNew: () -> Unit, onDismiss: () -> Unit) {
     val shown by albums.collectAsStateWithLifecycle()
     AdaptiveSheet(onDismiss = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
@@ -92,7 +92,7 @@ internal fun AlbumPickerSheet(albums: StateFlow<List<PhotoAlbum>?>, onPick: (Uui
                 modifier = Modifier.clickable { dismiss(onNew) },
             )
             if (shown == null) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
-            for (album in shown.orEmpty()) {
+            for (album in shown.orEmpty().filter { it.id != leaveOut }) {
                 ListItem(
                     headlineContent = { Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = { Text(pluralStringResource(MR.plurals.photobase_library_count, album.photos, album.photos)) },

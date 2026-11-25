@@ -1,6 +1,7 @@
 package id.homebase.photobase.gallery
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
@@ -43,6 +44,7 @@ class PhotoAlbumsTest {
     private val deleted = mutableListOf<FileVersionTag>()
     private val scope = CoroutineScope(Dispatchers.Unconfined)
     private var syncs = 0
+    private var refuseTags = false
 
     private val server = object : PhotoMoveServer {
         override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) = error("no moves")
@@ -52,7 +54,7 @@ class PhotoAlbumsTest {
         override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
             check(!on)
             untagged += tag to fileIds
-            return fileIds.map { PerFileResult(it) }
+            return fileIds.map { PerFileResult(it, OdinClientErrorCode.ArgumentError.takeIf { refuseTags }) }
         }
 
         override suspend fun header(fileId: Uuid): HomebaseFile? = null
@@ -148,5 +150,17 @@ class PhotoAlbumsTest {
         assertEquals(id, untagged.single().first)
         assertEquals(setOf(kept.fileId, binned.fileId), untagged.single().second.toSet(), "a binned photo that's restored mustn't come back in it")
         assertEquals(listOf(FileVersionTag(onServer.getValue(id).fileId, versionTag)), deleted)
+    }
+
+    @Test
+    fun anAlbumWhoseTagDidntComeOffEveryPhotoStaysToBeDeletedAgain() = runTest {
+        val id = Uuid.random()
+        synced(photo(1_000, ArchivalStatus.None, id))
+        onServer[id] = record(id, """{"name":"Trip"}""", made = 1).newVersion()
+        refuseTags = true
+
+        assertFailsWith<IllegalStateException> { albums.delete(id) }
+
+        assertEquals(emptyList(), deleted)
     }
 }
