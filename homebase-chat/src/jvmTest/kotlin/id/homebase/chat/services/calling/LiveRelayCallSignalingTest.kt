@@ -95,10 +95,11 @@ class LiveRelayCallSignalingTest {
     }
 
     @Test
-    fun refusedOfferThrowsButRefusedIceDoesNot() = runTest {
+    fun refusedOfferAndIceThrowButARefusedHangupDoesNot() = runTest {
         val sink = mutableListOf<Captured>()
         val s = signaling(status = HttpStatusCode.BadRequest, sink = sink)
-        s.send(CallChannel.outbound(sam, CallSignal.Ice("c", "cand")))
+        s.send(CallChannel.outbound(sam, CallSignal.Hangup("c", HangupReason.Normal)))
+        assertFailsWith<IllegalStateException> { s.send(CallChannel.outbound(sam, CallSignal.Ice("c", "cand"))) }
         assertFailsWith<CallEngineException> {
             s.send(CallChannel.outbound(sam, CallSignal.Offer("c", "sdp", false)))
         }

@@ -179,7 +179,7 @@ only when it behaves the same on all four.
 - **DI:** Koin — all modules registered in `homebase-core/.../di/AppModule.kt`
 - **Database:** SQLDelight (`OdinDatabase`) with SQLCipher encryption on Android, encrypted JDBC on
   Desktop
-- **Networking:** Ktor client with platform-specific engines (OkHttp/Darwin/CIO)
+- **Networking:** Ktor client with platform-specific engines (OkHttp on Android and desktop, Darwin, Js)
 - **Navigation:** Compose Navigation via `AppNavHost` in homebase-core
 - **Serialization:** kotlinx.serialization (JSON)
 - **Images:** Coil3

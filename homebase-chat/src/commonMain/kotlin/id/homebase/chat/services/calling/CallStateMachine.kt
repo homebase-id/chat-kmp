@@ -27,13 +27,15 @@ sealed interface CallEvent {
 sealed interface CallEffect {
     data class SendSignal(val peer: String, val signal: CallSignal) : CallEffect
     data class CreateOffer(val video: Boolean) : CallEffect
-    data class CreateAnswer(val offerSdp: String, val video: Boolean) : CallEffect
-    data class ApplyRemoteAnswer(val sdp: String) : CallEffect
+    data class CreateAnswer(val offerSdp: String, val video: Boolean, val offerSeq: Int = 0) : CallEffect
+    /** [offerSeq] is the offer the callee answered; null for a restart answer or an older callee. */
+    data class ApplyRemoteAnswer(val sdp: String, val offerSeq: Int? = null) : CallEffect
     data object RestartIce : CallEffect
     data class AnswerRestart(val offerSdp: String) : CallEffect
     data class AddIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     /** Caller-side candidate gathered before any device answered: folded into the retained offer, not trickled. */
     data class HoldIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
+    data class TrickleIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     data class SetMuted(val muted: Boolean) : CallEffect
     data class SetVideo(val on: Boolean) : CallEffect
     /** The first camera of a call that began without one goes onto the idle video transceiver; nothing is renegotiated. */
@@ -150,7 +152,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             s.copy(phase = CallPhase.Connecting, pendingOfferSdp = null),
             listOf(
                 CallEffect.CancelTimers,
-                CallEffect.CreateAnswer(offer, s.media.localVideo),
+                CallEffect.CreateAnswer(offer, s.media.localVideo, s.offerSeq),
                 CallEffect.StartTimer(CallTimer.Connect, s.callId!!),
             ),
         )
@@ -178,11 +180,11 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             is CallSignal.Answer ->
                 if (s.phase == CallPhase.Outgoing) {
                     CallTransition(
-                        s.copy(phase = CallPhase.Connecting, peerRinging = false, peerDevice = sig.device),
+                        s.copy(phase = CallPhase.Connecting, peerRinging = false, peerDevice = sig.device, peerIceBatch = sig.iceBatch),
                         listOf(
                             CallEffect.CancelTimers,
                             relayToCalleeDevices(s, HangupReason.AnsweredElsewhere, chosen = sig.device),
-                            CallEffect.ApplyRemoteAnswer(sig.sdp),
+                            CallEffect.ApplyRemoteAnswer(sig.sdp, sig.offerSeq),
                             CallEffect.StartTimer(CallTimer.Connect, s.callId),
                         ),
                     )
@@ -198,7 +200,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                 } else {
                     CallTransition(s)
                 }
-            is CallSignal.Ice -> CallTransition(s, listOf(CallEffect.AddIce(sig.candidate, sig.sdpMid, sig.sdpMLineIndex)))
+            is CallSignal.Ice -> CallTransition(s, sig.all.map { CallEffect.AddIce(it.candidate, it.sdpMid, it.sdpMLineIndex) })
             is CallSignal.Hangup -> when (s.phase) {
                 CallPhase.Outgoing -> end(
                     s,
@@ -256,6 +258,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                 placedWithVideo = sig.video,
                 pendingOfferSdp = sig.sdp,
                 offerSeq = sig.seq,
+                peerIceBatch = sig.iceBatch,
             )
             return CallTransition(
                 next,
@@ -278,6 +281,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                 direction = CallDirection.Incoming,
                 media = s.media.copy(remoteVideo = sig.video),
                 peerRinging = false,
+                peerIceBatch = sig.iceBatch,
             )
             return CallTransition(
                 next,
@@ -286,7 +290,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                     add(CallEffect.ReleaseEngine)
                     // The peer's account is in this call now, so its other devices drop our ring as handled, not missed.
                     add(CallEffect.SendSignal(from, CallSignal.Hangup(s.callId!!, HangupReason.AnsweredElsewhere)))
-                    add(CallEffect.CreateAnswer(sig.sdp, s.media.localVideo))
+                    add(CallEffect.CreateAnswer(sig.sdp, s.media.localVideo, sig.seq))
                     addAll(replayControls(s.media))
                     add(CallEffect.StartTimer(CallTimer.Connect, sig.callId))
                 },
@@ -373,10 +377,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             is MediaEvent.LocalIce -> when (s.phase) {
                 CallPhase.Incoming -> CallTransition(s)
                 CallPhase.Outgoing -> CallTransition(s, listOf(CallEffect.HoldIce(e.candidate, e.sdpMid, e.sdpMLineIndex)))
-                else -> CallTransition(
-                    s,
-                    listOf(CallEffect.SendSignal(s.peer!!, CallSignal.Ice(s.callId!!, e.candidate, e.sdpMid, e.sdpMLineIndex))),
-                )
+                else -> CallTransition(s, listOf(CallEffect.TrickleIce(e.candidate, e.sdpMid, e.sdpMLineIndex)))
             }
         }
     }
@@ -425,13 +426,14 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
         }
         val ringing = CallEffect.SendSignal(from, CallSignal.Ringing(sig.callId))
         val media = s.media.copy(localVideo = sig.video && !s.acceptPending, remoteVideo = sig.video)
-        if (!s.acceptPending) return CallTransition(s.copy(pendingOfferSdp = sig.sdp, offerSeq = sig.seq, media = media), listOf(ringing))
+        val offered = s.copy(media = media, offerSeq = sig.seq, peerIceBatch = sig.iceBatch)
+        if (!s.acceptPending) return CallTransition(offered.copy(pendingOfferSdp = sig.sdp), listOf(ringing))
         return CallTransition(
-            s.copy(phase = CallPhase.Connecting, acceptPending = false, media = media, offerSeq = sig.seq),
+            offered.copy(phase = CallPhase.Connecting, acceptPending = false),
             listOf(
                 ringing,
                 CallEffect.CancelTimers,
-                CallEffect.CreateAnswer(sig.sdp, media.localVideo),
+                CallEffect.CreateAnswer(sig.sdp, media.localVideo, sig.seq),
                 CallEffect.StartTimer(CallTimer.Connect, sig.callId),
             ),
         )

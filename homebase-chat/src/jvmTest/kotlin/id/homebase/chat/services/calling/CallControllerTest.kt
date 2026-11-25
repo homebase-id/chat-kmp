@@ -1,6 +1,7 @@
 package id.homebase.chat.services.calling
 
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -12,7 +13,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.cancel
@@ -26,6 +29,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 class CallControllerTest {
     private val frodo = "frodo.baggins.demo.rocks"
@@ -42,13 +47,17 @@ class CallControllerTest {
         val engines = mutableListOf<FakeCallEngine>()
         var offline = false
         var sendHangs = false
+        var iceSendMs = 0L
+        var dropIncomingIce = false
         private val link = net.endpoint(id)
         val controller = CallController(
             selfOdinId = id,
-            signaling = object : CallSignaling by link {
+            signaling = object : CallSignaling {
+                override val incoming = link.incoming.filter { !(dropIncomingIce && it.signal is CallSignal.Ice) }
                 override suspend fun send(outbound: OutboundSignal) {
                     if (offline) throw IllegalStateException("Unable to resolve host")
                     if (sendHangs) awaitCancellation()
+                    if (outbound.signal is CallSignal.Ice) delay(iceSendMs)
                     link.send(outbound)
                 }
             },
@@ -850,5 +859,162 @@ class CallControllerTest {
         assertEquals(CallPhase.Connected, a.phase)
         assertEquals(CallPhase.Connected, b.phase)
     }
-}
 
+    private fun candidates(n: Int, from: Int = 0) = List(n) { "candidate:${from + it} 1 udp 2122260223 198.51.100.${from + it} 50000 typ host" }
+
+    private fun ice(net: LoopbackSignaling, from: String) = net.sent.filter { it.from == from }.map { it.signal }.filterIsInstance<CallSignal.Ice>()
+
+    // The callee answered and has one candidate on a relay that takes 2 s per send.
+    private fun TestScope.calleeSendingIceSlowly(): Triple<LoopbackSignaling, Side, Side> {
+        val (net, a, b) = pair()
+        b.iceSendMs = 2_000
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        b.engines.single().simulateLocalIce(candidates(1).single())
+        runCurrent()
+        return Triple(net, a, b)
+    }
+
+    @Test
+    fun connectedIsNotHeldBehindASlowIceSend() = runTest {
+        val (_, _, b) = calleeSendingIceSlowly()
+        advanceTimeBy(1_100)
+
+        assertEquals(CallPhase.Connected, b.phase)
+    }
+
+    @Test
+    fun aRemoteCandidateReachesTheEngineDuringASlowIceSend() = runTest {
+        val (net, a, b) = calleeSendingIceSlowly()
+        val remote = candidates(1, from = 50).single()
+        net.deliver(sam, frodo, CallSignal.Ice(a.state.callId!!, remote, "0", 0, device = a.device))
+        runCurrent()
+
+        assertTrue(remote in b.engines.single().addedIce)
+    }
+
+    @Test
+    fun candidatesGatheredDuringASendGoInAtMostTwoMorePosts() = runTest {
+        val (net, a, b) = calleeSendingIceSlowly()
+        val later = candidates(10, from = 1)
+        later.forEach { b.engines.single().simulateLocalIce(it) }
+        advanceTimeBy(10_000)
+
+        assertTrue(ice(net, sam).size <= 3, "posted ${ice(net, sam).size} Ice signals")
+        assertEquals(candidates(11), a.engines.single().addedIce)
+    }
+
+    @Test
+    fun aBusyReplyToAThirdCallerDoesNotDropTheTrickle() = runTest {
+        val (net, a, b) = calleeSendingIceSlowly()
+        val gimliSide = Side("gimli.demo.rocks", this, net, FakeCallScript())
+        gimliSide.controller.startCall(sam, video = false)
+        advanceTimeBy(10_000)
+
+        assertEquals(CallPhase.Ended(CallEndReason.Busy), gimliSide.phase)
+        assertEquals(candidates(1), a.engines.single().addedIce)
+    }
+
+    @Test
+    fun aCandidateWhosePostFailedIsPostedAgain() = runTest {
+        val (_, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        b.offline = true
+        b.engines.single().simulateLocalIce(candidates(1).single())
+        advanceTimeBy(500)
+        b.offline = false
+        advanceTimeBy(2_000)
+
+        assertEquals(candidates(1), a.engines.single().addedIce)
+    }
+
+    @Test
+    fun theLastIceBlobAloneCarriesEveryCandidateAndARepeatIsAddedOnce() = runTest {
+        val (net, a, b) = pair()
+        b.iceSendMs = 2_000
+        a.dropIncomingIce = true
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        candidates(11).forEach { b.engines.single().simulateLocalIce(it) }
+        advanceTimeBy(30_000)
+
+        val last = ice(net, sam).last()
+        a.dropIncomingIce = false
+        net.deliver(frodo, sam, last)
+        net.deliver(frodo, sam, last)
+        runCurrent()
+
+        assertEquals(candidates(11), a.engines.single().addedIce)
+    }
+
+    @Test
+    fun answeringTheLatestOfferMeansTheCallerResendsNoHeldCandidate() = runTest {
+        val (net, a, b) = pair(FakeCallScript(localCandidates = candidates(3)), scriptB = FakeCallScript())
+        a.controller.startCall(sam, video = false)
+        advanceTimeBy(OFFER_REPUBLISH_MS + 1)
+        assertEquals(1, b.state.offerSeq)
+        b.controller.accept()
+        advanceTimeBy(1_001)
+
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(emptyList(), ice(net, frodo))
+    }
+
+    @Test
+    fun theCallerTricklesOnlyTheHeldCandidatesTheAnsweredOfferLacked() = runTest {
+        val (net, a, b) = pair(FakeCallScript(localCandidates = candidates(3)), scriptB = FakeCallScript())
+        a.controller.startCall(sam, video = false)
+        advanceTimeBy(OFFER_REPUBLISH_MS + 1)
+        val late = candidates(1, from = 3).single()
+        a.engines.single().simulateLocalIce(late)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(listOf(late), ice(net, frodo).map { it.candidate })
+        assertEquals(listOf(late), b.engines.single().addedIce)
+    }
+
+    @Test
+    fun aPeerThatDoesNotAdvertiseBatchesGetsOneCandidatePerSignalAndBothFormatsAreRead() = runTest {
+        val (net, _, b) = pair()
+        net.deliver(sam, frodo, CallSignal.Offer("c-old", FakeCallEngine.FAKE_OFFER_SDP, video = false))
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        candidates(3).forEach { b.engines.single().simulateLocalIce(it) }
+        runCurrent()
+
+        assertEquals(candidates(3), ice(net, sam).map { it.candidate })
+        assertTrue(ice(net, sam).all { "candidates" !in Base64.decode(CallSignalCodec.encode(it)).decodeToString() })
+
+        net.deliver(sam, frodo, CallSignal.Ice("c-old", candidates(1, from = 20).single(), "0", 0))
+        val batch = candidates(3, from = 30).map { LocalCandidate(it, "0", 0) }
+        net.deliver(sam, frodo, CallSignalCodec.decode(CallSignalCodec.encode(CallSignal.Ice.of("c-old", batch)))!!)
+        runCurrent()
+
+        assertEquals(candidates(1, from = 20) + batch.map { it.candidate }, b.engines.single().addedIce)
+    }
+
+    @Serializable private data class OldIce(val callId: String, val candidate: String, val sdpMid: String? = null, val sdpMLineIndex: Int? = null)
+
+    @Serializable private data class OldAnswer(val callId: String, val sdp: String)
+
+    @Test
+    fun aDecoderThatPredatesBatchesReadsTheFirstCandidateAndThePlainAnswer() {
+        val old = Json { ignoreUnknownKeys = true }
+        fun wire(signal: CallSignal) = Base64.decode(CallSignalCodec.encode(signal)).decodeToString()
+        val batch = candidates(3).map { LocalCandidate(it, "0", 0) }
+
+        assertEquals(OldIce("c", batch[0].candidate, "0", 0), old.decodeFromString(OldIce.serializer(), wire(CallSignal.Ice.of("c", batch))))
+        assertEquals(OldAnswer("c", "sdp"), old.decodeFromString(OldAnswer.serializer(), wire(CallSignal.Answer("c", "sdp", offerSeq = 2, iceBatch = true))))
+    }
+}

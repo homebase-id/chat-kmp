@@ -1,6 +1,8 @@
 package id.homebase.chat.services.calling
 
 import id.homebase.api.client.calling.CallIceServer
+import dev.onvoid.webrtc.RTCBundlePolicy
+import dev.onvoid.webrtc.RTCRtcpMuxPolicy
 import dev.onvoid.webrtc.media.MediaDevices
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule
 import java.util.concurrent.CountDownLatch
@@ -22,6 +24,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Real webrtc-java natives on real UDP loopback; also proves the natives load on this host. */
 class WebRtcJavaCallEngineTest {
@@ -71,6 +74,37 @@ class WebRtcJavaCallEngineTest {
         } finally {
             // Join so every controller teardown (engine.close, native dispose) finishes before the next test starts.
             scope.coroutineContext[Job]!!.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun thePeerConnectionRequiresMaxBundleAndRtcpMux() {
+        val config = callRtcConfiguration(listOf(CallIceServer(urls = listOf("stun:stun.example.org:3478"))))
+
+        assertEquals(RTCBundlePolicy.MAX_BUNDLE, config.bundlePolicy)
+        assertEquals(RTCRtcpMuxPolicy.REQUIRE, config.rtcpMuxPolicy)
+        assertEquals(listOf("stun:stun.example.org:3478"), config.iceServers.single().urls)
+    }
+
+    @Test
+    fun anOfferWithAudioVideoAndDataGathersCandidatesOnTheFirstMediaSectionOnly() = nativeTest {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
+        try {
+            val ice = Channel<MediaEvent.LocalIce>(Channel.UNLIMITED)
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { engine.events.collect { if (it is MediaEvent.LocalIce) ice.trySend(it) } }
+
+            val offer = engine.createOffer(video = false)
+            assertEquals(3, offer.lines().count { it.startsWith("m=") }, offer)
+            val gathered = buildList {
+                add(withTimeout(10_000) { ice.receive() })
+                while (true) add(withTimeoutOrNull(2_000) { ice.receive() } ?: break)
+            }
+
+            assertEquals(setOf(0), gathered.map { it.sdpMLineIndex }.toSet(), gathered.joinToString("\n"))
+        } finally {
+            scope.coroutineContext[Job]!!.cancelAndJoin()
+            engine.closeBlocking()
         }
     }
 

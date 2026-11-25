@@ -7,6 +7,7 @@ import co.touchlab.kermit.Logger
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver
 import dev.onvoid.webrtc.PeerConnectionFactory
 import dev.onvoid.webrtc.RTCAnswerOptions
+import dev.onvoid.webrtc.RTCBundlePolicy
 import dev.onvoid.webrtc.RTCConfiguration
 import id.homebase.api.client.calling.CallIceServer
 import dev.onvoid.webrtc.RTCDataChannel
@@ -18,6 +19,7 @@ import dev.onvoid.webrtc.RTCIceCandidate
 import dev.onvoid.webrtc.RTCIceServer
 import dev.onvoid.webrtc.RTCOfferOptions
 import dev.onvoid.webrtc.RTCPeerConnection
+import dev.onvoid.webrtc.RTCRtcpMuxPolicy
 import dev.onvoid.webrtc.RTCRtpSender
 import dev.onvoid.webrtc.RTCRtpTransceiver
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection
@@ -49,6 +51,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.concurrent.timerTask
+import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -79,12 +82,19 @@ class WebRtcJavaCallEngine(
     override val localVideo: StateFlow<VideoHandle?> = _local.asStateFlow()
     override val remoteVideo: StateFlow<VideoHandle?> = _remote.asStateFlow()
 
-    init {
-        nativeLogs
+    private val buildSteps = mutableListOf<String>()
+
+    private inline fun <T> timed(step: String, block: () -> T): T {
+        val started = TimeSource.Monotonic.markNow()
+        return block().also { buildSteps += "$step ${started.elapsedNow().inWholeMilliseconds}ms" }
     }
 
-    private val adm: AudioDeviceModuleBase = audioDevice ?: AudioDeviceModule()
-    private val factory = PeerConnectionFactory(adm)
+    init {
+        timed("native logs") { nativeLogs }
+    }
+
+    private val adm: AudioDeviceModuleBase = timed("audio device") { audioDevice ?: AudioDeviceModule() }
+    private val factory = timed("factory") { PeerConnectionFactory(adm) }
     @Volatile private var audioTrack: AudioTrack? = null
     private var videoTrack: VideoTrack? = null
     private var videoSender: RTCRtpSender? = null
@@ -140,16 +150,18 @@ class WebRtcJavaCallEngine(
     )
     override val mediaDevices: CallMediaDevices get() = devices
 
-    private val peer: RTCPeerConnection = factory.createPeerConnection(
-        RTCConfiguration().apply { this.iceServers = iceServers.map { it.toRtc() } },
-        GuardedPeerObserver(
-            mapper = mapper,
-            isClosed = { closed },
-            setLive = { live = it },
-            track = ::handleTrack,
-            onError = ::failCall,
-        ),
-    ) ?: error("webrtc-java returned no peer connection")
+    private val peer: RTCPeerConnection = timed("peer connection") {
+        factory.createPeerConnection(
+            callRtcConfiguration(iceServers),
+            GuardedPeerObserver(
+                mapper = mapper,
+                isClosed = { closed },
+                setLive = { live = it },
+                track = ::handleTrack,
+                onError = ::failCall,
+            ),
+        ) ?: error("webrtc-java returned no peer connection")
+    }
 
     // Declared before statsTimer: the init below can outlast STATS_PERIOD_MS, and the first tick reads it.
     @Volatile
@@ -168,13 +180,14 @@ class WebRtcJavaCallEngine(
     }
 
     init {
-        devices.refresh()
+        timed("devices") { devices.refresh() }
         // Hot-plug needs the platform device monitor (PulseAudio on Linux, which webrtc-java reports as java.lang.Error); without it the call still runs on the devices enumerated above.
         if (!closed) {
-            runCatching { MediaDevices.addDeviceChangeListener(deviceListener) }
+            timed("hot-plug") { runCatching { MediaDevices.addDeviceChangeListener(deviceListener) } }
                 .onSuccess { listenerRegistered.set(true) }
                 .onFailure { Logger.w(it, "WebRtcJava") { "device hot-plug unavailable, the pickers will not follow device changes" } }
         }
+        Logger.i(tag = "WebRtcJava") { "engine built: ${buildSteps.joinToString()}" }
     }
 
     // A hot-plug fires a burst of callbacks; one enumeration covers them all.
@@ -702,6 +715,13 @@ internal class FrameCounter : dev.onvoid.webrtc.media.video.VideoTrackSink {
 
 /** The first camera in [order] not yet [tried], or null when every camera has been given a chance. */
 internal fun nextCameraAfterSilence(order: List<String>, tried: List<String>): String? = order.firstOrNull { it !in tried }
+
+// Both ends run this app, so no peer needs a transport per media section: audio, video and data gather candidates once.
+internal fun callRtcConfiguration(iceServers: List<CallIceServer>) = RTCConfiguration().apply {
+    this.iceServers = iceServers.map { it.toRtc() }
+    bundlePolicy = RTCBundlePolicy.MAX_BUNDLE
+    rtcpMuxPolicy = RTCRtcpMuxPolicy.REQUIRE
+}
 
 // Every server as given by the device's own server; nothing is derived or added.
 private fun CallIceServer.toRtc() = RTCIceServer().also {

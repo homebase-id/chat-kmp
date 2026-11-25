@@ -30,7 +30,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
-class DriveSync(
+// Only DriveSyncManager runs a drive's sync (ADDING_ADDON_APPS.md): an app mounts its drive, it doesn't sync it.
+class DriveSync internal constructor(
     private val identityId: Uuid,
     private val driveId: Uuid,
     private val driveQueryProvider: DriveQueryProvider, // TODO: <- can we get rid of this?

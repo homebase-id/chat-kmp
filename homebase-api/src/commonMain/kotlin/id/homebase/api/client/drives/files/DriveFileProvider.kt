@@ -762,7 +762,15 @@ data class DeleteFileIdBatchResult (
 data class FileVersionTag(val fileId: Uuid, val versionTag: Uuid)
 
 @Serializable
-data class FileVersionTagBatch(val files: List<FileVersionTag>, val archivalStatus: ArchivalStatus? = null)
+data class FileVersionTagBatch(
+    val files: List<FileVersionTag>,
+    val archivalStatus: ArchivalStatus? = null,
+    val tombstone: TombstoneOptions? = null,
+)
+
+/** [keepUniqueId]: the tombstone keeps the file's uniqueId, so a new upload with it is refused (4105) until it's hard-deleted. */
+@Serializable
+data class TombstoneOptions(val keepUniqueId: Boolean)
 
 /** [errorCode] is null when the write went through: the file is gone, or at the status asked for. */
 @Serializable
