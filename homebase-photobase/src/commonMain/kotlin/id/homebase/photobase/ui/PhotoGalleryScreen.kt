@@ -472,7 +472,6 @@ private fun GalleryGrid(
     onBack: (() -> Unit)?,
     onConfirm: (PhotoGalleryUiAction) -> Unit,
     onAddToAlbum: () -> Unit,
-    // Null before the album's name is read: the dialog starts from it.
     onRenameAlbum: (() -> Unit)?,
     memory: GridMemory,
     haptics: Haptics,
@@ -586,11 +585,12 @@ private fun GalleryGrid(
 
 private enum class AlbumNaming { New, Rename }
 
+// Null onRename: the album's name isn't read yet, and both dialogs name it.
 @Composable
 private fun AlbumMenu(enabled: Boolean, onRename: (() -> Unit)?, onDelete: () -> Unit) {
     GalleryMenu { item ->
         item(MR.string.photobase_album_rename, Icons.Outlined.Edit, enabled && onRename != null) { onRename?.invoke() }
-        item(MR.string.photobase_album_delete, Icons.Outlined.Delete, enabled, onDelete)
+        item(MR.string.photobase_album_delete, Icons.Outlined.Delete, enabled && onRename != null, onDelete)
     }
 }
 

@@ -45,6 +45,7 @@ class PhotoAlbumsTest {
     private val scope = CoroutineScope(Dispatchers.Unconfined)
     private var syncs = 0
     private var refuseTags = false
+    private val taggedElsewhere = mutableListOf<Uuid>()
 
     private val server = object : PhotoMoveServer {
         override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) = error("no moves")
@@ -67,6 +68,7 @@ class PhotoAlbumsTest {
             null
         },
         mover = PhotoMover(server, filesOf = store::filesOf, binned = { emptyList() }, sync = {}),
+        taggedOnServer = { taggedElsewhere },
         changes = emptyFlow(),
         scope = scope,
         sync = { syncs++ },
@@ -142,13 +144,15 @@ class PhotoAlbumsTest {
         val kept = photo(1_000, ArchivalStatus.None, id)
         val binned = photo(2_000, ArchivalStatus.Removed, id)
         synced(kept, binned, photo(3_000, ArchivalStatus.None))
+        val notSyncedHere = Uuid.random()
+        taggedElsewhere += listOf(kept.fileId, notSyncedHere)
         val versionTag = Uuid.random()
         onServer[id] = record(id, """{"name":"Trip"}""", made = 1).let { it.copy(fileMetadata = it.fileMetadata.copy(versionTag = versionTag)) }
 
         albums.delete(id)
 
         assertEquals(id, untagged.single().first)
-        assertEquals(setOf(kept.fileId, binned.fileId), untagged.single().second.toSet(), "a binned photo that's restored mustn't come back in it")
+        assertEquals(setOf(kept.fileId, binned.fileId, notSyncedHere), untagged.single().second.toSet(), "a binned photo that's restored mustn't come back in it")
         assertEquals(listOf(FileVersionTag(onServer.getValue(id).fileId, versionTag)), deleted)
     }
 

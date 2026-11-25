@@ -3533,6 +3533,7 @@
     <string name="photobase_album_delete_confirm_text">The album goes on all your devices. Its photos stay where they are.</string>
     <string name="photobase_album_empty_state">Select photos in your library and tap Add to album to put them here.</string>
     <string name="photobase_albums_none">No albums yet.</string>
+    <string name="photobase_album_failed">Couldn't save the album. Try again.</string>
     <string name="photobase_archive_title">Archive</string>
     <string name="photobase_archive_empty_state">Photos you archive leave your library and wait here.</string>
     <string name="photobase_archive_move">Archive</string>

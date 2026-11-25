@@ -91,10 +91,16 @@ class PhotobaseRecord(
 
     /** Nothing to do for a record that's gone already. */
     suspend fun delete(uniqueId: Uuid) {
-        val existing = header(uniqueId)?.takeIf { it.fileState == FileState.Active } ?: return
-        val versionTag = existing.fileMetadata.versionTag ?: throw IllegalStateException("Photobase record $uniqueId has no version tag")
-        val error = softDelete(existing.fileId, versionTag)
-        if (error != null && error != OdinClientErrorCode.FileNotFound) throw IllegalStateException("Photobase record $uniqueId not deleted: $error")
+        repeat(MAX_CONFLICT_RETRIES) {
+            val existing = header(uniqueId)?.takeIf { it.fileState == FileState.Active } ?: return
+            val versionTag = existing.fileMetadata.versionTag ?: throw IllegalStateException("Photobase record $uniqueId has no version tag")
+            when (val error = softDelete(existing.fileId, versionTag)) {
+                null, OdinClientErrorCode.FileNotFound -> return
+                OdinClientErrorCode.VersionTagMismatch -> Logger.i(tag = TAG) { "delete: $error, retrying" }
+                else -> throw IllegalStateException("Photobase record $uniqueId not deleted: $error")
+            }
+        }
+        throw IllegalStateException("Could not delete Photobase record $uniqueId after $MAX_CONFLICT_RETRIES conflicts")
     }
 
     // Keeps fields this app version doesn't know, so an older phone saving can't erase a newer one's.

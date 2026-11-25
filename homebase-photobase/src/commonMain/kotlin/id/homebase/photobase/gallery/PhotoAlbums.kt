@@ -1,7 +1,16 @@
 package id.homebase.photobase.gallery
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.query.FileQueryParams
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.photobase.PhotobaseProtocol
@@ -36,6 +45,9 @@ interface PhotoAlbumSource {
 
     /** Takes the album's tag off its photos, then deletes the album; the photos stay where they are. */
     suspend fun delete(id: Uuid)
+
+    /** Photobase is gone: the albums are read again from scratch. */
+    fun forget()
 }
 
 @Serializable
@@ -46,28 +58,41 @@ class PhotoAlbums(
     private val store: PhotoGalleryStore,
     private val record: PhotobaseRecord,
     private val mover: PhotoMover,
+    // Photos tagged on another device may not have synced here yet.
+    private val taggedOnServer: suspend (tag: Uuid) -> List<Uuid>,
     changes: Flow<PhotoChange>,
     scope: CoroutineScope,
     private val sync: () -> Unit,
 ) : PhotoAlbumSource {
-    override val albums: StateFlow<List<PhotoAlbum>?> = changes
-        .filter { it.mayTouchAlbums() }
-        .map { }
-        .onStart { emit(Unit) }
-        .conflate()
-        .mapNotNull {
-            try {
-                list()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Reading throws while nobody is signed in; the next change reads again.
-                Logger.w(tag = TAG, throwable = e) { "couldn't read the albums" }
-                null
-            }
+    private val forgotten = MutableStateFlow(0)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override val albums: StateFlow<List<PhotoAlbum>?> = forgotten
+        .flatMapLatest {
+            val reads = changes
+                .filter { it.mayTouchAlbums() }
+                .map { }
+                .onStart { emit(Unit) }
+                .conflate()
+                .mapNotNull {
+                    try {
+                        list()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Reading throws while nobody is signed in; the next change reads again.
+                        Logger.w(tag = TAG, throwable = e) { "couldn't read the albums" }
+                        null
+                    }
+                }
+            reads.onStart<List<PhotoAlbum>?> { emit(null) }
         }
         .flowOn(Dispatchers.Default)
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), null)
+
+    override fun forget() {
+        forgotten.value++
+    }
 
     override suspend fun create(name: String): Uuid {
         val id = Uuid.random()
@@ -79,7 +104,7 @@ class PhotoAlbums(
     override suspend fun rename(id: Uuid, name: String) = write(id, name, create = false)
 
     override suspend fun delete(id: Uuid) {
-        val tagged = store.taggedFileIds(id)
+        val tagged = (store.taggedFileIds(id) + taggedOnServer(id)).distinct()
         // A record gone first would leave tags no album names, and nothing to delete again to clear them.
         if (tagged.isNotEmpty() && mover.setTag(id, on = false, tagged).failed > 0) throw IllegalStateException("album $id: tags not all taken off")
         try {
@@ -120,6 +145,24 @@ class PhotoAlbums(
 private fun PhotoChange.mayTouchAlbums(): Boolean = when (this) {
     PhotoChange.RoundFinished -> true
     is PhotoChange.FilesArrived -> files.any {
-        it.fileMetadata.appData.fileType == PhotobaseProtocol.AlbumFileType || it.fileMetadata.localAppData?.versionTag != null
+        // A deleted photo's tombstone keeps no local metadata.
+        it.fileMetadata.appData.fileType == PhotobaseProtocol.AlbumFileType || it.fileMetadata.localAppData?.versionTag != null ||
+            it.fileState != FileState.Active
     }
+}
+
+/** Every file on the Photos drive carrying [tag], as the server has them. */
+suspend fun DriveQueryProvider.photosTagged(tag: Uuid): List<Uuid> = buildList {
+    var cursor: String? = null
+    do {
+        val page = queryBatch(
+            PhotobaseProtocol.DriveAlias,
+            QueryBatchRequest(
+                queryParams = FileQueryParams(localTagsMatchAtLeastOne = listOf(tag), fileState = listOf(FileState.Active, FileState.Deleted)),
+                resultOptionsRequest = QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = DriveFileHttpProvider.FILE_BATCH),
+            ),
+        )
+        page.searchResults.mapTo(this) { it.fileId }
+        cursor = page.cursorState?.takeIf { page.hasMoreRows && it != cursor }
+    } while (cursor != null)
 }

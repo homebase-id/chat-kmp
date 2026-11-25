@@ -32,7 +32,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.photobase_album_new
 import id.homebase.resources.photobase_albums_none
 import id.homebase.resources.photobase_albums_title
-import id.homebase.resources.photobase_bin_failed
+import id.homebase.resources.photobase_album_failed
 import id.homebase.resources.photobase_library_count
 import id.homebase.resources.photobase_library_title
 import org.jetbrains.compose.resources.getString
@@ -45,7 +45,7 @@ fun PhotoLibraryScreen(viewModel: PhotoLibraryViewModel, onOpen: (PhotoGallery) 
     val albums by viewModel.albums.collectAsStateWithLifecycle()
     var naming by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
-    LaunchedEffect(viewModel) { viewModel.createFailed.collect { snackbar.showSnackbar(getString(MR.string.photobase_bin_failed)) } }
+    LaunchedEffect(viewModel) { viewModel.createFailed.collect { snackbar.showSnackbar(getString(MR.string.photobase_album_failed)) } }
     if (naming) {
         NewAlbumDialog(
             onCreate = { naming = false; viewModel.createAlbum(it) },

@@ -220,6 +220,7 @@ import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.photobase.PhotobaseRecord
 import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoAlbums
+import id.homebase.photobase.gallery.photosTagged
 import id.homebase.photobase.gallery.OpenGallery
 import id.homebase.photobase.gallery.PhotoGalleries
 import id.homebase.photobase.backup.AssetHasher
@@ -1539,6 +1540,7 @@ val appModule = module {
                 if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoGalleries>().forget()
+                get<PhotoAlbumSource>().forget()
                 get<PhotoBackupEntry>().forgetDrive()
                 // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
                 val registry = get<DriveRegistry>()
@@ -1594,6 +1596,7 @@ val appModule = module {
             store = get(),
             record = get(),
             mover = get(),
+            taggedOnServer = { get<DriveQueryProvider>().photosTagged(it) },
             changes = get<EventBus>().events.newPhotoRecords(),
             scope = get(),
             sync = { syncPhotos() },

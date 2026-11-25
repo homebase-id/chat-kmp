@@ -561,6 +561,8 @@ class PhotoGalleryViewModelTest {
         override suspend fun delete(id: Uuid) {
             deleted += id
         }
+
+        override fun forget() = Unit
     }
 
     private fun noMover(server: Server = Server()) = PhotoMover(server, filesOf = { emptyList() }, binned = { emptyList() }, sync = {})

@@ -31,6 +31,7 @@ import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.resources.MR
 import id.homebase.resources.action_undo
 import id.homebase.resources.photobase_album_add
+import id.homebase.resources.photobase_album_failed
 import id.homebase.resources.photobase_album_added
 import id.homebase.resources.photobase_album_remove
 import id.homebase.resources.photobase_album_removed
@@ -139,7 +140,8 @@ internal fun SelectionMark(picked: Boolean, unpickedTint: Color, modifier: Modif
 /** Says what a move, delete or heart did; a move or heart offers Undo. */
 internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: (PhotoGalleryUiAction) -> Unit) {
     val message = when (event) {
-        is PhotoGalleryEvent.MoveFailed, PhotoGalleryEvent.AlbumWriteFailed -> getString(MR.string.photobase_bin_failed)
+        is PhotoGalleryEvent.MoveFailed -> getString(MR.string.photobase_bin_failed)
+        PhotoGalleryEvent.AlbumWriteFailed -> getString(MR.string.photobase_album_failed)
         // The screen leaves the album.
         PhotoGalleryEvent.AlbumDeleted -> return
         is PhotoGalleryEvent.Moved -> buildList {

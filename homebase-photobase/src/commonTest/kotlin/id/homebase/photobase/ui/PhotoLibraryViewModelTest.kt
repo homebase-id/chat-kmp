@@ -73,6 +73,7 @@ class PhotoLibraryViewModelTest {
             override suspend fun create(name: String): Uuid = throw IllegalStateException("offline")
             override suspend fun rename(id: Uuid, name: String) = Unit
             override suspend fun delete(id: Uuid) = Unit
+            override fun forget() = Unit
         }
         val viewModel = PhotoLibraryViewModel(emptyList(), source)
         val shown = launch { viewModel.albums.collect { } }
