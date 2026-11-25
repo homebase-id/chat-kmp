@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -101,13 +100,11 @@ class HomebaseImageTinyFirstTest {
         data: HomebaseImageData,
         deferLoad: Boolean = false,
         standIn: String? = null,
-        onComposed: () -> Unit = {},
     ) {
         val koin = koinApplication { modules(module { single<ImageLoader> { loader } }) }
         setContent {
             KoinIsolatedContext(koin) {
                 MaterialTheme {
-                    SideEffect(onComposed)
                     HomebaseImage(
                         imageData = data,
                         modifier = Modifier.size(100.dp).testTag("photo"),
