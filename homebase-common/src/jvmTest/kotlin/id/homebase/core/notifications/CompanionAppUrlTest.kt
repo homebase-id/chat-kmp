@@ -67,19 +67,21 @@ class CompanionAppUrlTest {
 
     @Test
     fun ownerRiskReport_opensSecurityOverview() {
+        val event =
+            buildCompanionAppUrlEvent(OWNER_APP_ID, ownDomain, OWNER_RISK_REPORT_GENERATED_TYPE_ID, "y")
         assertEquals(
             NotificationNavigationEvent.OpenUrl("https://frodo.dotyou.cloud/owner/security/overview"),
-            buildCompanionAppUrlEvent(OWNER_APP_ID, ownDomain, OWNER_RISK_REPORT_GENERATED_TYPE_ID, "y"),
+            event,
         )
     }
 
     @Test
     fun ownerShardRequested_opensReleaseShards() {
+        val event =
+            buildCompanionAppUrlEvent(OWNER_APP_ID, ownDomain, OWNER_SHARD_REQUESTED_TYPE_ID, "y")
         assertEquals(
-            NotificationNavigationEvent.OpenUrl(
-                "https://frodo.dotyou.cloud/owner/security/release-shards"
-            ),
-            buildCompanionAppUrlEvent(OWNER_APP_ID, ownDomain, OWNER_SHARD_REQUESTED_TYPE_ID, "y"),
+            NotificationNavigationEvent.OpenUrl("https://frodo.dotyou.cloud/owner/security/release-shards"),
+            event,
         )
     }
 
