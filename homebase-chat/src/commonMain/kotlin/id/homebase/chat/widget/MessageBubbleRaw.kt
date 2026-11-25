@@ -536,6 +536,7 @@ fun MessageBubbleRaw(
     val filteredPayloads = message.payloads.mediaPayloads()
     val hasMedia = filteredPayloads.isNotEmpty()
     val isGallery = filteredPayloads.size >= 2
+    val isLinkPreview = filteredPayloads.size == 1 && filteredPayloads[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
@@ -680,6 +681,7 @@ fun MessageBubbleRaw(
             .testTag(ChatBubbleTestTags.BUBBLE)
             // Capped on the bubble, not the gallery, so a block caption can't widen it past the images.
             .ifTrue(isGallery) { Modifier.widthIn(max = Dimens.MediaBubble.galleryMaxWidth) }
+            .ifTrue(isLinkPreview) { Modifier.widthIn(max = Dimens.MediaBubble.linkPreviewMaxWidth) }
             .ifTrue(!isStickerBubble) { Modifier.clip(shape) }
             .ifTrue(supportsTouchGestures()) {
                 Modifier.combinedClickable(
