@@ -19,32 +19,14 @@ import id.homebase.resources.photobase_gallery_empty
 import id.homebase.resources.photobase_label
 import org.jetbrains.compose.resources.StringResource
 
-internal val PhotoGallery.title: StringResource
-    get() = when (this) {
-        is PhotoGallery.OnShelf -> when (shelf) {
-            PhotoShelf.Library -> MR.string.photobase_label
-            PhotoShelf.Archive -> MR.string.photobase_archive_title
-            PhotoShelf.Bin -> MR.string.photobase_bin_title
-        }
-        PhotoGallery.Favorites -> MR.string.photobase_favorites_title
-    }
+internal class GalleryLook(val title: StringResource, val emptyText: StringResource, val icon: ImageVector)
 
-internal val PhotoGallery.emptyText: StringResource
+internal val PhotoGallery.look: GalleryLook
     get() = when (this) {
         is PhotoGallery.OnShelf -> when (shelf) {
-            PhotoShelf.Library -> MR.string.photobase_gallery_empty
-            PhotoShelf.Archive -> MR.string.photobase_archive_empty_state
-            PhotoShelf.Bin -> MR.string.photobase_bin_empty_state
+            PhotoShelf.Library -> GalleryLook(MR.string.photobase_label, MR.string.photobase_gallery_empty, Icons.Outlined.PhotoLibrary)
+            PhotoShelf.Archive -> GalleryLook(MR.string.photobase_archive_title, MR.string.photobase_archive_empty_state, Icons.Outlined.Archive)
+            PhotoShelf.Bin -> GalleryLook(MR.string.photobase_bin_title, MR.string.photobase_bin_empty_state, Icons.Outlined.Delete)
         }
-        PhotoGallery.Favorites -> MR.string.photobase_favorites_empty_state
-    }
-
-internal val PhotoGallery.icon: ImageVector
-    get() = when (this) {
-        is PhotoGallery.OnShelf -> when (shelf) {
-            PhotoShelf.Library -> Icons.Outlined.PhotoLibrary
-            PhotoShelf.Archive -> Icons.Outlined.Archive
-            PhotoShelf.Bin -> Icons.Outlined.Delete
-        }
-        PhotoGallery.Favorites -> Icons.Outlined.FavoriteBorder
+        PhotoGallery.Favorites -> GalleryLook(MR.string.photobase_favorites_title, MR.string.photobase_favorites_empty_state, Icons.Outlined.FavoriteBorder)
     }

@@ -377,7 +377,7 @@ val WebDropPermissionQualifier = named("webDropPermission")
 val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val PhotobasePermissionQualifier = named("photobasePermission")
-// The library's gallery is unqualified; each shelf away has its own store, day index and view model.
+// The library's gallery is unqualified; each gallery away has its own store, day index and view model.
 fun photoGalleryQualifier(gallery: PhotoGallery) = named("photo${gallery.key}")
 
 val EmailPermissionQualifier = named("emailPermission")

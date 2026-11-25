@@ -32,7 +32,6 @@ import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoGallery
-import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.api.client.drives.HomebaseFile

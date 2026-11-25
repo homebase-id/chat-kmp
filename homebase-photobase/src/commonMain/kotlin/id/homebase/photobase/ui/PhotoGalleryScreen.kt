@@ -25,8 +25,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.outlined.Archive
-import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.Settings
@@ -105,7 +103,6 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import id.homebase.resources.photobase_backup_title
-import id.homebase.resources.photobase_gallery_empty
 import id.homebase.resources.photobase_gallery_photo
 import id.homebase.resources.photobase_gallery_refresh
 import id.homebase.resources.photobase_gallery_sort_newest
@@ -117,7 +114,6 @@ import org.jetbrains.compose.resources.stringResource
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.graphics.graphicsLayer
@@ -125,10 +121,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import id.homebase.resources.photobase_favorite_state
-import id.homebase.resources.photobase_favorites_empty_state
-import id.homebase.resources.photobase_favorites_title
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.widget.ConfirmDialog
 import id.homebase.core.widget.SelectionTopBar
@@ -141,12 +134,7 @@ import id.homebase.resources.photobase_bin_delete_confirm_title
 import id.homebase.resources.photobase_bin_delete_forever
 import id.homebase.resources.photobase_bin_empty
 import id.homebase.resources.photobase_bin_empty_confirm_title
-import id.homebase.resources.photobase_bin_empty_state
-import id.homebase.resources.photobase_archive_empty_state
-import id.homebase.resources.photobase_archive_title
-import androidx.compose.ui.graphics.vector.ImageVector
 import org.jetbrains.compose.resources.StringResource
-import id.homebase.resources.photobase_bin_title
 import id.homebase.resources.photobase_bin_cant_undo
 import id.homebase.resources.photobase_bin_move
 import id.homebase.resources.photobase_bin_move_confirm_title
@@ -453,7 +441,7 @@ private fun GalleryGrid(
                             }
                         }
                     },
-                    title = { Text(stringResource(gallery.title)) },
+                    title = { Text(stringResource(gallery.look.title)) },
                     actions = {
                         if (gallery == PhotoGallery.Bin) {
                             TextButton(onClick = { onConfirm(PhotoGalleryUiAction.EmptyBin) }, enabled = hasPhotos && !uiState.busy) {
@@ -502,13 +490,13 @@ private fun GalleryGrid(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(
-                        imageVector = gallery.icon,
+                        imageVector = gallery.look.icon,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = stringResource(gallery.emptyText),
+                        text = stringResource(gallery.look.emptyText),
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -12,9 +12,8 @@ import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class PhotoGalleryTest {
-    private fun photo(status: ArchivalStatus, vararg tags: Uuid): HomebaseFile = galleryTestFile(0).let {
-        it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(archivalStatus = status), localAppData = LocalAppMetadata(tags = tags.toList())))
-    }
+    private fun photo(status: ArchivalStatus, vararg tags: Uuid): HomebaseFile =
+        galleryTestFile(0).at(status).let { it.copy(fileMetadata = it.fileMetadata.copy(localAppData = LocalAppMetadata(tags = tags.toList()))) }
 
     @Test
     fun favoritesHoldsHeartedPhotosOfTheLibraryAndTheArchiveButNotTheBin() {
@@ -34,7 +33,7 @@ class PhotoGalleryTest {
 
     @Test
     fun everyGalleryTheLibraryOpensIsFoundByItsKey() {
-        for (gallery in PhotoGallery.away + PhotoGallery.Library) assertEquals(gallery, PhotoGallery.ofKey(gallery.key))
-        assertEquals(null, PhotoGallery.ofKey("nothing"))
+        for (gallery in PhotoGallery.away) assertEquals(gallery, PhotoGallery.ofKey(gallery.key))
+        assertEquals(null, PhotoGallery.ofKey(PhotoGallery.Library.key), "the library is the Photos tab, not a route of its own")
     }
 }

@@ -171,10 +171,9 @@ sealed class Route {
     @SerialName("photo-library")
     data object PhotoLibrary : Route()
 
-    /** [gallery] is the gallery's key. */
     @Serializable
     @SerialName("photo-gallery")
-    data class PhotoGalleryView(val gallery: String) : Route()
+    data class PhotoGalleryView(val key: String) : Route()
 
     // Not a tab: pushed over the screen that needs Filesync, and pops back to it once set up.
     @Serializable

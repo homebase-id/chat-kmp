@@ -86,12 +86,18 @@ class PhotoGalleryViewModelTest {
         }
     }
 
-    private fun TestScope.viewModel(library: Library, driveState: MutableStateFlow<DriveState?> = MutableStateFlow(DriveState.Completed())): Pair<PhotoGalleryViewModel, Job> {
+    private fun TestScope.viewModel(
+        library: Library,
+        driveState: MutableStateFlow<DriveState?> = MutableStateFlow(DriveState.Completed()),
+        mover: PhotoMover = noMover(),
+        gallery: PhotoGallery = PhotoGallery.Library,
+    ): Pair<PhotoGalleryViewModel, Job> {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         library.publish()
         val viewModel = PhotoGalleryViewModel(
             library.source,
-            noMover(),
+            mover,
+            gallery = gallery,
             driveState = driveState,
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
@@ -529,7 +535,7 @@ class PhotoGalleryViewModelTest {
         override suspend fun header(fileId: Uuid): HomebaseFile? = null
     }
 
-    private fun noMover() = PhotoMover(Server(), filesOf = { emptyList() }, binned = { emptyList() }, sync = {})
+    private fun noMover(server: Server = Server()) = PhotoMover(server, filesOf = { emptyList() }, binned = { emptyList() }, sync = {})
 
     private fun TestScope.moverViewModel(library: Library, server: Server, shelf: PhotoShelf = PhotoShelf.Library): Pair<PhotoGalleryViewModel, Job> {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -827,15 +833,7 @@ class PhotoGalleryViewModelTest {
     fun aTaggedGalleryMovesNothingItsPhotosAreOnEitherShelf() = runTest {
         val library = Library(1..3, perDay = 4)
         val server = Server()
-        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        library.publish()
-        val viewModel = PhotoGalleryViewModel(
-            library.source,
-            PhotoMover(server, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
-            gallery = PhotoGallery.Favorites,
-            libraryDays = library.counts.filterNotNull(),
-            reading = StandardTestDispatcher(testScheduler),
-        )
+        val (viewModel, screen) = viewModel(library, mover = noMover(server), gallery = PhotoGallery.Favorites)
         val photo = library.photos.getValue(3).first().fileId
         viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo))
 
@@ -845,6 +843,7 @@ class PhotoGalleryViewModelTest {
 
         assertEquals(emptyList(), server.moved)
         assertEquals(setOf(photo), viewModel.uiState.value.selected, "nothing taken from the selection either")
+        screen.cancel()
     }
 
     @Test

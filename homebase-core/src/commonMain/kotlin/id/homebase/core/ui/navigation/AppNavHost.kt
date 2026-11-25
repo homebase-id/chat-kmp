@@ -2479,7 +2479,7 @@ fun AppNavHost(
                             }
 
                             composable<Route.PhotoGalleryView> { backStackEntry ->
-                                val gallery = PhotoGallery.ofKey(backStackEntry.toRoute<Route.PhotoGalleryView>().gallery)
+                                val gallery = PhotoGallery.ofKey(backStackEntry.toRoute<Route.PhotoGalleryView>().key)
                                 if (isAuthenticated && gallery != null) {
                                     PhotoGalleryScreen(
                                         viewModel = koinViewModel(qualifier = photoGalleryQualifier(gallery)),

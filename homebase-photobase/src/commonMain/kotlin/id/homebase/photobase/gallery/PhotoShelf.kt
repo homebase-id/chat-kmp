@@ -51,7 +51,7 @@ sealed interface PhotoGallery {
         /** The galleries the Library screen opens, in its order. */
         val away: List<PhotoGallery> = listOf(Favorites, Archive, Bin)
 
-        fun ofKey(key: String): PhotoGallery? = (away + Library).firstOrNull { it.key == key }
+        fun ofKey(key: String): PhotoGallery? = away.firstOrNull { it.key == key }
     }
 }
 

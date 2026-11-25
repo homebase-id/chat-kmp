@@ -334,6 +334,4 @@ class PhotoMoverTest {
 
 private fun PhotoMoveResult.counts() = copy(written = emptySet())
 
-private fun HomebaseFile.at(status: ArchivalStatus) =
-    copy(fileMetadata = fileMetadata.copy(appData = fileMetadata.appData.copy(archivalStatus = status)))
 
