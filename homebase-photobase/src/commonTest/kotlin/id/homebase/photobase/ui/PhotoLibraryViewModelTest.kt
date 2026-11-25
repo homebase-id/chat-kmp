@@ -1,7 +1,10 @@
 package id.homebase.photobase.ui
 
 import id.homebase.photobase.gallery.LibraryDays
+import id.homebase.photobase.gallery.PhotoAlbum
+import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoGallery
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,5 +62,30 @@ class PhotoLibraryViewModelTest {
 
         assertEquals(mapOf<PhotoGallery, Int?>(PhotoGallery.Bin to 4), viewModel.counts.value, "not blanked while it counts again")
         again.cancel()
+    }
+
+    @Test
+    fun theAlbumsShowAsReadAndOneThatCantBeMadeSaysSo() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val trip = PhotoAlbum(Uuid.random(), "Trip", photos = 3)
+        val source = object : PhotoAlbumSource {
+            override val albums = MutableStateFlow<List<PhotoAlbum>?>(listOf(trip))
+            override suspend fun create(name: String): Uuid = throw IllegalStateException("offline")
+            override suspend fun rename(id: Uuid, name: String) = Unit
+            override suspend fun delete(id: Uuid) = Unit
+            override fun forget() = Unit
+        }
+        val viewModel = PhotoLibraryViewModel(emptyList(), source)
+        val shown = launch { viewModel.albums.collect { } }
+        val failures = mutableListOf<Unit>()
+        val listening = launch { viewModel.createFailed.collect { failures += it } }
+
+        viewModel.createAlbum("Summer")
+        advanceUntilIdle()
+
+        assertEquals(listOf(trip), viewModel.albums.value)
+        assertEquals(1, failures.size)
+        listening.cancel()
+        shown.cancel()
     }
 }

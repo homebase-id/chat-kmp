@@ -8,7 +8,11 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.LibraryDays
+import id.homebase.photobase.gallery.PhotoAlbum
+import id.homebase.photobase.gallery.PhotoAlbumSource
+import id.homebase.photobase.RecordGoneException
 import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveResult
 import id.homebase.photobase.gallery.PhotoGallery
@@ -40,7 +44,9 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -73,12 +79,14 @@ data class PhotoGalleryUiState(
     }
 }
 
-enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty, Favorite, Unfavorite }
+enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty, Favorite, Unfavorite, AddToAlbum, RemoveFromAlbum }
 
 sealed interface PhotoGalleryEvent {
     data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: PhotoGalleryUiAction? = null) : PhotoGalleryEvent
     /** Nothing is known to have changed: the request didn't get through. */
     data class MoveFailed(val action: MoveAction) : PhotoGalleryEvent
+    data object AlbumDeleted : PhotoGalleryEvent
+    data object AlbumWriteFailed : PhotoGalleryEvent
 }
 
 sealed interface PhotoGalleryUiAction {
@@ -106,7 +114,14 @@ sealed interface PhotoGalleryUiAction {
     data class Undo(val fileIds: Set<Uuid>, val from: PhotoShelf, val to: PhotoShelf) : PhotoGalleryUiAction
     /** A null [fileId], from the toolbar, means the selection. */
     data class SetFavorite(val favorite: Boolean, val fileId: Uuid? = null) : PhotoGalleryUiAction
-    data class UndoFavorite(val fileIds: Set<Uuid>, val favorite: Boolean) : PhotoGalleryUiAction
+    /** Puts [tag], a heart or an album, back on [fileIds], or takes it off them again. */
+    data class UndoTag(val tag: Uuid, val fileIds: Set<Uuid>, val on: Boolean) : PhotoGalleryUiAction
+    data class AddSelectedToAlbum(val albumId: Uuid) : PhotoGalleryUiAction
+    data class AddSelectedToNewAlbum(val name: String) : PhotoGalleryUiAction
+    /** From this gallery's album. */
+    data object RemoveSelectedFromAlbum : PhotoGalleryUiAction
+    data class RenameAlbum(val name: String) : PhotoGalleryUiAction
+    data object DeleteAlbum : PhotoGalleryUiAction
 }
 
 /**
@@ -127,8 +142,18 @@ class PhotoGalleryViewModel(
     private val reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
     private val moveScope: CoroutineScope? = null,
+    private val albumSource: PhotoAlbumSource? = null,
 ) : ViewModel() {
     private val shelf = (gallery as? PhotoGallery.OnShelf)?.shelf
+    private val album = gallery as? PhotoGallery.Album
+
+    /** Every album, to add photos to one; null until read. */
+    val albums: StateFlow<List<PhotoAlbum>?> = albumSource?.albums ?: MutableStateFlow(null)
+
+    /** This album's name, null until read or for a gallery that isn't one. */
+    val albumName: StateFlow<String?> = album?.let { shown ->
+        albums.map { list -> list?.firstOrNull { it.id == shown.id }?.name }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    } ?: MutableStateFlow(null)
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
     // The days being read right now: a change to one of them mustn't be lost when the read lands.
@@ -140,6 +165,20 @@ class PhotoGalleryViewModel(
     // Kept until the screen takes them: one that lands while the screen is away is shown when it's back.
     private val _events = Channel<PhotoGalleryEvent>(Channel.BUFFERED)
     val events: Flow<PhotoGalleryEvent> = _events.receiveAsFlow()
+
+    init {
+        // Deleted on another device: once the albums are read without it, there's nothing here to show.
+        album?.let { shown -> viewModelScope.launch { albums.first { list -> list != null && list.none { it.id == shown.id } }; leaveAlbum() } }
+    }
+
+    // Main only. Its own delete and the albums read without it both say so: the screen must leave once.
+    private var albumLeft = false
+
+    private suspend fun leaveAlbum() {
+        if (albumLeft) return
+        albumLeft = true
+        _events.send(PhotoGalleryEvent.AlbumDeleted)
+    }
     private val moveLock = Mutex()
     // Main only.
     private var pending = 0
@@ -224,9 +263,41 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet()) { empty() }
             is PhotoGalleryUiAction.Undo -> runMove(moveAction(action.from, action.to), action.fileIds) { move(it, action.from, action.to) }
             is PhotoGalleryUiAction.SetFavorite -> (action.fileId?.let(::setOf) ?: takeSelection())?.let { ids ->
-                setFavorite(ids, action.favorite, restoreSelection = action.fileId == null, undoable = true)
+                setTag(PhotobaseProtocol.FavoriteTag, action.favorite, ids, restoreSelection = action.fileId == null, undoable = true)
             }
-            is PhotoGalleryUiAction.UndoFavorite -> setFavorite(action.fileIds, action.favorite, restoreSelection = false, undoable = false)
+            is PhotoGalleryUiAction.UndoTag -> setTag(action.tag, action.on, action.fileIds, restoreSelection = false, undoable = false)
+            is PhotoGalleryUiAction.AddSelectedToAlbum -> takeSelection()?.let { setTag(action.albumId, true, it, restoreSelection = true, undoable = true) }
+            is PhotoGalleryUiAction.AddSelectedToNewAlbum -> albumSource?.let { albums -> takeSelection()?.let { addToNewAlbum(albums, action.name, it) } }
+            PhotoGalleryUiAction.RemoveSelectedFromAlbum -> album?.let { album -> takeSelection()?.let { setTag(album.id, false, it, restoreSelection = true, undoable = true) } }
+            // The new name shows when the sync brings the album back.
+            is PhotoGalleryUiAction.RenameAlbum -> albumWrite(leave = false) { rename(it, action.name) }
+            PhotoGalleryUiAction.DeleteAlbum -> albumWrite(leave = true) { delete(it) }
+        }
+    }
+
+    private fun addToNewAlbum(albums: PhotoAlbumSource, name: String, ids: Set<Uuid>) {
+        var made: Uuid? = null
+        runMove(MoveAction.AddToAlbum, ids, restoreSelection = true, undo = { written -> made?.let { PhotoGalleryUiAction.UndoTag(it, written, on = false) } }) {
+            tagShown(albums.create(name).also { made = it }, on = true, it)
+        }
+    }
+
+    private fun albumWrite(leave: Boolean, write: suspend PhotoAlbumSource.(Uuid) -> Unit) {
+        val albums = albumSource ?: return
+        val id = album?.id ?: return
+        runLocked {
+            try {
+                albums.write(id)
+                if (leave) leaveAlbum()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RecordGoneException) {
+                Logger.i(tag = TAG) { "album $id was deleted elsewhere" }
+                leaveAlbum()
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "album $id not written" }
+                _events.send(PhotoGalleryEvent.AlbumWriteFailed)
+            }
         }
     }
 
@@ -243,18 +314,24 @@ class PhotoGalleryViewModel(
             move(it, from, to)
         }
 
-    private fun setFavorite(ids: Set<Uuid>, favorite: Boolean, restoreSelection: Boolean, undoable: Boolean) {
+    private fun setTag(tag: Uuid, on: Boolean, ids: Set<Uuid>, restoreSelection: Boolean, undoable: Boolean) {
         // The server answers done for a photo already as asked; Undo mustn't take those back.
-        val already = _uiState.value.loaded.values.flatMapTo(HashSet()) { items -> items.filter { it.fileId in ids && it.favorite == favorite }.map { it.fileId } }
-        val undo = { written: Set<Uuid> -> (written - already).takeIf { it.isNotEmpty() }?.let { PhotoGalleryUiAction.UndoFavorite(it, !favorite) } }
-        runMove(if (favorite) MoveAction.Favorite else MoveAction.Unfavorite, ids, restoreSelection, undo.takeIf { undoable }) {
-            // Shown on the server's answer, not when the sync brings the photos back.
-            setFavorite(it, favorite).also { result -> markFavorite(result.written, favorite) }
+        val already = _uiState.value.loaded.values.flatMapTo(HashSet()) { items -> items.filter { it.fileId in ids && (tag in it.tags) == on }.map { it.fileId } }
+        val undo = { written: Set<Uuid> -> (written - already).takeIf { it.isNotEmpty() }?.let { PhotoGalleryUiAction.UndoTag(tag, it, !on) } }
+        val action = when {
+            tag == PhotobaseProtocol.FavoriteTag -> if (on) MoveAction.Favorite else MoveAction.Unfavorite
+            on -> MoveAction.AddToAlbum
+            else -> MoveAction.RemoveFromAlbum
         }
+        runMove(action, ids, restoreSelection, undo.takeIf { undoable }) { tagShown(tag, on, it) }
     }
 
-    private fun markFavorite(ids: Set<Uuid>, favorite: Boolean) = _uiState.update { state ->
-        state.copy(loaded = state.loaded.mapValues { (_, items) -> items.map { if (it.fileId in ids) it.copy(favorite = favorite) else it } })
+    // Shown on the server's answer, not when the sync brings the photos back.
+    private suspend fun PhotoMover.tagShown(tag: Uuid, on: Boolean, ids: Set<Uuid>): PhotoMoveResult =
+        setTag(tag, on, ids).also { result -> markTag(result.written, tag, on) }
+
+    private fun markTag(ids: Set<Uuid>, tag: Uuid, on: Boolean) = _uiState.update { state ->
+        state.copy(loaded = state.loaded.mapValues { (_, items) -> items.map { if (it.fileId in ids) it.copy(tags = if (on) it.tags + tag else it.tags - tag) else it } })
     }
 
     // One at a time, in the order asked: an Undo tapped while another action runs waits for it.
@@ -264,23 +341,25 @@ class PhotoGalleryViewModel(
         restoreSelection: Boolean = false,
         undo: ((Set<Uuid>) -> PhotoGalleryUiAction?)? = null,
         block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult,
-    ) {
+    ) = runLocked {
+        try {
+            val result = mover.block(ids)
+            _events.send(PhotoGalleryEvent.Moved(action, result, result.written.takeIf { it.isNotEmpty() }?.let { undo?.invoke(it) }))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
+            if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
+            _events.send(PhotoGalleryEvent.MoveFailed(action))
+        }
+    }
+
+    private fun runLocked(block: suspend () -> Unit) {
         pending++
         _uiState.update { it.copy(busy = true) }
         (moveScope ?: viewModelScope).launch(Dispatchers.Main.immediate) {
             try {
-                moveLock.withLock {
-                    try {
-                        val result = mover.block(ids)
-                        _events.send(PhotoGalleryEvent.Moved(action, result, result.written.takeIf { it.isNotEmpty() }?.let { undo?.invoke(it) }))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
-                        if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
-                        _events.send(PhotoGalleryEvent.MoveFailed(action))
-                    }
-                }
+                moveLock.withLock { block() }
             } finally {
                 pending--
                 _uiState.update { it.copy(busy = pending > 0) }

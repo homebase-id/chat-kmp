@@ -271,7 +271,7 @@ class PhotoMoverTest {
         val archived = photo(ArchivalStatus.Archived)
         server.files[library.fileId] = library.copy(fileMetadata = library.fileMetadata.copy(localAppData = LocalAppMetadata(tags = listOf(other))))
 
-        val result = mover.setFavorite(listOf(library.fileId, archived.fileId, library.fileId), favorite = true)
+        val result = mover.setTag(PhotobaseProtocol.FavoriteTag, on = true, listOf(library.fileId, archived.fileId, library.fileId))
 
         assertEquals(PhotoMoveResult(done = 2), result.counts())
         assertEquals(setOf(library.fileId, archived.fileId), result.written)
@@ -287,7 +287,7 @@ class PhotoMoverTest {
         val photo = photo()
         server.files[photo.fileId] = photo.copy(fileMetadata = photo.fileMetadata.copy(localAppData = LocalAppMetadata(tags = listOf(other, PhotobaseProtocol.FavoriteTag))))
 
-        val result = mover.setFavorite(listOf(photo.fileId, Uuid.random()), favorite = false)
+        val result = mover.setTag(PhotobaseProtocol.FavoriteTag, on = false, listOf(photo.fileId, Uuid.random()))
 
         assertEquals(PhotoMoveResult(done = 1, changedElsewhere = 1), result.counts())
         assertEquals(listOf(other), server.files.getValue(photo.fileId).localTags())
@@ -298,7 +298,7 @@ class PhotoMoverTest {
         val photos = List(DriveFileHttpProvider.FILE_BATCH + 5) { photo() }
         server.throwFromRequest = 1
 
-        val result = mover.setFavorite(photos.map { it.fileId }, favorite = true)
+        val result = mover.setTag(PhotobaseProtocol.FavoriteTag, on = true, photos.map { it.fileId })
 
         assertEquals(PhotoMoveResult(done = DriveFileHttpProvider.FILE_BATCH, failed = 5), result.counts())
         assertEquals(1, syncs)
@@ -309,7 +309,7 @@ class PhotoMoverTest {
         val photo = photo()
         server.throwFromRequest = 0
 
-        assertFailsWith<IllegalStateException> { mover.setFavorite(listOf(photo.fileId), favorite = true) }
+        assertFailsWith<IllegalStateException> { mover.setTag(PhotobaseProtocol.FavoriteTag, on = true, listOf(photo.fileId)) }
     }
 
     @Test

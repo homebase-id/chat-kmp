@@ -19,6 +19,9 @@ object PhotobaseProtocol {
     const val ConfigFileType = 7202
     val ConfigUniqueId: Uuid = Uuid.parse("94741947-6cc6-43d9-8bfa-776f011cf7bf")
 
+    /** An album: its unique id is also the local tag on its photos. */
+    const val AlbumFileType = 7203
+
     const val ImageDataType = 1
     const val VideoDataType = 2
     const val LivePhotoDataType = 3

@@ -1,6 +1,5 @@
 package id.homebase.core.ui.navigation
 
-import id.homebase.core.di.photoGalleryQualifier
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
@@ -2484,7 +2483,7 @@ fun AppNavHost(
                                 if (gallery == null) LaunchedEffect(Unit) { navController.popBackStack() }
                                 if (isAuthenticated && gallery != null) {
                                     PhotoGalleryScreen(
-                                        viewModel = koinViewModel(qualifier = photoGalleryQualifier(gallery)),
+                                        viewModel = koinViewModel(parameters = { parametersOf(gallery) }),
                                         onOpenBackupSettings = null,
                                         backupIndicator = {},
                                         onBack = { navController.popBackStack() },

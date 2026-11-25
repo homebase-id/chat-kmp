@@ -204,7 +204,6 @@ import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
 import id.homebase.photobase.gallery.photoDayIndex
-import id.homebase.photobase.gallery.PhotoDayIndex
 import id.homebase.photobase.gallery.newPhotoRecords
 import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
@@ -216,6 +215,14 @@ import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.ui.PhotoLibraryViewModel
 import id.homebase.photobase.gallery.PhotoGallery
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.drives.files.FileVersionTag
+import id.homebase.photobase.PhotobaseRecord
+import id.homebase.photobase.gallery.PhotoAlbumSource
+import id.homebase.photobase.gallery.PhotoAlbums
+import id.homebase.photobase.gallery.photosTagged
+import id.homebase.photobase.gallery.OpenGallery
+import id.homebase.photobase.gallery.PhotoGalleries
 import id.homebase.photobase.backup.AssetHasher
 import id.homebase.photobase.backup.BackgroundUploaderContext
 import id.homebase.photobase.backup.BackupLedger
@@ -330,7 +337,6 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
-import org.koin.core.qualifier.Qualifier
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
@@ -377,8 +383,6 @@ val WebDropPermissionQualifier = named("webDropPermission")
 val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val PhotobasePermissionQualifier = named("photobasePermission")
-// The library's gallery is unqualified; each gallery away has its own store, day index and view model.
-fun photoGalleryQualifier(gallery: PhotoGallery) = named("photo${gallery.key}")
 
 val EmailPermissionQualifier = named("emailPermission")
 
@@ -1145,14 +1149,14 @@ val appModule = module {
             cancelWhenUnwatched = true,
         )
     }
-    single { photoGalleryStore(get(), get()) }
-    single { photoDayIndex(get(), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
-    for (gallery in PhotoGallery.away) {
-        val qualifier = photoGalleryQualifier(gallery)
-        single(qualifier) { photoGalleryStore(get(), get(), gallery) }
-        single(qualifier) { photoDayIndex(get(qualifier), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
-        viewModel(qualifier) { photoGalleryViewModel(qualifier) }
+    single {
+        val changes = get<EventBus>().events.newPhotoRecords()
+        PhotoGalleries(get<kotlinx.coroutines.CoroutineScope>()) { gallery, scope ->
+            val store = photoGalleryStore(get(), get(), gallery)
+            OpenGallery(store, photoDayIndex(store, changes, scope))
+        }
     }
+    single { get<PhotoGalleries>().of(PhotoGallery.Library).store }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
@@ -1534,8 +1538,8 @@ val appModule = module {
                 // Locally first: the shared registry is a network write, and its failing mustn't stop the wipe.
                 if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
-                get<PhotoDayIndex>().forget()
-                PhotoGallery.away.forEach { get<PhotoDayIndex>(photoGalleryQualifier(it)).forget() }
+                get<PhotoGalleries>().forget()
+                get<PhotoAlbumSource>().forget()
                 get<PhotoBackupEntry>().forgetDrive()
                 // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
                 val registry = get<DriveRegistry>()
@@ -1572,8 +1576,37 @@ val appModule = module {
             sync = { syncPhotos() },
         )
     }
-    viewModel { photoGalleryViewModel(null) }
-    viewModel { PhotoLibraryViewModel(PhotoGallery.away.map { it to get<PhotoDayIndex>(photoGalleryQualifier(it)).days }) }
+    single {
+        val files = get<DriveFileProvider>()
+        val fileUploader = get<DriveUploadProvider>()
+        val batches = get<DriveFileHttpProvider>()
+        PhotobaseRecord(
+            getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
+            uploadFile = { request -> fileUploader.uploadFile(request) },
+            updateFileByUniqueId = { request -> fileUploader.updateFileByUniqueId(request) },
+            softDelete = { fileId, versionTag ->
+                val answer = batches.softDeleteFiles(PhotobaseProtocol.DriveAlias, listOf(FileVersionTag(fileId, versionTag))).results.firstOrNull { it.fileId == fileId }
+                answer?.errorCode ?: if (answer == null) throw IllegalStateException("no answer for $fileId") else null
+            },
+        )
+    }
+    single<PhotoAlbumSource> {
+        PhotoAlbums(
+            store = get(),
+            record = get(),
+            mover = get(),
+            taggedOnServer = { get<DriveQueryProvider>().photosTagged(it) },
+            changes = get<EventBus>().events.newPhotoRecords(),
+            scope = get(),
+            sync = { syncPhotos() },
+        )
+    }
+    // The tab's own gallery has no parameter.
+    viewModel { params -> photoGalleryViewModel(params.getOrNull<PhotoGallery>() ?: PhotoGallery.Library) }
+    viewModel {
+        val galleries = get<PhotoGalleries>()
+        PhotoLibraryViewModel(PhotoGallery.away.map { it to galleries.of(it).days.days }, get(), writeScope = get())
+    }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
@@ -1780,13 +1813,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
             },
         )
     }
-    val files = get<DriveFileProvider>()
-    val fileUploader = get<DriveUploadProvider>()
-    val configFile = PhotobaseConfigFile(
-        getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
-        uploadFile = { request -> fileUploader.uploadFile(request) },
-        updateFileByUniqueId = { request -> fileUploader.updateFileByUniqueId(request) },
-    )
+    val configFile = PhotobaseConfigFile(get())
     return PhotoBackupController(run, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
 }
 
@@ -1801,13 +1828,13 @@ private fun Scope.syncPhotos() {
 }
 
 /** Each gallery has its own store and day index. */
-private fun Scope.photoGalleryViewModel(qualifier: Qualifier?): PhotoGalleryViewModel {
+private fun Scope.photoGalleryViewModel(gallery: PhotoGallery): PhotoGalleryViewModel {
     val drives = get<DriveSyncManager>()
-    val store = get<PhotoGalleryStore>(qualifier)
-    val index = get<PhotoDayIndex>(qualifier)
+    val opened = get<PhotoGalleries>().of(gallery)
+    val index = opened.days
     return PhotoGalleryViewModel(
-        source = store,
-        gallery = store.gallery,
+        source = opened.store,
+        gallery = gallery,
         mover = get(),
         refresh = { syncPhotos() },
         driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
@@ -1816,5 +1843,6 @@ private fun Scope.photoGalleryViewModel(qualifier: Qualifier?): PhotoGalleryView
         countFailed = index.failed,
         recount = index::recount,
         moveScope = get(),
+        albumSource = get(),
     )
 }

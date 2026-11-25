@@ -1,5 +1,6 @@
 package id.homebase.photobase.ui
 
+import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DescriptorContentV1
@@ -14,6 +15,9 @@ import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveResult
 import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.photobase.gallery.PhotoGallery
+import id.homebase.photobase.gallery.PhotoAlbumSource
+import id.homebase.photobase.RecordGoneException
+import id.homebase.photobase.gallery.PhotoAlbum
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.galleryTestFile
 import id.homebase.api.client.drives.files.ArchivalStatus
@@ -25,6 +29,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -525,19 +530,51 @@ class PhotoGalleryViewModelTest {
         override suspend fun softDelete(files: List<FileVersionTag>) = files.map { PerFileResult(it.fileId) }
 
         val hearts = mutableMapOf<Uuid, Boolean>()
+        val tagged = mutableMapOf<Pair<Uuid, Uuid>, Boolean>()
 
         override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
             failure?.let { throw it }
-            fileIds.forEach { hearts[it] = on }
+            fileIds.forEach { if (tag == PhotobaseProtocol.FavoriteTag) hearts[it] = on else tagged[tag to it] = on }
             return fileIds.map { PerFileResult(it) }
         }
 
         override suspend fun header(fileId: Uuid): HomebaseFile? = null
     }
 
+    private class Albums : PhotoAlbumSource {
+        override val albums = MutableStateFlow<List<PhotoAlbum>?>(emptyList())
+        val made = mutableListOf<Uuid>()
+        val renamed = mutableListOf<Pair<Uuid, String>>()
+        val deleted = mutableListOf<Uuid>()
+        var failure: Exception? = null
+        var gone = false
+
+        override suspend fun create(name: String): Uuid {
+            failure?.let { throw it }
+            return Uuid.random().also { made += it; albums.value = albums.value.orEmpty() + PhotoAlbum(it, name) }
+        }
+
+        override suspend fun rename(id: Uuid, name: String) {
+            if (gone) throw RecordGoneException(id)
+            renamed += id to name
+        }
+
+        override suspend fun delete(id: Uuid) {
+            deleted += id
+        }
+
+        override fun forget() = Unit
+    }
+
     private fun noMover(server: Server = Server()) = PhotoMover(server, filesOf = { emptyList() }, binned = { emptyList() }, sync = {})
 
-    private fun TestScope.moverViewModel(library: Library, server: Server, shelf: PhotoShelf = PhotoShelf.Library): Pair<PhotoGalleryViewModel, Job> {
+    private fun TestScope.moverViewModel(
+        library: Library,
+        server: Server,
+        shelf: PhotoShelf = PhotoShelf.Library,
+        gallery: PhotoGallery = PhotoGallery.OnShelf(shelf),
+        albums: PhotoAlbumSource? = null,
+    ): Pair<PhotoGalleryViewModel, Job> {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         library.publish()
         val mover = PhotoMover(
@@ -550,10 +587,11 @@ class PhotoGalleryViewModelTest {
         val viewModel = PhotoGalleryViewModel(
             library.source,
             mover,
-            gallery = PhotoGallery.OnShelf(shelf),
+            gallery = gallery,
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
             reading = StandardTestDispatcher(testScheduler),
+            albumSource = albums,
         )
         val screen = launch { viewModel.library.collect { } }
         advanceUntilIdle()
@@ -765,7 +803,7 @@ class PhotoGalleryViewModelTest {
         assertEquals(picked, hearted, "before the sync brings them back")
         val done = assertIs<PhotoGalleryEvent.Moved>(events.single())
         assertEquals(MoveAction.Favorite, done.action)
-        assertEquals(PhotoGalleryUiAction.UndoFavorite(picked, favorite = false), done.undo)
+        assertEquals(PhotoGalleryUiAction.UndoTag(PhotobaseProtocol.FavoriteTag, picked, on = false), done.undo)
 
         viewModel.onAction(done.undo!!)
         advanceUntilIdle()
@@ -793,7 +831,7 @@ class PhotoGalleryViewModelTest {
         viewModel.onAction(PhotoGalleryUiAction.SetFavorite(true))
         advanceUntilIdle()
 
-        assertEquals(PhotoGalleryUiAction.UndoFavorite(setOf(added), favorite = false), assertIs<PhotoGalleryEvent.Moved>(events.single()).undo)
+        assertEquals(PhotoGalleryUiAction.UndoTag(PhotobaseProtocol.FavoriteTag, setOf(added), on = false), assertIs<PhotoGalleryEvent.Moved>(events.single()).undo)
         listening.cancel()
         screen.cancel()
     }
@@ -826,6 +864,148 @@ class PhotoGalleryViewModelTest {
         assertTrue(viewModel.uiState.value.selectedAreFavorites())
         viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(b))
         assertFalse(viewModel.uiState.value.selectedAreFavorites())
+        screen.cancel()
+    }
+
+    @Test
+    fun addingToAnAlbumShowsItsTagAtOnceAndUndoTakesOffOnlyWhatItAdded() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = moverViewModel(library, server)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val album = Uuid.random()
+        val (before, added) = library.photos.getValue(3).take(2).map { it.fileId }
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(before))
+        viewModel.onAction(PhotoGalleryUiAction.AddSelectedToAlbum(album))
+        advanceUntilIdle()
+        events.clear()
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(before))
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(added))
+
+        viewModel.onAction(PhotoGalleryUiAction.AddSelectedToAlbum(album))
+        advanceUntilIdle()
+
+        assertEquals(mapOf((album to before) to true, (album to added) to true), server.tagged)
+        assertEquals(setOf(before, added), viewModel.uiState.value.loaded.getValue(3).filter { album in it.tags }.mapTo(HashSet()) { it.fileId })
+        assertEquals(emptySet(), viewModel.uiState.value.selected)
+        val done = assertIs<PhotoGalleryEvent.Moved>(events.single())
+        assertEquals(MoveAction.AddToAlbum, done.action)
+        assertEquals(PhotoGalleryUiAction.UndoTag(album, setOf(added), on = false), done.undo)
+        viewModel.onAction(done.undo!!)
+        advanceUntilIdle()
+        assertEquals(false, server.tagged[album to added])
+        assertEquals(true, server.tagged[album to before])
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun aNewAlbumIsMadeThenTheSelectionGoesInUnderItsId() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val albums = Albums()
+        val (viewModel, screen) = moverViewModel(library, server, albums = albums)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val picked = library.photos.getValue(3).take(2).mapTo(HashSet()) { it.fileId }
+        picked.forEach { viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(it)) }
+
+        viewModel.onAction(PhotoGalleryUiAction.AddSelectedToNewAlbum("Summer"))
+        advanceUntilIdle()
+
+        val made = albums.made.single()
+        assertEquals("Summer", albums.albums.value?.single()?.name)
+        assertEquals(picked.associate { (made to it) to true }, server.tagged)
+        assertEquals(PhotoGalleryUiAction.UndoTag(made, picked, on = false), assertIs<PhotoGalleryEvent.Moved>(events.single()).undo)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun anAlbumThatCantBeMadeGivesTheSelectionBack() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val albums = Albums().apply { failure = IllegalStateException("offline") }
+        val (viewModel, screen) = moverViewModel(library, server, albums = albums)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val photo = library.photos.getValue(3).first().fileId
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo))
+
+        viewModel.onAction(PhotoGalleryUiAction.AddSelectedToNewAlbum("Summer"))
+        advanceUntilIdle()
+
+        assertEquals(PhotoGalleryEvent.MoveFailed(MoveAction.AddToAlbum), events.single())
+        assertEquals(setOf(photo), viewModel.uiState.value.selected)
+        assertEquals(emptyMap(), server.tagged)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun anAlbumTakesOutItsSelectionAndRenamesAndDeletesItself() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val album = PhotoGallery.Album(Uuid.random())
+        val albums = Albums().apply { this.albums.value = listOf(PhotoAlbum(album.id, "Trip")) }
+        val (viewModel, screen) = moverViewModel(library, server, gallery = album, albums = albums)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val photo = library.photos.getValue(3).first().fileId
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo))
+
+        viewModel.onAction(PhotoGalleryUiAction.RemoveSelectedFromAlbum)
+        viewModel.onAction(PhotoGalleryUiAction.RenameAlbum("Winter"))
+        viewModel.onAction(PhotoGalleryUiAction.DeleteAlbum)
+        advanceUntilIdle()
+
+        assertEquals(mapOf((album.id to photo) to false), server.tagged)
+        assertEquals(listOf(album.id to "Winter"), albums.renamed)
+        assertEquals(listOf(album.id), albums.deleted)
+        assertEquals(MoveAction.RemoveFromAlbum, assertIs<PhotoGalleryEvent.Moved>(events.first()).action)
+        assertEquals(PhotoGalleryEvent.AlbumDeleted, events.last(), "the rename says nothing; its name shows")
+        assertEquals(2, events.size)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun renamingAnAlbumDeletedElsewhereLeavesIt() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val album = PhotoGallery.Album(Uuid.random())
+        val albums = Albums().apply { gone = true; this.albums.value = listOf(PhotoAlbum(album.id, "Trip")) }
+        val (viewModel, screen) = moverViewModel(library, Server(), gallery = album, albums = albums)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+
+        viewModel.onAction(PhotoGalleryUiAction.RenameAlbum("Winter"))
+        advanceUntilIdle()
+
+        assertEquals(listOf<PhotoGalleryEvent>(PhotoGalleryEvent.AlbumDeleted), events)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun anAlbumDeletedElsewhereIsLeftOnceTheAlbumsAreReadWithoutIt() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val album = PhotoGallery.Album(Uuid.random())
+        val albums = Albums().apply { this.albums.value = null }
+        val (viewModel, screen) = moverViewModel(library, Server(), gallery = album, albums = albums)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+
+        albums.albums.value = listOf(PhotoAlbum(album.id, "Trip"))
+        advanceUntilIdle()
+        assertEquals(emptyList(), events, "not while unread, nor while it's there")
+        assertEquals("Trip", viewModel.albumName.first { it != null })
+
+        viewModel.onAction(PhotoGalleryUiAction.DeleteAlbum)
+        albums.albums.value = emptyList()
+        advanceUntilIdle()
+        assertEquals(listOf<PhotoGalleryEvent>(PhotoGalleryEvent.AlbumDeleted), events, "its own delete and the read without it leave once")
+        listening.cancel()
         screen.cancel()
     }
 
