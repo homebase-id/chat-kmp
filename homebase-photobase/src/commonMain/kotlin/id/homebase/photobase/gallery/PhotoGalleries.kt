@@ -30,7 +30,7 @@ class PhotoGalleries(
             Held(open(gallery, own), own)
         }
         held[gallery] = opened
-        evict()
+        evict(keep = gallery)
         opened.gallery
     }
 
@@ -39,12 +39,13 @@ class PhotoGalleries(
         for (opened in synchronized(lock) { held.values.map { it.gallery } }) opened.days.forget()
     }
 
-    private fun evict() {
+    // Not the one just asked for: its screen hasn't started watching yet.
+    private fun evict(keep: PhotoGallery) {
         val albums = held.entries.filter { it.key is PhotoGallery.Album }
         var over = albums.size - keptAlbums
         for ((gallery, opened) in albums) {
             if (over <= 0) break
-            if (opened.gallery.days.watched) continue
+            if (gallery == keep || opened.gallery.days.watched) continue
             held.remove(gallery)
             opened.scope.cancel()
             over--

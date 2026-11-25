@@ -61,4 +61,16 @@ class PhotoGalleriesTest {
         assertFalse(scopes.getValue(second).isActive, "the next least recent goes instead")
         screen.cancel()
     }
+
+    @Test
+    fun theAlbumJustOpenedStaysWhileTheOthersAreStillWatched() = runTest(UnconfinedTestDispatcher()) {
+        val galleries = backgroundScope.galleries()
+        val (first, second, opened) = List(3) { PhotoGallery.Album(Uuid.random()) }
+        val screens = listOf(first, second).map { launch { galleries.of(it).days.days.collect { } } }
+
+        galleries.of(opened)
+
+        assertTrue(scopes.getValue(opened).isActive, "its screen hasn't started watching yet")
+        screens.forEach { it.cancel() }
+    }
 }

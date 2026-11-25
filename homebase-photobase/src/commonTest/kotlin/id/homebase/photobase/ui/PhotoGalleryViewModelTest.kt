@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -946,8 +947,8 @@ class PhotoGalleryViewModelTest {
     fun anAlbumTakesOutItsSelectionAndRenamesAndDeletesItself() = runTest {
         val library = Library(1..3, perDay = 4)
         val server = Server()
-        val albums = Albums()
         val album = PhotoGallery.Album(Uuid.random())
+        val albums = Albums().apply { this.albums.value = listOf(PhotoAlbum(album.id, "Trip")) }
         val (viewModel, screen) = moverViewModel(library, server, gallery = album, albums = albums)
         val events = mutableListOf<PhotoGalleryEvent>()
         val listening = launch { viewModel.events.collect { events += it } }
@@ -972,14 +973,36 @@ class PhotoGalleryViewModelTest {
     @Test
     fun renamingAnAlbumDeletedElsewhereLeavesIt() = runTest {
         val library = Library(1..3, perDay = 4)
-        val albums = Albums().apply { gone = true }
-        val (viewModel, screen) = moverViewModel(library, Server(), gallery = PhotoGallery.Album(Uuid.random()), albums = albums)
+        val album = PhotoGallery.Album(Uuid.random())
+        val albums = Albums().apply { gone = true; this.albums.value = listOf(PhotoAlbum(album.id, "Trip")) }
+        val (viewModel, screen) = moverViewModel(library, Server(), gallery = album, albums = albums)
         val events = mutableListOf<PhotoGalleryEvent>()
         val listening = launch { viewModel.events.collect { events += it } }
 
         viewModel.onAction(PhotoGalleryUiAction.RenameAlbum("Winter"))
         advanceUntilIdle()
 
+        assertEquals(listOf<PhotoGalleryEvent>(PhotoGalleryEvent.AlbumDeleted), events)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun anAlbumDeletedElsewhereIsLeftOnceTheAlbumsAreReadWithoutIt() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val album = PhotoGallery.Album(Uuid.random())
+        val albums = Albums().apply { this.albums.value = null }
+        val (viewModel, screen) = moverViewModel(library, Server(), gallery = album, albums = albums)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+
+        albums.albums.value = listOf(PhotoAlbum(album.id, "Trip"))
+        advanceUntilIdle()
+        assertEquals(emptyList(), events, "not while unread, nor while it's there")
+        assertEquals("Trip", viewModel.albumName.first { it != null })
+
+        albums.albums.value = emptyList()
+        advanceUntilIdle()
         assertEquals(listOf<PhotoGalleryEvent>(PhotoGalleryEvent.AlbumDeleted), events)
         listening.cancel()
         screen.cancel()

@@ -65,6 +65,8 @@ class PhotoAlbums(
     private val sync: () -> Unit,
 ) : PhotoAlbumSource {
     private val forgotten = MutableStateFlow(0)
+    // Read on the one collector stateIn runs.
+    private var readFor = 0
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override val albums: StateFlow<List<PhotoAlbum>?> = forgotten
@@ -85,7 +87,8 @@ class PhotoAlbums(
                         null
                     }
                 }
-            reads.onStart<List<PhotoAlbum>?> { emit(null) }
+            // Only a forget blanks the list; coming back to a screen keeps the last one while it reads again.
+            if (it == readFor) reads else reads.onStart<List<PhotoAlbum>?> { readFor = it; emit(null) }
         }
         .flowOn(Dispatchers.Default)
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), null)
@@ -161,6 +164,8 @@ suspend fun DriveQueryProvider.photosTagged(tag: Uuid): List<Uuid> = buildList {
                 queryParams = FileQueryParams(localTagsMatchAtLeastOne = listOf(tag), fileState = listOf(FileState.Active, FileState.Deleted)),
                 resultOptionsRequest = QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = DriveFileHttpProvider.FILE_BATCH),
             ),
+            // A tag left on a file the drive key can't open does no harm; failing the delete for it would.
+            skipUnreadable = true,
         )
         page.searchResults.mapTo(this) { it.fileId }
         cursor = page.cursorState?.takeIf { page.hasMoreRows && it != cursor }

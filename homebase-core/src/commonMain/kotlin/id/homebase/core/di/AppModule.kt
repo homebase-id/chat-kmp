@@ -1157,7 +1157,6 @@ val appModule = module {
         }
     }
     single { get<PhotoGalleries>().of(PhotoGallery.Library).store }
-    single { get<PhotoGalleries>().of(PhotoGallery.Library).days }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }

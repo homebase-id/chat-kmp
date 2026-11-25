@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -164,6 +165,11 @@ class PhotoGalleryViewModel(
     // Kept until the screen takes them: one that lands while the screen is away is shown when it's back.
     private val _events = Channel<PhotoGalleryEvent>(Channel.BUFFERED)
     val events: Flow<PhotoGalleryEvent> = _events.receiveAsFlow()
+
+    init {
+        // Deleted on another device: once the albums are read without it, there's nothing here to show.
+        album?.let { shown -> viewModelScope.launch { albums.first { list -> list != null && list.none { it.id == shown.id } }; _events.send(PhotoGalleryEvent.AlbumDeleted) } }
+    }
     private val moveLock = Mutex()
     // Main only.
     private var pending = 0
