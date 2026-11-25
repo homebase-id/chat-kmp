@@ -527,7 +527,7 @@ private fun LibraryTopBar(
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (onOpenShelf != null) {
-                            for (shelf in listOf(PhotoShelf.Archive, PhotoShelf.Bin)) {
+                            for (shelf in PhotoShelf.away) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(shelf.title)) },
                                     leadingIcon = { Icon(shelf.icon, contentDescription = null) },

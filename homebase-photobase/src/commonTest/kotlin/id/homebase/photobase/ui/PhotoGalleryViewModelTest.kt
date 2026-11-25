@@ -692,6 +692,26 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
+    fun restoringFromTheBinOffersUndoBackToTheBin() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = moverViewModel(library, server, shelf = PhotoShelf.Bin)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val photo = library.photos.getValue(3).first().fileId
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo))
+
+        viewModel.onAction(PhotoGalleryUiAction.MoveSelected(PhotoShelf.Library))
+        advanceUntilIdle()
+        val restored = assertIs<PhotoGalleryEvent.Moved>(events.single())
+        assertEquals(MoveAction.Restore, restored.action)
+        assertEquals(PhotoGalleryUiAction.Undo(setOf(photo), from = PhotoShelf.Library, to = PhotoShelf.Bin), restored.undo)
+        assertEquals(ArchivalStatus.None, server.status[photo])
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
     fun undoingAMoveToTheBinFromTheArchivePutsThePhotoBackInTheArchive() = runTest {
         val library = Library(1..3, perDay = 4)
         val server = Server()

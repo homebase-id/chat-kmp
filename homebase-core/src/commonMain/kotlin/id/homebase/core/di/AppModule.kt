@@ -375,8 +375,7 @@ val WebDropPermissionQualifier = named("webDropPermission")
 val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val PhotobasePermissionQualifier = named("photobasePermission")
-// The library's gallery is unqualified; each of these shelves has its own store, day index and view model.
-val PhotoShelvesAway = listOf(PhotoShelf.Archive, PhotoShelf.Bin)
+// The library's gallery is unqualified; each shelf away has its own store, day index and view model.
 fun photoShelfQualifier(shelf: PhotoShelf) = named("photo${shelf.name}")
 
 val EmailPermissionQualifier = named("emailPermission")
@@ -1146,7 +1145,7 @@ val appModule = module {
     }
     single { photoGalleryStore(get(), get()) }
     single { photoDayIndex(get(), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
-    for (shelf in PhotoShelvesAway) {
+    for (shelf in PhotoShelf.away) {
         val qualifier = photoShelfQualifier(shelf)
         single(qualifier) { photoGalleryStore(get(), get(), shelf) }
         single(qualifier) { photoDayIndex(get(qualifier), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
@@ -1534,7 +1533,7 @@ val appModule = module {
                 if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoDayIndex>().forget()
-                PhotoShelvesAway.forEach { get<PhotoDayIndex>(photoShelfQualifier(it)).forget() }
+                PhotoShelf.away.forEach { get<PhotoDayIndex>(photoShelfQualifier(it)).forget() }
                 get<PhotoBackupEntry>().forgetDrive()
                 // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
                 val registry = get<DriveRegistry>()

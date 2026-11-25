@@ -26,11 +26,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 
-/** What the bin's server writes put on the wire, through the real providers. */
+/** What the mover's server writes put on the wire, through the real providers. */
 class HttpPhotoMoveServerTest {
     private val secret = ByteArray(16) { 5 }
     private val sent = mutableListOf<Pair<String, FileVersionTagBatch>>()
-    private val cacheDir = Files.createTempDirectory("photo-bin")
+    private val cacheDir = Files.createTempDirectory("photo-move")
 
     @AfterTest
     fun removeCache() = cacheDir.toFile().deleteRecursively().let { }

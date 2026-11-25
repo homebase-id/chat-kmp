@@ -12,6 +12,11 @@ enum class PhotoShelf(val status: ArchivalStatus) {
 
     /** Whether [file], as it arrived, belongs here now. */
     fun holds(file: HomebaseFile): Boolean = file.isAt(status)
+
+    companion object {
+        /** The shelves the library opens as galleries of their own. */
+        val away: List<PhotoShelf> = listOf(Archive, Bin)
+    }
 }
 
 internal fun HomebaseFile.isAt(status: ArchivalStatus): Boolean =
