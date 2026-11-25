@@ -1,7 +1,12 @@
 package id.homebase.api.storage
 
 import java.io.File
+import java.nio.file.FileSystems
 import java.nio.file.Files
+import java.nio.file.attribute.AclEntry
+import java.nio.file.attribute.AclEntryPermission
+import java.nio.file.attribute.AclEntryType
+import java.nio.file.attribute.AclFileAttributeView
 import java.security.KeyStore
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -14,6 +19,18 @@ private const val ALIAS = "SecureStorageKey"
 
 internal fun keyStoreFile(dir: File) = File(dir, "secure_storage.p12")
 internal fun dataFile(dir: File) = File(dir, "secure_storage.properties")
+
+// setReadable(false) does nothing on Windows, where a deny entry for this user does it.
+internal fun File.setReadableOnAnyOs(readable: Boolean) {
+    val acl = Files.getFileAttributeView(toPath(), AclFileAttributeView::class.java)
+    if (acl == null) {
+        check(setReadable(readable)) { "Couldn't change $this" }
+        return
+    }
+    val user = FileSystems.getDefault().userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name"))
+    val deny = AclEntry.newBuilder().setType(AclEntryType.DENY).setPrincipal(user).setPermissions(AclEntryPermission.READ_DATA).build()
+    acl.acl = if (readable) acl.acl - deny else listOf(deny) + acl.acl
+}
 
 /** Re-protects the storage key with a password the store will never use, as a corrupted entry would be. */
 internal fun makeStorageKeyUnrecoverable(dir: File) {
@@ -31,7 +48,7 @@ class KeyStoreFileStorageTest {
 
     @AfterTest
     fun cleanup() {
-        dir.walk().forEach { it.setReadable(true) }
+        dir.walk().forEach { it.setReadableOnAnyOs(true) }
         dir.deleteRecursively()
     }
 
@@ -59,7 +76,7 @@ class KeyStoreFileStorageTest {
     @Test
     fun `an unreadable keystore file is unavailable, not missing`() {
         storage.put("k", "v")
-        keyStoreFile(dir).setReadable(false)
+        keyStoreFile(dir).setReadableOnAnyOs(false)
         storage = newStorage()
 
         assertIs<SecureRead.Unavailable>(storage.read("k"))
@@ -68,7 +85,7 @@ class KeyStoreFileStorageTest {
     @Test
     fun `an unreadable data file is unavailable, not missing`() {
         storage.put("k", "v")
-        dataFile(dir).setReadable(false)
+        dataFile(dir).setReadableOnAnyOs(false)
 
         assertIs<SecureRead.Unavailable>(storage.read("k"))
     }

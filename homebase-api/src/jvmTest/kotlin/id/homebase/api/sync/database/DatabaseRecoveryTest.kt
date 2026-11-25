@@ -8,6 +8,7 @@ import id.homebase.api.storage.OsKeyRead
 import id.homebase.api.storage.SecureRead
 import id.homebase.api.storage.dataFile
 import id.homebase.api.storage.makeStorageKeyUnrecoverable
+import id.homebase.api.storage.setReadableOnAnyOs
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
@@ -24,7 +25,7 @@ class DatabaseRecoveryTest {
 
     @AfterTest
     fun cleanup() {
-        tempDir.walk().forEach { it.setReadable(true) }
+        tempDir.walk().forEach { it.setReadableOnAnyOs(true) }
         tempDir.deleteRecursively()
     }
 
@@ -112,13 +113,13 @@ class DatabaseRecoveryTest {
     fun `a key store that can't be read right now throws and keeps the database`() = runTest {
         val install = Install()
         install.launch { it.writeMarker() }
-        dataFile(install.secureDir).setReadable(false)
+        dataFile(install.secureDir).setReadableOnAnyOs(false)
 
         assertFailsWith<DatabaseUnavailableException> { install.launch { error("must not open") } }
         assertEquals(0, install.wipes)
         assertTrue(install.db.isFile)
 
-        dataFile(install.secureDir).setReadable(true)
+        dataFile(install.secureDir).setReadableOnAnyOs(true)
         var marker: String? = null
         install.launch { marker = it.marker() }
         assertEquals("kept", marker)
