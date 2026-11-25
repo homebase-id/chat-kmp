@@ -9,7 +9,7 @@ private val JOURNAL_FILES = setOf("journal", "journal.tmp", "journal.bkp")
  * entry (a killed write, a rebuilt journal) stay on disk forever. After the clear, everything in
  * the cache directory except the live journal is such a file.
  */
-fun DiskCache.clearIncludingOrphans() {
+internal fun DiskCache.clearIncludingOrphans() {
     clear()
     if (!fileSystem.exists(directory)) return
     for (child in fileSystem.list(directory)) {
