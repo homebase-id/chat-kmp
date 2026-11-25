@@ -38,8 +38,7 @@ class PhotoLibraryViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), galleries.associate { it.first to null })
 
     /** Null until read. */
-    val albums: StateFlow<List<PhotoAlbum>?> =
-        albumSource?.albums?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null) ?: MutableStateFlow(emptyList())
+    val albums: StateFlow<List<PhotoAlbum>?> = albumSource?.albums ?: MutableStateFlow(null)
 
     private val _createFailed = Channel<Unit>(Channel.BUFFERED)
     val createFailed: Flow<Unit> = _createFailed.receiveAsFlow()

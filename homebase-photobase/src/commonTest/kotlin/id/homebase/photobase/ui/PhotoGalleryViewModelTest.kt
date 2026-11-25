@@ -540,7 +540,7 @@ class PhotoGalleryViewModelTest {
     }
 
     private class Albums : PhotoAlbumSource {
-        override val albums = MutableStateFlow(emptyList<PhotoAlbum>())
+        override val albums = MutableStateFlow<List<PhotoAlbum>?>(emptyList())
         val made = mutableListOf<Uuid>()
         val renamed = mutableListOf<Pair<Uuid, String>>()
         val deleted = mutableListOf<Uuid>()
@@ -548,7 +548,7 @@ class PhotoGalleryViewModelTest {
 
         override suspend fun create(name: String): Uuid {
             failure?.let { throw it }
-            return Uuid.random().also { made += it; albums.value += PhotoAlbum(it, name) }
+            return Uuid.random().also { made += it; albums.value = albums.value.orEmpty() + PhotoAlbum(it, name) }
         }
 
         override suspend fun rename(id: Uuid, name: String) {
@@ -909,7 +909,7 @@ class PhotoGalleryViewModelTest {
         advanceUntilIdle()
 
         val made = albums.made.single()
-        assertEquals("Summer", albums.albums.value.single().name)
+        assertEquals("Summer", albums.albums.value?.single()?.name)
         assertEquals(picked.associate { (made to it) to true }, server.tagged)
         assertEquals(PhotoGalleryUiAction.UndoTag(made, picked, on = false), assertIs<PhotoGalleryEvent.Moved>(events.single()).undo)
         listening.cancel()
@@ -957,10 +957,9 @@ class PhotoGalleryViewModelTest {
         assertEquals(mapOf((album.id to photo) to false), server.tagged)
         assertEquals(listOf(album.id to "Winter"), albums.renamed)
         assertEquals(listOf(album.id), albums.deleted)
-        assertEquals(
-            listOf(MoveAction.RemoveFromAlbum, MoveAction.RenameAlbum, MoveAction.DeleteAlbum),
-            events.map { assertIs<PhotoGalleryEvent.Moved>(it).action },
-        )
+        assertEquals(MoveAction.RemoveFromAlbum, assertIs<PhotoGalleryEvent.Moved>(events.first()).action)
+        assertEquals(PhotoGalleryEvent.AlbumDeleted, events.last(), "the rename says nothing; its name shows")
+        assertEquals(2, events.size)
         listening.cancel()
         screen.cancel()
     }

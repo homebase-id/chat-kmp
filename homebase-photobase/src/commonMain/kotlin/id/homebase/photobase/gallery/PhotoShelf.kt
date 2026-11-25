@@ -58,7 +58,7 @@ sealed interface PhotoGallery {
         val away: List<PhotoGallery> = listOf(Favorites, Archive, Bin)
 
         fun ofKey(key: String): PhotoGallery? =
-            away.firstOrNull { it.key == key } ?: key.removePrefix(ALBUM_KEY).takeIf { it != key }?.let(Uuid::parseOrNull)?.let(::Album)
+            away.firstOrNull { it.key == key } ?: if (key.startsWith(ALBUM_KEY)) Uuid.parseOrNull(key.drop(ALBUM_KEY.length))?.let(::Album) else null
     }
 }
 

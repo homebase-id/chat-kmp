@@ -132,6 +132,7 @@ class PhotoBackupControllerTest {
                     configUploads += request
                 },
                 updateFileByUniqueId = { error("nothing to update") },
+                softDelete = { _, _ -> error("nothing to delete") },
             ),
         )
         settingsStore = store

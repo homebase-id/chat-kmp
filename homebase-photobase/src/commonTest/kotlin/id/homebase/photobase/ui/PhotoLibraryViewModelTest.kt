@@ -69,7 +69,7 @@ class PhotoLibraryViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val trip = PhotoAlbum(Uuid.random(), "Trip", photos = 3)
         val source = object : PhotoAlbumSource {
-            override val albums = MutableStateFlow(listOf(trip))
+            override val albums = MutableStateFlow<List<PhotoAlbum>?>(listOf(trip))
             override suspend fun create(name: String): Uuid = throw IllegalStateException("offline")
             override suspend fun rename(id: Uuid, name: String) = Unit
             override suspend fun delete(id: Uuid) = Unit

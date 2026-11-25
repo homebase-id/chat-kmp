@@ -93,7 +93,7 @@ class PhotoDayIndex(
     }
 
     private suspend fun note(change: PhotoChange) {
-        if (current.subscriptionCount.value == 0) {
+        if (!watched) {
             builtFor = null
             arrived.clear()
             return

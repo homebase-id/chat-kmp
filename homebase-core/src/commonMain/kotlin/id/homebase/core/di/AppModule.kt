@@ -204,7 +204,6 @@ import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
 import id.homebase.photobase.gallery.photoDayIndex
-import id.homebase.photobase.gallery.PhotoDayIndex
 import id.homebase.photobase.gallery.newPhotoRecords
 import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
@@ -216,6 +215,8 @@ import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.ui.PhotoLibraryViewModel
 import id.homebase.photobase.gallery.PhotoGallery
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.photobase.PhotobaseRecord
 import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoAlbums
@@ -335,7 +336,6 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
-import org.koin.core.qualifier.Qualifier
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
@@ -382,7 +382,6 @@ val WebDropPermissionQualifier = named("webDropPermission")
 val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val PhotobasePermissionQualifier = named("photobasePermission")
-// The library's gallery is unqualified; each gallery away has its own store, day index and view model.
 
 val EmailPermissionQualifier = named("emailPermission")
 
@@ -1579,19 +1578,23 @@ val appModule = module {
     single {
         val files = get<DriveFileProvider>()
         val fileUploader = get<DriveUploadProvider>()
+        val batches = get<DriveFileHttpProvider>()
         PhotobaseRecord(
             getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
             uploadFile = { request -> fileUploader.uploadFile(request) },
             updateFileByUniqueId = { request -> fileUploader.updateFileByUniqueId(request) },
+            softDelete = { fileId, versionTag ->
+                batches.softDeleteFiles(PhotobaseProtocol.DriveAlias, listOf(FileVersionTag(fileId, versionTag))).results.single().errorCode
+            },
         )
     }
     single<PhotoAlbumSource> {
         PhotoAlbums(
             store = get(),
             record = get(),
-            server = get(),
             mover = get(),
             changes = get<EventBus>().events.newPhotoRecords(),
+            scope = get(),
             sync = { syncPhotos() },
         )
     }
@@ -1824,9 +1827,10 @@ private fun Scope.syncPhotos() {
 /** Each gallery has its own store and day index. */
 private fun Scope.photoGalleryViewModel(gallery: PhotoGallery): PhotoGalleryViewModel {
     val drives = get<DriveSyncManager>()
-    val (store, index) = get<PhotoGalleries>().of(gallery).let { it.store to it.days }
+    val opened = get<PhotoGalleries>().of(gallery)
+    val index = opened.days
     return PhotoGalleryViewModel(
-        source = store,
+        source = opened.store,
         gallery = gallery,
         mover = get(),
         refresh = { syncPhotos() },

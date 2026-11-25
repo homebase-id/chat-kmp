@@ -15,7 +15,11 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.PhotobaseRecord
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.io.encoding.Base64
@@ -37,15 +41,13 @@ class PhotoAlbumsTest {
     private val updates = mutableListOf<UpdateFileByUniqueIdRequest>()
     private val untagged = mutableListOf<Pair<Uuid, List<Uuid>>>()
     private val deleted = mutableListOf<FileVersionTag>()
+    private val scope = CoroutineScope(Dispatchers.Unconfined)
     private var syncs = 0
 
     private val server = object : PhotoMoveServer {
         override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) = error("no moves")
 
-        override suspend fun softDelete(files: List<FileVersionTag>): List<PerFileResult> {
-            deleted += files
-            return files.map { PerFileResult(it.fileId) }
-        }
+        override suspend fun softDelete(files: List<FileVersionTag>) = error("no photo deletes")
 
         override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
             check(!on)
@@ -58,15 +60,21 @@ class PhotoAlbumsTest {
 
     private val albums = PhotoAlbums(
         store = store,
-        record = PhotobaseRecord({ _, uniqueId -> onServer[uniqueId] }, { uploads += it }, { updates += it }),
-        server = server,
+        record = PhotobaseRecord({ _, uniqueId -> onServer[uniqueId] }, { uploads += it }, { updates += it }) { fileId, versionTag ->
+            deleted += FileVersionTag(fileId, versionTag)
+            null
+        },
         mover = PhotoMover(server, filesOf = store::filesOf, binned = { emptyList() }, sync = {}),
         changes = emptyFlow(),
+        scope = scope,
         sync = { syncs++ },
     )
 
     @AfterTest
-    fun close() = db.close()
+    fun close() {
+        scope.cancel()
+        db.close()
+    }
 
     private suspend fun synced(vararg files: HomebaseFile) =
         MainIndexMetaHelpers.HomebaseFileProcessor(db).baseUpsertEntryZapZap(identity, PhotobaseProtocol.DriveAlias, files.toList(), cursor = null)
@@ -98,7 +106,7 @@ class PhotoAlbumsTest {
             photo(3_000, ArchivalStatus.Removed, trip),
         )
 
-        val shown = albums.albums.first()
+        val shown = albums.albums.filterNotNull().first()
 
         assertEquals(listOf(PhotoAlbum(empty, "Empty"), PhotoAlbum(trip, "Trip", photos = 2, cover = newest.toGalleryItem())), shown)
     }

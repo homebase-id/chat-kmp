@@ -41,6 +41,7 @@ class PhotobaseConfigFileTest {
             failures.removeFirstOrNull()?.let { throw conflict(it) }
             updates += request
         },
+        softDelete = { _, _ -> error("the config isn't deleted") },
     ))
 
     private fun conflict(code: OdinClientErrorCode) = ClientException(

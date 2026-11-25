@@ -21,7 +21,10 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,7 +81,8 @@ internal fun AlbumCard(album: PhotoAlbum, onOpen: () -> Unit, modifier: Modifier
 
 /** Picks the album the selection goes to, or a new one; null [albums] while they're read. */
 @Composable
-internal fun AlbumPickerSheet(albums: List<PhotoAlbum>?, onPick: (Uuid) -> Unit, onNew: () -> Unit, onDismiss: () -> Unit) {
+internal fun AlbumPickerSheet(albums: StateFlow<List<PhotoAlbum>?>, onPick: (Uuid) -> Unit, onNew: () -> Unit, onDismiss: () -> Unit) {
+    val shown by albums.collectAsStateWithLifecycle()
     AdaptiveSheet(onDismiss = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
             Text(stringResource(MR.string.photobase_album_add), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
@@ -87,8 +91,8 @@ internal fun AlbumPickerSheet(albums: List<PhotoAlbum>?, onPick: (Uuid) -> Unit,
                 leadingContent = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(48.dp).padding(12.dp)) },
                 modifier = Modifier.clickable { dismiss(onNew) },
             )
-            if (albums == null) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
-            for (album in albums.orEmpty()) {
+            if (shown == null) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
+            for (album in shown.orEmpty()) {
                 ListItem(
                     headlineContent = { Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = { Text(pluralStringResource(MR.plurals.photobase_library_count, album.photos, album.photos)) },

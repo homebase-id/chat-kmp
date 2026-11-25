@@ -6,6 +6,7 @@ import id.homebase.api.client.isExistingFileWithUniqueId
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.AccessControlList
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
@@ -18,7 +19,6 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.photobase.PhotobaseProtocol
-import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -35,23 +35,22 @@ data class PhotobaseConfig(
 class PhotobaseConfigFile(private val record: PhotobaseRecord) {
 
     /** Null when no device has saved one yet. Throws when the server can't be asked. */
-    suspend fun read(): PhotobaseConfig? = parse(record.header(PhotobaseProtocol.ConfigUniqueId)?.fileMetadata?.appData?.content)
+    suspend fun read(): PhotobaseConfig? = parseRecord(record.header(PhotobaseProtocol.ConfigUniqueId)?.fileMetadata?.appData?.content, "config file")
 
     suspend fun update(transform: (PhotobaseConfig) -> PhotobaseConfig) =
         record.write(PhotobaseProtocol.ConfigUniqueId, PhotobaseProtocol.ConfigFileType) { stored ->
-            OdinSystemSerializer.serialize(transform(parse(stored) ?: PhotobaseConfig()))
+            OdinSystemSerializer.serialize(transform(parseRecord(stored, "config file") ?: PhotobaseConfig()))
         }
+}
 
-    private fun parse(content: String?): PhotobaseConfig? {
-        if (content == null) return null
-        return try {
-            OdinSystemSerializer.deserialize<PhotobaseConfig>(content)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(tag = "PhotobaseConfigFile", throwable = e) { "unreadable config file" }
-            null
-        }
+/** Null for no content, or content that won't parse. */
+inline fun <reified T> parseRecord(content: String?, what: String): T? {
+    if (content == null) return null
+    return try {
+        OdinSystemSerializer.deserialize<T>(content)
+    } catch (e: Exception) {
+        Logger.w(tag = "PhotobaseRecord", throwable = e) { "unreadable $what" }
+        null
     }
 }
 
@@ -60,14 +59,21 @@ class PhotobaseRecord(
     private val getFileHeaderByUid: suspend (driveId: Uuid, uniqueId: Uuid) -> HomebaseFile?,
     private val uploadFile: suspend (UploadFileRequest) -> Unit,
     private val updateFileByUniqueId: suspend (UpdateFileByUniqueIdRequest) -> Unit,
+    /** The server's error for the file, or null once it's deleted. */
+    private val softDelete: suspend (fileId: Uuid, versionTag: Uuid) -> OdinClientErrorCode?,
 ) {
-    /** Null when there's none. Throws when the server can't be asked. */
-    suspend fun header(uniqueId: Uuid): HomebaseFile? = getFileHeaderByUid(PhotobaseProtocol.DriveAlias, uniqueId)
+    /** Null when there's none, or it was deleted. Throws when the server can't be asked. */
+    suspend fun header(uniqueId: Uuid): HomebaseFile? =
+        getFileHeaderByUid(PhotobaseProtocol.DriveAlias, uniqueId)?.takeIf { it.fileState == FileState.Active }
 
-    /** Saves [content] of what's stored, or of null, creating the record if there's none; another device's save in between asks again. */
-    suspend fun write(uniqueId: Uuid, fileType: Int, content: (stored: String?) -> String) {
+    /**
+     * Saves [content] of what's stored, or of null; another device's save in between asks again. Without [create],
+     * a record that's gone stays gone and this throws.
+     */
+    suspend fun write(uniqueId: Uuid, fileType: Int, create: Boolean = true, content: (stored: String?) -> String) {
         repeat(MAX_CONFLICT_RETRIES) {
             val existing = header(uniqueId)
+            if (existing == null && !create) throw IllegalStateException("Photobase record $uniqueId is gone")
             val stored = existing?.fileMetadata?.appData?.content
             val merged = merged(stored, content(stored))
             try {
@@ -80,6 +86,14 @@ class PhotobaseRecord(
             }
         }
         throw IllegalStateException("Could not save Photobase record $uniqueId after $MAX_CONFLICT_RETRIES conflicts")
+    }
+
+    /** Nothing to do for a record that's gone already. */
+    suspend fun delete(uniqueId: Uuid) {
+        val existing = header(uniqueId) ?: return
+        val versionTag = existing.fileMetadata.versionTag ?: throw IllegalStateException("Photobase record $uniqueId has no version tag")
+        val error = softDelete(existing.fileId, versionTag)
+        if (error != null && error != OdinClientErrorCode.FileNotFound) throw IllegalStateException("Photobase record $uniqueId not deleted: $error")
     }
 
     // Keeps fields this app version doesn't know, so an older phone saving can't erase a newer one's.

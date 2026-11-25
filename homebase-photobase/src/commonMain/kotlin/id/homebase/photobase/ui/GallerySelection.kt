@@ -1,6 +1,5 @@
 package id.homebase.photobase.ui
 
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
@@ -26,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import id.homebase.core.widget.WithTooltip
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoShelf
@@ -141,15 +139,15 @@ internal fun SelectionMark(picked: Boolean, unpickedTint: Color, modifier: Modif
 /** Says what a move, delete or heart did; a move or heart offers Undo. */
 internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: (PhotoGalleryUiAction) -> Unit) {
     val message = when (event) {
-        is PhotoGalleryEvent.MoveFailed -> getString(MR.string.photobase_bin_failed)
+        is PhotoGalleryEvent.MoveFailed, PhotoGalleryEvent.AlbumWriteFailed -> getString(MR.string.photobase_bin_failed)
+        // The screen leaves the album.
+        PhotoGalleryEvent.AlbumDeleted -> return
         is PhotoGalleryEvent.Moved -> buildList {
             val result = event.result
             if (result.done > 0) {
                 val done = when (event.action) {
                     MoveAction.AddToAlbum -> MR.plurals.photobase_album_added
                     MoveAction.RemoveFromAlbum -> MR.plurals.photobase_album_removed
-                    // The album's new name, or leaving it, says so.
-                    MoveAction.RenameAlbum, MoveAction.DeleteAlbum -> null
                     MoveAction.Favorite -> MR.plurals.photobase_favorites_added
                     MoveAction.Unfavorite -> MR.plurals.photobase_favorites_removed
                     MoveAction.Archive -> MR.plurals.photobase_archive_archived
@@ -158,7 +156,7 @@ internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: 
                     MoveAction.Restore -> MR.plurals.photobase_bin_restored
                     MoveAction.DeleteForGood, MoveAction.Empty -> MR.plurals.photobase_bin_deleted
                 }
-                if (done != null) add(getPluralString(done, result.done, result.done))
+                add(getPluralString(done, result.done, result.done))
             }
             if (result.changedElsewhere > 0) add(getPluralString(MR.plurals.photobase_bin_changed_elsewhere, result.changedElsewhere, result.changedElsewhere))
             if (result.failed > 0) add(getPluralString(MR.plurals.photobase_bin_refused, result.failed, result.failed))

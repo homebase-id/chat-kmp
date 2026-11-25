@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -76,12 +77,14 @@ data class PhotoGalleryUiState(
     }
 }
 
-enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty, Favorite, Unfavorite, AddToAlbum, RemoveFromAlbum, RenameAlbum, DeleteAlbum }
+enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty, Favorite, Unfavorite, AddToAlbum, RemoveFromAlbum }
 
 sealed interface PhotoGalleryEvent {
     data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: PhotoGalleryUiAction? = null) : PhotoGalleryEvent
     /** Nothing is known to have changed: the request didn't get through. */
     data class MoveFailed(val action: MoveAction) : PhotoGalleryEvent
+    data object AlbumDeleted : PhotoGalleryEvent
+    data object AlbumWriteFailed : PhotoGalleryEvent
 }
 
 sealed interface PhotoGalleryUiAction {
@@ -142,9 +145,13 @@ class PhotoGalleryViewModel(
     private val shelf = (gallery as? PhotoGallery.OnShelf)?.shelf
     private val album = gallery as? PhotoGallery.Album
 
-    /** Every album, for this one's name and for adding photos to one; null until read. */
-    val albums: StateFlow<List<PhotoAlbum>?> =
-        albumSource?.albums?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null) ?: MutableStateFlow(null)
+    /** Every album, to add photos to one; null until read. */
+    val albums: StateFlow<List<PhotoAlbum>?> = albumSource?.albums ?: MutableStateFlow(null)
+
+    /** This album's name, null until read or for a gallery that isn't one. */
+    val albumName: StateFlow<String?> = album?.let { shown ->
+        albums.map { list -> list?.firstOrNull { it.id == shown.id }?.name }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    } ?: MutableStateFlow(null)
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
     // The days being read right now: a change to one of them mustn't be lost when the read lands.
@@ -246,8 +253,9 @@ class PhotoGalleryViewModel(
             is PhotoGalleryUiAction.AddSelectedToAlbum -> takeSelection()?.let { setTag(action.albumId, true, it, restoreSelection = true, undoable = true) }
             is PhotoGalleryUiAction.AddSelectedToNewAlbum -> albumSource?.let { albums -> takeSelection()?.let { addToNewAlbum(albums, action.name, it) } }
             PhotoGalleryUiAction.RemoveSelectedFromAlbum -> album?.let { album -> takeSelection()?.let { setTag(album.id, false, it, restoreSelection = true, undoable = true) } }
-            is PhotoGalleryUiAction.RenameAlbum -> albumWrite(MoveAction.RenameAlbum) { albums, id -> albums.rename(id, action.name) }
-            PhotoGalleryUiAction.DeleteAlbum -> albumWrite(MoveAction.DeleteAlbum) { albums, id -> albums.delete(id) }
+            // The new name shows when the sync brings the album back.
+            is PhotoGalleryUiAction.RenameAlbum -> albumWrite(done = null) { rename(it, action.name) }
+            PhotoGalleryUiAction.DeleteAlbum -> albumWrite(done = PhotoGalleryEvent.AlbumDeleted) { delete(it) }
         }
     }
 
@@ -258,13 +266,19 @@ class PhotoGalleryViewModel(
         }
     }
 
-    // Nothing to tally: the album's name or the screen going says it's done.
-    private fun albumWrite(action: MoveAction, write: suspend (PhotoAlbumSource, Uuid) -> Unit) {
+    private fun albumWrite(done: PhotoGalleryEvent?, write: suspend PhotoAlbumSource.(Uuid) -> Unit) {
         val albums = albumSource ?: return
         val id = album?.id ?: return
-        runMove(action, emptySet()) {
-            write(albums, id)
-            PhotoMoveResult(done = 0)
+        runLocked {
+            try {
+                albums.write(id)
+                done?.let { _events.send(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "album $id not written" }
+                _events.send(PhotoGalleryEvent.AlbumWriteFailed)
+            }
         }
     }
 
@@ -308,23 +322,25 @@ class PhotoGalleryViewModel(
         restoreSelection: Boolean = false,
         undo: ((Set<Uuid>) -> PhotoGalleryUiAction?)? = null,
         block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult,
-    ) {
+    ) = runLocked {
+        try {
+            val result = mover.block(ids)
+            _events.send(PhotoGalleryEvent.Moved(action, result, result.written.takeIf { it.isNotEmpty() }?.let { undo?.invoke(it) }))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
+            if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
+            _events.send(PhotoGalleryEvent.MoveFailed(action))
+        }
+    }
+
+    private fun runLocked(block: suspend () -> Unit) {
         pending++
         _uiState.update { it.copy(busy = true) }
         (moveScope ?: viewModelScope).launch(Dispatchers.Main.immediate) {
             try {
-                moveLock.withLock {
-                    try {
-                        val result = mover.block(ids)
-                        _events.send(PhotoGalleryEvent.Moved(action, result, result.written.takeIf { it.isNotEmpty() }?.let { undo?.invoke(it) }))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
-                        if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
-                        _events.send(PhotoGalleryEvent.MoveFailed(action))
-                    }
-                }
+                moveLock.withLock { block() }
             } finally {
                 pending--
                 _uiState.update { it.copy(busy = pending > 0) }

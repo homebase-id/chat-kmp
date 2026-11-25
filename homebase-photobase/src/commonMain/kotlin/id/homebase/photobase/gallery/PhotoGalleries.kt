@@ -19,22 +19,24 @@ class PhotoGalleries(
     private val open: (PhotoGallery, CoroutineScope) -> OpenGallery,
 ) {
     private val lock = SynchronizedObject()
+    private class Held(val gallery: OpenGallery, val scope: CoroutineScope)
+
     // Least recently asked for first.
-    private val held = LinkedHashMap<PhotoGallery, Pair<OpenGallery, CoroutineScope>>()
+    private val held = LinkedHashMap<PhotoGallery, Held>()
 
     fun of(gallery: PhotoGallery): OpenGallery = synchronized(lock) {
         val opened = held.remove(gallery) ?: run {
             val own = if (gallery is PhotoGallery.Album) CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job])) else scope
-            open(gallery, own) to own
+            Held(open(gallery, own), own)
         }
         held[gallery] = opened
         evict()
-        opened.first
+        opened.gallery
     }
 
     /** Photobase is gone: every gallery counts again from scratch. */
     suspend fun forget() {
-        for (opened in synchronized(lock) { held.values.map { it.first } }) opened.days.forget()
+        for (opened in synchronized(lock) { held.values.map { it.gallery } }) opened.days.forget()
     }
 
     private fun evict() {
@@ -42,9 +44,9 @@ class PhotoGalleries(
         var over = albums.size - keptAlbums
         for ((gallery, opened) in albums) {
             if (over <= 0) break
-            if (opened.first.days.watched) continue
+            if (opened.gallery.days.watched) continue
             held.remove(gallery)
-            opened.second.cancel()
+            opened.scope.cancel()
             over--
         }
     }

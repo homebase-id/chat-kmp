@@ -125,6 +125,8 @@ import id.homebase.resources.photobase_favorite_state
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.widget.ConfirmDialog
 import id.homebase.core.widget.NameDialog
+import androidx.compose.ui.graphics.vector.ImageVector
+import org.jetbrains.compose.resources.StringResource
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.ui.text.style.TextOverflow
@@ -201,18 +203,15 @@ fun PhotoGalleryScreen(
     val leave by rememberUpdatedState(onBack)
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
-            if (event is PhotoGalleryEvent.Moved && event.action == MoveAction.DeleteAlbum) leave?.invoke() else snackbar.show(event, onAction)
+            if (event == PhotoGalleryEvent.AlbumDeleted) leave?.invoke() else snackbar.show(event, onAction)
         }
     }
-    val album = gallery as? PhotoGallery.Album
     var picking by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf<AlbumNaming?>(null) }
-    // Read only where they're shown: every change to the drive reads them again.
-    val albums = if (album != null || picking) viewModel.albums.collectAsStateWithLifecycle().value else null
-    val title = album?.let { albums?.firstOrNull { it.id == album.id }?.name } ?: stringResource(gallery.look.title)
+    val title = viewModel.albumName.collectAsStateWithLifecycle().value ?: stringResource(gallery.look.title)
     if (picking) {
         AlbumPickerSheet(
-            albums = albums,
+            albums = viewModel.albums,
             onPick = { picking = false; onAction(PhotoGalleryUiAction.AddSelectedToAlbum(it)) },
             onNew = { picking = false; naming = AlbumNaming.New },
             onDismiss = { picking = false },
@@ -586,30 +585,34 @@ private enum class AlbumNaming { New, Rename }
 
 @Composable
 private fun AlbumMenu(enabled: Boolean, onRename: () -> Unit, onDelete: () -> Unit) {
+    GalleryMenu { item ->
+        item(MR.string.photobase_album_rename, Icons.Outlined.Edit, enabled, onRename)
+        item(MR.string.photobase_album_delete, Icons.Outlined.Delete, enabled, onDelete)
+    }
+}
+
+private typealias MenuItem = @Composable (label: StringResource, icon: ImageVector, enabled: Boolean, onClick: () -> Unit) -> Unit
+
+// Material 3 keeps three actions in the bar; the rest go in a menu, which closes before each runs.
+@Composable
+private fun GalleryMenu(items: @Composable (item: MenuItem) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { menu = true }) {
             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(MR.string.photobase_gallery_more))
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.photobase_album_rename)) },
-                leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
-                enabled = enabled,
-                onClick = {
-                    menu = false
-                    onRename()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.photobase_album_delete)) },
-                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                enabled = enabled,
-                onClick = {
-                    menu = false
-                    onDelete()
-                },
-            )
+            items { label, icon, enabled, onClick ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(label)) },
+                    leadingIcon = { Icon(icon, contentDescription = null) },
+                    enabled = enabled,
+                    onClick = {
+                        menu = false
+                        onClick()
+                    },
+                )
+            }
         }
     }
 }
@@ -639,33 +642,9 @@ private fun LibraryTopBar(
                     ),
                 )
             }
-            // Material 3 keeps three actions in the bar; the rest go in a menu.
-            var menu by remember { mutableStateOf(false) }
-            Box {
-                IconButton(onClick = { menu = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(MR.string.photobase_gallery_more))
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(MR.string.photobase_gallery_refresh)) },
-                        leadingIcon = { Icon(Icons.Outlined.Refresh, contentDescription = null) },
-                        enabled = !uiState.isSyncing,
-                        onClick = {
-                            menu = false
-                            onAction(PhotoGalleryUiAction.Refresh)
-                        },
-                    )
-                    if (onOpenBackupSettings != null) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.string.photobase_backup_title)) },
-                            leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
-                            onClick = {
-                                menu = false
-                                onOpenBackupSettings()
-                            },
-                        )
-                    }
-                }
+            GalleryMenu { item ->
+                item(MR.string.photobase_gallery_refresh, Icons.Outlined.Refresh, !uiState.isSyncing) { onAction(PhotoGalleryUiAction.Refresh) }
+                if (onOpenBackupSettings != null) item(MR.string.photobase_backup_title, Icons.Outlined.Settings, true, onOpenBackupSettings)
             }
         },
     )

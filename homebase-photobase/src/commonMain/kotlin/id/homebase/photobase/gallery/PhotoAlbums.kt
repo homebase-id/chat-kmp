@@ -1,29 +1,34 @@
 package id.homebase.photobase.gallery
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.OdinClientErrorCode
-import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.PhotobaseRecord
+import id.homebase.photobase.parseRecord
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.Serializable
 
 /** [photos] and [cover], the newest of them, count the library and the archive, as the album shows them. */
 data class PhotoAlbum(val id: Uuid, val name: String, val photos: Int = 0, val cover: PhotoGalleryItem? = null)
 
 interface PhotoAlbumSource {
-    /** Newest made first; read again on every change to the Photos drive while collected. */
-    val albums: Flow<List<PhotoAlbum>>
+    /** Newest made first, null until read; kept current while collected. */
+    val albums: StateFlow<List<PhotoAlbum>?>
 
     /** Returns the new album's id. */
     suspend fun create(name: String): Uuid
@@ -41,12 +46,13 @@ private data class AlbumContent(val name: String)
 class PhotoAlbums(
     private val store: PhotoGalleryStore,
     private val record: PhotobaseRecord,
-    private val server: PhotoMoveServer,
     private val mover: PhotoMover,
     changes: Flow<PhotoChange>,
+    scope: CoroutineScope,
     private val sync: () -> Unit,
 ) : PhotoAlbumSource {
-    override val albums: Flow<List<PhotoAlbum>> = changes
+    override val albums: StateFlow<List<PhotoAlbum>?> = changes
+        .filter { it.mayTouchAlbums() }
         .map { }
         .onStart { emit(Unit) }
         .conflate()
@@ -61,65 +67,59 @@ class PhotoAlbums(
                 null
             }
         }
+        .flowOn(Dispatchers.Default)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), null)
 
     override suspend fun create(name: String): Uuid {
         val id = Uuid.random()
-        write(id, name)
+        write(id, name, create = true)
         return id
     }
 
-    override suspend fun rename(id: Uuid, name: String) {
-        // Writing creates a record that isn't there: one deleted elsewhere mustn't come back by a rename.
-        if (record.header(id)?.fileState != FileState.Active) throw IllegalStateException("album $id is gone")
-        write(id, name)
-    }
+    // One deleted elsewhere mustn't come back by a rename.
+    override suspend fun rename(id: Uuid, name: String) = write(id, name, create = false)
 
     override suspend fun delete(id: Uuid) {
         val tagged = store.taggedFileIds(id)
         if (tagged.isNotEmpty()) mover.setTag(id, on = false, tagged)
-        val header = record.header(id)?.takeIf { it.fileState == FileState.Active } ?: return
-        val versionTag = header.fileMetadata.versionTag ?: throw IllegalStateException("album $id has no version tag")
         try {
-            val answer = server.softDelete(listOf(FileVersionTag(header.fileId, versionTag))).single()
-            if (answer.errorCode != null && answer.errorCode != OdinClientErrorCode.FileNotFound) {
-                throw IllegalStateException("album $id not deleted: ${answer.errorCode}")
-            }
+            record.delete(id)
         } finally {
             sync()
         }
     }
 
-    private suspend fun write(id: Uuid, name: String) {
+    private suspend fun write(id: Uuid, name: String, create: Boolean) {
         val content = OdinSystemSerializer.serialize(AlbumContent(name.trim().truncateToCodePoints(MAX_NAME)))
         try {
-            record.write(id, PhotobaseProtocol.AlbumFileType) { content }
+            record.write(id, PhotobaseProtocol.AlbumFileType, create) { content }
         } finally {
             sync()
         }
     }
 
     private suspend fun list(): List<PhotoAlbum> {
-        val records = store.albumRecords().mapNotNull { file -> file.album()?.let { it to file.fileMetadata.created.milliseconds } }
-        val covers = store.albumCovers(records.map { it.first.id })
-        return records.sortedByDescending { it.second }.map { (album, _) ->
-            covers[album.id]?.let { (photos, cover) -> album.copy(photos = photos, cover = cover) } ?: album
-        }
+        val albums = store.albumRecords().sortedByDescending { it.fileMetadata.created.milliseconds }.mapNotNull { it.album() }
+        val covers = store.albumCovers(albums.map { it.id })
+        return albums.map { album -> covers[album.id]?.let { album.copy(photos = it.photos, cover = it.cover) } ?: album }
     }
 
     private fun HomebaseFile.album(): PhotoAlbum? {
         val id = fileMetadata.appData.uniqueId ?: return null
-        val content = fileMetadata.appData.content ?: return null
-        val name = try {
-            OdinSystemSerializer.deserialize<AlbumContent>(content).name
-        } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "album $id won't parse" }
-            return null
-        }
-        return PhotoAlbum(id, name)
+        val content = parseRecord<AlbumContent>(fileMetadata.appData.content, "album $id") ?: return null
+        return PhotoAlbum(id, content.name)
     }
 
     private companion object {
         const val TAG = "PhotoAlbums"
         const val MAX_NAME = 100
+    }
+}
+
+// A photo whose local metadata was never written has never had a tag to change an album: a backup brings one a second.
+private fun PhotoChange.mayTouchAlbums(): Boolean = when (this) {
+    PhotoChange.RoundFinished -> true
+    is PhotoChange.FilesArrived -> files.any {
+        it.fileMetadata.appData.fileType == PhotobaseProtocol.AlbumFileType || it.fileMetadata.localAppData?.versionTag != null
     }
 }

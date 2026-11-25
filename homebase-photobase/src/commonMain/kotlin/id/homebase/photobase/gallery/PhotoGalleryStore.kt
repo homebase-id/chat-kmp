@@ -67,9 +67,9 @@ class PhotoGalleryStore internal constructor(
         parsedOffMain(db.photoDays.headersOfType(identityId(), photosDriveId, PhotobaseProtocol.AlbumFileType.toLong()))
 
     /** For each of [albums] that holds a photo in the library or the archive: how many, and the newest. */
-    suspend fun albumCovers(albums: Collection<Uuid>): Map<Uuid, Pair<Int, PhotoGalleryItem?>> =
+    suspend fun albumCovers(albums: Collection<Uuid>): Map<Uuid, AlbumCover> =
         db.photoDays.taggedCovers(identityId(), photosDriveId, albums, TAGGED_STATUSES)
-            .associate { it.tag to (it.photos to parsed(it.newestHeader)?.toGalleryItem()) }
+            .associate { it.tag to AlbumCover(it.photos, parsed(it.newestHeader)?.toGalleryItem()) }
 
     /** Every photo carrying [tag], binned and deleted ones too. */
     suspend fun taggedFileIds(tag: Uuid): List<Uuid> = db.photoDays.taggedFileIds(identityId(), photosDriveId, tag)
@@ -87,5 +87,7 @@ class PhotoGalleryStore internal constructor(
     }
 }
 
-fun photoGalleryStore(db: DatabaseManager, credentials: CredentialsManager, gallery: PhotoGallery = PhotoGallery.Library) =
+class AlbumCover(val photos: Int, val cover: PhotoGalleryItem?)
+
+fun photoGalleryStore(db: DatabaseManager, credentials: CredentialsManager, gallery: PhotoGallery) =
     PhotoGalleryStore(db, { credentials.requireActiveCredentials().getIdentityId() }, gallery)
