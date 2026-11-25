@@ -181,8 +181,8 @@
         <item quantity="other">Move %1$d photos to the bin?</item>
     </plurals>
     <plurals name="photobase_bin_move_confirm_text">
-        <item quantity="one">It leaves your library on all your devices and stays in the bin until you empty it.</item>
-        <item quantity="other">They leave your library on all your devices and stay in the bin until you empty it.</item>
+        <item quantity="one">It moves to the bin on all your devices and stays there until you empty it.</item>
+        <item quantity="other">They move to the bin on all your devices and stay there until you empty it.</item>
     </plurals>
     <plurals name="photobase_bin_delete_confirm_title">
         <item quantity="one">Delete %1$d photo forever?</item>

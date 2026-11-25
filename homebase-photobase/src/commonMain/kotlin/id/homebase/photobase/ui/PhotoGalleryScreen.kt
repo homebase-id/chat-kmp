@@ -201,23 +201,30 @@ fun PhotoGalleryScreen(
     LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.show(it, onAction) } }
     // Moving to the bin asks first: a missed tap on a small phone mustn't take photos away unnoticed.
     var asking by remember { mutableStateOf<PhotoGalleryUiAction?>(null) }
+    // The viewer's question goes with its photo, should a sync take that away.
+    LaunchedEffect(uiState.openedFileId) {
+        val pending = asking as? PhotoGalleryUiAction.MovePhotoToBin
+        if (pending != null && pending.fileId != uiState.openedFileId) asking = null
+    }
     asking?.let { action ->
         val selected = uiState.selected.size
-        val question = when (action) {
-            is PhotoGalleryUiAction.MovePhotoToBin, is PhotoGalleryUiAction.MoveSelected -> {
-                val count = if (action is PhotoGalleryUiAction.MovePhotoToBin) 1 else selected
-                Triple(
-                    pluralStringResource(MR.plurals.photobase_bin_move_confirm_title, count, count),
-                    pluralStringResource(MR.plurals.photobase_bin_move_confirm_text, count),
-                    stringResource(MR.string.photobase_bin_move),
-                )
-            }
-            PhotoGalleryUiAction.DeleteForGood -> Triple(
+        val toBin = when (action) {
+            is PhotoGalleryUiAction.MovePhotoToBin -> 1
+            is PhotoGalleryUiAction.MoveSelected -> selected.takeIf { action.to == PhotoShelf.Bin }
+            else -> null
+        }
+        val question = when {
+            toBin != null -> Triple(
+                pluralStringResource(MR.plurals.photobase_bin_move_confirm_title, toBin, toBin),
+                pluralStringResource(MR.plurals.photobase_bin_move_confirm_text, toBin),
+                stringResource(MR.string.photobase_bin_move),
+            )
+            action == PhotoGalleryUiAction.DeleteForGood -> Triple(
                 pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, selected, selected),
                 pluralStringResource(MR.plurals.photobase_bin_cant_undo, selected),
                 stringResource(MR.string.photobase_bin_delete_forever),
             )
-            PhotoGalleryUiAction.EmptyBin -> Triple(
+            action == PhotoGalleryUiAction.EmptyBin -> Triple(
                 stringResource(MR.string.photobase_bin_empty_confirm_title),
                 pluralStringResource(MR.plurals.photobase_bin_cant_undo, layout?.photoCount ?: 0),
                 stringResource(MR.string.photobase_bin_empty),
