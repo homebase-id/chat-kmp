@@ -24,7 +24,7 @@ fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
         payload.key != ChatProtocol.DefaultPayloadKey && !payload.isInternalDescriptor()
     }.orEmpty()
 
-internal fun List<PayloadDescriptor>.isLinkPreview(): Boolean =
+internal fun List<PayloadDescriptor>.isSoloLinkPreview(): Boolean =
     size == 1 && this[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
 
 fun MessageUiModel.conversationMediaPayloads(): List<PayloadDescriptor> =

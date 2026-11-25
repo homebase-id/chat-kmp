@@ -536,7 +536,7 @@ fun MessageBubbleRaw(
     val filteredPayloads = message.payloads.mediaPayloads()
     val hasMedia = filteredPayloads.isNotEmpty()
     val isGallery = filteredPayloads.size >= 2
-    val isLinkPreview = filteredPayloads.isLinkPreview()
+    val isLinkPreview = filteredPayloads.isSoloLinkPreview()
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 

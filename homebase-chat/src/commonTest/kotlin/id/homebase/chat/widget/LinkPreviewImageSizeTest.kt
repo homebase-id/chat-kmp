@@ -74,7 +74,7 @@ class LinkPreviewImageSizeTest {
     fun wideImageOnNarrowCard_followsAspectRatio() = assertImageSize(300.dp, 20, 10, 150.dp)
 
     @Test
-    fun wideImageOnCappedCard_spansWidthAtCappedHeight() = assertImageSize(400.dp, 100, 10, 100.dp)
+    fun veryWideImageOnCappedCard_clampsToFourToOne() = assertImageSize(400.dp, 100, 10, 100.dp)
 
     @Test
     fun squareImageOnCappedCard_keepsHeightCap() = assertImageSize(380.dp, 10, 10, 180.dp)
