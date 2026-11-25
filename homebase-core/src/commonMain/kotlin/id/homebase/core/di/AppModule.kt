@@ -208,9 +208,9 @@ import id.homebase.photobase.gallery.PhotoDayIndex
 import id.homebase.photobase.gallery.newPhotoRecords
 import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
-import id.homebase.photobase.gallery.HttpPhotoBinServer
-import id.homebase.photobase.gallery.PhotoBin
-import id.homebase.photobase.gallery.PhotoBinServer
+import id.homebase.photobase.gallery.HttpPhotoMoveServer
+import id.homebase.photobase.gallery.PhotoMover
+import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
@@ -1557,9 +1557,9 @@ val appModule = module {
     }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
-    single<PhotoBinServer> { HttpPhotoBinServer(get(), get()) }
+    single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get()) }
     single {
-        PhotoBin(
+        PhotoMover(
             server = get(),
             filesOf = get<PhotoGalleryStore>()::filesOf,
             binned = get<PhotoGalleryStore>(PhotoBinQualifier)::filesOnShelf,
@@ -1809,6 +1809,6 @@ private fun Scope.photoGalleryViewModel(qualifier: Qualifier?): PhotoGalleryView
         touchedDays = index.touched,
         countFailed = index.failed,
         recount = index::recount,
-        binScope = get(),
+        moveScope = get(),
     )
 }

@@ -91,14 +91,14 @@ internal fun SelectionMark(picked: Boolean, unpickedTint: Color, modifier: Modif
 /** Says what a bin action did; a move to the bin offers Undo. */
 internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: (PhotoGalleryUiAction) -> Unit) {
     val message = when (event) {
-        is PhotoGalleryEvent.BinFailed -> getString(MR.string.photobase_bin_failed)
-        is PhotoGalleryEvent.BinDone -> buildList {
+        is PhotoGalleryEvent.MoveFailed -> getString(MR.string.photobase_bin_failed)
+        is PhotoGalleryEvent.Moved -> buildList {
             val result = event.result
             if (result.done > 0) {
                 val done = when (event.action) {
-                    BinAction.MoveToBin -> MR.plurals.photobase_bin_moved
-                    BinAction.Restore -> MR.plurals.photobase_bin_restored
-                    BinAction.DeleteForGood, BinAction.Empty -> MR.plurals.photobase_bin_deleted
+                    MoveAction.MoveToBin -> MR.plurals.photobase_bin_moved
+                    MoveAction.Restore -> MR.plurals.photobase_bin_restored
+                    MoveAction.DeleteForGood, MoveAction.Empty -> MR.plurals.photobase_bin_deleted
                 }
                 add(getPluralString(done, result.done, result.done))
             }
@@ -107,7 +107,7 @@ internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: 
         }.joinToString(" ")
     }
     if (message.isEmpty()) return
-    val undo = (event as? PhotoGalleryEvent.BinDone)?.takeIf { it.result.done > 0 }?.undo.orEmpty()
+    val undo = (event as? PhotoGalleryEvent.Moved)?.takeIf { it.result.done > 0 }?.undo.orEmpty()
     val answer = showSnackbar(
         message = message,
         actionLabel = if (undo.isEmpty()) null else getString(MR.string.action_undo),

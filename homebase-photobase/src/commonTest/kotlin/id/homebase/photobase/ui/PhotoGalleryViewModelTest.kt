@@ -10,9 +10,9 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGallerySource
-import id.homebase.photobase.gallery.PhotoBin
-import id.homebase.photobase.gallery.PhotoBinResult
-import id.homebase.photobase.gallery.PhotoBinServer
+import id.homebase.photobase.gallery.PhotoMover
+import id.homebase.photobase.gallery.PhotoMoveResult
+import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.galleryTestFile
 import id.homebase.api.client.drives.files.ArchivalStatus
@@ -501,7 +501,7 @@ class PhotoGalleryViewModelTest {
     }
 
     /** Answers every write with [failure] thrown, or as done; [status] is where each photo it moved is now. */
-    private class Server : PhotoBinServer {
+    private class Server : PhotoMoveServer {
         val moved = mutableListOf<Pair<ArchivalStatus, List<Uuid>>>()
         val status = mutableMapOf<Uuid, ArchivalStatus>()
         var failure: Exception? = null
@@ -520,13 +520,13 @@ class PhotoGalleryViewModelTest {
         override suspend fun header(fileId: Uuid): HomebaseFile? = null
     }
 
-    private fun noBin() = PhotoBin(Server(), filesOf = { emptyList() }, binned = { emptyList() }, sync = {})
+    private fun noBin() = PhotoMover(Server(), filesOf = { emptyList() }, binned = { emptyList() }, sync = {})
 
     private fun TestScope.binViewModel(library: Library, server: Server, shelf: PhotoShelf = PhotoShelf.Library): Pair<PhotoGalleryViewModel, Job> {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         library.publish()
         val onShelf = if (shelf == PhotoShelf.Bin) ArchivalStatus.Removed else ArchivalStatus.None
-        val bin = PhotoBin(
+        val bin = PhotoMover(
             server = server,
             // The device holds every photo it's asked for, synced at once.
             filesOf = { ids -> ids.map { id -> galleryTestFile(0, fileId = id).onShelf(server.status[id] ?: onShelf) } },
@@ -581,8 +581,8 @@ class PhotoGalleryViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(ArchivalStatus.Removed to picked), server.moved.map { it.first to it.second.toSet() })
-        val done = assertIs<PhotoGalleryEvent.BinDone>(events.single())
-        assertEquals(PhotoBinResult(done = 2, written = picked), done.result)
+        val done = assertIs<PhotoGalleryEvent.Moved>(events.single())
+        assertEquals(PhotoMoveResult(done = 2, written = picked), done.result)
         assertEquals(picked, done.undo)
         assertFalse(viewModel.uiState.value.busy)
 
@@ -607,7 +607,7 @@ class PhotoGalleryViewModelTest {
         advanceUntilIdle()
 
         assertEquals(setOf(photo), viewModel.uiState.value.selected)
-        assertEquals(PhotoGalleryEvent.BinFailed(BinAction.MoveToBin), events.single())
+        assertEquals(PhotoGalleryEvent.MoveFailed(MoveAction.MoveToBin), events.single())
         listening.cancel()
         screen.cancel()
     }

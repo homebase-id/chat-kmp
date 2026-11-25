@@ -27,7 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 
 /** What the bin's server writes put on the wire, through the real providers. */
-class HttpPhotoBinServerTest {
+class HttpPhotoMoveServerTest {
     private val secret = ByteArray(16) { 5 }
     private val sent = mutableListOf<Pair<String, FileVersionTagBatch>>()
     private val cacheDir = Files.createTempDirectory("photo-bin")
@@ -35,7 +35,7 @@ class HttpPhotoBinServerTest {
     @AfterTest
     fun removeCache() = cacheDir.toFile().deleteRecursively().let { }
 
-    private suspend fun server(): HttpPhotoBinServer {
+    private suspend fun server(): HttpPhotoMoveServer {
         val credentials = CredentialsManager()
         credentials.setActiveCredentials(ApiCredentials.create(OdinId("pippin.dotyou.cloud"), "token", SecureByteArray(secret.copyOf())))
         val http = HttpClient(MockEngine { request ->
@@ -43,7 +43,7 @@ class HttpPhotoBinServerTest {
             sent += request.url.encodedPath.substringAfterLast('/') to OdinSystemSerializer.deserialize<FileVersionTagBatch>(body)
             respond("""{"results":[]}""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
         })
-        return HttpPhotoBinServer(DriveFileHttpProvider(http, credentials), DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, OkioFileOperationsProvider(FileSystem.SYSTEM, cacheDir.toString()))))
+        return HttpPhotoMoveServer(DriveFileHttpProvider(http, credentials), DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, OkioFileOperationsProvider(FileSystem.SYSTEM, cacheDir.toString()))))
     }
 
     @Test

@@ -9,8 +9,8 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.LibraryDays
-import id.homebase.photobase.gallery.PhotoBin
-import id.homebase.photobase.gallery.PhotoBinResult
+import id.homebase.photobase.gallery.PhotoMover
+import id.homebase.photobase.gallery.PhotoMoveResult
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGallerySource
@@ -66,12 +66,12 @@ data class PhotoGalleryUiState(
     val selecting: Boolean get() = selected.isNotEmpty()
 }
 
-enum class BinAction { MoveToBin, Restore, DeleteForGood, Empty }
+enum class MoveAction { MoveToBin, Restore, DeleteForGood, Empty }
 
 sealed interface PhotoGalleryEvent {
-    data class BinDone(val action: BinAction, val result: PhotoBinResult, val undo: Set<Uuid> = emptySet()) : PhotoGalleryEvent
+    data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: Set<Uuid> = emptySet()) : PhotoGalleryEvent
     /** Nothing is known to have changed: the request didn't get through. */
-    data class BinFailed(val action: BinAction) : PhotoGalleryEvent
+    data class MoveFailed(val action: MoveAction) : PhotoGalleryEvent
 }
 
 sealed interface PhotoGalleryUiAction {
@@ -105,7 +105,7 @@ sealed interface PhotoGalleryUiAction {
  */
 class PhotoGalleryViewModel(
     private val source: PhotoGallerySource,
-    private val bin: PhotoBin,
+    private val bin: PhotoMover,
     val shelf: PhotoShelf = PhotoShelf.Library,
     private val refresh: () -> Unit = {},
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
@@ -116,7 +116,7 @@ class PhotoGalleryViewModel(
     // One at a time, off Main: the first screen's composing mustn't hold up reading it. Owns counted and stale.
     private val reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
-    private val binScope: CoroutineScope? = null,
+    private val moveScope: CoroutineScope? = null,
 ) : ViewModel() {
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
@@ -129,7 +129,7 @@ class PhotoGalleryViewModel(
     // Kept until the screen takes them: one that lands while the screen is away is shown when it's back.
     private val _events = Channel<PhotoGalleryEvent>(Channel.BUFFERED)
     val events: Flow<PhotoGalleryEvent> = _events.receiveAsFlow()
-    private val binLock = Mutex()
+    private val moveLock = Mutex()
     // Main only.
     private var pending = 0
 
@@ -206,40 +206,40 @@ class PhotoGalleryViewModel(
                 state.copy(selected = if (state.selected.containsAll(day)) state.selected - day else state.selected + day)
             }
             PhotoGalleryUiAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
-            PhotoGalleryUiAction.MoveToBin -> onSelection(BinAction.MoveToBin, PhotoBin::moveToBin)
-            is PhotoGalleryUiAction.MovePhotoToBin -> runBin(BinAction.MoveToBin, setOf(action.fileId), PhotoBin::moveToBin)
-            PhotoGalleryUiAction.Restore -> onSelection(BinAction.Restore, PhotoBin::restore)
-            PhotoGalleryUiAction.DeleteForGood -> onSelection(BinAction.DeleteForGood, PhotoBin::deleteForGood)
-            PhotoGalleryUiAction.EmptyBin -> runBin(BinAction.Empty, emptySet(), { empty() })
-            is PhotoGalleryUiAction.Undo -> runBin(BinAction.Restore, action.fileIds, PhotoBin::restore)
+            PhotoGalleryUiAction.MoveToBin -> onSelection(MoveAction.MoveToBin, PhotoMover::moveToBin)
+            is PhotoGalleryUiAction.MovePhotoToBin -> runMove(MoveAction.MoveToBin, setOf(action.fileId), PhotoMover::moveToBin)
+            PhotoGalleryUiAction.Restore -> onSelection(MoveAction.Restore, PhotoMover::restore)
+            PhotoGalleryUiAction.DeleteForGood -> onSelection(MoveAction.DeleteForGood, PhotoMover::deleteForGood)
+            PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet(), { empty() })
+            is PhotoGalleryUiAction.Undo -> runMove(MoveAction.Restore, action.fileIds, PhotoMover::restore)
         }
     }
 
     // The selection goes as the action starts; it comes back if the request doesn't get through.
-    private fun onSelection(action: BinAction, block: suspend PhotoBin.(Set<Uuid>) -> PhotoBinResult) {
+    private fun onSelection(action: MoveAction, block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult) {
         val ids = _uiState.value.selected
         if (ids.isEmpty()) return
         _uiState.update { it.copy(selected = emptySet()) }
-        runBin(action, ids, block, restoreSelection = true)
+        runMove(action, ids, block, restoreSelection = true)
     }
 
     // One at a time, in the order asked: an Undo tapped while another action runs waits for it.
-    private fun runBin(action: BinAction, ids: Set<Uuid>, block: suspend PhotoBin.(Set<Uuid>) -> PhotoBinResult, restoreSelection: Boolean = false) {
+    private fun runMove(action: MoveAction, ids: Set<Uuid>, block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult, restoreSelection: Boolean = false) {
         pending++
         _uiState.update { it.copy(busy = true) }
-        (binScope ?: viewModelScope).launch(Dispatchers.Main.immediate) {
+        (moveScope ?: viewModelScope).launch(Dispatchers.Main.immediate) {
             try {
-                binLock.withLock {
+                moveLock.withLock {
                     try {
                         val result = bin.block(ids)
-                        val undo = if (action == BinAction.MoveToBin) result.written else emptySet()
-                        _events.send(PhotoGalleryEvent.BinDone(action, result, undo))
+                        val undo = if (action == MoveAction.MoveToBin) result.written else emptySet()
+                        _events.send(PhotoGalleryEvent.Moved(action, result, undo))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
                         if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
-                        _events.send(PhotoGalleryEvent.BinFailed(action))
+                        _events.send(PhotoGalleryEvent.MoveFailed(action))
                     }
                 }
             } finally {

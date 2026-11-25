@@ -185,20 +185,20 @@ fun PhotoGalleryScreen(
     val shelf = viewModel.shelf
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.show(it, onAction) } }
-    var confirm by remember { mutableStateOf<BinAction?>(null) }
+    var confirm by remember { mutableStateOf<MoveAction?>(null) }
     val asked = when (confirm) {
-        BinAction.DeleteForGood -> Triple(
+        MoveAction.DeleteForGood -> Triple(
             pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, uiState.selected.size, uiState.selected.size),
             stringResource(MR.string.photobase_bin_delete_forever),
             PhotoGalleryUiAction.DeleteForGood,
         )
-        BinAction.Empty -> Triple(stringResource(MR.string.photobase_bin_empty_confirm_title), stringResource(MR.string.photobase_bin_empty), PhotoGalleryUiAction.EmptyBin)
+        MoveAction.Empty -> Triple(stringResource(MR.string.photobase_bin_empty_confirm_title), stringResource(MR.string.photobase_bin_empty), PhotoGalleryUiAction.EmptyBin)
         else -> null
     }
     asked?.let { (title, confirmLabel, action) ->
         ConfirmDialog(
             title = title,
-            text = (if (confirm == BinAction.Empty) layout?.photoCount ?: 0 else uiState.selected.size).let { count ->
+            text = (if (confirm == MoveAction.Empty) layout?.photoCount ?: 0 else uiState.selected.size).let { count ->
                 pluralStringResource(MR.plurals.photobase_bin_cant_undo, count)
             },
             confirmLabel = confirmLabel,
@@ -382,7 +382,7 @@ private fun GalleryGrid(
     backupIndicator: @Composable () -> Unit,
     onOpenBin: (() -> Unit)?,
     onBack: (() -> Unit)?,
-    onConfirm: (BinAction) -> Unit,
+    onConfirm: (MoveAction) -> Unit,
     memory: GridMemory,
     haptics: Haptics,
     sharedTransitionScope: SharedTransitionScope,
@@ -404,7 +404,7 @@ private fun GalleryGrid(
                     },
                     title = { Text(stringResource(MR.string.photobase_bin_title)) },
                     actions = {
-                        TextButton(onClick = { onConfirm(BinAction.Empty) }, enabled = hasPhotos && !uiState.busy) {
+                        TextButton(onClick = { onConfirm(MoveAction.Empty) }, enabled = hasPhotos && !uiState.busy) {
                             Text(stringResource(MR.string.photobase_bin_empty))
                         }
                     },
@@ -480,7 +480,7 @@ private fun GalleryGrid(
                     shelf = shelf,
                     enabled = !uiState.busy,
                     onAction = onAction,
-                    onDeleteForGood = { onConfirm(BinAction.DeleteForGood) },
+                    onDeleteForGood = { onConfirm(MoveAction.DeleteForGood) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                 )
             }

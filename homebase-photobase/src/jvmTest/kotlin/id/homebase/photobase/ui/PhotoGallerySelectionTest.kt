@@ -29,8 +29,8 @@ import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoShelf
-import id.homebase.photobase.gallery.PhotoBin
-import id.homebase.photobase.gallery.PhotoBinServer
+import id.homebase.photobase.gallery.PhotoMover
+import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileVersionTag
@@ -123,7 +123,7 @@ class PhotoGallerySelectionTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val viewModel = PhotoGalleryViewModel(
             source = { _, _ -> loaded },
-            bin = PhotoBin(NoServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
+            bin = PhotoMover(NoServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
             libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
         )
         setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
@@ -142,7 +142,7 @@ class PhotoGallerySelectionTest {
     fun tearDown() = Dispatchers.resetMain()
 }
 
-private object NoServer : PhotoBinServer {
+private object NoServer : PhotoMoveServer {
     override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) = emptyList<PerFileResult>()
     override suspend fun softDelete(files: List<FileVersionTag>) = emptyList<PerFileResult>()
     override suspend fun header(fileId: Uuid): HomebaseFile? = null
