@@ -6,6 +6,7 @@ import org.jetbrains.skia.Image
 import kotlin.math.max
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class DisplayScaleTest {
@@ -56,6 +57,18 @@ class DisplayScaleTest {
         } finally {
             image.close()
         }
+    }
+
+    @Test
+    fun anOddEdgeCountsTheFullSizeLanczosHalving() {
+        assertEquals(8001L * 6000, largestLanczosInput(ImageSize(8001, 6000), ImageSize(400, 300)))
+        assertTrue(largestLanczosInput(ImageSize(8000, 6000), ImageSize(400, 300)) < 2_000_000)
+        assertEquals(8000L * 6000, largestLanczosInput(ImageSize(8000, 6000), ImageSize(4096, 3072)))
+    }
+
+    @Test
+    fun aZeroSizeTargetIsRefused() = runTest {
+        assertFailsWith<IllegalArgumentException> { decodeForDisplay(stripes(40)) { ImageSize(0, 8) } }
     }
 
     private companion object {

@@ -10,16 +10,18 @@ import kotlin.math.max
 /**
  * [bytes] decoded upright, as the uploads decode them, and shrunk by [scaleDown] to the size [sizeFor] picks for
  * the displayed size; at the decoded size when that pick isn't smaller. Throws on bytes the platform can't read.
- * Decodes whose Lanczos step reads more than [DISPLAY_LARGE_DECODE_PIXELS] run one at a time.
+ * Decodes in which Lanczos reads more than [DISPLAY_LARGE_DECODE_PIXELS] run one at a time.
  */
 suspend fun decodeForDisplay(bytes: ByteArray, sizeFor: (ImageSize) -> ImageSize): Image =
     decodeForDisplay(bytes, DISPLAY_LARGE_DECODE_PIXELS, sizeFor)
 
 internal suspend fun decodeForDisplay(bytes: ByteArray, largePixels: Long, sizeFor: (ImageSize) -> ImageSize): Image =
-    withContext(Dispatchers.Default) {
-        openImageSource(bytes).use { source ->
-            val target = sizeFor(source.displayedSize)
-            if (lanczosInputPixels(source.displayedSize, target) > largePixels) {
+    // Opened on the caller's dispatcher: desktop's HEIC conversion waits on ffmpeg.
+    openImageSource(bytes).use { source ->
+        val target = sizeFor(source.displayedSize)
+        require(target.pixelWidth > 0 && target.pixelHeight > 0) { "Can't show an image at $target" }
+        withContext(Dispatchers.Default) {
+            if (largestLanczosInput(source.displayedSize, target) > largePixels) {
                 largeDecodes.withLock { decodeAndShrink(source, target) }
             } else {
                 decodeAndShrink(source, target)
@@ -27,7 +29,7 @@ internal suspend fun decodeForDisplay(bytes: ByteArray, largePixels: Long, sizeF
         }
     }
 
-// A 48 MP photo shown at 4096 px took +344 MB of heap and 4.5 s on desktop; several at once could run out.
+// The Kotlin Lanczos (desktop, web) copies its input to the heap, so several large ones at once can exhaust it.
 internal const val DISPLAY_LARGE_DECODE_PIXELS = 24_000_000L
 
 private val largeDecodes = Mutex()
@@ -45,13 +47,22 @@ private suspend fun decodeAndShrink(source: ImageSource, target: ImageSize): Ima
     return scaled.image
 }
 
-// What scaleDown's last step reads, after the halvings it does while an edge is at least 4x too big.
-private fun lanczosInputPixels(size: ImageSize, target: ImageSize): Long {
+// Mirrors scaleDown's steps: a halving with an odd edge, and the last step, are Lanczos and read the whole input.
+internal fun largestLanczosInput(size: ImageSize, target: ImageSize): Long {
     var width = size.pixelWidth
     var height = size.pixelHeight
-    while (width >= target.pixelWidth * HALVE_WHILE_AT_LEAST) width = (width + 1) / 2
-    while (height >= target.pixelHeight * HALVE_WHILE_AT_LEAST) height = (height + 1) / 2
-    return width.toLong() * height
+    var largest = 0L
+    while (true) {
+        val nextWidth = if (width >= target.pixelWidth * HALVE_WHILE_AT_LEAST) (width + 1) / 2 else width
+        val nextHeight = if (height >= target.pixelHeight * HALVE_WHILE_AT_LEAST) (height + 1) / 2 else height
+        if (nextWidth == width && nextHeight == height) break
+        val exact = (nextWidth == width || width % 2 == 0) && (nextHeight == height || height % 2 == 0)
+        if (!exact) largest = max(largest, width.toLong() * height)
+        width = nextWidth
+        height = nextHeight
+    }
+    if (width != target.pixelWidth || height != target.pixelHeight) largest = max(largest, width.toLong() * height)
+    return largest
 }
 
 private val PipelineBitmap.image get() = (this as SkiaPipelineBitmap).image
