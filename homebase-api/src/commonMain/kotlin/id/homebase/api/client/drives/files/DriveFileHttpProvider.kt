@@ -384,26 +384,33 @@ public class DriveFileHttpProvider(
 
     /** Deletes [files] for good, payloads and all, leaving no tombstone: each only at its versionTag. */
     suspend fun hardDeleteFiles(driveId: Uuid, files: List<FileVersionTag>): PerFileBatchResult =
-        perFileBatch(driveId, "hard-delete-batch", FileVersionTagBatch(files))
+        perFileBatch(driveId, "hard-delete-batch", files.size, OdinSystemSerializer.serialize(FileVersionTagBatch(files)))
 
     /** Deletes [files], leaving tombstones: each only at its versionTag. */
     suspend fun softDeleteFiles(driveId: Uuid, files: List<FileVersionTag>, tombstone: TombstoneOptions? = null): PerFileBatchResult =
-        perFileBatch(driveId, "soft-delete-batch", FileVersionTagBatch(files, tombstone = tombstone))
+        perFileBatch(driveId, "soft-delete-batch", files.size, OdinSystemSerializer.serialize(FileVersionTagBatch(files, tombstone = tombstone)))
 
     /** Sets only the archivalStatus of [files], each only at its versionTag, leaving the rest of each header as it is. */
     suspend fun updateArchivalStatus(driveId: Uuid, status: ArchivalStatus, files: List<FileVersionTag>): PerFileBatchResult =
-        perFileBatch(driveId, "update-archival-status-batch", FileVersionTagBatch(files, status))
+        perFileBatch(driveId, "update-archival-status-batch", files.size, OdinSystemSerializer.serialize(FileVersionTagBatch(files, status)))
+
+    /**
+     * Adds [add] and removes [remove] in each of [fileIds]' local tags, on top of whatever tags each holds: no version
+     * is checked, and a file already as asked counts as done.
+     */
+    suspend fun updateLocalTags(driveId: Uuid, fileIds: List<Uuid>, add: List<Uuid>, remove: List<Uuid>): PerFileBatchResult =
+        perFileBatch(driveId, "update-local-tags-batch", fileIds.size, OdinSystemSerializer.serialize(LocalTagsBatch(add, remove, fileIds.map(::LocalTagsFile))))
 
     /** One answer per file, in order; one file's answer never stops the others. At most [FILE_BATCH] per call. */
-    private suspend fun perFileBatch(driveId: Uuid, endpoint: String, request: FileVersionTagBatch): PerFileBatchResult {
+    private suspend fun perFileBatch(driveId: Uuid, endpoint: String, files: Int, jsonBody: String): PerFileBatchResult {
         ValidationUtil.requireValidUuid(driveId, "driveId")
-        require(request.files.size in 1..FILE_BATCH) { "1 to $FILE_BATCH files, not ${request.files.size}" }
+        require(files in 1..FILE_BATCH) { "1 to $FILE_BATCH files, not $files" }
         val creds = requireCreds()
 
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "/drives/$driveId/files/$endpoint"),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(request),
+            jsonBody = jsonBody,
             secret = creds.secret
         )
 

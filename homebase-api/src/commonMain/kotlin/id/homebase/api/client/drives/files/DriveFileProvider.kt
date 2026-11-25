@@ -772,6 +772,13 @@ data class FileVersionTagBatch(
 @Serializable
 data class TombstoneOptions(val keepUniqueId: Boolean)
 
+@Serializable
+data class LocalTagsBatch(val addTags: List<Uuid>, val removeTags: List<Uuid>, val files: List<LocalTagsFile>)
+
+/** Without [localVersionTag], the change goes on top of the file's current local tags. */
+@Serializable
+data class LocalTagsFile(val fileId: Uuid, val localVersionTag: Uuid? = null)
+
 /** [errorCode] is null when the write went through: the file is gone, or at the status asked for. */
 @Serializable
 data class PerFileResult(val fileId: Uuid, val errorCode: OdinClientErrorCode? = null)

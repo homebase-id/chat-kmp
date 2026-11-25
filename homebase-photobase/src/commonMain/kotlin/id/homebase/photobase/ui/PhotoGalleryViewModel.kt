@@ -64,12 +64,18 @@ data class PhotoGalleryUiState(
 ) {
     val isSyncing: Boolean get() = syncedSoFar != null
     val selecting: Boolean get() = selected.isNotEmpty()
+
+    /** Every picked photo is a favourite, as far as the days held show. */
+    fun selectedAreFavorites(): Boolean {
+        val picked = loaded.values.asSequence().flatten().filter { it.fileId in selected }.toList()
+        return picked.isNotEmpty() && picked.size == selected.size && picked.all { it.favorite }
+    }
 }
 
-enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty }
+enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty, Favorite, Unfavorite }
 
 sealed interface PhotoGalleryEvent {
-    data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: PhotoGalleryUiAction.Undo? = null) : PhotoGalleryEvent
+    data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: PhotoGalleryUiAction? = null) : PhotoGalleryEvent
     /** Nothing is known to have changed: the request didn't get through. */
     data class MoveFailed(val action: MoveAction) : PhotoGalleryEvent
 }
@@ -97,6 +103,9 @@ sealed interface PhotoGalleryUiAction {
     data object DeleteForGood : PhotoGalleryUiAction
     data object EmptyBin : PhotoGalleryUiAction
     data class Undo(val fileIds: Set<Uuid>, val from: PhotoShelf, val to: PhotoShelf) : PhotoGalleryUiAction
+    /** A null [fileId], from the toolbar, means the selection. */
+    data class SetFavorite(val favorite: Boolean, val fileId: Uuid? = null) : PhotoGalleryUiAction
+    data class UndoFavorite(val fileIds: Set<Uuid>, val favorite: Boolean) : PhotoGalleryUiAction
 }
 
 /**
@@ -211,6 +220,10 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.DeleteForGood -> takeSelection()?.let { runMove(MoveAction.DeleteForGood, it, restoreSelection = true) { ids -> deleteForGood(ids) } }
             PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet()) { empty() }
             is PhotoGalleryUiAction.Undo -> runMove(moveAction(action.from, action.to), action.fileIds) { move(it, action.from, action.to) }
+            is PhotoGalleryUiAction.SetFavorite -> (action.fileId?.let(::setOf) ?: takeSelection())?.let { ids ->
+                setFavorite(ids, action.favorite, restoreSelection = action.fileId == null, undoable = true)
+            }
+            is PhotoGalleryUiAction.UndoFavorite -> setFavorite(action.fileIds, action.favorite, restoreSelection = false, undoable = false)
         }
     }
 
@@ -227,12 +240,26 @@ class PhotoGalleryViewModel(
             move(it, from, to)
         }
 
+    private fun setFavorite(ids: Set<Uuid>, favorite: Boolean, restoreSelection: Boolean, undoable: Boolean) {
+        // The server answers done for a photo already as asked; Undo mustn't take those back.
+        val already = _uiState.value.loaded.values.flatMapTo(HashSet()) { items -> items.filter { it.fileId in ids && it.favorite == favorite }.map { it.fileId } }
+        val undo = { written: Set<Uuid> -> (written - already).takeIf { it.isNotEmpty() }?.let { PhotoGalleryUiAction.UndoFavorite(it, !favorite) } }
+        runMove(if (favorite) MoveAction.Favorite else MoveAction.Unfavorite, ids, restoreSelection, undo.takeIf { undoable }) {
+            // Shown on the server's answer, not when the sync brings the photos back.
+            setFavorite(it, favorite).also { result -> markFavorite(result.written, favorite) }
+        }
+    }
+
+    private fun markFavorite(ids: Set<Uuid>, favorite: Boolean) = _uiState.update { state ->
+        state.copy(loaded = state.loaded.mapValues { (_, items) -> items.map { if (it.fileId in ids) it.copy(favorite = favorite) else it } })
+    }
+
     // One at a time, in the order asked: an Undo tapped while another action runs waits for it.
     private fun runMove(
         action: MoveAction,
         ids: Set<Uuid>,
         restoreSelection: Boolean = false,
-        undo: ((Set<Uuid>) -> PhotoGalleryUiAction.Undo)? = null,
+        undo: ((Set<Uuid>) -> PhotoGalleryUiAction?)? = null,
         block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult,
     ) {
         pending++
