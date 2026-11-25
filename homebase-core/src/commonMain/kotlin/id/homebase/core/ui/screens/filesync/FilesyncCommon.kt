@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import id.homebase.api.common.OdinId
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -9,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,9 +27,7 @@ import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,16 +41,13 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -80,14 +76,12 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_root
-import id.homebase.resources.cancel
 import id.homebase.resources.filesync_archive_cancel
 import id.homebase.resources.filesync_archive_damaged
 import id.homebase.resources.filesync_archive_listing
 import id.homebase.resources.filesync_archive_progress
 import id.homebase.resources.filesync_cancel_download
 import id.homebase.resources.filesync_changed_elsewhere
-import id.homebase.resources.filesync_clear_selection
 import id.homebase.resources.filesync_comment_failed
 import id.homebase.resources.filesync_damaged
 import id.homebase.resources.filesync_day_time
@@ -143,7 +137,6 @@ import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_role_folder_returns
 import id.homebase.resources.filesync_save_failed
-import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_shared
 import id.homebase.resources.filesync_shared_badge
@@ -542,31 +535,6 @@ internal fun RestoreButton(enabled: Boolean = true, onRestore: () -> Unit) {
     }
 }
 
-/** A yes/no question; [destructive] paints the confirm button in the error colour. */
-@Composable
-internal fun FilesyncConfirmDialog(
-    text: String,
-    confirmLabel: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-    title: String? = null,
-    destructive: Boolean = false,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = title?.let { { Text(it) } },
-        text = { Text(text) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(confirmLabel, color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
-        },
-    )
-}
-
 /** A list's first load, failed load and empty states; [content] once there's something to show. */
 @Composable
 internal fun FilesyncListBody(
@@ -635,21 +603,6 @@ internal fun SelectBox(state: ToggleableState) {
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
         TriStateCheckbox(state = state, onClick = null)
     }
-}
-
-/** The phone's top bar while rows are picked. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun FilesyncSelectionTopBar(count: Int, onClear: () -> Unit, actions: @Composable RowScope.() -> Unit) {
-    TopAppBar(
-        title = { Text(pluralStringResource(MR.plurals.filesync_selected, count, count), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        navigationIcon = {
-            IconButton(onClick = onClear) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_clear_selection))
-            }
-        },
-        actions = actions,
-    )
 }
 
 @Composable

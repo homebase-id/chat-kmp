@@ -3,35 +3,34 @@ package id.homebase.api.client
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.okhttp.OkHttp
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
+import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+import okhttp3.ConnectionPool
 
 /**
- * Desktop/JVM HTTP client. Ktor's JVM target resolves to the CIO engine, whose
- * pure-Kotlin TLS stack (`io.ktor.network.tls`) validates server certificates
- * against a JDK [X509TrustManager] built from the running JRE's `cacerts`.
- *
- * That store is whatever the launch runtime ships — for `desktopApp:run` and the
- * packaged app that's the JetBrains Runtime, whose `cacerts` historically lags the
- * public CA set. Concretely, JBR 17.0.9 carries ISRG Root X1 but **not** ISRG Root
- * X2; when a Let's Encrypt server cert renews onto an X2-anchored chain, CIO can no
- * longer build a trust path and every HTTPS call dies with
- * `SunCertPathBuilderException: unable to find valid certification path`.
- *
- * We fix it by giving CIO a trust manager seeded from the JRE defaults **plus** the
- * extra roots in [ExtraTrustRoots] (currently ISRG Root X2). Android/iOS/Web use
- * their OS trust stores and don't need this.
+ * Not CIO: it reuses a connection only for pipelined GET/HEAD without custom timeouts.
+ * The JetBrains Runtime's `cacerts` lacks ISRG Root X2, so the engine also trusts [ExtraTrustRoots].
  */
 internal actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit,
-): HttpClient = HttpClient(CIO) {
+): HttpClient = desktopHttpClient(HomebaseTrustManager.augmented, block)
+
+internal fun desktopHttpClient(
+    trustManager: X509TrustManager?,
+    block: HttpClientConfig<*>.() -> Unit,
+): HttpClient = HttpClient(OkHttp) {
     block()
     engine {
-        https {
-            HomebaseTrustManager.augmented?.let { trustManager = it }
+        // Ktor's OkHttp clients share one pool by default, and closing any client evicts it.
+        val pool = ConnectionPool()
+        config { connectionPool(pool) }
+        if (trustManager != null) {
+            val tls = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustManager), null) }
+            config { sslSocketFactory(tls.socketFactory, trustManager) }
         }
     }
 }
@@ -39,7 +38,7 @@ internal actual fun createPlatformHttpClient(
 internal object HomebaseTrustManager {
     /**
      * An [X509TrustManager] trusting the JRE default anchors plus [ExtraTrustRoots],
-     * or `null` if it could not be built (in which case CIO keeps its default and we
+     * or `null` if it could not be built (in which case the engine keeps the JRE default and we
      * log — we never want a trust-store hiccup to silently disable TLS validation).
      */
     val augmented: X509TrustManager? by lazy { runCatching { build() }.getOrElse { it.log(); null } }
@@ -65,7 +64,7 @@ internal object HomebaseTrustManager {
         tmf.init(ks)
         val tm = tmf.trustManagers.filterIsInstance<X509TrustManager>().first()
         Logger.i(tag = "TLS") {
-            "CIO trust manager augmented: ${defaults.acceptedIssuers.size} default + " +
+            "Trust manager augmented: ${defaults.acceptedIssuers.size} default + " +
                 "${ExtraTrustRoots.pems.size} bundled root(s) = ${tm.acceptedIssuers.size} anchors"
         }
         return tm
@@ -78,7 +77,7 @@ internal object HomebaseTrustManager {
     }
 
     private fun Throwable.log() =
-        Logger.w(tag = "TLS", throwable = this) { "Failed to build augmented trust manager; using CIO default" }
+        Logger.w(tag = "TLS", throwable = this) { "Failed to build augmented trust manager; using the JRE default" }
 }
 
 /**

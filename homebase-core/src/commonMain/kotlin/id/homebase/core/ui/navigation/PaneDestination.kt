@@ -1,5 +1,6 @@
 package id.homebase.core.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -9,6 +10,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +34,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -40,8 +44,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
@@ -54,6 +60,9 @@ internal val LocalPaneEntered = compositionLocalOf<State<Boolean>> { mutableStat
 
 /** Whether a floating pane's content fills the window, as a check read in the pane's own frame; null where the pane isn't floating. */
 internal val LocalPaneFullWindow = compositionLocalOf<MutableState<() -> Boolean>?> { null }
+
+/** Asked before a floating pane closes on Escape or an outside click; true means the content took the close over (to confirm a discard). */
+internal val LocalPaneCloseGuard = compositionLocalOf<MutableState<() -> Boolean>?> { null }
 
 /** Height of the window's title-bar strip the app draws under (macOS traffic lights); 0 where the OS keeps its own title bar. */
 internal val LocalWindowTopInset = compositionLocalOf { 0.dp }
@@ -74,6 +83,9 @@ private const val PaneHeightFraction = 0.9f
  * [paneContent] defaults to [content]; pass it only when the floating form needs a different
  * layout (as settings does, which turns its list of sub-pages into a sidebar).
  *
+ * Escape always asks [LocalPaneCloseGuard] first; [confirmsClose] turns off the dialog layer's own
+ * dismissal, which would bypass it, so the outside click asks too.
+ *
  * Every stacked pane adds a platform scrim (`Color.Black` @ 0.6, not settable from commonMain), so
  * a pane that can reach itself must replace rather than push — otherwise repeated drill-down walks
  * the backdrop to black. A pushed ordinary `composable` route costs nothing here: it hides the
@@ -82,18 +94,30 @@ private const val PaneHeightFraction = 0.9f
 internal inline fun <reified T : Any> NavGraphBuilder.paneDestination(
     noinline onDismiss: () -> Unit,
     noinline paneContent: (@Composable () -> Unit)? = null,
+    confirmsClose: Boolean = false,
+    noinline enterTransition: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition?)? = null,
+    noinline popExitTransition: (AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition?)? = null,
     noinline content: @Composable () -> Unit,
 ) {
     if (isDesktopOrWeb()) {
-        dialog<T>(dialogProperties = DialogProperties(usePlatformDefaultWidth = false)) {
+        dialog<T>(
+            dialogProperties = DialogProperties(
+                dismissOnBackPress = !confirmsClose,
+                dismissOnClickOutside = !confirmsClose,
+                usePlatformDefaultWidth = false,
+            ),
+        ) {
             FloatingPaneContainer(
                 onDismiss = onDismiss,
                 paneContent = paneContent ?: content,
                 content = content,
+                confirmsClose = confirmsClose,
             )
         }
     } else {
-        composable<T> { CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) { content() } }
+        composable<T>(enterTransition = enterTransition, popExitTransition = popExitTransition) {
+            CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) { content() }
+        }
     }
 }
 
@@ -102,12 +126,15 @@ internal fun FloatingPaneContainer(
     onDismiss: () -> Unit,
     paneContent: @Composable () -> Unit,
     content: @Composable () -> Unit,
+    confirmsClose: Boolean = false,
 ) {
     val windowExpanded = isExpandedLayout()
     val fullWindow = remember { mutableStateOf({ false }) }
+    val closeGuard = remember { mutableStateOf({ false }) }
     val floating = windowExpanded && !fullWindow.value()
     val focusRequester = remember { FocusRequester() }
     var dismissRequested by remember { mutableStateOf(false) }
+    val requestDismiss = { if (!closeGuard.value()) dismissRequested = true }
     val currentOnDismiss by rememberUpdatedState(onDismiss)
 
     LaunchedEffect(focusRequester) { focusRequester.requestFocus() }
@@ -135,45 +162,55 @@ internal fun FloatingPaneContainer(
         currentOnDismiss()
     }
     val motion = MaterialTheme.motionScheme
-    AnimatedVisibility(
-        visibleState = appear,
-        enter = if (windowExpanded) {
-            scaleIn(motion.fastSpatialSpec(), initialScale = 0.9f) + fadeIn(motion.defaultEffectsSpec())
-        } else {
-            EnterTransition.None
-        },
-        exit = if (windowExpanded) {
-            scaleOut(motion.fastSpatialSpec(), targetScale = 0.9f) + fadeOut(motion.defaultEffectsSpec())
-        } else {
-            ExitTransition.None
-        },
-    ) {
-        Surface(
-            modifier = sizing
-                .focusRequester(focusRequester)
-                .focusable()
-                .onPreviewKeyEvent { event ->
-                    if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
-                        dismissRequested = true
-                        true
-                    } else {
-                        false
-                    }
-                },
-            shape = if (floating) MaterialTheme.shapes.extraLarge else RectangleShape,
-            color = if (floating) {
-                MaterialTheme.colorScheme.surface
+    Box(if (confirmsClose) Modifier.fillMaxSize() else Modifier, contentAlignment = Alignment.Center) {
+        // A sibling behind the Surface, not its parent: the Surface then blocks taps inside it, and no focus stop is added.
+        if (confirmsClose) {
+            Spacer(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { requestDismiss() } })
+        }
+        AnimatedVisibility(
+            visibleState = appear,
+            enter = if (windowExpanded) {
+                scaleIn(motion.fastSpatialSpec(), initialScale = 0.9f) + fadeIn(motion.defaultEffectsSpec())
             } else {
-                MaterialTheme.colorScheme.background
+                EnterTransition.None
             },
-            // No tonal elevation: it tints only the pane's surface-coloured Surfaces (Scaffolds), not rows that paint the colour.
-            shadowElevation = if (floating) 6.dp else 0.dp,
+            exit = if (windowExpanded) {
+                scaleOut(motion.fastSpatialSpec(), targetScale = 0.9f) + fadeOut(motion.defaultEffectsSpec())
+            } else {
+                ExitTransition.None
+            },
         ) {
-            CompositionLocalProvider(LocalPaneEntered provides entered, LocalPaneFullWindow provides fullWindow.takeIf { windowExpanded }) {
-                if (windowExpanded) {
-                    Box(Modifier.padding(top = if (floating) 0.dp else LocalWindowTopInset.current)) { paneContent() }
+            Surface(
+                modifier = sizing
+                    .focusRequester(focusRequester)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
+                            requestDismiss()
+                            true
+                        } else {
+                            false
+                        }
+                    },
+                shape = if (floating) MaterialTheme.shapes.extraLarge else RectangleShape,
+                color = if (floating) {
+                    MaterialTheme.colorScheme.surface
                 } else {
-                    content()
+                    MaterialTheme.colorScheme.background
+                },
+                // No tonal elevation: it tints only the pane's surface-coloured Surfaces (Scaffolds), not rows that paint the colour.
+                shadowElevation = if (floating) 6.dp else 0.dp,
+            ) {
+                CompositionLocalProvider(
+                    LocalPaneEntered provides entered,
+                    LocalPaneFullWindow provides fullWindow.takeIf { windowExpanded },
+                    LocalPaneCloseGuard provides closeGuard,
+                ) {
+                    if (windowExpanded) {
+                        Box(Modifier.padding(top = if (floating) 0.dp else LocalWindowTopInset.current)) { paneContent() }
+                    } else {
+                        content()
+                    }
                 }
             }
         }

@@ -58,7 +58,8 @@ interface FeedWebView {
 /**
  * Constructs the platform WebView state + controller for [url], wiring the
  * given [interceptor] for main-frame navigation decisions. On platforms
- * without a real WebView (wasmJs) returns a no-op handle.
+ * without a real WebView (wasmJs) returns a no-op handle. Elsewhere the native view's background is the
+ * theme's surface colour at this first call, from its first frame; a later theme change does not reach it.
  */
 @Composable
 expect fun rememberFeedWebView(

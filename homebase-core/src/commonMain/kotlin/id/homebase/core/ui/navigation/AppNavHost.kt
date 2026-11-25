@@ -1,5 +1,6 @@
 package id.homebase.core.ui.navigation
 
+import id.homebase.core.di.PhotoBinQualifier
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
@@ -1232,7 +1233,9 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.PostCompose>(
+                            paneDestination<Route.PostCompose>(
+                                onDismiss = { navController.popBackStack() },
+                                confirmsClose = true,
                                 enterTransition = { slideInVertically(initialOffsetY = { it }) },
                                 popExitTransition = { slideOutVertically(targetOffsetY = { it }) },
                             ) {
@@ -2337,6 +2340,7 @@ fun AppNavHost(
                                             viewModel = koinViewModel(),
                                             onOpenBackupSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
+                                            onOpenBin = { navController.navigate(Route.PhotoBin) },
                                         )
                                     }
                                 }
@@ -2459,6 +2463,17 @@ fun AppNavHost(
                             composable<Route.PhotoBackupStatus> {
                                 if (isAuthenticated) {
                                     BackupStatusScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                                }
+                            }
+
+                            composable<Route.PhotoBin> {
+                                if (isAuthenticated) {
+                                    PhotoGalleryScreen(
+                                        viewModel = koinViewModel(qualifier = PhotoBinQualifier),
+                                        onOpenBackupSettings = null,
+                                        backupIndicator = {},
+                                        onBack = { navController.popBackStack() },
+                                    )
                                 }
                             }
 

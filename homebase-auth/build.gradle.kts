@@ -83,9 +83,6 @@ kotlin {
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }
-        jvmMain.dependencies {
-            implementation(libs.ktor.client.cio)
-        }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
         // ktor-client-js provides the browser engine (fetch/WebSocket).

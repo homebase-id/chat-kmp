@@ -396,20 +396,6 @@ class DriveFileProviderCached(
         }
     }
 
-    /** Brings a thumbnail into the cache if it isn't there, without reading one that already is. */
-    suspend fun ensureThumbCached(
-            driveId: Uuid,
-            fileId: Uuid,
-            payloadKey: String,
-            width: Int,
-            height: Int,
-            lastModified: Long? = null
-    ) {
-        val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-        val held = thumbCacheFor(driveId).openSnapshot(cacheKey.toDiskKey())?.use { true } ?: false
-        if (!held) getThumbBytesRaw(driveId, fileId, payloadKey, width, height, lastModified)
-    }
-
     /**
      * Read from a disk cache. Returns null on cache miss OR when the cached file
      * cannot be parsed (corrupted entry, truncated write, etc.). All exceptions are

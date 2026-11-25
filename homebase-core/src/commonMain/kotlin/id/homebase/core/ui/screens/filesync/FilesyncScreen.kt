@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.core.widget.ConfirmDialog
+import id.homebase.core.widget.SelectionTopBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -220,7 +222,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         )
     }
     uiState.confirmDelete?.let { nodes ->
-        FilesyncConfirmDialog(
+        ConfirmDialog(
             text = if (nodes.size == 1) {
                 stringResource(MR.string.filesync_remove_confirm, nodes.single().name)
             } else {
@@ -234,7 +236,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     }
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
     uiState.sharing.losingAccess?.let { people ->
-        FilesyncConfirmDialog(
+        ConfirmDialog(
             title = stringResource(MR.string.filesync_move_losing_title),
             text = stringResource(MR.string.filesync_move_losing_body, people.joinToString { it.domainName }),
             confirmLabel = stringResource(MR.string.filesync_move_anyway),
@@ -255,7 +257,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     if (!isExpandedLayout()) FilesyncSharedFilesSheet(uiState.sharing, uiState.transfer, sharedUploads, viewModel::onAction)
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
-        FilesyncConfirmDialog(
+        ConfirmDialog(
             text = stringResource(MR.string.filesync_restore_confirm, node.name),
             confirmLabel = stringResource(MR.string.filesync_restore),
             onConfirm = {
@@ -328,7 +330,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
     Scaffold(
         topBar = {
             if (selecting) {
-                FilesyncSelectionTopBar(uiState.selected.size, onClear = { scope.onAction(FilesyncUiAction.ClearSelection) }) {
+                SelectionTopBar(uiState.selected.size, onClear = { scope.onAction(FilesyncUiAction.ClearSelection) }) {
                     // Material's three: the first action, select all, and the rest behind More.
                     val first = uiState.bulkActions.firstOrNull()
                     if (first != null) {

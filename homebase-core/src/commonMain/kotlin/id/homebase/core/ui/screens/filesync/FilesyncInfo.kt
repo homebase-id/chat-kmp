@@ -71,9 +71,9 @@ import id.homebase.resources.filesync_kind_video
 import id.homebase.resources.filesync_kind_word
 import id.homebase.resources.filesync_open
 import id.homebase.resources.filesync_restore
-import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.clear_selection
 import id.homebase.resources.filesync_download
-import id.homebase.resources.filesync_selected
+import id.homebase.resources.selected_count
 import id.homebase.resources.delete
 import id.homebase.resources.filesync_move
 import id.homebase.resources.filesync_share
@@ -277,7 +277,7 @@ internal fun FilesyncSelectionMenu(
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
         bulkActions.forEach { bulk -> MenuItem(bulk.label, onDismiss) { onAction(FilesyncUiAction.Bulk(bulk)) } }
-        if (withClear) MenuItem(MR.string.filesync_clear_selection, onDismiss) { onAction(FilesyncUiAction.ClearSelection) }
+        if (withClear) MenuItem(MR.string.clear_selection, onDismiss) { onAction(FilesyncUiAction.ClearSelection) }
     }
 }
 
@@ -289,7 +289,7 @@ internal fun FilesyncSelectionContent(state: FilesyncUiState, onAction: (Filesyn
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                text = pluralStringResource(MR.plurals.filesync_selected, count, count),
+                text = pluralStringResource(MR.plurals.selected_count, count, count),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -314,7 +314,7 @@ internal fun FilesyncSelectionContent(state: FilesyncUiState, onAction: (Filesyn
                 }
             }
             TextButton(onClick = { onAction(FilesyncUiAction.ClearSelection) }) {
-                Text(stringResource(MR.string.filesync_clear_selection))
+                Text(stringResource(MR.string.clear_selection))
             }
         }
     }

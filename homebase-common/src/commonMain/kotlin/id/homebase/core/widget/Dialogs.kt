@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,6 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import id.homebase.resources.MR
+import id.homebase.resources.cancel
+import id.homebase.resources.composer_discard_confirm
+import id.homebase.resources.composer_discard_keep
+import id.homebase.resources.composer_discard_message
+import id.homebase.resources.composer_discard_title
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun DialogCard(
@@ -128,5 +136,45 @@ fun DialogText(modifier: Modifier = Modifier.padding(16.dp), text: String) {
         modifier = modifier,
         text = text,
         style = MaterialTheme.typography.bodyLarge,
+    )
+}
+
+@Composable
+fun DiscardChangesDialog(onKeepEditing: () -> Unit, onDiscard: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onKeepEditing,
+        title = { Text(stringResource(MR.string.composer_discard_title)) },
+        text = { Text(stringResource(MR.string.composer_discard_message)) },
+        confirmButton = {
+            TextButton(onClick = onDiscard) { Text(stringResource(MR.string.composer_discard_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onKeepEditing) { Text(stringResource(MR.string.composer_discard_keep)) }
+        },
+    )
+}
+
+/** A yes/no question; [destructive] paints the confirm button in the error colour. */
+@Composable
+fun ConfirmDialog(
+    text: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    title: String? = null,
+    destructive: Boolean = false,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = title?.let { { Text(it) } },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirmLabel, color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
+        },
     )
 }

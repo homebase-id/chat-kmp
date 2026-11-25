@@ -16,6 +16,8 @@ actual fun formatMediumDate(instant: Instant): String {
     return formatMediumDateJs(instant.toEpochMilliseconds())
 }
 
+actual fun formatMonthYear(instant: Instant): String = formatMonthYearJs(instant.toEpochMilliseconds())
+
 actual fun formatMediumDateNoYear(instant: Instant): String {
     return formatMediumDateNoYearJs(instant.toEpochMilliseconds())
 }
@@ -45,5 +47,12 @@ fun formatMediumDateNoYearJs(epochMs: Long): String = js(
     """{
         let date = new Date(Number(epochMs));
         return date.toLocaleDateString([], {month: 'short', day: 'numeric'});
+}"""
+)
+
+fun formatMonthYearJs(epochMs: Long): String = js(
+    """{
+        let date = new Date(Number(epochMs));
+        return date.toLocaleDateString([], {month: 'short', year: 'numeric'});
 }"""
 )

@@ -1,0 +1,69 @@
+package id.homebase.photobase.gallery
+
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+
+class GalleryLayoutTest {
+    private fun item() = galleryItem()
+
+    private val library = threeDays
+
+    @Test
+    fun eachDayHasASlotPerCountedPhoto() {
+        val layout = GalleryLayout(library, newestFirst = true)
+
+        assertEquals(6, layout.photoCount)
+        assertEquals(listOf(2, 3, 1), (0 until 3).map { layout.slotsOf(it) })
+        assertEquals(listOf(30, 30, 20, 20, 20, 10), (0 until 6).map { layout.locate(it).first })
+    }
+
+    @Test
+    fun aDaysSlotsFillFromWhatsReadWithoutMovingAnything() {
+        val newer = item()
+        val older = item()
+        val layout = GalleryLayout(library, newestFirst = true)
+        val loaded = mapOf(30 to listOf(newer, older))
+
+        assertEquals(newer, layout.photoAt(0, loaded))
+        assertEquals(older, layout.photoAt(1, loaded))
+        assertNull(layout.photoAt(2, loaded), "day 20 isn't read yet")
+        assertEquals(1, layout.photoOf(older.fileId, loaded))
+    }
+
+    @Test
+    fun oldestFirstRunsTheDaysAndTheirPhotosTheOtherWay() {
+        val newer = item()
+        val older = item()
+        val layout = GalleryLayout(library, newestFirst = false)
+        val loaded = mapOf(30 to listOf(newer, older))
+
+        assertContentEquals(intArrayOf(10, 20, 30), layout.days)
+        assertEquals(older, layout.photoAt(2, 0, loaded))
+        assertEquals(newer, layout.photoAt(2, 1, loaded))
+        assertEquals(1 + 3, layout.photoOf(older.fileId, loaded))
+    }
+
+    @Test
+    fun aDayThatShowsAnotherNumberThanCountedHasASlotPerPhotoItShows() {
+        val shown = item()
+        // Two counted on day 30, but only one header made a photo to show.
+        val layout = GalleryLayout(library, newestFirst = true, shown = mapOf(30 to 1))
+        val loaded = mapOf(30 to listOf(shown))
+
+        assertEquals(1, layout.slotsOf(0))
+        assertEquals(5, layout.photoCount)
+        assertEquals(shown, layout.photoAt(0, loaded))
+        assertEquals(20 to 0, layout.locate(1))
+        assertEquals(1 + 3 - 1, layout.photoOf(20, 7), "a slot past the day's last is held to its last")
+    }
+
+    @Test
+    fun anEmptyLibraryHasNoPhotoToShowAtAnyPage() {
+        val layout = GalleryLayout(LibraryDays(IntArray(0), IntArray(0)), newestFirst = true)
+
+        assertEquals(0, layout.photoCount)
+        assertNull(layout.photoAt(0, emptyMap()), "read while the viewer recomposes, before it closes")
+    }
+}

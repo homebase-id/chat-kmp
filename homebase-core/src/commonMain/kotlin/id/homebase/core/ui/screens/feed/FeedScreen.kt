@@ -134,6 +134,7 @@ internal fun FeedWebView(
     isLoading: Boolean,
     onAction: (FeedUiAction) -> Unit,
     reloadKey: Int = 0,
+    minDisplayMs: Long = 700,
     identityHosts: Set<String> = emptySet(),
 ) {
     val uriHandler = getUriHandler()
@@ -159,7 +160,7 @@ internal fun FeedWebView(
     }
 
     LaunchedEffect(Unit) {
-        delay(700)
+        delay(minDisplayMs)
         minDisplayElapsed = true
     }
 

@@ -137,6 +137,8 @@ class FakeCallEngine(
 
     fun simulateRecover() { _events.trySend(MediaEvent.Connected) }
 
+    fun simulateLocalIce(candidate: String) { _events.trySend(MediaEvent.LocalIce(candidate, "0", 0)) }
+
     fun simulateFail(reason: FailReason = FailReason.NoRoute) { _events.trySend(MediaEvent.Failed(reason)) }
 
     fun simulateCameraInterrupted(interrupted: Boolean) = mediaState.cameraInterrupted(interrupted, "simulated")
