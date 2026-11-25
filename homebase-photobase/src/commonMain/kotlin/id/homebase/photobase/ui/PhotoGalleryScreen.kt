@@ -134,7 +134,6 @@ import id.homebase.resources.photobase_bin_delete_confirm_title
 import id.homebase.resources.photobase_bin_delete_forever
 import id.homebase.resources.photobase_bin_empty
 import id.homebase.resources.photobase_bin_empty_confirm_title
-import org.jetbrains.compose.resources.StringResource
 import id.homebase.resources.photobase_bin_cant_undo
 import id.homebase.resources.photobase_bin_move
 import id.homebase.resources.photobase_bin_move_confirm_title

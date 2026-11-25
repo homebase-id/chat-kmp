@@ -2480,6 +2480,8 @@ fun AppNavHost(
 
                             composable<Route.PhotoGalleryView> { backStackEntry ->
                                 val gallery = PhotoGallery.ofKey(backStackEntry.toRoute<Route.PhotoGalleryView>().key)
+                                // A key no gallery has, from older saved navigation: nothing to show, so leave.
+                                if (gallery == null) LaunchedEffect(Unit) { navController.popBackStack() }
                                 if (isAuthenticated && gallery != null) {
                                     PhotoGalleryScreen(
                                         viewModel = koinViewModel(qualifier = photoGalleryQualifier(gallery)),
