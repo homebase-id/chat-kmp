@@ -176,6 +176,14 @@
         <item quantity="one">This can't be undone, and the photo won't be backed up again from a phone that still has it.</item>
         <item quantity="other">This can't be undone, and the photos won't be backed up again from a phone that still has them.</item>
     </plurals>
+    <plurals name="photobase_bin_move_confirm_title">
+        <item quantity="one">Move %1$d photo to the bin?</item>
+        <item quantity="other">Move %1$d photos to the bin?</item>
+    </plurals>
+    <plurals name="photobase_bin_move_confirm_text">
+        <item quantity="one">It leaves your library on all your devices and stays in the bin until you empty it.</item>
+        <item quantity="other">They leave your library on all your devices and stay in the bin until you empty it.</item>
+    </plurals>
     <plurals name="photobase_bin_delete_confirm_title">
         <item quantity="one">Delete %1$d photo forever?</item>
         <item quantity="other">Delete %1$d photos forever?</item>

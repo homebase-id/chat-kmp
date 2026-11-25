@@ -63,13 +63,14 @@ internal fun SelectionToolbar(
     enabled: Boolean,
     allFavorite: Boolean,
     onAction: (PhotoGalleryUiAction) -> Unit,
-    onDeleteForGood: () -> Unit,
+    /** For the actions that ask first. */
+    onConfirm: (MoveAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     HorizontalFloatingToolbar(expanded = true, modifier = modifier) {
         val moveTo = { to: PhotoShelf -> { onAction(PhotoGalleryUiAction.MoveSelected(to)) } }
         val heart: @Composable () -> Unit = { FavoriteButton(allFavorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!allFavorite)) } }
-        val toBin: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled, moveTo(PhotoShelf.Bin)) }
+        val toBin: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled) { onConfirm(MoveAction.MoveToBin) } }
         when (shelf) {
             PhotoShelf.Library -> {
                 heart()
@@ -83,7 +84,7 @@ internal fun SelectionToolbar(
             }
             PhotoShelf.Bin -> {
                 ToolbarAction(Icons.Outlined.RestoreFromTrash, MR.string.photobase_bin_restore, enabled, moveTo(PhotoShelf.Library))
-                ToolbarAction(Icons.Outlined.DeleteForever, MR.string.photobase_bin_delete_forever, enabled, onDeleteForGood)
+                ToolbarAction(Icons.Outlined.DeleteForever, MR.string.photobase_bin_delete_forever, enabled) { onConfirm(MoveAction.DeleteForGood) }
             }
             PhotoShelf.Favorites -> ToolbarAction(Icons.Outlined.HeartBroken, MR.string.photobase_favorites_remove, enabled) {
                 onAction(PhotoGalleryUiAction.SetFavorite(false))

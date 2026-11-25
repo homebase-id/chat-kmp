@@ -20,6 +20,10 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import id.homebase.photobase.gallery.galleryTestFile
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -137,6 +141,37 @@ class PhotoGallerySelectionTest {
         onNodeWithContentDescription("Clear selection").performClick()
         onNodeWithText("Move to bin").assertDoesNotExist()
         assertEquals(PhotoShelf.Library, viewModel.shelf)
+    }
+
+    @Test
+    fun moveToBinAsksFirstAndCancelKeepsTheSelection() = runComposeUiTest {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val moved = mutableListOf<Uuid>()
+        val server = object : PhotoMoveServer by NoServer {
+            override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>): List<PerFileResult> {
+                moved += files.map { it.fileId }
+                return files.map { PerFileResult(it.fileId) }
+            }
+        }
+        val viewModel = PhotoGalleryViewModel(
+            source = { _, _ -> loaded },
+            mover = PhotoMover(server, filesOf = { ids -> ids.map { galleryTestFile(0, fileId = it).let { f -> f.copy(fileMetadata = f.fileMetadata.copy(versionTag = Uuid.random())) } } }, binned = { emptyList() }, sync = {}),
+            libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
+        )
+        setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Photo").fetchSemanticsNodes().size == photos.size }
+        onAllNodesWithContentDescription("Photo")[0].performTouchInput { longClick() }
+
+        onNodeWithText("Move to bin").performClick()
+        onNodeWithText("Move 1 photo to the bin?").assertExists()
+        onNodeWithText("Cancel").performClick()
+        onNodeWithText("1 selected").assertExists()
+        assertEquals(emptyList(), moved, "nothing moves until the user says yes")
+
+        onNodeWithText("Move to bin").performClick()
+        onAllNodesWithText("Move to bin").filter(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).onLast().performClick()
+        waitUntil(timeoutMillis = 5_000) { moved.isNotEmpty() }
+        assertEquals(listOf(photos[0].fileId), moved)
     }
 
     @AfterTest

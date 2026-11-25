@@ -145,6 +145,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import org.jetbrains.compose.resources.StringResource
 import id.homebase.resources.photobase_bin_title
 import id.homebase.resources.photobase_bin_cant_undo
+import id.homebase.resources.photobase_bin_move
+import id.homebase.resources.photobase_bin_move_confirm_title
+import id.homebase.resources.photobase_bin_move_confirm_text
 import id.homebase.resources.photobase_selection_day
 import id.homebase.resources.photobase_selection_select
 import id.homebase.resources.photobase_selection_day_clear
@@ -196,30 +199,48 @@ fun PhotoGalleryScreen(
     val shelf = viewModel.shelf
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.show(it, onAction) } }
-    var confirm by remember { mutableStateOf<MoveAction?>(null) }
-    val asked = when (confirm) {
-        MoveAction.DeleteForGood -> Triple(
-            pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, uiState.selected.size, uiState.selected.size),
-            stringResource(MR.string.photobase_bin_delete_forever),
-            PhotoGalleryUiAction.DeleteForGood,
-        )
-        MoveAction.Empty -> Triple(stringResource(MR.string.photobase_bin_empty_confirm_title), stringResource(MR.string.photobase_bin_empty), PhotoGalleryUiAction.EmptyBin)
-        else -> null
-    }
-    asked?.let { (title, confirmLabel, action) ->
-        ConfirmDialog(
-            title = title,
-            text = (if (confirm == MoveAction.Empty) layout?.photoCount ?: 0 else uiState.selected.size).let { count ->
-                pluralStringResource(MR.plurals.photobase_bin_cant_undo, count)
-            },
-            confirmLabel = confirmLabel,
-            destructive = true,
-            onConfirm = {
-                confirm = null
-                onAction(action)
-            },
-            onDismiss = { confirm = null },
-        )
+    // Moving to the bin asks too: a missed tap on a small phone mustn't take photos away unnoticed.
+    var asking by remember { mutableStateOf<Asking?>(null) }
+    asking?.let { ask ->
+        val count = when {
+            ask.fileId != null -> 1
+            ask.action == MoveAction.Empty -> layout?.photoCount ?: 0
+            else -> uiState.selected.size
+        }
+        val question = when (ask.action) {
+            MoveAction.MoveToBin -> Question(
+                pluralStringResource(MR.plurals.photobase_bin_move_confirm_title, count, count),
+                pluralStringResource(MR.plurals.photobase_bin_move_confirm_text, count),
+                stringResource(MR.string.photobase_bin_move),
+                ask.fileId?.let { PhotoGalleryUiAction.MovePhotoToBin(it) } ?: PhotoGalleryUiAction.MoveSelected(PhotoShelf.Bin),
+            )
+            MoveAction.DeleteForGood -> Question(
+                pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, count, count),
+                pluralStringResource(MR.plurals.photobase_bin_cant_undo, count),
+                stringResource(MR.string.photobase_bin_delete_forever),
+                PhotoGalleryUiAction.DeleteForGood,
+            )
+            MoveAction.Empty -> Question(
+                stringResource(MR.string.photobase_bin_empty_confirm_title),
+                pluralStringResource(MR.plurals.photobase_bin_cant_undo, count),
+                stringResource(MR.string.photobase_bin_empty),
+                PhotoGalleryUiAction.EmptyBin,
+            )
+            else -> null
+        }
+        question?.let { (title, text, confirmLabel, action) ->
+            ConfirmDialog(
+                title = title,
+                text = text,
+                confirmLabel = confirmLabel,
+                destructive = true,
+                onConfirm = {
+                    asking = null
+                    onAction(action)
+                },
+                onDismiss = { asking = null },
+            )
+        }
     }
     // On the shared-bounds clock, or the tile and viewer fade out of step with the morph.
     val fadeSpec = tween<Float>(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)
@@ -230,7 +251,7 @@ fun PhotoGalleryScreen(
                 transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
             ) { viewing ->
                 if (viewing && layout != null) {
-                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf == PhotoShelf.Library || shelf == PhotoShelf.Archive }
+                    val moveToBin = { fileId: Uuid -> asking = Asking(MoveAction.MoveToBin, fileId) }.takeIf { shelf == PhotoShelf.Library || shelf == PhotoShelf.Archive }
                     GalleryViewer(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
                         // A heart waits for the one before it, so a second tap can't send the same again.
@@ -242,7 +263,7 @@ fun PhotoGalleryScreen(
                 } else {
                     GalleryGrid(
                         uiState, shelf, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenShelf, onBack,
-                        { confirm = it }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
+                        { asking = Asking(it) }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
                     )
                 }
             }
@@ -506,7 +527,7 @@ private fun GalleryGrid(
                     enabled = !uiState.busy,
                     allFavorite = uiState.selectedAreFavorites(),
                     onAction = onAction,
-                    onDeleteForGood = { onConfirm(MoveAction.DeleteForGood) },
+                    onConfirm = onConfirm,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                 )
             }
@@ -876,3 +897,8 @@ private val PhotoShelf.icon: ImageVector
         PhotoShelf.Bin -> Icons.Outlined.Delete
         PhotoShelf.Favorites -> Icons.Outlined.FavoriteBorder
     }
+
+/** A move or delete waiting on the user's yes: of [fileId] from the viewer, else of the selection or the whole bin. */
+private data class Asking(val action: MoveAction, val fileId: Uuid? = null)
+
+private data class Question(val title: String, val text: String, val confirmLabel: String, val action: PhotoGalleryUiAction)
