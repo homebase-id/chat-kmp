@@ -56,6 +56,7 @@ import com.github.panpf.zoomimage.zoom.GestureType
 import com.github.panpf.zoomimage.rememberCoilZoomState
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.avatars.rememberPublicAvatarUrl
+import co.touchlab.kermit.Logger
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.HdrPhotoOverlay
@@ -226,11 +227,27 @@ fun ZoomableSubSamplingImage(
             zoomState = zoomState,
             scrollBar = null,
             onSuccess = { success ->
+                // Not for a local stand-in after the server's copy failed.
+                if (source is SubSamplingImageSource.Remote && model !is String) {
+                    val shown = source.imageData.forFullScreen()
+                    val image = success.result.image
+                    Logger.i(tag = TAG) {
+                        "full screen ${shown.fileId}/${shown.payloadKey}: ${if (shown.loadFullPayload) "original" else "largest thumbnail"} " +
+                            "(${shown.payloadContentType}, ${shown.payloadBytes} bytes) decoded ${image.width}x${image.height} " +
+                            "for a ${windowSize.width}x${windowSize.height} window, from ${success.result.dataSource}"
+                    }
+                }
                 hasGainmap = carriesGainmap(success.result.image)
                 imageLoaded = true
                 onLoaded?.invoke()
             },
-            onError = { _ ->
+            onError = { error ->
+                if (source is SubSamplingImageSource.Remote) {
+                    val shown = source.imageData.forFullScreen()
+                    Logger.w(tag = TAG, throwable = error.result.throwable) {
+                        "full screen ${shown.fileId}/${shown.payloadKey}: ${shown.payloadContentType} didn't load"
+                    }
+                }
                 if (source is SubSamplingImageSource.Remote && source.standIn != null && !remoteFailed) {
                     remoteFailed = true
                 } else {
@@ -478,3 +495,5 @@ private fun Modifier.placedAt(rect: () -> Rect): Modifier = clipToBounds().layou
 
 // Constraints can't hold two sides both above this.
 private const val MAX_PLACED_SIDE = 32_766
+
+private const val TAG = "FullScreenImage"
