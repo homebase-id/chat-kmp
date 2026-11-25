@@ -1,5 +1,6 @@
 package id.homebase.core.image
 
+import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DecodeResult
@@ -10,6 +11,7 @@ import coil3.request.Options
 import coil3.request.maxBitmapSize
 import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.image.ImageSize
+import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.image.decodeForDisplay
 import okio.use
 import org.jetbrains.skia.Bitmap
@@ -20,6 +22,7 @@ import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.impl.use
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Coil's Skia decode samples nearest-neighbour when it shrinks, so this decodes and shrinks as the uploads do.
@@ -28,10 +31,24 @@ import org.jetbrains.skia.impl.use
 class DisplayImageDecoder(
     private val source: ImageSource,
     private val options: Options,
+    private val heic: Boolean,
 ) : Decoder {
 
     override suspend fun decode(): DecodeResult {
         val bytes = source.source().use { it.readByteArray() }
+        try {
+            // Claimed by type or major brand, which the pipeline's own HEIC check doesn't cover.
+            val decodable = if (heic) convertHeicToJpeg(bytes) ?: error("Couldn't convert the HEIC to JPEG") else bytes
+            return decode(decodable)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "Couldn't decode a ${bytes.size}-byte ${if (heic) "HEIC" else "image"} for display" }
+            throw e
+        }
+    }
+
+    private suspend fun decode(bytes: ByteArray): DecodeResult {
         lateinit var sourceSize: ImageSize
         lateinit var outSize: ImageSize
         val image = decodeForDisplay(bytes) { size ->
@@ -48,36 +65,45 @@ class DisplayImageDecoder(
     class Factory : Decoder.Factory {
         override fun create(result: SourceFetchResult, options: Options, imageLoader: ImageLoader): Decoder? {
             val header = result.peekHeader(HEADER_BYTES) ?: return null
-            // An AVIF-compatible mif1 file sniffs as AVIF, but the pipeline converts it as HEIC by its major brand.
-            val still = contentTypeFromBytes(header) in STILL_TYPES || isHeicSource(result)
-            return if (still) DisplayImageDecoder(result.source, options) else null
+            return when {
+                contentTypeFromBytes(header) in STILL_TYPES -> DisplayImageDecoder(result.source, options, heic = false)
+                // Includes an AVIF-compatible mif1 file, which sniffs as AVIF.
+                isHeicSource(result) -> DisplayImageDecoder(result.source, options, heic = true)
+                else -> null
+            }
         }
     }
 }
 
 private fun Image.toBitmap(width: Int, height: Int): Bitmap {
     val bitmap = Bitmap()
-    check(bitmap.allocPixels(ImageInfo.makeN32(width, height, ColorAlphaType.PREMUL, colorSpace))) {
-        "Couldn't allocate a ${width}x$height bitmap"
-    }
-    if (this.width == width && this.height == height) {
-        check(readPixels(bitmap, 0, 0)) { "Couldn't read the image's pixels" }
-    } else {
-        // Only an exact-size request enlarges, and Lanczos is for shrinking.
-        Canvas(bitmap).use { canvas ->
-            canvas.drawImageRect(
-                this,
-                Rect.makeWH(this.width.toFloat(), this.height.toFloat()),
-                Rect.makeWH(width.toFloat(), height.toFloat()),
-                SamplingMode.MITCHELL,
-                null,
-                true,
-            )
+    try {
+        check(bitmap.allocPixels(ImageInfo.makeN32(width, height, ColorAlphaType.PREMUL, colorSpace))) {
+            "Couldn't allocate a ${width}x$height bitmap"
         }
+        if (this.width == width && this.height == height) {
+            check(readPixels(bitmap, 0, 0)) { "Couldn't read the image's pixels" }
+        } else {
+            // Only an exact-size request enlarges, and Lanczos is for shrinking.
+            Canvas(bitmap).use { canvas ->
+                canvas.drawImageRect(
+                    this,
+                    Rect.makeWH(this.width.toFloat(), this.height.toFloat()),
+                    Rect.makeWH(width.toFloat(), height.toFloat()),
+                    SamplingMode.MITCHELL,
+                    null,
+                    true,
+                )
+            }
+        }
+    } catch (e: Throwable) {
+        bitmap.close()
+        throw e
     }
     bitmap.setImmutable()
     return bitmap
 }
 
+private const val TAG = "DisplayImageDecoder"
 private val STILL_TYPES = setOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp")
 private const val HEADER_BYTES = 32L

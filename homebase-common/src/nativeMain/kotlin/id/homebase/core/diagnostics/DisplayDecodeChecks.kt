@@ -93,7 +93,7 @@ object DisplayDecodeChecks {
 
     private suspend fun CheckRun.aPngIsSizedToo(loader: ImageLoader, png: NSData) {
         val (image, growth) = peakFootprintGrowth { display(loader, png, THUMB_PX) }
-        // Recorded, not bounded yet: DisplayImageDecoder now has ImageIO decode it at the 2x rule.
+        // Recorded, not bounded yet: DisplayImageDecoder has ImageIO decode it at the 2x rule.
         measured("PNG 48 MP for a $THUMB_PX px thumbnail: ${image.width}x${image.height}, peak +${growth / MB} MB")
         check(maxOf(image.width, image.height) == THUMB_PX) { "PNG thumbnail is ${image.width}x${image.height}" }
     }

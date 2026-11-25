@@ -89,6 +89,15 @@ class DisplayImageDecoderTest {
     }
 
     @Test
+    fun `a sliver keeps at least one pixel on its short edge`() = runTest {
+        val box = Options(PlatformContext.INSTANCE, size = Size(100, 100), precision = Precision.INEXACT)
+        val bitmap = decode(stripesPng(4000, 10), box).bitmap
+
+        assertEquals(100, bitmap.width)
+        assertEquals(1, bitmap.height)
+    }
+
+    @Test
     fun `an exact-size request enlarges`() = runTest {
         assertEquals(400, decode(stripesPng(40, 8)).bitmap.width)
     }
