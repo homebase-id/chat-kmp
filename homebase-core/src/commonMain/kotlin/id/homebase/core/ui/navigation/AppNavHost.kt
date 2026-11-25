@@ -1,6 +1,6 @@
 package id.homebase.core.ui.navigation
 
-import id.homebase.core.di.PhotoBinQualifier
+import id.homebase.core.di.photoShelfQualifier
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
@@ -239,6 +239,7 @@ import id.homebase.core.filesync.FilesyncPreferences
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.core.photobase.PhotobasePreferences
+import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
@@ -2340,7 +2341,7 @@ fun AppNavHost(
                                             viewModel = koinViewModel(),
                                             onOpenBackupSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
-                                            onOpenBin = { navController.navigate(Route.PhotoBin) },
+                                            onOpenShelf = { navController.navigate(Route.PhotoGalleryShelf(it.name)) },
                                         )
                                     }
                                 }
@@ -2466,10 +2467,11 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.PhotoBin> {
+                            composable<Route.PhotoGalleryShelf> { backStackEntry ->
                                 if (isAuthenticated) {
+                                    val shelf = PhotoShelf.valueOf(backStackEntry.toRoute<Route.PhotoGalleryShelf>().shelf)
                                     PhotoGalleryScreen(
-                                        viewModel = koinViewModel(qualifier = PhotoBinQualifier),
+                                        viewModel = koinViewModel(qualifier = photoShelfQualifier(shelf)),
                                         onOpenBackupSettings = null,
                                         backupIndicator = {},
                                         onBack = { navController.popBackStack() },

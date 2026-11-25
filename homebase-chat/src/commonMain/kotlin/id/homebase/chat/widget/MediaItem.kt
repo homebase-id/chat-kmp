@@ -180,7 +180,6 @@ fun MediaItem(
                     isUploading = isUploading,
                     localImagePath = (localContext as? LocalAttachmentContext.Image)?.localFilePath,
                     modifier = baseModifier,
-                    wideImageMaxHeight = LinkPreviewWideImageMaxHeight,
                 )
             } else {
                 MediaPlaceholder(

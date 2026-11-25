@@ -9,8 +9,8 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.LibraryDays
-import id.homebase.photobase.gallery.PhotoBin
-import id.homebase.photobase.gallery.PhotoBinResult
+import id.homebase.photobase.gallery.PhotoMover
+import id.homebase.photobase.gallery.PhotoMoveResult
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGallerySource
@@ -59,19 +59,25 @@ data class PhotoGalleryUiState(
     val countFailed: Boolean = false,
     /** The photos picked for the toolbar's actions, by id, so photos arriving don't change which. */
     val selected: Set<Uuid> = emptySet(),
-    /** A bin action is on its way to the server. */
+    /** A move or delete is on its way to the server. */
     val busy: Boolean = false,
 ) {
     val isSyncing: Boolean get() = syncedSoFar != null
     val selecting: Boolean get() = selected.isNotEmpty()
+
+    /** Every picked photo is a favourite, as far as the days held show. */
+    fun selectedAreFavorites(): Boolean {
+        val picked = loaded.values.asSequence().flatten().filter { it.fileId in selected }.toList()
+        return picked.isNotEmpty() && picked.size == selected.size && picked.all { it.favorite }
+    }
 }
 
-enum class BinAction { MoveToBin, Restore, DeleteForGood, Empty }
+enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty, Favorite, Unfavorite }
 
 sealed interface PhotoGalleryEvent {
-    data class BinDone(val action: BinAction, val result: PhotoBinResult, val undo: Set<Uuid> = emptySet()) : PhotoGalleryEvent
+    data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: PhotoGalleryUiAction? = null) : PhotoGalleryEvent
     /** Nothing is known to have changed: the request didn't get through. */
-    data class BinFailed(val action: BinAction) : PhotoGalleryEvent
+    data class MoveFailed(val action: MoveAction) : PhotoGalleryEvent
 }
 
 sealed interface PhotoGalleryUiAction {
@@ -90,13 +96,16 @@ sealed interface PhotoGalleryUiAction {
     /** All of a day's photos, or none if all are picked. */
     data class ToggleDay(val day: Int) : PhotoGalleryUiAction
     data object ClearSelection : PhotoGalleryUiAction
-    data object MoveToBin : PhotoGalleryUiAction
+    /** The selection, from this gallery's shelf. */
+    data class MoveSelected(val to: PhotoShelf) : PhotoGalleryUiAction
     /** One photo, from the viewer. */
     data class MovePhotoToBin(val fileId: Uuid) : PhotoGalleryUiAction
-    data object Restore : PhotoGalleryUiAction
     data object DeleteForGood : PhotoGalleryUiAction
     data object EmptyBin : PhotoGalleryUiAction
-    data class Undo(val fileIds: Set<Uuid>) : PhotoGalleryUiAction
+    data class Undo(val fileIds: Set<Uuid>, val from: PhotoShelf, val to: PhotoShelf) : PhotoGalleryUiAction
+    /** A null [fileId], from the toolbar, means the selection. */
+    data class SetFavorite(val favorite: Boolean, val fileId: Uuid? = null) : PhotoGalleryUiAction
+    data class UndoFavorite(val fileIds: Set<Uuid>, val favorite: Boolean) : PhotoGalleryUiAction
 }
 
 /**
@@ -105,7 +114,7 @@ sealed interface PhotoGalleryUiAction {
  */
 class PhotoGalleryViewModel(
     private val source: PhotoGallerySource,
-    private val bin: PhotoBin,
+    private val mover: PhotoMover,
     val shelf: PhotoShelf = PhotoShelf.Library,
     private val refresh: () -> Unit = {},
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
@@ -116,7 +125,7 @@ class PhotoGalleryViewModel(
     // One at a time, off Main: the first screen's composing mustn't hold up reading it. Owns counted and stale.
     private val reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
-    private val binScope: CoroutineScope? = null,
+    private val moveScope: CoroutineScope? = null,
 ) : ViewModel() {
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
@@ -129,7 +138,7 @@ class PhotoGalleryViewModel(
     // Kept until the screen takes them: one that lands while the screen is away is shown when it's back.
     private val _events = Channel<PhotoGalleryEvent>(Channel.BUFFERED)
     val events: Flow<PhotoGalleryEvent> = _events.receiveAsFlow()
-    private val binLock = Mutex()
+    private val moveLock = Mutex()
     // Main only.
     private var pending = 0
 
@@ -206,40 +215,67 @@ class PhotoGalleryViewModel(
                 state.copy(selected = if (state.selected.containsAll(day)) state.selected - day else state.selected + day)
             }
             PhotoGalleryUiAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
-            PhotoGalleryUiAction.MoveToBin -> onSelection(BinAction.MoveToBin, PhotoBin::moveToBin)
-            is PhotoGalleryUiAction.MovePhotoToBin -> runBin(BinAction.MoveToBin, setOf(action.fileId), PhotoBin::moveToBin)
-            PhotoGalleryUiAction.Restore -> onSelection(BinAction.Restore, PhotoBin::restore)
-            PhotoGalleryUiAction.DeleteForGood -> onSelection(BinAction.DeleteForGood, PhotoBin::deleteForGood)
-            PhotoGalleryUiAction.EmptyBin -> runBin(BinAction.Empty, emptySet(), { empty() })
-            is PhotoGalleryUiAction.Undo -> runBin(BinAction.Restore, action.fileIds, PhotoBin::restore)
+            is PhotoGalleryUiAction.MoveSelected -> takeSelection()?.let { moveBetween(it, shelf, action.to, restoreSelection = true) }
+            is PhotoGalleryUiAction.MovePhotoToBin -> moveBetween(setOf(action.fileId), shelf, PhotoShelf.Bin)
+            PhotoGalleryUiAction.DeleteForGood -> takeSelection()?.let { runMove(MoveAction.DeleteForGood, it, restoreSelection = true) { ids -> deleteForGood(ids) } }
+            PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet()) { empty() }
+            is PhotoGalleryUiAction.Undo -> runMove(moveAction(action.from, action.to), action.fileIds) { move(it, action.from, action.to) }
+            is PhotoGalleryUiAction.SetFavorite -> (action.fileId?.let(::setOf) ?: takeSelection())?.let { ids ->
+                setFavorite(ids, action.favorite, restoreSelection = action.fileId == null, undoable = true)
+            }
+            is PhotoGalleryUiAction.UndoFavorite -> setFavorite(action.fileIds, action.favorite, restoreSelection = false, undoable = false)
         }
     }
 
     // The selection goes as the action starts; it comes back if the request doesn't get through.
-    private fun onSelection(action: BinAction, block: suspend PhotoBin.(Set<Uuid>) -> PhotoBinResult) {
+    private fun takeSelection(): Set<Uuid>? {
         val ids = _uiState.value.selected
-        if (ids.isEmpty()) return
+        if (ids.isEmpty()) return null
         _uiState.update { it.copy(selected = emptySet()) }
-        runBin(action, ids, block, restoreSelection = true)
+        return ids
+    }
+
+    private fun moveBetween(ids: Set<Uuid>, from: PhotoShelf, to: PhotoShelf, restoreSelection: Boolean = false) =
+        runMove(moveAction(from, to), ids, restoreSelection, undo = { written -> PhotoGalleryUiAction.Undo(written, from = to, to = from) }) {
+            move(it, from, to)
+        }
+
+    private fun setFavorite(ids: Set<Uuid>, favorite: Boolean, restoreSelection: Boolean, undoable: Boolean) {
+        // The server answers done for a photo already as asked; Undo mustn't take those back.
+        val already = _uiState.value.loaded.values.flatMapTo(HashSet()) { items -> items.filter { it.fileId in ids && it.favorite == favorite }.map { it.fileId } }
+        val undo = { written: Set<Uuid> -> (written - already).takeIf { it.isNotEmpty() }?.let { PhotoGalleryUiAction.UndoFavorite(it, !favorite) } }
+        runMove(if (favorite) MoveAction.Favorite else MoveAction.Unfavorite, ids, restoreSelection, undo.takeIf { undoable }) {
+            // Shown on the server's answer, not when the sync brings the photos back.
+            setFavorite(it, favorite).also { result -> markFavorite(result.written, favorite) }
+        }
+    }
+
+    private fun markFavorite(ids: Set<Uuid>, favorite: Boolean) = _uiState.update { state ->
+        state.copy(loaded = state.loaded.mapValues { (_, items) -> items.map { if (it.fileId in ids) it.copy(favorite = favorite) else it } })
     }
 
     // One at a time, in the order asked: an Undo tapped while another action runs waits for it.
-    private fun runBin(action: BinAction, ids: Set<Uuid>, block: suspend PhotoBin.(Set<Uuid>) -> PhotoBinResult, restoreSelection: Boolean = false) {
+    private fun runMove(
+        action: MoveAction,
+        ids: Set<Uuid>,
+        restoreSelection: Boolean = false,
+        undo: ((Set<Uuid>) -> PhotoGalleryUiAction?)? = null,
+        block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult,
+    ) {
         pending++
         _uiState.update { it.copy(busy = true) }
-        (binScope ?: viewModelScope).launch(Dispatchers.Main.immediate) {
+        (moveScope ?: viewModelScope).launch(Dispatchers.Main.immediate) {
             try {
-                binLock.withLock {
+                moveLock.withLock {
                     try {
-                        val result = bin.block(ids)
-                        val undo = if (action == BinAction.MoveToBin) result.written else emptySet()
-                        _events.send(PhotoGalleryEvent.BinDone(action, result, undo))
+                        val result = mover.block(ids)
+                        _events.send(PhotoGalleryEvent.Moved(action, result, result.written.takeIf { it.isNotEmpty() }?.let { undo?.invoke(it) }))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         Logger.w(tag = TAG, throwable = e) { "$action of ${ids.size} photos failed" }
                         if (restoreSelection) _uiState.update { if (it.selecting) it else it.copy(selected = ids) }
-                        _events.send(PhotoGalleryEvent.BinFailed(action))
+                        _events.send(PhotoGalleryEvent.MoveFailed(action))
                     }
                 }
             } finally {
@@ -367,6 +403,13 @@ class PhotoGalleryViewModel(
         // Parsed in about 50 ms on a Pixel 5; a bigger day takes in arriving photos one by one.
         const val READ_WHOLE_DAY_UP_TO = 150
     }
+}
+
+private fun moveAction(from: PhotoShelf, to: PhotoShelf): MoveAction = when {
+    to == PhotoShelf.Bin -> MoveAction.MoveToBin
+    from == PhotoShelf.Bin -> MoveAction.Restore
+    to == PhotoShelf.Archive -> MoveAction.Archive
+    else -> MoveAction.Unarchive
 }
 
 internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =

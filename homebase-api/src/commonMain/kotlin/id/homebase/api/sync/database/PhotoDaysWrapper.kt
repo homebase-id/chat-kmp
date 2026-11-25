@@ -7,30 +7,42 @@ import kotlin.uuid.Uuid
 class PhotoDaysWrapper(
     driver: SqlDriver,
     driveMainIndexAdapter: DriveMainIndex.Adapter,
+    driveLocalTagIndexAdapter: DriveLocalTagIndex.Adapter,
     private val databaseManager: DatabaseManager,
 ) {
-    private val queries = PhotoDaysQueries(driver, driveMainIndexAdapter)
+    private val queries = PhotoDaysQueries(driver, driveMainIndexAdapter, driveLocalTagIndexAdapter)
 
-    /** Newest day first. [archivalStatus] picks the shelf: 0 the library, 2 the bin. */
-    suspend fun dayCounts(identityId: Uuid, driveId: Uuid, archivalStatus: Long): List<DayCount> =
+    /** Newest day first. */
+    suspend fun dayCounts(identityId: Uuid, driveId: Uuid, filter: PhotoFilter): List<DayCount> =
         databaseManager.readValue("photoDays.dayCounts") {
-            queries.dayCounts(identityId, driveId, archivalStatus) { day, photos -> DayCount(day!!.toInt(), photos.toInt()) }.executeAsList()
+            val counted = { day: Long?, photos: Long -> DayCount(day!!.toInt(), photos.toInt()) }
+            when (filter) {
+                is PhotoFilter.Shelf -> queries.dayCounts(identityId, driveId, filter.archivalStatus, counted)
+                is PhotoFilter.Tagged -> queries.taggedDayCounts(identityId, driveId, filter.tag, filter.archivalStatuses, counted)
+            }.executeAsList()
         }
 
     /** The day a photo taken at [userDate] falls on, or null for a date SQLite has no day for. */
     suspend fun dayOf(userDate: Long): Int? =
         databaseManager.readValue("photoDays.dayNumberOf") { queries.dayNumberOf(userDate).executeAsOne() }.toInt().takeIf { it != Int.MIN_VALUE }
 
-    suspend fun photosOn(identityId: Uuid, driveId: Uuid, archivalStatus: Long, day: Int): Int =
+    suspend fun photosOn(identityId: Uuid, driveId: Uuid, filter: PhotoFilter, day: Int): Int =
         databaseManager.readValue("photoDays.photosOnDay") {
-            queries.photosOnDay(identityId, driveId, archivalStatus, day.toLong()).executeAsOne()
+            when (filter) {
+                is PhotoFilter.Shelf -> queries.photosOnDay(identityId, driveId, filter.archivalStatus, day.toLong())
+                is PhotoFilter.Tagged -> queries.taggedPhotosOnDay(identityId, driveId, filter.tag, filter.archivalStatuses, day.toLong())
+            }.executeAsOne()
         }.toInt()
 
     /** The headers of days [fromDay] to [toDay], newest first, each with its day. */
-    suspend fun headersOnDays(identityId: Uuid, driveId: Uuid, archivalStatus: Long, fromDay: Int, toDay: Int): List<DayHeader> =
+    suspend fun headersOnDays(identityId: Uuid, driveId: Uuid, filter: PhotoFilter, fromDay: Int, toDay: Int): List<DayHeader> =
         databaseManager.readValue("photoDays.photosOnDays") {
-            queries.photosOnDays(identityId, driveId, archivalStatus, fromDay.toLong(), toDay.toLong()).executeAsList()
-        }.map { row -> DayHeader(row.day.toInt(), row.jsonHeader) }
+            val row = { day: Long, jsonHeader: String -> DayHeader(day.toInt(), jsonHeader) }
+            when (filter) {
+                is PhotoFilter.Shelf -> queries.photosOnDays(identityId, driveId, filter.archivalStatus, fromDay.toLong(), toDay.toLong(), row)
+                is PhotoFilter.Tagged -> queries.taggedPhotosOnDays(identityId, driveId, filter.tag, filter.archivalStatuses, fromDay.toLong(), toDay.toLong(), row)
+            }.executeAsList()
+        }
 
     /** The headers of those of [fileIds] the drive holds, on any shelf, in no order. */
     suspend fun headersOf(identityId: Uuid, driveId: Uuid, fileIds: Collection<Uuid>): List<String> =
@@ -46,6 +58,14 @@ class PhotoDaysWrapper(
     private companion object {
         const val IDS_PER_READ = 500
     }
+}
+
+/** The photos a gallery shows, by archival status: 0 the library, 1 the archive, 2 the bin. */
+sealed interface PhotoFilter {
+    data class Shelf(val archivalStatus: Long) : PhotoFilter
+
+    /** Those with one of [archivalStatuses] that carry the local [tag]. */
+    data class Tagged(val tag: Uuid, val archivalStatuses: List<Long>) : PhotoFilter
 }
 
 /** [day] counts days since 1970-01-01 of the phone's local date. */

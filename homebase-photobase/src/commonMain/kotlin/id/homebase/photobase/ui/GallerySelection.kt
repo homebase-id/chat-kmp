@@ -6,10 +6,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.HeartBroken
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.RestoreFromTrash
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -28,6 +34,14 @@ import androidx.compose.ui.unit.dp
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.resources.MR
 import id.homebase.resources.action_undo
+import id.homebase.resources.photobase_archive_archived
+import id.homebase.resources.photobase_favorites_add
+import id.homebase.resources.photobase_favorites_added
+import id.homebase.resources.photobase_favorites_remove
+import id.homebase.resources.photobase_favorites_removed
+import id.homebase.resources.photobase_archive_move
+import id.homebase.resources.photobase_archive_unarchive
+import id.homebase.resources.photobase_archive_unarchived
 import id.homebase.resources.photobase_bin_changed_elsewhere
 import id.homebase.resources.photobase_bin_delete_forever
 import id.homebase.resources.photobase_bin_deleted
@@ -47,22 +61,44 @@ import org.jetbrains.compose.resources.stringResource
 internal fun SelectionToolbar(
     shelf: PhotoShelf,
     enabled: Boolean,
+    allFavorite: Boolean,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onDeleteForGood: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     HorizontalFloatingToolbar(expanded = true, modifier = modifier) {
+        val moveTo = { to: PhotoShelf -> { onAction(PhotoGalleryUiAction.MoveSelected(to)) } }
+        val heart: @Composable () -> Unit = { FavoriteButton(allFavorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!allFavorite)) } }
+        val toBin: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled, moveTo(PhotoShelf.Bin)) }
         when (shelf) {
-            PhotoShelf.Library -> ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled) {
-                onAction(PhotoGalleryUiAction.MoveToBin)
+            PhotoShelf.Library -> {
+                heart()
+                ToolbarAction(Icons.Outlined.Archive, MR.string.photobase_archive_move, enabled, moveTo(PhotoShelf.Archive))
+                toBin()
+            }
+            PhotoShelf.Archive -> {
+                heart()
+                ToolbarAction(Icons.Outlined.Unarchive, MR.string.photobase_archive_unarchive, enabled, moveTo(PhotoShelf.Library))
+                toBin()
             }
             PhotoShelf.Bin -> {
-                ToolbarAction(Icons.Outlined.RestoreFromTrash, MR.string.photobase_bin_restore, enabled) {
-                    onAction(PhotoGalleryUiAction.Restore)
-                }
+                ToolbarAction(Icons.Outlined.RestoreFromTrash, MR.string.photobase_bin_restore, enabled, moveTo(PhotoShelf.Library))
                 ToolbarAction(Icons.Outlined.DeleteForever, MR.string.photobase_bin_delete_forever, enabled, onDeleteForGood)
             }
+            PhotoShelf.Favorites -> ToolbarAction(Icons.Outlined.HeartBroken, MR.string.photobase_favorites_remove, enabled) {
+                onAction(PhotoGalleryUiAction.SetFavorite(false))
+            }
         }
+    }
+}
+
+@Composable
+internal fun FavoriteButton(favorite: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(
+            imageVector = if (favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            contentDescription = stringResource(if (favorite) MR.string.photobase_favorites_remove else MR.string.photobase_favorites_add),
+        )
     }
 }
 
@@ -88,17 +124,21 @@ internal fun SelectionMark(picked: Boolean, unpickedTint: Color, modifier: Modif
     )
 }
 
-/** Says what a bin action did; a move to the bin offers Undo. */
+/** Says what a move, delete or heart did; a move or heart offers Undo. */
 internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: (PhotoGalleryUiAction) -> Unit) {
     val message = when (event) {
-        is PhotoGalleryEvent.BinFailed -> getString(MR.string.photobase_bin_failed)
-        is PhotoGalleryEvent.BinDone -> buildList {
+        is PhotoGalleryEvent.MoveFailed -> getString(MR.string.photobase_bin_failed)
+        is PhotoGalleryEvent.Moved -> buildList {
             val result = event.result
             if (result.done > 0) {
                 val done = when (event.action) {
-                    BinAction.MoveToBin -> MR.plurals.photobase_bin_moved
-                    BinAction.Restore -> MR.plurals.photobase_bin_restored
-                    BinAction.DeleteForGood, BinAction.Empty -> MR.plurals.photobase_bin_deleted
+                    MoveAction.Favorite -> MR.plurals.photobase_favorites_added
+                    MoveAction.Unfavorite -> MR.plurals.photobase_favorites_removed
+                    MoveAction.Archive -> MR.plurals.photobase_archive_archived
+                    MoveAction.Unarchive -> MR.plurals.photobase_archive_unarchived
+                    MoveAction.MoveToBin -> MR.plurals.photobase_bin_moved
+                    MoveAction.Restore -> MR.plurals.photobase_bin_restored
+                    MoveAction.DeleteForGood, MoveAction.Empty -> MR.plurals.photobase_bin_deleted
                 }
                 add(getPluralString(done, result.done, result.done))
             }
@@ -107,11 +147,11 @@ internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: 
         }.joinToString(" ")
     }
     if (message.isEmpty()) return
-    val undo = (event as? PhotoGalleryEvent.BinDone)?.takeIf { it.result.done > 0 }?.undo.orEmpty()
+    val undo = (event as? PhotoGalleryEvent.Moved)?.undo
     val answer = showSnackbar(
         message = message,
-        actionLabel = if (undo.isEmpty()) null else getString(MR.string.action_undo),
-        duration = if (undo.isEmpty()) SnackbarDuration.Short else SnackbarDuration.Long,
+        actionLabel = undo?.let { getString(MR.string.action_undo) },
+        duration = if (undo == null) SnackbarDuration.Short else SnackbarDuration.Long,
     )
-    if (answer == SnackbarResult.ActionPerformed && undo.isNotEmpty()) onAction(PhotoGalleryUiAction.Undo(undo))
+    if (answer == SnackbarResult.ActionPerformed && undo != null) onAction(undo)
 }
