@@ -1,6 +1,7 @@
 package id.homebase.core.image
 
 import coil3.fetch.SourceFetchResult
+import id.homebase.api.file.contentTypeFromBytes
 
 /**
  * Shared "could this be an animated image?" gate for the in-house Skia
@@ -10,8 +11,8 @@ import coil3.fetch.SourceFetchResult
  * answers "are these bytes a GIF or WebP whose frames the Skia codec might
  * animate?". A GIF/WebP with a single frame still passes this gate — the
  * [AnimatedSkiaDecoder] then asks the Skia codec for the real frame count and
- * returns null for single-frame images so Coil falls back to its default
- * (static) Skia decoder. Keeping the cheap container sniff here means the
+ * returns null for single-frame images so Coil falls back to the static
+ * decoder. Keeping the cheap container sniff here means the
  * expensive codec parse only runs for GIF/WebP, never for JPEG/PNG/HEIC.
  *
  * Animated GIF and animated WebP are the only animated raster formats Skia's
@@ -27,28 +28,6 @@ fun isAnimatableSource(result: SourceFetchResult): Boolean {
         null -> Unit
         else -> return false
     }
-    val header = result.peekHeader(HEADER_PEEK_BYTES) ?: return false
-    return header.size >= MIN_HEADER_BYTES && (isGifHeader(header) || isWebpHeader(header))
+    val header = result.peekHeader(12) ?: return false
+    return contentTypeFromBytes(header).let { it == "image/gif" || it == "image/webp" }
 }
-
-/** GIF magic: "GIF87a" or "GIF89a" — only the first three bytes ("GIF") matter here. */
-private fun isGifHeader(b: ByteArray): Boolean =
-    b.size >= 3 &&
-        b[0] == 0x47.toByte() && // G
-        b[1] == 0x49.toByte() && // I
-        b[2] == 0x46.toByte() //    F
-
-/**
- * WebP magic: "RIFF" .... "WEBP" — bytes 0..3 == RIFF, bytes 8..11 == WEBP.
- * Bytes 4..7 are the little-endian RIFF chunk size (skipped).
- */
-private fun isWebpHeader(b: ByteArray): Boolean =
-    b.size >= 12 &&
-        b[0] == 0x52.toByte() && b[1] == 0x49.toByte() && // RI
-        b[2] == 0x46.toByte() && b[3] == 0x46.toByte() && // FF
-        b[8] == 0x57.toByte() && b[9] == 0x45.toByte() && // WE
-        b[10] == 0x42.toByte() && b[11] == 0x50.toByte() // BP
-
-// Enough to cover the WebP RIFF/WEBP split header (12 bytes); GIF only needs 3.
-private const val HEADER_PEEK_BYTES = 12L
-private const val MIN_HEADER_BYTES = 3

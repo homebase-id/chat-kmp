@@ -35,8 +35,8 @@ class DisplayImageDecoderTest {
     // 788 -> 400 is 1.97x, the ratio a 12 MP photo's 2048 px image makes from its source.
     private val shrink = Options(PlatformContext.INSTANCE, size = Size(400, 400))
 
-    private fun sourceResult(bytes: ByteArray) =
-        SourceFetchResult(ImageSource(Buffer().write(bytes), FileSystem.SYSTEM), null, DataSource.MEMORY)
+    private fun sourceResult(bytes: ByteArray, mimeType: String? = null) =
+        SourceFetchResult(ImageSource(Buffer().write(bytes), FileSystem.SYSTEM), mimeType, DataSource.MEMORY)
 
     private suspend fun decode(bytes: ByteArray, options: Options = shrink): DecodeResult =
         assertNotNull(assertNotNull(factory.create(sourceResult(bytes), options, imageLoader)).decode())
@@ -97,6 +97,13 @@ class DisplayImageDecoderTest {
     fun `takes HEIC, which the pipeline decodes`() {
         assertNotNull(factory.create(sourceResult(ftypHeader("heic")), shrink, imageLoader))
         assertNotNull(factory.create(sourceResult(ftypHeader("mif1")), shrink, imageLoader))
+        assertNotNull(factory.create(sourceResult(ByteArray(16), mimeType = "image/heif"), shrink, imageLoader))
+    }
+
+    @Test
+    fun `takes a mif1 file that also lists avif, which the pipeline converts as HEIC`() {
+        val header = byteArrayOf(0, 0, 0, 20) + "ftypmif1".encodeToByteArray() + ByteArray(4) + "avif".encodeToByteArray()
+        assertNotNull(factory.create(sourceResult(header), shrink, imageLoader))
     }
 
     @Test

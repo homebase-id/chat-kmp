@@ -48,7 +48,9 @@ class DisplayImageDecoder(
     class Factory : Decoder.Factory {
         override fun create(result: SourceFetchResult, options: Options, imageLoader: ImageLoader): Decoder? {
             val header = result.peekHeader(HEADER_BYTES) ?: return null
-            return if (contentTypeFromBytes(header) in STILL_TYPES) DisplayImageDecoder(result.source, options) else null
+            // An AVIF-compatible mif1 file sniffs as AVIF, but the pipeline converts it as HEIC by its major brand.
+            val still = contentTypeFromBytes(header) in STILL_TYPES || isHeicSource(result)
+            return if (still) DisplayImageDecoder(result.source, options) else null
         }
     }
 }
@@ -77,5 +79,5 @@ private fun Image.toBitmap(width: Int, height: Int): Bitmap {
     return bitmap
 }
 
-private val STILL_TYPES = setOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/heic")
+private val STILL_TYPES = setOf("image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp")
 private const val HEADER_BYTES = 32L

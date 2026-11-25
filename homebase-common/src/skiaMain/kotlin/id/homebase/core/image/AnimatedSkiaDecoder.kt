@@ -27,8 +27,8 @@ import org.jetbrains.skia.Data
  * create() parses the Skia [Codec] up front and returns this decoder ONLY for a
  * genuinely multi-frame GIF/WebP. Single-frame GIF/WebP — crucially including
  * the static WebP *preview thumbnail* that every image ships (server thumbnails
- * are always WebP) — make create() return null, so Coil falls through to its
- * default (static) Skia decoder.
+ * are always WebP) — make create() return null, so Coil falls through to the
+ * static decoder (DisplayImageDecoder; Coil's own on web).
  *
  * Why the check MUST live in create() and not decode(): a null from a
  * Decoder.Factory.create() makes Coil try the next factory (fall through to the
@@ -77,7 +77,7 @@ class AnimatedSkiaDecoder(
             if (!isAnimatableSource(result)) return null
 
             // Read the bytes WITHOUT consuming the source (peek), so that if this
-            // turns out to be static we can decline and Coil's default decoder
+            // turns out to be static we can decline and the static decoder
             // still has the full source to read.
             val bytes = try {
                 result.source.source().peek().readByteArray()
@@ -90,13 +90,13 @@ class AnimatedSkiaDecoder(
             val codec = try {
                 Codec.makeFromData(Data.makeFromBytes(bytes))
             } catch (e: Throwable) {
-                // Not decodable as an animated container — let the default decoder try.
+                // Not decodable as an animated container — let the static decoder try.
                 Logger.d(tag = TAG) { "Codec.makeFromData failed (${bytes.size} bytes): ${e.message}" }
                 return null
             }
 
             // Single-frame GIF/WebP (incl. every static WebP preview thumbnail):
-            // decline so Coil falls through to its default static Skia decoder.
+            // decline so Coil falls through to the static decoder.
             // Only genuinely animated sources are claimed by this decoder.
             if (codec.frameCount <= 1) {
                 codec.close()
