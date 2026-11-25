@@ -872,8 +872,8 @@ class DriveFileProviderCached(
             fetchScope.coroutineContext.cancelChildren()
             inFlight.clear()
         }
-        // Coil's DiskCache.clear() is documented as thread-safe; it serialises
-        // internally against in-flight readers/writers.
+        // Coil's DiskCache.clear() is thread-safe; clearIncludingOrphans then deletes only files
+        // that existed before the clear.
         try {
             payloadDiskCache.clearIncludingOrphans()
         } catch (e: CancellationException) {

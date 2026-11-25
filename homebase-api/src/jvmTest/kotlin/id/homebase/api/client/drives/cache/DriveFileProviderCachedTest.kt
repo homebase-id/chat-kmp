@@ -462,11 +462,14 @@ class DriveFileProviderCachedTest {
             "homebase-payloads-v2", "homebase-thumbs-v2", "homebase-hls-chunks-v1",
         ).map { java.io.File(tempDir, it).also { d -> d.mkdirs() } }
         val orphans = cacheDirs.map { java.io.File(it, "orphan.1").also { f -> f.writeBytes(ByteArray(1024)) } }
+        val journal = java.io.File(cacheDirs[0], "journal")
+        assertTrue(journal.exists(), "payload cache must have a journal after a write")
         val outside = java.io.File(tempDir, "keep-me.bin").also { it.writeBytes(ByteArray(8)) }
 
         provider.clearCaches()
 
         orphans.forEach { assertFalse(it.exists(), "orphan survived clearCaches: $it") }
+        assertTrue(journal.exists(), "the live journal must survive the purge")
         assertTrue(outside.exists(), "files outside the cache roots must be left alone")
         assertEquals(0L, statsSize(provider.getCacheStats(), "drive_payloads"))
         val before = requestCount
