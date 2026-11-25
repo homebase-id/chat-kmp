@@ -168,7 +168,16 @@ class PhotoGalleryViewModel(
 
     init {
         // Deleted on another device: once the albums are read without it, there's nothing here to show.
-        album?.let { shown -> viewModelScope.launch { albums.first { list -> list != null && list.none { it.id == shown.id } }; _events.send(PhotoGalleryEvent.AlbumDeleted) } }
+        album?.let { shown -> viewModelScope.launch { albums.first { list -> list != null && list.none { it.id == shown.id } }; leaveAlbum() } }
+    }
+
+    // Main only. Its own delete and the albums read without it both say so: the screen must leave once.
+    private var albumLeft = false
+
+    private suspend fun leaveAlbum() {
+        if (albumLeft) return
+        albumLeft = true
+        _events.send(PhotoGalleryEvent.AlbumDeleted)
     }
     private val moveLock = Mutex()
     // Main only.
@@ -261,8 +270,8 @@ class PhotoGalleryViewModel(
             is PhotoGalleryUiAction.AddSelectedToNewAlbum -> albumSource?.let { albums -> takeSelection()?.let { addToNewAlbum(albums, action.name, it) } }
             PhotoGalleryUiAction.RemoveSelectedFromAlbum -> album?.let { album -> takeSelection()?.let { setTag(album.id, false, it, restoreSelection = true, undoable = true) } }
             // The new name shows when the sync brings the album back.
-            is PhotoGalleryUiAction.RenameAlbum -> albumWrite(done = null) { rename(it, action.name) }
-            PhotoGalleryUiAction.DeleteAlbum -> albumWrite(done = PhotoGalleryEvent.AlbumDeleted) { delete(it) }
+            is PhotoGalleryUiAction.RenameAlbum -> albumWrite(leave = false) { rename(it, action.name) }
+            PhotoGalleryUiAction.DeleteAlbum -> albumWrite(leave = true) { delete(it) }
         }
     }
 
@@ -273,18 +282,18 @@ class PhotoGalleryViewModel(
         }
     }
 
-    private fun albumWrite(done: PhotoGalleryEvent?, write: suspend PhotoAlbumSource.(Uuid) -> Unit) {
+    private fun albumWrite(leave: Boolean, write: suspend PhotoAlbumSource.(Uuid) -> Unit) {
         val albums = albumSource ?: return
         val id = album?.id ?: return
         runLocked {
             try {
                 albums.write(id)
-                done?.let { _events.send(it) }
+                if (leave) leaveAlbum()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RecordGoneException) {
                 Logger.i(tag = TAG) { "album $id was deleted elsewhere" }
-                _events.send(PhotoGalleryEvent.AlbumDeleted)
+                leaveAlbum()
             } catch (e: Exception) {
                 Logger.w(tag = TAG, throwable = e) { "album $id not written" }
                 _events.send(PhotoGalleryEvent.AlbumWriteFailed)

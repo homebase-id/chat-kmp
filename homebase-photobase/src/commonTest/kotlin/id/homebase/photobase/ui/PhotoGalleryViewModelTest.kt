@@ -1001,9 +1001,10 @@ class PhotoGalleryViewModelTest {
         assertEquals(emptyList(), events, "not while unread, nor while it's there")
         assertEquals("Trip", viewModel.albumName.first { it != null })
 
+        viewModel.onAction(PhotoGalleryUiAction.DeleteAlbum)
         albums.albums.value = emptyList()
         advanceUntilIdle()
-        assertEquals(listOf<PhotoGalleryEvent>(PhotoGalleryEvent.AlbumDeleted), events)
+        assertEquals(listOf<PhotoGalleryEvent>(PhotoGalleryEvent.AlbumDeleted), events, "its own delete and the read without it leave once")
         listening.cancel()
         screen.cancel()
     }
