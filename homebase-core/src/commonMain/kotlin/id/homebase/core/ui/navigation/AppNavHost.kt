@@ -1,6 +1,6 @@
 package id.homebase.core.ui.navigation
 
-import id.homebase.core.di.photoShelfQualifier
+import id.homebase.core.di.photoGalleryQualifier
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
@@ -239,7 +239,8 @@ import id.homebase.core.filesync.FilesyncPreferences
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.core.photobase.PhotobasePreferences
-import id.homebase.photobase.gallery.PhotoShelf
+import id.homebase.photobase.gallery.PhotoGallery
+import id.homebase.photobase.ui.PhotoLibraryScreen
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
@@ -2341,7 +2342,7 @@ fun AppNavHost(
                                             viewModel = koinViewModel(),
                                             onOpenBackupSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
-                                            onOpenShelf = { navController.navigate(Route.PhotoGalleryShelf(it.name)) },
+                                            onOpenLibrary = { navController.navigate(Route.PhotoLibrary) },
                                         )
                                     }
                                 }
@@ -2467,11 +2468,21 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.PhotoGalleryShelf> { backStackEntry ->
+                            composable<Route.PhotoLibrary> {
                                 if (isAuthenticated) {
-                                    val shelf = PhotoShelf.valueOf(backStackEntry.toRoute<Route.PhotoGalleryShelf>().shelf)
+                                    PhotoLibraryScreen(
+                                        viewModel = koinViewModel(),
+                                        onOpen = { navController.navigate(Route.PhotoGalleryView(it.key)) },
+                                        onBack = { navController.popBackStack() },
+                                    )
+                                }
+                            }
+
+                            composable<Route.PhotoGalleryView> { backStackEntry ->
+                                val gallery = PhotoGallery.ofKey(backStackEntry.toRoute<Route.PhotoGalleryView>().gallery)
+                                if (isAuthenticated && gallery != null) {
                                     PhotoGalleryScreen(
-                                        viewModel = koinViewModel(qualifier = photoShelfQualifier(shelf)),
+                                        viewModel = koinViewModel(qualifier = photoGalleryQualifier(gallery)),
                                         onOpenBackupSettings = null,
                                         backupIndicator = {},
                                         onBack = { navController.popBackStack() },

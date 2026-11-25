@@ -76,7 +76,7 @@ class PhotoMoverTest {
     private val mover = PhotoMover(
         server = server,
         filesOf = { ids -> ids.mapNotNull { device[it] } },
-        binned = { device.values.filter { PhotoShelf.Bin.holds(it) } },
+        binned = { device.values.filter { PhotoGallery.Bin.holds(it) } },
         sync = { syncs++ },
     )
 

@@ -13,6 +13,7 @@ import id.homebase.photobase.gallery.PhotoGallerySource
 import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveResult
 import id.homebase.photobase.gallery.PhotoMoveServer
+import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.galleryTestFile
 import id.homebase.api.client.drives.files.ArchivalStatus
@@ -543,7 +544,7 @@ class PhotoGalleryViewModelTest {
         val viewModel = PhotoGalleryViewModel(
             library.source,
             mover,
-            shelf = shelf,
+            gallery = PhotoGallery.OnShelf(shelf),
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
             reading = StandardTestDispatcher(testScheduler),
@@ -820,6 +821,30 @@ class PhotoGalleryViewModelTest {
         viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(b))
         assertFalse(viewModel.uiState.value.selectedAreFavorites())
         screen.cancel()
+    }
+
+    @Test
+    fun aTaggedGalleryMovesNothingItsPhotosAreOnEitherShelf() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        library.publish()
+        val viewModel = PhotoGalleryViewModel(
+            library.source,
+            PhotoMover(server, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
+            gallery = PhotoGallery.Favorites,
+            libraryDays = library.counts.filterNotNull(),
+            reading = StandardTestDispatcher(testScheduler),
+        )
+        val photo = library.photos.getValue(3).first().fileId
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo))
+
+        viewModel.onAction(PhotoGalleryUiAction.MoveSelected(PhotoShelf.Bin))
+        viewModel.onAction(PhotoGalleryUiAction.MovePhotoToBin(photo))
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), server.moved)
+        assertEquals(setOf(photo), viewModel.uiState.value.selected, "nothing taken from the selection either")
     }
 
     @Test

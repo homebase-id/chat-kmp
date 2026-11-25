@@ -7,30 +7,55 @@ import id.homebase.api.sync.database.PhotoFilter
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 
-/**
- * Which of the library's photos a gallery shows: those whose archival status on the server is one of [statuses], and
- * with a [tag], only those carrying that local tag.
- */
-enum class PhotoShelf(val statuses: List<ArchivalStatus>, val tag: Uuid? = null) {
-    Library(listOf(ArchivalStatus.None)),
-    Archive(listOf(ArchivalStatus.Archived)),
-    Bin(listOf(ArchivalStatus.Removed)),
-    Favorites(listOf(ArchivalStatus.None, ArchivalStatus.Archived), PhotobaseProtocol.FavoriteTag);
+/** Where a photo is, by its archival status on the server; photos move between these. */
+enum class PhotoShelf(val status: ArchivalStatus) {
+    Library(ArchivalStatus.None),
+    Archive(ArchivalStatus.Archived),
+    Bin(ArchivalStatus.Removed),
+}
 
-    /** Where a photo moved here goes; Favorites isn't moved to or from. */
-    val status: ArchivalStatus get() = statuses.single()
-
+/** What a gallery shows: the photos on one shelf, or the tagged photos of the library and the archive. */
+sealed interface PhotoGallery {
+    /** Names its route and its Koin qualifier. */
+    val key: String
     val filter: PhotoFilter
-        get() = tag?.let { PhotoFilter.Tagged(it, statuses.map { status -> status.value.toLong() }) } ?: PhotoFilter.Shelf(status.value.toLong())
 
     /** Whether [file], as it arrived, belongs here now. */
-    fun holds(file: HomebaseFile): Boolean = statuses.any { file.isAt(it) } && (tag == null || tag in file.localTags())
+    fun holds(file: HomebaseFile): Boolean
+
+    data class OnShelf(val shelf: PhotoShelf) : PhotoGallery {
+        override val key: String get() = shelf.name
+        override val filter: PhotoFilter get() = PhotoFilter.Shelf(shelf.status.value.toLong())
+
+        override fun holds(file: HomebaseFile): Boolean = file.isAt(shelf.status)
+    }
+
+    /** A binned photo drops out, and is back, still tagged, if restored. */
+    sealed interface Tagged : PhotoGallery {
+        val tag: Uuid
+        override val filter: PhotoFilter get() = PhotoFilter.Tagged(tag, TAGGED_SHELVES.map { it.status.value.toLong() })
+
+        override fun holds(file: HomebaseFile): Boolean = TAGGED_SHELVES.any { file.isAt(it.status) } && tag in file.localTags()
+    }
+
+    data object Favorites : Tagged {
+        override val key: String = "Favorites"
+        override val tag: Uuid = PhotobaseProtocol.FavoriteTag
+    }
 
     companion object {
-        /** The galleries the library opens on their own, in the menu's order. */
-        val away: List<PhotoShelf> = listOf(Favorites, Archive, Bin)
+        val Library = OnShelf(PhotoShelf.Library)
+        val Archive = OnShelf(PhotoShelf.Archive)
+        val Bin = OnShelf(PhotoShelf.Bin)
+
+        /** The galleries the Library screen opens, in its order. */
+        val away: List<PhotoGallery> = listOf(Favorites, Archive, Bin)
+
+        fun ofKey(key: String): PhotoGallery? = (away + Library).firstOrNull { it.key == key }
     }
 }
+
+private val TAGGED_SHELVES = listOf(PhotoShelf.Library, PhotoShelf.Archive)
 
 internal fun HomebaseFile.isAt(status: ArchivalStatus): Boolean =
     fileState == FileState.Active && (fileMetadata.appData.archivalStatus ?: ArchivalStatus.None) == status

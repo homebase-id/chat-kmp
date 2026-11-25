@@ -11,6 +11,7 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.LibraryDays
 import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveResult
+import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGallerySource
@@ -109,13 +110,13 @@ sealed interface PhotoGalleryUiAction {
 }
 
 /**
- * The [shelf]'s days from [libraryDays], and the headers of the days on screen and a margin around them from [source].
+ * The [gallery]'s days from [libraryDays], and the headers of the days on screen and a margin around them from [source].
  * A day whose count changes is read again; [refresh] asks the drive to sync now.
  */
 class PhotoGalleryViewModel(
     private val source: PhotoGallerySource,
     private val mover: PhotoMover,
-    val shelf: PhotoShelf = PhotoShelf.Library,
+    val gallery: PhotoGallery = PhotoGallery.Library,
     private val refresh: () -> Unit = {},
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
     libraryDays: Flow<LibraryDays> = emptyFlow(),
@@ -127,6 +128,7 @@ class PhotoGalleryViewModel(
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
     private val moveScope: CoroutineScope? = null,
 ) : ViewModel() {
+    private val shelf = (gallery as? PhotoGallery.OnShelf)?.shelf
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
     // The days being read right now: a change to one of them mustn't be lost when the read lands.
@@ -215,8 +217,9 @@ class PhotoGalleryViewModel(
                 state.copy(selected = if (state.selected.containsAll(day)) state.selected - day else state.selected + day)
             }
             PhotoGalleryUiAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
-            is PhotoGalleryUiAction.MoveSelected -> takeSelection()?.let { moveBetween(it, shelf, action.to, restoreSelection = true) }
-            is PhotoGalleryUiAction.MovePhotoToBin -> moveBetween(setOf(action.fileId), shelf, PhotoShelf.Bin)
+            // Moves start from a shelf: a tagged gallery's photos are on either, and it offers none.
+            is PhotoGalleryUiAction.MoveSelected -> shelf?.let { from -> takeSelection()?.let { moveBetween(it, from, action.to, restoreSelection = true) } }
+            is PhotoGalleryUiAction.MovePhotoToBin -> shelf?.let { from -> moveBetween(setOf(action.fileId), from, PhotoShelf.Bin) }
             PhotoGalleryUiAction.DeleteForGood -> takeSelection()?.let { runMove(MoveAction.DeleteForGood, it, restoreSelection = true) { ids -> deleteForGood(ids) } }
             PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet()) { empty() }
             is PhotoGalleryUiAction.Undo -> runMove(moveAction(action.from, action.to), action.fileIds) { move(it, action.from, action.to) }
@@ -354,7 +357,7 @@ class PhotoGalleryViewModel(
         // A file can arrive twice between counts; its last version is the one that stands.
         val latest = files.associateBy { it.fileId }.values
         val ids = latest.mapTo(HashSet()) { it.fileId }
-        val arrived = latest.filter(shelf::holds).mapNotNull { it.toGalleryItem() }
+        val arrived = latest.filter(gallery::holds).mapNotNull { it.toGalleryItem() }
         _uiState.update { state ->
             val without = state.loaded.mapValues { (_, items) -> items.filterNot { it.fileId in ids } }
             val onDay = without[day] ?: return@update state
