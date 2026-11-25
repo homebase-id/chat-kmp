@@ -34,7 +34,6 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
-import coil3.compose.asPainter
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -45,6 +44,8 @@ import id.homebase.resources.MR
 import id.homebase.resources.error
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject
@@ -53,7 +54,7 @@ import org.koin.compose.koinInject
  * Progressive image component for Homebase drives.
  *
  * Displays images with progressive loading using Coil3:
- * 1. Shows the embedded tinyThumb, decoded by Coil off the main thread and kept in its memory cache
+ * 1. Shows the embedded tinyThumb immediately
  * 2. Loads server thumbnail/full image via Coil (with caching)
  * 3. Crossfades from the tiny to the sharp image once it loads
  *
@@ -93,7 +94,7 @@ fun HomebaseImage(
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
     val koin = getKoin()
-    val preview = rememberPreview(imageData.previewThumbnail?.content, imageLoader)
+    val preview = rememberPreview(imageData.previewThumbnail?.content)
 
     // Paint the already-decoded thumbnail synchronously on the first frame
     // instead of the tiny embedded preview. The thumbnail cache key is
@@ -235,29 +236,19 @@ fun HomebaseImage(
     }
 }
 
-/** The tiny from Coil's memory cache, where [TinyPreviewWarmer] decoded it off the main thread. */
+@OptIn(ExperimentalResourceApi::class)
 @Composable
-private fun rememberPreview(bytes: Base64Bytes?, imageLoader: ImageLoader): PreviewPainter? {
+private fun rememberPreview(bytes: Base64Bytes?): PreviewPainter? {
     if (bytes == null) return null
-    val context = LocalPlatformContext.current
-    return remember(bytes, context, imageLoader) {
-        val request = previewRequest(context, bytes)
-        val warmed = imageLoader.cachedPreview(request)?.asPainter(context)
-        PreviewPainter(warmed ?: decodeUnwarmed(bytes, request, imageLoader))
+    return remember(bytes) {
+        PreviewPainter(
+            try {
+                BitmapPainter(bytes.bytes.decodeToImageBitmap())
+            } catch (_: Exception) {
+                null
+            },
+        )
     }
-}
-
-internal var tinyPreviewMisses = 0
-    private set
-
-// A view the warm-up didn't reach still draws its tiny on the first frame; the miss is logged, and Coil caches it for next time.
-private fun decodeUnwarmed(bytes: Base64Bytes, request: ImageRequest, imageLoader: ImageLoader): Painter? {
-    tinyPreviewMisses++
-    if (tinyPreviewMisses == 1 || tinyPreviewMisses % 100 == 0) {
-        Logger.i(tag = "HomebaseImage") { "Tiny preview not warmed, decoded on the main thread (miss $tinyPreviewMisses)" }
-    }
-    imageLoader.enqueue(request)
-    return bytes.decodeImageBitmap()?.let(::BitmapPainter)
 }
 
 // Not a RememberObserver, so Coil drawing it as a placeholder never restarts the tiny's load.

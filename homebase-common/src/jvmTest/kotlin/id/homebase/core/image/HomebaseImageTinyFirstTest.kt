@@ -18,23 +18,18 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.v2.runSkikoComposeUiTest
 import androidx.compose.ui.unit.dp
-import coil3.EventListener
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.asImage
 import coil3.decode.DataSource
-import coil3.decode.Decoder
 import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
 import coil3.request.ImageRequest
-import coil3.request.Options
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Surface
@@ -58,7 +53,6 @@ class HomebaseImageTinyFirstTest {
     private val fullColor = Color(0xFF33CC33)
     private val placeholderColor = Color(0xFF000000)
 
-    private val decodeThreads: MutableList<Thread> = Collections.synchronizedList(mutableListOf())
     private val fullFetches: MutableList<HomebaseImageData> = Collections.synchronizedList(mutableListOf())
 
     private fun loader(fetch: suspend (HomebaseImageData) -> ImageFetchResult) = ImageLoader.Builder(PlatformContext.INSTANCE)
@@ -66,11 +60,6 @@ class HomebaseImageTinyFirstTest {
             add(HomebaseImageKeyer())
             add(Fetcher.Factory<HomebaseImageData> { data, _, _ -> Fetcher { fetch(data) } })
         }
-        .eventListener(object : EventListener() {
-            override fun decodeStart(request: ImageRequest, decoder: Decoder, options: Options) {
-                if (request.data is ByteArray) decodeThreads += Thread.currentThread()
-            }
-        })
         .build()
 
     private val neverLoads = loader { awaitCancellation() }
@@ -138,37 +127,11 @@ class HomebaseImageTinyFirstTest {
         onNodeWithTag("photo").captureToImage().toPixelMap().let { it[it.width / 2, it.height / 2] }
 
     @Test
-    fun aWarmedTinyIsOnTheFirstFrameWithNoDecodeInComposition() = runSkikoComposeUiTest {
-        val data = photo(tiny())
-        runBlocking { TinyPreviewWarmer(neverLoads, PlatformContext.INSTANCE).warm(listOf(data.previewThumbnail!!.content!!)) }
-        val testThread = Thread.currentThread()
-        assertEquals(1, decodeThreads.size, "the warm-up should decode the tiny once, through Coil")
-        assertTrue(decodeThreads.none { it == testThread }, "the warm-up decoded on the calling thread")
-        val misses = tinyPreviewMisses
-        mainClock.autoAdvance = false
-        show(neverLoads, data)
-        assertTrue(centre().isNear(tinyColor), "expected the tiny's colour, got ${centre()}")
-        assertEquals(misses, tinyPreviewMisses, "a warmed tiny should not be decoded in composition")
-        assertEquals(1, decodeThreads.size)
-    }
-
-    @Test
-    fun theWarmUpAwaitsTheFirstTiniesAndDecodesTheRestInTheBackground() = runBlocking {
-        val previews = listOf(tinyColor, thumbColor, fullColor).map { Base64Bytes(png(it)) }
-        TinyPreviewWarmer(neverLoads, PlatformContext.INSTANCE).warm(previews, awaited = 1)
-        val cached = { bytes: Base64Bytes -> neverLoads.cachedPreview(previewRequest(PlatformContext.INSTANCE, bytes)) != null }
-        assertTrue(cached(previews.first()), "the first tiny should be in memory when warm returns")
-        withTimeout(5_000) { while (!previews.all(cached)) delay(10) }
-    }
-
-    @Test
-    fun aTinyTheWarmUpMissedStillPaintsOnTheFirstFrame() = runSkikoComposeUiTest {
-        val misses = tinyPreviewMisses
+    fun theTinyIsOnTheFirstFrame() = runSkikoComposeUiTest {
         mainClock.autoAdvance = false
         show(neverLoads, photo(tiny()))
         assertTrue(centre().isNear(tinyColor), "expected the tiny's colour, got ${centre()}")
         onNodeWithTag("empty").assertDoesNotExist()
-        assertEquals(misses + 1, tinyPreviewMisses)
     }
 
     @Test

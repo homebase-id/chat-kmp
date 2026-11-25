@@ -1,7 +1,5 @@
 package id.homebase.core.ui.screens.moments
 
-import id.homebase.core.image.TinyPreviewWarmer
-import id.homebase.core.image.tinyPreviews
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -51,7 +49,6 @@ class MomentsFeedViewModel(
     private val optimisticWriter: OptimisticWriter,
     private val actionService: MomentActionService,
     private val momentsPreferences: MomentsPreferences,
-    private val tinyPreviewWarmer: TinyPreviewWarmer,
 ) : ViewModel() {
 
     // Seeded from the service's snapshot so a re-entry never shows a first frame with no moments.
@@ -187,8 +184,6 @@ class MomentsFeedViewModel(
                 Triple(list, mode, loaded)
             }.collect { (list, mode, loaded) ->
                 val sorted = sortedFor(list, mode)
-                // Before the posts reach the feed, so every post composes with its tiny already in memory.
-                tinyPreviewWarmer.warm(sorted.flatMap { tinyPreviews(it.payloads, it.previewThumbnail) })
                 _uiState.update { it.copy(moments = sorted, viewMode = mode, isLoading = !loaded) }
                 // Diagnostic: log every size/head change so we can confirm the
                 // feed VM is propagating service updates into uiState. Pairs

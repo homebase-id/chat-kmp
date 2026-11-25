@@ -85,8 +85,6 @@ actual fun platformModule(): Module = module {
             scope = get(),
         )
     }
-    // Android binds Context, which is its PlatformContext, through androidContext().
-    single<PlatformContext> { PlatformContext.INSTANCE }
     single(createdAtStart = true) {
         // Note: No disk cache - DriveFileProviderCached handles encrypted disk caching
         // Coil's memory cache is still enabled by default for fast UI redraws
