@@ -384,7 +384,7 @@ class CallStateMachineTest {
         listOf(connecting, connected, reconnecting).forEach {
             val t = machine.step(it, ice)
             assertEquals(it, t.state)
-            assertEquals(listOf(CallEffect.SendSignal(sam, CallSignal.Ice(c, "cand", "0", 1))), t.effects)
+            assertEquals(listOf(CallEffect.TrickleIce("cand", "0", 1)), t.effects)
         }
         assertNoOp(incoming, ice)
     }

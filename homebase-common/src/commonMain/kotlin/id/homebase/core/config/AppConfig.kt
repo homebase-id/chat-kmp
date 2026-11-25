@@ -626,7 +626,6 @@ private val photosDrive = TargetDriveAccessRequest(
     sharingModel = DriveSharingModel.SelectiveShare,
 )
 
-// Not synced: the gallery pages from the server, so the drive is never mounted.
 // Grant only: Photobase owns the drive, and installing Photobase is what creates it.
 val photosTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(photosDrive.copy(grantOnly = true))
 

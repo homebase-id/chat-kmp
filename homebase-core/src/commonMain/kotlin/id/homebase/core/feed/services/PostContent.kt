@@ -1,6 +1,7 @@
 package id.homebase.core.feed.services
 
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.util.truncateToCodePoints
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -8,9 +9,11 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 
@@ -130,3 +133,35 @@ data class ChannelDefinition(
     val templateId: Int? = null,
     val isCollaborative: Boolean = false,
 )
+
+internal fun PostContent.articleSummary(): String? =
+    abstract?.trim()?.ifEmpty { null } ?: openingExcerpt(body).ifEmpty { null }
+
+// Mirrors the web feed's openingExcerpt: headings, code and quotes read wrong out of place.
+private val notInExcerpt = Regex("^(h\\d|code_block|blockquote)$")
+private val whitespaceRun = Regex("\\s+")
+
+private fun JsonElement.richText(): String {
+    val node = this as? JsonObject ?: return ""
+    (node["text"] as? JsonPrimitive)?.takeIf { it.isString }?.let { return it.content }
+    val children = node["children"] as? JsonArray ?: return ""
+    val ofBlocks = children.all { (it as? JsonObject)?.get("children") is JsonArray }
+    return children.joinToString(if (ofBlocks) " " else "") { it.richText() }
+}
+
+private val JsonElement.blockType: String?
+    get() = ((this as? JsonObject)?.get("type") as? JsonPrimitive)?.content
+
+private fun openingExcerpt(body: JsonElement?, max: Int = 300): String {
+    val blocks = when (body) {
+        is JsonPrimitive -> if (body.isString) sequenceOf(body.content) else emptySequence()
+        is JsonArray -> body.asSequence().filterNot { it.blockType?.matches(notInExcerpt) == true }.map { it.richText() }
+        else -> emptySequence()
+    }
+    var excerpt = ""
+    for (block in blocks) {
+        excerpt = "$excerpt ${block.replace(whitespaceRun, " ").trim()}".trim()
+        if (excerpt.length >= max) break
+    }
+    return excerpt.truncateToCodePoints(max)
+}

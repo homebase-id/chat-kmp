@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.core.widget.ConfirmDialog
+import id.homebase.core.widget.SelectionTopBar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +47,7 @@ import id.homebase.resources.filesync_folder_items
 import id.homebase.resources.filesync_from_folder
 import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_restore
-import id.homebase.resources.filesync_selected
+import id.homebase.resources.selected_count
 import id.homebase.resources.filesync_trash
 import id.homebase.resources.filesync_trash_empty
 import id.homebase.resources.filesync_trash_failed
@@ -69,7 +71,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     var askEmpty by remember { mutableStateOf(false) }
     askDelete?.let { ids ->
         val name = uiState.items.firstOrNull { it.node.nodeId in ids }?.node?.name.orEmpty()
-        FilesyncConfirmDialog(
+        ConfirmDialog(
             text = if (ids.size == 1) {
                 stringResource(MR.string.filesync_delete_forever_confirm, name)
             } else {
@@ -85,7 +87,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
         )
     }
     if (askEmpty) {
-        FilesyncConfirmDialog(
+        ConfirmDialog(
             title = stringResource(MR.string.filesync_empty_trash),
             text = stringResource(MR.string.filesync_empty_trash_confirm) + roleFoldersReturn(uiState.items.map { it.node }),
             confirmLabel = stringResource(MR.string.filesync_empty_trash),
@@ -99,7 +101,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     }
 
     val title = if (selecting) {
-        pluralStringResource(MR.plurals.filesync_selected, uiState.selection.ids.size, uiState.selection.ids.size)
+        pluralStringResource(MR.plurals.selected_count, uiState.selection.ids.size, uiState.selection.ids.size)
     } else {
         stringResource(MR.string.filesync_trash)
     }
@@ -164,7 +166,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
         title = title,
         compactTopBar = {
             if (selecting) {
-                FilesyncSelectionTopBar(uiState.selection.ids.size, onClear = { viewModel.onAction(FilesyncTrashAction.ClearSelection) }, actions = actions)
+                SelectionTopBar(uiState.selection.ids.size, onClear = { viewModel.onAction(FilesyncTrashAction.ClearSelection) }, actions = actions)
             } else {
                 TopAppBar(
                     title = { Text(title) },

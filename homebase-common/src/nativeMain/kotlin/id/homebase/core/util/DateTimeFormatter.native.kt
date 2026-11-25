@@ -31,6 +31,11 @@ actual fun formatMediumDate(instant: Instant): String {
     return formatter.stringFromDate(instant.toNSDate())
 }
 
+actual fun formatMonthYear(instant: Instant): String {
+    val formatter = NSDateFormatter().apply { setLocalizedDateFormatFromTemplate("yMMM") }
+    return formatter.stringFromDate(instant.toNSDate())
+}
+
 actual fun formatMediumDateNoYear(instant: Instant): String {
     val formatter = NSDateFormatter().apply {
         // Skeleton template: NSDateFormatter rearranges into the locale's

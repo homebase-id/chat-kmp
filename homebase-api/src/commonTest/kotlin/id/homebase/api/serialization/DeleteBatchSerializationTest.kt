@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.FileVersionTagBatch
 import id.homebase.api.client.drives.files.PerFileBatchResult
+import id.homebase.api.client.drives.files.TombstoneOptions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
@@ -28,6 +29,14 @@ class DeleteBatchSerializationTest {
         assertEquals(
             """{"files":[{"fileId":"$file","versionTag":"$tag"}],"archivalStatus":0}""",
             OdinSystemSerializer.serialize(FileVersionTagBatch(listOf(FileVersionTag(file, tag)), ArchivalStatus.None)),
+        )
+    }
+
+    @Test
+    fun aSoftDeleteThatKeepsTheUniqueIdSaysSoOnItsTombstone() {
+        assertEquals(
+            """{"files":[{"fileId":"$file","versionTag":"$tag"}],"tombstone":{"keepUniqueId":true}}""",
+            OdinSystemSerializer.serialize(FileVersionTagBatch(listOf(FileVersionTag(file, tag)), tombstone = TombstoneOptions(keepUniqueId = true))),
         )
     }
 

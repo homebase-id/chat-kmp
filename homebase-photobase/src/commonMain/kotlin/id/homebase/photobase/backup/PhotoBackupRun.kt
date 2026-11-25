@@ -513,12 +513,16 @@ class PhotoBackupRun(
                 continue
             }
             for ((row, uniqueId) in ids) {
-                if (uniqueId in existing) {
-                    ledger.markDone(row.deviceAssetId)
-                    hasher.forget(row.deviceAssetId)
-                } else {
-                    toPrepare.send(row to uniqueId)
+                when (uniqueId) {
+                    in existing.has -> ledger.markDone(row.deviceAssetId)
+                    // Not backed up, and not to be: "check the drive again" passes over it.
+                    in existing.deletedForGood -> ledger.markSkipped(row.deviceAssetId, DELETED_FOR_GOOD)
+                    else -> {
+                        toPrepare.send(row to uniqueId)
+                        continue
+                    }
                 }
+                hasher.forget(row.deviceAssetId)
             }
         }
     }
@@ -645,6 +649,7 @@ class PhotoBackupRun(
 
     companion object {
         private const val TAG = "PhotoBackupRun"
+        private const val DELETED_FOR_GOOD = "deleted for good from the bin"
         private const val HASH_PARALLELISM = 3
         private const val HASH_BATCH = 16
         private const val DEDUPE_BATCH = 20

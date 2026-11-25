@@ -179,6 +179,7 @@ kotlin {
         "id.homebase.api.sync.database.OutboxSyncTest",
         "id.homebase.api.sync.database.OutboxBulkSlotTest",
         "id.homebase.api.sync.database.OutboxTest",
+        "id.homebase.api.sync.database.PhotoDaysWrapperTest",
         "id.homebase.api.sync.DriveSyncCollectionTest",
         "id.homebase.api.sync.DriveSyncManagerTest",
         "id.homebase.api.sync.DriveSyncTest",
@@ -344,7 +345,7 @@ kotlin {
         }
 
         jvmMain.dependencies {
-            implementation(libs.ktor.client.cio)
+            implementation(libs.ktor.client.okhttp)
             implementation(libs.sqldelight.sqlite.driver.get().toString()) {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")
             }

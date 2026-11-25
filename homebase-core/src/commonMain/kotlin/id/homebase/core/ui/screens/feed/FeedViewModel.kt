@@ -28,9 +28,10 @@ class FeedViewModel(
     private val _reloadEvent = MutableSharedFlow<Unit>()
     val reloadEvent: SharedFlow<Unit> = _reloadEvent.asSharedFlow()
 
+    private var systemDark: Boolean? = null
+
     init {
         addCloseable(feedExtendPermissionViewModel)
-        loadFeed()
         observePermissionGrants()
     }
 
@@ -58,6 +59,12 @@ class FeedViewModel(
     }
 
     fun updateSystemDarkMode(isSystemDark: Boolean) {
+        val firstReport = systemDark == null
+        systemDark = isSystemDark
+        if (firstReport) {
+            loadFeed()
+            return
+        }
         val effectiveDark = resolveIsDark(userPreferences.theme, isSystemDark)
         val current = _uiState.value
         if (current.isDarkMode != effectiveDark) {
@@ -77,7 +84,7 @@ class FeedViewModel(
                 val token = credentials.clientAccessToken
                 val sharedSecretBase64 = credentials.sharedSecret.base64Encode()
 
-                val isDark = resolveIsDark(userPreferences.theme, _uiState.value.isDarkMode)
+                val isDark = resolveIsDark(userPreferences.theme, systemDark == true)
 
                 val feedUrl = "https://$domain/apps/feed"
                 val script = buildFeedInjectionScript(
