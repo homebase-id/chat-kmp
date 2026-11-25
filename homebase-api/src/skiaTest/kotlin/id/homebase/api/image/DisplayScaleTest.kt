@@ -36,6 +36,18 @@ class DisplayScaleTest {
     }
 
     @Test
+    fun aLargeDecodeWaitsItsTurnButKeepsLanczos() = runTest {
+        val image = decodeForDisplay(stripes(788), largePixels = 1) { ImageSize(400, 4) }
+        val spread = try {
+            assertEquals(400, image.width)
+            deviation(middleGreens(image.png()))
+        } finally {
+            image.close()
+        }
+        assertTrue(spread < 5, "stripes deviated by $spread")
+    }
+
+    @Test
     fun aLargerTargetLeavesTheDecodedSize() = runTest {
         val image = decodeForDisplay(stripes(40)) { ImageSize(400, 80) }
         try {

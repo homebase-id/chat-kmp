@@ -13,6 +13,7 @@ import id.homebase.api.file.contentTypeFromBytes
 import id.homebase.api.image.ImageSize
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.image.decodeForDisplay
+import id.homebase.api.lib.image.ImageFormatDetector
 import okio.use
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
@@ -37,8 +38,12 @@ class DisplayImageDecoder(
     override suspend fun decode(): DecodeResult {
         val bytes = source.source().use { it.readByteArray() }
         try {
-            // Claimed by type or major brand, which the pipeline's own HEIC check doesn't cover.
-            val decodable = if (heic) convertHeicToJpeg(bytes) ?: error("Couldn't convert the HEIC to JPEG") else bytes
+            // The pipeline converts HEIC it recognises by major brand; one claimed only by its declared type is converted here.
+            val decodable = if (heic && !ImageFormatDetector.isHeic(bytes)) {
+                convertHeicToJpeg(bytes) ?: error("Couldn't convert the HEIC to JPEG")
+            } else {
+                bytes
+            }
             return decode(decodable)
         } catch (e: CancellationException) {
             throw e
