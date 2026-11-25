@@ -770,6 +770,28 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
+    fun undoingAHeartOnAMixedSelectionLeavesThePhotosThatWereFavoritesBefore() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = moverViewModel(library, server)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val (before, added) = library.photos.getValue(3).take(2).map { it.fileId }
+        viewModel.onAction(PhotoGalleryUiAction.SetFavorite(true, fileId = before))
+        advanceUntilIdle()
+        events.clear()
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(before))
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(added))
+
+        viewModel.onAction(PhotoGalleryUiAction.SetFavorite(true))
+        advanceUntilIdle()
+
+        assertEquals(PhotoGalleryUiAction.UndoFavorite(setOf(added), favorite = false), assertIs<PhotoGalleryEvent.Moved>(events.single()).undo)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
     fun theViewersHeartTakesOnlyItsPhotoAndLeavesTheSelection() = runTest {
         val library = Library(1..3, perDay = 4)
         val server = Server()

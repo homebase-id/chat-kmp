@@ -241,9 +241,11 @@ class PhotoGalleryViewModel(
         }
 
     private fun setFavorite(ids: Set<Uuid>, favorite: Boolean, restoreSelection: Boolean, undoable: Boolean) {
-        val undo = { written: Set<Uuid> -> PhotoGalleryUiAction.UndoFavorite(written, !favorite) }
+        // The server answers done for a photo already as asked; Undo mustn't take those back.
+        val already = _uiState.value.loaded.values.flatMapTo(HashSet()) { items -> items.filter { it.fileId in ids && it.favorite == favorite }.map { it.fileId } }
+        val undo = { written: Set<Uuid> -> (written - already).takeIf { it.isNotEmpty() }?.let { PhotoGalleryUiAction.UndoFavorite(it, !favorite) } }
         runMove(if (favorite) MoveAction.Favorite else MoveAction.Unfavorite, ids, restoreSelection, undo.takeIf { undoable }) {
-            // Shown now, not when the sync brings the photos back.
+            // Shown on the server's answer, not when the sync brings the photos back.
             setFavorite(it, favorite).also { result -> markFavorite(result.written, favorite) }
         }
     }
@@ -257,7 +259,7 @@ class PhotoGalleryViewModel(
         action: MoveAction,
         ids: Set<Uuid>,
         restoreSelection: Boolean = false,
-        undo: ((Set<Uuid>) -> PhotoGalleryUiAction)? = null,
+        undo: ((Set<Uuid>) -> PhotoGalleryUiAction?)? = null,
         block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult,
     ) {
         pending++

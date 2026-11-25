@@ -232,8 +232,12 @@ fun PhotoGalleryScreen(
                 if (viewing && layout != null) {
                     val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf == PhotoShelf.Library || shelf == PhotoShelf.Archive }
                     GalleryViewer(
-                        uiState.openedFileId, layout, loaded.value, onAction, moveToBin, canFavorite = shelf != PhotoShelf.Bin,
-                        { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent,
+                        uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
+                        // A heart waits for the one before it, so a second tap can't send the same again.
+                        heart = if (shelf == PhotoShelf.Bin) null else !uiState.busy,
+                        onUnreadPage = { memory.returnToSlot = it },
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        animatedVisibilityScope = this@AnimatedContent,
                     )
                 } else {
                     GalleryGrid(
@@ -267,7 +271,8 @@ private fun GalleryViewer(
     loaded: Map<Int, List<PhotoGalleryItem>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onMoveToBin: ((Uuid) -> Unit)?,
-    canFavorite: Boolean,
+    /** Whether the heart is enabled; null shows none. */
+    heart: Boolean?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -337,7 +342,7 @@ private fun GalleryViewer(
                 data = viewer,
                 onDelete = onMoveToBin,
                 extraActions = {
-                    if (canFavorite) FavoriteButton(item.favorite, enabled = true) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
+                    if (heart != null) FavoriteButton(item.favorite, enabled = heart) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
                 },
                 onDismiss = close,
                 sharedTransitionScope = null,

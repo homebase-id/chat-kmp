@@ -227,7 +227,7 @@ fun ZoomableSubSamplingImage(
             zoomState = zoomState,
             scrollBar = null,
             onSuccess = { success ->
-                // Not for a local stand-in after the server's copy failed.
+                // Not for a local stand-in after the server's copy failed, here or in onError.
                 if (source is SubSamplingImageSource.Remote && model !is String) {
                     val shown = source.imageData.forFullScreen()
                     val image = success.result.image
@@ -242,7 +242,7 @@ fun ZoomableSubSamplingImage(
                 onLoaded?.invoke()
             },
             onError = { error ->
-                if (source is SubSamplingImageSource.Remote) {
+                if (source is SubSamplingImageSource.Remote && model !is String) {
                     val shown = source.imageData.forFullScreen()
                     Logger.w(tag = TAG, throwable = error.result.throwable) {
                         "full screen ${shown.fileId}/${shown.payloadKey}: ${shown.payloadContentType} didn't load"
