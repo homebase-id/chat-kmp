@@ -199,36 +199,32 @@ fun PhotoGalleryScreen(
     val shelf = viewModel.shelf
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.show(it, onAction) } }
-    // Moving to the bin asks too: a missed tap on a small phone mustn't take photos away unnoticed.
-    var asking by remember { mutableStateOf<Asking?>(null) }
-    asking?.let { ask ->
-        val count = when {
-            ask.fileId != null -> 1
-            ask.action == MoveAction.Empty -> layout?.photoCount ?: 0
-            else -> uiState.selected.size
-        }
-        val question = when (ask.action) {
-            MoveAction.MoveToBin -> Question(
-                pluralStringResource(MR.plurals.photobase_bin_move_confirm_title, count, count),
-                pluralStringResource(MR.plurals.photobase_bin_move_confirm_text, count),
-                stringResource(MR.string.photobase_bin_move),
-                ask.fileId?.let { PhotoGalleryUiAction.MovePhotoToBin(it) } ?: PhotoGalleryUiAction.MoveSelected(PhotoShelf.Bin),
-            )
-            MoveAction.DeleteForGood -> Question(
-                pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, count, count),
-                pluralStringResource(MR.plurals.photobase_bin_cant_undo, count),
+    // Moving to the bin asks first: a missed tap on a small phone mustn't take photos away unnoticed.
+    var asking by remember { mutableStateOf<PhotoGalleryUiAction?>(null) }
+    asking?.let { action ->
+        val selected = uiState.selected.size
+        val question = when (action) {
+            is PhotoGalleryUiAction.MovePhotoToBin, is PhotoGalleryUiAction.MoveSelected -> {
+                val count = if (action is PhotoGalleryUiAction.MovePhotoToBin) 1 else selected
+                Triple(
+                    pluralStringResource(MR.plurals.photobase_bin_move_confirm_title, count, count),
+                    pluralStringResource(MR.plurals.photobase_bin_move_confirm_text, count),
+                    stringResource(MR.string.photobase_bin_move),
+                )
+            }
+            PhotoGalleryUiAction.DeleteForGood -> Triple(
+                pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, selected, selected),
+                pluralStringResource(MR.plurals.photobase_bin_cant_undo, selected),
                 stringResource(MR.string.photobase_bin_delete_forever),
-                PhotoGalleryUiAction.DeleteForGood,
             )
-            MoveAction.Empty -> Question(
+            PhotoGalleryUiAction.EmptyBin -> Triple(
                 stringResource(MR.string.photobase_bin_empty_confirm_title),
-                pluralStringResource(MR.plurals.photobase_bin_cant_undo, count),
+                pluralStringResource(MR.plurals.photobase_bin_cant_undo, layout?.photoCount ?: 0),
                 stringResource(MR.string.photobase_bin_empty),
-                PhotoGalleryUiAction.EmptyBin,
             )
             else -> null
         }
-        question?.let { (title, text, confirmLabel, action) ->
+        question?.let { (title, text, confirmLabel) ->
             ConfirmDialog(
                 title = title,
                 text = text,
@@ -251,7 +247,7 @@ fun PhotoGalleryScreen(
                 transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
             ) { viewing ->
                 if (viewing && layout != null) {
-                    val moveToBin = { fileId: Uuid -> asking = Asking(MoveAction.MoveToBin, fileId) }.takeIf { shelf == PhotoShelf.Library || shelf == PhotoShelf.Archive }
+                    val moveToBin = { fileId: Uuid -> asking = PhotoGalleryUiAction.MovePhotoToBin(fileId) }.takeIf { shelf == PhotoShelf.Library || shelf == PhotoShelf.Archive }
                     GalleryViewer(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
                         // A heart waits for the one before it, so a second tap can't send the same again.
@@ -263,7 +259,7 @@ fun PhotoGalleryScreen(
                 } else {
                     GalleryGrid(
                         uiState, shelf, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenShelf, onBack,
-                        { asking = Asking(it) }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
+                        { asking = it }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
                     )
                 }
             }
@@ -426,7 +422,7 @@ private fun GalleryGrid(
     backupIndicator: @Composable () -> Unit,
     onOpenShelf: ((PhotoShelf) -> Unit)?,
     onBack: (() -> Unit)?,
-    onConfirm: (MoveAction) -> Unit,
+    onConfirm: (PhotoGalleryUiAction) -> Unit,
     memory: GridMemory,
     haptics: Haptics,
     sharedTransitionScope: SharedTransitionScope,
@@ -450,7 +446,7 @@ private fun GalleryGrid(
                     title = { Text(stringResource(shelf.title)) },
                     actions = {
                         if (shelf == PhotoShelf.Bin) {
-                            TextButton(onClick = { onConfirm(MoveAction.Empty) }, enabled = hasPhotos && !uiState.busy) {
+                            TextButton(onClick = { onConfirm(PhotoGalleryUiAction.EmptyBin) }, enabled = hasPhotos && !uiState.busy) {
                                 Text(stringResource(MR.string.photobase_bin_empty))
                             }
                         }
@@ -897,8 +893,3 @@ private val PhotoShelf.icon: ImageVector
         PhotoShelf.Bin -> Icons.Outlined.Delete
         PhotoShelf.Favorites -> Icons.Outlined.FavoriteBorder
     }
-
-/** A move or delete waiting on the user's yes: of [fileId] from the viewer, else of the selection or the whole bin. */
-private data class Asking(val action: MoveAction, val fileId: Uuid? = null)
-
-private data class Question(val title: String, val text: String, val confirmLabel: String, val action: PhotoGalleryUiAction)

@@ -20,10 +20,9 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import id.homebase.photobase.gallery.galleryTestFile
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.test.onLast
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -40,6 +39,8 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PerFileResult
 import id.homebase.photobase.gallery.galleryItem
+import id.homebase.photobase.gallery.galleryTestFile
+import id.homebase.photobase.gallery.newVersion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.resetMain
@@ -155,7 +156,7 @@ class PhotoGallerySelectionTest {
         }
         val viewModel = PhotoGalleryViewModel(
             source = { _, _ -> loaded },
-            mover = PhotoMover(server, filesOf = { ids -> ids.map { galleryTestFile(0, fileId = it).let { f -> f.copy(fileMetadata = f.fileMetadata.copy(versionTag = Uuid.random())) } } }, binned = { emptyList() }, sync = {}),
+            mover = PhotoMover(server, filesOf = { ids -> ids.map { galleryTestFile(0, fileId = it).newVersion() } }, binned = { emptyList() }, sync = {}),
             libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
         )
         setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
@@ -169,7 +170,7 @@ class PhotoGallerySelectionTest {
         assertEquals(emptyList(), moved, "nothing moves until the user says yes")
 
         onNodeWithText("Move to bin").performClick()
-        onAllNodesWithText("Move to bin").filter(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).onLast().performClick()
+        onNode(hasText("Move to bin") and hasAnyAncestor(isDialog())).performClick()
         waitUntil(timeoutMillis = 5_000) { moved.isNotEmpty() }
         assertEquals(listOf(photos[0].fileId), moved)
     }
