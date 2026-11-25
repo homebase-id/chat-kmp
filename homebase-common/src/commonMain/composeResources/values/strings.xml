@@ -3514,6 +3514,10 @@
     <string name="photobase_bin_move">Move to bin</string>
     <string name="photobase_bin_restore">Restore</string>
     <string name="photobase_bin_delete_forever">Delete forever</string>
+    <string name="photobase_archive_title">Archive</string>
+    <string name="photobase_archive_empty_state">Photos you archive leave your library and wait here.</string>
+    <string name="photobase_archive_move">Archive</string>
+    <string name="photobase_archive_unarchive">Unarchive</string>
     <string name="photobase_bin_failed">Couldn't reach your Homebase. Check your connection and try again.</string>
     <string name="photobase_selection_day">Select this day</string>
     <string name="photobase_selection_select">Select</string>

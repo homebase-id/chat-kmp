@@ -25,7 +25,7 @@ import kotlinx.coroutines.sync.withPermit
  */
 data class PhotoMoveResult(val done: Int, val changedElsewhere: Int = 0, val failed: Int = 0, val written: Set<Uuid> = emptySet())
 
-/** The server's side of the bin, answered per file. */
+/** The server's side of the shelves, answered per file. */
 interface PhotoMoveServer {
     suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>): List<PerFileResult>
 
@@ -50,7 +50,7 @@ class HttpPhotoMoveServer(
 }
 
 /**
- * Moves photos to the bin and back, and deletes them from it for good. Each write names the version the device last
+ * Moves photos between shelves, and deletes them from the bin for good. Each write names the version the device last
  * synced; a photo another device wrote since is read again, and written once more only if it is still where this
  * device saw it, so another device's move or restore stands.
  */
@@ -63,11 +63,8 @@ class PhotoMover(
     /** Asks the drive to sync, so the device's copy catches up with the writes. */
     private val sync: () -> Unit,
 ) {
-    suspend fun moveToBin(fileIds: Collection<Uuid>): PhotoMoveResult =
-        write(fileIds, filesOf(fileIds), from = ArchivalStatus.None, to = ArchivalStatus.Removed)
-
-    suspend fun restore(fileIds: Collection<Uuid>): PhotoMoveResult =
-        write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = ArchivalStatus.None)
+    suspend fun move(fileIds: Collection<Uuid>, from: PhotoShelf, to: PhotoShelf): PhotoMoveResult =
+        write(fileIds, filesOf(fileIds), from.status, to.status)
 
     suspend fun deleteForGood(fileIds: Collection<Uuid>): PhotoMoveResult =
         write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = null)

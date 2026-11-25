@@ -60,7 +60,7 @@ class PhotoMoverTest {
     // The device's copy, as the last sync left it.
     private val device = mutableMapOf<Uuid, HomebaseFile>()
     private var syncs = 0
-    private val bin = PhotoMover(
+    private val mover = PhotoMover(
         server = server,
         filesOf = { ids -> ids.mapNotNull { device[it] } },
         binned = { device.values.filter { PhotoShelf.Bin.holds(it) } },
@@ -80,7 +80,7 @@ class PhotoMoverTest {
     fun aMoveSendsEachPhotoAtTheVersionTheDeviceHoldsThenSyncsOnce() = runTest {
         val photos = List(3) { photo() }
 
-        val result = bin.moveToBin(photos.map { it.fileId })
+        val result = mover.move(photos.map { it.fileId }, PhotoShelf.Library, PhotoShelf.Bin)
 
         assertEquals(PhotoMoveResult(done = 3), result.counts())
         assertEquals(List(3) { ArchivalStatus.Removed }, photos.map(::statusOnServer))
@@ -93,7 +93,7 @@ class PhotoMoverTest {
         val photo = photo()
         server.files[photo.fileId] = server.files.getValue(photo.fileId).newVersion()
 
-        val result = bin.moveToBin(listOf(photo.fileId))
+        val result = mover.move(listOf(photo.fileId), PhotoShelf.Library, PhotoShelf.Bin)
 
         assertEquals(PhotoMoveResult(done = 1), result.counts())
         assertEquals(ArchivalStatus.Removed, statusOnServer(photo))
@@ -105,7 +105,7 @@ class PhotoMoverTest {
         val photo = photo(ArchivalStatus.Removed)
         server.files[photo.fileId] = server.files.getValue(photo.fileId).at(ArchivalStatus.None).newVersion()
 
-        val result = bin.deleteForGood(listOf(photo.fileId))
+        val result = mover.deleteForGood(listOf(photo.fileId))
 
         assertEquals(PhotoMoveResult(done = 0, changedElsewhere = 1), result.counts())
         assertEquals(ArchivalStatus.None, statusOnServer(photo), "the photo another device brought back stays")
@@ -117,7 +117,7 @@ class PhotoMoverTest {
         val photo = photo(ArchivalStatus.Removed)
         server.files[photo.fileId] = server.files.getValue(photo.fileId).at(ArchivalStatus.None).newVersion()
 
-        assertEquals(PhotoMoveResult(done = 1), bin.restore(listOf(photo.fileId)).counts())
+        assertEquals(PhotoMoveResult(done = 1), mover.move(listOf(photo.fileId), PhotoShelf.Bin, PhotoShelf.Library).counts())
         assertEquals(1, server.sent.size)
     }
 
@@ -128,8 +128,8 @@ class PhotoMoverTest {
         server.files.remove(moving.fileId)
         server.files.remove(deleting.fileId)
 
-        assertEquals(PhotoMoveResult(done = 0, changedElsewhere = 1), bin.moveToBin(listOf(moving.fileId)).counts())
-        assertEquals(PhotoMoveResult(done = 1), bin.deleteForGood(listOf(deleting.fileId)).counts())
+        assertEquals(PhotoMoveResult(done = 0, changedElsewhere = 1), mover.move(listOf(moving.fileId), PhotoShelf.Library, PhotoShelf.Bin).counts())
+        assertEquals(PhotoMoveResult(done = 1), mover.deleteForGood(listOf(deleting.fileId)).counts())
     }
 
     @Test
@@ -137,7 +137,7 @@ class PhotoMoverTest {
         val photo = photo()
         server.alwaysAhead = true
 
-        assertEquals(PhotoMoveResult(done = 0, changedElsewhere = 1), bin.moveToBin(listOf(photo.fileId)).counts())
+        assertEquals(PhotoMoveResult(done = 0, changedElsewhere = 1), mover.move(listOf(photo.fileId), PhotoShelf.Library, PhotoShelf.Bin).counts())
         assertEquals(2, server.sent.size)
     }
 
@@ -145,7 +145,7 @@ class PhotoMoverTest {
     fun photosAlreadyThereAreNotSentAndNothingSyncs() = runTest {
         val photo = photo(ArchivalStatus.Removed)
 
-        assertEquals(PhotoMoveResult(done = 1), bin.moveToBin(listOf(photo.fileId)).counts())
+        assertEquals(PhotoMoveResult(done = 1), mover.move(listOf(photo.fileId), PhotoShelf.Library, PhotoShelf.Bin).counts())
         assertEquals(0, server.sent.size)
         assertEquals(0, syncs)
     }
@@ -154,7 +154,7 @@ class PhotoMoverTest {
     fun aPhotoTheDeviceNoLongerHoldsWasChangedElsewhere() = runTest {
         val photo = photo()
 
-        assertEquals(PhotoMoveResult(done = 1, changedElsewhere = 1), bin.moveToBin(listOf(photo.fileId, Uuid.random())).counts())
+        assertEquals(PhotoMoveResult(done = 1, changedElsewhere = 1), mover.move(listOf(photo.fileId, Uuid.random()), PhotoShelf.Library, PhotoShelf.Bin).counts())
     }
 
     @Test
@@ -162,7 +162,7 @@ class PhotoMoverTest {
         val binned = List(2) { photo(ArchivalStatus.Removed) }
         val kept = photo()
 
-        assertEquals(PhotoMoveResult(done = 2), bin.empty().counts())
+        assertEquals(PhotoMoveResult(done = 2), mover.empty().counts())
         assertEquals(listOf(null, null), binned.map(::statusOnServer))
         assertEquals(ArchivalStatus.None, statusOnServer(kept))
     }
@@ -172,17 +172,17 @@ class PhotoMoverTest {
         val photo = photo()
         server.refuseWith = OdinClientErrorCode.InvalidFile
 
-        assertEquals(PhotoMoveResult(done = 0, failed = 1), bin.moveToBin(listOf(photo.fileId)).counts())
+        assertEquals(PhotoMoveResult(done = 0, failed = 1), mover.move(listOf(photo.fileId), PhotoShelf.Library, PhotoShelf.Bin).counts())
         assertEquals(1, syncs, "a refusal may follow writes that went through")
     }
 
     @Test
     fun undoRightAfterAMoveAsksTheServerWhereThePhotoIsRatherThanTheDevicesCopy() = runTest {
         val photo = photo()
-        bin.moveToBin(listOf(photo.fileId))
+        mover.move(listOf(photo.fileId), PhotoShelf.Library, PhotoShelf.Bin)
         // The sync hasn't brought this phone's own move back yet.
 
-        val result = bin.restore(listOf(photo.fileId))
+        val result = mover.move(listOf(photo.fileId), PhotoShelf.Bin, PhotoShelf.Library)
 
         assertEquals(PhotoMoveResult(done = 1), result.counts())
         assertEquals(setOf(photo.fileId), result.written)
@@ -195,7 +195,7 @@ class PhotoMoverTest {
         val movedElsewhere = photo()
         server.files[movedElsewhere.fileId] = server.files.getValue(movedElsewhere.fileId).at(ArchivalStatus.Removed).newVersion()
 
-        val result = bin.moveToBin(listOf(mine.fileId, movedElsewhere.fileId))
+        val result = mover.move(listOf(mine.fileId, movedElsewhere.fileId), PhotoShelf.Library, PhotoShelf.Bin)
 
         assertEquals(PhotoMoveResult(done = 2), result.counts())
         assertEquals(setOf(mine.fileId), result.written, "Undo mustn't bring back what another device binned")
@@ -206,7 +206,7 @@ class PhotoMoverTest {
         val photos = List(DriveFileHttpProvider.FILE_BATCH + 5) { photo() }
         server.throwFromRequest = 1
 
-        val result = bin.moveToBin(photos.map { it.fileId })
+        val result = mover.move(photos.map { it.fileId }, PhotoShelf.Library, PhotoShelf.Bin)
 
         assertEquals(PhotoMoveResult(done = DriveFileHttpProvider.FILE_BATCH, failed = 5), result.counts())
         assertEquals(1, syncs)
@@ -217,7 +217,7 @@ class PhotoMoverTest {
         val photo = photo()
         server.throwFromRequest = 0
 
-        assertFailsWith<IllegalStateException> { bin.moveToBin(listOf(photo.fileId)) }
+        assertFailsWith<IllegalStateException> { mover.move(listOf(photo.fileId), PhotoShelf.Library, PhotoShelf.Bin) }
     }
 
     @Test
@@ -225,7 +225,7 @@ class PhotoMoverTest {
         val photo = photo(ArchivalStatus.Removed)
         device[photo.fileId] = photo.copy(fileState = FileState.Deleted)
 
-        assertEquals(PhotoMoveResult(done = 1), bin.deleteForGood(listOf(photo.fileId)).counts())
+        assertEquals(PhotoMoveResult(done = 1), mover.deleteForGood(listOf(photo.fileId)).counts())
         assertEquals(0, server.sent.size)
     }
 
@@ -236,7 +236,7 @@ class PhotoMoverTest {
         server.files[writtenElsewhere.fileId] = server.files.getValue(writtenElsewhere.fileId).newVersion()
         server.headersFail = true
 
-        val result = bin.moveToBin(listOf(moving.fileId, writtenElsewhere.fileId))
+        val result = mover.move(listOf(moving.fileId, writtenElsewhere.fileId), PhotoShelf.Library, PhotoShelf.Bin)
 
         assertEquals(PhotoMoveResult(done = 1, failed = 1), result.counts())
         assertEquals(setOf(moving.fileId), result.written, "Undo still has the one that moved")
@@ -247,8 +247,27 @@ class PhotoMoverTest {
         val photo = photo(ArchivalStatus.Removed)
         device.remove(photo.fileId)
 
-        assertEquals(PhotoMoveResult(done = 1), bin.deleteForGood(listOf(photo.fileId)).counts())
+        assertEquals(PhotoMoveResult(done = 1), mover.deleteForGood(listOf(photo.fileId)).counts())
         assertEquals(null, statusOnServer(photo), "deleted, not just reported so")
+    }
+
+    @Test
+    fun anArchivedPhotoGoesToTheBinAndBackToTheArchive() = runTest {
+        val photo = photo(ArchivalStatus.Archived)
+
+        assertEquals(PhotoMoveResult(done = 1), mover.move(listOf(photo.fileId), PhotoShelf.Archive, PhotoShelf.Bin).counts())
+        assertEquals(ArchivalStatus.Removed, statusOnServer(photo))
+        assertEquals(PhotoMoveResult(done = 1), mover.move(listOf(photo.fileId), PhotoShelf.Bin, PhotoShelf.Archive).counts())
+        assertEquals(ArchivalStatus.Archived, statusOnServer(photo))
+    }
+
+    @Test
+    fun aPhotoAnotherDeviceUnarchivedIsLeftInTheLibraryByAMoveFromTheArchive() = runTest {
+        val photo = photo(ArchivalStatus.Archived)
+        server.files[photo.fileId] = server.files.getValue(photo.fileId).at(ArchivalStatus.None).newVersion()
+
+        assertEquals(PhotoMoveResult(done = 0, changedElsewhere = 1), mover.move(listOf(photo.fileId), PhotoShelf.Archive, PhotoShelf.Bin).counts())
+        assertEquals(ArchivalStatus.None, statusOnServer(photo))
     }
 }
 

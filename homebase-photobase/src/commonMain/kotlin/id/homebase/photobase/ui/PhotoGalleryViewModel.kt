@@ -59,17 +59,17 @@ data class PhotoGalleryUiState(
     val countFailed: Boolean = false,
     /** The photos picked for the toolbar's actions, by id, so photos arriving don't change which. */
     val selected: Set<Uuid> = emptySet(),
-    /** A bin action is on its way to the server. */
+    /** A move or delete is on its way to the server. */
     val busy: Boolean = false,
 ) {
     val isSyncing: Boolean get() = syncedSoFar != null
     val selecting: Boolean get() = selected.isNotEmpty()
 }
 
-enum class MoveAction { MoveToBin, Restore, DeleteForGood, Empty }
+enum class MoveAction { Archive, Unarchive, MoveToBin, Restore, DeleteForGood, Empty }
 
 sealed interface PhotoGalleryEvent {
-    data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: Set<Uuid> = emptySet()) : PhotoGalleryEvent
+    data class Moved(val action: MoveAction, val result: PhotoMoveResult, val undo: PhotoGalleryUiAction.Undo? = null) : PhotoGalleryEvent
     /** Nothing is known to have changed: the request didn't get through. */
     data class MoveFailed(val action: MoveAction) : PhotoGalleryEvent
 }
@@ -90,13 +90,13 @@ sealed interface PhotoGalleryUiAction {
     /** All of a day's photos, or none if all are picked. */
     data class ToggleDay(val day: Int) : PhotoGalleryUiAction
     data object ClearSelection : PhotoGalleryUiAction
-    data object MoveToBin : PhotoGalleryUiAction
+    /** The selection, from this gallery's shelf. */
+    data class MoveSelected(val to: PhotoShelf) : PhotoGalleryUiAction
     /** One photo, from the viewer. */
     data class MovePhotoToBin(val fileId: Uuid) : PhotoGalleryUiAction
-    data object Restore : PhotoGalleryUiAction
     data object DeleteForGood : PhotoGalleryUiAction
     data object EmptyBin : PhotoGalleryUiAction
-    data class Undo(val fileIds: Set<Uuid>) : PhotoGalleryUiAction
+    data class Undo(val fileIds: Set<Uuid>, val from: PhotoShelf, val to: PhotoShelf) : PhotoGalleryUiAction
 }
 
 /**
@@ -105,7 +105,7 @@ sealed interface PhotoGalleryUiAction {
  */
 class PhotoGalleryViewModel(
     private val source: PhotoGallerySource,
-    private val bin: PhotoMover,
+    private val mover: PhotoMover,
     val shelf: PhotoShelf = PhotoShelf.Library,
     private val refresh: () -> Unit = {},
     driveState: Flow<DriveState?> = flowOf(DriveState.Completed()),
@@ -206,34 +206,43 @@ class PhotoGalleryViewModel(
                 state.copy(selected = if (state.selected.containsAll(day)) state.selected - day else state.selected + day)
             }
             PhotoGalleryUiAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
-            PhotoGalleryUiAction.MoveToBin -> onSelection(MoveAction.MoveToBin, PhotoMover::moveToBin)
-            is PhotoGalleryUiAction.MovePhotoToBin -> runMove(MoveAction.MoveToBin, setOf(action.fileId), PhotoMover::moveToBin)
-            PhotoGalleryUiAction.Restore -> onSelection(MoveAction.Restore, PhotoMover::restore)
-            PhotoGalleryUiAction.DeleteForGood -> onSelection(MoveAction.DeleteForGood, PhotoMover::deleteForGood)
-            PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet(), { empty() })
-            is PhotoGalleryUiAction.Undo -> runMove(MoveAction.Restore, action.fileIds, PhotoMover::restore)
+            is PhotoGalleryUiAction.MoveSelected -> takeSelection()?.let { moveBetween(it, shelf, action.to, restoreSelection = true) }
+            is PhotoGalleryUiAction.MovePhotoToBin -> moveBetween(setOf(action.fileId), shelf, PhotoShelf.Bin)
+            PhotoGalleryUiAction.DeleteForGood -> takeSelection()?.let { runMove(MoveAction.DeleteForGood, it, restoreSelection = true) { ids -> deleteForGood(ids) } }
+            PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet()) { empty() }
+            is PhotoGalleryUiAction.Undo -> moveBetween(action.fileIds, action.from, action.to, undoable = false)
         }
     }
 
     // The selection goes as the action starts; it comes back if the request doesn't get through.
-    private fun onSelection(action: MoveAction, block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult) {
+    private fun takeSelection(): Set<Uuid>? {
         val ids = _uiState.value.selected
-        if (ids.isEmpty()) return
+        if (ids.isEmpty()) return null
         _uiState.update { it.copy(selected = emptySet()) }
-        runMove(action, ids, block, restoreSelection = true)
+        return ids
+    }
+
+    private fun moveBetween(ids: Set<Uuid>, from: PhotoShelf, to: PhotoShelf, restoreSelection: Boolean = false, undoable: Boolean = true) {
+        val undo = { written: Set<Uuid> -> PhotoGalleryUiAction.Undo(written, from = to, to = from) }
+        runMove(moveAction(from, to), ids, restoreSelection, undo.takeIf { undoable }) { move(it, from, to) }
     }
 
     // One at a time, in the order asked: an Undo tapped while another action runs waits for it.
-    private fun runMove(action: MoveAction, ids: Set<Uuid>, block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult, restoreSelection: Boolean = false) {
+    private fun runMove(
+        action: MoveAction,
+        ids: Set<Uuid>,
+        restoreSelection: Boolean = false,
+        undo: ((Set<Uuid>) -> PhotoGalleryUiAction.Undo)? = null,
+        block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult,
+    ) {
         pending++
         _uiState.update { it.copy(busy = true) }
         (moveScope ?: viewModelScope).launch(Dispatchers.Main.immediate) {
             try {
                 moveLock.withLock {
                     try {
-                        val result = bin.block(ids)
-                        val undo = if (action == MoveAction.MoveToBin) result.written else emptySet()
-                        _events.send(PhotoGalleryEvent.Moved(action, result, undo))
+                        val result = mover.block(ids)
+                        _events.send(PhotoGalleryEvent.Moved(action, result, result.written.takeIf { it.isNotEmpty() }?.let { undo?.invoke(it) }))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -367,6 +376,13 @@ class PhotoGalleryViewModel(
         // Parsed in about 50 ms on a Pixel 5; a bigger day takes in arriving photos one by one.
         const val READ_WHOLE_DAY_UP_TO = 150
     }
+}
+
+private fun moveAction(from: PhotoShelf, to: PhotoShelf): MoveAction = when {
+    to == PhotoShelf.Bin -> MoveAction.MoveToBin
+    from == PhotoShelf.Bin -> MoveAction.Restore
+    to == PhotoShelf.Archive -> MoveAction.Archive
+    else -> MoveAction.Unarchive
 }
 
 internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =

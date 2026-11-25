@@ -123,7 +123,7 @@ class PhotoGallerySelectionTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val viewModel = PhotoGalleryViewModel(
             source = { _, _ -> loaded },
-            bin = PhotoMover(NoServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
+            mover = PhotoMover(NoServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
             libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
         )
         setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
@@ -133,6 +133,7 @@ class PhotoGallerySelectionTest {
 
         onNodeWithText("1 selected").assertExists()
         onNodeWithText("Move to bin").assertExists()
+        onNodeWithText("Archive").assertExists()
         onNodeWithContentDescription("Clear selection").performClick()
         onNodeWithText("Move to bin").assertDoesNotExist()
         assertEquals(PhotoShelf.Library, viewModel.shelf)

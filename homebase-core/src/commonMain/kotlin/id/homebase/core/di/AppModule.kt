@@ -376,6 +376,7 @@ val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val PhotobasePermissionQualifier = named("photobasePermission")
 val PhotoBinQualifier = named("photoBin")
+val PhotoArchiveQualifier = named("photoArchive")
 
 val EmailPermissionQualifier = named("emailPermission")
 
@@ -1148,6 +1149,10 @@ val appModule = module {
     single(PhotoBinQualifier) {
         photoDayIndex(get(PhotoBinQualifier), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>())
     }
+    single(PhotoArchiveQualifier) { photoGalleryStore(get(), get(), PhotoShelf.Archive) }
+    single(PhotoArchiveQualifier) {
+        photoDayIndex(get(PhotoArchiveQualifier), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>())
+    }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
@@ -1531,6 +1536,7 @@ val appModule = module {
                 get<PhotoGalleryStore>().forget()
                 get<PhotoDayIndex>().forget()
                 get<PhotoDayIndex>(PhotoBinQualifier).forget()
+                get<PhotoDayIndex>(PhotoArchiveQualifier).forget()
                 get<PhotoBackupEntry>().forgetDrive()
                 // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
                 val registry = get<DriveRegistry>()
@@ -1568,6 +1574,7 @@ val appModule = module {
     }
     viewModel { photoGalleryViewModel(null) }
     viewModel(PhotoBinQualifier) { photoGalleryViewModel(PhotoBinQualifier) }
+    viewModel(PhotoArchiveQualifier) { photoGalleryViewModel(PhotoArchiveQualifier) }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
@@ -1802,7 +1809,7 @@ private fun Scope.photoGalleryViewModel(qualifier: Qualifier?): PhotoGalleryView
     return PhotoGalleryViewModel(
         source = store,
         shelf = store.shelf,
-        bin = get(),
+        mover = get(),
         refresh = { syncPhotos() },
         driveState = drives.driveStatuses.map { it[PhotobaseProtocol.DriveAlias]?.state },
         libraryDays = index.days,

@@ -525,17 +525,16 @@ class PhotoGalleryViewModelTest {
     private fun TestScope.binViewModel(library: Library, server: Server, shelf: PhotoShelf = PhotoShelf.Library): Pair<PhotoGalleryViewModel, Job> {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         library.publish()
-        val onShelf = if (shelf == PhotoShelf.Bin) ArchivalStatus.Removed else ArchivalStatus.None
-        val bin = PhotoMover(
+        val mover = PhotoMover(
             server = server,
             // The device holds every photo it's asked for, synced at once.
-            filesOf = { ids -> ids.map { id -> galleryTestFile(0, fileId = id).onShelf(server.status[id] ?: onShelf) } },
+            filesOf = { ids -> ids.map { id -> galleryTestFile(0, fileId = id).onShelf(server.status[id] ?: shelf.status) } },
             binned = { emptyList() },
             sync = {},
         )
         val viewModel = PhotoGalleryViewModel(
             library.source,
-            bin,
+            mover,
             shelf = shelf,
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
@@ -576,17 +575,17 @@ class PhotoGalleryViewModelTest {
         val picked = library.photos.getValue(3).take(2).mapTo(HashSet()) { it.fileId }
         picked.forEach { viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(it)) }
 
-        viewModel.onAction(PhotoGalleryUiAction.MoveToBin)
+        viewModel.onAction(PhotoGalleryUiAction.MoveSelected(PhotoShelf.Bin))
         assertFalse(viewModel.uiState.value.selecting, "at once, not when the server answers")
         advanceUntilIdle()
 
         assertEquals(listOf(ArchivalStatus.Removed to picked), server.moved.map { it.first to it.second.toSet() })
         val done = assertIs<PhotoGalleryEvent.Moved>(events.single())
         assertEquals(PhotoMoveResult(done = 2, written = picked), done.result)
-        assertEquals(picked, done.undo)
+        assertEquals(PhotoGalleryUiAction.Undo(picked, from = PhotoShelf.Bin, to = PhotoShelf.Library), done.undo)
         assertFalse(viewModel.uiState.value.busy)
 
-        viewModel.onAction(PhotoGalleryUiAction.Undo(done.undo))
+        viewModel.onAction(done.undo!!)
         advanceUntilIdle()
         assertEquals(ArchivalStatus.None, server.moved.last().first)
         listening.cancel()
@@ -603,7 +602,7 @@ class PhotoGalleryViewModelTest {
         val photo = library.photos.getValue(3).first().fileId
         viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo))
 
-        viewModel.onAction(PhotoGalleryUiAction.MoveToBin)
+        viewModel.onAction(PhotoGalleryUiAction.MoveSelected(PhotoShelf.Bin))
         advanceUntilIdle()
 
         assertEquals(setOf(photo), viewModel.uiState.value.selected)
@@ -656,13 +655,59 @@ class PhotoGalleryViewModelTest {
         viewModel.onAction(PhotoGalleryUiAction.MovePhotoToBin(second))
         runCurrent()
         assertTrue(viewModel.uiState.value.busy)
-        viewModel.onAction(PhotoGalleryUiAction.Undo(setOf(first)))
+        viewModel.onAction(PhotoGalleryUiAction.Undo(setOf(first), from = PhotoShelf.Bin, to = PhotoShelf.Library))
         server.gate?.complete(Unit)
         advanceUntilIdle()
 
         assertEquals(listOf(ArchivalStatus.Removed, ArchivalStatus.Removed, ArchivalStatus.None), server.moved.map { it.first })
         assertEquals(listOf(first), server.moved.last().second)
         assertFalse(viewModel.uiState.value.busy)
+        screen.cancel()
+    }
+
+    @Test
+    fun archivingOffersUndoAndAnUndoOffersNone() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = binViewModel(library, server)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val photo = library.photos.getValue(3).first().fileId
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(photo))
+
+        viewModel.onAction(PhotoGalleryUiAction.MoveSelected(PhotoShelf.Archive))
+        advanceUntilIdle()
+        val archived = assertIs<PhotoGalleryEvent.Moved>(events.removeLast())
+        assertEquals(MoveAction.Archive, archived.action)
+        assertEquals(ArchivalStatus.Archived, server.status[photo])
+
+        viewModel.onAction(archived.undo!!)
+        advanceUntilIdle()
+        val undone = assertIs<PhotoGalleryEvent.Moved>(events.removeLast())
+        assertEquals(MoveAction.Unarchive, undone.action)
+        assertNull(undone.undo)
+        assertEquals(ArchivalStatus.None, server.status[photo])
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun undoingAMoveToTheBinFromTheArchivePutsThePhotoBackInTheArchive() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = binViewModel(library, server, shelf = PhotoShelf.Archive)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val photo = library.photos.getValue(3).first().fileId
+
+        viewModel.onAction(PhotoGalleryUiAction.MovePhotoToBin(photo))
+        advanceUntilIdle()
+        assertEquals(ArchivalStatus.Removed, server.status[photo])
+        viewModel.onAction(assertIs<PhotoGalleryEvent.Moved>(events.single()).undo!!)
+        advanceUntilIdle()
+
+        assertEquals(ArchivalStatus.Archived, server.status[photo])
+        listening.cancel()
         screen.cancel()
     }
 
