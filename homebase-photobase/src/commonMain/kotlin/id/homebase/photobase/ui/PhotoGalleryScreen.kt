@@ -25,6 +25,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SwapVert
@@ -132,6 +133,10 @@ import id.homebase.resources.photobase_bin_delete_forever
 import id.homebase.resources.photobase_bin_empty
 import id.homebase.resources.photobase_bin_empty_confirm_title
 import id.homebase.resources.photobase_bin_empty_state
+import id.homebase.resources.photobase_archive_empty_state
+import id.homebase.resources.photobase_archive_title
+import androidx.compose.ui.graphics.vector.ImageVector
+import org.jetbrains.compose.resources.StringResource
 import id.homebase.resources.photobase_bin_title
 import id.homebase.resources.photobase_bin_cant_undo
 import id.homebase.resources.photobase_selection_day
@@ -156,7 +161,7 @@ fun PhotoGalleryScreen(
     viewModel: PhotoGalleryViewModel,
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
-    onOpenBin: (() -> Unit)? = null,
+    onOpenShelf: ((PhotoShelf) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     haptics: Haptics = rememberHaptics(),
 ) {
@@ -185,20 +190,20 @@ fun PhotoGalleryScreen(
     val shelf = viewModel.shelf
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) { viewModel.events.collect { snackbar.show(it, onAction) } }
-    var confirm by remember { mutableStateOf<BinAction?>(null) }
+    var confirm by remember { mutableStateOf<MoveAction?>(null) }
     val asked = when (confirm) {
-        BinAction.DeleteForGood -> Triple(
+        MoveAction.DeleteForGood -> Triple(
             pluralStringResource(MR.plurals.photobase_bin_delete_confirm_title, uiState.selected.size, uiState.selected.size),
             stringResource(MR.string.photobase_bin_delete_forever),
             PhotoGalleryUiAction.DeleteForGood,
         )
-        BinAction.Empty -> Triple(stringResource(MR.string.photobase_bin_empty_confirm_title), stringResource(MR.string.photobase_bin_empty), PhotoGalleryUiAction.EmptyBin)
+        MoveAction.Empty -> Triple(stringResource(MR.string.photobase_bin_empty_confirm_title), stringResource(MR.string.photobase_bin_empty), PhotoGalleryUiAction.EmptyBin)
         else -> null
     }
     asked?.let { (title, confirmLabel, action) ->
         ConfirmDialog(
             title = title,
-            text = (if (confirm == BinAction.Empty) layout?.photoCount ?: 0 else uiState.selected.size).let { count ->
+            text = (if (confirm == MoveAction.Empty) layout?.photoCount ?: 0 else uiState.selected.size).let { count ->
                 pluralStringResource(MR.plurals.photobase_bin_cant_undo, count)
             },
             confirmLabel = confirmLabel,
@@ -219,11 +224,11 @@ fun PhotoGalleryScreen(
                 transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
             ) { viewing ->
                 if (viewing && layout != null) {
-                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf == PhotoShelf.Library }
+                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf != PhotoShelf.Bin }
                     GalleryViewer(uiState.openedFileId, layout, loaded.value, onAction, moveToBin, { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent)
                 } else {
                     GalleryGrid(
-                        uiState, shelf, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenBin, onBack,
+                        uiState, shelf, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenShelf, onBack,
                         { confirm = it }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
                     )
                 }
@@ -380,9 +385,9 @@ private fun GalleryGrid(
     onAction: (PhotoGalleryUiAction) -> Unit,
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
-    onOpenBin: (() -> Unit)?,
+    onOpenShelf: ((PhotoShelf) -> Unit)?,
     onBack: (() -> Unit)?,
-    onConfirm: (BinAction) -> Unit,
+    onConfirm: (MoveAction) -> Unit,
     memory: GridMemory,
     haptics: Haptics,
     sharedTransitionScope: SharedTransitionScope,
@@ -394,7 +399,8 @@ private fun GalleryGrid(
         topBar = {
             when {
                 uiState.selecting -> SelectionTopBar(uiState.selected.size, onClear = { onAction(PhotoGalleryUiAction.ClearSelection) })
-                shelf == PhotoShelf.Bin -> TopAppBar(
+                shelf == PhotoShelf.Library -> LibraryTopBar(uiState, onAction, onOpenBackupSettings, backupIndicator, onOpenShelf)
+                else -> TopAppBar(
                     navigationIcon = {
                         if (onBack != null) {
                             IconButton(onClick = onBack) {
@@ -402,14 +408,15 @@ private fun GalleryGrid(
                             }
                         }
                     },
-                    title = { Text(stringResource(MR.string.photobase_bin_title)) },
+                    title = { Text(stringResource(shelf.title)) },
                     actions = {
-                        TextButton(onClick = { onConfirm(BinAction.Empty) }, enabled = hasPhotos && !uiState.busy) {
-                            Text(stringResource(MR.string.photobase_bin_empty))
+                        if (shelf == PhotoShelf.Bin) {
+                            TextButton(onClick = { onConfirm(MoveAction.Empty) }, enabled = hasPhotos && !uiState.busy) {
+                                Text(stringResource(MR.string.photobase_bin_empty))
+                            }
                         }
                     },
                 )
-                else -> LibraryTopBar(uiState, onAction, onOpenBackupSettings, backupIndicator, onOpenBin)
             }
         },
     ) { innerPadding ->
@@ -450,13 +457,13 @@ private fun GalleryGrid(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(
-                        imageVector = if (shelf == PhotoShelf.Bin) Icons.Outlined.Delete else Icons.Outlined.PhotoLibrary,
+                        imageVector = shelf.icon,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = stringResource(if (shelf == PhotoShelf.Bin) MR.string.photobase_bin_empty_state else MR.string.photobase_gallery_empty),
+                        text = stringResource(shelf.emptyText),
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -480,7 +487,7 @@ private fun GalleryGrid(
                     shelf = shelf,
                     enabled = !uiState.busy,
                     onAction = onAction,
-                    onDeleteForGood = { onConfirm(BinAction.DeleteForGood) },
+                    onDeleteForGood = { onConfirm(MoveAction.DeleteForGood) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
                 )
             }
@@ -494,7 +501,7 @@ private fun LibraryTopBar(
     onAction: (PhotoGalleryUiAction) -> Unit,
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
-    onOpenBin: (() -> Unit)?,
+    onOpenShelf: ((PhotoShelf) -> Unit)?,
 ) {
     TopAppBar(
         title = { Text(stringResource(MR.string.photobase_label)) },
@@ -512,22 +519,24 @@ private fun LibraryTopBar(
                 Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
             }
             // Material 3 keeps three actions in the bar; the rest go in a menu.
-            if (onOpenBin != null || onOpenBackupSettings != null) {
+            if (onOpenShelf != null || onOpenBackupSettings != null) {
                 var menu by remember { mutableStateOf(false) }
                 Box {
                     IconButton(onClick = { menu = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = stringResource(MR.string.photobase_gallery_more))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        if (onOpenBin != null) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(MR.string.photobase_bin_title)) },
-                                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                                onClick = {
-                                    menu = false
-                                    onOpenBin()
-                                },
-                            )
+                        if (onOpenShelf != null) {
+                            for (shelf in PhotoShelf.away) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(shelf.title)) },
+                                    leadingIcon = { Icon(shelf.icon, contentDescription = null) },
+                                    onClick = {
+                                        menu = false
+                                        onOpenShelf(shelf)
+                                    },
+                                )
+                            }
                         }
                         if (onOpenBackupSettings != null) {
                             DropdownMenuItem(
@@ -814,3 +823,24 @@ private fun PhotoCell(
         if (selecting) SelectionMark(selected, MaterialTheme.colorScheme.inverseOnSurface, Modifier.align(Alignment.TopStart).padding(4.dp).size(22.dp))
     }
 }
+
+private val PhotoShelf.title: StringResource
+    get() = when (this) {
+        PhotoShelf.Library -> MR.string.photobase_label
+        PhotoShelf.Archive -> MR.string.photobase_archive_title
+        PhotoShelf.Bin -> MR.string.photobase_bin_title
+    }
+
+private val PhotoShelf.emptyText: StringResource
+    get() = when (this) {
+        PhotoShelf.Library -> MR.string.photobase_gallery_empty
+        PhotoShelf.Archive -> MR.string.photobase_archive_empty_state
+        PhotoShelf.Bin -> MR.string.photobase_bin_empty_state
+    }
+
+private val PhotoShelf.icon: ImageVector
+    get() = when (this) {
+        PhotoShelf.Library -> Icons.Outlined.PhotoLibrary
+        PhotoShelf.Archive -> Icons.Outlined.Archive
+        PhotoShelf.Bin -> Icons.Outlined.Delete
+    }
