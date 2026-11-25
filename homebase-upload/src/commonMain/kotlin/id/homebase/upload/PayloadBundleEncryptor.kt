@@ -17,10 +17,11 @@ interface PayloadBundleEncryptor {
     /**
      * [bundle] as an unencrypted upload sends it (a public post): every payload copied into outbox staging, which the
      * row then owns (images stripped of metadata on the way, when their payload asks). Throws
-     * [SourceUnavailableException] for a missing source, before anything is staged, and [IllegalArgumentException] for
-     * a video that would need processing: that exists only encrypted.
+     * [SourceUnavailableException] for a missing source other than a video, before anything is staged; a video's source
+     * fails when it is read, and what was staged before it is deleted. A video is compressed and
+     * segmented as an encrypted one is, and staged in the clear, its progress reported under [uniqueId] on [scope].
      */
-    suspend fun stageBundle(bundle: PayloadBundle?): PayloadBundle
+    suspend fun stageBundle(uniqueId: Uuid, bundle: PayloadBundle?, scope: CoroutineScope): PayloadBundle
 
     /**
      * Deletes the files [bundle]'s payloads point at, a video's HLS folder included, when no outbox row took them. Runs

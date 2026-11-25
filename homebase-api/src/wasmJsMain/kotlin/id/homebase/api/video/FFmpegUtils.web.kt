@@ -139,7 +139,7 @@ actual object FFmpegUtils {
 
     actual suspend fun segmentAndEncryptVideo(
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: ((Float) -> Unit)?,
     ): Pair<String, String>? = runSegment(inputPath, keyHeader, onProgress)
 

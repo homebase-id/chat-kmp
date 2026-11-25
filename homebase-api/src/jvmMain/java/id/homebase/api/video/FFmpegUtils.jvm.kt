@@ -262,7 +262,7 @@ actual object FFmpegUtils {
 
     actual suspend fun segmentAndEncryptVideo(
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: ((Float) -> Unit)?
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
@@ -282,11 +282,13 @@ actual object FFmpegUtils {
             ).apply { mkdirs() }
 
             try {
-                val keyInfoFile = generateHlsKeyInfoFile(
-                    outputDir = outputDir,
-                    aesKey = keyHeader.aesKey.unsafeBytes,
-                    iv = keyHeader.iv
-                )
+                val keyInfoFile = keyHeader?.let {
+                    generateHlsKeyInfoFile(
+                        outputDir = outputDir,
+                        aesKey = it.aesKey.unsafeBytes,
+                        iv = it.iv
+                    )
+                }
 
                 val result = segmentInternal(
                     inputPath = inputPath,

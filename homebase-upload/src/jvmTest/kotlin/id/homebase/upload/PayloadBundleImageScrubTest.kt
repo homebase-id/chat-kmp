@@ -111,7 +111,7 @@ class PayloadBundleImageScrubTest {
         val provider = JvmFileOperationsProvider()
         val original = geotaggedJpeg()
         val src = provider.writeBytesToTempFile(original, "public_src_", ".jpg")
-        val public = service(provider).stageBundle(bundle(PayloadFile(key = "pst_mdi0", filePath = src, contentType = "image/jpeg"))).payloads.single()
+        val public = service(provider).stageBundle(Uuid.random(), bundle(PayloadFile(key = "pst_mdi0", filePath = src, contentType = "image/jpeg")), this).payloads.single()
         try {
             val sent = File(public.filePath).readBytes()
             assertContentEquals(ImageMetadataScrubber.scrub(original), sent, "the same function as the encryption step")
@@ -130,10 +130,12 @@ class PayloadBundleImageScrubTest {
         val original = geotaggedJpeg()
         val src = provider.writeBytesToTempFile(original, "public_keep_", ".jpg")
         val staged = service(provider).stageBundle(
+            Uuid.random(),
             bundle(
                 PayloadFile(key = "p0", filePath = src, contentType = "image/jpeg", stripMetadata = false),
                 PayloadFile(key = "p1", filePath = src, contentType = "application/pdf"),
             ),
+            this,
         ).payloads
         try {
             staged.forEach { assertContentEquals(original, File(it.filePath).readBytes(), it.key) }
@@ -177,7 +179,7 @@ class PayloadBundleImageScrubTest {
                 val sent = if (encrypted) {
                     service(files).encryptBundle(Uuid.random(), bundle(payload), KeyHeader.newRandom16().aesKey, this)
                 } else {
-                    service(files).stageBundle(bundle(payload))
+                    service(files).stageBundle(Uuid.random(), bundle(payload), this)
                 }.payloads.single()
                 try {
                     val how = if (encrypted) "encrypted" else "public"

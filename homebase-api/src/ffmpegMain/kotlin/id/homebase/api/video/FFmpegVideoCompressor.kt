@@ -34,7 +34,7 @@ internal object FFmpegVideoCompressor : VideoCompressor {
 
     override suspend fun segmentAndEncrypt(
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? =
         FFmpegUtils.segmentAndEncryptVideo(inputPath, keyHeader, onProgress?.clampedToUnit())

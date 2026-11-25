@@ -46,7 +46,7 @@ class MomentsHeicOriginalScrubTest {
             this,
             fileOps = fileOps,
             payloadBundleEncryptor = object : PayloadBundleEncryptor {
-                override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+                override suspend fun stageBundle(uniqueId: Uuid, bundle: PayloadBundle?, scope: CoroutineScope) = bundle ?: EMPTY_BUNDLE
                 override suspend fun discard(bundle: PayloadBundle) = Unit
 
                 override suspend fun encryptBundle(

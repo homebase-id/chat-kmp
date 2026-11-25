@@ -2384,8 +2384,9 @@
     <string name="feed_compose_posting">Posting…</string>
     <string name="feed_compose_post_failed">Couldn't share your post. Please try again.</string>
     <string name="feed_compose_add_media">Add photo or video</string>
-    <string name="feed_compose_camera">Take photo</string>
+    <string name="feed_compose_camera">Take photo or video</string>
     <string name="feed_compose_attachment_image">Attachment</string>
+    <string name="feed_compose_attachment_video">Video attachment</string>
     <string name="feed_compose_remove_attachment">Remove attachment</string>
     <string name="feed_compose_audience_anyone">Anyone</string>
     <string name="feed_compose_audience_registered">Registered users</string>

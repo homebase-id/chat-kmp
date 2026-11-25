@@ -31,7 +31,7 @@ Every user upload, in every app, is assembled by one builder into the format bel
 | Word | Meaning |
 |---|---|
 | **HomebaseFile** | What an upload creates on a drive: a header (`appData`) plus payloads. A chat message with three photos is one HomebaseFile. |
-| **Payload** | A payload of the HomebaseFile, under a name such as `chat_web0` (the record's `key` field; the codebase calls it the "payload key", but it is a name, not a cryptographic key). Payloads have no key of their own: their data is encrypted with the HomebaseFile's AES key and the payload's own IV. A video's thumbnails and its `pls_` playlist use the video payload's IV. |
+| **Payload** | A payload of the HomebaseFile, under a name such as `chat_web0` (the record's `key` field; the codebase calls it the "payload key", but it is a name, not a cryptographic key). Payloads have no key of their own: their data is encrypted with the HomebaseFile's AES key and the payload's own IV. In an encrypted upload a video's thumbnails and its `pls_` playlist use the video payload's IV. |
 | **Payload data** | A payload's bytes: what the user picked, or the smaller copy we made of it. |
 | **Descriptor content** | A payload's `descriptorContent` string: the one field of the server's `PayloadDescriptor` record that is ours. |
 
@@ -111,8 +111,9 @@ Encoding rules:
 
 - **Leave out** every field that doesn't apply; never write `null`.
 - **`v` is always written** (`@EncodeDefault`), so readers can tell this format from older ones.
-- **An HLS playlist is always its own payload,** `pls_<4-digit index>` (content type `application/vnd.apple.mpegurl`), because it can be very long; `vd.p` names it. Like the video's thumbnails, it is encrypted with the video payload's IV, and its record carries that IV, so a player reads it with the key header it already holds for the video. Today it's inline when short and moved with all the metadata into a `pld_desc` payload when long.
+- **An HLS playlist is always its own payload,** `pls_<4-digit index>` (content type `application/vnd.apple.mpegurl`), because it can be very long; `vd.p` names it. In an encrypted upload it is encrypted, like the video's thumbnails, with the video payload's IV, and its record carries that IV, so a player reads it with the key header it already holds for the video. Today it's inline when short and moved with all the metadata into a `pld_desc` payload when long.
 - **An HLS video's payload hash** (odin-core `docs/payload-hashes.md`) covers its one segments file: `storedHash` is BLAKE3 of the file as uploaded, and `contentHash` is BLAKE3 of its decrypted content, which is its byte ranges decrypted in playlist order, as a player reads them. The segmenter takes both in the pass that writes the file.
+- **A public video is plain.** In an unencrypted upload (a public feed post) a video is plain HLS (a `pls_` playlist with no `EXT-X-KEY`, segments in the clear) or a plain MP4. Its payload, thumbnails and playlist carry no IV. Its payload hash is still BLAKE3, with `storedHash` equal to `contentHash`, taken in the pass that writes the file.
 - **Descriptor content always fits.** With the playlist out, nothing a user uploads comes near 1,024 characters (about 730 encrypted). App content over the limit is rejected by the builder, and each app caps its own (the link preview builder already trims to fit). Old files' `pld_desc` payloads are still read (section 6).
 
 The dog photo's payload record, sent at Standard in a public post. The outer keys are the server's and stay as they are:
