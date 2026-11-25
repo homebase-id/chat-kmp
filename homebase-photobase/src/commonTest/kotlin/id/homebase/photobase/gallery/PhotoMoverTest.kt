@@ -76,7 +76,7 @@ class PhotoMoverTest {
     private val mover = PhotoMover(
         server = server,
         filesOf = { ids -> ids.mapNotNull { device[it] } },
-        binned = { device.values.filter { PhotoShelf.Bin.holds(it) } },
+        binned = { device.values.filter { PhotoGallery.Bin.holds(it) } },
         sync = { syncs++ },
     )
 
@@ -334,6 +334,4 @@ class PhotoMoverTest {
 
 private fun PhotoMoveResult.counts() = copy(written = emptySet())
 
-private fun HomebaseFile.at(status: ArchivalStatus) =
-    copy(fileMetadata = fileMetadata.copy(appData = fileMetadata.appData.copy(archivalStatus = status)))
 

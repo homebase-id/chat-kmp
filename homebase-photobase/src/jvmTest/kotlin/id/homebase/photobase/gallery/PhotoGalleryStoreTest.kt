@@ -96,12 +96,12 @@ class PhotoGalleryStoreTest {
             it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(archivalStatus = ArchivalStatus.Removed)))
         }
         synced(kept, binned)
-        val bin = PhotoGalleryStore(db, { identity }, PhotoShelf.Bin)
+        val bin = PhotoGalleryStore(db, { identity }, PhotoGallery.Bin)
         val day = dayOf(on(20_000))
 
         assertEquals(listOf(day to 1), bin.dayCounts().map { it.day to it.photos })
         assertEquals(listOf(day to 1), store.dayCounts().map { it.day to it.photos })
-        assertEquals(listOf(binned.fileId), bin.filesOnShelf().map { it.fileId })
+        assertEquals(listOf(binned.fileId), bin.filesOn(PhotoShelf.Bin).map { it.fileId })
         assertEquals(setOf(kept.fileId, binned.fileId), store.filesOf(listOf(kept.fileId, binned.fileId)).map { it.fileId }.toSet())
     }
 }

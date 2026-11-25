@@ -31,7 +31,7 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.LibraryDays
-import id.homebase.photobase.gallery.PhotoShelf
+import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.api.client.drives.HomebaseFile
@@ -141,7 +141,7 @@ class PhotoGallerySelectionTest {
         onNodeWithText("Archive").assertExists()
         onNodeWithContentDescription("Clear selection").performClick()
         onNodeWithText("Move to bin").assertDoesNotExist()
-        assertEquals(PhotoShelf.Library, viewModel.shelf)
+        assertEquals(PhotoGallery.Library, viewModel.gallery)
     }
 
     @Test

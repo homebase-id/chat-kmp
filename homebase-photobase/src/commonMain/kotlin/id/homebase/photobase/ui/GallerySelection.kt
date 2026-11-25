@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.resources.MR
 import id.homebase.resources.action_undo
@@ -59,7 +60,7 @@ import org.jetbrains.compose.resources.stringResource
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SelectionToolbar(
-    shelf: PhotoShelf,
+    gallery: PhotoGallery,
     enabled: Boolean,
     allFavorite: Boolean,
     onAction: (PhotoGalleryUiAction) -> Unit,
@@ -70,22 +71,24 @@ internal fun SelectionToolbar(
         val moveTo = { to: PhotoShelf -> { onAction(PhotoGalleryUiAction.MoveSelected(to)) } }
         val heart: @Composable () -> Unit = { FavoriteButton(allFavorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!allFavorite)) } }
         val toBin: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled) { onConfirm(PhotoGalleryUiAction.MoveSelected(PhotoShelf.Bin)) } }
-        when (shelf) {
-            PhotoShelf.Library -> {
-                heart()
-                ToolbarAction(Icons.Outlined.Archive, MR.string.photobase_archive_move, enabled, moveTo(PhotoShelf.Archive))
-                toBin()
+        when (gallery) {
+            is PhotoGallery.OnShelf -> when (gallery.shelf) {
+                PhotoShelf.Library -> {
+                    heart()
+                    ToolbarAction(Icons.Outlined.Archive, MR.string.photobase_archive_move, enabled, moveTo(PhotoShelf.Archive))
+                    toBin()
+                }
+                PhotoShelf.Archive -> {
+                    heart()
+                    ToolbarAction(Icons.Outlined.Unarchive, MR.string.photobase_archive_unarchive, enabled, moveTo(PhotoShelf.Library))
+                    toBin()
+                }
+                PhotoShelf.Bin -> {
+                    ToolbarAction(Icons.Outlined.RestoreFromTrash, MR.string.photobase_bin_restore, enabled, moveTo(PhotoShelf.Library))
+                    ToolbarAction(Icons.Outlined.DeleteForever, MR.string.photobase_bin_delete_forever, enabled) { onConfirm(PhotoGalleryUiAction.DeleteForGood) }
+                }
             }
-            PhotoShelf.Archive -> {
-                heart()
-                ToolbarAction(Icons.Outlined.Unarchive, MR.string.photobase_archive_unarchive, enabled, moveTo(PhotoShelf.Library))
-                toBin()
-            }
-            PhotoShelf.Bin -> {
-                ToolbarAction(Icons.Outlined.RestoreFromTrash, MR.string.photobase_bin_restore, enabled, moveTo(PhotoShelf.Library))
-                ToolbarAction(Icons.Outlined.DeleteForever, MR.string.photobase_bin_delete_forever, enabled) { onConfirm(PhotoGalleryUiAction.DeleteForGood) }
-            }
-            PhotoShelf.Favorites -> ToolbarAction(Icons.Outlined.HeartBroken, MR.string.photobase_favorites_remove, enabled) {
+            PhotoGallery.Favorites -> ToolbarAction(Icons.Outlined.HeartBroken, MR.string.photobase_favorites_remove, enabled) {
                 onAction(PhotoGalleryUiAction.SetFavorite(false))
             }
         }

@@ -40,6 +40,7 @@ class KoinGraphTest {
                 definition<id.homebase.chat.agentui.AgentUiTreeLoader>(kotlin.Function4::class),
                 definition<id.homebase.chat.viewonce.ViewOncePayloadLoader>(kotlin.Function0::class, kotlin.Function3::class),
                 definition<id.homebase.photobase.gallery.PhotoMover>(kotlin.Function2::class, kotlin.Function1::class, kotlin.Function0::class),
+                definition<id.homebase.photobase.ui.PhotoLibraryViewModel>(kotlin.collections.List::class),
                 definition<id.homebase.photobase.gallery.PhotoDayIndex>(kotlin.Function1::class, kotlin.Function2::class, kotlinx.coroutines.flow.Flow::class, kotlin.time.Duration::class),
                 definition<id.homebase.core.notifications.NotificationService>(kotlinx.coroutines.flow.StateFlow::class, kotlinx.coroutines.flow.Flow::class),
                 definition<id.homebase.core.share.IncomingLinks>(id.homebase.core.notifications.AppNavigator::class),

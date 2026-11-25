@@ -16,16 +16,16 @@ import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 /**
- * The photos and days of one [shelf], read from the device's copy of the Photos drive, which the drive sync keeps
+ * The photos and days of one [gallery], read from the device's copy of the Photos drive, which the drive sync keeps
  * current.
  */
 class PhotoGalleryStore internal constructor(
     private val db: DatabaseManager,
     private val identityId: suspend () -> Uuid,
-    val shelf: PhotoShelf = PhotoShelf.Library,
+    val gallery: PhotoGallery = PhotoGallery.Library,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoGallerySource {
-    private val filter = shelf.filter
+    private val filter = gallery.filter
 
     // Called from each gallery view model's own reading thread.
     private val unparsable = mutableSetOf<Int>()
@@ -58,8 +58,8 @@ class PhotoGalleryStore internal constructor(
     suspend fun filesOf(fileIds: Collection<Uuid>): List<HomebaseFile> =
         parsedOffMain(db.photoDays.headersOf(identityId(), photosDriveId, fileIds))
 
-    /** The device's copy of every photo on this shelf. */
-    suspend fun filesOnShelf(): List<HomebaseFile> =
+    /** The device's copy of every photo on [shelf]. */
+    suspend fun filesOn(shelf: PhotoShelf): List<HomebaseFile> =
         parsedOffMain(db.photoDays.headersOnShelf(identityId(), photosDriveId, shelf.status.value.toLong()))
 
     // A bin action asks from Main; a few thousand headers take seconds to parse.
@@ -75,5 +75,5 @@ class PhotoGalleryStore internal constructor(
     }
 }
 
-fun photoGalleryStore(db: DatabaseManager, credentials: CredentialsManager, shelf: PhotoShelf = PhotoShelf.Library) =
-    PhotoGalleryStore(db, { credentials.requireActiveCredentials().getIdentityId() }, shelf)
+fun photoGalleryStore(db: DatabaseManager, credentials: CredentialsManager, gallery: PhotoGallery = PhotoGallery.Library) =
+    PhotoGalleryStore(db, { credentials.requireActiveCredentials().getIdentityId() }, gallery)
