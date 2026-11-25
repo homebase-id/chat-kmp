@@ -48,7 +48,8 @@ class DisplayImageDecoder(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "Couldn't decode a ${bytes.size}-byte ${if (heic) "HEIC" else "image"} for display" }
+            // No stack trace: Coil asks again each time a broken image scrolls back into view.
+            Logger.w(tag = TAG) { "Couldn't decode a ${bytes.size}-byte ${if (heic) "HEIC" else "image"} for display: $e" }
             throw e
         }
     }
