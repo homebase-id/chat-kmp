@@ -278,4 +278,3 @@ private const val STEP_UP_SETTLE_MILLIS = 600L
 
 // Coil's own mapping: everything but Fit and Inside fills the view, so the fetcher sees it as a crop too.
 internal fun ContentScale.crops(): Boolean = this != ContentScale.Fit && this != ContentScale.Inside
-
