@@ -2384,8 +2384,9 @@
     <string name="feed_compose_posting">Posting…</string>
     <string name="feed_compose_post_failed">Couldn't share your post. Please try again.</string>
     <string name="feed_compose_add_media">Add photo or video</string>
-    <string name="feed_compose_camera">Take photo</string>
+    <string name="feed_compose_camera">Take photo or video</string>
     <string name="feed_compose_attachment_image">Attachment</string>
+    <string name="feed_compose_attachment_video">Video attachment</string>
     <string name="feed_compose_remove_attachment">Remove attachment</string>
     <string name="feed_compose_audience_anyone">Anyone</string>
     <string name="feed_compose_audience_registered">Registered users</string>
@@ -3514,6 +3515,11 @@
     <string name="photobase_bin_move">Move to bin</string>
     <string name="photobase_bin_restore">Restore</string>
     <string name="photobase_bin_delete_forever">Delete forever</string>
+    <string name="photobase_favorites_title">Favorites</string>
+    <string name="photobase_favorite_state">Favorite</string>
+    <string name="photobase_favorites_empty_state">Tap the heart on a photo to keep it here.</string>
+    <string name="photobase_favorites_add">Add to favorites</string>
+    <string name="photobase_favorites_remove">Remove from favorites</string>
     <string name="photobase_archive_title">Archive</string>
     <string name="photobase_archive_empty_state">Photos you archive leave your library and wait here.</string>
     <string name="photobase_archive_move">Archive</string>

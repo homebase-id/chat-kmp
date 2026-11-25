@@ -65,3 +65,5 @@ internal fun galleryTestFile(capturedAtMs: Long, fileId: Uuid = Uuid.random(), p
     ),
     serverMetadata = ServerMetadata(),
 )
+
+internal fun HomebaseFile.newVersion() = copy(fileMetadata = fileMetadata.copy(versionTag = Uuid.random()))

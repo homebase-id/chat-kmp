@@ -114,7 +114,7 @@ object VideoCompressionService : VideoCompressor, VideoProber {
 
     override suspend fun segmentAndEncrypt(
         inputPath: String,
-        keyHeader: KeyHeader,
+        keyHeader: KeyHeader?,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? =
         heavy {

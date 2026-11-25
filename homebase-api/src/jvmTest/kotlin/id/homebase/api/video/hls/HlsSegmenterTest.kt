@@ -81,6 +81,21 @@ class HlsSegmenterTest {
     fun aVideoIsCutIntoEncryptedSegmentsOfAboutSixSecondsWithItsPayloadHash() = runTest { segmentAndCheck("moov_first.mp4") }
 
     @Test
+    fun withoutAKeyTheSegmentsAndPlaylistAreInTheClearWithABlake3HashOfTheFile() = runTest {
+        val segmented = assertNotNull(HlsSegmenter.segmentAndEncrypt(fileOps, fixture("moov_first.mp4"), null))
+        val playlist = File(segmented.playlistPath).readText()
+        val stored = File(segmented.segmentsPath).readBytes()
+
+        assertTrue("EXT-X-KEY" !in playlist, playlist)
+        assertEquals(0x47, stored[0].toInt())
+        val hash = assertNotNull(segmented.hash)
+        assertEquals("blake3", hash.algorithm)
+        assertContentEquals(blake3(stored), hash.storedHash?.bytes)
+        assertContentEquals(blake3(stored), hash.contentHash?.bytes)
+        assertContentEquals(blake3(stored), hash.plaintextContentHash(null))
+    }
+
+    @Test
     fun aMoovAfterTheMediaIsReadWithoutAPassOverIt() = runTest { segmentAndCheck("moov_last.mp4") }
 
     @Test

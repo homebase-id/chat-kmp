@@ -6,6 +6,8 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.FileVersionTag
+import id.homebase.api.client.drives.files.LocalAppMetadata
+import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.api.client.drives.files.PerFileResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -31,6 +33,17 @@ class PhotoMoverTest {
             write(files) { it.copy(fileState = FileState.Deleted) }
 
         var headersFail = false
+
+        override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
+            if (sent.size >= throwFromRequest) throw IllegalStateException("offline")
+            sent += fileIds
+            return fileIds.map { id ->
+                val file = files[id] ?: return@map PerFileResult(id, OdinClientErrorCode.FileNotFound)
+                val tags = file.localTags().let { if (on) (it + tag).distinct() else it - tag }
+                files[id] = file.copy(fileMetadata = file.fileMetadata.copy(localAppData = LocalAppMetadata(tags = tags)))
+                PerFileResult(id)
+            }
+        }
 
         override suspend fun header(fileId: Uuid): HomebaseFile? {
             if (headersFail) throw IllegalStateException("offline")
@@ -252,6 +265,54 @@ class PhotoMoverTest {
     }
 
     @Test
+    fun heartingAddsTheTagWhereverEachPhotoIsInOneRequestAndKeepsItsOtherTags() = runTest {
+        val other = Uuid.random()
+        val library = photo()
+        val archived = photo(ArchivalStatus.Archived)
+        server.files[library.fileId] = library.copy(fileMetadata = library.fileMetadata.copy(localAppData = LocalAppMetadata(tags = listOf(other))))
+
+        val result = mover.setFavorite(listOf(library.fileId, archived.fileId, library.fileId), favorite = true)
+
+        assertEquals(PhotoMoveResult(done = 2), result.counts())
+        assertEquals(setOf(library.fileId, archived.fileId), result.written)
+        assertEquals(listOf(other, PhotobaseProtocol.FavoriteTag), server.files.getValue(library.fileId).localTags())
+        assertEquals(listOf(PhotobaseProtocol.FavoriteTag), server.files.getValue(archived.fileId).localTags())
+        assertEquals(1, server.sent.size, "one request, each photo once")
+        assertEquals(1, syncs)
+    }
+
+    @Test
+    fun takingTheHeartAwayLeavesTheOtherTagsAndAPhotoGoneIsChangedElsewhere() = runTest {
+        val other = Uuid.random()
+        val photo = photo()
+        server.files[photo.fileId] = photo.copy(fileMetadata = photo.fileMetadata.copy(localAppData = LocalAppMetadata(tags = listOf(other, PhotobaseProtocol.FavoriteTag))))
+
+        val result = mover.setFavorite(listOf(photo.fileId, Uuid.random()), favorite = false)
+
+        assertEquals(PhotoMoveResult(done = 1, changedElsewhere = 1), result.counts())
+        assertEquals(listOf(other), server.files.getValue(photo.fileId).localTags())
+    }
+
+    @Test
+    fun heartsThatFailAfterABatchWentThroughFailTheRestNotTheCall() = runTest {
+        val photos = List(DriveFileHttpProvider.FILE_BATCH + 5) { photo() }
+        server.throwFromRequest = 1
+
+        val result = mover.setFavorite(photos.map { it.fileId }, favorite = true)
+
+        assertEquals(PhotoMoveResult(done = DriveFileHttpProvider.FILE_BATCH, failed = 5), result.counts())
+        assertEquals(1, syncs)
+    }
+
+    @Test
+    fun aFirstHeartBatchThatDoesntGetThroughFailsTheCall() = runTest {
+        val photo = photo()
+        server.throwFromRequest = 0
+
+        assertFailsWith<IllegalStateException> { mover.setFavorite(listOf(photo.fileId), favorite = true) }
+    }
+
+    @Test
     fun anArchivedPhotoGoesToTheBinAndBackToTheArchive() = runTest {
         val photo = photo(ArchivalStatus.Archived)
 
@@ -276,4 +337,3 @@ private fun PhotoMoveResult.counts() = copy(written = emptySet())
 private fun HomebaseFile.at(status: ArchivalStatus) =
     copy(fileMetadata = fileMetadata.copy(appData = fileMetadata.appData.copy(archivalStatus = status)))
 
-private fun HomebaseFile.newVersion() = copy(fileMetadata = fileMetadata.copy(versionTag = Uuid.random()))

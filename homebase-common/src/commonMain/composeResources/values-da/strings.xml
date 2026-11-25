@@ -2453,9 +2453,10 @@
     <string name="feed_compose_post">Opslå</string>
     <string name="feed_compose_posting">Slår op…</string>
     <string name="feed_compose_post_failed">Dit opslag kunne ikke deles. Prøv igen.</string>
-    <string name="feed_compose_add_media">Tilføj billede</string>
-    <string name="feed_compose_camera">Tag billede</string>
+    <string name="feed_compose_add_media">Tilføj billede eller video</string>
+    <string name="feed_compose_camera">Tag billede eller video</string>
     <string name="feed_compose_attachment_image">Vedhæftning</string>
+    <string name="feed_compose_attachment_video">Videovedhæftning</string>
     <string name="feed_compose_remove_attachment">Fjern vedhæftning</string>
     <string name="feed_compose_channel">Kanal</string>
     <string name="feed_compose_channel_public">Offentlig</string>

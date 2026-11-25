@@ -128,7 +128,7 @@ class FeedTestEnv(
 
 // Returns the bundle verbatim so payload keys survive into the upload request unchanged.
 private class PassthroughEncryptor : PayloadBundleEncryptor {
-    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun stageBundle(uniqueId: kotlin.uuid.Uuid, bundle: PayloadBundle?, scope: CoroutineScope) = bundle ?: EMPTY_BUNDLE
     override suspend fun discard(bundle: PayloadBundle) = Unit
 
     override suspend fun encryptBundle(

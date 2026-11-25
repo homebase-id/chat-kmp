@@ -27,6 +27,9 @@ object PhotobaseProtocol {
     const val VideoPayloadKey = "video_main"
     const val LivePhotoVideoPayloadKey = "photo_live"
 
+    /** The local tag on a favourite photo: `toGuidId("favorite")`, the id the old web photo app gave its own drive's. */
+    val FavoriteTag: Uuid = Uuid.parse("8a6b6ea3-aa08-285b-e1d4-e00725aa9090")
+
     /** Reconcile key of the identity's one recurring silent backup push. */
     val BackupPushTagId: Uuid = Uuid.parse("2e3f45a8-18b1-43fe-8f4b-19451525a5e7")
     val BackupPushTypeId: Uuid = Uuid.parse("6c1ed7ec-9d7c-447e-832a-137cf4d1539d")

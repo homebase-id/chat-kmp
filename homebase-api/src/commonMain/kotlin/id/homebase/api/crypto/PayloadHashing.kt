@@ -34,6 +34,10 @@ suspend fun encryptedPayloadHash(
     contentHash = Base64Bytes(AesCbc.encrypt(contentDigest, payloadKey.aesKey, contentHashIv(payloadKey.iv))),
 )
 
+/** An unencrypted payload's hash: the bytes as uploaded are the content, so both digests are one. */
+fun plainPayloadHash(algorithm: PayloadHashAlgorithm, digest: ByteArray): PayloadHash =
+    PayloadHash(algorithm.wireName, Base64Bytes(digest), Base64Bytes(digest))
+
 /**
  * The plaintext hash; [payloadKey] is null for an unencrypted payload. Null when unreadable: an
  * unknown algorithm, or a contentHash that doesn't decrypt to a hash.
