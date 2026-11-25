@@ -463,13 +463,7 @@ private fun GalleryGrid(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = stringResource(
-                            when (shelf) {
-                                PhotoShelf.Library -> MR.string.photobase_gallery_empty
-                                PhotoShelf.Archive -> MR.string.photobase_archive_empty_state
-                                PhotoShelf.Bin -> MR.string.photobase_bin_empty_state
-                            },
-                        ),
+                        text = stringResource(shelf.emptyText),
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -835,6 +829,13 @@ private val PhotoShelf.title: StringResource
         PhotoShelf.Library -> MR.string.photobase_label
         PhotoShelf.Archive -> MR.string.photobase_archive_title
         PhotoShelf.Bin -> MR.string.photobase_bin_title
+    }
+
+private val PhotoShelf.emptyText: StringResource
+    get() = when (this) {
+        PhotoShelf.Library -> MR.string.photobase_gallery_empty
+        PhotoShelf.Archive -> MR.string.photobase_archive_empty_state
+        PhotoShelf.Bin -> MR.string.photobase_bin_empty_state
     }
 
 private val PhotoShelf.icon: ImageVector

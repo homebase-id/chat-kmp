@@ -375,8 +375,9 @@ val WebDropPermissionQualifier = named("webDropPermission")
 val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val PhotobasePermissionQualifier = named("photobasePermission")
-val PhotoBinQualifier = named("photoBin")
-val PhotoArchiveQualifier = named("photoArchive")
+// The library's gallery is unqualified; each of these shelves has its own store, day index and view model.
+val PhotoShelvesAway = listOf(PhotoShelf.Archive, PhotoShelf.Bin)
+fun photoShelfQualifier(shelf: PhotoShelf) = named("photo${shelf.name}")
 
 val EmailPermissionQualifier = named("emailPermission")
 
@@ -1144,14 +1145,12 @@ val appModule = module {
         )
     }
     single { photoGalleryStore(get(), get()) }
-    single(PhotoBinQualifier) { photoGalleryStore(get(), get(), PhotoShelf.Bin) }
     single { photoDayIndex(get(), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
-    single(PhotoBinQualifier) {
-        photoDayIndex(get(PhotoBinQualifier), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>())
-    }
-    single(PhotoArchiveQualifier) { photoGalleryStore(get(), get(), PhotoShelf.Archive) }
-    single(PhotoArchiveQualifier) {
-        photoDayIndex(get(PhotoArchiveQualifier), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>())
+    for (shelf in PhotoShelvesAway) {
+        val qualifier = photoShelfQualifier(shelf)
+        single(qualifier) { photoGalleryStore(get(), get(), shelf) }
+        single(qualifier) { photoDayIndex(get(qualifier), get<EventBus>().events.newPhotoRecords(), get<kotlinx.coroutines.CoroutineScope>()) }
+        viewModel(qualifier) { photoGalleryViewModel(qualifier) }
     }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
@@ -1535,8 +1534,7 @@ val appModule = module {
                 if (photosMounted()) get<AuthConnectionCoordinator>().unmountDrive(PhotobaseProtocol.DriveAlias, persist = false)
                 get<PhotoGalleryStore>().forget()
                 get<PhotoDayIndex>().forget()
-                get<PhotoDayIndex>(PhotoBinQualifier).forget()
-                get<PhotoDayIndex>(PhotoArchiveQualifier).forget()
+                PhotoShelvesAway.forEach { get<PhotoDayIndex>(photoShelfQualifier(it)).forget() }
                 get<PhotoBackupEntry>().forgetDrive()
                 // Also when a 403 took the drive out of this session, or it would stay in the list every device mounts from.
                 val registry = get<DriveRegistry>()
@@ -1568,13 +1566,11 @@ val appModule = module {
         PhotoMover(
             server = get(),
             filesOf = get<PhotoGalleryStore>()::filesOf,
-            binned = get<PhotoGalleryStore>(PhotoBinQualifier)::filesOnShelf,
+            binned = get<PhotoGalleryStore>(photoShelfQualifier(PhotoShelf.Bin))::filesOnShelf,
             sync = { syncPhotos() },
         )
     }
     viewModel { photoGalleryViewModel(null) }
-    viewModel(PhotoBinQualifier) { photoGalleryViewModel(PhotoBinQualifier) }
-    viewModel(PhotoArchiveQualifier) { photoGalleryViewModel(PhotoArchiveQualifier) }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(

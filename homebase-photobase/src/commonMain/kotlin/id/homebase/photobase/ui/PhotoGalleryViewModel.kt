@@ -210,7 +210,7 @@ class PhotoGalleryViewModel(
             is PhotoGalleryUiAction.MovePhotoToBin -> moveBetween(setOf(action.fileId), shelf, PhotoShelf.Bin)
             PhotoGalleryUiAction.DeleteForGood -> takeSelection()?.let { runMove(MoveAction.DeleteForGood, it, restoreSelection = true) { ids -> deleteForGood(ids) } }
             PhotoGalleryUiAction.EmptyBin -> runMove(MoveAction.Empty, emptySet()) { empty() }
-            is PhotoGalleryUiAction.Undo -> moveBetween(action.fileIds, action.from, action.to, undoable = false)
+            is PhotoGalleryUiAction.Undo -> runMove(moveAction(action.from, action.to), action.fileIds) { move(it, action.from, action.to) }
         }
     }
 
@@ -222,10 +222,10 @@ class PhotoGalleryViewModel(
         return ids
     }
 
-    private fun moveBetween(ids: Set<Uuid>, from: PhotoShelf, to: PhotoShelf, restoreSelection: Boolean = false, undoable: Boolean = true) {
-        val undo = { written: Set<Uuid> -> PhotoGalleryUiAction.Undo(written, from = to, to = from) }
-        runMove(moveAction(from, to), ids, restoreSelection, undo.takeIf { undoable }) { move(it, from, to) }
-    }
+    private fun moveBetween(ids: Set<Uuid>, from: PhotoShelf, to: PhotoShelf, restoreSelection: Boolean = false) =
+        runMove(moveAction(from, to), ids, restoreSelection, undo = { written -> PhotoGalleryUiAction.Undo(written, from = to, to = from) }) {
+            move(it, from, to)
+        }
 
     // One at a time, in the order asked: an Undo tapped while another action runs waits for it.
     private fun runMove(

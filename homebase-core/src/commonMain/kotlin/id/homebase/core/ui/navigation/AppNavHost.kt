@@ -1,7 +1,6 @@
 package id.homebase.core.ui.navigation
 
-import id.homebase.core.di.PhotoArchiveQualifier
-import id.homebase.core.di.PhotoBinQualifier
+import id.homebase.core.di.photoShelfQualifier
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
@@ -2342,9 +2341,7 @@ fun AppNavHost(
                                             viewModel = koinViewModel(),
                                             onOpenBackupSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
-                                            onOpenShelf = { shelf ->
-                                                navController.navigate(if (shelf == PhotoShelf.Bin) Route.PhotoBin else Route.PhotoArchive)
-                                            },
+                                            onOpenShelf = { navController.navigate(Route.PhotoGalleryShelf(it.name)) },
                                         )
                                     }
                                 }
@@ -2470,21 +2467,11 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.PhotoBin> {
+                            composable<Route.PhotoGalleryShelf> { backStackEntry ->
                                 if (isAuthenticated) {
+                                    val shelf = PhotoShelf.valueOf(backStackEntry.toRoute<Route.PhotoGalleryShelf>().shelf)
                                     PhotoGalleryScreen(
-                                        viewModel = koinViewModel(qualifier = PhotoBinQualifier),
-                                        onOpenBackupSettings = null,
-                                        backupIndicator = {},
-                                        onBack = { navController.popBackStack() },
-                                    )
-                                }
-                            }
-
-                            composable<Route.PhotoArchive> {
-                                if (isAuthenticated) {
-                                    PhotoGalleryScreen(
-                                        viewModel = koinViewModel(qualifier = PhotoArchiveQualifier),
+                                        viewModel = koinViewModel(qualifier = photoShelfQualifier(shelf)),
                                         onOpenBackupSettings = null,
                                         backupIndicator = {},
                                         onBack = { navController.popBackStack() },
