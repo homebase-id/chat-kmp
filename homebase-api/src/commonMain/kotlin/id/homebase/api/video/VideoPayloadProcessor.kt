@@ -12,6 +12,9 @@ import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.files.WholePercentProgressGate
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.crypto.encryptWithPayloadHash
+import id.homebase.api.crypto.hashedBy
+import id.homebase.api.crypto.newHasher
+import id.homebase.api.crypto.plainPayloadHash
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
@@ -309,10 +312,12 @@ class VideoPayloadProcessor(
                 val stagedHlsDir =
                     fileOperationsProvider.promoteToOutboxStaging(scratchHlsDir.toString()).toPath()
 
+                val stagedSegments = (stagedHlsDir / segmented.segmentsPath.toPath().name).toString()
                 Triple(
                     (stagedHlsDir / segmented.playlistPath.toPath().name).toString(),
-                    (stagedHlsDir / segmented.segmentsPath.toPath().name).toString(),
-                    segmented.hash,
+                    stagedSegments,
+                    // ffmpeg's segmenter takes no hash; an unencrypted file is hashed here, as uploaded.
+                    segmented.hash ?: if (keyHeader == null) hashPlain(stagedSegments) else null,
                 )
             } else {
                 Triple(null, compressedPath, null)
@@ -327,7 +332,7 @@ class VideoPayloadProcessor(
                     onProgress?.invoke(VideoPayloadProgressPhase(payload.key, VideoProcessingPhase.ENCRYPTING, 0f))
                     encryptVideoFile(inputPath = videoPath, keyHeader = keyHeader)
                 } else {
-                    stagePlain(videoPath) to null
+                    stagePlain(videoPath)
                 }
             } else {
                 videoPath to segmentedHash
@@ -447,16 +452,23 @@ class VideoPayloadProcessor(
         )
     }
 
-    // A copy, as the compressed scratch is reaped on the way out.
-    private suspend fun stagePlain(path: String): String {
+    // A copy, as the compressed scratch is reaped on the way out; hashed in the same pass.
+    private suspend fun stagePlain(path: String): Pair<String, PayloadHash> {
         val staged = fileOperationsProvider.createOutboxStagingPath("video-public-", ".mp4")
+        val hasher = PayloadHashAlgorithm.Blake3.newHasher()
         try {
-            fileOperationsProvider.writeStream(staged, fileOperationsProvider.readFileAsFlow(path))
+            fileOperationsProvider.writeStream(staged, fileOperationsProvider.readFileAsFlow(path).hashedBy(hasher))
         } catch (e: Throwable) {
             runCatching { fileOperationsProvider.deleteTempFile(staged) }
             throw e
         }
-        return staged
+        return staged to plainPayloadHash(PayloadHashAlgorithm.Blake3, hasher.digest())
+    }
+
+    private suspend fun hashPlain(path: String): PayloadHash {
+        val hasher = PayloadHashAlgorithm.Blake3.newHasher()
+        fileOperationsProvider.readFileAsFlow(path).collect { hasher.update(it) }
+        return plainPayloadHash(PayloadHashAlgorithm.Blake3, hasher.digest())
     }
 
     /** The encrypted file and its payload hash, taken in the same pass. */

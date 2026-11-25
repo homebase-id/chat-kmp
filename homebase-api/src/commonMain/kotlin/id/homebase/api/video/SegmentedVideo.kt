@@ -13,6 +13,6 @@ import id.homebase.api.client.drives.files.PayloadHash
 data class SegmentedVideo(
     val playlistPath: String,
     val segmentsPath: String,
-    /** The `.ts` payload's hash, when the segmenter took it in its pass; bound to the key header's IV. */
+    /** The `.ts` payload's hash, when the segmenter took it in its pass; bound to the key header's IV when there is one. */
     val hash: PayloadHash? = null,
 )

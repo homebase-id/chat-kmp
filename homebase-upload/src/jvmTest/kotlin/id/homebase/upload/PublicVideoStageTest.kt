@@ -1,6 +1,8 @@
 package id.homebase.upload
 
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import id.homebase.api.crypto.newHasher
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileOperationsProvider
@@ -78,6 +80,10 @@ class PublicVideoStageTest {
         val sentVideo = staged.payloads.single { it.key == "pst_mdi0" }
         assertFalse(sentVideo.isPreEncrypted)
         assertNull(sentVideo.iv)
+        val expected = PayloadHashAlgorithm.Blake3.newHasher().apply { update(compressed) }.digest()
+        assertEquals("blake3", sentVideo.hash?.algorithm)
+        assertContentEquals(expected, sentVideo.hash?.storedHash?.bytes)
+        assertContentEquals(expected, sentVideo.hash?.contentHash?.bytes)
         assertNotEquals(video, sentVideo.filePath)
         assertContentEquals(compressed, File(sentVideo.filePath).readBytes())
         assertContentEquals(File(photo).readBytes(), File(staged.payloads.single { it.key == "pst_mdi1" }.filePath).readBytes())

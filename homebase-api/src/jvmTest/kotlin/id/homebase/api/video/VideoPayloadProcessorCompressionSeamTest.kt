@@ -4,11 +4,16 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.PayloadHash
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import id.homebase.api.crypto.newHasher
+import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -147,6 +152,14 @@ class VideoPayloadProcessorCompressionSeamTest {
         override suspend fun getFfmpegVersion(): String? = "test"
         override suspend fun probeVideo(inputPath: String): VideoTrackInfo? = null
         override fun canRead(contentType: String): Boolean = true
+    }
+
+    private suspend fun assertBlake3Plain(bytes: ByteArray, hash: PayloadHash?) {
+        val expected = PayloadHashAlgorithm.Blake3.newHasher().apply { update(bytes) }.digest()
+        assertEquals("blake3", hash?.algorithm)
+        assertContentEquals(expected, hash?.storedHash?.bytes, "stored is the bytes as uploaded")
+        assertContentEquals(expected, hash?.contentHash?.bytes, "unencrypted, so content is stored")
+        assertContentEquals(expected, hash?.plaintextContentHash(null))
     }
 
     @Test
@@ -547,7 +560,7 @@ class VideoPayloadProcessorCompressionSeamTest {
         val video = result.payloads.single()
         assertFalse(video.isPreEncrypted)
         assertNull(video.iv)
-        assertNull(video.hash)
+        assertBlake3Plain(compressed, video.hash)
         assertEquals("video/mp4", video.contentType)
         assertTrue(video.filePath.startsWith(stagingDir), "staged for the outbox row: ${video.filePath}")
         assertTrue(compressed.contentEquals(store.getValue(video.filePath)), "the compressed bytes, as they are")
@@ -586,7 +599,7 @@ class VideoPayloadProcessorCompressionSeamTest {
         assertEquals("$stagingDir/hls_plain/segments.ts", video.filePath)
         assertFalse(video.isPreEncrypted)
         assertNull(video.iv)
-        assertNull(video.hash)
+        assertBlake3Plain(ByteArray(2048), video.hash)
     }
 
     @Test

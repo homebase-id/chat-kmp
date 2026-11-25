@@ -6,6 +6,7 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.encryptedPayloadHash
 import id.homebase.api.crypto.hashedBy
 import id.homebase.api.crypto.newHasher
+import id.homebase.api.crypto.plainPayloadHash
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.video.SegmentedVideo
@@ -26,7 +27,7 @@ import kotlinx.coroutines.flow.flowOn
  * `-hls_flags single_file -hls_key_info_file` does: one `index.ts` whose byte ranges are segments
  * of about [SEGMENT_SECONDS], each AES-128-CBC encrypted on its own under the payload's key and IV,
  * and an `index.m3u8` addressing them. The payload hash (odin-core docs/payload-hashes.md) is
- * taken from the same pass. With no key the segments stay in the clear and there is no hash.
+ * taken from the same pass; with no key the segments stay in the clear and stored and content hash are the same.
  * Null when the file isn't an MP4 of H.264 and AAC.
  */
 internal object HlsSegmenter {
@@ -74,7 +75,7 @@ internal object HlsSegmenter {
         val dir = "${AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.HLS)}/${AppCacheDirs.HLS_DIR_PREFIX}${Uuid.random()}"
         val segmentsPath = "$dir/index.ts"
         val playlistPath = "$dir/index.m3u8"
-        val storedHasher = keyHeader?.let { PayloadHashAlgorithm.Blake3.newHasher() }
+        val storedHasher = PayloadHashAlgorithm.Blake3.newHasher()
         val contentHasher = keyHeader?.let { PayloadHashAlgorithm.Blake3.newHasher() }
         val segments = mutableListOf<Segment>()
 
@@ -128,7 +129,11 @@ internal object HlsSegmenter {
         return SegmentedVideo(
             playlistPath = playlistPath,
             segmentsPath = segmentsPath,
-            hash = keyHeader?.let { encryptedPayloadHash(PayloadHashAlgorithm.Blake3, storedHasher!!.digest(), contentHasher!!.digest(), it) },
+            hash = if (keyHeader != null) {
+                encryptedPayloadHash(PayloadHashAlgorithm.Blake3, storedHasher.digest(), contentHasher!!.digest(), keyHeader)
+            } else {
+                plainPayloadHash(PayloadHashAlgorithm.Blake3, storedHasher.digest())
+            },
         )
     }
 
