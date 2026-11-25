@@ -285,6 +285,16 @@ fun PhotoGalleryScreen(
             )
         }
     }
+    var commentsOn by remember { mutableStateOf<Uuid?>(null) }
+    commentsOn?.takeIf { uiState.openedFileId != null }?.let { photoId ->
+        PhotoCommentsSheet(
+            photoId = photoId,
+            comments = remember(photoId) { viewModel.commentsOf(photoId) },
+            reactionsOf = viewModel::reactionsOf,
+            onAction = onAction,
+            onDismiss = { commentsOn = null },
+        )
+    }
     // On the shared-bounds clock, or the tile and viewer fade out of step with the morph.
     val fadeSpec = tween<Float>(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)
     Box(Modifier.fillMaxSize()) {
@@ -299,6 +309,7 @@ fun PhotoGalleryScreen(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
                         // A heart waits for the one before it, so a second tap can't send the same again.
                         heart = if (gallery == PhotoGallery.Bin) null else !uiState.busy,
+                        onComments = { id: Uuid -> commentsOn = id }.takeIf { viewModel.canComment && gallery != PhotoGallery.Bin },
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
@@ -337,6 +348,7 @@ private fun GalleryViewer(
     onMoveToBin: ((Uuid) -> Unit)?,
     /** Whether the heart is enabled; null shows none. */
     heart: Boolean?,
+    onComments: ((photoId: Uuid) -> Unit)?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -407,6 +419,8 @@ private fun GalleryViewer(
                 onDelete = onMoveToBin,
                 extraActions = {
                     if (heart != null) FavoriteButton(item.favorite, enabled = heart) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
+                    val photoId = item.uniqueId
+                    if (onComments != null && photoId != null) CommentsButton { onComments(photoId) }
                 },
                 onDismiss = close,
                 sharedTransitionScope = null,

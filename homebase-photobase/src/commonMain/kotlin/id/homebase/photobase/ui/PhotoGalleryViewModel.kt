@@ -50,6 +50,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import id.homebase.photobase.social.PhotoActionService
+import id.homebase.photobase.social.PhotoComment
+import id.homebase.photobase.social.PhotoCommentsService
+import id.homebase.photobase.social.PhotoReactions
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -87,6 +91,7 @@ sealed interface PhotoGalleryEvent {
     data class MoveFailed(val action: MoveAction) : PhotoGalleryEvent
     data object AlbumDeleted : PhotoGalleryEvent
     data object AlbumWriteFailed : PhotoGalleryEvent
+    data object CommentFailed : PhotoGalleryEvent
 }
 
 sealed interface PhotoGalleryUiAction {
@@ -122,6 +127,11 @@ sealed interface PhotoGalleryUiAction {
     data object RemoveSelectedFromAlbum : PhotoGalleryUiAction
     data class RenameAlbum(val name: String) : PhotoGalleryUiAction
     data object DeleteAlbum : PhotoGalleryUiAction
+    /** On a photo or a comment, by unique id. */
+    data class ToggleReaction(val targetId: Uuid, val emoji: String) : PhotoGalleryUiAction
+    data class PostComment(val photoId: Uuid, val body: String) : PhotoGalleryUiAction
+    data class EditComment(val commentId: Uuid, val versionTag: Uuid, val body: String) : PhotoGalleryUiAction
+    data class DeleteComment(val commentId: Uuid) : PhotoGalleryUiAction
 }
 
 /**
@@ -143,6 +153,8 @@ class PhotoGalleryViewModel(
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
     private val moveScope: CoroutineScope? = null,
     private val albumSource: PhotoAlbumSource? = null,
+    private val comments: PhotoCommentsService? = null,
+    private val actions: PhotoActionService? = null,
 ) : ViewModel() {
     private val shelf = (gallery as? PhotoGallery.OnShelf)?.shelf
     private val album = gallery as? PhotoGallery.Album
@@ -154,6 +166,12 @@ class PhotoGalleryViewModel(
     val albumName: StateFlow<String?> = album?.let { shown ->
         albums.map { list -> list?.firstOrNull { it.id == shown.id }?.name }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     } ?: MutableStateFlow(null)
+    val canComment: Boolean get() = comments != null && actions != null
+
+    fun commentsOf(photoId: Uuid): Flow<List<PhotoComment>> = comments?.commentsOf(photoId)?.flowOn(Dispatchers.Default) ?: emptyFlow()
+
+    fun reactionsOf(targetId: Uuid): Flow<PhotoReactions> = actions?.reactionsOf(targetId)?.flowOn(Dispatchers.Default) ?: emptyFlow()
+
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
     // The days being read right now: a change to one of them mustn't be lost when the read lands.
@@ -272,6 +290,24 @@ class PhotoGalleryViewModel(
             // The new name shows when the sync brings the album back.
             is PhotoGalleryUiAction.RenameAlbum -> albumWrite(leave = false) { rename(it, action.name) }
             PhotoGalleryUiAction.DeleteAlbum -> albumWrite(leave = true) { delete(it) }
+            is PhotoGalleryUiAction.ToggleReaction -> actions?.let { social { it.toggleReaction(action.targetId, action.emoji) } }
+            is PhotoGalleryUiAction.PostComment -> comments?.let { social { it.post(action.photoId, action.body.trim()) } }
+            is PhotoGalleryUiAction.EditComment -> comments?.let { social { it.edit(action.commentId, action.versionTag, action.body.trim()) } }
+            is PhotoGalleryUiAction.DeleteComment -> comments?.let { social { it.delete(action.commentId) } }
+        }
+    }
+
+    // The app's scope, like a move: a comment sent as the screen closes must still be queued.
+    private fun social(write: suspend () -> Unit) {
+        (moveScope ?: viewModelScope).launch {
+            try {
+                write()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "comment or reaction not written" }
+                _events.send(PhotoGalleryEvent.CommentFailed)
+            }
         }
     }
 

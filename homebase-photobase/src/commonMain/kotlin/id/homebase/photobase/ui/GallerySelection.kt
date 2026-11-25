@@ -32,6 +32,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.action_undo
 import id.homebase.resources.photobase_album_add
 import id.homebase.resources.photobase_album_failed
+import id.homebase.resources.photobase_comments_failed
 import id.homebase.resources.photobase_album_added
 import id.homebase.resources.photobase_album_remove
 import id.homebase.resources.photobase_album_removed
@@ -142,6 +143,7 @@ internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: 
     val message = when (event) {
         is PhotoGalleryEvent.MoveFailed -> getString(MR.string.photobase_bin_failed)
         PhotoGalleryEvent.AlbumWriteFailed -> getString(MR.string.photobase_album_failed)
+        PhotoGalleryEvent.CommentFailed -> getString(MR.string.photobase_comments_failed)
         // The screen leaves the album.
         PhotoGalleryEvent.AlbumDeleted -> return
         is PhotoGalleryEvent.Moved -> buildList {

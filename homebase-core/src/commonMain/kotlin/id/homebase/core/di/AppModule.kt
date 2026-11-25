@@ -218,6 +218,8 @@ import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.photobase.PhotobaseRecord
+import id.homebase.photobase.social.PhotoActionService
+import id.homebase.photobase.social.PhotoCommentsService
 import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoAlbums
 import id.homebase.photobase.gallery.photosTagged
@@ -1601,6 +1603,8 @@ val appModule = module {
             sync = { syncPhotos() },
         )
     }
+    single { PhotoCommentsService(get(), get(), get(), get(), get(), get()) }
+    single { PhotoActionService(get(), get(), get(), get(), get(), get()) }
     // The tab's own gallery has no parameter.
     viewModel { params -> photoGalleryViewModel(params.getOrNull<PhotoGallery>() ?: PhotoGallery.Library) }
     viewModel {
@@ -1844,5 +1848,7 @@ private fun Scope.photoGalleryViewModel(gallery: PhotoGallery): PhotoGalleryView
         recount = index::recount,
         moveScope = get(),
         albumSource = get(),
+        comments = get(),
+        actions = get(),
     )
 }
