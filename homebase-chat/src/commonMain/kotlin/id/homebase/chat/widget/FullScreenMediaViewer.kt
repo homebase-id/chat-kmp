@@ -111,7 +111,6 @@ fun FullScreenMediaViewer(
     onReply: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     onDismiss: () -> Unit,
     onNavigateToMessage: (() -> Unit)? = null,
-    // A host's own buttons, first in the top bar.
     extraActions: @Composable () -> Unit = {},
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,

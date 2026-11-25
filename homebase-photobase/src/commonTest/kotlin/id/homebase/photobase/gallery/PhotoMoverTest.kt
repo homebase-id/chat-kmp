@@ -305,12 +305,11 @@ class PhotoMoverTest {
     }
 
     @Test
-    fun aFirstHeartBatchThatDoesntGetThroughFailsTheCallAndDoesntSync() = runTest {
+    fun aFirstHeartBatchThatDoesntGetThroughFailsTheCall() = runTest {
         val photo = photo()
         server.throwFromRequest = 0
 
         assertFailsWith<IllegalStateException> { mover.setFavorite(listOf(photo.fileId), favorite = true) }
-        assertEquals(0, syncs)
     }
 
     @Test

@@ -46,7 +46,7 @@ class PhotoDaysWrapperTest {
         db.add(local(2024, 3, 9, 12, 0), drive = Uuid.random())
 
         val expected = times.groupingBy { it.localDay() }.eachCount().toList().sortedByDescending { it.first }.map { DayCount(it.first, it.second) }
-        assertEquals(expected, db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)))
+        assertEquals(expected, db.photoDays.dayCounts(identity, photos, PhotoFilter.Shelf(LIBRARY)))
     }
 
     @Test
@@ -59,8 +59,8 @@ class PhotoDaysWrapperTest {
 
         val day = assertNotNull(db.photoDays.dayOf(local(2024, 10, 27, 13, 0)))
         assertEquals(morning.localDay(), day)
-        assertEquals(2, db.photoDays.photosOn(identity, photos, shelf(LIBRARY), day), "local midnight to local midnight, however long the day")
-        assertEquals(0, db.photoDays.photosOn(identity, photos, shelf(LIBRARY), local(2024, 5, 1, 9, 0).localDay()))
+        assertEquals(2, db.photoDays.photosOn(identity, photos, PhotoFilter.Shelf(LIBRARY), day), "local midnight to local midnight, however long the day")
+        assertEquals(0, db.photoDays.photosOn(identity, photos, PhotoFilter.Shelf(LIBRARY), local(2024, 5, 1, 9, 0).localDay()))
     }
 
     @Test
@@ -70,10 +70,10 @@ class PhotoDaysWrapperTest {
         times.forEach { db.add(it) }
         val from = local(2024, 3, 9, 12, 0).localDay()
 
-        val window = db.photoDays.headersOnDays(identity, photos, shelf(LIBRARY), from, from + 1)
+        val window = db.photoDays.headersOnDays(identity, photos, PhotoFilter.Shelf(LIBRARY), from, from + 1)
 
         assertEquals(listOf(from + 1, from + 1, from, from), window.map { it.day }, "newest first, and only the two days asked")
-        val counted = db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)).filter { it.day in from..from + 1 }
+        val counted = db.photoDays.dayCounts(identity, photos, PhotoFilter.Shelf(LIBRARY)).filter { it.day in from..from + 1 }
         assertEquals(counted.associate { it.day to it.photos }, window.groupingBy { it.day }.eachCount())
     }
 
@@ -84,9 +84,9 @@ class PhotoDaysWrapperTest {
         db.add(halfASecondBefore)
 
         val day = assertNotNull(db.photoDays.dayOf(halfASecondBefore))
-        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)))
-        assertEquals(1, db.photoDays.photosOn(identity, photos, shelf(LIBRARY), day))
-        assertEquals(listOf(day), db.photoDays.headersOnDays(identity, photos, shelf(LIBRARY), day, day).map { it.day })
+        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, PhotoFilter.Shelf(LIBRARY)))
+        assertEquals(1, db.photoDays.photosOn(identity, photos, PhotoFilter.Shelf(LIBRARY), day))
+        assertEquals(listOf(day), db.photoDays.headersOnDays(identity, photos, PhotoFilter.Shelf(LIBRARY), day, day).map { it.day })
     }
 
     @Test
@@ -97,7 +97,7 @@ class PhotoDaysWrapperTest {
         // .NET's DateTime.MaxValue, which a zone ahead of UTC turns into the year 10000.
         db.add(253_402_300_799_999)
 
-        assertEquals(listOf(DayCount(local(2024, 3, 9, 12, 0).localDay(), 1)), db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)))
+        assertEquals(listOf(DayCount(local(2024, 3, 9, 12, 0).localDay(), 1)), db.photoDays.dayCounts(identity, photos, PhotoFilter.Shelf(LIBRARY)))
         assertEquals(null, db.photoDays.dayOf(inMicroseconds))
         assertEquals(null, db.photoDays.dayOf(253_402_300_799_999))
     }
@@ -111,12 +111,12 @@ class PhotoDaysWrapperTest {
         db.add(noon + 180_000, archivalStatus = ARCHIVED)
         val day = noon.localDay()
 
-        assertEquals(listOf(DayCount(day, 2)), db.photoDays.dayCounts(identity, photos, shelf(LIBRARY)))
-        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, shelf(BIN)))
-        assertEquals(2, db.photoDays.photosOn(identity, photos, shelf(LIBRARY), day))
-        assertEquals(1, db.photoDays.photosOn(identity, photos, shelf(BIN), day))
-        assertEquals(2, db.photoDays.headersOnDays(identity, photos, shelf(LIBRARY), day, day).size)
-        assertEquals(1, db.photoDays.headersOnDays(identity, photos, shelf(BIN), day, day).size)
+        assertEquals(listOf(DayCount(day, 2)), db.photoDays.dayCounts(identity, photos, PhotoFilter.Shelf(LIBRARY)))
+        assertEquals(listOf(DayCount(day, 1)), db.photoDays.dayCounts(identity, photos, PhotoFilter.Shelf(BIN)))
+        assertEquals(2, db.photoDays.photosOn(identity, photos, PhotoFilter.Shelf(LIBRARY), day))
+        assertEquals(1, db.photoDays.photosOn(identity, photos, PhotoFilter.Shelf(BIN), day))
+        assertEquals(2, db.photoDays.headersOnDays(identity, photos, PhotoFilter.Shelf(LIBRARY), day, day).size)
+        assertEquals(1, db.photoDays.headersOnDays(identity, photos, PhotoFilter.Shelf(BIN), day, day).size)
     }
 
     @Test
@@ -131,7 +131,7 @@ class PhotoDaysWrapperTest {
         db.add(noon + 180_000, localTags = listOf(Uuid.random()))
         db.add(noon, drive = Uuid.random(), localTags = listOf(favorite))
         val day = noon.localDay()
-        val favorites = PhotoFilter(listOf(LIBRARY, ARCHIVED), favorite)
+        val favorites = PhotoFilter.Tagged(favorite, listOf(LIBRARY, ARCHIVED))
 
         assertEquals(listOf(DayCount(day, 2)), db.photoDays.dayCounts(identity, photos, favorites))
         assertEquals(2, db.photoDays.photosOn(identity, photos, favorites, day))
@@ -156,8 +156,6 @@ class PhotoDaysWrapperTest {
 
     private fun local(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
         LocalDateTime(year, month, day, hour, minute).toInstant(zone).toEpochMilliseconds()
-
-    private fun shelf(status: Long) = PhotoFilter(listOf(status))
 
     private fun Long.localDay(): Int = Instant.fromEpochMilliseconds(this).toLocalDateTime(zone).date.toEpochDays().toInt()
 

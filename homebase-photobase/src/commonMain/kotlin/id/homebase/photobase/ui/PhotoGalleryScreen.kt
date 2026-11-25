@@ -230,7 +230,7 @@ fun PhotoGalleryScreen(
                 transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
             ) { viewing ->
                 if (viewing && layout != null) {
-                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf.isPlace && shelf != PhotoShelf.Bin }
+                    val moveToBin = { fileId: Uuid -> onAction(PhotoGalleryUiAction.MovePhotoToBin(fileId)) }.takeIf { shelf == PhotoShelf.Library || shelf == PhotoShelf.Archive }
                     GalleryViewer(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin, canFavorite = shelf != PhotoShelf.Bin,
                         { memory.returnToSlot = it }, this@SharedTransitionLayout, this@AnimatedContent,
@@ -499,7 +499,7 @@ private fun GalleryGrid(
                 SelectionToolbar(
                     shelf = shelf,
                     enabled = !uiState.busy,
-                    favorites = uiState.selectedAreFavorites(),
+                    allFavorite = uiState.selectedAreFavorites(),
                     onAction = onAction,
                     onDeleteForGood = { onConfirm(MoveAction.DeleteForGood) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),

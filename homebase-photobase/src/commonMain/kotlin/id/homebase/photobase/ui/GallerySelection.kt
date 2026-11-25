@@ -61,23 +61,25 @@ import org.jetbrains.compose.resources.stringResource
 internal fun SelectionToolbar(
     shelf: PhotoShelf,
     enabled: Boolean,
-    /** Every picked photo is a favourite already, so the heart takes them out. */
-    favorites: Boolean,
+    allFavorite: Boolean,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onDeleteForGood: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     HorizontalFloatingToolbar(expanded = true, modifier = modifier) {
         val moveTo = { to: PhotoShelf -> { onAction(PhotoGalleryUiAction.MoveSelected(to)) } }
+        val heart: @Composable () -> Unit = { FavoriteButton(allFavorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!allFavorite)) } }
+        val toBin: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled, moveTo(PhotoShelf.Bin)) }
         when (shelf) {
-            PhotoShelf.Library, PhotoShelf.Archive -> {
-                FavoriteButton(favorites, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!favorites)) }
-                if (shelf == PhotoShelf.Library) {
-                    ToolbarAction(Icons.Outlined.Archive, MR.string.photobase_archive_move, enabled, moveTo(PhotoShelf.Archive))
-                } else {
-                    ToolbarAction(Icons.Outlined.Unarchive, MR.string.photobase_archive_unarchive, enabled, moveTo(PhotoShelf.Library))
-                }
-                ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled, moveTo(PhotoShelf.Bin))
+            PhotoShelf.Library -> {
+                heart()
+                ToolbarAction(Icons.Outlined.Archive, MR.string.photobase_archive_move, enabled, moveTo(PhotoShelf.Archive))
+                toBin()
+            }
+            PhotoShelf.Archive -> {
+                heart()
+                ToolbarAction(Icons.Outlined.Unarchive, MR.string.photobase_archive_unarchive, enabled, moveTo(PhotoShelf.Library))
+                toBin()
             }
             PhotoShelf.Bin -> {
                 ToolbarAction(Icons.Outlined.RestoreFromTrash, MR.string.photobase_bin_restore, enabled, moveTo(PhotoShelf.Library))
@@ -90,7 +92,6 @@ internal fun SelectionToolbar(
     }
 }
 
-/** Filled when the photos are favourites already; tapping takes them out. */
 @Composable
 internal fun FavoriteButton(favorite: Boolean, enabled: Boolean, onClick: () -> Unit) {
     IconButton(onClick = onClick, enabled = enabled) {

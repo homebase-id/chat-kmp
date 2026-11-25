@@ -67,13 +67,8 @@ data class PhotoGalleryUiState(
 
     /** Every picked photo is a favourite, as far as the days held show. */
     fun selectedAreFavorites(): Boolean {
-        if (selected.isEmpty()) return false
-        var found = 0
-        for (items in loaded.values) for (item in items) if (item.fileId in selected) {
-            if (!item.favorite) return false
-            found++
-        }
-        return found == selected.size
+        val picked = loaded.values.asSequence().flatten().filter { it.fileId in selected }.toList()
+        return picked.isNotEmpty() && picked.size == selected.size && picked.all { it.favorite }
     }
 }
 
@@ -108,7 +103,7 @@ sealed interface PhotoGalleryUiAction {
     data object DeleteForGood : PhotoGalleryUiAction
     data object EmptyBin : PhotoGalleryUiAction
     data class Undo(val fileIds: Set<Uuid>, val from: PhotoShelf, val to: PhotoShelf) : PhotoGalleryUiAction
-    /** The selection, or one photo from the viewer. */
+    /** A null [fileId], from the toolbar, means the selection. */
     data class SetFavorite(val favorite: Boolean, val fileId: Uuid? = null) : PhotoGalleryUiAction
     data class UndoFavorite(val fileIds: Set<Uuid>, val favorite: Boolean) : PhotoGalleryUiAction
 }
@@ -247,11 +242,10 @@ class PhotoGalleryViewModel(
 
     private fun setFavorite(ids: Set<Uuid>, favorite: Boolean, restoreSelection: Boolean, undoable: Boolean) {
         val undo = { written: Set<Uuid> -> PhotoGalleryUiAction.UndoFavorite(written, !favorite) }
-        runMove(
-            if (favorite) MoveAction.Favorite else MoveAction.Unfavorite, ids, restoreSelection, undo.takeIf { undoable },
+        runMove(if (favorite) MoveAction.Favorite else MoveAction.Unfavorite, ids, restoreSelection, undo.takeIf { undoable }) {
             // Shown now, not when the sync brings the photos back.
-            onWritten = { written -> markFavorite(written, favorite) },
-        ) { setFavorite(it, favorite) }
+            setFavorite(it, favorite).also { result -> markFavorite(result.written, favorite) }
+        }
     }
 
     private fun markFavorite(ids: Set<Uuid>, favorite: Boolean) = _uiState.update { state ->
@@ -264,7 +258,6 @@ class PhotoGalleryViewModel(
         ids: Set<Uuid>,
         restoreSelection: Boolean = false,
         undo: ((Set<Uuid>) -> PhotoGalleryUiAction)? = null,
-        onWritten: (Set<Uuid>) -> Unit = {},
         block: suspend PhotoMover.(Set<Uuid>) -> PhotoMoveResult,
     ) {
         pending++
@@ -274,7 +267,6 @@ class PhotoGalleryViewModel(
                 moveLock.withLock {
                     try {
                         val result = mover.block(ids)
-                        if (result.written.isNotEmpty()) onWritten(result.written)
                         _events.send(PhotoGalleryEvent.Moved(action, result, result.written.takeIf { it.isNotEmpty() }?.let { undo?.invoke(it) }))
                     } catch (e: CancellationException) {
                         throw e

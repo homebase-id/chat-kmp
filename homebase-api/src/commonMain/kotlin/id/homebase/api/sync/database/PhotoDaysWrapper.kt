@@ -16,9 +16,9 @@ class PhotoDaysWrapper(
     suspend fun dayCounts(identityId: Uuid, driveId: Uuid, filter: PhotoFilter): List<DayCount> =
         databaseManager.readValue("photoDays.dayCounts") {
             val counted = { day: Long?, photos: Long -> DayCount(day!!.toInt(), photos.toInt()) }
-            when (val tag = filter.tag) {
-                null -> queries.dayCounts(identityId, driveId, filter.archivalStatus, counted)
-                else -> queries.taggedDayCounts(identityId, driveId, tag, filter.archivalStatuses, counted)
+            when (filter) {
+                is PhotoFilter.Shelf -> queries.dayCounts(identityId, driveId, filter.archivalStatus, counted)
+                is PhotoFilter.Tagged -> queries.taggedDayCounts(identityId, driveId, filter.tag, filter.archivalStatuses, counted)
             }.executeAsList()
         }
 
@@ -28,9 +28,9 @@ class PhotoDaysWrapper(
 
     suspend fun photosOn(identityId: Uuid, driveId: Uuid, filter: PhotoFilter, day: Int): Int =
         databaseManager.readValue("photoDays.photosOnDay") {
-            when (val tag = filter.tag) {
-                null -> queries.photosOnDay(identityId, driveId, filter.archivalStatus, day.toLong())
-                else -> queries.taggedPhotosOnDay(identityId, driveId, tag, filter.archivalStatuses, day.toLong())
+            when (filter) {
+                is PhotoFilter.Shelf -> queries.photosOnDay(identityId, driveId, filter.archivalStatus, day.toLong())
+                is PhotoFilter.Tagged -> queries.taggedPhotosOnDay(identityId, driveId, filter.tag, filter.archivalStatuses, day.toLong())
             }.executeAsOne()
         }.toInt()
 
@@ -38,9 +38,9 @@ class PhotoDaysWrapper(
     suspend fun headersOnDays(identityId: Uuid, driveId: Uuid, filter: PhotoFilter, fromDay: Int, toDay: Int): List<DayHeader> =
         databaseManager.readValue("photoDays.photosOnDays") {
             val row = { day: Long, jsonHeader: String -> DayHeader(day.toInt(), jsonHeader) }
-            when (val tag = filter.tag) {
-                null -> queries.photosOnDays(identityId, driveId, filter.archivalStatus, fromDay.toLong(), toDay.toLong(), row)
-                else -> queries.taggedPhotosOnDays(identityId, driveId, tag, filter.archivalStatuses, fromDay.toLong(), toDay.toLong(), row)
+            when (filter) {
+                is PhotoFilter.Shelf -> queries.photosOnDays(identityId, driveId, filter.archivalStatus, fromDay.toLong(), toDay.toLong(), row)
+                is PhotoFilter.Tagged -> queries.taggedPhotosOnDays(identityId, driveId, filter.tag, filter.archivalStatuses, fromDay.toLong(), toDay.toLong(), row)
             }.executeAsList()
         }
 
@@ -60,16 +60,12 @@ class PhotoDaysWrapper(
     }
 }
 
-/**
- * The photos a gallery shows: those whose archival status (0 the library, 1 the archive, 2 the bin) is one of
- * [archivalStatuses], and with a [tag], only those carrying that local tag. Without one, it's a single status.
- */
-data class PhotoFilter(val archivalStatuses: List<Long>, val tag: Uuid? = null) {
-    init {
-        require(tag != null || archivalStatuses.size == 1) { "an untagged filter is one shelf" }
-    }
+/** The photos a gallery shows, by archival status: 0 the library, 1 the archive, 2 the bin. */
+sealed interface PhotoFilter {
+    data class Shelf(val archivalStatus: Long) : PhotoFilter
 
-    internal val archivalStatus: Long get() = archivalStatuses.single()
+    /** Those with one of [archivalStatuses] that carry the local [tag]. */
+    data class Tagged(val tag: Uuid, val archivalStatuses: List<Long>) : PhotoFilter
 }
 
 /** [day] counts days since 1970-01-01 of the phone's local date. */

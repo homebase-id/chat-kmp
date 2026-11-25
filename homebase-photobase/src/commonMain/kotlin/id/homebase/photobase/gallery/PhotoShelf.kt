@@ -15,20 +15,16 @@ enum class PhotoShelf(val statuses: List<ArchivalStatus>, val tag: Uuid? = null)
     Library(listOf(ArchivalStatus.None)),
     Archive(listOf(ArchivalStatus.Archived)),
     Bin(listOf(ArchivalStatus.Removed)),
-    // Not a place photos move to or from: a view of the library's and the archive's.
     Favorites(listOf(ArchivalStatus.None, ArchivalStatus.Archived), PhotobaseProtocol.FavoriteTag);
 
-    /** Where a photo moved here goes: only the shelves that are one status. */
+    /** Where a photo moved here goes; Favorites isn't moved to or from. */
     val status: ArchivalStatus get() = statuses.single()
 
-    /** Photos can be moved to and from it. */
-    val isPlace: Boolean get() = tag == null
-
-    val filter: PhotoFilter get() = PhotoFilter(statuses.map { it.value.toLong() }, tag)
+    val filter: PhotoFilter
+        get() = tag?.let { PhotoFilter.Tagged(it, statuses.map { status -> status.value.toLong() }) } ?: PhotoFilter.Shelf(status.value.toLong())
 
     /** Whether [file], as it arrived, belongs here now. */
-    fun holds(file: HomebaseFile): Boolean =
-        file.fileState == FileState.Active && file.archivalStatus() in statuses && (tag == null || tag in file.localTags())
+    fun holds(file: HomebaseFile): Boolean = statuses.any { file.isAt(it) } && (tag == null || tag in file.localTags())
 
     companion object {
         /** The galleries the library opens on their own, in the menu's order. */
@@ -36,8 +32,7 @@ enum class PhotoShelf(val statuses: List<ArchivalStatus>, val tag: Uuid? = null)
     }
 }
 
-internal fun HomebaseFile.isAt(status: ArchivalStatus): Boolean = fileState == FileState.Active && archivalStatus() == status
-
-private fun HomebaseFile.archivalStatus(): ArchivalStatus = fileMetadata.appData.archivalStatus ?: ArchivalStatus.None
+internal fun HomebaseFile.isAt(status: ArchivalStatus): Boolean =
+    fileState == FileState.Active && (fileMetadata.appData.archivalStatus ?: ArchivalStatus.None) == status
 
 internal fun HomebaseFile.localTags(): List<Uuid> = fileMetadata.localAppData?.tags.orEmpty()

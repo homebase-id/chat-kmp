@@ -49,8 +49,10 @@ class HttpPhotoMoveServer(
     override suspend fun softDelete(files: List<FileVersionTag>) =
         this.files.softDeleteFiles(driveId, files, TombstoneOptions(keepUniqueId = true)).results
 
-    override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>) =
-        if (on) this.files.updateLocalTags(driveId, fileIds, add = listOf(tag)).results else this.files.updateLocalTags(driveId, fileIds, remove = listOf(tag)).results
+    override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
+        val tags = listOf(tag)
+        return this.files.updateLocalTags(driveId, fileIds, add = if (on) tags else emptyList(), remove = if (on) emptyList() else tags).results
+    }
 
     override suspend fun header(fileId: Uuid): HomebaseFile? = headers.getFileHeader(driveId, fileId)
 }
@@ -81,37 +83,22 @@ class PhotoMover(
      */
     suspend fun setFavorite(fileIds: Collection<Uuid>, favorite: Boolean): PhotoMoveResult {
         val tally = Tally(to = null)
-        val ids = fileIds.distinct()
-        var answered = 0
         try {
-            for (batch in ids.chunked(DriveFileHttpProvider.FILE_BATCH)) {
-                val answers = try {
-                    server.setLocalTag(PhotobaseProtocol.FavoriteTag, favorite, batch)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    if (answered == 0) throw e
-                    Logger.w(tag = TAG, throwable = e) { "${ids.size - answered} photos not sent" }
-                    tally.failed += ids.size - answered
-                    break
-                }
-                answered += answers.size
-                for (answer in answers) {
-                    when (answer.errorCode) {
-                        null -> {
-                            tally.done++
-                            tally.written += answer.fileId
-                        }
-                        OdinClientErrorCode.FileNotFound -> tally.changedElsewhere++
-                        else -> {
-                            tally.failed++
-                            Logger.w(tag = TAG) { "photo ${answer.fileId} refused: ${answer.errorCode}" }
-                        }
+            for (answer in send(fileIds.distinct(), tally) { server.setLocalTag(PhotobaseProtocol.FavoriteTag, favorite, it) }) {
+                when (answer.errorCode) {
+                    null -> {
+                        tally.done++
+                        tally.written += answer.fileId
+                    }
+                    OdinClientErrorCode.FileNotFound -> tally.changedElsewhere++
+                    else -> {
+                        tally.failed++
+                        Logger.w(tag = TAG) { "photo ${answer.fileId} refused: ${answer.errorCode}" }
                     }
                 }
             }
         } finally {
-            if (answered > 0) sync()
+            sync()
         }
         return tally.result().also {
             Logger.i(tag = TAG) { "${if (favorite) "favorite" else "not favorite"}: ${it.done} done, ${it.changedElsewhere} changed elsewhere, ${it.failed} failed" }
@@ -140,9 +127,10 @@ class PhotoMover(
         }
         ready += reconsider(unsure, from, tally)
         if (ready.isEmpty()) return tally.result()
+        val call: suspend (List<FileVersionTag>) -> List<PerFileResult> = { batch -> to?.let { server.setArchivalStatus(it, batch) } ?: server.softDelete(batch) }
         try {
-            val again = answer(send(ready, tally), from, tally)
-            if (again.isNotEmpty()) answer(send(again, tally), from, tally, retry = false)
+            val again = answer(send(ready, tally, call), from, tally)
+            if (again.isNotEmpty()) answer(send(again, tally, call), from, tally, retry = false)
         } finally {
             sync()
         }
@@ -152,11 +140,11 @@ class PhotoMover(
     }
 
     /** Sends [files] a batch at a time; one that fails after others went through fails the rest, not the call. */
-    private suspend fun send(files: List<FileVersionTag>, tally: Tally): List<PerFileResult> {
+    private suspend fun <T> send(files: List<T>, tally: Tally, call: suspend (List<T>) -> List<PerFileResult>): List<PerFileResult> {
         val answers = mutableListOf<PerFileResult>()
         for (batch in files.chunked(DriveFileHttpProvider.FILE_BATCH)) {
             try {
-                answers += tally.to?.let { server.setArchivalStatus(it, batch) } ?: server.softDelete(batch)
+                answers += call(batch)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
