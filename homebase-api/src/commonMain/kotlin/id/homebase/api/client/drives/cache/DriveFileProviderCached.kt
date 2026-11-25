@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import coil3.disk.DiskCache
 import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.cache.CacheStats
+import id.homebase.api.client.cache.clearIncludingOrphans
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadSizePolicy
@@ -874,28 +875,28 @@ class DriveFileProviderCached(
         // Coil's DiskCache.clear() is documented as thread-safe; it serialises
         // internally against in-flight readers/writers.
         try {
-            payloadDiskCache.clear()
+            payloadDiskCache.clearIncludingOrphans()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "payload cache clear failed" }
         }
         try {
-            thumbDiskCache.clear()
+            thumbDiskCache.clearIncludingOrphans()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
         }
         try {
-            dedicatedThumbDiskCache?.clear()
+            dedicatedThumbDiskCache?.clearIncludingOrphans()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "dedicated thumb cache clear failed" }
         }
         try {
-            hlsChunkDiskCache.clear()
+            hlsChunkDiskCache.clearIncludingOrphans()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
