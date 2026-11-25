@@ -27,15 +27,8 @@ fun isAnimatableSource(result: SourceFetchResult): Boolean {
         null -> Unit
         else -> return false
     }
-    return try {
-        val peek = result.source.source().peek()
-        val header = ByteArray(HEADER_PEEK_BYTES)
-        val read = peek.read(header)
-        if (read < MIN_HEADER_BYTES) return false
-        isGifHeader(header) || isWebpHeader(header)
-    } catch (_: Exception) {
-        false
-    }
+    val header = result.peekHeader(HEADER_PEEK_BYTES) ?: return false
+    return header.size >= MIN_HEADER_BYTES && (isGifHeader(header) || isWebpHeader(header))
 }
 
 /** GIF magic: "GIF87a" or "GIF89a" — only the first three bytes ("GIF") matter here. */
@@ -57,5 +50,5 @@ private fun isWebpHeader(b: ByteArray): Boolean =
         b[10] == 0x42.toByte() && b[11] == 0x50.toByte() // BP
 
 // Enough to cover the WebP RIFF/WEBP split header (12 bytes); GIF only needs 3.
-private const val HEADER_PEEK_BYTES = 12
+private const val HEADER_PEEK_BYTES = 12L
 private const val MIN_HEADER_BYTES = 3

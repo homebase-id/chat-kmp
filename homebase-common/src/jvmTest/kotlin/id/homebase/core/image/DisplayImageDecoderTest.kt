@@ -14,6 +14,7 @@ import coil3.size.Size
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.FileSystem
+import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Color
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Paint
@@ -37,6 +38,11 @@ class DisplayImageDecoderTest {
     private fun sourceResult(bytes: ByteArray) =
         SourceFetchResult(ImageSource(Buffer().write(bytes), FileSystem.SYSTEM), null, DataSource.MEMORY)
 
+    private suspend fun decode(bytes: ByteArray, options: Options = shrink): DecodeResult =
+        assertNotNull(assertNotNull(factory.create(sourceResult(bytes), options, imageLoader)).decode())
+
+    private val DecodeResult.bitmap: Bitmap get() = (image as BitmapImage).bitmap
+
     private fun stripesPng(width: Int, height: Int): ByteArray {
         val surface = Surface.makeRasterN32Premul(width, height)
         surface.canvas.clear(Color.WHITE)
@@ -46,8 +52,7 @@ class DisplayImageDecoderTest {
     }
 
     // 0 is flat grey; about 127 is stripes at full contrast.
-    private fun stripeSpread(result: DecodeResult): Double {
-        val bitmap = (result.image as BitmapImage).bitmap
+    private fun stripeSpread(bitmap: Bitmap): Double {
         val y = bitmap.height / 2
         val row = (4 until bitmap.width - 4).map { Color.getR(bitmap.getColor(it, y)).toDouble() }
         val mean = row.average()
@@ -56,42 +61,49 @@ class DisplayImageDecoderTest {
 
     @Test
     fun `one-pixel stripes shrink to grey`() = runTest {
-        val result = assertNotNull(assertNotNull(factory.create(sourceResult(stripesPng(788, 8)), shrink, imageLoader)).decode())
+        val result = decode(stripesPng(788, 8))
 
-        assertEquals(400, (result.image as BitmapImage).bitmap.width)
+        assertEquals(400, result.bitmap.width)
         assertTrue(result.isSampled)
-        val spread = stripeSpread(result)
+        val spread = stripeSpread(result.bitmap)
         assertTrue(spread < 10, "stripes came through with spread $spread")
     }
 
     @Test
     fun `Coil's own decoder lets the stripes through, which is why ours is registered`() = runTest {
-        val spread = stripeSpread(assertNotNull(SkiaImageDecoder(sourceResult(stripesPng(788, 8)).source, shrink).decode()))
+        val result = assertNotNull(SkiaImageDecoder(sourceResult(stripesPng(788, 8)).source, shrink).decode())
 
+        val spread = stripeSpread(result.bitmap)
         assertTrue(spread > 50, "Coil's decoder now filters (spread $spread): this decoder may no longer be needed")
     }
 
     @Test
     fun `an image at its own size keeps its pixels`() = runTest {
-        val png = stripesPng(40, 8)
         val noUpscale = Options(PlatformContext.INSTANCE, size = Size(400, 400), precision = Precision.INEXACT)
-        val result = assertNotNull(assertNotNull(factory.create(sourceResult(png), noUpscale, imageLoader)).decode())
+        val result = decode(stripesPng(40, 8), noUpscale)
 
-        val bitmap = (result.image as BitmapImage).bitmap
-        assertEquals(40, bitmap.width)
-        assertEquals(Color.BLACK, bitmap.getColor(0, 4))
-        assertEquals(Color.WHITE, bitmap.getColor(1, 4))
+        assertEquals(40, result.bitmap.width)
+        assertEquals(false, result.isSampled)
+        assertEquals(Color.BLACK, result.bitmap.getColor(0, 4))
+        assertEquals(Color.WHITE, result.bitmap.getColor(1, 4))
     }
 
     @Test
-    fun `leaves SVG to the SVG decoder`() {
+    fun `an exact-size request enlarges`() = runTest {
+        assertEquals(400, decode(stripesPng(40, 8)).bitmap.width)
+    }
+
+    @Test
+    fun `takes HEIC, which the pipeline decodes`() {
+        assertNotNull(factory.create(sourceResult(ftypHeader("heic")), shrink, imageLoader))
+        assertNotNull(factory.create(sourceResult(ftypHeader("mif1")), shrink, imageLoader))
+    }
+
+    @Test
+    fun `leaves SVG, video and empty sources to other decoders`() {
         val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>""".encodeToByteArray()
         assertNull(factory.create(sourceResult(svg), shrink, imageLoader))
-    }
-
-    @Test
-    fun `leaves HEIC to the HEIC decoder`() {
-        val heic = byteArrayOf(0, 0, 0, 0x18) + "ftypheic".encodeToByteArray() + ByteArray(20)
-        assertNull(factory.create(sourceResult(heic), shrink, imageLoader))
+        assertNull(factory.create(sourceResult(ftypHeader("mp41")), shrink, imageLoader))
+        assertNull(factory.create(sourceResult(ByteArray(0)), shrink, imageLoader))
     }
 }

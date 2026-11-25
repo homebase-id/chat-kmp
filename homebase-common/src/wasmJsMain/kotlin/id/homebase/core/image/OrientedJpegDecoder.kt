@@ -2,15 +2,24 @@ package id.homebase.core.image
 
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
+import coil3.asImage
 import coil3.decode.DecodeResult
+import coil3.decode.DecodeUtils
 import coil3.decode.Decoder
 import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
+import coil3.size.Precision
+import coil3.size.Size
+import coil3.size.pxOrElse
 import id.homebase.api.image.jpegOrientationSwapsDimensions
 import id.homebase.api.image.readJpegExifOrientation
 import okio.use
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Image
+import org.jetbrains.skia.Rect
+import org.jetbrains.skia.impl.use
 
 /**
  * Web-only Coil3 [Decoder] for JPEGs whose EXIF orientation is a quarter turn
@@ -40,7 +49,36 @@ class OrientedJpegDecoder(
         val bytes = source.source().use { it.readByteArray() }
         val image = Image.makeFromEncoded(bytes)
         try {
-            return decodeForDisplay(image, options)
+            val srcWidth = image.width
+            val srcHeight = image.height
+            var multiplier = DecodeUtils.computeSizeMultiplier(
+                srcWidth = srcWidth,
+                srcHeight = srcHeight,
+                dstWidth = options.size.width.pxOrElse { srcWidth },
+                dstHeight = options.size.height.pxOrElse { srcHeight },
+                scale = options.scale,
+                maxSize = Size.ORIGINAL,
+            )
+            if (options.precision == Precision.INEXACT) {
+                multiplier = multiplier.coerceAtMost(1.0)
+            }
+            val outWidth = (multiplier * srcWidth).toInt().coerceAtLeast(1)
+            val outHeight = (multiplier * srcHeight).toInt().coerceAtLeast(1)
+
+            val bitmap = Bitmap()
+            bitmap.allocN32Pixels(outWidth, outHeight)
+            Canvas(bitmap).use { canvas ->
+                canvas.drawImageRect(
+                    image = image,
+                    src = Rect.makeWH(srcWidth.toFloat(), srcHeight.toFloat()),
+                    dst = Rect.makeWH(outWidth.toFloat(), outHeight.toFloat()),
+                )
+            }
+            bitmap.setImmutable()
+            return DecodeResult(
+                image = bitmap.asImage(),
+                isSampled = outWidth < srcWidth || outHeight < srcHeight,
+            )
         } finally {
             image.close()
         }

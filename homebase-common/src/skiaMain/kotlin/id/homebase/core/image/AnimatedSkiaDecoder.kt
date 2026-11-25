@@ -18,7 +18,7 @@ import org.jetbrains.skia.Data
  * using skiko, which all three targets bundle. Android keeps using coil-gif
  * (PR #663) and is intentionally not wired to this decoder.
  *
- * Registered next to [HeicDecoder] in each non-Android AppModule, so it sits in
+ * Registered in each non-Android AppModule, so it sits in
  * the existing encrypted Coil pipeline: it decodes the already-fetched,
  * already-decrypted payload bytes Coil hands it and returns an animating
  * [coil3.Image]. It does not fetch, decrypt, or cache anything itself.

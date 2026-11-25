@@ -91,10 +91,6 @@ fun ComponentRegistry.Builder.addNativeImageDecoders(): ComponentRegistry.Builde
 
 private fun isJpegSource(result: SourceFetchResult): Boolean {
     if (result.mimeType == "image/jpeg") return true
-    return try {
-        val header = result.source.source().peek().readByteArray(3)
-        header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()
-    } catch (_: Exception) {
-        false
-    }
+    val header = result.peekHeader(3) ?: return false
+    return header.size == 3 && header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()
 }
