@@ -112,7 +112,9 @@ class FileSaverTest {
         var handed: Pair<String, String>? = null
         val run = save(refusing, onRefused = { file, name, _ -> handed = file to name })
         assertEquals(listOf("refused"), run.calls)
-        assertTrue(handed!!.first.startsWith("/tmp/key"))
+        val file = Path(handed!!.first)
+        assertEquals(Path("/tmp"), file.parent)
+        assertTrue(file.name.startsWith("key"), "$file")
         assertEquals("key.txt", handed!!.second)
         assertFalse(run.fileLeft)
     }
@@ -192,8 +194,9 @@ class FileSaverTest {
         val shared = mutableListOf<String>()
         val run = offer { ops -> ShareSheetFallback(ops, StandardTestDispatcher(testScheduler)) { path, _ -> shared += path.toString() } }
         assertEquals(1, shared.size)
-        assertTrue(shared.single().startsWith("/tmp/share_outbound/"))
-        assertTrue(shared.single().endsWith("/photo.jpg"))
+        val staged = Path(shared.single())
+        assertEquals("photo.jpg", staged.name)
+        assertTrue(generateSequence(staged.parent) { it.parent }.any { it == Path("/tmp/share_outbound") }, "$staged")
         assertTrue(run.fileOps.sourceExists(shared.single()), "the staged copy stays for the share target")
         assertFalse(run.fileOps.sourceExists(run.file), "the refused file was given away")
         assertTrue(run.errors.isEmpty())
