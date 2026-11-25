@@ -198,7 +198,9 @@ fun PhotoGalleryScreen(
     asked?.let { (title, confirmLabel, action) ->
         ConfirmDialog(
             title = title,
-            text = stringResource(MR.string.photobase_bin_cant_undo),
+            text = (if (confirm == BinAction.Empty) layout?.photoCount ?: 0 else uiState.selected.size).let { count ->
+                pluralStringResource(MR.plurals.photobase_bin_cant_undo, count)
+            },
             confirmLabel = confirmLabel,
             destructive = true,
             onConfirm = {

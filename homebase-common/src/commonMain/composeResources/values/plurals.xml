@@ -156,6 +156,10 @@
         <item quantity="one">%1$d couldn't be changed.</item>
         <item quantity="other">%1$d couldn't be changed.</item>
     </plurals>
+    <plurals name="photobase_bin_cant_undo">
+        <item quantity="one">This can't be undone, and the photo won't be backed up again from a phone that still has it.</item>
+        <item quantity="other">This can't be undone, and the photos won't be backed up again from a phone that still has them.</item>
+    </plurals>
     <plurals name="photobase_bin_delete_confirm_title">
         <item quantity="one">Delete %1$d photo forever?</item>
         <item quantity="other">Delete %1$d photos forever?</item>
