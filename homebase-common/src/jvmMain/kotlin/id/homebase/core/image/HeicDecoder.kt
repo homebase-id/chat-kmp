@@ -2,19 +2,14 @@ package id.homebase.core.image
 
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
-import coil3.asImage
 import coil3.decode.DecodeResult
 import coil3.decode.Decoder
 import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
-import coil3.request.maxBitmapSize
 import id.homebase.api.image.convertHeicToJpeg
 import okio.use
-import org.jetbrains.skia.Bitmap
-import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Image
-import org.jetbrains.skia.Rect
 import org.jetbrains.skia.impl.use
 
 /**
@@ -36,29 +31,7 @@ class HeicDecoder(
             Logger.e(tag = TAG) { "Skia failed to decode converted JPEG (${jpegBytes.size} bytes): ${e.message}" }
             return null
         }
-
-        val srcW = image.width
-        val srcH = image.height
-        val (outW, outH) = decodeOutputSize(
-            srcW, srcH, options.size, options.scale, options.maxBitmapSize, options.precision,
-        )
-
-        val bitmap = Bitmap()
-        if (!bitmap.allocN32Pixels(outW, outH)) {
-            image.close()
-            return null
-        }
-        Canvas(bitmap).use { canvas ->
-            canvas.drawImageRect(
-                image,
-                Rect.makeWH(srcW.toFloat(), srcH.toFloat()),
-                Rect.makeWH(outW.toFloat(), outH.toFloat()),
-            )
-        }
-        bitmap.setImmutable()
-        val isSampled = outW < srcW || outH < srcH
-        image.close()
-        return DecodeResult(image = bitmap.asImage(), isSampled = isSampled)
+        return image.use { decodeForDisplay(it, options) }
     }
 
     class Factory : Decoder.Factory {
